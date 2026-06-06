@@ -1,59 +1,87 @@
-"""CLI command implementations for My Project."""
+"""KNOX CLI commands."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
-from knox.cli import args
+from knox.chunking._dev import DevChunker
 from knox.cli.app import app
+from knox.compilation.graph import GraphCompiler
+from knox.core.pipeline import PipelineConfig, WikiPipeline
+from knox.output.markdown import MarkdownWriter
+from knox.preprocessing.downloaders.crawler import WebCrawler
+from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers.pandoc_parser import PandocParser
+from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
+from knox.resolution.llm import LLMResolver
 
-# Application name for environment variables
-APP_NAME_UPPERCASE = "KNOX"
 
-# Default command (runs when no command provided)
+typer.echo = lambda *args, **kwargs: print(*args)
 
-@app.command()
-def default() -> None:
-    """Default command showing welcome message."""
-    typer.echo(f"Welcome to My Project!")
-    typer.echo("Use --help to see available commands.")
 
-# Greet command
-
-@app.command()
-def greet(
-    name: args.NameArg,
-    input_file: args.InputFileArg = None,
-    output_file: args.OutputFile = None,
-    cache: args.Cache = True,
+@app.command(name="compile")
+def compile_wiki(
+    sources_dir: str = typer.Argument(help="Directory with source documents"),
+    output_dir: str = typer.Argument(help="Output directory for compiled wiki"),
+    online_urls: list[str] = typer.Option([], "--url", help="URLs to download before processing"),
+    target_format: str = typer.Option("markdown", "--format", "-f", help="Output format: markdown, json, typst"),
+    chunk_size: int = typer.Option(512, "--chunk-size", help="Chunk size in tokens"),
+    image_mode: str = typer.Option("file", "--image-mode", help="Image handling: file, base64"),
 ) -> None:
-    """Greet a person by name."""
-    if input_file:
-        # Read names from file
-        names = [line.strip() for line in input_file if line.strip()]
-        for n in names:
-            typer.echo(f"Hello, {n}!")
-    else:
-        typer.echo(f"Hello, {name}!")
+    """Compile documents into a knowledge wiki."""
+    config = PipelineConfig(
+        source_dir=Path(sources_dir),
+        output_dir=Path(output_dir),
+        online_sources=online_urls,
+        compile_target=target_format,
+        chunk_size=chunk_size,
+        image_mode=image_mode,
+    )
 
-    # Show option values (for demonstration)
-    if output_file:
-        typer.echo(f"Output file: {output_file}")
-    typer.echo(f"Cache: {'enabled' if cache else 'disabled'}")
+    pipeline = WikiPipeline(
+        config=config,
+        downloader=HTTPDownloader(),
+        parser=DoclingParser(image_mode=image_mode) if DoclingParser.supported_extensions else None,  # type: ignore[arg-type]
+        chunker=DevChunker(chunk_size=chunk_size),
+        compiler=GraphCompiler(),
+        output_writer=MarkdownWriter(),
+    )
 
-# Add command
+    try:
+        pipeline.run()
+        typer.echo(f"Compiled wiki written to {output_dir}")
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
-@app.command()
-def add(
-    number1: args.NumberArg1,
-    number2: args.NumberArg2,
-    output_file: args.OutputFile = None,
+
+@app.command(name="parse")
+def parse_single(
+    file_path: str = typer.Argument(help="Path to document to parse"),
+    print_elements: bool = typer.Option(False, "--elements", help="Print extracted elements"),
 ) -> None:
-    """Add two numbers together."""
-    result = number1 + number2
-    typer.echo(f"The sum of {number1} and {number2} is {result}")
+    """Parse a single document and show structure."""
+    from pathlib import Path
 
-    if output_file:
-        with open(output_file, "w") as f:
-            f.write(str(result))
-        typer.echo(f"Result written to {output_file}")
+    from knox.preprocessing.parsers.base import ParserRouter
+
+    router = ParserRouter()
+    router.register(DoclingParser())
+    router.register(PdfPlumberParser())
+    router.register(PandocParser())
+
+    path = Path(file_path)
+    try:
+        doc = router.parse(path)
+        typer.echo(f"Parsed: {doc.title or path.name}")
+        typer.echo(f"  Pages: {doc.page_count}")
+        typer.echo(f"  Elements: {len(doc.elements)}")
+        if print_elements:
+            for el in doc.elements[:20]:
+                typer.echo(f"    [{el.type.name}] {str(el.content)[:100]}...")
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
