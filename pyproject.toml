@@ -48,6 +48,7 @@ testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 cache_dir = "tests/test-cache"
 addopts = "-v --tb=short"
+asyncio_mode = "auto"
 markers = [
     "benchmark: Quality benchmarks that report metrics rather than assert pass/fail.",
 ]

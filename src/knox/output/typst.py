@@ -1,4 +1,4 @@
-"""Typst output writer."""
+"""Typst output writer — produces Typst source for PDF compilation."""
 
 from __future__ import annotations
 
@@ -11,17 +11,78 @@ from knox.output.base import BaseOutputWriter
 class TypstWriter(BaseOutputWriter):
     """Write compiled wiki as Typst source for PDF generation."""
 
-    def write(self, wiki: CompiledWiki, output_dir: Path) -> None:
+    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / "compiled_wiki.typ"
+
         lines: list[str] = []
+
+        # Document setup
         lines.append('#set page("a4")')
-        lines.append("#set text(size: 11pt)")
+        lines.append('#set text(size: 11pt)')
+        lines.append('')
+
+        # Title page
+        title = wiki.metadata.get("title", "Compiled Wiki") if wiki.metadata else "Compiled Wiki"
+        lines.append("#align(center + top)")
+        lines.append(f"#text(size: 24pt, weight: \"bold\")[{title}]")
+        lines.append("#v(2cm)")
+
+        if wiki.metadata and wiki.metadata.get("description"):
+            lines.append("#align(center)")
+            lines.append(f"#text(size: 12pt)[{wiki.metadata['description']}]")
+            lines.append("#v(1cm)")
+
+        lines.append("#pagebreak()")
         lines.append("")
-        lines.append("= Compiled Wiki")
-        lines.append("")
+
+        # Table of contents
+        if wiki.toc:
+            lines.append("= Table of Contents")
+            lines.append("#outline()")
+            lines.append("#pagebreak()")
+            lines.append("")
+
+            # Also write explicit TOC entries as cross-references
+            for i, entry in enumerate(wiki.toc):
+                title = entry.get("title", "")
+                entry_id = entry.get("id", "")
+                if entry_id:
+                    lines.append(f"- #link(<{entry_id}>)[{title}]")
+                else:
+                    lines.append(f"- {title}")
+            lines.append("")
+            lines.append("#pagebreak()")
+            lines.append("")
+
+        # Nodes as sections with proper heading levels and cross-references
         for node in wiki.nodes:
-            lines.append(f"== {node.title}")
+            level = node.metadata.get("heading_level", 1) if node.metadata else 1
+            heading = "=" * min(level + 1, 6)
+
+            # Add a label for cross-referencing
+            node_id = node.id
+            lines.append(f"#label(<{node_id}>)")
+            lines.append(f"{heading} {node.title}")
+            lines.append("")
+
+            # Content
             lines.append(node.content)
             lines.append("")
-        output_path.write_text("\n".join(lines))
+
+            # Source chunks reference
+            if node.source_chunks:
+                lines.append(f"*Source: {len(node.source_chunks)} chunk(s)*")
+                lines.append("")
+
+            # Cross-reference back to TOC
+            lines.append("#v(0.5cm)")
+            lines.append("#text(size: 9pt, fill: gray)[")
+            lines.append(f"  #link(<toc>)[Back to Table of Contents]")
+            lines.append("]")
+            lines.append("")
+            lines.append("#pagebreak()")
+            lines.append("")
+
+        output_path = output_dir / "wiki.typ"
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+        return output_path

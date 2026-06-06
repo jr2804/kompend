@@ -12,6 +12,6 @@ class BaseOutputWriter(ABC):
     """Output writer interface for KNOX Tier 5."""
 
     @abstractmethod
-    def write(self, wiki: CompiledWiki, output_dir: Path) -> None:
-        """Write compiled wiki to the output directory."""
+    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
+        """Write compiled wiki to the output directory and return the output path."""
         ...

@@ -10,7 +10,9 @@ from knox.chunking.hybrid import HybridChunker
 from knox.cli.app import app
 from knox.compilation.graph import GraphCompiler
 from knox.core.pipeline import PipelineConfig, WikiPipeline
+from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
+from knox.output.typst import TypstWriter
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -38,13 +40,24 @@ def compile_wiki(
         image_mode=image_mode,
     )
 
+    # Select output writer based on format
+    format_map = {
+        "markdown": MarkdownWriter(),
+        "json": JsonWriter(),
+        "typst": TypstWriter(),
+    }
+    writer = format_map.get(target_format)
+    if writer is None:
+        typer.echo(f"Error: Unknown format '{target_format}'. Use 'markdown', 'json', or 'typst'.", err=True)
+        raise typer.Exit(1)
+
     pipeline = WikiPipeline(
         config=config,
         downloader=HTTPDownloader(),
         parser=DoclingParser(image_mode=image_mode) if DoclingParser.supported_extensions else None,  # type: ignore[arg-type]
         chunker=HybridChunker(chunk_size=chunk_size),
         compiler=GraphCompiler(),
-        output_writer=MarkdownWriter(),
+        output_writer=writer,
     )
 
     try:

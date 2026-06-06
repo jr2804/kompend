@@ -4,19 +4,37 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, WikiNode
 from knox.output.base import BaseOutputWriter
 
 
 class MarkdownWriter(BaseOutputWriter):
     """Write compiled wiki as a single markdown file."""
 
-    def write(self, wiki: CompiledWiki, output_dir: Path) -> None:
+    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / "compiled_wiki.md"
-        lines: list[str] = []
-        lines.append("# Compiled Wiki\n")
+
+        lines: list[str] = ["# Compiled Wiki\n"]
+
+        # Write TOC
+        if wiki.toc:
+            lines.append("## Table of Contents\n")
+            for entry in wiki.toc:
+                title = entry.get("title", "")
+                entry_id = entry.get("id", "")
+                lines.append(f"- [{title}](#{entry_id})")
+            lines.append("")
+
+        # Write nodes as sections with proper markdown headings
         for node in wiki.nodes:
-            lines.append(f"## {node.title}\n")
-            lines.append(f"{node.content}\n")
-        output_path.write_text("\n".join(lines))
+            level = node.metadata.get("heading_level", 1) if node.metadata else 1
+            prefix = "#" * min(level + 1, 6)
+            lines.append(f"{prefix} {node.title}\n")
+            lines.append(node.content + "\n")
+
+            if node.source_chunks:
+                lines.append(f"*Source: {len(node.source_chunks)} chunk(s)*\n")
+
+        output_path = output_dir / "wiki.md"
+        output_path.write_text("\n".join(lines), encoding="utf-8")
+        return output_path
