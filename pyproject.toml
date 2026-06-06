@@ -48,6 +48,9 @@ testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 cache_dir = "tests/test-cache"
 addopts = "-v --tb=short"
+markers = [
+    "benchmark: Quality benchmarks that report metrics rather than assert pass/fail.",
+]
 
 [tool.pytest-cov]
 addopts = "--cov=knox --cov-report=term-missing --cov-report=html --cov-report=xml"

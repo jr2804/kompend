@@ -41,6 +41,26 @@ class HTTPDownloader(BaseDownloader):
             return None
         return target_path
 
+    def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
+        """Download multiple URLs, return paths of successful downloads.
+
+        Args:
+            urls: List of URLs to download.
+            target_dir: Directory to save downloaded files.
+
+        Returns:
+            List of Paths for successfully downloaded files.
+        """
+        results: list[Path] = []
+        for url in urls:
+            try:
+                path = self.download(url, target_dir)
+                if path:
+                    results.append(path)
+            except Exception:
+                logger.exception(f"Failed to download {url}")
+        return results
+
     @staticmethod
     def _hash_url(url: str) -> str:
         return hashlib.sha256(url.encode()).hexdigest()[:16]
