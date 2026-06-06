@@ -3,15 +3,15 @@ name = "knox"
 dynamic = ["version"]
 description = "Knowledge Organizer for eXtended documents"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0" }
 requires-python = ">=3.13"
 authors = [
-    { name = "Hermes", email = "openclaw@reimes.ws" }
+    { name = "Jan Reimes", email = "jan@reimes.de" }
 ]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "typer>=0.12.0",
