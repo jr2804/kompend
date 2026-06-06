@@ -5,13 +5,13 @@ from pathlib import Path
 from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 
 
-def test_element_type_enum():
+def test_element_type_enum() -> None:
     assert ElementType.TEXT.name == "TEXT"
     assert ElementType.TABLE.name == "TABLE"
     assert ElementType.IMAGE.name == "IMAGE"
 
 
-def test_document_element_creation():
+def test_document_element_creation() -> None:
     elem = DocumentElement(
         type=ElementType.HEADING,
         content="# Introduction",
@@ -25,7 +25,7 @@ def test_document_element_creation():
     assert elem.metadata["style"] == "Title"
 
 
-def test_parsed_document_structure():
+def test_parsed_document_structure() -> None:
     elems = [
         DocumentElement(
             type=ElementType.HEADING,
@@ -54,7 +54,7 @@ def test_parsed_document_structure():
     assert doc.elements[0].type == ElementType.HEADING
 
 
-def test_chunk_creation():
+def test_chunk_creation() -> None:
     chunk = Chunk(
         id="chunk-1",
         text="Sample text",
@@ -66,7 +66,7 @@ def test_chunk_creation():
     assert chunk.heading_context == "Section 1"
 
 
-def test_wiki_node_creation():
+def test_wiki_node_creation() -> None:
     node = WikiNode(
         id="node-1",
         title="Introduction",
@@ -77,7 +77,7 @@ def test_wiki_node_creation():
     assert node.title == "Introduction"
 
 
-def test_compiled_wiki_creation():
+def test_compiled_wiki_creation() -> None:
     node = WikiNode(
         id="node-1",
         title="Intro",

@@ -6,6 +6,7 @@ from importlib.metadata import version
 
 import typer
 
+
 # Version management
 def _get_version() -> str:
     """Get application version from package metadata."""
@@ -14,12 +15,14 @@ def _get_version() -> str:
     except Exception:
         return "0.0.0"  # Fallback for development mode
 
+
 app = typer.Typer(
     name="knox",
     help="Knowledge Organizer for eXtended documents",
     add_completion=True,
     no_args_is_help=True,
 )
+
 
 @app.callback(invoke_without_command=True)
 def _callback(

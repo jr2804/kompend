@@ -1,3 +1,5 @@
 """KNOX chunking tier."""
 
-from __future__ import annotations
+from knox.chunking.hybrid import HybridChunker
+
+__all__ = ["HybridChunker"]

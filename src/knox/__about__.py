@@ -6,7 +6,7 @@ from knox import __version__
 
 __title__ = "knox"
 __description__ = "Knowledge Organizer for eXtended documents"
-__version__ = __version__
+__version__ = ""  # injected by uv-dynamic-versioning
 __author__ = "Hermes"
 __email__ = "openclaw@reimes.ws"
 __license__ = "MIT"

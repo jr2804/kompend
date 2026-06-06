@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from knox.core.models import CompiledWiki
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 

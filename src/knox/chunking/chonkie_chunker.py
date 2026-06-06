@@ -11,7 +11,8 @@ from knox.core.models import Chunk, ElementType, ParsedDocument
 logger = logging.getLogger(__name__)
 
 try:
-    from chonkie import Chunker as ChonkieChunker, RecursiveChunker, SemanticChunker
+    from chonkie import Chunker as ChonkieChunker
+    from chonkie import RecursiveChunker, SemanticChunker
 
     CHONKIE_AVAILABLE = True
 except ImportError:
@@ -29,10 +30,7 @@ class ChonkieChunker(BaseChunker):
         **kwargs: Any,
     ) -> None:
         if not CHONKIE_AVAILABLE:
-            raise ImportError(
-                "chonkie is required for ChonkieChunker. "
-                'Install with: uv pip install "knox[chonkie]"'
-            )
+            raise ImportError('chonkie is required for ChonkieChunker. Install with: uv pip install "knox[chonkie]"')
         self.chunker_type = chunker_type
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap

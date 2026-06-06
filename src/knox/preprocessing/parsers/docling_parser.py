@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser
@@ -14,9 +12,8 @@ logger = logging.getLogger(__name__)
 
 try:
     from docling.datamodel.base_models import DocumentStream
-    from docling.datamodel.document import ConversionResult
+    from docling.datamodel.document import ConversionResult, InputFormat
     from docling.document_converter import DocumentConverter
-    from docling.datamodel.document import InputFormat
 
     DOCLING_AVAILABLE = True
 except ImportError:
@@ -35,10 +32,7 @@ class DoclingParser(BaseParser):
         table_format: str = "structured",
     ) -> None:
         if not DOCLING_AVAILABLE:
-            raise ImportError(
-                "docling is required for DoclingParser. "
-                'Install with: uv pip install "knox[docling]"'
-            )
+            raise ImportError('docling is required for DoclingParser. Install with: uv pip install "knox[docling]"')
         self.image_mode = image_mode
         self.extract_images = extract_images
         self.table_format = table_format
@@ -49,7 +43,7 @@ class DoclingParser(BaseParser):
         doc = result.document
 
         elements: list[DocumentElement] = []
-        image_dir = self._image_dir(source_path)
+        self._image_dir(source_path)
 
         if doc.pages:
             for page in doc.pages:

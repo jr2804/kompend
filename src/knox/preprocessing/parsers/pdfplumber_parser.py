@@ -7,7 +7,6 @@ from pathlib import Path
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser
 
-
 try:
     import pdfplumber
 
