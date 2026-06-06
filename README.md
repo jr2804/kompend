@@ -1,142 +1,94 @@
-# My Project
+# KNOX
 
-Knowledge Organizer for eXtended documents
+**Knowledge Organizer for eXtended documents**
 
-## Features
+A compiled LLM-wiki system for scientific and technical documents. Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web sources into an interlinked, queryable knowledge base — with structure-preserving parsing, hybrid chunking, multi-turn resolution, and WiCER iterative compilation.
 
-- ✅ **UV Package Manager**: Fast, modern Python dependency and virtual environment management
-- ✅ **ty Type Checking**: Strict type checking for all Python code
-- ✅ **Pytest**: Testing framework with 100% coverage requirement
-- ✅ **Ruff**: Fast Python linter and formatter
-- ✅ **codespell**: Spell checker for code and documentation
-- ✅ **mise Task System**: Advanced task runner with DAG dependency management
-- ✅ **Pre-commit Hooks**: Automated code quality checks
-- ✅ **Zensical**: Modern documentation with Material Design theme
-- ✅ **Dynamic Versioning**: Git-based versioning with uv-dynamic-versioning
+Inspired by [Karpathy's compiled LLM-wiki concept](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-## Installation
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/knox.git
-cd knox
+# Install
+uv pip install "knox[docling]"
 
-# Install dependencies
-mise dev
+# Compile a sources directory into a wiki
+knox compile ./sources --output ./wiki
 
-# Or manually
-uv sync --dev
+# Parse a single document
+knox parse ./paper.pdf --output ./parsed/
+
+# See all options
+knox --help
 ```
 
-## Usage
+## What Makes KNOX Different
 
-### Running Tests
+| Problem | Existing Tools | KNOX |
+|---|---|---|
+| Tables/figures flattened to text | All (pdfplumber → markdown → wiki) | Structure-preserving parser (Docling JSON sidecar) |
+| No structure-aware chunking | Most use char-count splitting | Hybrid: custom atomic splitter + Chonkie for text |
+| One-shot compilation | "Compile once and query" | WiCER loop: compile → evaluate → refine |
+| Multi-turn resolution missing | No tool supports it | Tier 3: LLM + MCP tools per document |
+| Model/context-agnostic | Hard-coded OpenAI/Anthropic | litellm + auto-detect context window + budget |
+| GUI required for basic ops | nashsu/llm_wiki GUI-only | Headless CLI + MCP + Python SDK |
+| Images orphaned | Flattened to filenames | VLM-captioned, indexed as first-class entities |
 
-```bash
-mise test
-# or
-uv run pytest
+## Architecture
+
+5-tier pipeline — each tier independently replaceable:
+
+```
+Raw Sources → TIER 1: Pre-Processing → TIER 2: Chunking → TIER 3: Resolution → TIER 4: Compilation → TIER 5: Output
 ```
 
-### Code Quality
+Read the full architecture in [`docs/architecture.md`](./docs/architecture.md).
 
-```bash
-# Run linter
-mise lint
+## Documentation
 
-# Format code
-mise format
-
-# Check spelling
-mise spell
-
-# Run all checks
-mise all
-```
-
-### CLI Commands
-
-```bash
-# Default command
-uv run knox
-
-# Greet someone
-uv run knox greet Alice
-
-# Add numbers
-uv run knox add 5 3
-
-# Show version
-uv run knox --version
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `KNOX_CACHE` | Enable/disable caching (true/false) |
-| `KNOX_OUTPUT_FILE` | Default output file path |
+| Document | What's Covered |
+|---|---|
+| [`docs/overview.md`](./docs/overview.md) | Project summary, design philosophy, core principles |
+| [`docs/architecture.md`](./docs/architecture.md) | 5-tier pipeline, data models, integration points |
+| [`docs/ecosurvey.md`](./docs/ecosurvey.md) | Survey of existing tools, parsers, chunkers, MCP servers |
+| [`docs/roadmap.md`](./docs/roadmap.md) | Milestones, priorities, open questions, tentative dates |
+| [`docs/decisions.md`](./docs/decisions.md) | Decision log — what was chosen and why |
 
 ## Development
 
-### Setting Up Development Environment
-
 ```bash
-# Install all dependencies including dev tools
-mise dev
+cd /opt/workspace/work/knox
+uv sync                    # install deps
+uv run pytest tests/       # run tests
+mise test                  # run all quality checks
 ```
 
-### Pre-commit Hooks
+## Project Status
 
-Install pre-commit hooks to run quality checks before commits:
+| Milestone | Status |
+|---|---|
+| M0: Scaffolding | ✅ Complete |
+| M1: Docling Parser (Tier 1) | ✅ Complete |
+| M2: Hybrid Chunking (Tier 2) | 🎯 Current |
+| M3: LLM Resolution (Tier 3) | ⏳ Pending |
+| M4: WiCER Compilation (Tier 4) | ⏳ Pending |
+| M5: Output Writers (Tier 5) | ⏳ Pending |
+| M6: MCP Server | ⏳ Pending |
 
-```bash
-pre-commit install
-pre-commit run --all-files
-```
-
-## Project Structure
-
-```
-knox/
-├── .config/mise/config.toml                # mise tasks/configuration
-├── src/knox/
-│   ├── __init__.py
-│   ├── __about__.py                        # Version info
-│   └── cli/                                # Typer CLI module
-├── tests/                                  # Pytest tests
-├── .pre-commit-config.yaml                 # Pre-commit hooks configuration
-├── ruff.toml                               # Ruff linter configuration
-├── ty.toml                                 # ty type checker configuration
-└── pyproject.toml                          # Project configuration
-```
-
-## Versioning
-
-This project uses **uv-dynamic-versioning** for automatic version management based on Git tags.
-
-- Version is derived from Git tags (e.g., `v0.1.0`)
-- Fallback version: `0.0.0` for development mode
-- No need to manually update version strings
+See [`docs/roadmap.md`](./docs/roadmap.md) for full details.
 
 ## License
 
-This project is licensed under the **MIT** license.
+AGPL-3.0. See [LICENSE](./LICENSE).
 
-See the [LICENSE](LICENSE) file for details.
+## Contact
 
-## Contributing
+Jan Reimes — jan@reimes.de
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run quality checks: `mise all`
-5. Submit a pull request
+## Acknowledgments
 
-## AGENTS.md
-
-This project includes a generic [AGENTS.md](AGENTS.md) template with global instructions for AI assistants, adapted from [Anbeeld/AGENTS.md](https://github.com/Anbeeld/AGENTS.md).
-
-## Support
-
-For issues and feature requests, please use the GitHub issue tracker.
+- [Karpathy's compiled LLM-wiki Gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the core concept
+- [WiCER paper](https://arxiv.org/pdf/2605.07068v1) (Huerta, Zinnia Tech) — iterative compilation loop
+- [Docling](https://github.com/DS4SD/docling) (IBM) — structure-preserving parsing
+- [Chonkie](https://github.com/chonkie-inc/chonkie) — multi-strategy chunking
+- [litellm](https://github.com/BerriAI/litellm) — provider-agnostic LLM calls

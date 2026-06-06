@@ -21,7 +21,7 @@ shell = "bash"
 run = [
 	"clear",
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai "grepai mcp-serve"',
-	"bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp "cytoscnpy mcp-server"',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp "cytoscnpy mcp-server"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n graphify "python -m graphify.serve graphify-out/graph.json"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun "fartrun mcp"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck "npx -y @yuvrajangadsingh/vibecheck --mcp"',

@@ -16,6 +16,9 @@ bun = "latest"
 ripgrep = "latest"
 "github:peteretelej/tree" = { version = "latest", rename_exe = "tree-cli" }
 
+"github:gastownhall/beads" = "latest"
+"github:dolthub/dolt" = "latest"
+
 [settings.npm]
 package_manager = "bun"
 
