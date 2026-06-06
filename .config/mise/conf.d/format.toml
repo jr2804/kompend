@@ -1,0 +1,11 @@
+[tasks.format]
+description = "Format code (ruff, isort, undersort)"
+run = [
+	"undersort src tests",
+	"ruff format src tests",
+	"ruff check src tests --select I --fix",
+]
+
+[tasks.format-md]
+description = "Format Markdown files"
+run = "uv tool run --with mdformat-front-matters mdformat src/ docs/ tests/ --end-of-line keep --number"

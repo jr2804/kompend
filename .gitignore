@@ -1,0 +1,39 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+
+# Virtual environments
+.venv
+*.env
+uv.lock
+
+# Dev tools/MCP server data/dirs
+/.config/chunkhound/db
+.sisyphus
+.config/memorygraph/memory.db
+/.opencode
+
+# temp folders
+/.tmp
+/tmp
+/temp
+
+# Copier answers (regenerated on update)
+.copier-answers.yml
+
+# MCP / coding assistant directories
+.vscode
+opencode.json
+.opencode
+
+# Skills directory
+/.agents/skills
+skills-lock.json
+
+# GrepAI config directory
+.grepai/

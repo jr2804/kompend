@@ -1,0 +1,3 @@
+[tasks.dev]
+description = "Install development dependencies"
+run = "uv sync -U --dev --all-extras --all-groups"

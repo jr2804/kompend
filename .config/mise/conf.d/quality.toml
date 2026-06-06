@@ -1,0 +1,19 @@
+[tasks.test]
+description = "Run tests with coverage"
+run = "uv run pytest --cov=knox"
+sources = ["src/**/*.py", "tests/**/*.py"]
+outputs = ["htmlcov/", ".coverage"]
+
+[tasks.all]
+description = "Run all quality checks"
+depends = [
+  "test",
+  "lint",
+  "spell",
+  "format",
+  "format-md",
+]
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = ["rm -rf build dist *.egg-info .pytest_cache .coverage htmlcov docs/_build"]

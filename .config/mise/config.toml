@@ -1,0 +1,23 @@
+# mise configuration
+# Task definitions are in conf.d/*.toml files (automatically loaded by mise)
+[tools]
+# basic frameworks that should always be available
+node = "latest"
+bun = "latest"
+
+# Linter/formatter/type checker tools
+"ruff" = "latest"
+"ty" = "latest"
+"pipx:mdformat" = {version = "latest", uvx = "true", uvx_args = "--with mdformat-frontmatter"}
+"pipx:undersort" = "latest"
+"pipx:codespell" = "latest"
+
+# CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
+ripgrep = "latest"
+"github:peteretelej/tree" = { version = "latest", rename_exe = "tree-cli" }
+
+[settings.npm]
+package_manager = "bun"
+
+[settings.pipx]
+uvx = true
