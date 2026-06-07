@@ -9,6 +9,14 @@ from typing import Annotated
 import typer
 
 from knox.cli.app import app
+from knox.core.config import (
+    get_frontmatter_defaults as _get_frontmatter_defaults,
+    get_ignore_patterns as _get_ignore_patterns,
+    get_output_flavor as _get_output_flavor,
+    get_rumdl_config_path as _get_rumdl_config_path,
+    load_config as _load_config,
+)
+
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_COMPILE_FORMAT,
@@ -28,16 +36,15 @@ from knox.cli.args import (
     Frontmatter,
     Ignore,
     ImageMode,
-    IncludePrivate,
     IndexStore,
     JsonOutput,
-    ListTiers,
     LintFix,
     LintLlm,
     LintOutputDir,
     LintRule,
     LintSourcesDir,
     LintThreshold,
+    ListTiers,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     NoCacheFlag,
@@ -197,16 +204,28 @@ def compile_cmd(
 
     typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
 
-    # 6. Build and run the pipeline
+    # 6. Load config file (if any) and merge with CLI flags
+    knox_config = _load_config()
     fallback_chain_list = list(llm_fallback_chain) if llm_fallback_chain else []
 
-    # Parse frontmatter defaults from key=value pairs
-    frontmatter_defaults: dict[str, str] = {}
+    # Resolve flavor: CLI > config > None (auto-detect)
+    resolved_flavor = flavor or _get_output_flavor(knox_config)
+
+    # Resolve frontmatter defaults: CLI > config > {}
+    frontmatter_defaults: dict[str, str] = dict(_get_frontmatter_defaults(knox_config))
     if frontmatter:
         for kv in frontmatter:
             if "=" in kv:
                 k, v = kv.split("=", 1)
                 frontmatter_defaults[k.strip()] = v.strip()
+
+    # Resolve ignore patterns: CLI extends config > config > []
+    resolved_ignore = list(_get_ignore_patterns(knox_config))
+    if ignore:
+        resolved_ignore.extend(ignore)
+
+    # Resolve rumdl config path from config file (only via config, not CLI)
+    rumdl_config_path = _get_rumdl_config_path(knox_config)
 
     config = PipelineConfig(
         source_dir=sources_dir_path,
@@ -216,13 +235,14 @@ def compile_cmd(
         chunk_size=chunk_size,
         image_mode=image_mode,
         input_files=all_input_files,
-        ignore_patterns=list(ignore) if ignore else [],
+        ignore_patterns=resolved_ignore,
         mode=mode,
         no_cache=no_cache,
         workers=workers,
         force=force,
-        flavor=flavor,
-        frontmatter_defaults=frontmatter_defaults if frontmatter_defaults else None,
+        flavor=resolved_flavor,
+        frontmatter_defaults=frontmatter_defaults or None,
+        rumdl_config=rumdl_config_path,
         llm_fallback_chain=fallback_chain_list,
         llm_fallback_max_retries_per_model=llm_fallback_max_retries,
     )

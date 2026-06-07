@@ -92,6 +92,7 @@ class PipelineConfig:
     respect_gitignore: bool = True  # respect .gitignore in source dir
     flavor: str | None = None  # Markdown flavor (obsidian, gfm, mkdocs, etc.); None = auto-detect
     frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
+    rumdl_config: Path | None = None  # path to custom .rumdl.toml config
 
 
 class WikiPipeline:
@@ -546,5 +547,9 @@ def build_pipeline(
         parser=parser,
         chunker=HybridChunker(chunk_size=config.chunk_size),
         compiler=base_compiler,
-        output_writer=writer_cls(flavor=config.flavor) if config.flavor else writer_cls(),
+        output_writer=writer_cls(
+            flavor=config.flavor,
+            frontmatter_defaults=config.frontmatter_defaults or {},
+            rumdl_config=config.rumdl_config,
+        ),
     )

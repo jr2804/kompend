@@ -110,9 +110,7 @@ def filter_files(
     base_dir: Path | None = None,
 ) -> list[Path]:
     """Filter out files matching any ignore pattern."""
-    if not ignore_patterns and not respect_gitignore:
-        return files
-
+    # CLI patterns override; config patterns are merged upstream in commands.py
     all_patterns = list(ignore_patterns or [])
 
     if respect_gitignore and base_dir:

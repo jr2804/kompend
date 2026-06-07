@@ -3,13 +3,13 @@ name = "knox"
 dynamic = ["version"]
 description = "Knowledge Organizer for eXtended documents"
 readme = "README.md"
-license = { text = "AGPL-3.0" }
+license = { text = "MIT" }
 requires-python = ">=3.11,<3.14"
 authors = [
     { name = "Jan Reimes", email = "jan@reimes.de" }
 ]
 classifiers = [
-    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -30,6 +30,7 @@ dependencies = [
     "pillow>=12.2.0",
     "docling-ibm-models>=3.13.3",
     "opencv-python-headless>=4.13.0.92",
+    "rumdl>=0.2.9",
 ]
 
 [project.scripts]

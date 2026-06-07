@@ -25,10 +25,11 @@ class MarkdownWriter(BaseOutputWriter):
         self,
         flavor: str | None = None,
         frontmatter_defaults: dict[str, Any] | None = None,
+        rumdl_config: Path | None = None,
     ) -> None:
         super().__init__(flavor=flavor)
         self.frontmatter_defaults = frontmatter_defaults or {}
-        self.renderer = DocumentRenderer(flavor=flavor)
+        self.renderer = DocumentRenderer(flavor=flavor, rumdl_config=rumdl_config)
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)

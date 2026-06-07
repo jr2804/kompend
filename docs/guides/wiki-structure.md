@@ -1,0 +1,123 @@
+# Wiki Structure
+
+Every compiled KNOX wiki comes with three auto-generated pages that serve as
+the entry point, activity record, and thematic overview.
+
+## index.md
+
+Generated after every compile — a table of contents with wiki statistics.
+
+**Location:** `{output_dir}/index.md`
+
+**Structure:**
+
+```markdown
+# Wiki Index
+
+## Summary
+
+- **Sources:** 12
+- **Articles:** 47
+- **Total words:** 12,345
+- **Last compile:** 2026-06-07 14:30 UTC
+
+## Topics
+
+`attention` `transformer` `bert` `nlp` `sequence-modeling`
+
+## Table of Contents
+
+1. [[attention|Attention]]
+2. [[transformer|Transformer]]
+3. [[bert|BERT]]
+...
+```
+
+### Statistics
+
+| Stat | Source | Description |
+|------|--------|-------------|
+| Sources count | `wiki.metadata.source_count` | Number of source files |
+| Article count | `len(wiki.nodes)` | Number of compiled pages |
+| Total words | Sum of `node.content` | Word count across all pages |
+| Last compile | `datetime.utcnow()` | Timestamp of this compile |
+| Health score | `wiki.quality_score` | Quality eval score (if N2 active) |
+
+### Topics cloud
+
+If the compiled wiki has metadata with a `topics` list, up to 30 topics are
+shown as inline code tags. Topics are sourced from the compilation pipeline
+and may include keywords extracted by the LLM.
+
+## log.md
+
+Append-only activity journal — never overwritten.
+
+**Location:** `{output_dir}/log.md`
+
+**Structure:**
+
+```markdown
+## [2026-06-07T14:30:00Z] compile | 3 source(s) → 12 page(s)
+- Sources: attention.pdf, transformer.pdf, bert.pdf
+- Created: [[self-attention]], [[multi-head-attention]]
+```
+
+Each entry includes:
+- ISO 8601 timestamp
+- Operation type (`compile`)
+- Source-to-page counts
+- Source names
+- Links to created pages (first 20, then `... and N more`)
+
+> **Note:** `log.md` grows over time. It is append-only — entries from
+> previous compiles are preserved. The file is intended for human review
+> and may be truncated manually if it becomes too large.
+
+## overview.md
+
+LLM-generated thematic summary — **opt-in** via `--synthesize` flag.
+
+**Location:** `{output_dir}/overview.md`
+
+**Structure:**
+
+```markdown
+# Wiki Overview
+
+This wiki covers the field of natural language processing with a focus on
+transformer architectures. Key themes include attention mechanisms,
+positional encoding, and pre-training objectives...
+
+**Prominent concepts:** self-attention, multi-head attention, BERT, GPT
+**Notable relationships:** Attention is the core of all transformer variants
+```
+
+### When is it generated?
+
+- Only when `--synthesize` is passed to `knox compile`
+- Requires the LLM client (Q12/Q13) to be wired
+- If the LLM is unavailable, a message is shown and the file is skipped
+- Regenerated from scratch each compile (never appended)
+
+### Prompt template
+
+The LLM is prompted with up to 10 source texts (first 2000 chars each) and
+asked to produce 2-3 paragraphs covering:
+- The main domain and key themes
+- Prominent entities and concepts
+- Notable relationships or open questions
+
+## File listing
+
+After a full compile+synth, your output directory looks like:
+
+```
+wiki/
+├── index.md          # TOC + stats (regenerated each compile)
+├── log.md            # Activity journal (appended, never overwritten)
+├── overview.md       # LLM summary (if --synthesize)
+├── wiki.md           # Full compiled wiki
+└── .knox/            # Internal metadata
+    └── last_wiki.json
+```

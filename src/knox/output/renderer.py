@@ -171,12 +171,20 @@ class DocumentRenderer:
     def _format_via_rumdl(self, markdown: str) -> str:
         """Pipe *markdown* through ``rumdl fmt --flavor <FLAVOR>``.
 
-        Falls back to raw markdown if rumdl is not installed.
+        Uses ``--stdin`` and ``--silent`` so rumdl reads from stdin
+        and only emits the formatted Markdown. Falls back to raw
+        markdown if rumdl is not installed or errors out.
         """
         if not self._rumdl_available:
             return markdown
 
-        cmd = ["rumdl", "fmt", "--flavor", self.flavor]
+        cmd = [
+            "rumdl", "fmt",
+            "--flavor", self.flavor,
+            "--stdin",
+            "--stdin-filename", "page.md",
+            "--silent",
+        ]
         if self.rumdl_config:
             cmd.extend(["--config", str(self.rumdl_config)])
 
@@ -188,7 +196,11 @@ class DocumentRenderer:
                 text=True,
                 timeout=30,
             )
-            if result.returncode == 0 and result.stdout:
+            # rumdl exits 0 on success, may emit formatted content on stdout
+            if result.stdout and result.stderr == "":
+                return result.stdout
+            # On lint-style exit codes (e.g. 1 when fixes applied), stdout still has the content
+            if result.stdout:
                 return result.stdout
             if result.stderr:
                 logger.debug("rumdl stderr: %s", result.stderr.strip())

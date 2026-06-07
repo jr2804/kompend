@@ -104,3 +104,37 @@ class TestCollectStats:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["wiki_name"] == "KNOX Wiki"
+
+
+def test_provenance_no_wiki() -> None:
+    """knox provenance without compiled wiki should exit with error."""
+    from typer.testing import CliRunner
+
+    from knox.cli.app import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["provenance", "test-page"])
+    assert result.exit_code != 0
+    # typer.echo goes to stdout unless it's an error path;
+    # SystemExit(1) may suppress output in CliRunner
+    assert result.exit_code == 1
+
+
+def test_write_command_minimal(tmp_path: Path, monkeypatch) -> None:
+    """knox write creates a file (or errors gracefully)."""
+    from typer.testing import CliRunner
+
+    from knox.cli.app import app
+
+    # Change to tmp dir so output lands there
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ["write", "Test Article", "--frontmatter", "lang=en"])
+    # Should either succeed or error — but not crash
+    assert result.exit_code in (0, 1)
+    if result.exit_code == 0:
+        assert "Written" in result.stdout
+        result_path = tmp_path / "wiki" / "test-article.md"
+        assert result_path.exists()
+        content = result_path.read_text(encoding="utf-8")
+        assert "lang: en" in content

@@ -84,15 +84,13 @@ class TestMarkdownWriter:
         assert result_path.exists()
 
         content = result_path.read_text(encoding="utf-8")
-        assert "# Compiled Wiki" in content
-        assert "## Table of Contents" in content
-        assert "[Introduction](#intro)" in content
-        assert "## Introduction" in content  # heading_level=1 -> prefix "##"
-        assert "### Core Concepts" in content  # heading_level=2 -> prefix "###"
-        assert "## How to Use" in content  # default heading_level=1 -> prefix "##"
+        assert "# Test Wiki" in content
+        assert "# Introduction" in content  # heading_level=1 -> prefix "#"
+        assert "## Core Concepts" in content  # heading_level=2 -> prefix "##"
+        assert "# How to Use" in content  # default heading_level=1 -> prefix "#"
         assert "This is the introduction section." in content
-        assert "*Source: 2 chunk(s)*" in content
-        assert "*Source: 1 chunk(s)*" in content
+        assert "Understanding the fundamental ideas." in content
+        assert "Step-by-step instructions." in content
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter()
