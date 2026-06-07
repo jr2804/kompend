@@ -689,7 +689,8 @@ def _load_wiki(output_dir_path: Path) -> CompiledWiki | None:
     try:
         data = j.loads(cache_file.read_text(encoding="utf-8"))
         return CompiledWiki(**data)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc)
         return None
 
 
