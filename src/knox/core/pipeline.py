@@ -31,6 +31,7 @@ class PipelineConfig:
     chunk_overlap: int = 128
     compile_target: str = "markdown"  # "markdown", "json", "typst"
     online_sources: list[str] = field(default_factory=list)
+    input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
 
 
 class WikiPipeline:
@@ -81,10 +82,10 @@ class WikiPipeline:
                 all_chunks.extend(chunks)
 
         # Tier 3: Resolve
-        resolved = []
         if self.resolver:
-            for chunk in all_chunks:
-                resolved.append(self.resolver.resolve(chunk))
+            resolved = [self.resolver.resolve(chunk) for chunk in all_chunks]
+        else:
+            resolved = list(all_chunks)
 
         # Tier 4: Compile
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
@@ -99,6 +100,14 @@ class WikiPipeline:
         return wiki
 
     def iter_sources(self) -> Any:
-        """Yield source files from the source directory."""
-        for ext in ("*.pdf", "*.docx", "*.doc", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
-            yield from self.config.source_dir.glob(ext)
+        """Yield source files to process.
+
+        If ``config.input_files`` is set, yields those directly.
+        Otherwise auto-discovers supported files from ``config.source_dir``.
+        """
+        if self.config.input_files:
+            yield from self.config.input_files
+            return
+        for ext in ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC",
+                    "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
+            yield from self.config.source_dir.rglob(ext)
