@@ -6,7 +6,7 @@ import json
 import os
 from typing import Any
 
-from knox.core.config import (
+from knox.core.config._core import (
     _deep_merge,
     _flat_keys,
     _get_dot,
