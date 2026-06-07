@@ -18,6 +18,7 @@ class PdfPlumberParser(BaseParser):
     def parse(self, source_path: Path) -> ParsedDocument:
         elements: list[DocumentElement] = []
         with pdfplumber.open(source_path) as pdf:
+            page_count = len(pdf.pages)
             for page_num, page in enumerate(pdf.pages, start=1):
                 text = page.extract_text()
                 if text:
@@ -32,6 +33,6 @@ class PdfPlumberParser(BaseParser):
             source_path=source_path,
             elements=elements,
             title=source_path.stem,
-            page_count=len(pdf.pages),
+            page_count=page_count,
             metadata={"parser": "pdfplumber"},
         )

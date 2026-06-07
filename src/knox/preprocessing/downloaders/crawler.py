@@ -45,10 +45,6 @@ class WebCrawler(BaseDownloader):
             logger.info("Saved crawler result to %s", target_path)
             return target_path
 
-    def download_sync(self, url: str, target_dir: Path) -> Path | None:
-        """Alias for download()."""
-        return self.download(url, target_dir)
-
     def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
         """Download multiple URLs, return paths of successful downloads."""
         results: list[Path] = []

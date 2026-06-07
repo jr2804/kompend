@@ -174,11 +174,6 @@ class TestWebCrawler:
 
         assert result is None
 
-    def test_download_sync_alias(self, tmp_path: Path) -> None:
-        """download_sync should behave identical to download()."""
-        crawler = WebCrawler()
-        result = crawler.download_sync("https://example.com", tmp_path)
-
     def test_batch_download(self, tmp_path: Path) -> None:
         """batch_download processes multiple URLs."""
         try:
