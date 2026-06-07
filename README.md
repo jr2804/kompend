@@ -129,37 +129,36 @@ knox --version, -v   Show version and exit
 knox --help          Show help and exit
 ```
 
-## What Makes KNOX Different
-
-| Problem | Existing Tools | KNOX |
-|---|---|---|
-| Tables/figures flattened to text | All (pdfplumber → markdown → wiki) | Structure-preserving parser (Docling JSON sidecar) |
-| No structure-aware chunking | Most use char-count splitting | Hybrid: custom atomic splitter + Chonkie for text |
-| One-shot compilation | "Compile once and query" | WiCER loop: compile → evaluate → refine |
-| Multi-turn resolution missing | No tool supports it | Tier 3: LLM + MCP tools per document |
-| Model/context-agnostic | Hard-coded OpenAI/Anthropic | litellm + auto-detect context window + budget |
-| GUI required for basic ops | nashsu/llm_wiki GUI-only | Headless CLI + MCP + Python SDK |
-| Images orphaned | Flattened to filenames | VLM-captioned, indexed as first-class entities |
-
 ## Architecture
 
-5-tier pipeline — each tier independently replaceable:
+KNOX runs a 5-tier pipeline — each tier independently replaceable:
 
 ```
-Raw Sources → TIER 1: Pre-Processing → TIER 2: Chunking → TIER 3: Resolution → TIER 4: Compilation → TIER 5: Output
+Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: Compilation → T5: Output
 ```
 
-Read the full architecture in [`docs/architecture.md`](./docs/architecture.md).
+**T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai.
+
+**T2 Chunking** — Split documents into `Chunk` objects. Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with markdown awareness.
+
+**T3 Resolution** — Extract entities and resolve cross-references using an LLM (via litellm). Falls back to passthrough when no LLM is available.
+
+**T4 Compilation** — Build an interlinked `CompiledWiki` graph from resolved chunks. Optionally runs the WiCER loop: compile → generate probes → evaluate → diagnose → refine.
+
+**T5 Output** — Write the compiled wiki as Markdown, JSON, or Typst. Optionally index for semantic search via zvec.
+
+For the full architecture, see [`docs/architecture.md`](./docs/architecture.md).
 
 ## Documentation
 
-| Document | What's Covered |
+| Document | Description |
 |---|---|
 | [`docs/overview.md`](./docs/overview.md) | Project summary, design philosophy, core principles |
 | [`docs/architecture.md`](./docs/architecture.md) | 5-tier pipeline, data models, integration points |
-| [`docs/ecosurvey.md`](./docs/ecosurvey.md) | Survey of existing tools, parsers, chunkers, MCP servers |
-| [`docs/roadmap.md`](./docs/roadmap.md) | Milestones, priorities, open questions, tentative dates |
+| [`docs/status.md`](./docs/status.md) | Implementation status — what's built, what's partial, known gaps |
+| [`docs/roadmap.md`](./docs/roadmap.md) | Milestones, priorities, open questions |
 | [`docs/decisions.md`](./docs/decisions.md) | Decision log — what was chosen and why |
+| [`docs/ecosurvey.md`](./docs/ecosurvey.md) | Survey of existing tools, parsers, chunkers, MCP servers |
 | [`docs/openwebui.md`](./docs/openwebui.md) | Connecting KNOX with Open-WebUI for chat/RAG |
 
 ## Development
@@ -171,21 +170,6 @@ uv run knox --help         # verify CLI
 uv run pytest tests/       # run tests
 mise test                  # run all quality checks
 ```
-
-## Project Status
-
-| Component | Status | Notes |
-|---|---|---|
-| T1: Preprocessing | ✅ Complete | Docling, pdfplumber, pandoc, VLM parsers; HTTP downloader + web crawler |
-| T2: Chunking | ✅ Complete | HybridChunker (atomic + Chonkie), DevChunker |
-| T3: Resolution | ⚠️ Partial | LLMResolver works; VLMEnricher not wired into pipeline yet |
-| T4: Compilation | ✅ Complete | GraphCompiler + WiCER iterative loop |
-| T5: Output | ✅ Complete | Markdown, JSON, Typst writers |
-| MCP Server | ⚠️ Partial | Functional stdio server but not real JSON-RPC 2.0 protocol |
-| RAG / Vector Search | ⚠️ Partial | ZvecWikiStore with hash-based embeddings (needs real model) |
-| CLI | ✅ Complete | `knox compile`, `knox parse` with full option set |
-
-See [`docs/roadmap.md`](./docs/roadmap.md) for full details.
 
 ## License
 
