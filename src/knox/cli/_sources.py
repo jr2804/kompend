@@ -23,12 +23,16 @@ SUPPORTED_EXTENSIONS: set[str] = {
 def resolve_files(
     *patterns: str,
     recursive: bool = False,
+    ignore_patterns: list[str] | None = None,
+    respect_gitignore: bool = True,
 ) -> list[Path]:
     """Expand a mix of file paths, glob patterns, and directory paths into concrete files.
 
     Args:
         patterns: File paths, glob patterns, or directory paths.
         recursive: If True, descend into subdirectories.
+        ignore_patterns: Glob patterns for files to exclude.
+        respect_gitignore: If True, read ``.gitignore`` from source dir.
 
     Returns:
         Deduplicated, sorted list of existing file paths with supported extensions.
@@ -62,6 +66,17 @@ def resolve_files(
 
         # Neither file nor dir nor glob — skip silently.
         # (Could be a typo or an unsupported file that was passed explicitly.)
+
+    # Apply ignore patterns
+    if ignore_patterns or respect_gitignore:
+        from knox.cli._ignore import filter_files  # noqa: PLC0415
+
+        results = filter_files(
+            results,
+            ignore_patterns=ignore_patterns,
+            respect_gitignore=respect_gitignore,
+            base_dir=None,  # auto-detect from first resolved file's common parent
+        )
 
     return results
 

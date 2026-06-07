@@ -22,6 +22,9 @@ DEFAULT_OUTPUT_DIR: str = "wiki"
 DEFAULT_COMPILE_FORMAT: str = "markdown"
 DEFAULT_CHUNK_SIZE: int = 512
 DEFAULT_IMAGE_MODE: str = "file"
+DEFAULT_COMPILE_MODE: str = "full"
+DEFAULT_PROMPT_BUDGET: int = 200_000
+DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
 
 
 # ── Shared options (used by multiple commands) ──────────────────────────
@@ -122,6 +125,41 @@ ImageMode = Annotated[
     ),
 ]
 
+
+# ── Shared flags (used by multiple commands) ────────────────────────────
+
+Verbose = Annotated[
+    bool,
+    typer.Option(
+        "--verbose",
+        help="Show detailed output.",
+    ),
+]
+
+JsonOutput = Annotated[
+    bool,
+    typer.Option(
+        "--json",
+        help="Output in JSON format for machine readability.",
+    ),
+]
+
+Ignore = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--ignore",
+        help="Ignore pattern (glob-style, repeatable).",
+    ),
+]
+
+Progress = Annotated[
+    bool | None,
+    typer.Option(
+        "--progress/--no-progress",
+        help="Show rich progress bars (auto-detected for TTY).",
+    ),
+]
+
 IndexStore = Annotated[
     bool,
     typer.Option(
@@ -135,5 +173,149 @@ EmbedModel = Annotated[
     typer.Option(
         "--embed-model",
         help="Embedding model for zvec indexing.",
+    ),
+]
+
+# ── Q20 tiered compilation ──────────────────────────────────────────────
+
+CompileMode = Annotated[
+    str,
+    typer.Option(
+        "--mode",
+        help="Compilation mode: full | index-only | resolve-only | output-only. Tiers below the selected mode are skipped (cached state is reused).",
+    ),
+]
+
+NoCacheFlag = Annotated[
+    bool,
+    typer.Option(
+        "--no-cache",
+        help="Bypass the parse cache and re-parse every source.",
+    ),
+]
+
+Workers = Annotated[
+    int,
+    typer.Option(
+        "--workers",
+        "-j",
+        help="Number of parallel parse workers (1 = sequential).",
+        min=1,
+    ),
+]
+
+ForceTier = Annotated[
+    bool,
+    typer.Option(
+        "--force",
+        help="Re-process every source regardless of persisted tier state.",
+    ),
+]
+
+ListTiers = Annotated[
+    bool,
+    typer.Option(
+        "--list-tiers",
+        help="Show the available pipeline tiers and their current state, then exit.",
+    ),
+]
+
+# ── N3 two-phase compile ────────────────────────────────────────────────
+
+TwoPhase = Annotated[
+    bool,
+    typer.Option(
+        "--two-phase/--single-pass",
+        help="Use two-phase compile (extract all, then generate). Default: two-phase.",
+    ),
+]
+
+# ── N10 per-concept budget ──────────────────────────────────────────────
+
+PromptBudget = Annotated[
+    int,
+    typer.Option(
+        "--prompt-budget",
+        help="Maximum total chars of source content per concept (N10 fair-share).",
+        min=1,
+    ),
+]
+
+# ── N8 review queue ─────────────────────────────────────────────────────
+
+ReviewMode = Annotated[
+    bool,
+    typer.Option(
+        "--review",
+        help="Send generated pages to the review queue instead of the output dir.",
+    ),
+]
+
+BypassReview = Annotated[
+    bool,
+    typer.Option(
+        "--bypass-review",
+        help="Skip review entirely (overrides --review).",
+    ),
+]
+
+# ── N4 provenance / Q21 trust / verification ────────────────────────────
+
+Provenance = Annotated[
+    bool,
+    typer.Option(
+        "--provenance",
+        help="Emit claim-level ^[source:42-58] citations in generated pages.",
+    ),
+]
+
+Private = Annotated[
+    bool,
+    typer.Option(
+        "--private",
+        help="Mark generated pages as private (excluded from default search).",
+    ),
+]
+
+Verify = Annotated[
+    bool,
+    typer.Option(
+        "--verify",
+        help="Run grounding verification on each claim (opt-in, costly).",
+    ),
+]
+
+IncludePrivate = Annotated[
+    bool,
+    typer.Option(
+        "--include-private",
+        help="Include private pages in search/queries.",
+    ),
+]
+
+
+# ── LLM configuration (Q12: failover chain) ─────────────────────────────
+
+LlmFallbackChain = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--llm-fallback-chain",
+        help=(
+            "Ordered fallback model(s) tried when the primary LLM fails "
+            "(repeatable). Each value is a litellm-style 'provider/model' "
+            "string, e.g. 'openai/gpt-4o'. Empty means single-model mode. "
+            f"Env: {APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN (comma-separated)."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN",
+    ),
+]
+
+LlmFallbackMaxRetries = Annotated[
+    int,
+    typer.Option(
+        "--llm-fallback-max-retries",
+        help=("Transient-error retries before advancing to the next model in the failover chain. 2 means up to three attempts per model."),
+        min=0,
+        envvar=f"{APP_NAME_UPPERCASE}_LLM_FALLBACK_MAX_RETRIES",
     ),
 ]
