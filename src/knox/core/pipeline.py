@@ -27,6 +27,9 @@ class PipelineConfig:
     image_mode: str = "file"  # "file" or "base64"
     chunk_size: int = 512
     compile_target: str = "markdown"  # "markdown", "json", "typst"
+    llm_model: str = "llama3.2"
+    llm_provider: str = "ollama"
+    vlm_model: str = "phi-3-vision"
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
 

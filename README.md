@@ -174,15 +174,16 @@ mise test                  # run all quality checks
 
 ## Project Status
 
-| Milestone | Status |
-|---|---|
-| M0: Scaffolding | ✅ Complete |
-| M1: Docling Parser (Tier 1) | ✅ Complete |
-| M2: Hybrid Chunking (Tier 2) | 🎯 Current |
-| M3: LLM Resolution (Tier 3) | ⏳ Planned |
-| M4: WiCER Compilation (Tier 4) | ⏳ Planned |
-| M5: Output Writers (Tier 5) | ⏳ Planned |
-| M6: MCP Server | ⏳ Planned |
+| Component | Status | Notes |
+|---|---|---|
+| T1: Preprocessing | ✅ Complete | Docling, pdfplumber, pandoc, VLM parsers; HTTP downloader + web crawler |
+| T2: Chunking | ✅ Complete | HybridChunker (atomic + Chonkie), DevChunker |
+| T3: Resolution | ⚠️ Partial | LLMResolver works; VLMEnricher not wired into pipeline yet |
+| T4: Compilation | ✅ Complete | GraphCompiler + WiCER iterative loop |
+| T5: Output | ✅ Complete | Markdown, JSON, Typst writers |
+| MCP Server | ⚠️ Partial | Functional stdio server but not real JSON-RPC 2.0 protocol |
+| RAG / Vector Search | ⚠️ Partial | ZvecWikiStore with hash-based embeddings (needs real model) |
+| CLI | ✅ Complete | `knox compile`, `knox parse` with full option set |
 
 See [`docs/roadmap.md`](./docs/roadmap.md) for full details.
 
