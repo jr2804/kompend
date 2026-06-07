@@ -27,7 +27,7 @@ class MarkdownWriter(BaseOutputWriter):
 
         # Write nodes as sections with proper markdown headings
         for node in wiki.nodes:
-            level = node.metadata.get("heading_level", 1) if node.metadata else 1
+            level = node.metadata.get("heading_level", 1)
             prefix = "#" * min(level + 1, 6)
             lines.append(f"{prefix} {node.title}\n")
             lines.append(node.content + "\n")

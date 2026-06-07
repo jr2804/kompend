@@ -293,7 +293,7 @@ class WiCERCompiler(BaseCompiler):
             return wiki
 
         fact_content = "\n".join(f"- {f}" for f in pinned_facts)
-        fact_node_id = f"node_refinement_pinned_facts"
+        fact_node_id = "node_refinement_pinned_facts"
 
         # Check if a refinement node already exists — if so, update it
         existing_nodes = list(wiki.nodes)

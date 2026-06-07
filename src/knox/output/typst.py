@@ -22,12 +22,12 @@ class TypstWriter(BaseOutputWriter):
         lines.append('')
 
         # Title page
-        title = wiki.metadata.get("title", "Compiled Wiki") if wiki.metadata else "Compiled Wiki"
+        title = wiki.metadata.get("title", "Compiled Wiki")
         lines.append("#align(center + top)")
         lines.append(f"#text(size: 24pt, weight: \"bold\")[{title}]")
         lines.append("#v(2cm)")
 
-        if wiki.metadata and wiki.metadata.get("description"):
+        if wiki.metadata.get("description"):
             lines.append("#align(center)")
             lines.append(f"#text(size: 12pt)[{wiki.metadata['description']}]")
             lines.append("#v(1cm)")
@@ -56,7 +56,7 @@ class TypstWriter(BaseOutputWriter):
 
         # Nodes as sections with proper heading levels and cross-references
         for node in wiki.nodes:
-            level = node.metadata.get("heading_level", 1) if node.metadata else 1
+            level = node.metadata.get("heading_level", 1)
             heading = "=" * min(level + 1, 6)
 
             # Add a label for cross-referencing

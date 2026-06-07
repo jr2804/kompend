@@ -19,6 +19,16 @@ class WebCrawler(BaseDownloader):
     def download(self, url: str, target_dir: Path) -> Path | None:
         """Synchronous wrapper: crawl URL, extract main content as markdown, save."""
         try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        try:
+            if loop and loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(asyncio.run, self._download_async(url, target_dir)).result()
             return asyncio.run(self._download_async(url, target_dir))
         except Exception:
             logger.exception("Failed to crawl %s", url)

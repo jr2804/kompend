@@ -41,7 +41,7 @@ class KnoxMCPServer:
         self.router = ParserRouter()
         try:
             self.router.register(DoclingParser())
-        except (ImportError, Exception) as exc:
+        except Exception as exc:
             logger.warning("DoclingParser not available: %s", exc)
         self._default_chunk_size = 512
         self._default_image_mode = "file"
@@ -127,7 +127,7 @@ class KnoxMCPServer:
         parser = None
         try:
             parser = DoclingParser(image_mode=image_mode)
-        except (ImportError, Exception) as exc:
+        except Exception as exc:
             logger.warning("DoclingParser not available for compile: %s", exc)
 
         pipeline = WikiPipeline(
