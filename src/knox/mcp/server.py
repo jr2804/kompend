@@ -1,4 +1,4 @@
-"""KNOX MCP server — wraps the pipeline for MCP tool access."""
+"""KNOX MCP server — thin wrapper that delegates to build_pipeline()."""
 
 from __future__ import annotations
 
@@ -8,14 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from knox.chunking.hybrid import HybridChunker
-from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki
-from knox.core.pipeline import PipelineConfig, WikiPipeline
-from knox.output.json_writer import JsonWriter
-from knox.output.markdown import MarkdownWriter
-from knox.output.typst import TypstWriter
-from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.core.pipeline import PipelineConfig, build_pipeline
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 
@@ -30,12 +24,18 @@ def _wiki_to_dict(wiki: CompiledWiki) -> dict[str, Any]:
         "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
         "edges": wiki.edges,
         "toc": wiki.toc,
+        "quality_score": wiki.quality_score,
+        "iteration": wiki.iteration,
         "metadata": wiki.metadata,
     }
 
 
 class KnoxMCPServer:
-    """MCP server exposing KNOX pipeline tools via stdio transport."""
+    """MCP server exposing KNOX pipeline tools via stdio transport.
+
+    Zero business logic — all pipeline construction is delegated to
+    :func:`knox.core.pipeline.build_pipeline`.
+    """
 
     def __init__(self) -> None:
         self.router = ParserRouter()
@@ -43,18 +43,9 @@ class KnoxMCPServer:
             self.router.register(DoclingParser())
         except Exception as exc:
             logger.warning("DoclingParser not available: %s", exc)
-        self._default_chunk_size = 512
-        self._default_image_mode = "file"
 
     async def parse_document(self, file_path: str) -> dict[str, Any]:
-        """MCP tool: parse a document and return structured elements.
-
-        Args:
-            file_path: Path to the document file to parse.
-
-        Returns:
-            Dictionary with parsed document info and elements.
-        """
+        """MCP tool: parse a document and return structured elements."""
         path = Path(file_path)
         if not path.exists():
             return {"status": "error", "message": f"File not found: {file_path}"}
@@ -67,7 +58,7 @@ class KnoxMCPServer:
                 "page_count": doc.page_count,
                 "elements": [
                     {
-                        "type": el.type.name,
+                        "type": str(el.type),
                         "content": str(el.content)[:500],
                         "page": el.page,
                         "heading_level": el.heading_level,
@@ -88,31 +79,13 @@ class KnoxMCPServer:
         image_mode: str = "file",
         urls: list[str] | None = None,
     ) -> dict[str, Any]:
-        """MCP tool: compile sources into a knowledge wiki.
-
-        Args:
-            sources_dir: Directory containing source documents.
-            output: Output directory for compiled wiki.
-            format: Output format — "markdown", "json", or "typst".
-            chunk_size: Chunk size in tokens.
-            image_mode: Image handling mode ("file" or "base64").
-            urls: Optional list of URLs to download first.
-
-        Returns:
-            Dictionary with compilation results.
-        """
+        """MCP tool: compile sources into a knowledge wiki."""
         source_path = Path(sources_dir)
         if not source_path.exists():
             return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
 
-        # Select output writer based on format
-        format_map = {
-            "markdown": MarkdownWriter(),
-            "json": JsonWriter(),
-            "typst": TypstWriter(),
-        }
-        writer = format_map.get(format)
-        if writer is None:
+        valid_formats = {"markdown", "json", "typst"}
+        if format not in valid_formats:
             return {"status": "error", "message": f"Unknown format: {format}. Use markdown, json, or typst."}
 
         config = PipelineConfig(
@@ -124,20 +97,7 @@ class KnoxMCPServer:
             image_mode=image_mode,
         )
 
-        parser = None
-        try:
-            parser = DoclingParser(image_mode=image_mode)
-        except Exception as exc:
-            logger.warning("DoclingParser not available for compile: %s", exc)
-
-        pipeline = WikiPipeline(
-            config=config,
-            downloader=HTTPDownloader(),
-            parser=parser,
-            chunker=HybridChunker(chunk_size=chunk_size),
-            compiler=GraphCompiler(),
-            output_writer=writer,
-        )
+        pipeline = build_pipeline(config)
 
         try:
             wiki = pipeline.run()

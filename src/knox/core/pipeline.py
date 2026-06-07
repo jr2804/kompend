@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,6 +35,9 @@ class PipelineConfig:
     vlm_model: str = "phi-3-vision"
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
+    cache_dir: Path | None = None  # None = .knox/cache inside output_dir
+    no_cache: bool = False  # force re-parse even if cached
+    workers: int = 1  # parallel parse+chunk workers
 
 
 class WikiPipeline:
@@ -64,22 +70,8 @@ class WikiPipeline:
             for url in self.config.online_sources:
                 self.downloader.download(url, self.config.source_dir)
 
-        # Tier 1: Parse documents
-        parsed_docs: list[ParsedDocument] = []
-        if self.parser:
-            for source_file in self.iter_sources():
-                try:
-                    parsed = self.parser.parse(source_file)
-                    parsed_docs.append(parsed)
-                except Exception:
-                    logger.exception("Failed to parse %s", source_file)
-
-        # Tier 2: Chunk
-        all_chunks = []
-        if self.chunker:
-            for doc in parsed_docs:
-                chunks = self.chunker.chunk(doc)
-                all_chunks.extend(chunks)
+        # Tier 1+2: Parse + Chunk (with cache and optional parallelism)
+        all_chunks = self._parse_and_chunk()
 
         # Tier 3: Resolve
         if self.resolver:
@@ -99,6 +91,126 @@ class WikiPipeline:
         logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
         return wiki
 
+    def _parse_and_chunk(self) -> list[Any]:
+        """Parse documents and chunk them, with optional caching and parallelism."""
+        from knox.core.models import Chunk, DocumentElement, ElementType, ParsedDocument  # noqa: PLC0415
+
+        source_files = list(self.iter_sources())
+        if not source_files:
+            return []
+
+        workers = max(1, self.config.workers)
+        use_cache = not self.config.no_cache
+
+        def _process_one(source_file: Path) -> list[Any]:
+            """Parse a single file (cache-aware) and chunk it."""
+            parsed = self._load_cache(source_file) if use_cache else None
+            if parsed is None:
+                if not self.parser:
+                    return []
+                try:
+                    parsed = self.parser.parse(source_file)
+                    parsed.elements  # ensure fully materialized
+                except Exception:
+                    logger.exception("Failed to parse %s", source_file)
+                    return []
+                if use_cache:
+                    self._save_cache(source_file, parsed)
+
+            if not self.chunker:
+                return []
+            return self.chunker.chunk(parsed)
+
+        all_chunks: list[Any] = []
+        if workers > 1 and len(source_files) > 1:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_process_one, sf): sf for sf in source_files}
+                for future in as_completed(futures):
+                    try:
+                        all_chunks.extend(future.result())
+                    except Exception:
+                        sf = futures[future]
+                        logger.exception("Worker failed for %s", sf)
+        else:
+            for sf in source_files:
+                all_chunks.extend(_process_one(sf))
+
+        return all_chunks
+
+    @staticmethod
+    def _cache_key(source_file: Path) -> str:
+        """SHA-256 of file contents for cache key."""
+        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
+        return f"{source_file.stem}_{digest[:12]}"
+
+    def _cache_dir(self) -> Path:
+        """Resolve the cache directory."""
+        if self.config.cache_dir:
+            return self.config.cache_dir
+        return self.config.output_dir / ".knox" / "cache"
+
+    def _load_cache(self, source_file: Path) -> ParsedDocument | None:
+        """Load a cached ParsedDocument if available."""
+        from knox.core.models import Chunk, DocumentElement, ElementType, ParsedDocument  # noqa: PLC0415
+
+        cache_path = self._cache_dir() / f"{self._cache_key(source_file)}.json"
+        if not cache_path.exists():
+            return None
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            elements = [
+                DocumentElement(
+                    type=ElementType(el["type"]),
+                    content=el["content"],
+                    page=el.get("page"),
+                    reading_order=el.get("reading_order"),
+                    heading_level=el.get("heading_level"),
+                    metadata=el.get("metadata", {}),
+                )
+                for el in data.get("elements", [])
+            ]
+            return ParsedDocument(
+                source_path=Path(data["source_path"]),
+                elements=elements,
+                title=data.get("title", ""),
+                author=data.get("author", ""),
+                language=data.get("language", "en"),
+                page_count=data.get("page_count", 0),
+                metadata=data.get("metadata", {}),
+            )
+        except Exception:
+            logger.debug("Cache read failed for %s — ignoring", cache_path)
+            return None
+
+    def _save_cache(self, source_file: Path, doc: ParsedDocument) -> None:
+        """Write a ParsedDocument to cache."""
+        cache_dir = self._cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"{self._cache_key(source_file)}.json"
+        try:
+            data = {
+                "source_path": str(doc.source_path),
+                "title": doc.title,
+                "author": doc.author,
+                "language": doc.language,
+                "page_count": doc.page_count,
+                "metadata": doc.metadata,
+                "elements": [
+                    {
+                        "type": str(el.type),
+                        "content": str(el.content) if not isinstance(el.content, list) else el.content,
+                        "page": el.page,
+                        "reading_order": el.reading_order,
+                        "heading_level": el.heading_level,
+                        "metadata": el.metadata,
+                    }
+                    for el in doc.elements
+                ],
+            }
+            cache_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        except Exception:
+            logger.debug("Cache write failed for %s — ignoring", cache_path)
+
     def iter_sources(self) -> Any:
         """Yield source files to process.
 
@@ -111,3 +223,41 @@ class WikiPipeline:
         for ext in ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC",
                     "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
             yield from self.config.source_dir.rglob(ext)
+
+
+def build_pipeline(config: PipelineConfig) -> WikiPipeline:
+    """Shared factory used by both CLI and MCP.
+
+    Constructs a WikiPipeline with default components:
+    - DoclingParser (lazy-fallback)
+    - HybridChunker
+    - GraphCompiler
+    - Output writer selected by ``config.compile_target``
+    """
+    from knox.chunking.hybrid import HybridChunker  # noqa: PLC0415
+    from knox.compilation.graph import GraphCompiler  # noqa: PLC0415
+    from knox.output.json_writer import JsonWriter  # noqa: PLC0415
+    from knox.output.markdown import MarkdownWriter  # noqa: PLC0415
+    from knox.output.typst import TypstWriter  # noqa: PLC0415
+    from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
+
+    format_map: dict[str, type[BaseOutputWriter]] = {
+        "markdown": MarkdownWriter,
+        "json": JsonWriter,
+        "typst": TypstWriter,
+    }
+    writer_cls = format_map.get(config.compile_target, MarkdownWriter)
+
+    parser = None
+    try:
+        parser = DoclingParser(image_mode=config.image_mode)
+    except Exception as exc:
+        logger.warning("DoclingParser not available: %s", exc)
+
+    return WikiPipeline(
+        config=config,
+        parser=parser,
+        chunker=HybridChunker(chunk_size=config.chunk_size),
+        compiler=GraphCompiler(),
+        output_writer=writer_cls(),
+    )

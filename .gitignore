@@ -43,3 +43,4 @@ skills-lock.json
 *.db
 .beads-credential-key
 CLAUDE.md
+output/

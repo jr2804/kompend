@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import ZvecWikiStore, ZVEC_AVAILABLE
+from knox.rag.zvec_store import HashEmbeddingProvider, ZvecWikiStore, ZVEC_AVAILABLE
 
 
 @pytest.fixture
@@ -119,15 +119,17 @@ class TestZvecWikiStore:
         store.close()
         assert store.search("anything") == []
 
-    def test_text_to_vec_deterministic(self) -> None:
-        v1 = ZvecWikiStore._text_to_vec("hello world", dim=10)
-        v2 = ZvecWikiStore._text_to_vec("hello world", dim=10)
-        v3 = ZvecWikiStore._text_to_vec("different text", dim=10)
+    def test_hash_embedding_deterministic(self) -> None:
+        provider = HashEmbeddingProvider(dim=10)
+        v1 = provider.embed("hello world")
+        v2 = provider.embed("hello world")
+        v3 = provider.embed("different text")
         assert v1 == v2
         assert v1 != v3
 
-    def test_text_to_vec_normalized(self) -> None:
-        vec = ZvecWikiStore._text_to_vec("test", dim=20)
+    def test_hash_embedding_normalized(self) -> None:
+        provider = HashEmbeddingProvider(dim=20)
+        vec = provider.embed("test")
         norm = sum(v * v for v in vec) ** 0.5
         assert abs(norm - 1.0) < 0.001
 

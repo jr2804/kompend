@@ -31,7 +31,14 @@ def test_wiki_to_dict_empty() -> None:
 
     wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
     result = _wiki_to_dict(wiki)
-    assert result == {"nodes": [], "edges": [], "toc": [], "metadata": {}}
+    assert result == {
+        "nodes": [],
+        "edges": [],
+        "toc": [],
+        "quality_score": 0.0,
+        "iteration": 0,
+        "metadata": {},
+    }
 
 
 def test_wiki_to_dict_with_nodes() -> None:

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import typer
 
-from knox.chunking.hybrid import HybridChunker
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
@@ -28,13 +27,8 @@ from knox.cli.args import (
     SourcesDir,
     TargetFormat,
 )
-from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki
-from knox.core.pipeline import PipelineConfig, WikiPipeline
-from knox.output.base import BaseOutputWriter
-from knox.output.json_writer import JsonWriter
-from knox.output.markdown import MarkdownWriter
-from knox.output.typst import TypstWriter
+from knox.core.pipeline import PipelineConfig, build_pipeline
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -150,15 +144,7 @@ def compile_cmd(
         input_files=all_input_files,
     )
 
-    writer = _get_writer(target_format)
-
-    pipeline = WikiPipeline(
-        config=config,
-        parser=DoclingParser(image_mode=image_mode),
-        chunker=HybridChunker(chunk_size=chunk_size),
-        compiler=GraphCompiler(),
-        output_writer=writer,
-    )
+    pipeline = build_pipeline(config)
 
     try:
         wiki = pipeline.run()
@@ -181,22 +167,6 @@ def _build_router() -> ParserRouter:
     router.register(PdfPlumberParser())
     router.register(PandocParser())
     return router
-
-
-def _get_writer(target_format: str) -> BaseOutputWriter:
-    format_map: dict[str, type[BaseOutputWriter]] = {
-        "markdown": MarkdownWriter,
-        "json": JsonWriter,
-        "typst": TypstWriter,
-    }
-    writer_cls = format_map.get(target_format)
-    if writer_cls is None:
-        typer.echo(
-            f"Error: Unknown format '{target_format}'. Use 'markdown', 'json', or 'typst'.",
-            err=True,
-        )
-        raise typer.Exit(1)
-    return writer_cls()
 
 
 def _build_vector_index(
