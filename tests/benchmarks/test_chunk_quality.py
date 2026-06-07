@@ -202,15 +202,10 @@ class TestChunkQualityBenchmark:
     # ── Fallback mode ──────────────────────────────────────────────────
 
     def test_fallback_chunking(self, large_doc: ParsedDocument) -> None:
-        """Verify chunking still works when Chonkie is unavailable."""
+        """Verify chunking still works — chonkie is a hard dep."""
         import knox.chunking.hybrid as hybrid_mod  # noqa: PLC0415
 
-        original_fn = hybrid_mod._lazy_load_chonkie
-        try:
-            hybrid_mod._lazy_load_chonkie = lambda: None
-            chunker = HybridChunker(max_tokens=512)
-            chunks = chunker.chunk(large_doc)
-            assert len(chunks) > 0, "Fallback chunking should still produce chunks"
-            print(f"\n  🔧 Fallback mode produced {len(chunks)} chunks")
-        finally:
-            hybrid_mod._lazy_load_chonkie = original_fn
+        chunker = HybridChunker(max_tokens=512)
+        chunks = chunker.chunk(large_doc)
+        assert len(chunks) > 0, "Chunking should produce chunks"
+        print(f"\n  🔧 Fallback chunking produced {len(chunks)} chunks")

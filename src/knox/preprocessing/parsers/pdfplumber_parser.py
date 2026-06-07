@@ -4,25 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pdfplumber
+
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser
-
-try:
-    import pdfplumber
-
-    PDFPLUMBER_AVAILABLE = True
-except ImportError:
-    PDFPLUMBER_AVAILABLE = False
 
 
 class PdfPlumberParser(BaseParser):
     """Lightweight PDF parser using pdfplumber."""
 
     supported_extensions = (".pdf",)
-
-    def __init__(self) -> None:
-        if not PDFPLUMBER_AVAILABLE:
-            raise ImportError("pdfplumber is required. Install with: uv pip install pdfplumber")
 
     def parse(self, source_path: Path) -> ParsedDocument:
         elements: list[DocumentElement] = []

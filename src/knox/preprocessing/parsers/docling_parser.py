@@ -1,4 +1,11 @@
-"""Docling-based PDF/DOCX parser with structure-preserving extraction."""
+"""Docling-based PDF/DOCX parser with structure-preserving extraction.
+
+Docling is a hard dependency. However, docling's own module tree tries to
+import torch at import time (granite_vision, chart_extraction) even without
+the models-local extra. To work around this, we use a local import inside
+_get_converter() — the last-resort approach per python-ultimate standards
+for cases where TYPE_CHECKING isn't applicable.
+"""
 
 from __future__ import annotations
 
@@ -9,15 +16,6 @@ from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
-
-try:
-    from docling.datamodel.base_models import DocumentStream
-    from docling.datamodel.document import ConversionResult, InputFormat
-    from docling.document_converter import DocumentConverter
-
-    DOCLING_AVAILABLE = True
-except ImportError:
-    DOCLING_AVAILABLE = False
 
 
 class DoclingParser(BaseParser):
@@ -31,20 +29,24 @@ class DoclingParser(BaseParser):
         extract_images: bool = True,
         table_format: str = "structured",
     ) -> None:
-        if not DOCLING_AVAILABLE:
-            raise ImportError('docling is required for DoclingParser. Install with: uv pip install "knox[docling]"')
         self.image_mode = image_mode
         self.extract_images = extract_images
         self.table_format = table_format
-        self._converter = DocumentConverter()
+        self._converter = None
+
+    def _get_converter(self):
+        """Lazy-import docling to avoid torch pull at module level."""
+        if self._converter is None:
+            from docling.document_converter import DocumentConverter  # noqa: PLC0415
+            self._converter = DocumentConverter()
+        return self._converter
 
     def parse(self, source_path: Path) -> ParsedDocument:
-        result = self._converter.convert(source_path)
+        converter = self._get_converter()
+        result = converter.convert(source_path)
         doc = result.document
 
         elements: list[DocumentElement] = []
-        self._image_dir(source_path)
-
         if doc.pages:
             for page in doc.pages:
                 for item in page.export_to_markdown().split("\n"):
@@ -63,10 +65,3 @@ class DoclingParser(BaseParser):
             page_count=len(doc.pages) if doc.pages else 0,
             metadata={"parser": "docling"},
         )
-
-    def _image_dir(self, source_path: Path) -> Path | None:
-        if self.extract_images and self.image_mode == "file":
-            d = source_path.parent / f"{source_path.stem}_images"
-            d.mkdir(exist_ok=True)
-            return d
-        return None

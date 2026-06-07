@@ -14,6 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import chonkie
+from chonkie import RecursiveChunker  # noqa: F401
+
 from knox.chunking.base import BaseChunker
 from knox.core.models import Chunk, ElementType, ParsedDocument
 
@@ -37,7 +40,6 @@ class HybridChunker(BaseChunker):
     ) -> None:
         super().__init__(max_tokens=max_tokens, reserve_ratio=reserve_ratio)
         self.tokenizer_name = tokenizer_name
-        self._chonkie = _lazy_load_chonkie()
 
     def chunk(self, document: ParsedDocument) -> list[Chunk]:
         if not document.elements:
@@ -48,21 +50,16 @@ class HybridChunker(BaseChunker):
 
         for idx, el in enumerate(document.elements):
             if el.type in _ATOMIC_TYPES:
-                # Flush any pending text run first
                 if text_run_elements:
                     chunks.extend(self._chunk_text_run(document, text_run_elements))
                     text_run_elements = []
-                # Atomic element → its own chunk
                 chunks.append(_atomic_chunk(document, el, idx))
             else:
-                # TEXT or HEADING → accumulate for batch chunking
                 text_run_elements.append(idx)
 
-        # Flush remaining text run
         if text_run_elements:
             chunks.extend(self._chunk_text_run(document, text_run_elements))
 
-        # Assign stable IDs
         for i, c in enumerate(chunks):
             c.id = f"{document.source_path.stem}_chunk_{i}"
 
@@ -74,10 +71,6 @@ class HybridChunker(BaseChunker):
         indices: list[int],
     ) -> list[Chunk]:
         """Chunk a contiguous run of TEXT/HEADING elements."""
-        if self._chonkie is None:
-            return [self._fallback_chunk(document, indices)]
-
-        # Build markdown-like text preserving heading hierarchy
         text_parts: list[str] = []
         heading_stack: list[str] = []
         for i in indices:
@@ -98,8 +91,7 @@ class HybridChunker(BaseChunker):
         full_text = "\n\n".join(text_parts)
 
         try:
-            # Use RecursiveChunker with markdown recipe for heading-aware splitting
-            rc = self._chonkie.RecursiveChunker.from_recipe(
+            rc = RecursiveChunker.from_recipe(
                 "markdown",
                 chunk_size=self._effective_max,
             )
@@ -113,7 +105,7 @@ class HybridChunker(BaseChunker):
 
         return [
             Chunk(
-                id="",  # assigned later
+                id="",
                 text=c.text,
                 element_types=[ElementType.TEXT],
                 source_elements=indices,
@@ -159,9 +151,8 @@ def _atomic_chunk(
     el: Any,
     idx: int,
 ) -> Chunk:
-    """Create a single-element chunk for an atomic element."""
     return Chunk(
-        id="",  # assigned later
+        id="",
         text=_str_content(el),
         element_types=[el.type],
         source_elements=[idx],
@@ -171,7 +162,6 @@ def _atomic_chunk(
 
 
 def _extract_heading(text: str) -> str:
-    """Extract the first heading from text for context."""
     for raw_line in text.splitlines():
         stripped = raw_line.strip()
         if stripped.startswith("#"):
@@ -179,15 +169,3 @@ def _extract_heading(text: str) -> str:
         if stripped.startswith("[") and "]" in stripped:
             return stripped[1:].split("]")[0]
     return ""
-
-
-def _lazy_load_chonkie() -> Any:
-    """Lazy-import chonkie module for optional availability."""
-    try:
-        import chonkie  # noqa: PLC0415  — lazy import for optional dep
-        from chonkie import RecursiveChunker  # noqa: PLC0415, F401
-
-        return chonkie
-    except ImportError:
-        logger.warning("chonkie not available — using fallback chunking")
-        return None
