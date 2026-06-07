@@ -19,6 +19,8 @@ ripgrep = "latest"
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 
+"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
+
 [settings.npm]
 package_manager = "bun"
 
