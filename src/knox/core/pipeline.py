@@ -25,10 +25,7 @@ class PipelineConfig:
     source_dir: Path
     output_dir: Path
     image_mode: str = "file"  # "file" or "base64"
-    extract_images: bool = True
-    table_format: str = "structured"  # "structured" or "markdown"
     chunk_size: int = 512
-    chunk_overlap: int = 128
     compile_target: str = "markdown"  # "markdown", "json", "typst"
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir

@@ -32,6 +32,12 @@ def sample_wiki() -> CompiledWiki:
     )
 
 
+@pytest.fixture
+def zvec_db(tmp_path: Path) -> Path:
+    """Provide a temp directory for zvec test databases."""
+    return tmp_path / "zvec_test_store"
+
+
 class TestZvecWikiStore:
     """Tests for ZvecWikiStore."""
 
@@ -45,27 +51,23 @@ class TestZvecWikiStore:
         store = ZvecWikiStore()
         assert store.build_index(empty) == 0
 
-    def test_build_index_without_zvec_returns_zero(self) -> None:
+    def test_build_index_without_zvec_returns_zero(self, zvec_db: Path) -> None:
         wiki = CompiledWiki(
             nodes=[WikiNode(id="n1", title="Test", content="...", node_type="section")],
             edges=[],
             toc=[],
         )
         with patch("knox.rag.zvec_store.ZVEC_AVAILABLE", False):
-            store = ZvecWikiStore(db_path="/tmp/test_zvec_not_used")
+            store = ZvecWikiStore(db_path=str(zvec_db))
             assert store.build_index(wiki) == 0
             store.close()
 
-    def test_search_after_build_returns_results(self) -> None:
+    def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
         """Integration test: requires zvec to be importable."""
         if not ZVEC_AVAILABLE:
             pytest.skip("zvec not available on this platform")
-        db = Path("/tmp/test_zvec_store")
-        if db.exists():
-            import shutil
-            shutil.rmtree(db)
         try:
-            store = ZvecWikiStore(db_path=str(db), embedding_dim=384)
+            store = ZvecWikiStore(db_path=str(zvec_db), embedding_dim=384)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(
@@ -84,17 +86,15 @@ class TestZvecWikiStore:
             assert len(results) >= 1
             store.close()
         finally:
-            if db.exists():
-                import shutil
-                shutil.rmtree(db)
+            import shutil
 
-    def test_build_index_creates_parent_dir(self) -> None:
+            if zvec_db.exists():
+                shutil.rmtree(zvec_db)
+
+    def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
         if not ZVEC_AVAILABLE:
             pytest.skip("zvec not available")
-        db = Path("/tmp/test_zvec_nested/deep/store")
-        if db.exists():
-            import shutil
-            shutil.rmtree(db.parent)
+        db = zvec_db / "nested" / "deep" / "store"
         try:
             store = ZvecWikiStore(db_path=str(db))
             wiki = CompiledWiki(
@@ -109,9 +109,10 @@ class TestZvecWikiStore:
             assert db.parent.exists()
             store.close()
         finally:
-            if db.parent.exists():
-                import shutil
-                shutil.rmtree(db.parent)
+            import shutil
+
+            if zvec_db.exists():
+                shutil.rmtree(zvec_db)
 
     def test_close_then_search_returns_empty(self) -> None:
         store = ZvecWikiStore()

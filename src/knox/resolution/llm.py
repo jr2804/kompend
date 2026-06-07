@@ -11,8 +11,6 @@ import json
 import logging
 from typing import Any
 
-import litellm
-
 from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ResolvedChunk
 from knox.resolution.base import BaseResolver
 
@@ -51,6 +49,8 @@ class LLMResolver(BaseResolver):
             return ResolvedChunk(chunk=chunk)
 
         try:
+            import litellm
+
             response = litellm.completion(
                 model=f"{self.provider}/{self.model}",
                 messages=[

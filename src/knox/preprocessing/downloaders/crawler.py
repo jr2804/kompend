@@ -8,8 +8,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from crawl4ai import AsyncWebCrawler
-
 from knox.preprocessing.downloaders.base import BaseDownloader
 
 logger = logging.getLogger(__name__)
@@ -28,6 +26,8 @@ class WebCrawler(BaseDownloader):
 
     async def _download_async(self, url: str, target_dir: Path) -> Path | None:
         """Async implementation: crawl URL with crawl4ai and save as markdown."""
+        from crawl4ai import AsyncWebCrawler
+
         parsed = urlparse(url)
         domain = parsed.netloc or parsed.hostname or "unknown"
         safe_domain = re.sub(r"[^a-zA-Z0-9_.-]", "_", domain)

@@ -39,15 +39,21 @@ class TestLLMResolver:
 
     def test_text_chunk_no_litellm(self) -> None:
         """When litellm is absent the resolver returns a passthrough."""
-        with patch.object(llm_mod, "litellm", None):
-            resolver = LLMResolver.__new__(LLMResolver)
-            resolver.model = "llama3.2"
-            resolver.provider = "ollama"
-            resolver._system_prompt = ""
-        chunk = _text_chunk()
-        result = resolver.resolve(chunk)
-        assert isinstance(result, ResolvedChunk)
-        assert result.chunk is chunk
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _block_litellm(name, *args, **kwargs):
+            if name == "litellm":
+                raise ImportError("litellm not available")
+            return real_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", _block_litellm):
+            resolver = LLMResolver(model="llama3.2", provider="ollama")
+            chunk = _text_chunk()
+            result = resolver.resolve(chunk)
+            assert isinstance(result, ResolvedChunk)
+            assert result.chunk is chunk
 
     def test_atomic_table_skipped(self) -> None:
         resolver = LLMResolver()
