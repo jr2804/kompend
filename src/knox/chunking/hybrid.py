@@ -94,6 +94,7 @@ class HybridChunker(BaseChunker):
             rc = RecursiveChunker.from_recipe(
                 "markdown",
                 chunk_size=self._effective_max,
+                tokenizer=self.tokenizer_name,
             )
             chonkie_result = rc.chunk(full_text)
         except Exception:
@@ -111,6 +112,7 @@ class HybridChunker(BaseChunker):
                 source_elements=indices,
                 source_file=document.source_path,
                 heading_context=_extract_heading(c.text),
+                token_count=getattr(c, "token_count", 0),
             )
             for c in chonkie_result
         ]

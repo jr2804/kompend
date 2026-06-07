@@ -20,6 +20,8 @@ class JsonWriter(BaseOutputWriter):
             "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
             "edges": wiki.edges,
             "toc": wiki.toc,
+            "quality_score": wiki.quality_score,
+            "iteration": wiki.iteration,
             "metadata": wiki.metadata,
         }
 

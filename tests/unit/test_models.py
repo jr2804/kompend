@@ -9,6 +9,9 @@ def test_element_type_enum() -> None:
     assert ElementType.TEXT.name == "TEXT"
     assert ElementType.TABLE.name == "TABLE"
     assert ElementType.IMAGE.name == "IMAGE"
+    # StrEnum: values are lowercase strings
+    assert ElementType.TEXT.value == "text"
+    assert str(ElementType.TABLE) == "table"
 
 
 def test_document_element_creation() -> None:
@@ -64,6 +67,8 @@ def test_chunk_creation() -> None:
     )
     assert chunk.id == "chunk-1"
     assert chunk.heading_context == "Section 1"
+    assert chunk.token_count == 0
+    assert chunk.reading_order is None
 
 
 def test_wiki_node_creation() -> None:
@@ -91,3 +96,22 @@ def test_compiled_wiki_creation() -> None:
     )
     assert len(wiki.nodes) == 1
     assert len(wiki.edges) == 0
+    assert wiki.quality_score == 0.0
+    assert wiki.iteration == 0
+
+
+def test_element_type_json_roundtrip() -> None:
+    """StrEnum values survive JSON serialization."""
+    import json
+
+    chunk = Chunk(
+        id="c1",
+        text="hello",
+        element_types=[ElementType.TEXT, ElementType.TABLE],
+        source_elements=[0],
+        token_count=1,
+        reading_order=(0, 5),
+    )
+    serialized = json.dumps({"types": chunk.element_types}, default=str)
+    assert '"text"' in serialized
+    assert '"table"' in serialized

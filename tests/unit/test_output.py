@@ -144,6 +144,8 @@ class TestJsonWriter:
         assert data["toc"][1]["title"] == "Core Concepts"
 
         assert data["metadata"]["title"] == "Test Wiki"
+        assert data["quality_score"] == 0.0
+        assert data["iteration"] == 0
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         import json

@@ -3,22 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 
-class ElementType(Enum):
-    """Document element types for structure-preserving extraction."""
+class ElementType(StrEnum):
+    """Document element types for structure-preserving extraction.
 
-    TEXT = auto()
-    HEADING = auto()
-    TABLE = auto()
-    IMAGE = auto()
-    FORMULA = auto()
-    LIST_ITEM = auto()
-    CODE = auto()
-    METADATA = auto()
+    StrEnum serializes to plain strings in JSON: ``"text"``, ``"table"``, etc.
+    """
+
+    TEXT = "text"
+    HEADING = "heading"
+    TABLE = "table"
+    IMAGE = "image"
+    FORMULA = "formula"
+    LIST_ITEM = "list_item"
+    CODE = "code"
+    METADATA = "metadata"
 
 
 ATOMIC_TYPES: frozenset[ElementType] = frozenset(
@@ -63,6 +66,8 @@ class Chunk:
     source_elements: list[int]
     source_file: Path | None = None
     heading_context: str = ""
+    token_count: int = 0
+    reading_order: tuple[int, int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -96,4 +101,6 @@ class CompiledWiki:
     nodes: list[WikiNode]
     edges: list[dict[str, Any]]
     toc: list[dict[str, Any]]
+    quality_score: float = 0.0
+    iteration: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
