@@ -87,9 +87,10 @@ class TestZvecWikiStore:
             store.close()
         finally:
             import shutil
+            import gc
 
-            if zvec_db.exists():
-                shutil.rmtree(zvec_db)
+            gc.collect()  # release zvec LOCK file before rmtree on Windows
+            shutil.rmtree(zvec_db, ignore_errors=True)
 
     def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
         if not ZVEC_AVAILABLE:
@@ -110,9 +111,10 @@ class TestZvecWikiStore:
             store.close()
         finally:
             import shutil
+            import gc
 
-            if zvec_db.exists():
-                shutil.rmtree(zvec_db)
+            gc.collect()  # release zvec LOCK file before rmtree on Windows
+            shutil.rmtree(zvec_db, ignore_errors=True)
 
     def test_close_then_search_returns_empty(self) -> None:
         store = ZvecWikiStore()

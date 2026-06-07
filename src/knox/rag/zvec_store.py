@@ -215,6 +215,11 @@ class ZvecWikiStore:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             schema = _zvec.CollectionSchema(
                 name="knox_wiki",
+                fields=[
+                    _zvec.FieldSchema("title", _zvec.DataType.STRING),
+                    _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
+                    _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
+                ],
                 vectors=_zvec.VectorSchema(
                     "embedding", _zvec.DataType.VECTOR_FP32, self._embedding_dim,
                 ),
@@ -227,7 +232,7 @@ class ZvecWikiStore:
             _zvec.Doc(
                 id=node.id,
                 vectors={"embedding": self._provider.embed(f"{node.title}\n{node.content}")},
-                metadata={
+                fields={
                     "title": node.title,
                     "node_type": node.node_type,
                     "content_preview": node.content[:200],
@@ -249,14 +254,17 @@ class ZvecWikiStore:
         )
         return [
             {
-                "id": r.get("id", ""),
-                "score": r.get("score", 0.0),
-                **(r.get("metadata", {}) if isinstance(r.get("metadata"), dict) else {}),
+                "id": r.id,
+                "score": r.score if r.score is not None else 0.0,
+                **(r.fields if isinstance(r.fields, dict) else {}),
             }
             for r in results
         ]
 
     def close(self) -> None:
         if self._collection is not None:
-            self._collection.close()
+            try:
+                self._collection.flush()
+            except Exception:
+                pass
             self._collection = None
