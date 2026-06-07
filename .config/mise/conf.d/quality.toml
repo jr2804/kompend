@@ -12,6 +12,7 @@ depends = [
   "spell",
   "format",
   "format-md",
+  "docs",
 ]
 
 [tasks.clean]

@@ -4,11 +4,14 @@
 "github:AlmogBaku/debug-skill" = "latest"
 "github:rtk-ai/rtk" = "latest"
 "github:djinn-soul/CytoScnPy" = "latest"
-"pipx:graphifyy" = "latest"
+"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
 "github:ChuprinaDaria/Vibecode-Cleaner-Fartrun" = "latest"
 "pipx:sloppylint" = "latest"
 "pipx:ai-slop-detector" = { version = "latest", extras = ["all"] }
 "npm:@yuvrajangadsingh/vibecheck" = "latest"
+"github:gastownhall/beads" = "latest"
+"github:dolthub/dolt" = "latest"
+"pipx:beads-mcp" = "latest"
 
 
 [tasks.add-mcp-servers]
@@ -17,14 +20,13 @@ depends = ["dev"]
 usage = '''
 arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see https://github.com/neondatabase/add-mcp)"
 '''
-shell = "bash"
+#shell = "powershell"
 run = [
-	"clear",
+	#"clear",
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai "grepai mcp-serve"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp "cytoscnpy mcp-server"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n graphify "python -m graphify.serve graphify-out/graph.json"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun "fartrun mcp"',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck "npx -y @yuvrajangadsingh/vibecheck --mcp"',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads "beads-mcp"',
 ]
-
-

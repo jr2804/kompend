@@ -1,0 +1,8 @@
+# rumdl configuration file for KNOX
+
+[global]
+# Maximum allowed line length (KNOX docs have long URLs and tables)
+line-length = 120
+
+# Markdown flavor/dialect: knox targets Obsidian by default
+flavor = "obsidian"

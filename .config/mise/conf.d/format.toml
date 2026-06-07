@@ -7,5 +7,5 @@ run = [
 ]
 
 [tasks.format-md]
-description = "Format Markdown files"
-run = "uv tool run --with mdformat-front-matters mdformat src/ docs/ tests/ --end-of-line keep --number"
+description = "Lint and reformat Markdown files with rumdl"
+run = "rumdl fmt --config .config/rumdl.toml src/ docs/ tests/ ./"
