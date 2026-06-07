@@ -42,3 +42,4 @@ skills-lock.json
 .dolt/
 *.db
 .beads-credential-key
+CLAUDE.md
