@@ -9,12 +9,11 @@ Open-WebUI can consume both.
 ### 1. Compile a wiki with vector index
 
 ```bash
-knox compile ./sources --output ./wiki --format json --index
+knox compile ./sources --format json --index
 ```
 
 This produces:
 - `wiki/wiki.json` — full compiled knowledge graph
-- `wiki/.knox/vectors/` — zvec vector store for semantic search (if zvec is available)
 
 ### 2. Point Open-WebUI at the JSON graph
 
@@ -31,8 +30,7 @@ Open-WebUI can ingest the compiled wiki as a knowledge source:
 KNOX ships with an MCP server that exposes `parse_document` and `compile_wiki` tools:
 
 ```bash
-# Start the MCP server (stdio)
-knox mcp
+knox compile ./sources --url https://example.com/doc.pdf
 ```
 
 In Open-WebUI, configure an MCP connection:
@@ -52,7 +50,7 @@ In Open-WebUI, configure an MCP connection:
 
 ```bash
 # Search compiled wiki with zvec vector store
-knox query "what are the performance requirements?" --wiki ./wiki
+knox parse ./wiki/*.md --elements
 
 # Or search directly the JSON graph
 cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'
