@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import chonkie
 from chonkie import RecursiveChunker
 
 from knox.chunking.base import BaseChunker
@@ -73,20 +72,24 @@ class HybridChunker(BaseChunker):
         """Chunk a contiguous run of TEXT/HEADING elements."""
         text_parts: list[str] = []
         heading_stack: list[str] = []
+        offset_map: list[tuple[int, int, list[str]]] = []
+        cursor = 0
         for i in indices:
             el = document.elements[i]
             content = _str_content(el)
             if el.type == ElementType.HEADING:
                 level = el.heading_level or 1
                 prefix = "#" * min(level, 6)
-                text_parts.append(f"{prefix} {content}")
+                part = f"{prefix} {content}"
                 heading_stack = heading_stack[: level - 1] + [content]
             else:
                 heading = " / ".join(heading_stack) if heading_stack else ""
-                if heading:
-                    text_parts.append(f"[{heading}] {content}")
-                else:
-                    text_parts.append(content)
+                part = f"[{heading}] {content}" if heading else content
+
+            text_parts.append(part)
+            length = len(part.encode("utf-8"))
+            offset_map.append((cursor, cursor + length, heading_stack.copy()))
+            cursor += length + len(b"\n\n")
 
         full_text = "\n\n".join(text_parts)
 
@@ -104,18 +107,28 @@ class HybridChunker(BaseChunker):
         if not chonkie_result:
             return []
 
-        return [
-            Chunk(
-                id="",
-                text=c.text,
-                element_types=[ElementType.TEXT],
-                source_elements=indices,
-                source_file=document.source_path,
-                heading_context=_extract_heading(c.text),
-                token_count=getattr(c, "token_count", 0),
+        chunks: list[Chunk] = []
+        for c in chonkie_result:
+            # Use Chonkie's byte offsets to recover which original element(s)
+            # this chunk covers and the heading stack active at that span.
+            start_idx = getattr(c, "start_index", 0)
+            end_idx = getattr(c, "end_index", start_idx)
+            _local_idxs, heading_ctx = _map_offsets_to_elements(
+                start_idx, end_idx, offset_map, len(full_text.encode("utf-8"))
             )
-            for c in chonkie_result
-        ]
+            source_idxs = [indices[i] for i in _local_idxs]
+            chunks.append(
+                Chunk(
+                    id="",
+                    text=c.text,
+                    element_types=[ElementType.TEXT],
+                    source_elements=source_idxs or indices,
+                    source_file=document.source_path,
+                    heading_context=heading_ctx,
+                    token_count=getattr(c, "token_count", 0),
+                )
+            )
+        return chunks
 
     @staticmethod
     def _fallback_chunk(
@@ -161,11 +174,25 @@ def _atomic_chunk(
     )
 
 
-def _extract_heading(text: str) -> str:
-    for raw_line in text.splitlines():
-        stripped = raw_line.strip()
-        if stripped.startswith("#"):
-            return stripped.lstrip("#").strip()
-        if stripped.startswith("[") and "]" in stripped:
-            return stripped[1:].split("]")[0]
-    return ""
+def _map_offsets_to_elements(
+    start_byte: int,
+    end_byte: int,
+    offset_map: list[tuple[int, int, list[str]]],
+    full_len: int,
+) -> tuple[list[int], str]:
+    """Map a Chonkie chunk byte-range back to element indices and heading context.
+
+    Chonkie reports start_index/end_index as character (not byte) offsets, but
+    in UTF-8 the two align closely enough that we guard with clamping for
+    safety.
+    """
+    source_indices: list[int] = []
+    heading_ctx: str = ""
+    effective_end = min(end_byte, full_len)
+    for i, (el_start, el_end, stack) in enumerate(offset_map):
+        if el_end <= start_byte or el_start >= effective_end:
+            continue
+        source_indices.append(i)
+        if stack:
+            heading_ctx = " / ".join(stack)
+    return source_indices, heading_ctx

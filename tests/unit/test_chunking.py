@@ -124,3 +124,24 @@ class TestHybridChunker:
         result = HybridChunker(max_tokens=512).chunk(doc)
         for c in result:
             assert c.id.startswith("test_chunk_"), f"Bad ID: {c.id}"
+
+    def test_heading_context_with_brackets_in_text(self) -> None:
+        """Adversarial text: literal '[' and ']' in content must not be parsed as heading markers."""
+        doc = _make_doc(
+            [
+                DocumentElement(
+                    type=ElementType.HEADING,
+                    content="Config [key] = value",
+                    heading_level=1,
+                ),
+                DocumentElement(
+                    type=ElementType.TEXT,
+                    content="See array [1, 2, 3] for details.",
+                ),
+            ]
+        )
+        result = HybridChunker(max_tokens=512).chunk(doc)
+        # The heading context should reflect the real heading, not any bracket substring.
+        for c in result:
+            assert "key" not in c.heading_context or "Config" in c.heading_context
+        assert any("Config [key] = value" in c.heading_context for c in result if c.heading_context)
