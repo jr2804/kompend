@@ -21,6 +21,17 @@ class BaseOutputWriter(ABC):
     name: ClassVar[str]
     _registry: ClassVar[dict[str, type[BaseOutputWriter]]] = {}
 
+    def __init__(self, flavor: str | None = None, **kwargs: object) -> None:
+        """
+        Parameters
+        ----------
+        flavor:
+            Markdown flavor (``"obsidian"``, ``"gfm"``, etc.).
+            Subclasses that produce Markdown use this via
+            :class:`DocumentRenderer`. Others ignore it.
+        """
+        self.flavor = flavor
+
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         name = getattr(cls, "name", None)

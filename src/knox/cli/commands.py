@@ -13,6 +13,7 @@ from knox.cli.args import (
     DEFAULT_COMPILE_FORMAT,
     DEFAULT_COMPILE_MODE,
     DEFAULT_IMAGE_MODE,
+    DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROMPT_BUDGET,
     DEFAULT_SOURCES_DIR,
@@ -22,15 +23,19 @@ from knox.cli.args import (
     CompileMode,
     EmbedModel,
     ForceTier,
+    Frontmatter,
     Ignore,
     ImageMode,
     IncludePrivate,
     IndexStore,
     JsonOutput,
     ListTiers,
+    LlmFallbackChain,
+    LlmFallbackMaxRetries,
     NoCacheFlag,
     OnlineUrls,
     OutputDir,
+    OutputFlavor,
     ParseFiles,
     PrintElements,
     Private,
@@ -40,6 +45,7 @@ from knox.cli.args import (
     Recursive,
     ReviewMode,
     SourcesDir,
+    SynthesizeFlag,
     TargetFormat,
     TwoPhase,
     Verbose,
@@ -48,6 +54,7 @@ from knox.cli.args import (
 )
 from knox.core.models import CompiledWiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
+from knox.preprocessing.parsers._registry import register_parser
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -57,7 +64,6 @@ from knox.rag.zvec_store import ZvecWikiStore
 from ._sources import download_urls, ensure_in_sources, resolve_files
 from .doctor import print_doctor_results, run_doctor
 from .status import collect_stats, print_status
-from knox.preprocessing.parsers._registry import register_parser, get_parser_names
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +133,11 @@ def compile_cmd(
     provenance: Provenance = False,
     private: Private = False,
     verify: Verify = False,
+    flavor: OutputFlavor = None,
+    frontmatter: Frontmatter = None,
+    synthesize: SynthesizeFlag = False,
+    llm_fallback_chain: LlmFallbackChain = None,
+    llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
 ) -> None:
     """Compile documents into a knowledge wiki.
 
@@ -178,6 +189,16 @@ def compile_cmd(
     typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
 
     # 6. Build and run the pipeline
+    fallback_chain_list = list(llm_fallback_chain) if llm_fallback_chain else []
+
+    # Parse frontmatter defaults from key=value pairs
+    frontmatter_defaults: dict[str, str] = {}
+    if frontmatter:
+        for kv in frontmatter:
+            if "=" in kv:
+                k, v = kv.split("=", 1)
+                frontmatter_defaults[k.strip()] = v.strip()
+
     config = PipelineConfig(
         source_dir=sources_dir_path,
         output_dir=output_dir_path,
@@ -191,6 +212,10 @@ def compile_cmd(
         no_cache=no_cache,
         workers=workers,
         force=force,
+        flavor=flavor,
+        frontmatter_defaults=frontmatter_defaults if frontmatter_defaults else None,
+        llm_fallback_chain=fallback_chain_list,
+        llm_fallback_max_retries_per_model=llm_fallback_max_retries,
     )
 
     pipeline = build_pipeline(config, two_phase=two_phase, prompt_budget=prompt_budget)
@@ -217,6 +242,20 @@ def compile_cmd(
 
         if verify:
             _verify_claims(wiki, output_dir_path)
+
+        # N11: Generate index.md + log.md
+        from knox.output.wiki_index import write_index_and_log, write_overview  # noqa: PLC0415
+
+        generated = write_index_and_log(wiki, output_dir_path)
+        typer.echo(f"Index: {generated['index']}")
+        typer.echo(f"Log:   {generated['log']}")
+
+        if synthesize:
+            overview_path = write_overview(wiki, output_dir_path)
+            if overview_path:
+                typer.echo(f"Overview: {overview_path}")
+            else:
+                typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
         if index_store:
             _build_vector_index(wiki, output_dir_path, embed_model)
@@ -299,6 +338,123 @@ def list_parsers_cmd(
         exts = ", ".join(p.get("extensions", []) or [])
         ptype = p.get("type", "built-in")
         typer.echo(f"  • {p['name']} ({ptype})  [{exts}]")
+
+
+# ── write (Q18) ─────────────────────────────────────────────────────────
+
+
+@app.command(name="write")
+def write_cmd(
+    page_title: str = typer.Argument(..., help="Title of the page to create."),
+    source: list[str] = typer.Option([], "--source", "-s", help="Source file(s) to include (repeatable)."),
+    frontmatter: Frontmatter = None,
+) -> None:
+    """Create a one-shot wiki page from a title and optional sources.
+
+    Example:
+        knox write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
+    """
+    # Parse frontmatter from key=value pairs
+    fm: dict[str, str] = {}
+    if frontmatter:
+        for kv in frontmatter:
+            if "=" in kv:
+                k, v = kv.split("=", 1)
+                fm[k.strip()] = v.strip()
+
+    # Collect source content
+    body_parts: list[str] = []
+    if source:
+        from ._sources import resolve_files  # noqa: PLC0415
+
+        source_files = resolve_files(*source)
+        for sf in source_files:
+            try:
+                content = sf.read_text(encoding="utf-8", errors="replace")[:2000]
+                body_parts.append(f"From {sf.name}:\n\n{content}\n")
+            except Exception as exc:
+                typer.echo(f"Warning: could not read {sf}: {exc}", err=True)
+
+    body = "\n\n".join(body_parts) if body_parts else "_(Content pending)_"
+
+    # Render via flvor-aware MarkdownWriter
+    from knox.output.markdown import MarkdownWriter  # noqa: PLC0415
+
+    writer = MarkdownWriter()
+    from knox.output.models import Document  # noqa: PLC0415
+
+    doc = Document(title=page_title, body=body, frontmatter=fm)
+    rendered = writer.renderer.render(doc)
+
+    output_path = Path.cwd() / "wiki" / f"{page_title.lower().replace(' ', '-')}.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(rendered, encoding="utf-8")
+    typer.echo(f"Written: {output_path}")
+
+
+# ── provenance (Q16) ────────────────────────────────────────────────────
+
+
+@app.command(name="provenance")
+def provenance_cmd(
+    page_slug: str = typer.Argument(..., help="Page slug or title to show provenance for."),
+    with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
+    json_output: JsonOutput = False,
+) -> None:
+    """Show source-to-article provenance for a compiled wiki page.
+
+    Example:
+        knox provenance self-attention
+        knox provenance self-attention --with-content
+    """
+    # Read the compiled wiki
+    output_dir = Path(DEFAULT_OUTPUT_DIR)
+    wiki_file = output_dir / "wiki.md"
+    if not wiki_file.exists():
+        typer.echo(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.", err=True)
+        raise typer.Exit(1)
+
+    # Try loading the wiki from cache
+    wiki: CompiledWiki | None = None
+    cache_file = output_dir / ".knox" / "last_wiki.json"
+    if cache_file.exists():
+        try:
+            import json as j  # noqa: PLC0415
+
+            data = j.loads(cache_file.read_text(encoding="utf-8"))
+            from knox.core.models import CompiledWiki  # noqa: PLC0415
+
+            wiki = CompiledWiki(**data)
+        except Exception:
+            pass
+
+    if wiki is None:
+        typer.echo("Could not load compiled wiki metadata.", err=True)
+        raise typer.Exit(1)
+
+    # Find the matching node
+    nodes = [n for n in wiki.nodes if n.id == page_slug or n.title.lower() == page_slug.lower()]
+    if not nodes:
+        typer.echo(f"Page '{page_slug}' not found in compiled wiki.", err=True)
+        raise typer.Exit(1)
+
+    node = nodes[0]
+    source_chunks = node.source_chunks or []
+
+    if json_output:
+        import json as j  # noqa: PLC0415
+
+        data = {"page": node.title, "slug": node.id, "sources": source_chunks}
+        j.dump(data, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return
+
+    typer.echo(f"# {node.title}\n")
+    if source_chunks:
+        for chunk_id in source_chunks:
+            typer.echo(f"  Source: {chunk_id}")
+    else:
+        typer.echo("  (no provenance tracked)")
 
 
 # ── Internal helpers ────────────────────────────────────────────────────

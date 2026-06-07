@@ -294,6 +294,43 @@ IncludePrivate = Annotated[
 ]
 
 
+# ── Output flavor (N13: multi-flavor Markdown via rumdl) ────────────────
+
+OutputFlavor = Annotated[
+    str | None,
+    typer.Option(
+        "--flavor",
+        help=(
+            "Markdown output flavor: obsidian, gfm, mkdocs, mdx, quarto, myst, "
+            "standard, pandoc, kramdown, azure_devops. "
+            "Auto-detected from output dir when not set."
+        ),
+    ),
+]
+
+
+# ── Frontmatter (Q18: custom frontmatter fields) ────────────────────────
+
+Frontmatter = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--frontmatter",
+        help=(
+            "Frontmatter field in key=value format (repeatable). "
+            "E.g. --frontmatter language=en --frontmatter domain=ml"
+        ),
+    ),
+]
+
+SynthesizeFlag = Annotated[
+    bool,
+    typer.Option(
+        "--synthesize",
+        help="Also generate an LLM-synthesized overview.md page.",
+    ),
+]
+
+
 # ── LLM configuration (Q12: failover chain) ─────────────────────────────
 
 LlmFallbackChain = Annotated[

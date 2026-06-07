@@ -90,6 +90,8 @@ class PipelineConfig:
     tier_state_path: Path | None = None  # None = .knox/compile_state.json inside output_dir
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
+    flavor: str | None = None  # Markdown flavor (obsidian, gfm, mkdocs, etc.); None = auto-detect
+    frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
 
 
 class WikiPipeline:
@@ -544,5 +546,5 @@ def build_pipeline(
         parser=parser,
         chunker=HybridChunker(chunk_size=config.chunk_size),
         compiler=base_compiler,
-        output_writer=writer_cls(),
+        output_writer=writer_cls(flavor=config.flavor) if config.flavor else writer_cls(),
     )
