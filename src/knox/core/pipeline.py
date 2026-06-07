@@ -16,9 +16,6 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument
 from knox.output.base import BaseOutputWriter
-from knox.output.json_writer import JsonWriter
-from knox.output.markdown import MarkdownWriter
-from knox.output.typst import TypstWriter
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -236,12 +233,11 @@ def build_pipeline(config: PipelineConfig) -> WikiPipeline:
     - GraphCompiler
     - Output writer selected by ``config.compile_target``
     """
-    format_map: dict[str, type[BaseOutputWriter]] = {
-        "markdown": MarkdownWriter,
-        "json": JsonWriter,
-        "typst": TypstWriter,
-    }
-    writer_cls = format_map.get(config.compile_target, MarkdownWriter)
+    writer_cls = BaseOutputWriter.get(config.compile_target)
+    if writer_cls is None:
+        available = ", ".join(BaseOutputWriter.available_formats())
+        msg = f"Unknown output format {config.compile_target!r}. Available: {available}"
+        raise ValueError(msg)
 
     parser = None
     try:

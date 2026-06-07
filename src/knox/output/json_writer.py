@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
+from typing import ClassVar
 
 from knox.core.models import CompiledWiki
 from knox.output.base import BaseOutputWriter
@@ -12,6 +13,8 @@ from knox.output.base import BaseOutputWriter
 
 class JsonWriter(BaseOutputWriter):
     """Write compiled wiki as JSON for downstream consumers."""
+
+    name: ClassVar[str] = "json"
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)

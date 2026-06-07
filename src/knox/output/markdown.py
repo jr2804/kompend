@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+from typing import ClassVar
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.base import BaseOutputWriter
 
 
 class MarkdownWriter(BaseOutputWriter):
     """Write compiled wiki as a single markdown file."""
+
+    name: ClassVar[str] = "markdown"
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)

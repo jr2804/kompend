@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+from typing import ClassVar
 from knox.core.models import CompiledWiki
 from knox.output.base import BaseOutputWriter
 
 
 class TypstWriter(BaseOutputWriter):
     """Write compiled wiki as Typst source for PDF generation."""
+
+    name: ClassVar[str] = "typst"
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
