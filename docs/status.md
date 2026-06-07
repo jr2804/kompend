@@ -29,6 +29,16 @@ Current state of the KNOX codebase as of the latest `main` branch.
 - **HybridChunker budget**: Measures budget in characters, not tokens (M3).
 - **DoclingParser**: Requires update for Docling 2.x API — `doc.pages` yields ints, not page objects (C2).
 
+## Lint
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Structural lint rules (8) | ✅ Done | broken-wikilinks, missing-frontmatter, orphan-page, duplicate-title, empty-page, heading-skip, stale-page, source-not-found |
+| LLM-powered lint rules (3) | ✅ Done | factual-consistency, clarity-score, coverage-gap (opt-in via `--llm`) |
+| CLI: `knox lint` | ✅ Done | --fix, --llm, --rule, --threshold, --json |
+| CLI: `knox compile --lint` | ✅ Done | Runs lint post-compile |
+| Eval harness (N2) | ⏳ Pending | Health score, citation coverage, CI thresholds |
+
 ## Parser Coverage
 
 | Format | Parser | Status |

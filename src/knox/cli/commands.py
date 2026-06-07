@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -20,6 +21,7 @@ from knox.cli.args import (
     BypassReview,
     ChunkSize,
     CompileFiles,
+    CompileLint,
     CompileMode,
     EmbedModel,
     ForceTier,
@@ -30,6 +32,12 @@ from knox.cli.args import (
     IndexStore,
     JsonOutput,
     ListTiers,
+    LintFix,
+    LintLlm,
+    LintOutputDir,
+    LintRule,
+    LintSourcesDir,
+    LintThreshold,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     NoCacheFlag,
@@ -138,6 +146,7 @@ def compile_cmd(
     synthesize: SynthesizeFlag = False,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
+    compile_lint: CompileLint = False,
 ) -> None:
     """Compile documents into a knowledge wiki.
 
@@ -259,6 +268,9 @@ def compile_cmd(
 
         if index_store:
             _build_vector_index(wiki, output_dir_path, embed_model)
+
+        if compile_lint:
+            _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
 
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -457,6 +469,166 @@ def provenance_cmd(
         typer.echo("  (no provenance tracked)")
 
 
+# ── review (N8) ─────────────────────────────────────────────────────────
+
+
+@app.command(name="review")
+def review_cmd(
+    action: Annotated[
+        str,
+        typer.Argument(help="Action: list | approve | reject | lock | unlock"),
+    ],
+    slug: Annotated[
+        str | None,
+        typer.Argument(help="Page slug (required for approve/reject/lock/unlock)."),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Rejection reason (for 'reject')."),
+    ] = None,
+    approve_all: Annotated[
+        bool,
+        typer.Option("--all", help="Approve every pending page."),
+    ] = False,
+    output_dir: OutputDir = None,
+    json_output: JsonOutput = False,
+) -> None:
+    """Manage the review queue for compiled pages."""
+    from knox.review import ReviewQueue  # noqa: PLC0415
+
+    out = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
+    queue = ReviewQueue(review_dir=out / ".knox" / "review")
+    _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
+
+
+def _dispatch_review_action(
+    queue: object,
+    action: str,
+    slug: str | None,
+    reason: str | None,
+    approve_all: bool,
+    json_output: bool,
+) -> None:
+    """Dispatch a review command action. Extracted to keep ruff PLR0911 happy."""
+    if action == "list":
+        entries = queue.list_entries()
+        if json_output:
+            import json as j  # noqa: PLC0415
+
+            typer.echo(j.dumps([e.to_dict() for e in entries], indent=2, default=str))
+            return
+        if not entries:
+            typer.echo("No pages in the review queue.")
+            return
+        for e in entries:
+            typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
+        return
+
+    if action == "approve":
+        approved = queue.approve(slug or "", approve_all=approve_all)
+        if not approved:
+            typer.echo("No matching pages to approve.", err=True)
+            raise typer.Exit(1)
+        for e in approved:
+            typer.echo(f"Approved: {e.slug}")
+        return
+
+    if action == "reject":
+        if not slug:
+            typer.echo("Reject requires a slug.", err=True)
+            raise typer.Exit(1)
+        rejected = queue.reject(slug, reason=reason or "")
+        if not rejected:
+            typer.echo(f"No pending page with slug {slug!r}.", err=True)
+            raise typer.Exit(1)
+        for e in rejected:
+            typer.echo(f"Rejected: {e.slug}")
+        return
+
+    if action == "lock":
+        if not slug:
+            typer.echo("Lock requires a slug.", err=True)
+            raise typer.Exit(1)
+        if queue.lock(slug):
+            typer.echo(f"Locked: {slug}")
+            return
+        typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
+        raise typer.Exit(1)
+
+    if action == "unlock":
+        lock_path = queue.review_dir / f"{slug}.locked" if slug else None
+        if lock_path and lock_path.exists():
+            lock_path.unlink()
+            typer.echo(f"Unlocked: {slug}")
+            return
+        typer.echo(f"No lock for {slug!r}.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
+    raise typer.Exit(1)
+
+
+# ── lint ───────────────────────────────────────────────────────────────
+
+
+@app.command(name="lint")
+def lint_cmd(
+    output_dir: LintOutputDir = None,
+    sources_dir: LintSourcesDir = None,
+    fix: LintFix = False,
+    llm: LintLlm = False,
+    rule: LintRule = None,
+    threshold: LintThreshold = None,
+    json_output: JsonOutput = False,
+) -> None:
+    """Lint a compiled wiki for quality issues.
+
+    Runs 8 structural rules by default. Add --llm to also run 3
+    LLM-powered rules (slow, expensive). Use --rule to run only specific
+    rules and --fix to auto-fix supported issues.
+
+    Examples:
+        knox lint                       # structural rules only
+        knox lint --llm                 # structural + LLM rules
+        knox lint --fix                 # auto-fix what's possible
+        knox lint --rule broken-wikilinks --rule orphan-page
+        knox lint --threshold 80        # exit 1 if score < 80
+    """
+    from knox.lint.runner import LintRunner, report_to_json, report_to_text  # noqa: PLC0415
+
+    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
+    sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
+
+    wiki = _load_wiki(output_dir_path)
+    if wiki is None:
+        typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
+        raise typer.Exit(1)
+
+    llm_client = None
+    if llm or (rule and any(r in ("factual-consistency", "clarity-score", "coverage-gap") for r in rule)):
+        from knox.llm.client import LLMClient  # noqa: PLC0415
+
+        llm_client = LLMClient()
+
+    runner = LintRunner(
+        rules=list(rule) if rule else None,
+        enable_llm=llm,
+        llm_client=llm_client,
+        fix=fix,
+        sources_dir=sources_dir_str,
+    )
+    report = runner.run(wiki)
+
+    if json_output:
+        typer.echo(report_to_json(report))
+    else:
+        typer.echo(report_to_text(report))
+
+    if threshold is not None and report.health_score < threshold:
+        typer.echo(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.", err=True)
+        raise typer.Exit(1)
+
+
 # ── Internal helpers ────────────────────────────────────────────────────
 
 
@@ -485,6 +657,20 @@ def _build_router() -> ParserRouter:
         pass
 
     return router
+
+
+def _load_wiki(output_dir_path: Path) -> CompiledWiki | None:
+    """Load the last compiled wiki from cache, or return None."""
+    import json as j  # noqa: PLC0415
+
+    cache_file = output_dir_path / ".knox" / "last_wiki.json"
+    if not cache_file.exists():
+        return None
+    try:
+        data = j.loads(cache_file.read_text(encoding="utf-8"))
+        return CompiledWiki(**data)
+    except Exception:
+        return None
 
 
 def _build_vector_index(
@@ -544,3 +730,12 @@ def _verify_claims(wiki: CompiledWiki, output_dir_path: Path) -> None:
 
     result = verify_wiki(wiki, output_dir_path)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
+
+
+def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_output: bool = False) -> None:
+    """Run lint after compilation and print the report."""
+    from knox.lint.runner import LintRunner, report_to_text  # noqa: PLC0415
+
+    runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
+    report = runner.run(wiki)
+    typer.echo("\n" + report_to_text(report))

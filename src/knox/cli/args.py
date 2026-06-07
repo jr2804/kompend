@@ -356,3 +356,68 @@ LlmFallbackMaxRetries = Annotated[
         envvar=f"{APP_NAME_UPPERCASE}_LLM_FALLBACK_MAX_RETRIES",
     ),
 ]
+
+
+# ── N1 lint command ────────────────────────────────────────────────────
+
+LintFix = Annotated[
+    bool,
+    typer.Option(
+        "--fix",
+        help="Auto-fix structural issues where possible.",
+    ),
+]
+
+LintLlm = Annotated[
+    bool,
+    typer.Option(
+        "--llm",
+        help="Enable LLM-powered lint rules (slow, expensive).",
+    ),
+]
+
+LintRule = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--rule",
+        help="Run only specific rule(s) (repeatable).",
+    ),
+]
+
+LintThreshold = Annotated[
+    int | None,
+    typer.Option(
+        "--threshold",
+        help="Exit with error if health score is below this value (0-100).",
+        min=0,
+        max=100,
+    ),
+]
+
+LintOutputDir = Annotated[
+    str | None,
+    typer.Option(
+        "--output-dir",
+        "-o",
+        help="Compiled wiki directory to lint. Default: 'wiki' in CWD.",
+    ),
+]
+
+LintSourcesDir = Annotated[
+    str | None,
+    typer.Option(
+        "--sources-dir",
+        "-s",
+        help="Sources directory (for file-based checks). Default: 'sources' in CWD.",
+    ),
+]
+
+# ── N1 compile --lint integration ───────────────────────────────────────
+
+CompileLint = Annotated[
+    bool,
+    typer.Option(
+        "--lint",
+        help="Run lint after compilation and report quality issues.",
+    ),
+]
