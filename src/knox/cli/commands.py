@@ -179,5 +179,5 @@ def _build_vector_index(
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
     else:
-        typer.echo("Warning: zvec not available — vector index skipped", err=True)
+        typer.echo("Warning: no nodes indexed — vector index skipped", err=True)
     store.close()
