@@ -5,7 +5,10 @@ Used by ``knox list-parsers`` and ``ParserRouter`` for parser discovery.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # In-memory registry of all parsers
 _registry: dict[str, dict[str, Any]] = {}
