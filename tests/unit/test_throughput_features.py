@@ -1,0 +1,611 @@
+"""Tests for the Q20-N3-N8-N4-Q21 throughput feature chain."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from knox.compilation.graph import GraphCompiler
+from knox.compilation.two_phase import (
+    Extraction,
+    ExtractionSet,
+    TwoPhaseCompiler,
+    fair_share_truncate,
+)
+from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.core.pipeline import (
+    ALL_TIERS,
+    MODE_LEVELS,
+    TIER_CHUNK,
+    TIER_COMPILE,
+    TIER_INDEX,
+    TIER_OUTPUT,
+    TIER_RESOLVE,
+    PipelineConfig,
+    WikiPipeline,
+)
+from knox.core.tier_state import (
+    SourceState,
+    TierState,
+    TierStateStore,
+    auto_promote_demote,
+)
+from knox.provenance import (
+    Citation,
+    annotate_wiki_with_provenance,
+    extract_citations,
+    merge_duplicate_citations,
+)
+from knox.review import ReviewQueue, slugify
+from knox.trust import (
+    LIFECYCLE_DRAFT,
+    LIFECYCLE_STALE,
+    LifecycleEntry,
+    LifecycleState,
+    LifecycleStore,
+    filter_sensitive,
+    has_sensitive_content,
+    mark_stale,
+    mark_wiki_private,
+)
+from knox.verification import (
+    verify_node,
+    verify_wiki,
+)
+
+# ── helpers ─────────────────────────────────────────────────────────────
+
+
+def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
+    return CompiledWiki(
+        nodes=nodes or [],
+        edges=[],
+        toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes or []],
+        metadata={},
+    )
+
+
+# ===========================================================================
+#  Q20: Tiered compilation
+# ===========================================================================
+
+
+class TestTierModeLevels:
+    """MODE_LEVELS / TIER_LEVEL sanity."""
+
+    def test_all_tiers_ordered(self) -> None:
+        assert ALL_TIERS == (TIER_INDEX, TIER_CHUNK, TIER_RESOLVE, TIER_COMPILE, TIER_OUTPUT)
+
+    def test_modes_are_subsets(self) -> None:
+        full = MODE_LEVELS["full"]
+        for mode, levels in MODE_LEVELS.items():
+            assert levels <= full, f"mode {mode!r} levels exceed full"
+
+    def test_output_only_only_runs_output(self) -> None:
+        assert MODE_LEVELS["output-only"] == {4}
+
+    def test_index_only_runs_tiers_0_and_1(self) -> None:
+        assert MODE_LEVELS["index-only"] == {0, 1}
+
+
+class TestTierStateStore:
+    """Tier state persistence."""
+
+    def test_empty_state_on_missing_file(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / "missing.json")
+        state = store.load()
+        assert state.entries == {}
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        store = TierStateStore(path)
+        state = TierState(entries={"a": SourceState(stem="a", source_path="a", content_hash="x")})
+        store.save(state)
+        loaded = store.load()
+        assert "a" in loaded.entries
+        assert loaded.entries["a"].content_hash == "x"
+
+    def test_record_creates_entry(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / "state.json")
+        state = TierState()
+        entry = store.record(state, "doc1", Path("doc1.pdf"), "abc123", tier=1)
+        assert entry.current_tier == 1
+        assert entry.content_hash == "abc123"
+        assert state.entries["doc1"].last_compile
+
+    def test_record_updates_existing_entry(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / "state.json")
+        state = TierState()
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1)
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=3)
+        assert state.entries["doc1"].current_tier == 3
+        assert state.entries["doc1"].search_hits == 0
+
+    def test_record_hit_increments(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / "state.json")
+        state = TierState()
+        store.record(state, "doc1", Path("d.pdf"), "h", tier=1)
+        store.record_hit(state, "doc1")
+        store.record_hit(state, "doc1")
+        assert state.entries["doc1"].search_hits == 2
+
+    def test_corrupt_file_returns_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        path.write_text("not json", encoding="utf-8")
+        store = TierStateStore(path)
+        assert store.load().entries == {}
+
+    def test_tier_distribution(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_path="", content_hash="", current_tier=1),
+                "b": SourceState(stem="b", source_path="", content_hash="", current_tier=3),
+                "c": SourceState(stem="c", source_path="", content_hash="", current_tier=3),
+            }
+        )
+        assert state.tier_distribution() == {1: 1, 3: 2}
+
+
+class TestAutoPromoteDemote:
+    """Auto-promote / auto-demote rules."""
+
+    def test_promote_after_threshold(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(
+                    stem="a",
+                    source_path="",
+                    content_hash="",
+                    current_tier=1,
+                    search_hits=5,
+                )
+            }
+        )
+        changed = auto_promote_demote(state, promote_threshold=3, demote_days=90)
+        assert changed == 1
+        assert state.entries["a"].current_tier == 3
+
+    def test_no_promote_below_threshold(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(
+                    stem="a",
+                    source_path="",
+                    content_hash="",
+                    current_tier=1,
+                    search_hits=1,
+                )
+            }
+        )
+        changed = auto_promote_demote(state, promote_threshold=3)
+        assert changed == 0
+        assert state.entries["a"].current_tier == 1
+
+    def test_demote_old_entries(self) -> None:
+        old = (datetime.now(UTC) - timedelta(days=200)).isoformat(timespec="seconds")
+        state = TierState(
+            entries={
+                "a": SourceState(
+                    stem="a",
+                    source_path="",
+                    content_hash="",
+                    current_tier=3,
+                    last_compile=old,
+                )
+            }
+        )
+        changed = auto_promote_demote(state, promote_threshold=3, demote_days=90)
+        assert changed == 1
+        assert state.entries["a"].current_tier == 1
+
+
+class TestWikiPipelineTiered:
+    """WikiPipeline.run() and run_tier() with mode filtering."""
+
+    def test_pipeline_config_has_mode(self) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"))
+        assert config.mode == "full"
+
+    def test_active_levels_full(self) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), mode="full")
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        assert pipeline.active_levels() == {0, 1, 2, 3, 4}
+
+    def test_active_levels_output_only(self) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), mode="output-only")
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        assert pipeline.active_levels() == {4}
+
+    def test_run_tier_unknown_raises(self) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"))
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        with pytest.raises(ValueError, match="Unknown tier"):
+            pipeline.run_tier("nonsense")
+
+    def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path)
+        pipeline = WikiPipeline(
+            config=config,
+            state_store=TierStateStore(tmp_path / "state.json"),
+        )
+        tiers = pipeline.list_tiers()
+        tier_names = {t["tier"] for t in tiers}
+        assert {TIER_INDEX, TIER_CHUNK, TIER_RESOLVE, TIER_COMPILE, TIER_OUTPUT} <= tier_names
+
+
+# ===========================================================================
+#  N3: Two-phase compiler
+# ===========================================================================
+
+
+class TestExtractionData:
+    """Extraction / ExtractionSet behaviour."""
+
+    def test_concept_pages_merges_by_name(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(
+                    source="a.pdf",
+                    concepts=[{"name": "attention", "definition": "x"}],
+                ),
+                Extraction(
+                    source="b.pdf",
+                    concepts=[{"name": "attention", "definition": "y"}],
+                ),
+            ]
+        )
+        pages = ext.concept_pages()
+        assert len(pages) == 1
+        assert pages[0]["name"] == "attention"
+        assert sorted(pages[0]["sources"]) == ["a.pdf", "b.pdf"]
+        assert sorted(pages[0]["definitions"]) == ["x", "y"]
+
+    def test_entity_index(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(source="a.pdf", entities=[{"name": "KNOX", "type": "PROJECT"}]),
+                Extraction(source="b.pdf", entities=[{"name": "KNOX", "type": "PROJECT"}]),
+            ]
+        )
+        idx = ext.entity_index()
+        assert idx["KNOX"] == ["a.pdf", "b.pdf"]
+
+
+class TestFairShareTruncate:
+    """N10 fair-share budget logic."""
+
+    def test_empty_sources_returns_empty(self) -> None:
+        assert fair_share_truncate([], 1000) == []
+
+    def test_zero_budget_drops_everything(self) -> None:
+        result = fair_share_truncate([("a", "hello world")], 0)
+        assert result == [("a", "", len("hello world"))]
+
+    def test_per_source_even_split(self) -> None:
+        result = fair_share_truncate(
+            [("a", "x" * 100), ("b", "y" * 100)],
+            total_budget=40,
+        )
+        # 40 / 2 = 20 per source
+        assert all(len(content) == 20 for _, content, _ in result)
+
+    def test_under_budget_source_kept_intact(self) -> None:
+        result = fair_share_truncate([("a", "short")], 100)
+        assert result[0] == ("a", "short", 0)
+
+
+class TestTwoPhaseCompiler:
+    """TwoPhaseCompiler behaviour."""
+
+    def test_empty_input(self) -> None:
+        compiler = TwoPhaseCompiler()
+        wiki = compiler.compile([])
+        assert wiki.metadata["two_phase"] is True
+        assert wiki.nodes == []
+
+    def test_fallback_to_base(self) -> None:
+        """When extraction returns nothing, fall back to base compiler."""
+        base = GraphCompiler()
+        compiler = TwoPhaseCompiler(base=base)
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="Some text",
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
+            mock.return_value = None  # LLM unavailable → empty extraction
+            wiki = compiler.compile(chunks)
+        assert wiki.metadata.get("two_phase") is True
+    def test_extract_returns_extractions(self) -> None:
+        compiler = TwoPhaseCompiler()
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="Hello",
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
+            mock.return_value = {
+                "summary": "x",
+                "entities": [{"name": "KNOX", "type": "PROJECT"}],
+                "concepts": [{"name": "attention", "definition": "y"}],
+                "tags": ["ml"],
+            }
+            ext = compiler.extract(chunks)
+        assert ext.extractions[0].summary == "x"
+        assert ext.extractions[0].concepts[0]["name"] == "attention"
+# ===========================================================================
+#  N8: Review queue
+# ===========================================================================
+
+
+class TestReviewQueue:
+    """ReviewQueue behaviour."""
+
+    def test_enqueue_creates_pending_file(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        node = WikiNode(id="n1", title="Hello World", content="body", node_type="section")
+        queue.enqueue(node)
+        assert (tmp_path / "review" / "hello_world.md").exists()
+        assert (tmp_path / "review" / "_state.json").exists()
+
+    def test_approve_moves_file(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        node = WikiNode(id="n1", title="My Page", content="b", node_type="section")
+        queue.enqueue(node)
+        approved = queue.approve("my_page")
+        assert approved
+        assert approved[0].status == "approved"
+        assert (tmp_path / "review" / "my_page.approved.md").exists()
+        assert not (tmp_path / "review" / "my_page.md").exists()
+
+    def test_approve_all(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        for i in range(3):
+            queue.enqueue(WikiNode(id=f"n{i}", title=f"Page {i}", content="x", node_type="section"))
+        approved = queue.approve("", approve_all=True)
+        assert len(approved) == 3
+
+    def test_reject_with_reason(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue.enqueue(WikiNode(id="n1", title="Bad", content="x", node_type="section"))
+        rejected = queue.reject("bad", reason="too long")
+        assert rejected[0].reason == "too long"
+        assert (tmp_path / "review" / "bad.rejected.md").exists()
+
+    def test_lock_and_unlock(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue.enqueue(WikiNode(id="n1", title="L", content="x", node_type="section"))
+        queue.approve("l")
+        assert queue.lock("l") is True
+        assert queue.is_locked("l") is True
+
+    def test_list_entries(self, tmp_path: Path) -> None:
+        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue.enqueue(WikiNode(id="n1", title="A", content="x", node_type="section"))
+        entries = queue.list_entries()
+        assert len(entries) == 1
+        assert entries[0].status == "pending"
+
+    def test_slugify(self) -> None:
+        assert slugify("Hello, World!") == "hello_world"
+        assert slugify("---") == "untitled"
+
+
+# ===========================================================================
+#  N4: Provenance
+# ===========================================================================
+
+
+class TestExtractCitations:
+    """extract_citations parses ^[source:42-58] markers."""
+
+    def test_single_citation(self) -> None:
+        text = "Some claim. ^[paper.pdf:42-58]"
+        out = extract_citations(text)
+        assert len(out) == 1
+        assert out[0].source == "paper.pdf"
+        assert out[0].start == 42
+        assert out[0].end == 58
+
+    def test_multiple_citations(self) -> None:
+        text = "First. ^[a.pdf:1-3] Second. ^[b.pdf:5-9]"
+        out = extract_citations(text)
+        assert len(out) == 2
+        assert [c.source for c in out] == ["a.pdf", "b.pdf"]
+
+    def test_no_citations(self) -> None:
+        assert extract_citations("no markers here") == []
+
+    def test_to_marker_round_trip(self) -> None:
+        c = Citation(source="x.pdf", start=1, end=5)
+        assert extract_citations(c.to_marker())[0] == c
+
+
+class TestMergeDuplicates:
+    """merge_duplicate_citations removes duplicate (source, start, end) keys."""
+
+    def test_dedup_preserves_order(self) -> None:
+        c1 = Citation(source="a.pdf", start=1, end=5)
+        c2 = Citation(source="a.pdf", start=1, end=5)
+        c3 = Citation(source="a.pdf", start=10, end=15)
+        out = merge_duplicate_citations([c1, c2, c3])
+        assert len(out) == 2
+        assert out[0] == c1
+        assert out[1] == c3
+
+
+class TestAnnotateWikiWithProvenance:
+    """annotate_wiki_with_provenance writes per-node files and updates metadata."""
+
+    def test_annotates_and_persists(self, tmp_path: Path) -> None:
+        wiki = _wiki(
+            nodes=[
+                WikiNode(
+                    id="n1",
+                    title="A",
+                    content="Claim. ^[a.pdf:1-3]",
+                    node_type="section",
+                )
+            ]
+        )
+        out = annotate_wiki_with_provenance(wiki, tmp_path)
+        assert out.metadata["provenance_annotated"] is True
+        record_path = tmp_path / ".knox" / "provenance" / "n1.json"
+        assert record_path.exists()
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        assert record["citations"] == ["^[a.pdf:1-3]"]
+
+
+# ===========================================================================
+#  Q21: Trust / privacy
+# ===========================================================================
+
+
+class TestPrivacyFilter:
+    """filter_sensitive / has_sensitive_content behaviour."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected_token"),
+        [
+            ("API key is sk-12345678901234567890abc", "[REDACTED]"),
+            ("Email me at user@example.com", "[REDACTED]"),
+            ("SSN 123-45-6789 is sensitive", "[REDACTED]"),
+            ("AWS AKIAIOSFODNN7EXAMPLE key", "[REDACTED]"),
+        ],
+    )
+    def test_redacts_pattern(self, text: str, expected_token: str) -> None:
+        out, n = filter_sensitive(text)
+        assert expected_token in out
+        assert n >= 1
+
+    def test_clean_text_unchanged(self) -> None:
+        out, n = filter_sensitive("nothing to redact here")
+        assert n == 0
+        assert out == "nothing to redact here"
+
+    def test_has_sensitive_detects(self) -> None:
+        assert has_sensitive_content("sk-12345678901234567890")
+        assert not has_sensitive_content("plain text")
+
+
+class TestMarkWikiPrivate:
+    """mark_wiki_private writes a private.json index."""
+
+    def test_creates_private_index(self, tmp_path: Path) -> None:
+        wiki = _wiki(
+            nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")]
+        )
+        mark_wiki_private(wiki, tmp_path)
+        path = tmp_path / ".knox" / "private.json"
+        assert path.exists()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert any(p["id"] == "n1" for p in data["pages"])
+
+
+class TestLifecycleStore:
+    """Lifecycle persistence and transitions."""
+
+    def test_load_empty(self, tmp_path: Path) -> None:
+        store = LifecycleStore(tmp_path / "life.json")
+        assert store.load().entries == {}
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        store = LifecycleStore(tmp_path / "life.json")
+        state = LifecycleState()
+        store.transition(state, "n1", LIFECYCLE_DRAFT)
+        store.save(state)
+        loaded = store.load()
+        assert loaded.entries["n1"].state == LIFECYCLE_DRAFT
+
+    def test_invalid_state_raises(self, tmp_path: Path) -> None:
+        store = LifecycleStore(tmp_path / "life.json")
+        state = LifecycleState()
+        with pytest.raises(ValueError, match="Invalid lifecycle state"):
+            store.transition(state, "n1", "bogus")
+
+    def test_mark_stale(self) -> None:
+        old = (datetime.now(UTC) - timedelta(days=200)).isoformat(timespec="seconds")
+        state = LifecycleState(
+            entries={
+                "n1": LifecycleEntry(node_id="n1", state="reviewed", last_transition=old),
+            }
+        )
+        changed = mark_stale(state, stale_after_days=90)
+        assert changed == 1
+        assert state.entries["n1"].state == LIFECYCLE_STALE
+
+
+# ===========================================================================
+#  Q21: Grounding verification
+# ===========================================================================
+
+
+class TestVerificationFallback:
+    """verify_node / verify_wiki fallback behaviour."""
+
+    def test_claim_without_citation_unsupported(self, tmp_path: Path) -> None:
+        node = WikiNode(
+            id="n1",
+            title="T",
+            content="This claim has no citation.",
+            node_type="section",
+        )
+        result = verify_node(node, tmp_path)
+        assert result[0].verdict == "unsupported"
+        assert result[0].confidence < 0.5
+
+    def test_claim_with_missing_source_unsupported(self, tmp_path: Path) -> None:
+        node = WikiNode(
+            id="n1",
+            title="T",
+            content="A claim with a missing source citation. ^[missing.pdf:1-3]",
+            node_type="section",
+        )
+        result = verify_node(node, tmp_path)
+        assert result[0].verdict == "unsupported"
+
+    def test_substring_fallback_match(self, tmp_path: Path) -> None:
+        sources = tmp_path / "sources"
+        sources.mkdir()
+        (sources / "a.pdf").write_text(
+            "The transformer uses self attention to model sequences.",
+            encoding="utf-8",
+        )
+        node = WikiNode(
+            id="n1",
+            title="T",
+            content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
+            node_type="section",
+        )
+        result = verify_node(node, sources)
+        assert result[0].verdict == "supported"
+        assert result[0].confidence > 0.5
+
+    def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
+        wiki = _wiki(
+            nodes=[
+                WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
+            ]
+        )
+        result = verify_wiki(wiki, tmp_path)
+        assert result.total >= 1
+        report = tmp_path / ".knox" / "verification.json"
+        assert report.exists()

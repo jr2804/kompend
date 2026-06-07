@@ -79,7 +79,7 @@ class WiCERCompiler(BaseCompiler):
     ) -> None:
         self._compiler = base_compiler or GraphCompiler()
         self.max_iterations = max_iterations
-        self._client = llm_client or LLMClient()
+        self._client = llm_client  # None is OK — caller handles graceful degradation
 
     # ------------------------------------------------------------------
     # Public API
@@ -153,6 +153,10 @@ class WiCERCompiler(BaseCompiler):
         if not combined:
             return []
 
+        if self._client is None:
+            logger.debug("WiCER has no LLM client — using fallback probes")
+            return self._fallback_probes(combined)
+
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
@@ -215,6 +219,10 @@ class WiCERCompiler(BaseCompiler):
         if not wiki_text:
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
+        if self._client is None:
+            logger.debug("WiCER has no LLM client — using fallback evaluation")
+            return self._fallback_evaluate(wiki_text, probes)
+
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
@@ -257,6 +265,10 @@ class WiCERCompiler(BaseCompiler):
         """Step C: extract critical facts from failures using LLM."""
         if not failures:
             return []
+
+        if self._client is None:
+            logger.debug("WiCER has no LLM client — skipping diagnosis")
+            return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
         result = self._client.try_complete(
             messages=[

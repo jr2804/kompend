@@ -42,7 +42,7 @@ class LLMResolver(BaseResolver):
         system_prompt: str | None = None,
         role: str = "resolve",
     ) -> None:
-        self._client = client or LLMClient()
+        self._client = client  # None is OK — resolve() handles it gracefully
         self._role = role
         self._system_prompt = system_prompt or (
             "Extract named entities and resolve cross-references from the text below. "
@@ -56,6 +56,10 @@ class LLMResolver(BaseResolver):
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """Resolve entities and references in chunk. Never raises."""
         if ATOMIC_TYPES.intersection(chunk.element_types):
+            return ResolvedChunk(chunk=chunk)
+
+        if self._client is None:
+            logger.debug("LLMResolver has no LLM client — passing chunk through")
             return ResolvedChunk(chunk=chunk)
 
         result = self._client.try_complete(

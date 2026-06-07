@@ -40,7 +40,7 @@ class VLMEnricher:
         client: LLMClient | None = None,
         role: str = "vlm",
     ) -> None:
-        self._client = client or LLMClient()
+        self._client = client  # None is OK — enrich() handles it gracefully
         self._role = role
 
     def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:
@@ -93,10 +93,14 @@ class VLMEnricher:
     def _generate_caption(self, image_path: str | Path) -> str | None:
         """Run the VLM on *image_path* and return a text caption.
 
-        Returns ``None`` when the LLM client returns ``None`` (all
-        models in the failover chain failed). Raises
+        Returns ``None`` when no LLM client is configured or all
+        models in the failover chain failed. Raises
         :class:`FileNotFoundError` when the image file is missing.
         """
+        if self._client is None:
+            logger.debug("VLMEnricher has no LLM client — skipping caption for %s", image_path)
+            return None
+
         path = Path(image_path)
         if not path.is_file():
             msg = f"Image not found: {path}"

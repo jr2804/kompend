@@ -10,11 +10,17 @@ import pytest
 from knox.compilation import GraphCompiler, WiCERCompiler
 from knox.compilation.base import BaseCompiler
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.llm.client import LLMClient
 
 
 # ===========================================================================
 #  Helpers
 # ===========================================================================
+
+def _make_test_client() -> LLMClient:
+    """Build a minimal LLMClient for tests (no real LLM calls)."""
+    return LLMClient(default_model="ollama/test", max_retries_per_model=0)
+
 
 def _chunk(
     text: str = "Sample text.",
@@ -300,7 +306,7 @@ class TestWiCERCompilerWithMock:
 
         mock_llm.side_effect = respond
         chunks = _make_chunks(count=2, heading="Test")
-        compiler = WiCERCompiler(max_iterations=1)
+        compiler = WiCERCompiler(max_iterations=1, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_probes_generated"] == 2
 
@@ -320,7 +326,7 @@ class TestWiCERCompilerWithMock:
             }),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=1)
+        compiler = WiCERCompiler(max_iterations=1, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_refinements"] == 1
 
@@ -337,7 +343,7 @@ class TestWiCERCompilerWithMock:
             }),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=3)
+        compiler = WiCERCompiler(max_iterations=3, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_iterations"] == 1
         assert wiki.metadata["wicer_refinements"] == 0

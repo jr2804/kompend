@@ -80,6 +80,15 @@ class PipelineConfig:
 
     ``2`` means up to three attempts per model (1 + 2 retries).
     """
+    llm_default_model_override: str | None = None
+    """Explicit default model in litellm format (``"provider/model"``).
+
+    When set, this is used directly as the primary model, bypassing
+    ``llm_provider`` and ``llm_model``. Intended for the
+    ``--llm-default-model`` CLI flag and ``KNOX_LLM_DEFAULT_MODEL``
+    env var. When ``None`` (default), the model is constructed from
+    ``llm_provider`` and ``llm_model`` as before.
+    """
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = .knox/cache inside output_dir
@@ -484,12 +493,16 @@ _TIER_DESCRIPTIONS: dict[str, str] = {
 def build_llm_client(config: PipelineConfig) -> LLMClient:
     """Construct an :class:`LLMClient` from a :class:`PipelineConfig`.
 
-    The default model is ``f"{llm_provider}/{llm_model}"`` and the
-    fallback chain is taken verbatim from
-    ``config.llm_fallback_chain``. The retry budget per model is
-    ``config.llm_fallback_max_retries_per_model``.
+    When ``config.llm_default_model_override`` is set it is used
+    directly as the primary model. Otherwise the model is constructed
+    from ``llm_provider`` and ``llm_model``. The fallback chain is
+    taken verbatim from ``config.llm_fallback_chain`` and the retry
+    budget from ``config.llm_fallback_max_retries_per_model``.
     """
-    default_model = f"{config.llm_provider}/{config.llm_model}"
+    if config.llm_default_model_override:
+        default_model = config.llm_default_model_override
+    else:
+        default_model = f"{config.llm_provider}/{config.llm_model}"
     return LLMClient(
         default_model=default_model,
         fallback_chain=list(config.llm_fallback_chain),

@@ -333,6 +333,20 @@ SynthesizeFlag = Annotated[
 
 # ── LLM configuration (Q12: failover chain) ─────────────────────────────
 
+LlmDefaultModel = Annotated[
+    str | None,
+    typer.Option(
+        "--llm-default-model",
+        help=(
+            "Primary model in litellm format ('provider/model'), "
+            "e.g. 'openai/gpt-4o' or 'ollama/llama3.2'. "
+            "Overrides the config-file model/provider when set. "
+            f"Env: {APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL",
+    ),
+]
+
 LlmFallbackChain = Annotated[
     list[str] | None,
     typer.Option(

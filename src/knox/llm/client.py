@@ -41,17 +41,21 @@ class LLMResult:
 
 @dataclass
 class LLMClient:
-    """Shared completion client.
+    """Shared completion client — requires an explicit model choice.
 
-    The client is configured with a default model and an optional
-    fallback chain. Per-role overrides are looked up in ``role_models``;
-    a role with no entry uses the default chain.
+    The client is configured with a **required** default model and an
+    optional fallback chain. Per-role overrides are looked up in
+    ``role_models``; a role with no entry uses the default chain.
+
+    There is intentionally no default model — callers must choose one
+    appropriate for their environment, budget, and task.
 
     Parameters
     ----------
     default_model:
-        Model name in litellm format (``"provider/model"``), used as
-        the primary when no role-specific override exists.
+        **Required.** Model name in litellm format
+        (``"provider/model"``), used as the primary when no
+        role-specific override exists.
     fallback_chain:
         Optional ordered list of model names tried when the primary
         fails. Empty means "single-model, single-retry" — backwards
@@ -65,7 +69,15 @@ class LLMClient:
         Forwarded to :class:`FailoverChain`.
     """
 
-    default_model: str = "ollama/llama3.2"
+    default_model: str
+    """Model name in litellm format (``"provider/model"``).
+
+    This is the primary model used when no role-specific override
+    exists. **There is no default** — callers must explicitly choose
+    a model. This is intentional: model availability and pricing
+    change over time, and the right choice depends on the user's
+    environment and budget.
+    """
     fallback_chain: list[str] = field(default_factory=list)
     role_models: dict[str, list[str]] = field(default_factory=dict)
     max_retries_per_model: int = 2
