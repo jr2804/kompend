@@ -4,8 +4,11 @@ Implements the iterative compilation loop described in
 arXiv:2605.07068v1: compile (blind) → generate probes → evaluate →
 diagnose → refine → repeat.
 
-When the LLM call fails, the compiler falls back to blind one-shot
-compilation.
+LLM calls are routed through the shared :class:`knox.llm.LLMClient`
+which provides typed errors, failover and observability. When the
+client returns ``None`` (all models in the chain failed), the
+compiler falls back to deterministic heuristics so the pipeline never
+crashes on a single bad provider.
 """
 
 from __future__ import annotations
@@ -14,11 +17,10 @@ import json
 import logging
 from typing import Any
 
-import litellm
-
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ _EVALUATION_TEMPLATE = (
     "each question is correctly answered. "
     'Return a JSON object with key "results" which is a list of dicts, each with '
     '"question", "expected_answer", "found_answer" (the text from the wiki that '
-    "answers it, or empty string if missing), and \"correct\" (boolean).\\n\\n"
+    'answers it, or empty string if missing), and "correct" (boolean).\\n\\n'
     "Wiki content:\\n{wiki_text}\\n\\n"
     "Probes:\\n{probes_json}"
 )
@@ -47,26 +49,6 @@ _DIAGNOSE_TEMPLATE = (
     "each describing one fact that must be included for a correct answer.\\n\\n"
     "Failures:\\n{failures_json}"
 )
-
-
-def _try_litellm(prompt: str, system: str | None = None) -> str | None:
-    """Call litellm completion, returning content string or None on failure."""
-    try:
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        response = litellm.completion(
-            model="ollama/llama3.2",
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.0,
-        )
-        content = response.choices[0].message.content
-        return content if content else None
-    except Exception:
-        logger.exception("litellm call failed in WiCER loop")
-        return None
 
 
 class WiCERCompiler(BaseCompiler):
@@ -83,15 +65,21 @@ class WiCERCompiler(BaseCompiler):
         Defaults to a fresh :class:`GraphCompiler`.
     max_iterations:
         Maximum number of refinement rounds (default 3).
+    llm_client:
+        Shared LLM client. When ``None``, a default client is built
+        from the global default model. Inject a custom client (or one
+        with a fallback chain) to control model selection per stage.
     """
 
     def __init__(
         self,
         base_compiler: BaseCompiler | None = None,
         max_iterations: int = 3,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self._compiler = base_compiler or GraphCompiler()
         self.max_iterations = max_iterations
+        self._client = llm_client or LLMClient()
 
     # ------------------------------------------------------------------
     # Public API
@@ -159,32 +147,55 @@ class WiCERCompiler(BaseCompiler):
         return self._compiler.compile(chunks)
 
     def _generate_probes(self, wiki: CompiledWiki, chunks: list[ResolvedChunk]) -> list[dict]:
-        """Step B: generate probe Q&A pairs from source chunks.
-
-        Uses litellm to generate probes; falls back to extracting
-        simple truth statements from chunk text when LLM is unavailable.
-        """
-        # Pick a representative sample of chunk texts
+        """Step B: generate probe Q&A pairs from source chunks."""
         sample_texts = [rc.chunk.text for rc in chunks[:5] if rc.chunk.text]
         combined = "\n\n".join(sample_texts)
         if not combined:
             return []
 
-        # Try LLM-based probe generation
-        system = "You are a test-probe generator. Return only valid JSON."
-        prompt = _DEFAULT_PROBE_TEMPLATE.format(text=combined[:3000])
-        content = _try_litellm(prompt, system=system)
+        result = self._client.try_complete(
+            messages=[
+                {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
+                {"role": "user", "content": _DEFAULT_PROBE_TEMPLATE.format(text=combined[:3000])},
+            ],
+            role="wicer.probe",
+            response_format={"type": "json_object"},
+        )
 
-        if content:
-            try:
-                probes: list[dict] = json.loads(content)
-                if isinstance(probes, list):
-                    return probes
-            except (json.JSONDecodeError, TypeError):
-                logger.warning("WiCER: failed to parse probes from LLM output")
+        probes = self._extract_probe_list(result)
+        if probes is not None:
+            return probes
 
         # Fallback: simple text-based probes
         return self._fallback_probes(combined)
+
+    @staticmethod
+    def _extract_probe_list(result: Any) -> list[dict] | None:
+        """Extract a list of probes from various JSON shapes the LLM may return.
+
+        Accepts ``[{...}, {...}]`` or ``{"probes": [...]}`` /
+        ``{"results": [...]}`` / ``{"items": [...]}``. Falls back to
+        the single list-valued key when the object has only one.
+        """
+        if result is None:
+            return None
+        # Try direct list shape first (older content path).
+        if result.json_data is None:
+            try:
+                parsed = json.loads(result.content)
+            except json.JSONDecodeError:
+                return None
+            return parsed if isinstance(parsed, list) else None
+
+        data = result.json_data
+        for key in ("probes", "results", "items"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        list_values = [v for v in data.values() if isinstance(v, list)]
+        if len(list_values) == 1:
+            return list_values[0]
+        return None
 
     @staticmethod
     def _fallback_probes(text: str) -> list[dict]:
@@ -199,42 +210,31 @@ class WiCERCompiler(BaseCompiler):
         return probes
 
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
-        """Step B: evaluate wiki against probes using LLM-as-judge.
-
-        Falls back to simple substring matching when LLM is unavailable.
-        """
+        """Step B: evaluate wiki against probes using LLM-as-judge."""
         wiki_text = "\n\n".join(n.content for n in wiki.nodes if n.content)
         if not wiki_text:
-            # Everything is a failure
-            return [
-                {"question": p.get("question", ""), "expected_answer": p.get("answer", ""),
-                 "found_answer": "", "correct": False}
-                for p in probes
-            ]
+            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
-        system = "You are an impartial judge of factual correctness. Return only valid JSON."
-        prompt = _EVALUATION_TEMPLATE.format(
-            wiki_text=wiki_text[:4000],
-            probes_json=json.dumps(probes),
+        result = self._client.try_complete(
+            messages=[
+                {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
+                {
+                    "role": "user",
+                    "content": _EVALUATION_TEMPLATE.format(
+                        wiki_text=wiki_text[:4000],
+                        probes_json=json.dumps(probes),
+                    ),
+                },
+            ],
+            role="wicer.judge",
+            response_format={"type": "json_object"},
         )
-        content = _try_litellm(prompt, system=system)
 
-        if content:
-            try:
-                data: Any = json.loads(content)
-                if isinstance(data, dict):
-                    results = data.get("results", [])
-                elif isinstance(data, list):
-                    # Treat as direct list of results
-                    results = data
-                else:
-                    results = []
-                if isinstance(results, list):
-                    return results
-            except (json.JSONDecodeError, TypeError):
-                logger.warning("WiCER: failed to parse evaluation results from LLM output")
+        if result is not None and result.json_data is not None:
+            results = result.json_data.get("results", [])
+            if isinstance(results, list):
+                return results
 
-        # Fallback: substring matching
         return self._fallback_evaluate(wiki_text, probes)
 
     @staticmethod
@@ -254,45 +254,34 @@ class WiCERCompiler(BaseCompiler):
         return results
 
     def _diagnose(self, failures: list[dict]) -> list[str]:
-        """Step C: extract critical facts from failures using LLM.
-
-        Falls back to extracting expected answers as plain facts.
-        """
+        """Step C: extract critical facts from failures using LLM."""
         if not failures:
             return []
 
-        system = "You are a diagnostic assistant. Return only valid JSON."
-        prompt = _DIAGNOSE_TEMPLATE.format(failures_json=json.dumps(failures))
-        content = _try_litellm(prompt, system=system)
+        result = self._client.try_complete(
+            messages=[
+                {"role": "system", "content": "You are a diagnostic assistant. Return only valid JSON."},
+                {"role": "user", "content": _DIAGNOSE_TEMPLATE.format(failures_json=json.dumps(failures))},
+            ],
+            role="wicer.refine",
+            response_format={"type": "json_object"},
+        )
 
-        if content:
-            try:
-                data: dict[str, Any] = json.loads(content)
-                facts = data.get("critical_facts", [])
-                if isinstance(facts, list):
-                    return [str(f) for f in facts if f]
-            except (json.JSONDecodeError, TypeError):
-                logger.warning("WiCER: failed to parse diagnosis from LLM output")
+        if result is not None and result.json_data is not None:
+            facts = result.json_data.get("critical_facts", [])
+            if isinstance(facts, list):
+                return [str(f) for f in facts if f]
 
-        # Fallback: use expected answers as facts
-        return [
-            f.get("expected_answer", "") for f in failures
-            if f.get("expected_answer")
-        ]
+        return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
     def _refine(self, wiki: CompiledWiki, pinned_facts: list[str]) -> CompiledWiki:
-        """Step D: re-compile with pinned facts appended.
-
-        Creates a new CompiledWiki that includes the pinned facts as
-        an additional reference node, preserving all original nodes and edges.
-        """
+        """Step D: re-compile with pinned facts appended."""
         if not pinned_facts:
             return wiki
 
         fact_content = "\n".join(f"- {f}" for f in pinned_facts)
         fact_node_id = "node_refinement_pinned_facts"
 
-        # Check if a refinement node already exists — if so, update it
         existing_nodes = list(wiki.nodes)
         refinement_idx = None
         for i, n in enumerate(existing_nodes):
@@ -300,24 +289,18 @@ class WiCERCompiler(BaseCompiler):
                 refinement_idx = i
                 break
 
+        refinement_node = WikiNode(
+            id=fact_node_id,
+            title="Pinned Refinement Facts",
+            content=fact_content,
+            node_type="reference",
+            metadata={"pinned_facts": True},
+        )
+
         if refinement_idx is not None:
-            existing_nodes[refinement_idx] = WikiNode(
-                id=fact_node_id,
-                title="Pinned Refinement Facts",
-                content=fact_content,
-                node_type="reference",
-                metadata={"pinned_facts": True},
-            )
+            existing_nodes[refinement_idx] = refinement_node
         else:
-            existing_nodes.append(
-                WikiNode(
-                    id=fact_node_id,
-                    title="Pinned Refinement Facts",
-                    content=fact_content,
-                    node_type="reference",
-                    metadata={"pinned_facts": True},
-                )
-            )
+            existing_nodes.append(refinement_node)
 
         return CompiledWiki(
             nodes=existing_nodes,

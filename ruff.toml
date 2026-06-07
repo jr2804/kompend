@@ -61,7 +61,8 @@ ignore = [
 
 [lint.per-file-ignores]
 # Use of assert statements in tests is pytest default behavior
-"tests/**/*.py" = ["S101"]
+# PLR6301: test methods on pytest classes don't need self
+"tests/**/*.py" = ["S101", "PLR6301"]
 
 [lint.pylint]
 max-locals = 20

@@ -1,38 +1,49 @@
 """LLM-based entity/relation resolver.
 
-Tier 3 (Resolution) implementation using litellm for entity extraction
-and reference resolution. Falls back gracefully to no-op when LLM is
-unavailable.
+Tier 3 (Resolution) implementation routing LLM calls through the
+shared :class:`knox.llm.LLMClient`. Atomic chunks (TABLE, IMAGE,
+FORMULA, CODE) bypass the LLM entirely. On client failure the chunk
+is returned as a passthrough :class:`ResolvedChunk` — the same
+behaviour as before, but with structured logging that records which
+model was tried and why it failed.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any
 
-from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ResolvedChunk
+from knox.core.models import ATOMIC_TYPES, Chunk, ResolvedChunk
+from knox.llm.client import LLMClient
 from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
 
 
 class LLMResolver(BaseResolver):
-    """Uses litellm to extract entities and resolve references.
+    """Extract entities and resolve references via the shared LLM client.
 
-    For text chunks the resolver calls the configured LLM with a JSON
-    extraction prompt. Atomic chunks (TABLE, IMAGE, FORMULA, CODE) are
-    returned as-is. Any failure falls back to passthrough.
+    Parameters
+    ----------
+    client:
+        Shared LLM client. When ``None``, a default client is built
+        from the global default model. Inject a custom client to
+        select a different model or fallback chain for the resolve
+        stage.
+    system_prompt:
+        Optional override for the system prompt.
+    role:
+        Role key passed to :meth:`LLMClient.complete` (default
+        ``"resolve"``). Per-stage configurations key off this value.
     """
 
     def __init__(
         self,
-        model: str = "llama3.2",
-        provider: str = "ollama",
+        client: LLMClient | None = None,
         system_prompt: str | None = None,
+        role: str = "resolve",
     ) -> None:
-        self.model = model
-        self.provider = provider
+        self._client = client or LLMClient()
+        self._role = role
         self._system_prompt = system_prompt or (
             "Extract named entities and resolve cross-references from the text below. "
             "Return a JSON object with these keys:\n"
@@ -44,36 +55,29 @@ class LLMResolver(BaseResolver):
 
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """Resolve entities and references in chunk. Never raises."""
-
         if ATOMIC_TYPES.intersection(chunk.element_types):
             return ResolvedChunk(chunk=chunk)
 
-        try:
-            import litellm
+        result = self._client.try_complete(
+            messages=[
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": chunk.text},
+            ],
+            role=self._role,
+            response_format={"type": "json_object"},
+        )
 
-            response = litellm.completion(
-                model=f"{self.provider}/{self.model}",
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": chunk.text},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0,
-            )
-
-            raw = response.choices[0].message.content
-            if not raw:
-                return ResolvedChunk(chunk=chunk)
-
-            data: dict[str, Any] = json.loads(raw)
-            return ResolvedChunk(
-                chunk=chunk,
-                entities=data.get("entities", []),
-                relations=data.get("relations", []),
-                resolved_references=data.get("resolved_references", []),
-                metadata={"resolved_by": f"{self.provider}/{self.model}"},
-            )
-
-        except Exception:
-            logger.exception("LLM resolution failed for chunk %s — falling back to passthrough", chunk.id)
+        if result is None or result.json_data is None:
             return ResolvedChunk(chunk=chunk)
+
+        data = result.json_data
+        return ResolvedChunk(
+            chunk=chunk,
+            entities=data.get("entities", []),
+            relations=data.get("relations", []),
+            resolved_references=data.get("resolved_references", []),
+            metadata={
+                "resolved_by": result.diagnostics.model_used,
+                "llm_attempts": result.diagnostics.attempts,
+            },
+        )

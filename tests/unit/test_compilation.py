@@ -180,7 +180,18 @@ class TestGraphCompiler:
 # ===========================================================================
 
 class TestWiCERCompilerUnavailable:
-    """WiCERCompiler behaviour when litellm is NOT available."""
+    """WiCERCompiler behaviour when the LLM is unavailable.
+
+    The autouse fixture forces ``try_complete`` to return ``None`` so
+    every WiCER step falls through to its deterministic heuristic
+    fallback. This keeps the unit tests fast and decoupled from any
+    real provider.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_llm(self):
+        with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
+            yield
 
     def test_empty_input(self) -> None:
         compiler = WiCERCompiler()
@@ -236,96 +247,108 @@ class TestWiCERCompilerUnavailable:
 
 
 class TestWiCERCompilerWithMock:
-    """WiCERCompiler with mocked litellm for full loop coverage."""
+    """WiCERCompiler with a mocked LLM client for full loop coverage."""
 
     @pytest.fixture
-    def mock_litellm(self) -> MagicMock:
-        """Patch litellm.completion at the module level."""
-        with patch("knox.compilation.wicer._try_litellm") as mock:
+    def mock_llm(self) -> MagicMock:
+        """Patch LLMClient.try_complete on the wicer module's import."""
+        with patch("knox.compilation.wicer.LLMClient.try_complete") as mock:
             yield mock
 
-    def test_llm_generated_probes_used(self, mock_litellm: MagicMock) -> None:
-        """When litellm returns probes, they are used for evaluation."""
-        def mock_responses(prompt: str, system: str | None = None) -> str:
-            if "generate" in prompt.lower() or "probe" in (system or "").lower():
-                return json.dumps([
+    @staticmethod
+    def _llm_result(payload: dict | list, content: str = "") -> MagicMock:
+        """Build a fake LLMResult with json_data=payload."""
+        result = MagicMock()
+        if isinstance(payload, dict):
+            result.json_data = payload
+            result.content = content or json.dumps(payload)
+        else:
+            # When the LLM returns a bare list, json_data is None and the
+            # client falls back to parsing content as JSON.
+            result.json_data = None
+            result.content = json.dumps(payload)
+        return result
+
+    def test_llm_generated_probes_used(self, mock_llm: MagicMock) -> None:
+        """When the LLM client returns probes, they are used for evaluation."""
+
+        def respond(*_args: object, **kwargs: object) -> MagicMock:
+            role = kwargs.get("role", "")
+            if role == "wicer.probe":
+                return self._llm_result([
                     {"question": "What is KNOX?", "answer": "A knowledge base project."},
                     {"question": "What is WiCER?", "answer": "An iterative compilation loop."},
                 ])
-            elif "evaluat" in prompt.lower() or "evaluat" in (system or "").lower():
-                return json.dumps({
+            if role == "wicer.judge":
+                return self._llm_result({
                     "results": [
-                        {"question": "What is KNOX?", "expected_answer": "A knowledge base project.",
-                         "found_answer": "A knowledge base project.", "correct": True},
-                        {"question": "What is WiCER?", "expected_answer": "An iterative compilation loop.",
-                         "found_answer": "An iterative compilation loop.", "correct": True},
-                    ]
+                        {
+                            "question": "What is KNOX?",
+                            "expected_answer": "A knowledge base project.",
+                            "found_answer": "A knowledge base project.",
+                            "correct": True,
+                        },
+                        {
+                            "question": "What is WiCER?",
+                            "expected_answer": "An iterative compilation loop.",
+                            "found_answer": "An iterative compilation loop.",
+                            "correct": True,
+                        },
+                    ],
                 })
-            return json.dumps({"critical_facts": []})
+            return self._llm_result({"critical_facts": []})
 
-        mock_litellm.side_effect = mock_responses
+        mock_llm.side_effect = respond
         chunks = _make_chunks(count=2, heading="Test")
         compiler = WiCERCompiler(max_iterations=1)
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_probes_generated"] == 2
 
-    def test_llm_evaluation_detects_failures(self, mock_litellm: MagicMock) -> None:
+    def test_llm_evaluation_detects_failures(self, mock_llm: MagicMock) -> None:
         """When evaluation says probes fail, refinement happens."""
-        # First call: generate probes
-        # Second call: evaluate (find failures)
-        # Third call: diagnose
-        mock_litellm.side_effect = [
-            # _generate_probes
-            json.dumps([
+        mock_llm.side_effect = [
+            self._llm_result([
                 {"question": "What is KNOX?", "answer": "A knowledge base project."},
             ]),
-            # _evaluate — all wrong
-            json.dumps({
+            self._llm_result({
                 "results": [
-                    {"question": "What is KNOX?", "expected_answer": "A knowledge base project.",
-                     "found_answer": "", "correct": False},
-                ]
+                    {"question": "What is KNOX?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False},
+                ],
             }),
-            # _diagnose
-            json.dumps({
-                "critical_facts": ["KNOX is a knowledge base project."]
+            self._llm_result({
+                "critical_facts": ["KNOX is a knowledge base project."],
             }),
         ]
         chunks = _make_chunks(count=1, heading="Test")
         compiler = WiCERCompiler(max_iterations=1)
         wiki = compiler.compile(chunks)
-        # Should have refined (added pinned facts node)
         assert wiki.metadata["wicer_refinements"] == 1
 
-    def test_all_probes_pass_loop_ends(self, mock_litellm: MagicMock) -> None:
+    def test_all_probes_pass_loop_ends(self, mock_llm: MagicMock) -> None:
         """When all probes pass, the loop ends early."""
-        mock_litellm.side_effect = [
-            # _generate_probes
-            json.dumps([
+        mock_llm.side_effect = [
+            self._llm_result([
                 {"question": "Q1?", "answer": "A1."},
             ]),
-            # _evaluate — all correct
-            json.dumps({
+            self._llm_result({
                 "results": [
-                    {"question": "Q1?", "expected_answer": "A1.",
-                     "found_answer": "A1.", "correct": True},
-                ]
+                    {"question": "Q1?", "expected_answer": "A1.", "found_answer": "A1.", "correct": True},
+                ],
             }),
         ]
         chunks = _make_chunks(count=1, heading="Test")
         compiler = WiCERCompiler(max_iterations=3)
         wiki = compiler.compile(chunks)
-        # Should have 1 iteration and 0 refinements
         assert wiki.metadata["wicer_iterations"] == 1
         assert wiki.metadata["wicer_refinements"] == 0
 
     def test_llm_failure_falls_back_gracefully(self) -> None:
-        """When litellm raises, WiCER falls back to blind compilation."""
+        """When the LLM client returns None, WiCER falls back to blind compilation."""
         chunks = _make_chunks(count=2, heading="Fallback")
         compiler = WiCERCompiler(max_iterations=2)
-        wiki = compiler.compile(chunks)
+        with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
+            wiki = compiler.compile(chunks)
         assert len(wiki.nodes) >= 1
-        # Should still have iteration info
         assert wiki.metadata["wicer_iterations"] > 0
 
     def test_custom_base_compiler(self) -> None:
@@ -353,6 +376,11 @@ class TestWiCERCompilerWithMock:
 
 class TestWiCERWithGraphCompiler:
     """WiCERCompiler wrapping a real GraphCompiler."""
+
+    @pytest.fixture(autouse=True)
+    def _no_llm(self):
+        with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
+            yield
 
     def test_compiles_multi_section_doc(self) -> None:
         chunks = _make_diverse_chunks()

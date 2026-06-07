@@ -1,14 +1,18 @@
-"""Tests for KNOX Tier 3 resolvers and enrichers."""
+"""Tests for KNOX Tier 3 resolvers and enrichers.
+
+LLMResolver and VLMEnricher now route through the shared
+:class:`knox.llm.LLMClient`. These tests inject a client whose
+``try_complete`` is patched so the tests stay fast and deterministic.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-import knox.resolution.llm as llm_mod
 from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.llm.client import LLMClient, LLMResult
+from knox.llm.failover import CallDiagnostics
 from knox.resolution import LLMResolver, VLMEnricher
 
 
@@ -28,155 +32,173 @@ def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:
     )
 
 
+def _make_client(try_complete_return: LLMResult | None = None) -> LLMClient:
+    """Build an LLMClient with try_complete patched to return a fixed value."""
+    client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
+    client.try_complete = MagicMock(return_value=try_complete_return)  # type: ignore[method-assign]
+    return client
+
+
+def _llm_result(data: dict, model: str = "ollama/test") -> LLMResult:
+    return LLMResult(
+        content="",
+        json_data=data,
+        diagnostics=CallDiagnostics(model_used=model, attempts=1, total_latency_s=0.01),
+    )
+
+
 class TestLLMResolver:
 
-    def test_text_chunk_returns_resolved_chunk(self) -> None:
-        resolver = LLMResolver()
+    def test_atomic_table_skipped(self) -> None:
+        """Atomic chunks bypass the LLM entirely."""
+        client = _make_client()
+        resolver = LLMResolver(client=client)
+        result = resolver.resolve(_atomic_chunk(ElementType.TABLE))
+        assert result.entities == []
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_atomic_image_skipped(self) -> None:
+        client = _make_client()
+        resolver = LLMResolver(client=client)
+        result = resolver.resolve(_atomic_chunk(ElementType.IMAGE))
+        assert result.entities == []
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_atomic_formula_skipped(self) -> None:
+        client = _make_client()
+        resolver = LLMResolver(client=client)
+        result = resolver.resolve(_atomic_chunk(ElementType.FORMULA))
+        assert result.entities == []
+
+    def test_atomic_code_skipped(self) -> None:
+        client = _make_client()
+        resolver = LLMResolver(client=client)
+        result = resolver.resolve(_atomic_chunk(ElementType.CODE))
+        assert result.entities == []
+
+    def test_llm_failure_falls_back_to_passthrough(self) -> None:
+        """When the client returns None, the resolver passes the chunk through."""
+        client = _make_client(try_complete_return=None)
+        resolver = LLMResolver(client=client)
         chunk = _text_chunk()
         result = resolver.resolve(chunk)
         assert isinstance(result, ResolvedChunk)
         assert result.chunk is chunk
-
-    def test_text_chunk_no_litellm(self) -> None:
-        """When litellm is absent the resolver returns a passthrough."""
-        import builtins
-
-        real_import = builtins.__import__
-
-        def _block_litellm(name, *args, **kwargs):
-            if name == "litellm":
-                raise ImportError("litellm not available")
-            return real_import(name, *args, **kwargs)
-
-        with patch.object(builtins, "__import__", _block_litellm):
-            resolver = LLMResolver(model="llama3.2", provider="ollama")
-            chunk = _text_chunk()
-            result = resolver.resolve(chunk)
-            assert isinstance(result, ResolvedChunk)
-            assert result.chunk is chunk
-
-    def test_atomic_table_skipped(self) -> None:
-        resolver = LLMResolver()
-        chunk = _atomic_chunk(ElementType.TABLE)
-        result = resolver.resolve(chunk)
-        assert result.chunk is chunk
         assert result.entities == []
+        client.try_complete.assert_called_once()  # type: ignore[attr-defined]
 
-    def test_atomic_image_skipped(self) -> None:
-        resolver = LLMResolver()
-        chunk = _atomic_chunk(ElementType.IMAGE)
-        result = resolver.resolve(chunk)
-        assert result.chunk is chunk
-        assert result.entities == []
+    def test_extracts_entities_from_llm_response(self) -> None:
+        """Successful client call populates entities/relations/refs."""
+        data = {
+            "entities": [{"name": "Apple Inc.", "type": "ORG", "context": "company"}],
+            "relations": [{"source": "Apple", "target": "Steve Jobs", "type": "founded_by"}],
+            "resolved_references": ["Apple Inc."],
+        }
+        client = _make_client(try_complete_return=_llm_result(data))
+        resolver = LLMResolver(client=client)
+        result = resolver.resolve(_text_chunk())
+        assert len(result.entities) == 1
+        assert result.entities[0]["name"] == "Apple Inc."
+        assert result.relations[0]["type"] == "founded_by"
+        assert result.metadata["resolved_by"] == "ollama/test"
+        assert result.metadata["llm_attempts"] == 1
 
-    def test_atomic_formula_skipped(self) -> None:
-        resolver = LLMResolver()
-        chunk = _atomic_chunk(ElementType.FORMULA)
-        result = resolver.resolve(chunk)
-        assert result.chunk is chunk
-
-    def test_atomic_code_skipped(self) -> None:
-        resolver = LLMResolver()
-        chunk = _atomic_chunk(ElementType.CODE)
-        result = resolver.resolve(chunk)
-        assert result.chunk is chunk
-
-    def test_resolver_never_raises_on_litellm_failure(self) -> None:
-        """If litellm call fails, fall back gracefully."""
-        resolver = LLMResolver()
-        with patch("litellm.completion", side_effect=RuntimeError("LLM down")) as mock_completion:
-            chunk = _text_chunk()
-            result = resolver.resolve(chunk)
-            assert isinstance(result, ResolvedChunk)
-            assert result.entities == []
-            mock_completion.assert_called_once()
-
-    def test_resolver_with_mocked_litellm_success(self) -> None:
-        """With a working litellm mock, entities are extracted."""
-        resolver = LLMResolver()
-        mock_choices = [MagicMock(message=MagicMock(
-            content='{"entities": [{"name": "Apple Inc.", "type": "ORG", "context": "company"}], "relations": [], "resolved_references": []}'
-        ))]
-        with patch("litellm.completion", return_value=MagicMock(choices=mock_choices)):
-            chunk = _text_chunk()
-            result = resolver.resolve(chunk)
-            assert len(result.entities) == 1
-            assert result.entities[0]["name"] == "Apple Inc."
-
-    def test_resolver_mocked_litellm_bad_json(self) -> None:
-        """If LLM returns unparseable JSON, fall back."""
-        resolver = LLMResolver()
-        mock_choices = [MagicMock(message=MagicMock(content="not valid json"))]
-        with patch("litellm.completion", return_value=MagicMock(choices=mock_choices)):
-            chunk = _text_chunk()
-            result = resolver.resolve(chunk)
-            assert result.entities == []
-
-    def test_resolver_mocked_litellm_empty_response(self) -> None:
-        """If LLM returns empty content, fall back."""
-        resolver = LLMResolver()
-        mock_choices = [MagicMock(message=MagicMock(content=""))]
-        with patch("litellm.completion", return_value=MagicMock(choices=mock_choices)):
-            chunk = _text_chunk()
-            result = resolver.resolve(chunk)
-            assert result.entities == []
+    def test_role_can_be_overridden(self) -> None:
+        """Custom role is forwarded to the client."""
+        client = _make_client(try_complete_return=None)
+        resolver = LLMResolver(client=client, role="custom.resolve")
+        resolver.resolve(_text_chunk())
+        call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["role"] == "custom.resolve"
 
 
 class TestVLMEnricher:
 
-    def test_no_backend_noop(self) -> None:
-        """No VLM backend available → no-op."""
-        enricher = VLMEnricher()
-        resolved = enricher.enrich(ResolvedChunk(chunk=_text_chunk()))
-        assert resolved.entities == []
-
     def test_non_image_chunk_skipped(self) -> None:
-        enricher = VLMEnricher()
-        enricher._backend = "litellm"
-        chunk = _text_chunk("just text")
-        resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
-        for e in resolved.entities:
-            assert e.get("type") != "image_description"
+        """Text chunks bypass the VLM call entirely."""
+        client = _make_client()
+        enricher = VLMEnricher(client=client)
+        resolved = enricher.enrich(ResolvedChunk(chunk=_text_chunk("just text")))
+        for entity in resolved.entities:
+            assert entity.get("type") != "image_description"
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
     def test_image_chunk_placeholder_when_no_path(self) -> None:
-        """Image chunk without file → placeholder entity."""
-        enricher = VLMEnricher()
-        enricher._backend = "litellm"
+        """Image chunk without a file path produces a placeholder entity."""
+        client = _make_client()
+        enricher = VLMEnricher(client=client)
         chunk = _image_chunk(image_path=None)
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert len(descs) >= 1
+        assert len(descs) == 1
+        assert "no image path" in descs[0]["context"].lower()
 
-    def test_enrich_with_mock(self) -> None:
-        enricher = VLMEnricher()
-        enricher._backend = "litellm"
-        with patch.object(enricher, "_generate_caption", return_value="A test image"):
-            chunk = _image_chunk()
-            resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
+    def test_image_chunk_missing_file_records_error(self, tmp_path: Path) -> None:
+        """Image path pointing to a non-existent file → error entity, no LLM call."""
+        client = _make_client()
+        enricher = VLMEnricher(client=client)
+        chunk = _image_chunk(image_path=str(tmp_path / "missing.png"))
+        resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert any("test" in d.get("context", "") for d in descs)
+        assert len(descs) == 1
+        assert "not found" in descs[0]["context"].lower()
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
-    def test_enrich_handles_exception_gracefully(self) -> None:
-        enricher = VLMEnricher()
-        enricher._backend = "litellm"
-        with patch.object(enricher, "_generate_caption", side_effect=RuntimeError("VLM crash")):
-            chunk = _image_chunk()
-            resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
-        assert isinstance(resolved, ResolvedChunk)
+    def test_caption_generated_when_client_succeeds(self, tmp_path: Path) -> None:
+        png_path = tmp_path / "test.png"
+        png_path.write_bytes(b"PNG mock data")
 
-    def test_caption_via_litellm_mocked(self) -> None:
-        enricher = VLMEnricher()
-        enricher._backend = "litellm"
-        png_path = Path("/tmp/test_vlm.png")
-        try:
-            png_path.write_bytes(b"PNG mock data")
-            with patch("litellm.completion") as mock_completion:
-                mock_completion.return_value.choices = [
-                    MagicMock(message=MagicMock(content="A test image caption"))
-                ]
-                caption = enricher._caption_via_litellm(png_path)
-                assert caption == "A test image caption"
-                mock_completion.assert_called_once()
-        finally:
-            if png_path.exists():
-                png_path.unlink()
+        result = LLMResult(
+            content="A test image caption",
+            json_data=None,
+            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
+        )
+        client = _make_client(try_complete_return=result)
+        enricher = VLMEnricher(client=client)
+        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(descs) == 1
+        assert descs[0]["context"] == "A test image caption"
+        assert resolved.metadata.get("vlm_enriched") is True
+
+    def test_caption_returns_none_records_error(self, tmp_path: Path) -> None:
+        png_path = tmp_path / "test.png"
+        png_path.write_bytes(b"PNG mock data")
+
+        client = _make_client(try_complete_return=None)
+        enricher = VLMEnricher(client=client)
+        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(descs) == 1
+        assert "failed" in descs[0]["context"].lower()
+
+    def test_role_forwarded_to_client(self, tmp_path: Path) -> None:
+        png_path = tmp_path / "test.png"
+        png_path.write_bytes(b"PNG mock data")
+
+        client = _make_client(try_complete_return=None)
+        enricher = VLMEnricher(client=client, role="custom.vlm")
+        enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
+        assert call_kwargs["role"] == "custom.vlm"
+
+
+class TestVLMEnricherIntegration:
+    """Sanity checks against the real LiteLLM call path (mocked)."""
+
+    def test_litellm_completion_invoked_for_image(self, tmp_path: Path) -> None:
+        """End-to-end: real LLMClient + patched litellm.completion."""
+        png_path = tmp_path / "img.png"
+        png_path.write_bytes(b"PNG")
+
+        client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
+        enricher = VLMEnricher(client=client)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="caption text"))]
+        with patch("litellm.completion", return_value=mock_response) as mock_completion:
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+
+        mock_completion.assert_called_once()
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert descs[0]["context"] == "caption text"
