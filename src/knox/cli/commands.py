@@ -9,14 +9,6 @@ from typing import Annotated
 import typer
 
 from knox.cli.app import app
-from knox.core.config import (
-    get_frontmatter_defaults as _get_frontmatter_defaults,
-    get_ignore_patterns as _get_ignore_patterns,
-    get_output_flavor as _get_output_flavor,
-    get_rumdl_config_path as _get_rumdl_config_path,
-    load_config as _load_config,
-)
-
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_COMPILE_FORMAT,
@@ -45,6 +37,7 @@ from knox.cli.args import (
     LintSourcesDir,
     LintThreshold,
     ListTiers,
+    LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     NoCacheFlag,
@@ -67,6 +60,8 @@ from knox.cli.args import (
     Verify,
     Workers,
 )
+from knox.core.config import resolve_config
+
 from knox.core.models import CompiledWiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
 from knox.preprocessing.parsers._registry import register_parser
@@ -153,6 +148,7 @@ def compile_cmd(
     synthesize: SynthesizeFlag = False,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
+    llm_default_model: LlmDefaultModel = None,
     compile_lint: CompileLint = False,
 ) -> None:
     """Compile documents into a knowledge wiki.
@@ -204,50 +200,78 @@ def compile_cmd(
 
     typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
 
-    # 6. Load config file (if any) and merge with CLI flags
-    knox_config = _load_config()
-    fallback_chain_list = list(llm_fallback_chain) if llm_fallback_chain else []
+    # 6. Resolve config: CLI > env > project config > global config > defaults
+    cli_overrides = _build_cli_overrides(
+        sources_dir=sources_dir,
+        output_dir=output_dir,
+        target_format=target_format,
+        chunk_size=chunk_size,
+        image_mode=image_mode,
+        mode=mode,
+        no_cache=no_cache,
+        workers=workers,
+        force=force,
+        two_phase=two_phase,
+        prompt_budget=prompt_budget,
+        review=review,
+        provenance=provenance,
+        private=private,
+        verify=verify,
+        synthesize=synthesize,
+        index_store=index_store,
+        compile_lint=compile_lint,
+        flavor=flavor,
+        frontmatter=frontmatter,
+        ignore=ignore,
+        llm_default_model=llm_default_model,
+        llm_fallback_chain=llm_fallback_chain,
+        llm_fallback_max_retries=llm_fallback_max_retries,
+    )
+    cfg = resolve_config(cli_overrides=cli_overrides)
 
-    # Resolve flavor: CLI > config > None (auto-detect)
-    resolved_flavor = flavor or _get_output_flavor(knox_config)
+    # Extract resolved values from the merged config
+    resolved_flavor = cfg.get("compile.output.flavor")
+    fallback_chain_list = cfg.get("compile.llm.fallback_chain", [])
 
-    # Resolve frontmatter defaults: CLI > config > {}
-    frontmatter_defaults: dict[str, str] = dict(_get_frontmatter_defaults(knox_config))
+    # Merge frontmatter: config defaults + CLI key=value overrides
+    frontmatter_defaults: dict[str, str] = dict(cfg.get("compile.output.frontmatter", {}))
     if frontmatter:
         for kv in frontmatter:
             if "=" in kv:
                 k, v = kv.split("=", 1)
                 frontmatter_defaults[k.strip()] = v.strip()
 
-    # Resolve ignore patterns: CLI extends config > config > []
-    resolved_ignore = list(_get_ignore_patterns(knox_config))
+    # Merge ignore patterns: config + CLI additions
+    resolved_ignore = list(cfg.get("ignore.patterns", []))
     if ignore:
         resolved_ignore.extend(ignore)
 
-    # Resolve rumdl config path from config file (only via config, not CLI)
-    rumdl_config_path = _get_rumdl_config_path(knox_config)
+    rumdl_config_path = cfg.get("compile.output.rumdl_config")
+    if isinstance(rumdl_config_path, str):
+        rumdl_config_path = Path(rumdl_config_path)
 
     config = PipelineConfig(
         source_dir=sources_dir_path,
         output_dir=output_dir_path,
         online_sources=[],  # already downloaded above
-        compile_target=target_format,
-        chunk_size=chunk_size,
-        image_mode=image_mode,
+        compile_target=cfg.get("compile.format", target_format),
+        chunk_size=cfg.get("compile.chunk_size", chunk_size),
+        image_mode=cfg.get("compile.image_mode", image_mode),
         input_files=all_input_files,
         ignore_patterns=resolved_ignore,
-        mode=mode,
-        no_cache=no_cache,
-        workers=workers,
-        force=force,
+        mode=cfg.get("compile.mode", mode),
+        no_cache=cfg.get("compile.no_cache", no_cache),
+        workers=cfg.get("compile.workers", workers),
+        force=cfg.get("compile.force", force),
         flavor=resolved_flavor,
         frontmatter_defaults=frontmatter_defaults or None,
         rumdl_config=rumdl_config_path,
         llm_fallback_chain=fallback_chain_list,
-        llm_fallback_max_retries_per_model=llm_fallback_max_retries,
+        llm_fallback_max_retries_per_model=cfg.get("compile.llm.fallback_max_retries", llm_fallback_max_retries),
+        llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
     )
 
-    pipeline = build_pipeline(config, two_phase=two_phase, prompt_budget=prompt_budget)
+    pipeline = build_pipeline(config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
 
     if list_tiers:
         _print_tier_listing(pipeline)
@@ -600,6 +624,7 @@ def lint_cmd(
     rule: LintRule = None,
     threshold: LintThreshold = None,
     json_output: JsonOutput = False,
+    llm_default_model: LlmDefaultModel = None,
 ) -> None:
     """Lint a compiled wiki for quality issues.
 
@@ -626,9 +651,15 @@ def lint_cmd(
 
     llm_client = None
     if llm or (rule and any(r in ("factual-consistency", "clarity-score", "coverage-gap") for r in rule)):
+        if not llm_default_model:
+            typer.echo(
+                "LLM-powered lint rules require --llm-default-model (e.g. --llm-default-model openai/gpt-4o).",
+                err=True,
+            )
+            raise typer.Exit(1)
         from knox.llm.client import LLMClient  # noqa: PLC0415
 
-        llm_client = LLMClient()
+        llm_client = LLMClient(default_model=llm_default_model)
 
     runner = LintRunner(
         rules=list(rule) if rule else None,
@@ -649,7 +680,129 @@ def lint_cmd(
         raise typer.Exit(1)
 
 
+
+# ── config show ───────────────────────────────────────────────────────
+
+
+@app.command(name="config")
+def config_cmd(
+    show_source: bool = typer.Option(False, "--source", help="Show where each value comes from."),
+    json_output: JsonOutput = False,
+) -> None:
+    """Show resolved KNOX configuration.
+
+    Displays the merged configuration from all layers:
+    CLI > env vars > project knox.toml > global config > defaults.
+
+    Examples:
+        knox config                # show resolved config
+        knox config --source       # show where each value comes from
+        knox config --json         # machine-readable output
+    """
+    cfg = resolve_config()
+    flat = cfg.flat()
+
+    if json_output:
+        import json as j  # noqa: PLC0415
+
+        data = {k: {"value": v, "source": str(cfg.source_of(k))} for k, v in flat.items()}
+        typer.echo(j.dumps(data, indent=2, default=str))
+        return
+
+    max_key_len = max(len(k) for k in flat) if flat else 20
+    for key in sorted(flat):
+        value = flat[key]
+        if show_source:
+            source = cfg.source_of(key)
+            typer.echo(f"  {key:<{max_key_len}}  {str(value):<30}  [{source}]")
+        else:
+            typer.echo(f"  {key:<{max_key_len}}  {value}")
+
+    if cfg.project_config_path:
+        typer.echo(f"\n  Project config: {cfg.project_config_path}")
+    if cfg.global_config_path:
+        typer.echo(f"  Global config:  {cfg.global_config_path}")
+
+
+
+
 # ── Internal helpers ────────────────────────────────────────────────────
+
+
+def _build_cli_overrides(
+    *,
+    sources_dir: str | None = None,
+    output_dir: str | None = None,
+    target_format: str | None = None,
+    chunk_size: int | None = None,
+    image_mode: str | None = None,
+    mode: str | None = None,
+    no_cache: bool | None = None,
+    workers: int | None = None,
+    force: bool | None = None,
+    two_phase: bool | None = None,
+    prompt_budget: int | None = None,
+    review: bool | None = None,
+    provenance: bool | None = None,
+    private: bool | None = None,
+    verify: bool | None = None,
+    synthesize: bool | None = None,
+    index_store: bool | None = None,
+    compile_lint: bool | None = None,
+    flavor: str | None = None,
+    frontmatter: list[str] | None = None,
+    ignore: list[str] | None = None,
+    llm_default_model: str | None = None,
+    llm_fallback_chain: list[str] | None = None,
+    llm_fallback_max_retries: int | None = None,
+) -> dict[str, Any]:
+    """Build a flat dotted-key dict of non-None CLI overrides."""
+    overrides: dict[str, Any] = {}
+    if sources_dir is not None:
+        overrides["compile.sources_dir"] = sources_dir
+    if output_dir is not None:
+        overrides["compile.output_dir"] = output_dir
+    if target_format is not None:
+        overrides["compile.format"] = target_format
+    if chunk_size is not None:
+        overrides["compile.chunk_size"] = chunk_size
+    if image_mode is not None:
+        overrides["compile.image_mode"] = image_mode
+    if mode is not None:
+        overrides["compile.mode"] = mode
+    if no_cache:
+        overrides["compile.no_cache"] = no_cache
+    if workers is not None:
+        overrides["compile.workers"] = workers
+    if force:
+        overrides["compile.force"] = force
+    if two_phase is not None:
+        overrides["compile.two_phase"] = two_phase
+    if prompt_budget is not None:
+        overrides["compile.prompt_budget"] = prompt_budget
+    if review:
+        overrides["compile.review"] = review
+    if provenance:
+        overrides["compile.provenance"] = provenance
+    if private:
+        overrides["compile.private"] = private
+    if verify:
+        overrides["compile.verify"] = verify
+    if synthesize:
+        overrides["compile.synthesize"] = synthesize
+    if index_store:
+        overrides["compile.index"] = index_store
+    if compile_lint:
+        overrides["compile.lint"] = compile_lint
+    if flavor is not None:
+        overrides["compile.output.flavor"] = flavor
+    if llm_default_model is not None:
+        overrides["compile.llm.default_model"] = llm_default_model
+    if llm_fallback_chain is not None:
+        overrides["compile.llm.fallback_chain"] = list(llm_fallback_chain)
+    if llm_fallback_max_retries is not None:
+        overrides["compile.llm.fallback_max_retries"] = llm_fallback_max_retries
+    return overrides
 
 
 def _build_router() -> ParserRouter:
