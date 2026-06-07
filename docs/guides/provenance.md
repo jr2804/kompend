@@ -52,7 +52,7 @@ $ knox provenance self-attention --json
 Provenance data comes from `SourceChunk` references tracked during compilation.
 When a chunker splits a document, each chunk carries an ID like:
 
-```
+```text
 <source-file>:<start-line>-<end-line>
 ```
 

@@ -7,7 +7,7 @@ It is designed around three principles:
 2. **Single rendering path** — `DocumentRenderer` is the only way to produce Markdown
 3. **rumdl for flavor support** — all Markdown flavor transformations go through `rumdl fmt`, never hand-rolled
 
-```
+```text
               ┌──────────────────┐
               │   CompiledWiki   │
               │  (core/models)   │
@@ -81,7 +81,7 @@ result = renderer.render(doc)
 
 When rumdl is installed, `render()` pipes the raw Markdown through:
 
-```
+```text
 rumdl fmt --flavor <FLAVOR> --stdin --stdin-filename page.md --silent
 ```
 

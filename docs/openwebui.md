@@ -13,6 +13,7 @@ knox compile ./sources --format json --index
 ```
 
 This produces:
+
 - `wiki/wiki.json` — full compiled knowledge graph
 
 ### 2. Point Open-WebUI at the JSON graph

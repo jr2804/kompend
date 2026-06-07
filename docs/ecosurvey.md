@@ -49,7 +49,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 - **Primary:** Docling (MIT, 60.7k stars, integrated with KNOX as Tier 1 parser)
 - **Alternative:** opendataloader-pdf (best benchmark, hybrid AI) — can be swapped via `BaseParser` interface
-- **Legacy .doc:** Oxide Office (https://office.oxide.fyi/)
+- **Legacy .doc:** Oxide Office (<https://office.oxide.fyi/>)
 - **Images:** GLM-OCR for local VLM, Mistral OCR for best quality (paid)
 
 ## Chunking Libraries
@@ -167,20 +167,20 @@ No custom GUI. Use **open-webui/open-webui** as the query/work interface. KNOX e
 
 ## References
 
-- sage-wiki: https://github.com/xoai/sage-wiki
-- llm-wiki-compiler: https://github.com/atomicstrata/llm-wiki-compiler
-- llmwiki: https://github.com/lucasastorian/llmwiki
-- nashsu/llm_wiki: https://github.com/nashsu/llm_wiki
-- Tencent/WeKnora: https://github.com/Tencent/WeKnora
-- Docling: https://github.com/DS4SD/docling
-- opendataloader-pdf: https://github.com/opendataloader-project/opendataloader-pdf
-- Marker: https://github.com/VikParuchuri/marker
-- MinerU: https://github.com/opendatalab-project/MinerU
-- Chonkie: https://github.com/chonkie-inc/chonkie
-- zvec: https://github.com/alibaba/zvec
-- qmd: https://github.com/tobi/qmd
-- open-webui: https://github.com/open-webui/open-webui
-- Oxide Office: https://office.oxide.fyi/
-- VectifyAI/PageIndex: https://github.com/VectifyAI/PageIndex
-- WiCER paper: https://arxiv.org/pdf/2605.07068v1
-- Karpathy's Gist: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
+- sage-wiki: <https://github.com/xoai/sage-wiki>
+- llm-wiki-compiler: <https://github.com/atomicstrata/llm-wiki-compiler>
+- llmwiki: <https://github.com/lucasastorian/llmwiki>
+- nashsu/llm_wiki: <https://github.com/nashsu/llm_wiki>
+- Tencent/WeKnora: <https://github.com/Tencent/WeKnora>
+- Docling: <https://github.com/DS4SD/docling>
+- opendataloader-pdf: <https://github.com/opendataloader-project/opendataloader-pdf>
+- Marker: <https://github.com/VikParuchuri/marker>
+- MinerU: <https://github.com/opendatalab-project/MinerU>
+- Chonkie: <https://github.com/chonkie-inc/chonkie>
+- zvec: <https://github.com/alibaba/zvec>
+- qmd: <https://github.com/tobi/qmd>
+- open-webui: <https://github.com/open-webui/open-webui>
+- Oxide Office: <https://office.oxide.fyi/>
+- VectifyAI/PageIndex: <https://github.com/VectifyAI/PageIndex>
+- WiCER paper: <https://arxiv.org/pdf/2605.07068v1>
+- Karpathy's Gist: <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>

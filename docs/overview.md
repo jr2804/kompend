@@ -63,5 +63,4 @@ uv run pytest tests/       # run tests
 ## Contact
 
 Author: Jan Reimes  
-Email: jan@reimes.de
-
+Email: <jan@reimes.de>

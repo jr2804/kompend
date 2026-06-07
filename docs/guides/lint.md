@@ -28,7 +28,7 @@ knox lint --threshold 80
 
 ### `knox lint`
 
-```
+```text
 knox lint [OPTIONS]
 
 Lint a compiled wiki for quality issues.
@@ -90,7 +90,7 @@ LLM rules require a configured LLM. If no LLM is available, they report `SKIP`.
 
 The health score is computed as:
 
-```
+```text
 health_score = 100 × (PASS results) / (total results)
 ```
 

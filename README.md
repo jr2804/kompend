@@ -1,6 +1,6 @@
 # KNOX
 
-**Knowledge Organizer for eXtended documents**
+## Knowledge Organizer for eXtended documents
 
 A compiled LLM-wiki system for scientific and technical documents. Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web sources into an interlinked, queryable knowledge base — with structure-preserving parsing, hybrid chunking, multi-turn resolution, and WiCER iterative compilation.
 
@@ -76,7 +76,7 @@ Full option reference: `knox compile --help`, `knox parse --help`
 
 ### `knox compile`
 
-```
+```text
 knox compile [OPTIONS] FILES...
 
 Compile documents into a knowledge wiki.
@@ -104,7 +104,7 @@ Options:
 
 ### `knox parse`
 
-```
+```text
 knox parse [OPTIONS] FILES...
 
 Parse documents and show their structure.
@@ -124,7 +124,7 @@ Options:
 
 ### Global Options
 
-```
+```text
 knox --version, -v   Show version and exit
 knox --help          Show help and exit
 ```
@@ -133,7 +133,7 @@ knox --help          Show help and exit
 
 KNOX runs a 5-tier pipeline — each tier independently replaceable:
 
-```
+```text
 Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: Compilation → T5: Output
 ```
 

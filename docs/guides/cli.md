@@ -21,16 +21,18 @@ KNOX provides a Typer-based CLI with the following commands:
 
 Parse documents and display their structural elements.
 
-```
+```text
 knox parse [OPTIONS] FILES...
 ```
 
 **Arguments:**
+
 | Name | Description |
 |------|-------------|
 | `FILES...` | Files, glob patterns, or directories to parse (required) |
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--recursive/--no-recursive`, `-r/-R` | Search source directories recursively |
@@ -40,16 +42,18 @@ knox parse [OPTIONS] FILES...
 
 Compile documents into a knowledge wiki.
 
-```
+```text
 knox compile [OPTIONS] FILES...
 ```
 
 **Arguments:**
+
 | Name | Description |
 |------|-------------|
 | `FILES...` | Files, glob patterns, or directories to compile (required) |
 
 **Options:**
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--sources-dir`, `-s` | `sources` | Input sources directory |
@@ -74,6 +78,7 @@ knox compile *.pdf --ignore "*.bak" --ignore "drafts/**"
 ```
 
 Ignore patterns can also be configured in `.knox/config.yaml`:
+
 ```yaml
 ignore:
   - "*.tmp"
@@ -98,17 +103,19 @@ Use `--no-progress` to disable, or `--progress` to force enable.
 
 Validate configuration and connectivity.
 
-```
+```text
 knox doctor [OPTIONS]
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--verbose` | Show detailed output (including LLM connectivity check) |
 | `--json` | Output in JSON format for machine readability |
 
 Checks performed:
+
 1. **Source directory** — exists and is a directory
 2. **Output directory** — exists and is writable
 3. **Parsers** — all registered parser dependencies load correctly
@@ -123,16 +130,18 @@ Exit code: `0` if all checks pass, `1` if any check fails.
 
 Show per-wiki statistics.
 
-```
+```text
 knox status [OPTIONS]
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--json` | Output in JSON format |
 
 Displays:
+
 - Wiki name and config file path
 - Source count and total size
 - Article count and total word count
@@ -143,11 +152,12 @@ Displays:
 
 List all registered parsers (built-in, external, and HTTP).
 
-```
+```text
 knox list-parsers [OPTIONS]
 ```
 
 **Options:**
+
 | Flag | Description |
 |------|-------------|
 | `--json` | Output in JSON format |

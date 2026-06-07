@@ -64,6 +64,7 @@ Append-only activity journal — never overwritten.
 ```
 
 Each entry includes:
+
 - ISO 8601 timestamp
 - Operation type (`compile`)
 - Source-to-page counts
@@ -104,6 +105,7 @@ positional encoding, and pre-training objectives...
 
 The LLM is prompted with up to 10 source texts (first 2000 chars each) and
 asked to produce 2-3 paragraphs covering:
+
 - The main domain and key themes
 - Prominent entities and concepts
 - Notable relationships or open questions
@@ -112,7 +114,7 @@ asked to produce 2-3 paragraphs covering:
 
 After a full compile+synth, your output directory looks like:
 
-```
+```text
 wiki/
 ├── index.md          # TOC + stats (regenerated each compile)
 ├── log.md            # Activity journal (appended, never overwritten)

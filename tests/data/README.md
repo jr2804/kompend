@@ -1,6 +1,6 @@
 # Test Data
 
-```
+```text
 data/
 ├── sources/     ← raw documents (PDF, DOCX, MD…) for parse benchmarks
 │   └── *.pdf
