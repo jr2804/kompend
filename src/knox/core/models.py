@@ -21,6 +21,12 @@ class ElementType(Enum):
     METADATA = auto()
 
 
+ATOMIC_TYPES: frozenset[ElementType] = frozenset(
+    {ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE}
+)
+"""Element types that must never be split during chunking."""
+
+
 @dataclass
 class DocumentElement:
     """A single element from a parsed document (text, heading, table, etc.)."""

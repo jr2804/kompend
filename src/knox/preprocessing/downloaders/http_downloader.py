@@ -12,6 +12,8 @@ from knox.preprocessing.downloaders.base import BaseDownloader
 
 logger = logging.getLogger(__name__)
 
+_USER_AGENT = "KNOX/0.1 (Knowledge Organizer for eXtended Documents)"
+
 
 class HTTPDownloader(BaseDownloader):
     """Downloads direct file URLs (PDF, DOCX, etc.) into the sources directory."""
@@ -35,7 +37,9 @@ class HTTPDownloader(BaseDownloader):
 
         logger.info("Downloading %s -> %s", url, target_path)
         try:
-            urllib.request.urlretrieve(url, str(target_path))
+            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                target_path.write_bytes(response.read())
         except Exception:
             logger.exception("Failed to download %s", url)
             return None

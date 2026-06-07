@@ -13,12 +13,10 @@ from typing import Any
 
 import litellm
 
-from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ResolvedChunk
 from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
-
-_ATOMIC_TYPES = frozenset({ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE})
 
 
 class LLMResolver(BaseResolver):
@@ -49,7 +47,7 @@ class LLMResolver(BaseResolver):
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """Resolve entities and references in chunk. Never raises."""
 
-        if _ATOMIC_TYPES.intersection(chunk.element_types):
+        if ATOMIC_TYPES.intersection(chunk.element_types):
             return ResolvedChunk(chunk=chunk)
 
         try:

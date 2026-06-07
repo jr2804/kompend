@@ -20,30 +20,41 @@ from knox.preprocessing.downloaders.crawler import WebCrawler
 class TestHTTPDownloader:
     """Tests for HTTPDownloader."""
 
+    @staticmethod
+    def _mock_urlopen(data: bytes = b"pdf-content"):
+        """Create a mock context manager for urllib.request.urlopen."""
+        from io import BytesIO
+
+        response = MagicMock()
+        response.read.return_value = data
+        response.__enter__ = lambda s: response
+        response.__exit__ = MagicMock(return_value=False)
+        return response
+
     def test_download_success(self, tmp_path: Path) -> None:
         """Happy path: URL downloads and file is saved."""
         downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen()
 
-        with patch("urllib.request.urlretrieve") as mock_retrieve:
+        with patch("urllib.request.urlopen", return_value=mock_response) as mock_open:
             path = downloader.download("https://example.com/test.pdf", tmp_path)
 
         assert path is not None
         assert path.name == "test.pdf"
         assert path.parent == tmp_path
-        mock_retrieve.assert_called_once_with(
-            "https://example.com/test.pdf",
-            str(path),
-        )
+        assert path.read_bytes() == b"pdf-content"
+        mock_open.assert_called_once()
+        call_args = mock_open.call_args
+        assert call_args[1]["timeout"] == 5
 
     def test_download_collision_safe_filename(self, tmp_path: Path) -> None:
         """When file exists, append a counter suffix."""
-        # Create the file beforehand so the downloader must increment
         existing = tmp_path / "test.pdf"
         existing.write_text("dummy")
 
         downloader = HTTPDownloader(timeout=5)
 
-        with patch("urllib.request.urlretrieve"):
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
             path = downloader.download("https://example.com/test.pdf", tmp_path)
 
         assert path is not None
@@ -53,7 +64,7 @@ class TestHTTPDownloader:
         """Network error returns None without raising."""
         downloader = HTTPDownloader(timeout=1)
 
-        with patch("urllib.request.urlretrieve", side_effect=OSError("timeout")):
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
             path = downloader.download("https://example.com/bad.pdf", tmp_path)
 
         assert path is None
@@ -62,11 +73,10 @@ class TestHTTPDownloader:
         """URL without a path uses hash instead."""
         downloader = HTTPDownloader(timeout=5)
 
-        with patch("urllib.request.urlretrieve"):
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
             path = downloader.download("https://example.com", tmp_path)
 
         assert path is not None
-        # Name should be the first 16 chars of the SHA256 of the URL
         from hashlib import sha256
         expected = sha256(b"https://example.com").hexdigest()[:16]
         assert path.stem == expected
@@ -80,7 +90,7 @@ class TestHTTPDownloader:
             "https://example.com/c.pdf",
         ]
 
-        with patch("urllib.request.urlretrieve"):
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
             results = downloader.batch_download(urls, tmp_path)
 
         assert len(results) == 3
@@ -91,10 +101,10 @@ class TestHTTPDownloader:
         """batch_download handles mixed success/failure without raising."""
         downloader = HTTPDownloader(timeout=5)
 
-        def _side_effect(url: str, _: str) -> None:
-            if "fail" in url:
+        def _side_effect(request, timeout=None):
+            if "fail" in request.full_url:
                 raise OSError("failure")
-            return None
+            return self._mock_urlopen()
 
         urls = [
             "https://example.com/good.pdf",
@@ -102,7 +112,7 @@ class TestHTTPDownloader:
             "https://example.com/ok.pdf",
         ]
 
-        with patch("urllib.request.urlretrieve", side_effect=_side_effect):
+        with patch("urllib.request.urlopen", side_effect=_side_effect):
             results = downloader.batch_download(urls, tmp_path)
 
         assert len(results) == 2

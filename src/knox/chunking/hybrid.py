@@ -18,7 +18,7 @@ import chonkie
 from chonkie import RecursiveChunker  # noqa: F401
 
 from knox.chunking.base import BaseChunker
-from knox.core.models import Chunk, ElementType, ParsedDocument
+from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ParsedDocument
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class HybridChunker(BaseChunker):
         text_run_elements: list[int] = []
 
         for idx, el in enumerate(document.elements):
-            if el.type in _ATOMIC_TYPES:
+            if el.type in ATOMIC_TYPES:
                 if text_run_elements:
                     chunks.extend(self._chunk_text_run(document, text_run_elements))
                     text_run_elements = []
@@ -132,8 +132,6 @@ class HybridChunker(BaseChunker):
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
-
-_ATOMIC_TYPES: frozenset[ElementType] = frozenset({ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE})
 
 
 def _str_content(el: Any) -> str:
