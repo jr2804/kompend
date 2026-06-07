@@ -10,14 +10,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
+from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 logger = logging.getLogger(__name__)
 
 # ── Rule 9: factual-consistency ──────────────────────────────────────────
 
 
-class FactualConsistencyRule:
+class FactualConsistencyRule(BaseLintRule):
     """Check if claims in a page contradict source material."""
 
     name = "factual-consistency"
@@ -107,7 +107,7 @@ class FactualConsistencyRule:
 # ── Rule 10: clarity-score ──────────────────────────────────────────────
 
 
-class ClarityScoreRule:
+class ClarityScoreRule(BaseLintRule):
     """Rate readability, coherence, conciseness (1-10)."""
 
     name = "clarity-score"
@@ -197,7 +197,7 @@ class ClarityScoreRule:
 # ── Rule 11: coverage-gap ───────────────────────────────────────────────
 
 
-class CoverageGapRule:
+class CoverageGapRule(BaseLintRule):
     """Detect important concepts from sources missing in the wiki."""
 
     name = "coverage-gap"

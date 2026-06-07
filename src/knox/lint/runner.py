@@ -134,13 +134,49 @@ class LintRunner:
 
 
 def _build_report(results: list[LintResult]) -> LintReport:
-    """Compute aggregate stats from a flat list of results."""
+    """Compute aggregate stats from a flat list of results.
+
+    Health score is severity-weighted:
+      - ERROR failures cost 3 penalty points
+      - WARNING failures cost 2 penalty points
+      - INFO failures cost 1 penalty point
+      - PASS or SKIP results cost nothing
+
+    ``health_score = 100 * max(0, 1 - penalty / max_possible)``
+    where ``max_possible = total_checks * 3`` (worst case: all errors).
+    """
+    from knox.lint.base import Severity
+
     failures = sum(1 for r in results if r.outcome == LintRuleOutcome.FAIL)
     passes = sum(1 for r in results if r.outcome == LintRuleOutcome.PASS)
     skips = sum(1 for r in results if r.outcome == LintRuleOutcome.SKIP)
     total = failures + passes + skips
 
-    health_score = 100.0 * passes / max(total, 1)
+    # Empty result set → zero score (nothing to measure)
+    if total == 0:
+        return LintReport(
+            results=results,
+            total_checks=0,
+            failures=0,
+            passes=0,
+            skips=0,
+            health_score=0.0,
+        )
+
+    # Weighted penalty: ERROR=3, WARNING=2, INFO=1
+    penalty = 0
+    for r in results:
+        if r.outcome != LintRuleOutcome.FAIL:
+            continue
+        if r.severity == Severity.ERROR:
+            penalty += 3
+        elif r.severity == Severity.WARNING:
+            penalty += 2
+        else:
+            penalty += 1
+
+    max_possible = total * 3
+    health_score = 100.0 * max(0.0, 1.0 - penalty / max_possible)
 
     return LintReport(
         results=results,

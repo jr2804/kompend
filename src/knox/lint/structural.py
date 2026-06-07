@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
+from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -79,7 +79,6 @@ class BrokenWikilinksRule:
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
         """Remove broken wikilinks from page content."""
-        _node_titles_index(wiki)
         page_edits: dict[str, list[str]] = {}
         for r in results:
             if r.outcome == LintRuleOutcome.FAIL and r.details.get("target"):
@@ -161,7 +160,7 @@ class MissingFrontmatterRule:
 # ── Rule 3: orphan-page ─────────────────────────────────────────────────
 
 
-class OrphanPageRule:
+class OrphanPageRule(BaseLintRule):
     """Detect pages with no incoming wikilinks from other pages."""
 
     name = "orphan-page"
@@ -198,7 +197,7 @@ class OrphanPageRule:
 # ── Rule 4: duplicate-title ─────────────────────────────────────────────
 
 
-class DuplicateTitleRule:
+class DuplicateTitleRule(BaseLintRule):
     """Detect pages with duplicate or very similar titles."""
 
     name = "duplicate-title"
@@ -238,7 +237,7 @@ class DuplicateTitleRule:
 # ── Rule 5: empty-page ──────────────────────────────────────────────────
 
 
-class EmptyPageRule:
+class EmptyPageRule(BaseLintRule):
     """Detect pages with no body content."""
 
     name = "empty-page"
@@ -272,7 +271,7 @@ class EmptyPageRule:
 # ── Rule 6: heading-skip ────────────────────────────────────────────────
 
 
-class HeadingSkipRule:
+class HeadingSkipRule(BaseLintRule):
     """Detect heading level jumps (e.g. h1 → h3 without h2)."""
 
     name = "heading-skip"
@@ -314,7 +313,7 @@ class HeadingSkipRule:
 # ── Rule 7: stale-page ──────────────────────────────────────────────────
 
 
-class StalePageRule:
+class StalePageRule(BaseLintRule):
     """Detect pages whose source files have been modified since last compile."""
 
     name = "stale-page"
@@ -367,7 +366,7 @@ class StalePageRule:
 # ── Rule 8: source-not-found ────────────────────────────────────────────
 
 
-class SourceNotFoundRule:
+class SourceNotFoundRule(BaseLintRule):
     """Detect pages that reference source files not present on disk."""
 
     name = "source-not-found"

@@ -311,6 +311,9 @@ def compile_cmd(
         if compile_lint:
             _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
 
+        # Write cache so standalone ``knox lint`` can load the wiki
+        _write_wiki_cache(wiki, output_dir_path)
+
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -874,3 +877,28 @@ def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_o
     runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
+
+
+def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
+    """Serialize the compiled wiki to ``.knox/last_wiki.json``.
+
+    This lets standalone ``knox lint`` load the wiki without requiring
+    a fresh compile. The cache is overwritten on every successful compile.
+    """
+    import json  # noqa: PLC0415
+
+    cache_dir = output_dir_path / ".knox"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / "last_wiki.json"
+
+    import dataclasses  # noqa: PLC0415
+
+    data = {
+        "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
+        "edges": list(wiki.edges),
+        "toc": list(wiki.toc),
+        "quality_score": wiki.quality_score,
+        "iteration": wiki.iteration,
+        "metadata": dict(wiki.metadata),
+    }
+    cache_file.write_text(json.dumps(data, default=str, indent=2), encoding="utf-8")

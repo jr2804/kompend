@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.lint.base import LintResult, LintRuleOutcome
+from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.runner import LintRunner, _build_report, report_to_json, report_to_text
 from knox.lint.structural import (
     RULE_BY_NAME,
@@ -455,13 +455,14 @@ class TestBuildReport:
         assert report.health_score == 100.0
         assert report.passes == 2
 
-    def test_half_fail_50_score(self) -> None:
+    def test_half_fail_weighted_score(self) -> None:
+        # 1 PASS + 1 FAIL(WARNING): penalty=2, max_possible=2*3=6 → 1-2/6=66.7
         results = [
             LintResult(rule="a", outcome=LintRuleOutcome.PASS),
-            LintResult(rule="b", outcome=LintRuleOutcome.FAIL),
+            LintResult(rule="b", outcome=LintRuleOutcome.FAIL, severity=Severity.WARNING),
         ]
         report = _build_report(results)
-        assert report.health_score == 50.0
+        assert report.health_score == 66.7
         assert report.failures == 1
 
     def test_empty_results(self) -> None:

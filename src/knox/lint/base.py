@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any
 
 
 class Severity(StrEnum):
@@ -54,25 +55,28 @@ class LintResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
-class LintRule(Protocol):
-    """Protocol that every lint rule must satisfy.
+class BaseLintRule(ABC):
+    """Abstract base class that every lint rule must implement.
 
-    Implementations are plain callables (functions or classes with
-    ``__call__``). Each receives the full :class:`CompiledWiki` and
-    returns a list of :class:`LintResult`.
+    Subclasses must define :attr:`name`, :attr:`description` and
+    :meth:`check`. The :meth:`fix` method is optional — the default
+    implementation returns results unchanged (no auto-fix).
     """
 
     @property
+    @abstractmethod
     def name(self) -> str: ...
 
     @property
+    @abstractmethod
     def description(self) -> str: ...
 
+    @abstractmethod
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
 
-        Default implementation marks all results as ``fix_applied=False``.
+        Default implementation returns results unchanged.
         """
-        ...
+        return list(results)
