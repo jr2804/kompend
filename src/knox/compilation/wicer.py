@@ -4,8 +4,8 @@ Implements the iterative compilation loop described in
 arXiv:2605.07068v1: compile (blind) → generate probes → evaluate →
 diagnose → refine → repeat.
 
-When ``litellm`` is not available (or the LLM call fails), the compiler
-falls back to blind one-shot compilation.
+When the LLM call fails, the compiler falls back to blind one-shot
+compilation.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+
+import litellm
 
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
@@ -49,11 +51,6 @@ _DIAGNOSE_TEMPLATE = (
 
 def _try_litellm(prompt: str, system: str | None = None) -> str | None:
     """Call litellm completion, returning content string or None on failure."""
-    try:
-        import litellm
-    except ImportError:
-        return None
-
     try:
         messages: list[dict[str, str]] = []
         if system:

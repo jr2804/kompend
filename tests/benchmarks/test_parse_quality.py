@@ -17,8 +17,12 @@ import pytest
 
 from knox.core.models import ElementType, ParsedDocument
 
-# Attempt to find a real PDF in the test corpus
+# Test corpus: tests/data/sources/ (committed small samples) or local override
+_TEST_DIR = Path(__file__).resolve().parent.parent
+_DATA_SOURCES = _TEST_DIR / "data" / "sources"
+
 _CORPUS_CANDIDATES = [
+    _DATA_SOURCES,
     Path("/opt/workspace/obsidian/jan/vault/Worky/research/listening-effort/papers/"),
     Path("/opt/workspace/obsidian/jan/vault/Worky/research/listening-effort/docling_input/"),
 ]
@@ -35,12 +39,6 @@ for _candidate_dir in _CORPUS_CANDIDATES:
 def _check_docling() -> bool:
     """Return True if DoclingParser can be instantiated."""
     try:
-        from knox.preprocessing.parsers.docling_parser import (  # noqa: PLC0415
-            DOCLING_AVAILABLE,
-        )
-        if not DOCLING_AVAILABLE:
-            return False
-        # Try instantiation to catch deeper dependency issues
         from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
 
         DoclingParser(extract_images=False)

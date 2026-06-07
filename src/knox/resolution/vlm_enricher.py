@@ -1,7 +1,6 @@
 """VLM-based image caption enricher for KNOX Tier 3.
 
 Analyses IMAGE chunks and adds descriptive captions as entities.
-Gracefully degrades to no-op when the VLM backend is unavailable.
 """
 
 from __future__ import annotations
@@ -9,6 +8,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
+
+import litellm
 
 from knox.core.models import ElementType, ResolvedChunk
 
@@ -35,24 +36,7 @@ class VLMEnricher:
         """
         self._vlm_model = vlm_model
         self._provider = provider
-        self._available = False
-
-        # Try to detect a VLM backend — docling-slim VLM or litellm with vision support.
-        try:
-            import docling_slim  # noqa: F401
-            self._available = True
-            self._backend = "docling"
-            logger.info("VLMEnricher: using docling-slim backend")
-        except ImportError:
-            try:
-                import litellm  # noqa: F401
-                self._available = True
-                self._backend = "litellm"
-                logger.info("VLMEnricher: using litellm vision backend")
-            except ImportError:
-                logger.warning("No VLM backend available — VLMEnricher will be a no-op")
-                self._available = False
-                self._backend = None
+        self._backend = "litellm"
 
     def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:
         """Add VLM-generated captions to IMAGE chunks.
@@ -65,11 +49,8 @@ class VLMEnricher:
             VLM captions. Never raises.
         """
         # ------------------------------------------------------------------
-        # Fast no-op paths: no IMAGE elements or no backend available.
+        # Fast no-op path: no IMAGE elements.
         # ------------------------------------------------------------------
-        if not self._available:
-            return resolved
-
         if ElementType.IMAGE not in resolved.chunk.element_types:
             return resolved
 
@@ -126,18 +107,10 @@ class VLMEnricher:
 
     def _caption_via_docling(self, path: Path) -> str:
         """Use docling-slim's built-in VLM for captioning."""
-        try:
-            from docling_slim.datamodel import DocumentDescription
-            # docling-slim's API may vary; we attempt a reasonable interface.
-            desc = DocumentDescription.from_image(path)
-            return desc.text if hasattr(desc, "text") else str(desc)
-        except ImportError:
-            # If the submodule isn't available, try via the main pipeline
-            from docling_slim.pipeline import VlmPipeline
+        from docling_slim.datamodel import DocumentDescription
 
-            pipeline = VlmPipeline()  # type: ignore[no-untyped-call]
-            result = pipeline.caption(str(path))  # type: ignore[no-untyped-call]
-            return str(result)
+        desc = DocumentDescription.from_image(path)
+        return desc.text if hasattr(desc, "text") else str(desc)
 
     def _caption_via_litellm(self, path: Path) -> str:
         """Use litellm vision endpoint for captioning (base64 image)."""
@@ -147,7 +120,6 @@ class VLMEnricher:
         b64 = base64.b64encode(raw_bytes).decode("utf-8")
         mime = self._guess_mime(path)
 
-        litellm = __import__("litellm")
         response = litellm.completion(
             model=f"{self._provider}/{self._vlm_model}",
             messages=[

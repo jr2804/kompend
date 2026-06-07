@@ -1,10 +1,6 @@
 """Docling-based PDF/DOCX parser with structure-preserving extraction.
 
-Docling is a hard dependency. However, docling's own module tree tries to
-import torch at import time (granite_vision, chart_extraction) even without
-the models-local extra. To work around this, we use a local import inside
-_get_converter() — the last-resort approach per python-ultimate standards
-for cases where TYPE_CHECKING isn't applicable.
+Docling is a hard dependency for KNOX's primary parsing pipeline.
 """
 
 from __future__ import annotations
@@ -54,9 +50,9 @@ class DoclingParser(BaseParser):
         self._converter = None
 
     def _get_converter(self):
-        """Lazy-import docling to avoid torch pull at module level."""
+        """Create or return the cached DocumentConverter."""
         if self._converter is None:
-            from docling.document_converter import DocumentConverter  # noqa: PLC0415
+            from docling.document_converter import DocumentConverter
 
             self._converter = DocumentConverter()
         return self._converter

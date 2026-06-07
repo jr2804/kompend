@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 import chonkie
-from chonkie import RecursiveChunker  # noqa: F401
+from chonkie import RecursiveChunker
 
 from knox.chunking.base import BaseChunker
 from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ParsedDocument

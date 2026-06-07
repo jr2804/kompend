@@ -1,12 +1,13 @@
 """opendataloader-pdf adapter for PDF parsing.
 
 This is an alternative to Docling for PDF, using opendataloader's PDFLoader.
-opendataloader-pdf is a heavy dependency (includes PyTorch), so this adapter
-is a thin wrapper that provides the same BaseParser interface.
+NOTE: The ``opendataloader`` module with ``PDFLoader`` is not yet available
+in the installed ``opendataloader-pdf`` package. This adapter is a
+placeholder until the API is finalized.
 
-TODO: When opendataloader-pdf is installed, complete the conversion from
-opendataloader's output format to ParsedDocument. Use docling_parser.py as
-a template for the element extraction logic.
+TODO: Complete the conversion from opendataloader's output format to
+ParsedDocument. Use docling_parser.py as a template for the element
+extraction logic.
 """
 
 from __future__ import annotations
@@ -19,31 +20,23 @@ from knox.preprocessing.parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)
 
-try:
-    from opendataloader import PDFLoader
-
-    OPD_AVAILABLE = True
-except ImportError:
-    OPD_AVAILABLE = False
-
 
 class OpenDataLoaderParser(BaseParser):
     """PDF parser using opendataloader-pdf as the extraction backend.
 
-    Requires the ``opendataloader-pdf`` package which bundles PyTorch.
-    Falls back to a clear ImportError with install instructions when
-    the dependency is missing.
+    Placeholder adapter — the ``opendataloader.PDFLoader`` API is not yet
+    available in the installed package. Will raise ``ImportError`` on
+    instantiation.
     """
 
     supported_extensions = (".pdf",)
 
     def __init__(self) -> None:
-        if not OPD_AVAILABLE:
-            raise ImportError(
-                "opendataloader-pdf is required for OpenDataLoaderParser. "
-                "Install with: uv pip install opendataloader-pdf"
-            )
-        self._loader = PDFLoader()
+        raise NotImplementedError(
+            "OpenDataLoaderParser is not yet implemented — "
+            "opendataloader.PDFLoader is not available in the current package. "
+            "Use DoclingParser or PdfPlumberParser instead."
+        )
 
     def parse(self, source_path: Path) -> ParsedDocument:
         """Parse a PDF using opendataloader and map to ParsedDocument.

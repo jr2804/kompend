@@ -1,12 +1,10 @@
 """Tests for KNOX Hybrid RAG — zvec vector store."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import HashEmbeddingProvider, ZvecWikiStore, ZVEC_AVAILABLE
+from knox.rag.zvec_store import HashEmbeddingProvider, ZvecWikiStore
 
 
 @pytest.fixture
@@ -51,21 +49,18 @@ class TestZvecWikiStore:
         store = ZvecWikiStore()
         assert store.build_index(empty) == 0
 
-    def test_build_index_without_zvec_returns_zero(self, zvec_db: Path) -> None:
+    def test_build_index_works(self, zvec_db: Path) -> None:
         wiki = CompiledWiki(
             nodes=[WikiNode(id="n1", title="Test", content="...", node_type="section")],
             edges=[],
             toc=[],
         )
-        with patch("knox.rag.zvec_store.ZVEC_AVAILABLE", False):
-            store = ZvecWikiStore(db_path=str(zvec_db))
-            assert store.build_index(wiki) == 0
-            store.close()
+        store = ZvecWikiStore(db_path=str(zvec_db))
+        assert store.build_index(wiki) == 1
+        store.close()
 
     def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
-        """Integration test: requires zvec to be importable."""
-        if not ZVEC_AVAILABLE:
-            pytest.skip("zvec not available on this platform")
+        """Integration test: build index and search."""
         try:
             store = ZvecWikiStore(db_path=str(zvec_db), embedding_dim=384)
             wiki = CompiledWiki(
@@ -93,8 +88,6 @@ class TestZvecWikiStore:
             shutil.rmtree(zvec_db, ignore_errors=True)
 
     def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
-        if not ZVEC_AVAILABLE:
-            pytest.skip("zvec not available")
         db = zvec_db / "nested" / "deep" / "store"
         try:
             store = ZvecWikiStore(db_path=str(db))
@@ -135,11 +128,10 @@ class TestZvecWikiStore:
         norm = sum(v * v for v in vec) ** 0.5
         assert abs(norm - 1.0) < 0.001
 
-    def test_available_property_without_zvec(self) -> None:
-        with patch("knox.rag.zvec_store.ZVEC_AVAILABLE", False):
-            store = ZvecWikiStore()
-            assert store.available is False
-            store.close()
+    def test_available_property_before_build(self) -> None:
+        store = ZvecWikiStore()
+        assert store.available is False
+        store.close()
 
     def test_close_is_idempotent(self) -> None:
         store = ZvecWikiStore()

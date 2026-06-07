@@ -24,6 +24,10 @@ dependencies = [
     "mail-parser>0",
     "marko>0",
     "pylatexenc>0",
+    "sentence-transformers>=5.5.1",
+    "pillow>=12.2.0",
+    "docling-ibm-models>=3.13.3",
+    "opencv-python-headless>=4.13.0.92",
 ]
 
 [project.scripts]
@@ -59,6 +63,7 @@ asyncio_mode = "auto"
 markers = [
     "benchmark: Quality benchmarks that report metrics rather than assert pass/fail.",
     "asyncio: mark test as async",
+    "integration: Tests that require real files or network access.",
 ]
 
 [tool.pytest-cov]

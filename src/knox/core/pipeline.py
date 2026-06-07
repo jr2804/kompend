@@ -11,11 +11,17 @@ from pathlib import Path
 from typing import Any
 
 from knox.chunking.base import BaseChunker
+from knox.chunking.hybrid import HybridChunker
 from knox.compilation.base import BaseCompiler
-from knox.core.models import CompiledWiki, ParsedDocument
+from knox.compilation.graph import GraphCompiler
+from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument
 from knox.output.base import BaseOutputWriter
+from knox.output.json_writer import JsonWriter
+from knox.output.markdown import MarkdownWriter
+from knox.output.typst import TypstWriter
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import BaseParser
+from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
@@ -93,8 +99,6 @@ class WikiPipeline:
 
     def _parse_and_chunk(self) -> list[Any]:
         """Parse documents and chunk them, with optional caching and parallelism."""
-        from knox.core.models import Chunk, DocumentElement, ElementType, ParsedDocument  # noqa: PLC0415
-
         source_files = list(self.iter_sources())
         if not source_files:
             return []
@@ -151,8 +155,6 @@ class WikiPipeline:
 
     def _load_cache(self, source_file: Path) -> ParsedDocument | None:
         """Load a cached ParsedDocument if available."""
-        from knox.core.models import Chunk, DocumentElement, ElementType, ParsedDocument  # noqa: PLC0415
-
         cache_path = self._cache_dir() / f"{self._cache_key(source_file)}.json"
         if not cache_path.exists():
             return None
@@ -234,13 +236,6 @@ def build_pipeline(config: PipelineConfig) -> WikiPipeline:
     - GraphCompiler
     - Output writer selected by ``config.compile_target``
     """
-    from knox.chunking.hybrid import HybridChunker  # noqa: PLC0415
-    from knox.compilation.graph import GraphCompiler  # noqa: PLC0415
-    from knox.output.json_writer import JsonWriter  # noqa: PLC0415
-    from knox.output.markdown import MarkdownWriter  # noqa: PLC0415
-    from knox.output.typst import TypstWriter  # noqa: PLC0415
-    from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
-
     format_map: dict[str, type[BaseOutputWriter]] = {
         "markdown": MarkdownWriter,
         "json": JsonWriter,

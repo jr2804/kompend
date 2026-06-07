@@ -7,21 +7,19 @@ knowledge base.
 Embedding providers are pluggable via ``EmbeddingProvider``. The default
 uses sentence-transformers (all-MiniLM-L6-v2, 384-dim). A hash-based
 fallback exists for environments without ML libraries (tests, CI).
-
-NOTE: zvec uses CPU-specific instructions (AVX) and may crash with SIGILL
-on older x86 CPUs. A subprocess-based availability check at import time
-prevents the crash from taking down the interpreter.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-import subprocess
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+
+import litellm
+import zvec as _zvec
+from sentence_transformers import SentenceTransformer
 
 from knox.core.models import CompiledWiki
 
@@ -72,38 +70,18 @@ class SentenceTransformerProvider(EmbeddingProvider):
     """Real embedding via sentence-transformers.
 
     Defaults to all-MiniLM-L6-v2 (384-dim, fast, good quality).
-    Falls back to :class:`HashEmbeddingProvider` if sentence-transformers
-    is not installed.
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         self._model_name = model_name
-        try:
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
-
-            self._model = SentenceTransformer(model_name)
-            self._dim: int = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
-            self._available = True
-        except ImportError:
-            logger.warning(
-                "sentence-transformers not installed — falling back to hash embeddings. "
-                "Install with: uv pip install sentence-transformers"
-            )
-            self._model = None  # type: ignore[assignment]
-            self._dim = 384
-            self._available = False
+        self._model = SentenceTransformer(model_name)
+        self._dim: int = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
 
     @property
     def dim(self) -> int:
         return self._dim
 
-    @property
-    def available(self) -> bool:
-        return self._available
-
     def embed(self, text: str) -> list[float]:
-        if self._model is None:
-            return HashEmbeddingProvider(dim=self._dim).embed(text)
         vec = self._model.encode(text, normalize_embeddings=True)
         return vec.tolist()
 
@@ -120,8 +98,6 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
         return self._dim
 
     def embed(self, text: str) -> list[float]:
-        import litellm  # noqa: PLC0415
-
         response = litellm.embedding(model=self._model, input=[text])
         return response.data[0]["embedding"]
 
@@ -144,31 +120,6 @@ def _make_provider(
     return SentenceTransformerProvider(model_name=embedding_model)
 
 
-# ── zvec availability check ─────────────────────────────────────────────
-
-
-def _zvec_available() -> bool:
-    """Check if zvec can be imported without crashing (SIGILL-safe)."""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", "import zvec; print('ok')"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return result.returncode == 0 and result.stdout.strip() == "ok"
-    except Exception:
-        return False
-
-
-if _zvec_available():
-    import zvec as _zvec  # noqa: PLC0415
-    ZVEC_AVAILABLE = True
-else:
-    ZVEC_AVAILABLE = False
-    _zvec = None  # type: ignore[assignment]
-
-
 class ZvecWikiStore:
     """Sidecar vector store for semantic search over compiled wikis.
 
@@ -188,7 +139,7 @@ class ZvecWikiStore:
 
     @property
     def available(self) -> bool:
-        return ZVEC_AVAILABLE and self._collection is not None
+        return self._collection is not None
 
     def build_index(
         self,
@@ -200,9 +151,6 @@ class ZvecWikiStore:
         If ``embedding_model`` is provided and no provider was set at
         construction, a new provider is created via :func:`_make_provider`.
         """
-        if not ZVEC_AVAILABLE or not _zvec:
-            logger.warning("zvec not available — skipping index build")
-            return 0
         if not wiki.nodes:
             return 0
 
@@ -246,7 +194,7 @@ class ZvecWikiStore:
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity."""
-        if not self.available or not _zvec:
+        if not self.available:
             return []
         results = self._collection.query(
             _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),
