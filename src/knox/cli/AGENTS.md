@@ -85,18 +85,21 @@ to a core module.
 
 ## Known violations (do not replicate)
 
-These patterns exist in the current codebase and should be refactored, not
-extended:
+These patterns remain in the current codebase and should be refactored when
+touched, not extended:
 
 | Violation | Where | Why it's wrong |
 |---|---|---|
-| `_build_router()` constructs and registers parsers | `commands.py:807` | Parser registry is core business logic; CLI should call a factory from `knox.preprocessing` |
-| `_load_wiki()` deserializes JSON into `CompiledWiki` | `commands.py:834` | Serialization is a core concern; should live in `knox.core` or `knox.output` |
-| `_build_vector_index()` directly uses `ZvecWikiStore` | `commands.py:849` | Vector index building is RAG business logic; should be a core function |
-| `SUPPORTED_EXTENSIONS` defined in `_sources.py` | `_sources.py:16` | Extension registry should come from the parser layer |
-| `doctor.py` calls `litellm.completion()` directly | `doctor.py:92` | All LLM calls must go through `knox.llm.client.LLMClient` |
-| `status.py` hardcodes config path `.knox/config.yaml` | `status.py:67` | Should use `knox.core.config.find_project_config()` |
-| `_build_cli_overrides()` lives in `commands.py` | `commands.py:731` | Could move to a dedicated `_config.py` in the CLI package |
+| `doctor.py` has its own parser registration logic | `doctor.py:58-74` | Should reuse `build_default_router()` from the parser registry |
+| `status.py` imports from `knox.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
 
-When touching any of these files, prefer moving the logic toward core rather
-than adding more in the CLI.
+The following violations were fixed in Q24 (do not re-introduce):
+
+| Fixed | Was |
+|---|---|
+| `_build_router()` → `build_default_router()` in `knox.preprocessing.parsers._registry` | Parser construction in CLI |
+| `_load_wiki()` → `load_cached_wiki()` in `knox.core.models` | JSON deserialization in CLI |
+| `_build_vector_index()` → `build_vector_index()` in `knox.rag` | RAG business logic in CLI |
+| `doctor.py` now uses `LLMClient.try_complete()` | Direct `litellm.completion()` call |
+| `status.py` now uses `find_project_config()` | Hardcoded `.knox/config.yaml` path |
+| `SUPPORTED_EXTENSIONS` → `get_supported_extensions()` querying parser registry | Duplicated extension set |
