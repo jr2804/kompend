@@ -8,18 +8,96 @@ Inspired by [Karpathy's compiled LLM-wiki concept](https://gist.github.com/karpa
 
 ## Quick Start
 
+**As a CLI tool:**
+
 ```bash
-# Install
-uv pip install "knox[docling]"
+uv tool install knox
+```
 
-# Compile a sources directory into a wiki
-knox compile ./sources --output ./wiki
+**As a Python library:**
 
-# Parse a single document
-knox parse ./paper.pdf --output ./parsed/
+```bash
+uv add knox
+```
 
-# See all options
-knox --help
+### 1. Check that a document parses correctly
+
+Before compiling a full corpus, verify a single file extracts cleanly:
+
+```bash
+knox parse ./paper.pdf --elements
+```
+
+This prints element counts, types (heading, table, image, formula, …), and a preview of each extracted element. If the output looks wrong, the full pipeline will produce poor results too — fix parsing issues first.
+
+### 2. Compile a document corpus into a wiki
+
+Drop your source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into a directory and run:
+
+```bash
+knox compile ./sources ./wiki
+```
+
+This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, compile into an interlinked wiki, and write Markdown files to `./wiki`.
+
+### 3. Extend with online sources and different output formats
+
+```bash
+# Pull in remote PDFs before compiling
+knox compile ./sources ./wiki --url https://arxiv.org/pdf/2605.07068v1
+
+# Output as JSON graph instead of Markdown
+knox compile ./sources ./wiki --format json
+
+# Build a vector index for semantic search (requires zvec)
+knox compile ./sources ./wiki --format json --index --embed-model all-MiniLM-L6-v2
+```
+
+Full option reference: `knox compile --help`, `knox parse --help`
+
+## CLI Reference
+
+### `knox compile`
+
+```
+knox compile [OPTIONS] SOURCES_DIR OUTPUT_DIR
+
+Compile documents into a knowledge wiki.
+
+Arguments:
+  SOURCES_DIR    Directory with source documents          [required]
+  OUTPUT_DIR     Output directory for compiled wiki        [required]
+
+Options:
+  --url TEXT          URLs to download before processing (repeatable)
+  --format, -f TEXT   Output format: markdown, json, typst  [default: markdown]
+  --chunk-size INT    Chunk size in tokens                    [default: 512]
+  --image-mode TEXT   Image handling: file, base64            [default: file]
+  --index             Index compiled wiki in zvec for semantic search
+  --embed-model TEXT  Embedding model for zvec indexing
+  --help              Show this message and exit
+```
+
+### `knox parse`
+
+```
+knox parse [OPTIONS] FILE_PATH
+
+Parse a single document and show structure.
+
+Arguments:
+  FILE_PATH   Path to document to parse  [required]
+
+Options:
+  --elements   Print extracted elements
+  --help       Show this message and exit
+```
+
+### Global Options
+
+```
+knox --version, -v   Show version and exit
+knox --help          Show help and exit
 ```
 
 ## What Makes KNOX Different
@@ -53,12 +131,14 @@ Read the full architecture in [`docs/architecture.md`](./docs/architecture.md).
 | [`docs/ecosurvey.md`](./docs/ecosurvey.md) | Survey of existing tools, parsers, chunkers, MCP servers |
 | [`docs/roadmap.md`](./docs/roadmap.md) | Milestones, priorities, open questions, tentative dates |
 | [`docs/decisions.md`](./docs/decisions.md) | Decision log — what was chosen and why |
+| [`docs/openwebui.md`](./docs/openwebui.md) | Connecting KNOX with Open-WebUI for chat/RAG |
 
 ## Development
 
 ```bash
-cd /opt/workspace/work/knox
+git clone <repo-url> && cd knox
 uv sync                    # install deps
+uv run knox --help         # verify CLI
 uv run pytest tests/       # run tests
 mise test                  # run all quality checks
 ```
@@ -70,20 +150,16 @@ mise test                  # run all quality checks
 | M0: Scaffolding | ✅ Complete |
 | M1: Docling Parser (Tier 1) | ✅ Complete |
 | M2: Hybrid Chunking (Tier 2) | 🎯 Current |
-| M3: LLM Resolution (Tier 3) | ⏳ Pending |
-| M4: WiCER Compilation (Tier 4) | ⏳ Pending |
-| M5: Output Writers (Tier 5) | ⏳ Pending |
-| M6: MCP Server | ⏳ Pending |
+| M3: LLM Resolution (Tier 3) | ⏳ Planned |
+| M4: WiCER Compilation (Tier 4) | ⏳ Planned |
+| M5: Output Writers (Tier 5) | ⏳ Planned |
+| M6: MCP Server | ⏳ Planned |
 
 See [`docs/roadmap.md`](./docs/roadmap.md) for full details.
 
 ## License
 
 AGPL-3.0. See [LICENSE](./LICENSE).
-
-## Contact
-
-Jan Reimes — jan@reimes.de
 
 ## Acknowledgments
 
