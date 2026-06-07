@@ -80,6 +80,16 @@ class PipelineConfig:
 
     ``2`` means up to three attempts per model (1 + 2 retries).
     """
+    llm_context_budget: int = 100000
+    """Max characters of page content sent to the LLM in a single lint call.
+
+    When page content exceeds this budget a warning is logged and the
+    content is truncated to this many characters. Users can adjust via
+    the ``--llm-context-budget`` CLI flag or the
+    ``KNOX_LLM_CONTEXT_BUDGET`` env var.
+
+    Default: 100 000 (roughly 25 000 tokens for most models).
+    """
     llm_default_model_override: str | None = None
     """Explicit default model in litellm format (``"provider/model"``).
 

@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from knox.cli._sources import SUPPORTED_EXTENSIONS
+from knox.cli._sources import get_supported_extensions
 
 
 def collect_stats(
@@ -28,7 +28,7 @@ def collect_stats(
     # Source stats
     if sources_dir and sources_dir.exists():
         source_files: list[Path] = []
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in get_supported_extensions():
             source_files.extend(sources_dir.rglob(f"*{ext}"))
         stats["sources"]["count"] = len(source_files)
         stats["sources"]["total_size_bytes"] = sum(
@@ -55,9 +55,11 @@ def collect_stats(
             stats["articles"]["count"] = max(stats["articles"]["count"], 1)
 
         # Config path
-        knox_config = Path.cwd() / ".knox" / "config.yaml"
-        if knox_config.exists():
-            stats["config_path"] = str(knox_config)
+        from knox.core.config import find_project_config  # noqa: PLC0415
+
+        project_config = find_project_config()
+        if project_config:
+            stats["config_path"] = str(project_config)
 
     return stats
 

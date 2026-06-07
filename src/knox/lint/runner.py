@@ -65,12 +65,14 @@ class LintRunner:
         rules: list[str] | None = None,
         enable_llm: bool = False,
         llm_client: Any | None = None,
+        context_budget: int | None = None,
         fix: bool = False,
         sources_dir: str | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
         self.llm_client = llm_client
+        self.context_budget = context_budget or 100000
         self.fix = fix
         self.sources_dir = sources_dir
 
@@ -108,12 +110,14 @@ class LintRunner:
         """Build the list of rule instances to run."""
         rules: list[Any] = []
 
+        llm_kwargs = {"llm_client": self.llm_client, "context_budget": self.context_budget}
+
         if self.requested_rules:
             for name in self.requested_rules:
                 if name in RULE_BY_NAME:
                     rules.append(RULE_BY_NAME[name])
                 elif name in LLM_RULE_BY_NAME:
-                    rules.append(LLM_RULE_BY_NAME[name](llm_client=self.llm_client))
+                    rules.append(LLM_RULE_BY_NAME[name](**llm_kwargs))
                 else:
                     logger.warning("Unknown lint rule: %s", name)
         else:
@@ -124,7 +128,7 @@ class LintRunner:
             existing_names = {r.name for r in rules}
             for name, cls in LLM_RULE_BY_NAME.items():
                 if name not in existing_names:
-                    rules.append(cls(llm_client=self.llm_client))
+                    rules.append(cls(**llm_kwargs))
 
         return rules
 

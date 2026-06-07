@@ -89,27 +89,24 @@ def _check_env_vars(*vars_to_check: str) -> list[CheckResult]:
 def _check_llm_connectivity(verbose: bool = False) -> CheckResult:
     """Quick connectivity check — pings the configured LLM provider."""
     name = "llm-connectivity"
-    model = os.environ.get("KNOX_LLM_MODEL", "llama3.2")
-    provider = os.environ.get("KNOX_LLM_PROVIDER", "ollama")
-
     try:
-        import litellm  # noqa: PLC0415
+        from knox.llm.client import LLMClient  # noqa: PLC0415
     except ImportError:
-        return CheckResult(name, False, "litellm not installed")
+        return CheckResult(name, False, "knox.llm not available")
 
     try:
-        response = litellm.completion(
-            model=f"{provider}/{model}",
-            messages=[{"role": "user", "content": "ping"}],
+        client = LLMClient()
+        result = client.try_complete(
+            [{"role": "user", "content": "ping"}],
+            role="doctor",
             max_tokens=5,
-            timeout=5,
         )
-        model_used = getattr(response, "model", "unknown")
-        return CheckResult(name, True, f"LLM OK ({provider}/{model_used})")
+        if result is not None:
+            model_used = result.diagnostics.model_used
+            return CheckResult(name, True, f"LLM OK ({model_used})")
+        return CheckResult(name, False, "LLM returned no response")
     except Exception as exc:
         msg = f"LLM ping failed: {exc}"
-        if verbose:
-            msg += f" (model={provider}/{model})"
         return CheckResult(name, False, msg)
 
 

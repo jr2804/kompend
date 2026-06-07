@@ -14,7 +14,28 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 
 logger = logging.getLogger(__name__)
 
-# Extensions we know how to handle (lower-case, with dot).
+
+# ── Extension helpers ───────────────────────────────────────────────────
+
+
+def get_supported_extensions() -> set[str]:
+    """Return the set of supported file extensions.
+
+    Merges a hard-coded baseline with any extensions registered by parsers.
+    """
+    baseline = {
+        ".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx", ".xlsx",
+    }
+    try:
+        from knox.preprocessing.parsers._registry import get_all_extensions  # noqa: PLC0415
+
+        return baseline | get_all_extensions()
+    except Exception:
+        return baseline
+
+
+# Baseline set used for module-level references and fast path checks.
+# Call get_supported_extensions() for the full set including registered parsers.
 SUPPORTED_EXTENSIONS: set[str] = {
     ".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx", ".xlsx",
 }
@@ -133,7 +154,7 @@ def download_urls(
 
 
 def _is_supported(candidate_path: Path) -> bool:
-    return candidate_path.suffix.lower() in SUPPORTED_EXTENSIONS
+    return candidate_path.suffix.lower() in get_supported_extensions()
 
 
 def _add(candidate_path: Path, seen: set[Path], results: list[Path]) -> None:
@@ -150,7 +171,7 @@ def _scan_dir(
     results: list[Path],
 ) -> None:
     glob_func = directory.rglob if recursive else directory.glob
-    for ext in sorted(SUPPORTED_EXTENSIONS):
+    for ext in sorted(get_supported_extensions()):
         for match in sorted(glob_func(f"*{ext}")):
             if match.is_file():
                 _add(match, seen, results)

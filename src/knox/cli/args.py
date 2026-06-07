@@ -371,6 +371,21 @@ LlmFallbackMaxRetries = Annotated[
     ),
 ]
 
+LlmContextBudget = Annotated[
+    int | None,
+    typer.Option(
+        "--llm-context-budget",
+        help=(
+            "Max characters of page content sent to LLM in a single lint call. "
+            "When content exceeds this, a warning is logged and content is truncated. "
+            "Default: 100000 (roughly 25000 tokens). "
+            f"Env: {APP_NAME_UPPERCASE}_LLM_CONTEXT_BUDGET."
+        ),
+        min=1000,
+        envvar=f"{APP_NAME_UPPERCASE}_LLM_CONTEXT_BUDGET",
+    ),
+]
+
 
 # ── N1 lint command ────────────────────────────────────────────────────
 

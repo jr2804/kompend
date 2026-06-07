@@ -30,6 +30,7 @@ dependencies = [
     "docling-ibm-models>=3.13.3",
     "opencv-python-headless>=4.13.0.92",
     "rumdl>=0.2.9",
+    "mcp>=1.27.2",
 ]
 
 [project.scripts]

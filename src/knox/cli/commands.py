@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -37,6 +37,7 @@ from knox.cli.args import (
     LintSourcesDir,
     LintThreshold,
     ListTiers,
+    LlmContextBudget,
     LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
@@ -61,15 +62,9 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
-from knox.preprocessing.parsers._registry import register_parser
-from knox.preprocessing.parsers.base import ParserRouter
-from knox.preprocessing.parsers.docling_parser import DoclingParser
-from knox.preprocessing.parsers.pandoc_parser import PandocParser
-from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
-from knox.rag.zvec_store import ZvecWikiStore
+from knox.preprocessing.parsers._registry import build_default_router
 
 from ._sources import download_urls, ensure_in_sources, resolve_files
 from .doctor import print_doctor_results, run_doctor
@@ -97,7 +92,7 @@ def parse_cmd(
         typer.echo("No supported files found.", err=True)
         raise typer.Exit(1)
 
-    router = _build_router()
+    router = build_default_router()
 
     for input_file in resolved:
         try:
@@ -311,7 +306,7 @@ def compile_cmd(
                 typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
         if index_store:
-            _build_vector_index(wiki, output_dir_path, embed_model)
+            _cli_build_vector_index(wiki, output_dir_path, embed_model)
 
         if compile_lint:
             _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
@@ -373,7 +368,7 @@ def list_parsers_cmd(
 ) -> None:
     """List all registered parsers (built-in + external + HTTP)."""
     # Ensure built-in parsers are registered, then read from the registry
-    _build_router()
+    build_default_router()
     from knox.preprocessing.parsers._registry import get_registered_parsers  # noqa: PLC0415
 
     parsers = get_registered_parsers()
@@ -471,19 +466,7 @@ def provenance_cmd(
         raise typer.Exit(1)
 
     # Try loading the wiki from cache
-    wiki: CompiledWiki | None = None
-    cache_file = output_dir / ".knox" / "last_wiki.json"
-    if cache_file.exists():
-        try:
-            import json as j  # noqa: PLC0415
-
-            data = j.loads(cache_file.read_text(encoding="utf-8"))
-            from knox.core.models import CompiledWiki  # noqa: PLC0415
-
-            wiki = CompiledWiki(**data)
-        except Exception:
-            pass
-
+    wiki = load_cached_wiki(output_dir)
     if wiki is None:
         typer.echo("Could not load compiled wiki metadata.", err=True)
         raise typer.Exit(1)
@@ -625,6 +608,7 @@ def lint_cmd(
     threshold: LintThreshold = None,
     json_output: JsonOutput = False,
     llm_default_model: LlmDefaultModel = None,
+    llm_context_budget: LlmContextBudget = None,
 ) -> None:
     """Lint a compiled wiki for quality issues.
 
@@ -644,7 +628,7 @@ def lint_cmd(
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
 
-    wiki = _load_wiki(output_dir_path)
+    wiki = load_cached_wiki(output_dir_path)
     if wiki is None:
         typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
@@ -665,6 +649,7 @@ def lint_cmd(
         rules=list(rule) if rule else None,
         enable_llm=llm,
         llm_client=llm_client,
+        context_budget=llm_context_budget,
         fix=fix,
         sources_dir=sources_dir_str,
     )
@@ -724,6 +709,23 @@ def config_cmd(
         typer.echo(f"  Global config:  {cfg.global_config_path}")
 
 
+# ── mcp server ──────────────────────────────────────────────────────────
+
+
+@app.command(name="mcp")
+def mcp_cmd() -> None:
+    """Start the KNOX MCP server over stdio transport.
+
+    Connects to Claude Code, Cursor, and other MCP-compatible clients.
+    Uses the official FastMCP SDK with JSON-RPC 2.0 protocol.
+
+    Examples:
+        knox mcp                        # start stdio server
+        knox mcp --help                 # this help
+    """
+    from knox.mcp.server import main as mcp_main  # noqa: PLC0415
+
+    mcp_main()
 
 
 # ── Internal helpers ────────────────────────────────────────────────────
@@ -805,60 +807,19 @@ def _build_cli_overrides(
     return overrides
 
 
-def _build_router() -> ParserRouter:
-    router = ParserRouter()
-
-    try:
-        docling = DoclingParser()
-        router.register(docling)
-        register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
-    except Exception:
-        pass
-
-    try:
-        pdfplumber = PdfPlumberParser()
-        router.register(pdfplumber)
-        register_parser("PdfPlumberParser", "built-in", list(pdfplumber.supported_extensions))
-    except Exception:
-        pass
-
-    try:
-        pandoc = PandocParser()
-        router.register(pandoc)
-        register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
-    except Exception:
-        pass
-
-    return router
-
-
-def _load_wiki(output_dir_path: Path) -> CompiledWiki | None:
-    """Load the last compiled wiki from cache, or return None."""
-    import json as j  # noqa: PLC0415
-
-    cache_file = output_dir_path / ".knox" / "last_wiki.json"
-    if not cache_file.exists():
-        return None
-    try:
-        data = j.loads(cache_file.read_text(encoding="utf-8"))
-        return CompiledWiki(**data)
-    except Exception as exc:
-        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc)
-        return None
-
-
-def _build_vector_index(
+def _cli_build_vector_index(
     wiki: CompiledWiki,
     output_dir_path: Path,
     embed_model: str | None,
 ) -> None:
-    store = ZvecWikiStore(db_path=output_dir_path / ".knox" / "vectors")
-    count = store.build_index(wiki, embedding_model=embed_model)
+    """Thin CLI wrapper — delegates to knox.rag and prints status."""
+    from knox.rag import build_vector_index  # noqa: PLC0415
+
+    count = build_vector_index(wiki, output_dir_path, embed_model=embed_model)
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
     else:
         typer.echo("Warning: no nodes indexed — vector index skipped", err=True)
-    store.close()
 
 
 # ── New feature helpers (Q20/N3/N8/N4/Q21) ──────────────────────────────

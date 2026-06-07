@@ -23,8 +23,9 @@ class FactualConsistencyRule:
     name = "factual-consistency"
     description = "Claims in page contradict source material"
 
-    def __init__(self, llm_client: Any | None = None) -> None:
+    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
         self.llm_client = llm_client
+        self.context_budget = context_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -40,6 +41,15 @@ class FactualConsistencyRule:
         for node in wiki.nodes:
             if not node.content or not node.source_chunks:
                 continue
+            content = node.content
+            if len(content) > self.context_budget:
+                logger.warning(
+                    "factual-consistency: page '%s' content (%d chars) exceeds context budget (%d), truncating",
+                    node.title,
+                    len(content),
+                    self.context_budget,
+                )
+                content = content[:self.context_budget]
             prompt = (
                 "You are a factual-consistency checker for a compiled wiki. "
                 "Given the following page content, identify any claims that "
@@ -47,7 +57,7 @@ class FactualConsistencyRule:
                 "Return a JSON object with key 'issues' containing a list of "
                 "objects with 'claim' and 'reason' fields. "
                 "If everything is consistent, return {\"issues\": []}.\n\n"
-                f"Page: {node.title}\n\n{node.content[:3000]}"
+                f"Page: {node.title}\n\n{content}"
             )
             try:
                 llm_result = self.llm_client.try_complete(
@@ -103,8 +113,9 @@ class ClarityScoreRule:
     name = "clarity-score"
     description = "Readability, coherence, conciseness score (1-10)"
 
-    def __init__(self, llm_client: Any | None = None) -> None:
+    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
         self.llm_client = llm_client
+        self.context_budget = context_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -120,12 +131,21 @@ class ClarityScoreRule:
         for node in wiki.nodes:
             if not node.content:
                 continue
+            content = node.content
+            if len(content) > self.context_budget:
+                logger.warning(
+                    "clarity-score: page '%s' content (%d chars) exceeds context budget (%d), truncating",
+                    node.title,
+                    len(content),
+                    self.context_budget,
+                )
+                content = content[:self.context_budget]
             prompt = (
                 "Rate the following wiki page on readability, coherence, "
                 "and conciseness on a scale of 1-10. Return a JSON object "
                 "with keys 'score' (integer 1-10) and 'feedback' (string). "
                 "A score below 6 indicates poor quality.\n\n"
-                f"Page: {node.title}\n\n{node.content[:3000]}"
+                f"Page: {node.title}\n\n{content}"
             )
             try:
                 llm_result = self.llm_client.try_complete(
@@ -183,8 +203,9 @@ class CoverageGapRule:
     name = "coverage-gap"
     description = "Important concepts mentioned in sources but missing from wiki"
 
-    def __init__(self, llm_client: Any | None = None) -> None:
+    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
         self.llm_client = llm_client
+        self.context_budget = context_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -202,8 +223,10 @@ class CoverageGapRule:
             ]
 
         # Build a summary of all wiki content for the LLM
+        # Use the context budget, divided evenly across up to 30 pages
+        per_node_budget = max(200, self.context_budget // 30)
         wiki_summary = "\n".join(
-            f"- {n.title}: {(n.content or '')[:200]}" for n in wiki.nodes[:30]
+            f"- {n.title}: {(n.content or '')[:per_node_budget]}" for n in wiki.nodes[:30]
         )
 
         prompt = (

@@ -104,3 +104,26 @@ class CompiledWiki:
     quality_score: float = 0.0
     iteration: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# ── Serialization helpers ────────────────────────────────────────────────
+
+
+def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
+    """Load the last compiled wiki from the on-disk cache.
+
+    Returns ``None`` if no cache exists or the data is corrupt.
+    """
+    import json  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+
+    logger = logging.getLogger(__name__)
+    cache_file = output_dir / ".knox" / "last_wiki.json"
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        return CompiledWiki(**data)
+    except Exception as exc:
+        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc)
+        return None
