@@ -278,7 +278,7 @@ class TwoPhaseCompiler(BaseCompiler):
             concepts_json=json.dumps(concepts),
             content=content_block,
         )
-        data = _try_litellm_json(prompt, system=_GENERATION_SYSTEM)
+        data = _try_litellm_json(prompt, system=_GENERATION_SYSTEM, model=self._model)
 
         nodes: list[WikiNode] = []
         edges: list[dict[str, Any]] = []

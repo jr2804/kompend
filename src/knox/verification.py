@@ -87,7 +87,7 @@ def _split_claims(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_RE.findall(text) if len(s.strip()) >= 12]
 
 
-def _try_litellm_json(prompt: str, system: str | None = None) -> dict[str, Any] | None:
+def _try_litellm_json(prompt: str, system: str | None = None, *, model: str = "ollama/llama3.2") -> dict[str, Any] | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     try:
         messages: list[dict[str, str]] = []
@@ -95,7 +95,7 @@ def _try_litellm_json(prompt: str, system: str | None = None) -> dict[str, Any] 
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
         response = litellm.completion(
-            model="ollama/llama3.2",
+            model=model,
             messages=messages,
             response_format={"type": "json_object"},
             temperature=0.0,
@@ -170,6 +170,7 @@ def verify_node(
     sources_dir: Path,
     *,
     min_confidence: float = 0.4,
+    model: str = "ollama/llama3.2",
 ) -> list[ClaimVerification]:
     """Verify the claims in a single node."""
     claims = _split_claims(node.content)
@@ -203,7 +204,7 @@ def verify_node(
             end=citation.end,
             excerpt=excerpt[:3000],
         )
-        data = _try_litellm_json(prompt, system=_VERIFY_SYSTEM)
+        data = _try_litellm_json(prompt, system=_VERIFY_SYSTEM, model=model)
         if isinstance(data, dict):
             confidence = float(data.get("confidence", 0.0))
             verdict = str(data.get("verdict", "unsupported"))
@@ -225,7 +226,7 @@ def verify_node(
     return out
 
 
-def verify_wiki(wiki: CompiledWiki, output_dir: Path) -> VerificationResult:
+def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str = "ollama/llama3.2") -> VerificationResult:
     """Verify every node in a compiled wiki.
 
     The ``output_dir`` is expected to be a sibling of the ``sources/``
@@ -238,7 +239,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path) -> VerificationResult:
 
     result = VerificationResult()
     for node in wiki.nodes:
-        claims = verify_node(node, sources_dir)
+        claims = verify_node(node, sources_dir, model=model)
         result.claims.extend(claims)
 
     result.total = len(result.claims)
