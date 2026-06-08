@@ -44,6 +44,7 @@ skills-lock.json
 .beads-credential-key
 CLAUDE.md
 output/
+site/
 
 # KNOX project config (copy from knox.toml.example)
 knox.toml

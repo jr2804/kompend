@@ -77,7 +77,7 @@ def temp_output(tmp_path: Path) -> Path:
 
 class TestMarkdownWriter:
     def test_writes_valid_markdown(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
-        writer = MarkdownWriter()
+        writer = MarkdownWriter(vault_mode=False)
         result_path = writer.write(sample_wiki, temp_output)
 
         assert result_path == temp_output / "wiki.md"
@@ -93,7 +93,7 @@ class TestMarkdownWriter:
         assert "Step-by-step instructions." in content
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
-        writer = MarkdownWriter()
+        writer = MarkdownWriter(vault_mode=False)
         result_path = writer.write(empty_wiki, temp_output)
 
         assert result_path.exists()
@@ -103,11 +103,67 @@ class TestMarkdownWriter:
 
     def test_creates_output_dir(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
         deep_dir = tmp_path / "a" / "b" / "c"
-        writer = MarkdownWriter()
+        writer = MarkdownWriter(vault_mode=False)
         result_path = writer.write(sample_wiki, deep_dir)
 
         assert result_path.exists()
         assert deep_dir.exists()
+
+    def test_vault_mode_writes_one_file_per_node(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        result_path = writer.write(sample_wiki, temp_output)
+
+        assert result_path == temp_output / "index.md"
+        assert result_path.exists()
+        assert (temp_output / "intro.md").exists()
+        assert (temp_output / "concept-1.md").exists()
+        assert (temp_output / "procedure-1.md").exists()
+
+    def test_vault_mode_index_contains_wikilinks(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, temp_output)
+
+        index = (temp_output / "index.md").read_text(encoding="utf-8")
+        assert "# Test Wiki" in index
+        assert "Introduction" in index
+        assert "Core Concepts" in index
+        assert "How to Use" in index
+
+    def test_vault_mode_related_section(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, temp_output)
+
+        intro = (temp_output / "intro.md").read_text(encoding="utf-8")
+        assert "## Related" in intro
+        assert "[[Core Concepts]]" in intro
+
+    def test_vault_mode_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        result_path = writer.write(empty_wiki, temp_output)
+
+        assert result_path == temp_output / "index.md"
+        index = (temp_output / "index.md").read_text(encoding="utf-8")
+        assert "# Wiki Index" in index
+
+    def test_vault_mode_single_node(self, tmp_path: Path) -> None:
+        from knox.core.models import CompiledWiki, WikiNode
+
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="test", title="Test Page", content="Hello.", node_type="concept"),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True)
+        result_path = writer.write(wiki, tmp_path)
+
+        assert result_path == tmp_path / "index.md"
+        assert (tmp_path / "test.md").exists()
+        content = (tmp_path / "test.md").read_text(encoding="utf-8")
+        assert "# Test Page" in content
+        assert "Hello." in content
+        assert "## Related" not in content
 
 
 # ---------------------------------------------------------------------------

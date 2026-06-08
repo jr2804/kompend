@@ -198,7 +198,7 @@ class TestMarkdownWriterRegression:
             toc=[{"id": "test-page", "title": "Test Page"}],
             metadata={"title": "Test Wiki"},
         )
-        writer = MarkdownWriter(flavor="obsidian")
+        writer = MarkdownWriter(flavor="obsidian", vault_mode=False)
         output_path = writer.write(wiki, tmp_path)
 
         text = output_path.read_text(encoding="utf-8")

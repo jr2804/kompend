@@ -59,6 +59,10 @@ from knox.cli.args import (
     Progress,
     PromptBudget,
     Provenance,
+    QueryFormat,
+    QueryRaw,
+    QueryText,
+    QueryTopK,
     Recursive,
     ReviewMode,
     SourcesDir,
@@ -803,7 +807,140 @@ def pack_install_cmd(
     typer.echo(f"Installed pack '{pack.name}' v{pack.version}")
 
 
+# ── query ────────────────────────────────────────────────────────────────
+
+
+@app.command(name="query")
+def query_cmd(
+    query: QueryText,
+    top_k: QueryTopK = 5,
+    raw: QueryRaw = False,
+    format: QueryFormat = "text",
+    output_dir: OutputDir = None,
+    config: ConfigPath = None,
+) -> None:
+    """Ask a natural language question against the compiled wiki.
+
+    Retrieves relevant context from the last compiled wiki and optionally
+    synthesizes an answer using the configured LLM. Use --raw to skip LLM
+    synthesis and see the source context directly.
+    """
+    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
+
+    wiki = load_cached_wiki(output_dir_path)
+    if wiki is None:
+        typer.echo(
+            f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
+
+    retriever = TokenOverlapRetriever(wiki)
+    results = retriever.search(query, top_k=top_k)
+
+    if not results:
+        typer.echo("No relevant content found in the compiled wiki.")
+        raise typer.Exit(0)
+
+    if raw:
+        if format == "json":
+            import json as j  # noqa: PLC0415
+
+            output = [
+                {
+                    "article": r.title,
+                    "source": r.source_file,
+                    "snippet": r.snippet,
+                    "score": round(r.score, 3),
+                }
+                for r in results
+            ]
+            typer.echo(j.dumps(output, indent=2))
+        else:
+            for r in results:
+                typer.echo(f"  [{r.score:.3f}] {r.title}")
+                if r.source_file:
+                    typer.echo(f"        Source: {r.source_file}")
+                typer.echo(f"        {r.snippet}")
+                typer.echo("")
+        return
+
+    # Try LLM synthesis
+    llm_client: LLMClient | None = _try_build_llm_client(config)
+    if llm_client is None:
+        typer.echo("Warning: No LLM configured. Showing raw context instead.", err=True)
+        for r in results:
+            typer.echo(f"  [{r.score:.3f}] {r.title}")
+            if r.source_file:
+                typer.echo(f"        Source: {r.source_file}")
+            typer.echo(f"        {r.snippet}")
+            typer.echo("")
+        return
+
+    from knox.search.retriever import SynthesisResult  # noqa: PLC0415
+
+    try:
+        synthesis = retriever.synthesize(query, results, llm_client=llm_client)
+    except Exception as exc:
+        typer.echo(f"LLM synthesis failed: {exc}", err=True)
+        typer.echo("Showing raw context instead:", err=True)
+        for r in results:
+            typer.echo(f"  [{r.score:.3f}] {r.title}")
+            typer.echo(f"        {r.snippet}")
+        raise typer.Exit(1)
+
+    if format == "json":
+        typer.echo(format_json_output(synthesis, results))
+    else:
+        typer.echo(synthesis.answer)
+        typer.echo("")
+        typer.echo("Sources:")
+        c: dict[str, Any]
+        for i, c in enumerate(synthesis.citations, 1):
+            source_str: str = c.get("source") or "wiki"
+            typer.echo(f"  [{i}] {c['article']} ({source_str})")
+
+
 # ── Internal helpers ────────────────────────────────────────────────────
+
+
+def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
+    """Format query result as JSON string."""
+    import json as j  # noqa: PLC0415
+
+    output = {
+        "answer": synthesis.answer,
+        "citations": [
+            {
+                "article": c["article"],
+                "source": c.get("source"),
+                "snippet": c["snippet"],
+                "score": c["score"],
+            }
+            for c in synthesis.citations
+        ],
+    }
+    return j.dumps(output, indent=2)
+
+
+def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
+    """Build an LLMClient from config if a default model is set."""
+    from knox.core.config import resolve_config  # noqa: PLC0415
+
+    cfg = resolve_config(config_path=config)
+    default_model: str | None = cfg.get("compile.llm.default_model")
+    if not default_model:
+        return None
+
+    from knox.llm.client import LLMClient  # noqa: PLC0415, PLC811
+
+    return LLMClient(
+        default_model=default_model,
+        fallback_chain=list(cfg.get("compile.llm.fallback_chain", [])),
+        role_models=dict(cfg.get("compile.llm.role_models", {})),
+    )
 
 
 def _build_cli_overrides(

@@ -511,3 +511,38 @@ ConfigPath = Annotated[
         envvar=f"{APP_NAME_UPPERCASE}_CONFIG",
     ),
 ]
+
+# ── Q17 query command ──────────────────────────────────────────────────
+
+QueryText = Annotated[
+    str,
+    typer.Argument(
+        help="Natural language question to ask against the compiled wiki.",
+    ),
+]
+
+QueryTopK = Annotated[
+    int,
+    typer.Option(
+        "--top-k",
+        help="Number of context chunks to retrieve (default: 5).",
+        min=1,
+        max=50,
+    ),
+]
+
+QueryRaw = Annotated[
+    bool,
+    typer.Option(
+        "--raw",
+        help="Return raw context chunks without LLM synthesis.",
+    ),
+]
+
+QueryFormat = Annotated[
+    str,
+    typer.Option(
+        "--format",
+        help="Output format: text (default) or json.",
+    ),
+]
