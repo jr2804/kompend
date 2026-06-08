@@ -277,6 +277,14 @@ Private = Annotated[
     ),
 ]
 
+NoPrivacy = Annotated[
+    bool,
+    typer.Option(
+        "--no-privacy",
+        help="Disable privacy redaction (secrets/PII patterns kept as-is).",
+    ),
+]
+
 Verify = Annotated[
     bool,
     typer.Option(

@@ -15,13 +15,14 @@ from knox.chunking.hybrid import HybridChunker
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument
+from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
-from knox.core.tier_state import TierState, TierStateStore
+from knox.trust import filter_sensitive, filter_wiki
 
 logger = logging.getLogger(__name__)
 
@@ -181,11 +182,14 @@ class WikiPipeline:
         if 3 in levels:
             if self.compiler:
                 wiki = self.compiler.compile(resolved)
+            if self.config.privacy_filter:
+                wiki, _ = filter_wiki(wiki)
         else:
             wiki = self._load_compiled_wiki() or wiki
-        if 4 in levels:
-            if self.output_writer:
-                self.output_writer.write(wiki, self.config.output_dir)
+        if 4 in levels and self.output_writer:
+            if self.config.privacy_filter:
+                wiki, _ = filter_wiki(wiki)
+            self.output_writer.write(wiki, self.config.output_dir)
 
         self.save_state()
         logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
@@ -239,6 +243,8 @@ class WikiPipeline:
         if not self.compiler:
             return
         wiki = self.compiler.compile(resolved)
+        if self.config.privacy_filter:
+            wiki, _ = filter_wiki(wiki)
         self._save_compiled_wiki(wiki)
 
     def _run_output_tier(self) -> None:
@@ -333,6 +339,12 @@ class WikiPipeline:
                     if parsed is not None:
                         if not self.chunker:
                             return []
+                        if self.config.privacy_filter:
+                            for el in parsed.elements:
+                                if isinstance(el.content, str):
+                                    el.content, _ = filter_sensitive(el.content)
+                                elif isinstance(el.content, list):
+                                    el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
                         return self.chunker.chunk(parsed)
 
             parsed = self._load_cache(source_file) if use_cache else None
@@ -349,6 +361,13 @@ class WikiPipeline:
                     self._save_cache(source_file, parsed)
                     if not content_hash:
                         content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+            if self.config.privacy_filter:
+                for el in parsed.elements:
+                    if isinstance(el.content, str):
+                        el.content, _ = filter_sensitive(el.content)
+                    elif isinstance(el.content, list):
+                        el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
 
             if content_hash:
                 self.state_store.record(state, stem, source_file, content_hash, tier=1)

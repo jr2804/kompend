@@ -103,6 +103,9 @@ DEFAULTS: dict[str, Any] = {
         "threshold": None,
         "history_size": 20,
     },
+    "trust": {
+        "privacy_filter": True,
+    },
     "ignore": {
         "patterns": [],
     },
@@ -132,6 +135,7 @@ _ENV_MAP: dict[str, str] = {
     "compile.output.flavor": "KNOX_OUTPUT_FLAVOR",
     "compile.output.rumdl_config": "KNOX_RUMDL_CONFIG",
     "lint.threshold": "KNOX_LINT_THRESHOLD",
+    "trust.privacy_filter": "KNOX_PRIVACY_FILTER",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
 }
 

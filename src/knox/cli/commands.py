@@ -23,6 +23,7 @@ from knox.cli.args import (
     CompileFiles,
     CompileLint,
     CompileMode,
+    ConfigPath,
     EmbedModel,
     ForceTier,
     Frontmatter,
@@ -30,6 +31,7 @@ from knox.cli.args import (
     ImageMode,
     IndexStore,
     JsonOutput,
+    KindOption,
     LintFix,
     LintLlm,
     LintOutputDir,
@@ -39,11 +41,11 @@ from knox.cli.args import (
     ListTiers,
     LlmContextBudget,
     LlmDefaultModel,
-    KindOption,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     LlmRoleModel,
     NoCacheFlag,
+    NoPrivacy,
     OnlineUrls,
     OutputDir,
     OutputFlavor,
@@ -61,7 +63,6 @@ from knox.cli.args import (
     TwoPhase,
     Verbose,
     Verify,
-    ConfigPath,
     Workers,
 )
 from knox.core.config import resolve_config
@@ -141,6 +142,7 @@ def compile_cmd(
     bypass_review: BypassReview = False,
     provenance: Provenance = False,
     private: Private = False,
+    no_privacy: NoPrivacy = False,
     verify: Verify = False,
     flavor: OutputFlavor = None,
     frontmatter: Frontmatter = None,
@@ -217,6 +219,7 @@ def compile_cmd(
         review=review,
         provenance=provenance,
         private=private,
+        no_privacy=no_privacy,
         verify=verify,
         synthesize=synthesize,
         index_store=index_store,
@@ -274,6 +277,7 @@ def compile_cmd(
         llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
         llm_role_models=_resolve_role_models(cfg),
         page_kind=cfg.get("compile.page_kind", kind),
+        privacy_filter=cfg.get("trust.privacy_filter", True),
     )
 
     pipeline = build_pipeline(config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
@@ -812,6 +816,7 @@ def _build_cli_overrides(
     review: bool | None = None,
     provenance: bool | None = None,
     private: bool | None = None,
+    no_privacy: bool | None = None,
     verify: bool | None = None,
     synthesize: bool | None = None,
     index_store: bool | None = None,
@@ -855,6 +860,8 @@ def _build_cli_overrides(
         overrides["compile.provenance"] = provenance
     if private:
         overrides["compile.private"] = private
+    if no_privacy:
+        overrides["trust.privacy_filter"] = False
     if verify:
         overrides["compile.verify"] = verify
     if synthesize:

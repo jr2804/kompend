@@ -72,6 +72,12 @@ fallback_max_retries = 2
 # Number of historical eval results to keep
 history_size = 20
 
+# ── Trust settings ──────────────────────────────────────────────────────
+
+[trust]
+# Privacy redaction filter: strip secrets/PII before sources enter the pipeline
+# privacy_filter = true
+
 # ── Ignore patterns ─────────────────────────────────────────────────────
 
 [ignore]
