@@ -63,6 +63,13 @@ from knox.cli.args import (
     Progress,
     PromptBudget,
     Provenance,
+    QueryFormat,
+    QueryNoClassify,
+    QueryRaw,
+    QueryScope,
+    QuerySourcesDir,
+    QueryText,
+    QueryTopK,
     Recursive,
     ReviewMode,
     ServeHost,
@@ -705,6 +712,7 @@ def lint_cmd(
 
 @app.command(name="config")
 def config_cmd(
+    config: ConfigPath = None,
     show_source: bool = typer.Option(False, "--source", help="Show where each value comes from."),
     json_output: JsonOutput = False,
 ) -> None:
@@ -911,7 +919,7 @@ def query_cmd(
         return
 
     # Try LLM synthesis
-    llm_client: LLMClient | None = _try_build_llm_client(config)
+    llm_client = _try_build_llm_client(config)
     if llm_client is None:
         typer.echo("Warning: No LLM configured. Showing raw context instead.", err=True)
         for r in results:
@@ -965,8 +973,8 @@ def capture_cmd(
     from knox.capture.capture import capture  # noqa: PLC0415
 
     try:
-        from knox.llm.client import LLMClient  # noqa: PLC0415
         from knox.core.config import resolve_config  # noqa: PLC0415
+        from knox.llm.client import LLMClient  # noqa: PLC0415
 
         cfg = resolve_config()
         default_model = cfg.get("compile.llm.default_model", "ollama/llama3.2")

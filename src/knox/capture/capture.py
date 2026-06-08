@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from knox.core.template_loader import TemplateLoader
 from knox.llm.client import LLMClient
@@ -31,13 +29,10 @@ def capture(
     captured_dir = sources_dir / "_captured"
     captured_dir.mkdir(parents=True, exist_ok=True)
 
-    if llm_client is not None:
-        items = _extract_with_llm(text, llm_client)
-    else:
-        items = [CapturedItem(kind="note", title=_make_title(text), content=text)]
+    items = _extract_with_llm(text, llm_client) if llm_client is not None else [CapturedItem(kind="note", title=_make_title(text), content=text)]
 
     paths: list[Path] = []
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     for i, item in enumerate(items):
         slug = _make_slug(item.title)
         filename = f"capture-{timestamp}-{i:02d}-{slug}.md"

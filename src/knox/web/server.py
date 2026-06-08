@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +180,8 @@ async def query_page(q: str = Query(default="")) -> str:
     wiki = _load_wiki()
     answer_html = ""
     if q:
-        from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
         from knox.core.models import CompiledWiki  # noqa: PLC0415
+        from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
 
         w = CompiledWiki(
             nodes=wiki.get("nodes", []),
@@ -203,7 +202,7 @@ async def query_page(q: str = Query(default="")) -> str:
         elif results:
             answer_html = "<h3>Results</h3>"
             for r in results:
-                answer_html += f'<div style="margin-bottom:1rem;padding:1rem;background:#f9f9f9;border-radius:4px">'
+                answer_html += '<div style="margin-bottom:1rem;padding:1rem;background:#f9f9f9;border-radius:4px">'
                 answer_html += f'<strong>{r.title}</strong> <span style="color:#666;font-size:0.85rem">(score: {r.score:.3f})</span>'
                 if r.source_file:
                     answer_html += f'<br><span style="font-size:0.85rem;color:#666">Source: {r.source_file}</span>'
@@ -404,7 +403,6 @@ async def lint_page() -> str:
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page() -> str:
-    import tomllib  # noqa: PLC0415
     config_path = _CWD / "knox.toml"
     config_content = ""
     if config_path.exists():

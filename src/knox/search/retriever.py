@@ -289,20 +289,19 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _extract_snippet(content: str, query_tokens: set[str], max_chars: int = 300) -> str:
-    sentences: list[str] = _TOKEN_SPLIT_RE.split(content)
+    _TOKEN_SPLIT_RE.split(content)
     best_score: int = 0
     best_start: int = 0
     words: list[str] = _TOKEN_SPLIT_RE.split(content.lower())
 
     for i in range(len(words)):
         score: int = 0
-        char_pos: int = 0
         for j in range(i, min(i + 60, len(words))):
             if words[j] in query_tokens:
                 score += 1
         if score > best_score:
             best_score = score
-            char_pos = _word_to_char_index(content, i)
+            _word_to_char_index(content, i)
 
     if best_score == 0:
         return content[:max_chars].rsplit(" ", 1)[0] + "..."

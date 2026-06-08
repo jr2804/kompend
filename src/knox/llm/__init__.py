@@ -29,7 +29,7 @@ def _install_litellm_agentic_loop_compat() -> None:
                 pass
 
             from litellm.types.integrations import custom_logger as _custom_logger_module
-            setattr(_custom_logger_module, "AgenticLoopPlan", AgenticLoopPlan)
+            _custom_logger_module.AgenticLoopPlan = AgenticLoopPlan
         except Exception as exc:  # pragma: no cover - best-effort compat
             logger.debug("Failed to install litellm AgenticLoopPlan compat: %s", exc)
 
