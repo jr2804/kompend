@@ -11,66 +11,22 @@ Page kinds define the structure and behaviour of wiki pages:
 
 from __future__ import annotations
 
+import importlib.resources as ir
 import logging
+import tomllib
 from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Built-in page kinds ────────────────────────────────────────────────
 
-BUILTIN_KINDS: dict[str, dict[str, Any]] = {
-    "concept": {
-        "title": "Concept",
-        "description": "An abstract idea, theory, or notion.",
-        "required_fields": ["title", "tags"],
-        "optional_fields": ["aliases", "defined_in", "related_concepts"],
-        "compile_hints": {
-            "group_by": "concept",
-            "cross_source": True,
-        },
-    },
-    "entity": {
-        "title": "Entity",
-        "description": "A concrete thing, person, organisation, or object.",
-        "required_fields": ["title", "type"],
-        "optional_fields": ["attributes", "relationships", "source"],
-        "compile_hints": {
-            "group_by": "entity",
-            "cross_source": True,
-        },
-    },
-    "comparison": {
-        "title": "Comparison",
-        "description": "Side-by-side comparison of two or more entities or concepts.",
-        "required_fields": ["title", "compare"],
-        "optional_fields": ["criteria", "conclusion"],
-        "compile_hints": {
-            "group_by": None,
-            "cross_source": True,
-        },
-    },
-    "overview": {
-        "title": "Overview",
-        "description": "High-level summary of a topic domain.",
-        "required_fields": ["title"],
-        "optional_fields": ["subtopics", "key_findings", "related_overviews"],
-        "compile_hints": {
-            "group_by": "domain",
-            "cross_source": True,
-        },
-    },
-    "custom": {
-        "title": "Custom",
-        "description": "User-defined page kind with custom frontmatter schema.",
-        "required_fields": ["title", "kind"],
-        "optional_fields": [],
-        "compile_hints": {
-            "group_by": None,
-            "cross_source": False,
-        },
-    },
-}
+def _load_builtin_kinds() -> dict[str, dict[str, Any]]:
+    """Load built-in page kinds from ``compilation/kinds/builtin_kinds.toml``."""
+    ref = ir.files("knox.compilation.kinds") / "builtin_kinds.toml"
+    return tomllib.loads(ref.read_text(encoding="utf-8"))
+
+
+BUILTIN_KINDS: dict[str, dict[str, Any]] = _load_builtin_kinds()
 
 
 @dataclass

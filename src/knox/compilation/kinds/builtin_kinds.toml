@@ -1,0 +1,47 @@
+[concept]
+title = "Concept"
+description = "An abstract idea, theory, or notion."
+required_fields = ["title", "tags"]
+optional_fields = ["aliases", "defined_in", "related_concepts"]
+
+[concept.compile_hints]
+group_by = "concept"
+cross_source = true
+
+[entity]
+title = "Entity"
+description = "A concrete thing, person, organisation, or object."
+required_fields = ["title", "type"]
+optional_fields = ["attributes", "relationships", "source"]
+
+[entity.compile_hints]
+group_by = "entity"
+cross_source = true
+
+[comparison]
+title = "Comparison"
+description = "Side-by-side comparison of two or more entities or concepts."
+required_fields = ["title", "compare"]
+optional_fields = ["criteria", "conclusion"]
+
+[comparison.compile_hints]
+cross_source = true
+
+[overview]
+title = "Overview"
+description = "High-level summary of a topic domain."
+required_fields = ["title"]
+optional_fields = ["subtopics", "key_findings", "related_overviews"]
+
+[overview.compile_hints]
+group_by = "domain"
+cross_source = true
+
+[custom]
+title = "Custom"
+description = "User-defined page kind with custom frontmatter schema."
+required_fields = ["title", "kind"]
+optional_fields = []
+
+[custom.compile_hints]
+cross_source = false

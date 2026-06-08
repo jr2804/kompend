@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.resources as ir
 import logging
+import tomllib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,8 +26,9 @@ class Pack:
     """A contribution pack — a bundle of prompts, rules, and ontology.
 
     Packs provide domain-specific prompt templates, compilation rules,
-    and page kind schemas (N9). Built-in packs are defined in Python;
-    user-created packs live as directories with a ``pack.yaml`` manifest.
+    and page kind schemas (N9). Built-in packs are loaded from
+    ``pack.toml`` manifests; user-created packs live as directories
+    with a ``pack.toml`` manifest.
 
     Attributes:
     ----------
@@ -54,6 +57,33 @@ class Pack:
     page_kinds: dict[str, dict[str, Any]] = field(default_factory=dict)
     dependencies: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def load_pack_toml(package: str, filename: str = "pack.toml") -> Pack:
+    """Load a :class:`Pack` from a TOML manifest inside a package.
+
+    Parameters
+    ----------
+    package:
+        Dotted package path, e.g. ``"knox.packs.builtins.default"``.
+    filename:
+        Name of the TOML file inside the package directory.
+    """
+    ref = ir.files(package) / filename
+    data = tomllib.loads(ref.read_text(encoding="utf-8"))
+
+    pack_section = data.get("pack", {})
+    roles_section = data.get("roles", {})
+    roles = {role: cfg["prompt"] for role, cfg in roles_section.items() if isinstance(cfg, dict) and "prompt" in cfg}
+
+    return Pack(
+        name=pack_section.get("name", ""),
+        description=pack_section.get("description", ""),
+        version=pack_section.get("version", "1.0.0"),
+        roles=roles,
+        dependencies=list(pack_section.get("dependencies", [])),
+        metadata={},
+    )
 
 
 class PackRegistry:
@@ -139,35 +169,8 @@ class PackRegistry:
         return resolved
 
     def _register_default(self) -> None:
-        """Register the built-in ``default`` pack."""
-        self._packs["default"] = Pack(
-            name="default",
-            description="Built-in default pack with generic prompts for all pipeline roles.",
-            version="1.0.0",
-            roles={
-                "compile": (
-                    "You compile knowledge from the following source documents. "
-                    "Extract key concepts, entities, and relationships. "
-                    "Return structured JSON with 'nodes' (list of pages) and "
-                    "'edges' (list of relationships between pages)."
-                ),
-                "resolve": (
-                    "Extract named entities and resolve cross-references from the text below. "
-                    "Return a JSON object with 'entities' (list of dicts with name, type, "
-                    "and description) and 'relationships' (list of dicts with source, target, "
-                    "and relation)."
-                ),
-                "enrich": (
-                    "Given the following content, enrich it with additional context and details. "
-                    "Add definitions, examples, and related concepts where appropriate."
-                ),
-                "query": (
-                    "Answer the user's question based on the compiled wiki content below. "
-                    "Cite specific pages and sources. If the wiki doesn't contain the "
-                    "answer, say so clearly."
-                ),
-            },
-        )
+        """Register the built-in ``default`` pack loaded from TOML."""
+        self._packs["default"] = load_pack_toml("knox.packs.builtins.default")
 
 
 # Module-level singleton

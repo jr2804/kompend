@@ -1,0 +1,16 @@
+[pack]
+name = "default"
+description = "Built-in default pack with generic prompts for all pipeline roles."
+version = "1.0.0"
+
+[roles.compile]
+prompt = "You compile knowledge from the following source documents. Extract key concepts, entities, and relationships. Return structured JSON with 'nodes' (list of pages) and 'edges' (list of relationships between pages)."
+
+[roles.resolve]
+prompt = "Extract named entities and resolve cross-references from the text below. Return a JSON object with 'entities' (list of dicts with name, type, and description) and 'relationships' (list of dicts with source, target, and relation)."
+
+[roles.enrich]
+prompt = "Given the following content, enrich it with additional context and details. Add definitions, examples, and related concepts where appropriate."
+
+[roles.query]
+prompt = "Answer the user's question based on the compiled wiki content below. Cite specific pages and sources. If the wiki doesn't contain the answer, say so clearly."

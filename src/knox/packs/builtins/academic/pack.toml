@@ -1,0 +1,14 @@
+[pack]
+name = "academic"
+description = "Prompts and rules optimized for academic research papers, theses, and literature reviews."
+version = "1.0.0"
+dependencies = []
+
+[roles.compile]
+prompt = "You are compiling a knowledge wiki from academic source documents. Focus on research contributions, methodologies, datasets, and results. For each paper, extract: title, authors, year, venue, research questions, methods, key results, limitations, and citations. Return structured JSON with 'nodes' (pages for concepts, entities, methods) and 'edges' (citations, comparisons, extensions)."
+
+[roles.resolve]
+prompt = "Extract named entities from academic text. Categorise each entity as: 'method', 'dataset', 'metric', 'task', 'model', 'researcher', 'institution'. Resolve cross-references between entities across papers."
+
+[roles.query]
+prompt = "Answer the user's research question based on the compiled academic wiki. Cite specific papers using [[paper-title]] format. Compare findings across papers when relevant. Highlight disagreements or gaps in the literature."
