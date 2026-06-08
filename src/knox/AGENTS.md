@@ -95,28 +95,30 @@ These are filed as beads issues and must be fixed before adding new text-in-code
   This frontmatter is parsed by ``TemplateLoader`` and does not appear in the
   rendered output::
 
-    ---
-    variables:
+---
+
+  variables:
       - name: title
-        required: true
+  required: true
       - name: content
-        required: true
+  required: true
       - name: context_budget
-        required: false
-    role: lint.factual-consistency
-    response_format: json_object
-    temperature: 0.0
+  required: false
+  role: lint.factual-consistency
+  response_format: json_object
+
+## temperature: 0.0
+
     ---
 
     Your prompt text using {{ title }} and {{ content }}.
 
   The frontmatter fields are:
 
-  - ``variables`` — list of expected variables with ``name`` and ``required``.
-  - ``role`` — pipeline role (e.g. ``"lint.clarity-score"``).
-  - ``response_format`` — LLM response format (``"json_object"`` or ``"text"``).
-  - ``temperature`` — LLM temperature override for this specific template.
-
+- ``variables`` — list of expected variables with ``name`` and ``required``.
+- ``role`` — pipeline role (e.g. ``"lint.clarity-score"``).
+- ``response_format`` — LLM response format (``"json_object"`` or ``"text"``).
+- ``temperature`` — LLM temperature override for this specific template.
 - Required variables declared in frontmatter are checked by the loader. If a
   required variable is missing, ``ValueError`` is raised before the template
   is ever rendered.
@@ -136,32 +138,28 @@ Before adding a string constant to a Python file, ask:
 
 When moving prompts out of `packs/builtins/<name>.py`, use this layout:
 
-```
-src/knox/packs/<name>/
-├── pack.toml           # manifest + prompts (see TOML schema)
-├── __init__.py         # optional Python registration
-└── templates/          # optional Jinja2 templates
-    └── compile.md.j2
-```
+    src/knox/packs/<name>/
+    ├── pack.toml           # manifest + prompts (see TOML schema)
+    ├── __init__.py         # optional Python registration
+    └── templates/          # optional Jinja2 templates
+        └── compile.md.j2
 
 The `pack.toml` manifest:
 
-```toml
-[pack]
-name = "academic"
-description = "Prompts for academic research papers"
-version = "1.0.0"
+    [pack]
+    name = "academic"
+    description = "Prompts for academic research papers"
+    version = "1.0.0"
 
-[pack.dependencies]
-# other pack names
+    [pack.dependencies]
+    # other pack names
 
-[roles.compile]
-template = "compile.md.j2"
-response_format = "json_object"
-temperature = 0.0
+    [roles.compile]
+    template = "compile.md.j2"
+    response_format = "json_object"
+    temperature = 0.0
 
-[roles.resolve]
-template = "resolve.md.j2"
-response_format = "json_object"
-temperature = 0.0
-```
+    [roles.resolve]
+    template = "resolve.md.j2"
+    response_format = "json_object"
+    temperature = 0.0

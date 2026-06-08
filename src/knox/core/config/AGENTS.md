@@ -4,7 +4,7 @@ Rules for AI coding assistants working on the KNOX configuration system.
 
 ## Architecture
 
-```
+```text
 src/knox/core/config/
 ├── __init__.py        # Public API re-exports
 ├── _core.py           # Config resolution engine (merge, precedence, discovery)
@@ -16,7 +16,7 @@ with `_` and should not be imported outside this package or tests.
 
 ## Precedence order (memorize this)
 
-```
+```text
 CLI args  >  env vars (KNOX_*)  >  project knox.toml  >  global config.toml  >  defaults
 ```
 
@@ -27,9 +27,11 @@ When adding a new config key, **all 5 layers must work**. Test each.
 1. **Add to `DEFAULTS` dict** in `_core.py` — every key must have a default.
 2. **Add to `_ENV_MAP`** if the key makes sense as an env var override. Use the
    `KNOX_` prefix and the dotted config path as the dict key. Example:
+
    ```python
    "compile.cache.ttl": "KNOX_CACHE_TTL",
    ```
+
 3. **Add to `_build_cli_overrides()`** in `commands.py` if there is a CLI flag.
    Map the CLI parameter name to the same dotted key used in `DEFAULTS`.
 4. **Update `knox.toml.example`** — add the new key with a comment explaining

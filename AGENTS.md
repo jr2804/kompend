@@ -135,12 +135,14 @@ For review, debugging, or analysis outputs, use: findings with references, concl
 ## Text in Code Rule
 
 **Text must never be embedded in Python code.** This includes:
+
 - LLM system prompts, user prompts, and instruction strings
 - Template strings with placeholders (`.format()`, f-strings)
 - Configuration data (page kind definitions, field schemas, hints)
 - Multi-line descriptive strings passed to the LLM
 
 All such text must be stored in:
+
 - **TOML files** for configuration data and prompt metadata
 - **Jinja2 templates** (`.md.j2`) for prompt text with variables
 - Packaged as external files loaded at runtime, not string constants in Python
