@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import sys
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -502,10 +504,10 @@ def provenance_cmd(
     source_chunks = node.source_chunks or []
 
     if json_output:
-        import json as j  # noqa: PLC0415
+
 
         data = {"page": node.title, "slug": node.id, "sources": source_chunks}
-        j.dump(data, sys.stdout, indent=2)
+        json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
         return
 
