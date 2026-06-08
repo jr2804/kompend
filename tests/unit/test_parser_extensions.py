@@ -16,7 +16,6 @@ from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.opendataloader_parser import OpenDataLoaderParser
 from knox.preprocessing.parsers.vlm_parser import VLMParser
 
-
 # ============================================================================
 # OpenDataLoaderParser
 # ============================================================================

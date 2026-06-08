@@ -55,10 +55,7 @@ pytestmark = pytest.mark.benchmark
 
 @pytest.mark.skipif(
     _REAL_PDF is None or not _DOCLING_OK,
-    reason=(
-        "No real PDF found in test corpus and/or DoclingParser not available; "
-        "parser benchmark needs a physical PDF file and working DoclingParser"
-    ),
+    reason=("No real PDF found in test corpus and/or DoclingParser not available; parser benchmark needs a physical PDF file and working DoclingParser"),
 )
 class TestParserQualityBenchmark:
     """Quality benchmark for DoclingParser."""
@@ -86,8 +83,7 @@ class TestParserQualityBenchmark:
 
         avg = sum(durations) / len(durations)
         # Report — not assert — the timing
-        print(f"\n  ⏱  DoclingParser — 3 runs: min={min(durations):.3f}s, "
-              f"avg={avg:.3f}s, max={max(durations):.3f}s")
+        print(f"\n  ⏱  DoclingParser — 3 runs: min={min(durations):.3f}s, avg={avg:.3f}s, max={max(durations):.3f}s")
 
     def test_element_count(self, parsed_doc: ParsedDocument) -> None:
         """Verify the parsed document has a reasonable number of elements."""
@@ -98,9 +94,7 @@ class TestParserQualityBenchmark:
     def test_contains_headings(self, parsed_doc: ParsedDocument) -> None:
         """At least one heading should be present."""
         heading_count = sum(
-            1 for e in parsed_doc.elements
-            if getattr(e, "type", None) == ElementType.HEADING
-            or (hasattr(e, "heading_level") and e.heading_level is not None)
+            1 for e in parsed_doc.elements if getattr(e, "type", None) == ElementType.HEADING or (hasattr(e, "heading_level") and e.heading_level is not None)
         )
         print(f"\n  📑 Heading elements: {heading_count}")
         # Don't assert — it's a quality metric, not a pass/fail
@@ -110,30 +104,16 @@ class TestParserQualityBenchmark:
 
     def test_contains_text(self, parsed_doc: ParsedDocument) -> None:
         """At least some text content should be extracted."""
-        text_count = sum(
-            1 for e in parsed_doc.elements
-            if getattr(e, "type", None) == ElementType.TEXT
-        )
-        total_chars = sum(
-            len(str(getattr(e, "content", "")))
-            for e in parsed_doc.elements
-        )
+        text_count = sum(1 for e in parsed_doc.elements if getattr(e, "type", None) == ElementType.TEXT)
+        total_chars = sum(len(str(getattr(e, "content", ""))) for e in parsed_doc.elements)
         print(f"\n  📝 Text elements: {text_count}")
         print(f"  🔤 Total characters extracted: {total_chars}")
-        assert text_count > 0 or total_chars > 0, (
-            "No text content extracted from PDF"
-        )
+        assert text_count > 0 or total_chars > 0, "No text content extracted from PDF"
 
     def test_structure_preservation(self, parsed_doc: ParsedDocument) -> None:
         """Check for preserved structure elements (tables, code, etc.)."""
-        table_count = sum(
-            1 for e in parsed_doc.elements
-            if getattr(e, "type", None) == ElementType.TABLE
-        )
-        image_count = sum(
-            1 for e in parsed_doc.elements
-            if getattr(e, "type", None) == ElementType.IMAGE
-        )
+        table_count = sum(1 for e in parsed_doc.elements if getattr(e, "type", None) == ElementType.TABLE)
+        image_count = sum(1 for e in parsed_doc.elements if getattr(e, "type", None) == ElementType.IMAGE)
         print(f"\n  🏛  Tables found: {table_count}")
         print(f"  🖼  Images found: {image_count}")
 
@@ -148,10 +128,7 @@ class TestParserQualityBenchmark:
         """Breakdown of element types found during parsing."""
         from collections import Counter
 
-        type_counts: Counter = Counter(
-            getattr(e, "type", None).name if getattr(e, "type", None) else "UNKNOWN"
-            for e in parsed_doc.elements
-        )
-        print(f"\n  📊 Element type distribution:")
+        type_counts: Counter = Counter(getattr(e, "type", None).name if getattr(e, "type", None) else "UNKNOWN" for e in parsed_doc.elements)
+        print("\n  📊 Element type distribution:")
         for tname, count in type_counts.most_common():
             print(f"     {tname}: {count}")

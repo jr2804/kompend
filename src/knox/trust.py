@@ -101,10 +101,7 @@ def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
     private_index.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "pages": [
-            {"id": n.id, "title": n.title}
-            for n in wiki.nodes
-        ],
+        "pages": [{"id": n.id, "title": n.title} for n in wiki.nodes],
     }
     private_index.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
@@ -150,9 +147,7 @@ class LifecycleState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LifecycleState:
-        return cls(
-            entries={k: LifecycleEntry.from_dict(v) for k, v in data.get("entries", {}).items()}
-        )
+        return cls(entries={k: LifecycleEntry.from_dict(v) for k, v in data.get("entries", {}).items()})
 
 
 class LifecycleStore:
@@ -174,9 +169,7 @@ class LifecycleStore:
 
     def save(self, state: LifecycleState) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(
-            json.dumps(state.to_dict(), indent=2, default=str), encoding="utf-8"
-        )
+        self.state_path.write_text(json.dumps(state.to_dict(), indent=2, default=str), encoding="utf-8")
 
     def transition(
         self,

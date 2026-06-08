@@ -46,14 +46,12 @@ def _chain(models: list[str], **kwargs: Any) -> tuple[FailoverChain, _RecordingS
 
 
 class TestFailoverChainConstruction:
-
     def test_empty_models_raises_configuration_error(self) -> None:
         with pytest.raises(ConfigurationError):
             FailoverChain(models=[])
 
 
 class TestSingleModelHappyPath:
-
     def test_first_attempt_succeeds(self) -> None:
         chain, sleeper = _chain(["m1"])
         result = chain.run(lambda model: f"ok-{model}")
@@ -64,7 +62,6 @@ class TestSingleModelHappyPath:
 
 
 class TestTransientRetry:
-
     def test_retries_then_succeeds(self) -> None:
         chain, sleeper = _chain(["m1"], max_retries_per_model=2)
         calls = []
@@ -98,7 +95,6 @@ class TestTransientRetry:
 
 
 class TestChainAdvancement:
-
     def test_advances_to_next_model_after_transient_exhaustion(self) -> None:
         chain, sleeper = _chain(["m1", "m2"], max_retries_per_model=1)
         seen: list[str] = []
@@ -147,7 +143,6 @@ class TestChainAdvancement:
 
 
 class TestChainExhaustion:
-
     def test_all_transient_raises_transient(self) -> None:
         chain, _ = _chain(["m1", "m2"], max_retries_per_model=1)
 

@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from knox.mcp.server import compile_wiki, parse_document
 
-
 # ---------------------------------------------------------------------------
 # parse_document
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ from knox.cli._sources import (
     resolve_files,
 )
 
-
 # ── resolve_files ───────────────────────────────────────────────────────
 
 

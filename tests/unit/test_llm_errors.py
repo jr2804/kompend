@@ -25,7 +25,6 @@ def _make_exc(class_name: str, *, status_code: int | None = None) -> Exception:
 
 
 class TestErrorHierarchy:
-
     def test_typed_errors_inherit_llmerror(self) -> None:
         assert issubclass(TransientError, LLMError)
         assert issubclass(PermanentError, LLMError)
@@ -44,7 +43,6 @@ class TestErrorHierarchy:
 
 
 class TestClassifyLitellmError:
-
     def test_rate_limit_is_transient(self) -> None:
         err = classify_litellm_error(_make_exc("RateLimitError"), model="m")
         assert isinstance(err, TransientError)

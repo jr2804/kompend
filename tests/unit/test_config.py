@@ -148,13 +148,13 @@ class TestConfigDiscovery:
 
     def test_find_project_config_finds_toml(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text('[compile]\nchunk_size = 128\n')
+        config_file.write_text("[compile]\nchunk_size = 128\n")
         result = find_project_config(start_dir=tmp_path)
         assert result == config_file
 
     def test_find_project_config_walks_up(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text('[compile]\nchunk_size = 128\n')
+        config_file.write_text("[compile]\nchunk_size = 128\n")
         subdir = tmp_path / "sub" / "dir"
         subdir.mkdir(parents=True)
         result = find_project_config(start_dir=subdir)
@@ -169,7 +169,7 @@ class TestConfigDiscovery:
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
         config_file = config_dir / "config.toml"
-        config_file.write_text('[compile]\nchunk_size = 64\n')
+        config_file.write_text("[compile]\nchunk_size = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         result = find_global_config()
         assert result == config_file
@@ -188,7 +188,7 @@ class TestResolveConfig:
 
     def test_project_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text('[compile]\nchunk_size = 128\n')
+        config_file.write_text("[compile]\nchunk_size = 128\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.chunk_size") == 128
@@ -196,7 +196,7 @@ class TestResolveConfig:
 
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text('[compile]\nchunk_size = 128\n')
+        config_file.write_text("[compile]\nchunk_size = 128\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("KNOX_CHUNK_SIZE", "64")
         cfg = resolve_config()
@@ -210,7 +210,7 @@ class TestResolveConfig:
 
     def test_provenance_tracking(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text('[compile]\nchunk_size = 128\n')
+        config_file.write_text("[compile]\nchunk_size = 128\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("KNOX_WORKERS", "4")
         cfg = resolve_config(cli_overrides={"compile.format": "json"})
@@ -223,7 +223,7 @@ class TestResolveConfig:
     def test_global_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[compile]\nchunk_size = 64\n')
+        (config_dir / "config.toml").write_text("[compile]\nchunk_size = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # Use a subdir with no project config
         subdir = tmp_path / "project"
@@ -236,12 +236,12 @@ class TestResolveConfig:
         # Global: chunk_size = 64
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[compile]\nchunk_size = 64\n')
+        (config_dir / "config.toml").write_text("[compile]\nchunk_size = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # Project: chunk_size = 128
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text('[compile]\nchunk_size = 128\n')
+        (project_dir / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
         assert cfg.get("compile.chunk_size") == 128
@@ -295,11 +295,7 @@ class TestTomlLoading:
 
     def test_nested_tables(self, tmp_path: Any) -> None:
         f = tmp_path / "nested.toml"
-        f.write_text(
-            '[compile.llm]\n'
-            'default_model = "openai/gpt-4o"\n'
-            'fallback_chain = ["anthropic/claude"]\n'
-        )
+        f.write_text('[compile.llm]\ndefault_model = "openai/gpt-4o"\nfallback_chain = ["anthropic/claude"]\n')
         data = _load_toml(f)
         assert data["compile"]["llm"]["default_model"] == "openai/gpt-4o"
         assert data["compile"]["llm"]["fallback_chain"] == ["anthropic/claude"]

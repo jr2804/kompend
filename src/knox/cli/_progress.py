@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Generator
+from typing import Any
 
 from rich.console import Console
 from rich.progress import (
@@ -25,7 +26,6 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -205,21 +205,6 @@ class PipelineProgress:
     _step_tracker: StepTracker | None = None
     _file_index: int = 0
 
-    @classmethod
-    def create(
-        cls,
-        total_files: int,
-        force_progress: bool | None = None,
-    ) -> PipelineProgress:
-        """Create a PipelineProgress, auto-detecting TTY."""
-        show = _should_show_progress(force_progress)
-        if not show:
-            return cls(enabled=False)
-
-        file_tracker = FileProgressTracker(total=total_files)
-        step_tracker = StepTracker(parent_progress=file_tracker._progress)
-        return cls(enabled=True, _file_tracker=file_tracker, _step_tracker=step_tracker)
-
     def start(self) -> None:
         """Start the overall progress display."""
         if self._file_tracker:
@@ -258,9 +243,24 @@ class PipelineProgress:
         """Log an error for a file (shown in task list)."""
         pass  # errors are logged via finish_file
 
+    @classmethod
+    def create(
+        cls,
+        total_files: int,
+        force_progress: bool | None = None,
+    ) -> PipelineProgress:
+        """Create a PipelineProgress, auto-detecting TTY."""
+        show = _should_show_progress(force_progress)
+        if not show:
+            return cls(enabled=False)
+
+        file_tracker = FileProgressTracker(total=total_files)
+        step_tracker = StepTracker(parent_progress=file_tracker._progress)
+        return cls(enabled=True, _file_tracker=file_tracker, _step_tracker=step_tracker)
+
 
 @contextmanager
-def null_progress() -> Generator[NullProgressTracker, Any, None]:
+def null_progress() -> Generator[NullProgressTracker, Any]:
     """Context manager producing a no-op progress tracker.
 
     Use this in non-TTY or quiet mode instead of a real progress bar.

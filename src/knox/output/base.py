@@ -38,6 +38,11 @@ class BaseOutputWriter(ABC):
         if name is not None and not getattr(cls, "__abstractmethods__", None):
             cls._registry[name] = cls
 
+    @abstractmethod
+    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
+        """Write compiled wiki to the output directory and return the output path."""
+        ...
+
     @classmethod
     def get(cls, name: str) -> type[BaseOutputWriter] | None:
         """Look up a registered writer by name."""
@@ -47,8 +52,3 @@ class BaseOutputWriter(ABC):
     def available_formats(cls) -> list[str]:
         """Return sorted list of registered format names."""
         return sorted(cls._registry)
-
-    @abstractmethod
-    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
-        """Write compiled wiki to the output directory and return the output path."""
-        ...

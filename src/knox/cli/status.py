@@ -31,9 +31,7 @@ def collect_stats(
         for ext in get_supported_extensions():
             source_files.extend(sources_dir.rglob(f"*{ext}"))
         stats["sources"]["count"] = len(source_files)
-        stats["sources"]["total_size_bytes"] = sum(
-            f.stat().st_size for f in source_files if f.is_file()
-        )
+        stats["sources"]["total_size_bytes"] = sum(f.stat().st_size for f in source_files if f.is_file())
 
     # Article stats
     if output_dir and output_dir.exists():

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from knox.chunking.hybrid import HybridChunker
 from knox.core.models import ElementType
-
 from tests.fixtures.documents import make_test_doc
 
 
@@ -58,17 +57,13 @@ class TestPipelineSmoke:
         for c in chunks:
             for atype in (ElementType.TABLE, ElementType.CODE, ElementType.IMAGE):
                 if atype in c.element_types:
-                    assert len(c.source_elements) == 1, (
-                        f"Atomic {atype.name} chunk {c.id} has {len(c.source_elements)} source elements, expected 1"
-                    )
+                    assert len(c.source_elements) == 1, f"Atomic {atype.name} chunk {c.id} has {len(c.source_elements)} source elements, expected 1"
 
         # All elements must be covered by at least one chunk's source_elements
         covered: set[int] = set()
         for c in chunks:
             covered.update(c.source_elements)
-        assert covered == set(range(len(doc.elements))), (
-            f"Not all elements covered. Missing: {set(range(len(doc.elements))) - covered}"
-        )
+        assert covered == set(range(len(doc.elements))), f"Not all elements covered. Missing: {set(range(len(doc.elements))) - covered}"
 
         # Heading context should be present on some chunks
         has_context = any(c.heading_context for c in chunks)
@@ -92,8 +87,9 @@ class TestPipelineSmoke:
 
     def test_single_atomic_element(self) -> None:
         """A document with only a table should produce one chunk."""
-        from knox.core.models import DocumentElement
         from pathlib import Path
+
+        from knox.core.models import DocumentElement
 
         doc = make_test_doc(num_paragraphs=0, include_tables=False, include_code=False, include_images=False)
         doc.elements = [

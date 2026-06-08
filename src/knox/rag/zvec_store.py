@@ -11,6 +11,7 @@ fallback exists for environments without ML libraries (tests, CI).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 from abc import ABC, abstractmethod
@@ -169,11 +170,14 @@ class ZvecWikiStore:
                     _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
                 ],
                 vectors=_zvec.VectorSchema(
-                    "embedding", _zvec.DataType.VECTOR_FP32, self._embedding_dim,
+                    "embedding",
+                    _zvec.DataType.VECTOR_FP32,
+                    self._embedding_dim,
                 ),
             )
             self._collection = _zvec.create_and_open(
-                path=str(self.db_path), schema=schema,
+                path=str(self.db_path),
+                schema=schema,
             )
 
         docs = [
@@ -211,8 +215,6 @@ class ZvecWikiStore:
 
     def close(self) -> None:
         if self._collection is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._collection.flush()
-            except Exception:
-                pass
             self._collection = None

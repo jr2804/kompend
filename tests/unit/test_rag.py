@@ -1,6 +1,7 @@
 """Tests for KNOX Hybrid RAG — zvec vector store."""
 
 from pathlib import Path
+
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
@@ -65,12 +66,8 @@ class TestZvecWikiStore:
             store = ZvecWikiStore(db_path=str(zvec_db), embedding_dim=384)
             wiki = CompiledWiki(
                 nodes=[
-                    WikiNode(
-                        id="n1", title="Testing", content="test content here", node_type="section"
-                    ),
-                    WikiNode(
-                        id="n2", title="Results", content="important findings", node_type="section"
-                    ),
+                    WikiNode(id="n1", title="Testing", content="test content here", node_type="section"),
+                    WikiNode(id="n2", title="Results", content="important findings", node_type="section"),
                 ],
                 edges=[],
                 toc=[],
@@ -81,8 +78,8 @@ class TestZvecWikiStore:
             assert len(results) >= 1
             store.close()
         finally:
-            import shutil
             import gc
+            import shutil
 
             gc.collect()  # release zvec LOCK file before rmtree on Windows
             shutil.rmtree(zvec_db, ignore_errors=True)
@@ -103,8 +100,8 @@ class TestZvecWikiStore:
             assert db.parent.exists()
             store.close()
         finally:
-            import shutil
             import gc
+            import shutil
 
             gc.collect()  # release zvec LOCK file before rmtree on Windows
             shutil.rmtree(zvec_db, ignore_errors=True)

@@ -8,28 +8,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from knox.preprocessing.downloaders.crawler import WebCrawler
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
-from knox.preprocessing.downloaders.crawler import WebCrawler
-
 
 # ---------------------------------------------------------------------------
 # HTTPDownloader
 # ---------------------------------------------------------------------------
 
+
 class TestHTTPDownloader:
     """Tests for HTTPDownloader."""
-
-    @staticmethod
-    def _mock_urlopen(data: bytes = b"pdf-content"):
-        """Create a mock context manager for urllib.request.urlopen."""
-        from io import BytesIO
-
-        response = MagicMock()
-        response.read.return_value = data
-        response.__enter__ = lambda s: response
-        response.__exit__ = MagicMock(return_value=False)
-        return response
 
     def test_download_success(self, tmp_path: Path) -> None:
         """Happy path: URL downloads and file is saved."""
@@ -78,6 +67,7 @@ class TestHTTPDownloader:
 
         assert path is not None
         from hashlib import sha256
+
         expected = sha256(b"https://example.com").hexdigest()[:16]
         assert path.stem == expected
 
@@ -118,10 +108,20 @@ class TestHTTPDownloader:
         assert len(results) == 2
         assert all("fail" not in str(p) for p in results)
 
+    @staticmethod
+    def _mock_urlopen(data: bytes = b"pdf-content"):
+        """Create a mock context manager for urllib.request.urlopen."""
+        response = MagicMock()
+        response.read.return_value = data
+        response.__enter__ = lambda s: response
+        response.__exit__ = MagicMock(return_value=False)
+        return response
+
 
 # ---------------------------------------------------------------------------
 # WebCrawler
 # ---------------------------------------------------------------------------
+
 
 class TestWebCrawler:
     """Tests for WebCrawler."""
@@ -130,7 +130,7 @@ class TestWebCrawler:
         """When crawl4ai is missing, download returns None."""
         # crawl4ai is a hard dep, but we can simulate network failure
         crawler = WebCrawler()
-        result = crawler.download("https://example.com", tmp_path)
+        crawler.download("https://example.com", tmp_path)
 
     def test_download_success(self, tmp_path: Path) -> None:
         """Happy path: crawl4ai returns markdown and file is saved."""
@@ -217,6 +217,7 @@ class TestWebCrawler:
 # ---------------------------------------------------------------------------
 # DuplicateDetector
 # ---------------------------------------------------------------------------
+
 
 class TestDuplicateDetector:
     """Tests for DuplicateDetector (no network needed)."""

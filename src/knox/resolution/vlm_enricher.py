@@ -52,37 +52,45 @@ class VLMEnricher:
 
         if not image_path:
             logger.debug("No image_path in metadata for chunk %s — adding placeholder", resolved.chunk.id)
-            resolved.entities.append({
-                "name": "vlm_placeholder",
-                "type": "image_description",
-                "context": "Image present — VLM caption not available (no image path)",
-            })
+            resolved.entities.append(
+                {
+                    "name": "vlm_placeholder",
+                    "type": "image_description",
+                    "context": "Image present — VLM caption not available (no image path)",
+                }
+            )
             return resolved
 
         try:
             caption = self._generate_caption(image_path)
         except FileNotFoundError as exc:
             logger.warning("VLM image not found for chunk %s: %s", resolved.chunk.id, exc)
-            resolved.entities.append({
-                "name": "vlm_error",
-                "type": "image_description",
-                "context": f"Image file not found: {image_path}",
-            })
+            resolved.entities.append(
+                {
+                    "name": "vlm_error",
+                    "type": "image_description",
+                    "context": f"Image file not found: {image_path}",
+                }
+            )
             return resolved
 
         if caption is None:
-            resolved.entities.append({
-                "name": "vlm_error",
-                "type": "image_description",
-                "context": "VLM caption generation failed",
-            })
+            resolved.entities.append(
+                {
+                    "name": "vlm_error",
+                    "type": "image_description",
+                    "context": "VLM caption generation failed",
+                }
+            )
             return resolved
 
-        resolved.entities.append({
-            "name": f"vlm_caption_{resolved.chunk.id}",
-            "type": "image_description",
-            "context": caption,
-        })
+        resolved.entities.append(
+            {
+                "name": f"vlm_caption_{resolved.chunk.id}",
+                "type": "image_description",
+                "context": caption,
+            }
+        )
         resolved.metadata["vlm_enriched"] = True
         return resolved
 

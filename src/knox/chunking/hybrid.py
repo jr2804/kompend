@@ -113,9 +113,7 @@ class HybridChunker(BaseChunker):
             # this chunk covers and the heading stack active at that span.
             start_idx = getattr(c, "start_index", 0)
             end_idx = getattr(c, "end_index", start_idx)
-            _local_idxs, heading_ctx = _map_offsets_to_elements(
-                start_idx, end_idx, offset_map, len(full_text.encode("utf-8"))
-            )
+            _local_idxs, heading_ctx = _map_offsets_to_elements(start_idx, end_idx, offset_map, len(full_text.encode("utf-8")))
             source_idxs = [indices[i] for i in _local_idxs]
             chunks.append(
                 Chunk(

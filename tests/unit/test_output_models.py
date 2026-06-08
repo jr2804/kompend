@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Never
 
 from knox.output.models import Document
 from knox.output.renderer import (
@@ -143,10 +144,10 @@ class TestMissingRumdlFallback:
 
     def test_fallback_on_import_error(self, monkeypatch) -> None:
         """When rumdl is not on PATH, render should return raw markdown."""
-        from knox.output.renderer import _check_rumdl
-
         # Simulate rumdl not found via shutil.which
         import shutil
+
+        from knox.output.renderer import _check_rumdl
 
         original = shutil.which
         monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "rumdl" else original(cmd))
@@ -164,7 +165,7 @@ class TestMissingRumdlFallback:
         """When rumdl crashes, render should return raw markdown."""
         import subprocess
 
-        def _fake_run(*args, **kwargs):
+        def _fake_run(*args, **kwargs) -> Never:
             raise subprocess.TimeoutExpired(cmd=["rumdl"], timeout=30, output="")
 
         monkeypatch.setattr(subprocess, "run", _fake_run)

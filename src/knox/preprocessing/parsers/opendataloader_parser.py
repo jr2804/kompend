@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import DocumentElement, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser
 
 logger = logging.getLogger(__name__)

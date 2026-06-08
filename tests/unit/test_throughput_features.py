@@ -327,6 +327,7 @@ class TestTwoPhaseCompiler:
             mock.return_value = None  # LLM unavailable → empty extraction
             wiki = compiler.compile(chunks)
         assert wiki.metadata.get("two_phase") is True
+
     def test_extract_returns_extractions(self) -> None:
         compiler = TwoPhaseCompiler()
         chunks = [
@@ -351,6 +352,8 @@ class TestTwoPhaseCompiler:
             ext = compiler.extract(chunks)
         assert ext.extractions[0].summary == "x"
         assert ext.extractions[0].concepts[0]["name"] == "attention"
+
+
 # ===========================================================================
 #  N8: Review queue
 # ===========================================================================
@@ -510,9 +513,7 @@ class TestMarkWikiPrivate:
     """mark_wiki_private writes a private.json index."""
 
     def test_creates_private_index(self, tmp_path: Path) -> None:
-        wiki = _wiki(
-            nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")]
-        )
+        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
         mark_wiki_private(wiki, tmp_path)
         path = tmp_path / ".knox" / "private.json"
         assert path.exists()

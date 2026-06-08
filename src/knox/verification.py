@@ -31,10 +31,7 @@ _VERIFY_SYSTEM = (
     'Return only valid JSON: {"verdict": "supported|partial|unsupported", '
     '"confidence": 0.0-1.0, "reason": "..."}'
 )
-_VERIFY_TEMPLATE = (
-    "Claim: {claim}\n\nCited source ({source}, lines {start}-{end}): {excerpt}\n\n"
-    "Return a JSON object with verdict, confidence, and reason."
-)
+_VERIFY_TEMPLATE = "Claim: {claim}\n\nCited source ({source}, lines {start}-{end}): {excerpt}\n\nReturn a JSON object with verdict, confidence, and reason."
 
 
 @dataclass
@@ -251,7 +248,5 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str = "ollama/ll
     # Persist report next to the wiki output.
     report_path = output_dir / ".knox" / "verification.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8"
-    )
+    report_path.write_text(json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8")
     return result

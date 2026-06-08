@@ -41,10 +41,7 @@ _EXTRACTION_TEMPLATE = (
     "Source: {text}"
 )
 
-_GENERATION_SYSTEM = (
-    "You generate knowledge-base pages. Return only valid JSON: "
-    '{"pages": [{"title": str, "content": str, "provenance": [str]}]}'
-)
+_GENERATION_SYSTEM = 'You generate knowledge-base pages. Return only valid JSON: {"pages": [{"title": str, "content": str, "provenance": [str]}]}'
 
 _GENERATION_TEMPLATE = (
     "Generate one knowledge-base page for each concept. "
@@ -271,9 +268,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 len(truncated),
             )
 
-        content_block = "\n\n".join(
-            f"### {label}\n{content}" for label, content, _ in truncated
-        )
+        content_block = "\n\n".join(f"### {label}\n{content}" for label, content, _ in truncated)
         prompt = _GENERATION_TEMPLATE.format(
             concepts_json=json.dumps(concepts),
             content=content_block,
@@ -313,12 +308,14 @@ class TwoPhaseCompiler(BaseCompiler):
                 sorted_idxs = sorted(page_idxs)
                 for i in range(len(sorted_idxs)):
                     for j in range(i + 1, len(sorted_idxs)):
-                        edges.append({
-                            "source": nodes[sorted_idxs[i]].id,
-                            "target": nodes[sorted_idxs[j]].id,
-                            "type": "entity_reference",
-                            "entity": ent_name,
-                        })
+                        edges.append(
+                            {
+                                "source": nodes[sorted_idxs[i]].id,
+                                "target": nodes[sorted_idxs[j]].id,
+                                "type": "entity_reference",
+                                "entity": ent_name,
+                            }
+                        )
         else:
             # LLM failed — fall back to base compiler for substance.
             return self._fallback_compile(chunks)

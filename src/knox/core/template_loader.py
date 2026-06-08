@@ -91,6 +91,14 @@ class TemplateMeta:
     """LLM temperature override for this template."""
     raw: dict[str, Any] = field(default_factory=dict)
 
+    def required_variable_names(self) -> set[str]:
+        """Return the set of variable names marked as required."""
+        return {v["name"] for v in self.variables if isinstance(v, dict) and v.get("required")}
+
+    def declared_variable_names(self) -> set[str]:
+        """Return the set of all declared variable names."""
+        return {v["name"] for v in self.variables if isinstance(v, dict) and v.get("name")}
+
     @classmethod
     def from_yaml_block(cls, yaml_text: str) -> TemplateMeta:
         """Parse a YAML frontmatter string into a TemplateMeta."""
@@ -112,22 +120,6 @@ class TemplateMeta:
             raw=data,
         )
 
-    def required_variable_names(self) -> set[str]:
-        """Return the set of variable names marked as required."""
-        return {
-            v["name"]
-            for v in self.variables
-            if isinstance(v, dict) and v.get("required")
-        }
-
-    def declared_variable_names(self) -> set[str]:
-        """Return the set of all declared variable names."""
-        return {
-            v["name"]
-            for v in self.variables
-            if isinstance(v, dict) and v.get("name")
-        }
-
 
 # ── Frontmatter parsing ─────────────────────────────────────────────────
 
@@ -148,7 +140,7 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         return {}, text
 
     raw_yaml = match.group(1)
-    body = text[match.end():]
+    body = text[match.end() :]
 
     try:
         import yaml  # noqa: PLC0415
@@ -171,8 +163,7 @@ class TemplateLoader:
     Usage::
 
         loader = TemplateLoader()
-        html = loader.render("lint/factual-consistency.md.j2",
-                             title="My Page", content="...")
+        html = loader.render("lint/factual-consistency.md.j2", title="My Page", content="...")
         raw = loader.get_text("lint/factual-consistency.md.j2")
         meta = loader.get_meta("lint/factual-consistency.md.j2")
 
@@ -227,18 +218,14 @@ class TemplateLoader:
         required = meta.required_variable_names()
         missing = required - kwargs.keys()
         if missing:
-            raise ValueError(
-                f"Template '{template_path}' requires missing variables: "
-                f"{', '.join(sorted(missing))}"
-            )
+            raise ValueError(f"Template '{template_path}' requires missing variables: {', '.join(sorted(missing))}")
 
         # Validate: undeclared (but used) variables via AST introspection
         used = self._find_undeclared_variables(template_path)
         extra = kwargs.keys() - used - set()
         if extra:
             logger.warning(
-                "Template '%s' unused variables: %s. "
-                "Expected: %s",
+                "Template '%s' unused variables: %s. Expected: %s",
                 template_path,
                 ", ".join(sorted(extra)),
                 ", ".join(sorted(used)),
@@ -287,9 +274,7 @@ class TemplateLoader:
 
         text = self.get_text(template_path)
         fm, _ = _parse_frontmatter(text)
-        meta = TemplateMeta.from_yaml_block(
-            "\n".join(f"{k}: {v}" for k, v in fm.items())
-        )
+        meta = TemplateMeta.from_yaml_block("\n".join(f"{k}: {v}" for k, v in fm.items()))
         self._meta_cache[template_path] = meta
         return meta
 
@@ -368,11 +353,7 @@ class TemplateLoader:
             return (text, TemplateSource("builtin", normalized))
 
         self._search_cache[normalized] = ("not_found", "")
-        raise FileNotFoundError(
-            f"Template not found: {normalized} "
-            f"(searched project={project_tpl_dir}, "
-            f"user={user_tpl_dir}, builtin={_BUILTIN_TEMPLATE_DIR})"
-        )
+        raise FileNotFoundError(f"Template not found: {normalized} (searched project={project_tpl_dir}, user={user_tpl_dir}, builtin={_BUILTIN_TEMPLATE_DIR})")
 
     def _get_env(self) -> Any:
         """Build and cache the Jinja2 environment (no frontmatter stripping).
@@ -511,8 +492,4 @@ def _list_builtin_templates() -> list[str]:
     tpl_dir = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR
     if not tpl_dir.is_dir():
         return []
-    return sorted(
-        str(p.relative_to(tpl_dir).as_posix())
-        for p in tpl_dir.rglob("*")
-        if p.is_file()
-    )
+    return sorted(str(p.relative_to(tpl_dir).as_posix()) for p in tpl_dir.rglob("*") if p.is_file())

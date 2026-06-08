@@ -55,9 +55,7 @@ OutputDir = Annotated[
     typer.Option(
         "--output-dir",
         "-o",
-        help="Output directory for compiled wiki. "
-        f"Default: '{DEFAULT_OUTPUT_DIR}' in the current working directory. "
-        f"Env: {APP_NAME_UPPERCASE}_OUTPUT_DIR.",
+        help=f"Output directory for compiled wiki. Default: '{DEFAULT_OUTPUT_DIR}' in the current working directory. Env: {APP_NAME_UPPERCASE}_OUTPUT_DIR.",
     ),
 ]
 
@@ -86,8 +84,7 @@ PrintElements = Annotated[
 CompileFiles = Annotated[
     list[str],
     typer.Argument(
-        help="Files, glob patterns, or directories to compile. "
-        "If only directories are given, all supported files inside are used.",
+        help="Files, glob patterns, or directories to compile. If only directories are given, all supported files inside are used.",
     ),
 ]
 
@@ -323,10 +320,7 @@ Frontmatter = Annotated[
     list[str] | None,
     typer.Option(
         "--frontmatter",
-        help=(
-            "Frontmatter field in key=value format (repeatable). "
-            "E.g. --frontmatter language=en --frontmatter domain=ml"
-        ),
+        help=("Frontmatter field in key=value format (repeatable). E.g. --frontmatter language=en --frontmatter domain=ml"),
     ),
 ]
 
@@ -498,9 +492,7 @@ ConfigPath = Annotated[
         "--config",
         "-c",
         help=(
-            "Path to configuration file. "
-            "Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml. "
-            f"Env: {APP_NAME_UPPERCASE}_CONFIG."
+            f"Path to configuration file. Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml. Env: {APP_NAME_UPPERCASE}_CONFIG."
         ),
         envvar=f"{APP_NAME_UPPERCASE}_CONFIG",
     ),

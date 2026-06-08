@@ -77,7 +77,7 @@ BUILTIN_KINDS: dict[str, dict[str, Any]] = {
 class PageKind:
     """A page kind with its schema and compilation rules.
 
-    Attributes
+    Attributes:
     ----------
     name:
         Machine-readable kind name (e.g. ``"concept"``).

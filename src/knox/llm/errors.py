@@ -68,29 +68,35 @@ class ConfigurationError(LLMError):
 # Names of litellm exception classes that map to each KNOX error type.
 # We match by class ``__name__`` to avoid importing litellm at module
 # load time (keeps test imports fast and tolerates litellm version drift).
-_TRANSIENT_NAMES: frozenset[str] = frozenset({
-    "RateLimitError",
-    "Timeout",
-    "APIConnectionError",
-    "APIError",  # generic 5xx-ish
-    "ServiceUnavailableError",
-    "InternalServerError",
-})
+_TRANSIENT_NAMES: frozenset[str] = frozenset(
+    {
+        "RateLimitError",
+        "Timeout",
+        "APIConnectionError",
+        "APIError",  # generic 5xx-ish
+        "ServiceUnavailableError",
+        "InternalServerError",
+    }
+)
 
-_PERMANENT_NAMES: frozenset[str] = frozenset({
-    "BadRequestError",
-    "ContentPolicyViolationError",
-    "ContextWindowExceededError",
-    "InvalidRequestError",
-    "UnprocessableEntityError",
-})
+_PERMANENT_NAMES: frozenset[str] = frozenset(
+    {
+        "BadRequestError",
+        "ContentPolicyViolationError",
+        "ContextWindowExceededError",
+        "InvalidRequestError",
+        "UnprocessableEntityError",
+    }
+)
 
-_CONFIGURATION_NAMES: frozenset[str] = frozenset({
-    "AuthenticationError",
-    "PermissionDeniedError",
-    "NotFoundError",
-    "BadRequestError",  # ambiguous: also permanent — see classify_litellm_error
-})
+_CONFIGURATION_NAMES: frozenset[str] = frozenset(
+    {
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "NotFoundError",
+        "BadRequestError",  # ambiguous: also permanent — see classify_litellm_error
+    }
+)
 
 
 def classify_litellm_error(exc: BaseException, *, model: str | None = None) -> LLMError:
@@ -107,7 +113,7 @@ def classify_litellm_error(exc: BaseException, *, model: str | None = None) -> L
     message = str(exc) or name
 
     # AuthenticationError and similar provider-config errors must fail fast.
-    if name == "AuthenticationError" or name == "PermissionDeniedError":
+    if name in {"AuthenticationError", "PermissionDeniedError"}:
         return ConfigurationError(message, model=model, cause=exc)
     if name == "NotFoundError":
         # Often "model not found" → configuration issue.

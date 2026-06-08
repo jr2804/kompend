@@ -72,9 +72,7 @@ class BrokenWikilinksRule:
                         )
                     )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All wikilinks resolve")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All wikilinks resolve"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -132,9 +130,7 @@ class MissingFrontmatterRule:
                     )
                 )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages have frontmatter")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages have frontmatter"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -184,9 +180,7 @@ class OrphanPageRule(BaseLintRule):
                     )
                 )
         if not results and len(wiki.nodes) > 1:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages are linked")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages are linked"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -224,9 +218,7 @@ class DuplicateTitleRule(BaseLintRule):
                         )
                     )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No duplicate titles")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No duplicate titles"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -258,9 +250,7 @@ class EmptyPageRule(BaseLintRule):
                     )
                 )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No empty pages")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No empty pages"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -300,9 +290,7 @@ class HeadingSkipRule(BaseLintRule):
                     )
                 prev = level
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No heading skips")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No heading skips"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -322,16 +310,12 @@ class StalePageRule(BaseLintRule):
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         if sources_dir is None:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
             return results
 
         sources_path = Path(sources_dir)
         if not sources_path.exists():
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"Sources directory not found: {sources_dir}")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"Sources directory not found: {sources_dir}"))
             return results
 
         for node in wiki.nodes:
@@ -353,9 +337,7 @@ class StalePageRule(BaseLintRule):
                     )
                 )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All source files intact")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All source files intact"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -375,9 +357,7 @@ class SourceNotFoundRule(BaseLintRule):
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         if sources_dir is None:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
             return results
 
         sources_path = Path(sources_dir)
@@ -405,9 +385,7 @@ class SourceNotFoundRule(BaseLintRule):
                     )
                 )
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All referenced sources exist")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All referenced sources exist"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301

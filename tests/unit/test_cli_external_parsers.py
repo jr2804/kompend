@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
+from knox.core.models import ElementType, ParsedDocument
 from knox.preprocessing.parsers._registry import (
     clear_registry,
     get_parser_names,
@@ -19,8 +19,6 @@ from knox.preprocessing.parsers.external import (
     parse_result_from_json,
     register_external_parsers,
 )
-from knox.core.models import ElementType, ParsedDocument
-
 
 # ── Registry tests ──────────────────────────────────────────────────────
 

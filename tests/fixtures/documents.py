@@ -73,8 +73,7 @@ def make_test_doc(
                     "describing the methodology and results. The proposed approach demonstrates "
                     "significant improvements over baseline methods in terms of accuracy and "
                     "computational efficiency. Further analysis reveals interesting patterns that "
-                    "warrant additional investigation in future work. "
-                    * (1 + (i % 3))
+                    "warrant additional investigation in future work. " * (1 + (i % 3))
                 ),
                 page=1 + (i // 3),
                 reading_order=len(elements) + 1,

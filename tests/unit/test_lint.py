@@ -189,6 +189,7 @@ class TestOrphanPageRule:
         fixed = rule.fix(_make_wiki(), results)
         assert not any(r.fix_applied for r in fixed)
 
+
 # ── Rule 4: duplicate-title ─────────────────────────────────────────────
 
 
@@ -230,6 +231,7 @@ class TestDuplicateTitleRule:
         results = [LintResult(rule="duplicate-title", outcome=LintRuleOutcome.FAIL)]
         fixed = rule.fix(_make_wiki(), results)
         assert not any(r.fix_applied for r in fixed)
+
 
 # ── Rule 5: empty-page ──────────────────────────────────────────────────
 
@@ -346,7 +348,9 @@ class TestSourceNotFoundRule:
 
     def test_missing_source_detected(self, tmp_path: Any) -> None:
         node = _make_node(
-            "n1", "Alpha", "Content",
+            "n1",
+            "Alpha",
+            "Content",
             source_chunks=["chunk_1"],
             metadata={"source_file": "gone.pdf"},
         )
@@ -502,8 +506,13 @@ class TestEdgeCases:
         """All 8 structural rules should be registered."""
         assert len(STRUCTURAL_RULES) == 8
         expected = {
-            "broken-wikilinks", "missing-frontmatter", "orphan-page",
-            "duplicate-title", "empty-page", "heading-skip",
-            "stale-page", "source-not-found",
+            "broken-wikilinks",
+            "missing-frontmatter",
+            "orphan-page",
+            "duplicate-title",
+            "empty-page",
+            "heading-skip",
+            "stale-page",
+            "source-not-found",
         }
         assert set(RULE_BY_NAME.keys()) == expected

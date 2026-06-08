@@ -107,7 +107,7 @@ class TestCollectStats:
 
 
 def test_provenance_no_wiki() -> None:
-    """knox provenance without compiled wiki should exit with error."""
+    """Knox provenance without compiled wiki should exit with error."""
     from typer.testing import CliRunner
 
     from knox.cli.app import app
@@ -121,7 +121,7 @@ def test_provenance_no_wiki() -> None:
 
 
 def test_write_command_minimal(tmp_path: Path, monkeypatch) -> None:
-    """knox write creates a file (or errors gracefully)."""
+    """Knox write creates a file (or errors gracefully)."""
     from typer.testing import CliRunner
 
     from knox.cli.app import app

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki

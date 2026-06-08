@@ -28,7 +28,6 @@ def _mock_response(content: str) -> MagicMock:
 
 
 class TestClientHappyPath:
-
     def test_complete_returns_content(self) -> None:
         client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
         with patch("litellm.completion", return_value=_mock_response("hello")) as mock:
@@ -64,37 +63,32 @@ class TestClientHappyPath:
 
 
 class TestClientErrorHandling:
-
     def test_empty_content_raises_permanent(self) -> None:
         client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-        with patch("litellm.completion", return_value=_mock_response("")):
-            with pytest.raises(PermanentError):
-                client.complete([{"role": "user", "content": "hi"}])
+        with patch("litellm.completion", return_value=_mock_response("")), pytest.raises(PermanentError):
+            client.complete([{"role": "user", "content": "hi"}])
 
     def test_invalid_json_raises_permanent(self) -> None:
         client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-        with patch("litellm.completion", return_value=_mock_response("not json")):
-            with pytest.raises(PermanentError):
-                client.complete(
-                    [{"role": "user", "content": "hi"}],
-                    response_format={"type": "json_object"},
-                )
+        with patch("litellm.completion", return_value=_mock_response("not json")), pytest.raises(PermanentError):
+            client.complete(
+                [{"role": "user", "content": "hi"}],
+                response_format={"type": "json_object"},
+            )
 
     def test_non_object_json_raises_permanent(self) -> None:
         """When JSON object requested but a list comes back."""
         client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-        with patch("litellm.completion", return_value=_mock_response("[1,2,3]")):
-            with pytest.raises(PermanentError):
-                client.complete(
-                    [{"role": "user", "content": "hi"}],
-                    response_format={"type": "json_object"},
-                )
+        with patch("litellm.completion", return_value=_mock_response("[1,2,3]")), pytest.raises(PermanentError):
+            client.complete(
+                [{"role": "user", "content": "hi"}],
+                response_format={"type": "json_object"},
+            )
 
     def test_authentication_error_raises_configuration(self) -> None:
         client = LLMClient(default_model="ollama/test", max_retries_per_model=2)
-        with patch("litellm.completion", side_effect=_make_exc("AuthenticationError")):
-            with pytest.raises(ConfigurationError):
-                client.complete([{"role": "user", "content": "hi"}])
+        with patch("litellm.completion", side_effect=_make_exc("AuthenticationError")), pytest.raises(ConfigurationError):
+            client.complete([{"role": "user", "content": "hi"}])
 
     def test_rate_limit_retries_then_succeeds(self) -> None:
         """Transient errors trigger retry within the same model."""
@@ -107,15 +101,13 @@ class TestClientErrorHandling:
                 raise _make_exc("RateLimitError")
             return _mock_response("ok")
 
-        with patch("litellm.completion", side_effect=side_effect), \
-             patch("knox.llm.failover.time.sleep"):
+        with patch("litellm.completion", side_effect=side_effect), patch("knox.llm.failover.time.sleep"):
             result = client.complete([{"role": "user", "content": "hi"}])
         assert result.content == "ok"
         assert result.diagnostics.attempts == 2
 
 
 class TestFailoverCascade:
-
     def test_primary_fails_fallback_succeeds(self) -> None:
         """Rate-limit on primary → next model in chain is used."""
         client = LLMClient(
@@ -131,8 +123,7 @@ class TestFailoverCascade:
                 raise _make_exc("RateLimitError")
             return _mock_response("from fallback")
 
-        with patch("litellm.completion", side_effect=side_effect), \
-             patch("knox.llm.failover.time.sleep"):
+        with patch("litellm.completion", side_effect=side_effect), patch("knox.llm.failover.time.sleep"):
             result = client.complete([{"role": "user", "content": "hi"}])
         assert result.content == "from fallback"
         assert result.diagnostics.model_used == "anthropic/claude-3-haiku"
@@ -145,9 +136,8 @@ class TestFailoverCascade:
             fallback_chain=["m2"],
             max_retries_per_model=0,
         )
-        with patch("litellm.completion", side_effect=_make_exc("RateLimitError")):
-            with pytest.raises(TransientError):
-                client.complete([{"role": "user", "content": "hi"}])
+        with patch("litellm.completion", side_effect=_make_exc("RateLimitError")), pytest.raises(TransientError):
+            client.complete([{"role": "user", "content": "hi"}])
 
     def test_try_complete_returns_none_on_failure(self) -> None:
         """try_complete swallows LLMError and returns None."""
@@ -158,7 +148,6 @@ class TestFailoverCascade:
 
 
 class TestRoleRouting:
-
     def test_role_specific_chain_used(self) -> None:
         client = LLMClient(
             default_model="default/model",

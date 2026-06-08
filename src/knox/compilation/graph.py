@@ -100,12 +100,14 @@ class GraphCompiler(BaseCompiler):
                 # Connect all pairs
                 for i in range(len(sorted_indices)):
                     for j in range(i + 1, len(sorted_indices)):
-                        edges.append({
-                            "source": nodes[sorted_indices[i]].id,
-                            "target": nodes[sorted_indices[j]].id,
-                            "type": "entity_reference",
-                            "entity": name,
-                        })
+                        edges.append(
+                            {
+                                "source": nodes[sorted_indices[i]].id,
+                                "target": nodes[sorted_indices[j]].id,
+                                "type": "entity_reference",
+                                "entity": name,
+                            }
+                        )
             # Also connect entity mentions within the same node as self-references
             # (not needed — skip self-loops)
 

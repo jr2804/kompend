@@ -14,7 +14,7 @@ from knox.chunking.base import BaseChunker
 from knox.chunking.hybrid import HybridChunker
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument
+from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument
 from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -139,12 +139,6 @@ class WikiPipeline:
         self.output_writer = output_writer
         self.state_store = state_store or TierStateStore(self._default_state_path())
 
-    def _default_state_path(self) -> Path:
-        """Resolve the persistent state file path."""
-        if self.config.tier_state_path is not None:
-            return self.config.tier_state_path
-        return self.config.output_dir / ".knox" / "compile_state.json"
-
     @property
     def state(self) -> TierState:
         """Lazy-loaded persistent state — call sites should treat as read-only."""
@@ -221,6 +215,58 @@ class WikiPipeline:
 
         self.save_state()
 
+    def iter_sources(self) -> Any:
+        """Yield source files to process.
+
+        If ``config.input_files`` is set, yields those directly.
+        Otherwise auto-discovers supported files from ``config.source_dir``.
+        """
+        if self.config.input_files:
+            yield from self.config.input_files
+            return
+        for ext in ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
+            yield from self.config.source_dir.rglob(ext)
+
+    def list_tiers(self) -> list[dict[str, Any]]:
+        """Return the available tiers with their current persisted state.
+
+        Used by ``knox compile --list-tiers`` to show progress and by
+        tests to assert the tier contract. Each entry contains the
+        tier name, level, the current persisted max level per source,
+        and a sample of recent sources.
+        """
+        state = self.state
+        distribution = state.tier_distribution()
+        sample = list(state.entries.values())[:5]
+        return [
+            {
+                "tier": name,
+                "level": TIER_LEVEL[name],
+                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= TIER_LEVEL[name]),
+                "description": _TIER_DESCRIPTIONS[name],
+            }
+            for name in ALL_TIERS
+        ] + [
+            {
+                "tier": "_distribution",
+                "level": -1,
+                "sources_at_or_above": 0,
+                "description": f"tier distribution: {distribution}",
+            },
+            {
+                "tier": "_sample",
+                "level": -2,
+                "sources_at_or_above": 0,
+                "description": f"sample sources: {[e.stem for e in sample]}",
+            },
+        ]
+
+    def _default_state_path(self) -> Path:
+        """Resolve the persistent state file path."""
+        if self.config.tier_state_path is not None:
+            return self.config.tier_state_path
+        return self.config.output_dir / ".knox" / "compile_state.json"
+
     def _run_index_tier(self) -> None:
         """Tier 0: download online sources and record state for local files."""
         if self.downloader and self.config.online_sources:
@@ -258,7 +304,6 @@ class WikiPipeline:
         return self.config.output_dir / ".knox" / "compiled_wiki.json"
 
     def _save_compiled_wiki(self, wiki: CompiledWiki) -> None:
-        from knox.core.models import WikiNode  # local import to avoid cycle at module import
 
         path = self._compiled_wiki_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -391,12 +436,6 @@ class WikiPipeline:
 
         return all_chunks
 
-    @staticmethod
-    def _cache_key(source_file: Path) -> str:
-        """SHA-256 of file contents for cache key."""
-        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
-        return f"{source_file.stem}_{digest[:12]}"
-
     def _cache_dir(self) -> Path:
         """Resolve the cache directory."""
         if self.config.cache_dir:
@@ -463,52 +502,11 @@ class WikiPipeline:
         except Exception:
             logger.debug("Cache write failed for %s — ignoring", cache_path)
 
-    def iter_sources(self) -> Any:
-        """Yield source files to process.
-
-        If ``config.input_files`` is set, yields those directly.
-        Otherwise auto-discovers supported files from ``config.source_dir``.
-        """
-        if self.config.input_files:
-            yield from self.config.input_files
-            return
-        for ext in ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC",
-                    "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
-            yield from self.config.source_dir.rglob(ext)
-
-    def list_tiers(self) -> list[dict[str, Any]]:
-        """Return the available tiers with their current persisted state.
-
-        Used by ``knox compile --list-tiers`` to show progress and by
-        tests to assert the tier contract. Each entry contains the
-        tier name, level, the current persisted max level per source,
-        and a sample of recent sources.
-        """
-        state = self.state
-        distribution = state.tier_distribution()
-        sample = list(state.entries.values())[:5]
-        return [
-            {
-                "tier": name,
-                "level": TIER_LEVEL[name],
-                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= TIER_LEVEL[name]),
-                "description": _TIER_DESCRIPTIONS[name],
-            }
-            for name in ALL_TIERS
-        ] + [
-            {
-                "tier": "_distribution",
-                "level": -1,
-                "sources_at_or_above": 0,
-                "description": f"tier distribution: {distribution}",
-            },
-            {
-                "tier": "_sample",
-                "level": -2,
-                "sources_at_or_above": 0,
-                "description": f"sample sources: {[e.stem for e in sample]}",
-            },
-        ]
+    @staticmethod
+    def _cache_key(source_file: Path) -> str:
+        """SHA-256 of file contents for cache key."""
+        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
+        return f"{source_file.stem}_{digest[:12]}"
 
 
 _TIER_DESCRIPTIONS: dict[str, str] = {
@@ -529,10 +527,7 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
     taken verbatim from ``config.llm_fallback_chain`` and the retry
     budget from ``config.llm_fallback_max_retries_per_model``.
     """
-    if config.llm_default_model_override:
-        default_model = config.llm_default_model_override
-    else:
-        default_model = f"{config.llm_provider}/{config.llm_model}"
+    default_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
     return LLMClient(
         default_model=default_model,
         fallback_chain=list(config.llm_fallback_chain),

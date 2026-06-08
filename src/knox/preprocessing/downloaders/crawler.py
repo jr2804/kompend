@@ -34,6 +34,18 @@ class WebCrawler(BaseDownloader):
             logger.exception("Failed to crawl %s", url)
             return None
 
+    def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
+        """Download multiple URLs, return paths of successful downloads."""
+        results: list[Path] = []
+        for url in urls:
+            try:
+                path = self.download(url, target_dir)
+                if path:
+                    results.append(path)
+            except Exception:
+                logger.exception("Failed to download %s", url)
+        return results
+
     async def _download_async(self, url: str, target_dir: Path) -> Path | None:
         """Async implementation: crawl URL with crawl4ai and save as markdown."""
         from crawl4ai import AsyncWebCrawler
@@ -54,15 +66,3 @@ class WebCrawler(BaseDownloader):
             target_path.write_text(content, encoding="utf-8")
             logger.info("Saved crawler result to %s", target_path)
             return target_path
-
-    def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
-        """Download multiple URLs, return paths of successful downloads."""
-        results: list[Path] = []
-        for url in urls:
-            try:
-                path = self.download(url, target_dir)
-                if path:
-                    results.append(path)
-            except Exception:
-                logger.exception("Failed to download %s", url)
-        return results

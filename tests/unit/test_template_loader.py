@@ -133,14 +133,7 @@ class TestValidation:
     def test_missing_required_variable_raises(self, project_dir: Path) -> None:
         tpl = project_dir / "knox" / "templates" / "req.md.j2"
         tpl.parent.mkdir(parents=True)
-        tpl.write_text(
-            "---\n"
-            "variables:\n"
-            "  - name: title\n"
-            "    required: true\n"
-            "---\n"
-            "Hello {{ title }}!"
-        )
+        tpl.write_text("---\nvariables:\n  - name: title\n    required: true\n---\nHello {{ title }}!")
         loader = TemplateLoader(project_dir=project_dir)
         with pytest.raises(ValueError, match="requires missing variables"):
             loader.render("req.md.j2")  # missing 'title'
@@ -148,14 +141,7 @@ class TestValidation:
     def test_all_required_variables_ok(self, project_dir: Path) -> None:
         tpl = project_dir / "knox" / "templates" / "req.md.j2"
         tpl.parent.mkdir(parents=True)
-        tpl.write_text(
-            "---\n"
-            "variables:\n"
-            "  - name: title\n"
-            "    required: true\n"
-            "---\n"
-            "Hello {{ title }}!"
-        )
+        tpl.write_text("---\nvariables:\n  - name: title\n    required: true\n---\nHello {{ title }}!")
         loader = TemplateLoader(project_dir=project_dir)
         result = loader.render("req.md.j2", title="World")
         assert result == "Hello World!"

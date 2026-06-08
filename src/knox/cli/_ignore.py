@@ -40,10 +40,7 @@ def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -
 
     # Compute relative path string (best-effort — may not be under base_dir)
     try:
-        if base_dir:
-            rel_path = path.relative_to(base_dir)
-        else:
-            rel_path = path
+        rel_path = path.relative_to(base_dir) if base_dir else path
     except ValueError:
         rel_path = path
     rel_str = str(rel_path).replace("\\", "/")
@@ -73,6 +70,7 @@ def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -
 def _glob_match(text: str, pattern: str) -> bool:
     """Simple glob matching, used as fallback."""
     import fnmatch  # noqa: PLC0415
+
     return fnmatch.fnmatch(text, pattern)
 
 

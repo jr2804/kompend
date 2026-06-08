@@ -9,7 +9,7 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 
 __all__ = [
     "BaseDownloader",
+    "DuplicateDetector",
     "HTTPDownloader",
     "WebCrawler",
-    "DuplicateDetector",
 ]

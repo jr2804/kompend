@@ -27,7 +27,7 @@ class Pack:
     and page kind schemas (N9). Built-in packs are defined in Python;
     user-created packs live as directories with a ``pack.yaml`` manifest.
 
-    Attributes
+    Attributes:
     ----------
     name:
         Machine-readable pack name, e.g. ``"academic"``.

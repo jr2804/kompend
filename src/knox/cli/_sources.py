@@ -24,7 +24,15 @@ def get_supported_extensions() -> set[str]:
     Merges a hard-coded baseline with any extensions registered by parsers.
     """
     baseline = {
-        ".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx", ".xlsx",
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".epub",
+        ".md",
+        ".txt",
+        ".html",
+        ".pptx",
+        ".xlsx",
     }
     try:
         from knox.preprocessing.parsers._registry import get_all_extensions  # noqa: PLC0415
@@ -37,7 +45,15 @@ def get_supported_extensions() -> set[str]:
 # Baseline set used for module-level references and fast path checks.
 # Call get_supported_extensions() for the full set including registered parsers.
 SUPPORTED_EXTENSIONS: set[str] = {
-    ".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx", ".xlsx",
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".epub",
+    ".md",
+    ".txt",
+    ".html",
+    ".pptx",
+    ".xlsx",
 }
 
 

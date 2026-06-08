@@ -17,7 +17,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from knox.llm.errors import (
     ConfigurationError,
@@ -48,7 +48,7 @@ class CallDiagnostics:
 
 
 @dataclass(frozen=True)
-class CallResult(Generic[T]):
+class CallResult[T]:
     """Result wrapper combining the call's return value and diagnostics."""
 
     value: T
@@ -168,7 +168,7 @@ class FailoverChain:
         raise last_error
 
 
-def call_with_failover(
+def call_with_failover[T](
     chain: FailoverChain,
     call: Callable[[str], T],
 ) -> tuple[T, CallDiagnostics]:

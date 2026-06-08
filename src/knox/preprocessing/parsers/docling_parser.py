@@ -49,14 +49,6 @@ class DoclingParser(BaseParser):
         self.images_dir = images_dir
         self._converter = None
 
-    def _get_converter(self):
-        """Create or return the cached DocumentConverter."""
-        if self._converter is None:
-            from docling.document_converter import DocumentConverter
-
-            self._converter = DocumentConverter()
-        return self._converter
-
     def parse(self, source_path: Path) -> ParsedDocument:
         converter = self._get_converter()
         result = converter.convert(str(source_path))
@@ -152,6 +144,48 @@ class DoclingParser(BaseParser):
             metadata={"parser": "docling"},
         )
 
+    def _get_converter(self):
+        """Create or return the cached DocumentConverter."""
+        if self._converter is None:
+            from docling.document_converter import DocumentConverter
+
+            self._converter = DocumentConverter()
+        return self._converter
+
+    def _extract_image(self, item: Any, source_path: Path, idx: int) -> str:
+        """Extract image content according to image_mode.
+
+        Returns a string: base64 data-URI for 'base64', file path for 'file',
+        or a placeholder description.
+        """
+        if self.image_mode == "base64":
+            # Try to get image bytes from docling's PictureItem
+            image = getattr(item, "image", None)
+            if image is not None:
+                pil_image = image.get_pil_image() if hasattr(image, "get_pil_image") else None
+                if pil_image is not None:
+                    buf = BytesIO()
+                    pil_image.save(buf, format="PNG")
+                    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                    return f"data:image/png;base64,{b64}"
+            # Fallback to text description
+            captions = getattr(item, "captions", [])
+            if captions:
+                return f"[Image: {captions[0]}]"
+            return f"[Image #{idx}]"
+
+        if self.image_mode == "file":
+            captions = getattr(item, "captions", [])
+            captions[0] if captions else f"image_{idx}"
+            stem = source_path.stem
+            if self.images_dir:
+                out_path = self.images_dir / f"{stem}_img_{idx}.png"
+                return str(out_path)
+            return f"{stem}_img_{idx}.png"
+
+        # Default: placeholder
+        return f"[Image #{idx}]"
+
     # ── helpers ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -187,37 +221,3 @@ class DoclingParser(BaseParser):
             if 0 <= row < num_rows and 0 <= col < num_cols:
                 grid[row][col] = text
         return grid
-
-    def _extract_image(self, item: Any, source_path: Path, idx: int) -> str:
-        """Extract image content according to image_mode.
-
-        Returns a string: base64 data-URI for 'base64', file path for 'file',
-        or a placeholder description.
-        """
-        if self.image_mode == "base64":
-            # Try to get image bytes from docling's PictureItem
-            image = getattr(item, "image", None)
-            if image is not None:
-                pil_image = image.get_pil_image() if hasattr(image, "get_pil_image") else None
-                if pil_image is not None:
-                    buf = BytesIO()
-                    pil_image.save(buf, format="PNG")
-                    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-                    return f"data:image/png;base64,{b64}"
-            # Fallback to text description
-            captions = getattr(item, "captions", [])
-            if captions:
-                return f"[Image: {captions[0]}]"
-            return f"[Image #{idx}]"
-
-        if self.image_mode == "file":
-            captions = getattr(item, "captions", [])
-            desc = captions[0] if captions else f"image_{idx}"
-            stem = source_path.stem
-            if self.images_dir:
-                out_path = self.images_dir / f"{stem}_img_{idx}.png"
-                return str(out_path)
-            return f"{stem}_img_{idx}.png"
-
-        # Default: placeholder
-        return f"[Image #{idx}]"

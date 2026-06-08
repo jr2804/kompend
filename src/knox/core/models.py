@@ -24,9 +24,7 @@ class ElementType(StrEnum):
     METADATA = "metadata"
 
 
-ATOMIC_TYPES: frozenset[ElementType] = frozenset(
-    {ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE}
-)
+ATOMIC_TYPES: frozenset[ElementType] = frozenset({ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE})
 """Element types that must never be split during chunking."""
 
 

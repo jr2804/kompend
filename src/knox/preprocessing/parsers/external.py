@@ -39,16 +39,7 @@ def parse_result_from_json(data: dict[str, Any], source_path: Path) -> ParsedDoc
             "language": "en",
             "page_count": 0,
             "metadata": {},
-            "elements": [
-                {
-                    "type": "TEXT|HEADING|TABLE|LIST|FIGURE|CODE",
-                    "content": "...",
-                    "page": 1,
-                    "reading_order": 0,
-                    "heading_level": null,
-                    "metadata": {}
-                }
-            ]
+            "elements": [{"type": "TEXT|HEADING|TABLE|LIST|FIGURE|CODE", "content": "...", "page": 1, "reading_order": 0, "heading_level": null, "metadata": {}}],
         }
     """
     elements: list[DocumentElement] = []
@@ -125,26 +116,17 @@ class ExternalParser(BaseParser):
                 timeout=60,
             )
         except subprocess.TimeoutExpired:
-            raise TimeoutError(
-                f"External parser '{self._command}' timed out after 60s"
-            ) from None
+            raise TimeoutError(f"External parser '{self._command}' timed out after 60s") from None
         except FileNotFoundError:
-            raise RuntimeError(
-                f"External parser command not found: {self._command}"
-            ) from None
+            raise RuntimeError(f"External parser command not found: {self._command}") from None
 
         if result.returncode != 0:
-            raise RuntimeError(
-                f"External parser '{self._command}' exited with code {result.returncode}: "
-                f"{result.stderr.strip()}"
-            )
+            raise RuntimeError(f"External parser '{self._command}' exited with code {result.returncode}: {result.stderr.strip()}")
 
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"External parser '{self._command}' returned invalid JSON: {exc}"
-            ) from exc
+            raise RuntimeError(f"External parser '{self._command}' returned invalid JSON: {exc}") from exc
 
         return parse_result_from_json(data, source_path)
 
@@ -195,22 +177,15 @@ class HTTPParser(BaseParser):
                     timeout=self._timeout,
                 )
         except requests.RequestException as exc:
-            raise RuntimeError(
-                f"HTTP parser request failed for {self._endpoint}: {exc}"
-            ) from exc
+            raise RuntimeError(f"HTTP parser request failed for {self._endpoint}: {exc}") from exc
 
         if response.status_code != 200:
-            raise RuntimeError(
-                f"HTTP parser returned {response.status_code} from {self._endpoint}: "
-                f"{response.text[:200]}"
-            )
+            raise RuntimeError(f"HTTP parser returned {response.status_code} from {self._endpoint}: {response.text[:200]}")
 
         try:
             data = response.json()
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"HTTP parser returned invalid JSON from {self._endpoint}: {exc}"
-            ) from exc
+            raise RuntimeError(f"HTTP parser returned invalid JSON from {self._endpoint}: {exc}") from exc
 
         return parse_result_from_json(data, source_path)
 

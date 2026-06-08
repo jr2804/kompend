@@ -86,9 +86,7 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, output_dir: Path) -> Compi
             "title": node.title,
             "citations": [c.to_marker() for c in citations],
         }
-        (prov_dir / f"{node.id}.json").write_text(
-            json.dumps(record, indent=2, default=str), encoding="utf-8"
-        )
+        (prov_dir / f"{node.id}.json").write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
         new_nodes.append(
             WikiNode(
                 id=node.id,

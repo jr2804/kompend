@@ -173,46 +173,6 @@ class WiCERCompiler(BaseCompiler):
         # Fallback: simple text-based probes
         return self._fallback_probes(combined)
 
-    @staticmethod
-    def _extract_probe_list(result: Any) -> list[dict] | None:
-        """Extract a list of probes from various JSON shapes the LLM may return.
-
-        Accepts ``[{...}, {...}]`` or ``{"probes": [...]}`` /
-        ``{"results": [...]}`` / ``{"items": [...]}``. Falls back to
-        the single list-valued key when the object has only one.
-        """
-        if result is None:
-            return None
-        # Try direct list shape first (older content path).
-        if result.json_data is None:
-            try:
-                parsed = json.loads(result.content)
-            except json.JSONDecodeError:
-                return None
-            return parsed if isinstance(parsed, list) else None
-
-        data = result.json_data
-        for key in ("probes", "results", "items"):
-            value = data.get(key)
-            if isinstance(value, list):
-                return value
-        list_values = [v for v in data.values() if isinstance(v, list)]
-        if len(list_values) == 1:
-            return list_values[0]
-        return None
-
-    @staticmethod
-    def _fallback_probes(text: str) -> list[dict]:
-        """Generate simple fallback probes from text sentences."""
-        sentences = [s.strip() for s in text.replace("\n", " ").split(".") if len(s.strip()) > 20]
-        probes: list[dict] = []
-        for s in sentences[:5]:
-            probes.append({
-                "question": f"What does the source say about: {s[:60]}...?",
-                "answer": s[:200],
-            })
-        return probes
-
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
         """Step B: evaluate wiki against probes using LLM-as-judge."""
         wiki_text = "\n\n".join(n.content for n in wiki.nodes if n.content)
@@ -244,22 +204,6 @@ class WiCERCompiler(BaseCompiler):
                 return results
 
         return self._fallback_evaluate(wiki_text, probes)
-
-    @staticmethod
-    def _fallback_evaluate(wiki_text: str, probes: list[dict]) -> list[dict]:
-        """Fallback evaluation using simple substring matching."""
-        results: list[dict] = []
-        wiki_lower = wiki_text.lower()
-        for p in probes:
-            answer = p.get("answer", "")
-            found = answer.lower()[:50] in wiki_lower if answer else False
-            results.append({
-                "question": p.get("question", ""),
-                "expected_answer": answer,
-                "found_answer": answer if found else "",
-                "correct": found,
-            })
-        return results
 
     def _diagnose(self, failures: list[dict]) -> list[str]:
         """Step C: extract critical facts from failures using LLM."""
@@ -320,3 +264,63 @@ class WiCERCompiler(BaseCompiler):
             toc=list(wiki.toc),
             metadata={**wiki.metadata, "refined_with_pinned_facts": len(pinned_facts)},
         )
+
+    @staticmethod
+    def _extract_probe_list(result: Any) -> list[dict] | None:
+        """Extract a list of probes from various JSON shapes the LLM may return.
+
+        Accepts ``[{...}, {...}]`` or ``{"probes": [...]}`` /
+        ``{"results": [...]}`` / ``{"items": [...]}``. Falls back to
+        the single list-valued key when the object has only one.
+        """
+        if result is None:
+            return None
+        # Try direct list shape first (older content path).
+        if result.json_data is None:
+            try:
+                parsed = json.loads(result.content)
+            except json.JSONDecodeError:
+                return None
+            return parsed if isinstance(parsed, list) else None
+
+        data = result.json_data
+        for key in ("probes", "results", "items"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        list_values = [v for v in data.values() if isinstance(v, list)]
+        if len(list_values) == 1:
+            return list_values[0]
+        return None
+
+    @staticmethod
+    def _fallback_probes(text: str) -> list[dict]:
+        """Generate simple fallback probes from text sentences."""
+        sentences = [s.strip() for s in text.replace("\n", " ").split(".") if len(s.strip()) > 20]
+        probes: list[dict] = []
+        for s in sentences[:5]:
+            probes.append(
+                {
+                    "question": f"What does the source say about: {s[:60]}...?",
+                    "answer": s[:200],
+                }
+            )
+        return probes
+
+    @staticmethod
+    def _fallback_evaluate(wiki_text: str, probes: list[dict]) -> list[dict]:
+        """Fallback evaluation using simple substring matching."""
+        results: list[dict] = []
+        wiki_lower = wiki_text.lower()
+        for p in probes:
+            answer = p.get("answer", "")
+            found = answer.lower()[:50] in wiki_lower if answer else False
+            results.append(
+                {
+                    "question": p.get("question", ""),
+                    "expected_answer": answer,
+                    "found_answer": answer if found else "",
+                    "correct": found,
+                }
+            )
+        return results

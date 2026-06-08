@@ -26,8 +26,10 @@ def _atomic_chunk(elem_type: ElementType = ElementType.TABLE) -> Chunk:
 
 def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:
     return Chunk(
-        id="chunk_img_001", text="Figure showing architecture.",
-        element_types=[ElementType.IMAGE], source_elements=[2],
+        id="chunk_img_001",
+        text="Figure showing architecture.",
+        element_types=[ElementType.IMAGE],
+        source_elements=[2],
         metadata={"image_path": image_path} if image_path else {},
     )
 
@@ -48,7 +50,6 @@ def _llm_result(data: dict, model: str = "ollama/test") -> LLMResult:
 
 
 class TestLLMResolver:
-
     def test_atomic_table_skipped(self) -> None:
         """Atomic chunks bypass the LLM entirely."""
         client = _make_client()
@@ -113,7 +114,6 @@ class TestLLMResolver:
 
 
 class TestVLMEnricher:
-
     def test_non_image_chunk_skipped(self) -> None:
         """Text chunks bypass the VLM call entirely."""
         client = _make_client()

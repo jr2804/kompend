@@ -49,14 +49,14 @@ class FactualConsistencyRule(BaseLintRule):
                     len(content),
                     self.context_budget,
                 )
-                content = content[:self.context_budget]
+                content = content[: self.context_budget]
             prompt = (
                 "You are a factual-consistency checker for a compiled wiki. "
                 "Given the following page content, identify any claims that "
                 "appear unsupported or potentially contradictory. "
                 "Return a JSON object with key 'issues' containing a list of "
                 "objects with 'claim' and 'reason' fields. "
-                "If everything is consistent, return {\"issues\": []}.\n\n"
+                'If everything is consistent, return {"issues": []}.\n\n'
                 f"Page: {node.title}\n\n{content}"
             )
             try:
@@ -95,9 +95,7 @@ class FactualConsistencyRule(BaseLintRule):
                     )
 
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -139,7 +137,7 @@ class ClarityScoreRule(BaseLintRule):
                     len(content),
                     self.context_budget,
                 )
-                content = content[:self.context_budget]
+                content = content[: self.context_budget]
             prompt = (
                 "Rate the following wiki page on readability, coherence, "
                 "and conciseness on a scale of 1-10. Return a JSON object "
@@ -185,9 +183,7 @@ class ClarityScoreRule(BaseLintRule):
             )
 
         if not results:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
@@ -218,16 +214,12 @@ class CoverageGapRule(BaseLintRule):
             ]
 
         if not wiki.nodes:
-            return [
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Empty wiki")
-            ]
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Empty wiki")]
 
         # Build a summary of all wiki content for the LLM
         # Use the context budget, divided evenly across up to 30 pages
         per_node_budget = max(200, self.context_budget // 30)
-        wiki_summary = "\n".join(
-            f"- {n.title}: {(n.content or '')[:per_node_budget]}" for n in wiki.nodes[:30]
-        )
+        wiki_summary = "\n".join(f"- {n.title}: {(n.content or '')[:per_node_budget]}" for n in wiki.nodes[:30])
 
         prompt = (
             "You are a coverage-gap detector for a compiled wiki. "
@@ -236,7 +228,7 @@ class CoverageGapRule(BaseLintRule):
             "that should logically be present based on the existing content. "
             "Return a JSON object with key 'gaps' containing a list of "
             "objects with 'concept' and 'reason' fields. "
-            "If coverage looks complete, return {\"gaps\": []}.\n\n"
+            'If coverage looks complete, return {"gaps": []}.\n\n'
             f"Wiki pages:\n{wiki_summary}"
         )
 
@@ -248,14 +240,10 @@ class CoverageGapRule(BaseLintRule):
             )
         except Exception as exc:
             logger.warning("coverage-gap LLM call failed: %s", exc)
-            return [
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"LLM call failed: {exc}")
-            ]
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"LLM call failed: {exc}")]
 
         if llm_result is None or llm_result.json_data is None:
-            return [
-                LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="LLM returned no data")
-            ]
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="LLM returned no data")]
 
         gaps = llm_result.json_data.get("gaps", [])
         results: list[LintResult] = []
@@ -271,9 +259,7 @@ class CoverageGapRule(BaseLintRule):
                     )
                 )
         else:
-            results.append(
-                LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected")
-            )
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301

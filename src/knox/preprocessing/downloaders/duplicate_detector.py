@@ -32,26 +32,6 @@ class DuplicateDetector:
         self._db: dict[str, str] = {}
         self._load()
 
-    def _load(self) -> None:
-        """Load the database from disk."""
-        if self.db_path.exists():
-            try:
-                raw = self.db_path.read_text(encoding="utf-8")
-                self._db = json.loads(raw)
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_path)
-                self._db = {}
-        else:
-            self._db = {}
-
-    def _save(self) -> None:
-        """Persist the database to disk."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path.write_text(
-            json.dumps(self._db, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
     def is_duplicate(self, url: str) -> bool:
         """Check if a URL has been downloaded before.
 
@@ -95,3 +75,23 @@ class DuplicateDetector:
             SHA256 hex digest string.
         """
         return hashlib.sha256(content).hexdigest()
+
+    def _load(self) -> None:
+        """Load the database from disk."""
+        if self.db_path.exists():
+            try:
+                raw = self.db_path.read_text(encoding="utf-8")
+                self._db = json.loads(raw)
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_path)
+                self._db = {}
+        else:
+            self._db = {}
+
+    def _save(self) -> None:
+        """Persist the database to disk."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path.write_text(
+            json.dumps(self._db, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )

@@ -88,10 +88,7 @@ class LLMClient:
         If the role has explicit ``role_models``, those are used in
         order. Otherwise the chain is ``[default_model, *fallback_chain]``.
         """
-        if role in self.role_models and self.role_models[role]:
-            models = list(self.role_models[role])
-        else:
-            models = [self.default_model, *self.fallback_chain]
+        models = list(self.role_models[role]) if role in self.role_models and self.role_models[role] else [self.default_model, *self.fallback_chain]
         return FailoverChain(
             models=models,
             max_retries_per_model=self.max_retries_per_model,
@@ -213,6 +210,9 @@ class LLMClient:
         except LLMError as err:
             logger.warning(
                 "LLM call failed role=%s model=%s attempts=%d: %s",
-                role, err.model, err.attempts, err,
+                role,
+                err.model,
+                err.attempts,
+                err,
             )
             return None

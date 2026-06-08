@@ -36,6 +36,30 @@ class ChonkieChunker(BaseChunker):
         else:
             self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)
 
+    def chunk(self, document: ParsedDocument) -> list[Chunk]:
+        text = self._collect_text(document)
+        if not text.strip():
+            return []
+
+        try:
+            chonkie_chunks = self._chunker.chunk(text)
+        except Exception:
+            logger.exception("Chonkie chunking failed for %s", document.source_path)
+            return []
+
+        chunks: list[Chunk] = []
+        for i, c in enumerate(chonkie_chunks):
+            chunks.append(
+                Chunk(
+                    id=f"{document.source_path.stem}_chunk_{i}",
+                    text=c.text if hasattr(c, "text") else str(c),
+                    element_types=[ElementType.TEXT],
+                    source_elements=[],
+                    source_file=document.source_path,
+                )
+            )
+        return chunks
+
     def _collect_text(self, document: ParsedDocument) -> str:
         parts: list[str] = []
         current_heading = ""
@@ -62,27 +86,3 @@ class ChonkieChunker(BaseChunker):
             sep = "|" + " --- |" * len(rows[0])
             lines.insert(1, sep)
         return "\n".join(lines)
-
-    def chunk(self, document: ParsedDocument) -> list[Chunk]:
-        text = self._collect_text(document)
-        if not text.strip():
-            return []
-
-        try:
-            chonkie_chunks = self._chunker.chunk(text)
-        except Exception:
-            logger.exception("Chonkie chunking failed for %s", document.source_path)
-            return []
-
-        chunks: list[Chunk] = []
-        for i, c in enumerate(chonkie_chunks):
-            chunks.append(
-                Chunk(
-                    id=f"{document.source_path.stem}_chunk_{i}",
-                    text=c.text if hasattr(c, "text") else str(c),
-                    element_types=[ElementType.TEXT],
-                    source_elements=[],
-                    source_file=document.source_path,
-                )
-            )
-        return chunks

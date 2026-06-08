@@ -57,18 +57,21 @@ def _check_parsers() -> CheckResult:
     router = ParserRouter()
     try:
         from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
+
         router.register(DoclingParser())
     except Exception as exc:
         return CheckResult(name, False, f"DoclingParser init failed: {exc}")
 
     try:
         from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
+
         router.register(PdfPlumberParser())
     except Exception:
         pass  # optional parser
 
     try:
         from knox.preprocessing.parsers.pandoc_parser import PandocParser  # noqa: PLC0415
+
         router.register(PandocParser())
     except Exception:
         pass  # optional parser
@@ -177,6 +180,7 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
 
     if json_output:
         import json as j  # noqa: PLC0415
+
         data = {
             "passed": passed_count,
             "failed": failed_count,

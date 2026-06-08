@@ -80,9 +80,7 @@ class VLMParser(BaseParser):
             metadata=metadata,
         )
 
-    def _extract_metadata(
-        self, source_path: Path
-    ) -> tuple[list[str], int, int, str]:
+    def _extract_metadata(self, source_path: Path) -> tuple[list[str], int, int, str]:
         """Extract basic image metadata."""
         try:
             img = PILImage.open(source_path)
@@ -122,10 +120,7 @@ class VLMParser(BaseParser):
             # Replace with an actual VLMInlineModel call:
             #   model = VLMInlineModel(...)
             #   caption = model.describe(img)
-            return (
-                f"[VLM description pending — image: {img.size[0]}x{img.size[1]}, "
-                f"{img.mode}]"
-            )
+            return f"[VLM description pending — image: {img.size[0]}x{img.size[1]}, {img.mode}]"
         except Exception as exc:
             logger.warning("VLM caption generation failed for %s: %s", source_path, exc)
             return None
