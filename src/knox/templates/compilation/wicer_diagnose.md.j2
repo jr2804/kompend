@@ -1,0 +1,12 @@
+---
+variables:
+  - name: failures_json
+    required: true
+role: wicer.refine
+response_format: json_object
+---
+
+The following probe questions were answered incorrectly by the compiled wiki. Extract the critical facts that are missing or wrong. Return a JSON object with key "critical_facts" which is a list of strings, each describing one fact that must be included for a correct answer.
+
+Failures:
+{{ failures_json }}

@@ -1,0 +1,16 @@
+---
+variables:
+  - name: wiki_content
+    required: true
+role: synthesize
+response_format: text
+---
+
+You are synthesizing a concise thematic overview of a knowledge wiki. Write 2-3 paragraphs covering:
+- The main domain and key themes
+- Prominent entities and concepts
+- Notable relationships or open questions
+
+Wiki content:
+
+{{ wiki_content }}

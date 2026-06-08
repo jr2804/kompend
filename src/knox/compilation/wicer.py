@@ -20,35 +20,12 @@ from typing import Any
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.template_loader import TemplateLoader
 from knox.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_PROBE_TEMPLATE = (
-    "Based on the following text, generate 2 Q&A pairs as a JSON list "
-    'where each item has "question" and "answer" keys. '
-    "Focus on factual content that can be verified. "
-    "Text: {text}"
-)
-
-_EVALUATION_TEMPLATE = (
-    "You are evaluating a compiled wiki for factual correctness and completeness. "
-    "Given the following probe questions and the wiki content, determine whether "
-    "each question is correctly answered. "
-    'Return a JSON object with key "results" which is a list of dicts, each with '
-    '"question", "expected_answer", "found_answer" (the text from the wiki that '
-    'answers it, or empty string if missing), and "correct" (boolean).\\n\\n'
-    "Wiki content:\\n{wiki_text}\\n\\n"
-    "Probes:\\n{probes_json}"
-)
-
-_DIAGNOSE_TEMPLATE = (
-    "The following probe questions were answered incorrectly by the compiled wiki. "
-    "Extract the critical facts that are missing or wrong. "
-    'Return a JSON object with key "critical_facts" which is a list of strings, '
-    "each describing one fact that must be included for a correct answer.\\n\\n"
-    "Failures:\\n{failures_json}"
-)
+_loader = TemplateLoader()
 
 
 class WiCERCompiler(BaseCompiler):
@@ -160,7 +137,7 @@ class WiCERCompiler(BaseCompiler):
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
-                {"role": "user", "content": _DEFAULT_PROBE_TEMPLATE.format(text=combined[:3000])},
+                {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined[:3000])},
             ],
             role="wicer.probe",
             response_format={"type": "json_object"},
@@ -188,7 +165,8 @@ class WiCERCompiler(BaseCompiler):
                 {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
                 {
                     "role": "user",
-                    "content": _EVALUATION_TEMPLATE.format(
+                    "content": _loader.render(
+                        "compilation/wicer_evaluate.md.j2",
                         wiki_text=wiki_text[:4000],
                         probes_json=json.dumps(probes),
                     ),
@@ -217,7 +195,7 @@ class WiCERCompiler(BaseCompiler):
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a diagnostic assistant. Return only valid JSON."},
-                {"role": "user", "content": _DIAGNOSE_TEMPLATE.format(failures_json=json.dumps(failures))},
+                {"role": "user", "content": _loader.render("compilation/wicer_diagnose.md.j2", failures_json=json.dumps(failures))},
             ],
             role="wicer.refine",
             response_format={"type": "json_object"},

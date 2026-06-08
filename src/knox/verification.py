@@ -20,18 +20,14 @@ from typing import Any
 import litellm
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.template_loader import TemplateLoader
 from knox.provenance import Citation, extract_citations
 
 logger = logging.getLogger(__name__)
 
-_SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
+_loader = TemplateLoader()
 
-_VERIFY_SYSTEM = (
-    "You verify whether a claim is supported by its cited source. "
-    'Return only valid JSON: {"verdict": "supported|partial|unsupported", '
-    '"confidence": 0.0-1.0, "reason": "..."}'
-)
-_VERIFY_TEMPLATE = "Claim: {claim}\n\nCited source ({source}, lines {start}-{end}): {excerpt}\n\nReturn a JSON object with verdict, confidence, and reason."
+_SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
 
 @dataclass
@@ -194,14 +190,16 @@ def verify_node(
             )
             continue
 
-        prompt = _VERIFY_TEMPLATE.format(
+        prompt = _loader.render(
+            "verification/verify_claim.md.j2",
             claim=claim,
             source=citation.source,
             start=citation.start,
             end=citation.end,
             excerpt=excerpt[:3000],
         )
-        data = _try_litellm_json(prompt, system=_VERIFY_SYSTEM, model=model)
+        verify_system = _loader.get_body("verification/verify_system.md.j2")
+        data = _try_litellm_json(prompt, system=verify_system, model=model)
         if isinstance(data, dict):
             confidence = float(data.get("confidence", 0.0))
             verdict = str(data.get("verdict", "unsupported"))

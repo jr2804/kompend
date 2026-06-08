@@ -1,0 +1,15 @@
+---
+variables:
+  - name: title
+    required: true
+  - name: content
+    required: true
+role: lint.clarity-score
+response_format: json_object
+---
+
+Rate the following wiki page on readability, coherence, and conciseness on a scale of 1-10. Return a JSON object with keys 'score' (integer 1-10) and 'feedback' (string). A score below 6 indicates poor quality.
+
+Page: {{ title }}
+
+{{ content }}

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import CompiledWiki
+from knox.core.template_loader import TemplateLoader
+
+_loader = TemplateLoader()
 
 
 def generate_index(wiki: CompiledWiki) -> str:
@@ -146,15 +148,8 @@ def write_overview(
     if not source_texts:
         return None
 
-    prompt = (
-        "You are synthesizing a concise thematic overview of a knowledge wiki. "
-        "Write 2-3 paragraphs covering:\n"
-        "- The main domain and key themes\n"
-        "- Prominent entities and concepts\n"
-        "- Notable relationships or open questions\n\n"
-        "Wiki content:\n\n"
-        + "\n---\n".join(text[:2000] for text in source_texts[:10])
-    )
+    wiki_content = "\n---\n".join(text[:2000] for text in source_texts[:10])
+    prompt = _loader.render("output/synthesize.md.j2", wiki_content=wiki_content)
 
     try:
         result = client.complete(

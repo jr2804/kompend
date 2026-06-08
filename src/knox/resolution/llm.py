@@ -13,10 +13,13 @@ from __future__ import annotations
 import logging
 
 from knox.core.models import ATOMIC_TYPES, Chunk, ResolvedChunk
+from knox.core.template_loader import TemplateLoader
 from knox.llm.client import LLMClient
 from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
+
+_loader = TemplateLoader()
 
 
 class LLMResolver(BaseResolver):
@@ -44,14 +47,7 @@ class LLMResolver(BaseResolver):
     ) -> None:
         self._client = client  # None is OK — resolve() handles it gracefully
         self._role = role
-        self._system_prompt = system_prompt or (
-            "Extract named entities and resolve cross-references from the text below. "
-            "Return a JSON object with these keys:\n"
-            '  - "entities": list of {"name": str, "type": str, "context": str}\n'
-            '  - "relations": list of {"source": str, "target": str, "type": str}\n'
-            '  - "resolved_references": list of resolved reference strings\n'
-            "If no entities are found return empty lists."
-        )
+        self._system_prompt = system_prompt or _loader.get_body("resolution/resolve_system.md.j2")
 
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """Resolve entities and references in chunk. Never raises."""

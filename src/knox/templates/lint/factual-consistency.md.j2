@@ -1,0 +1,15 @@
+---
+variables:
+  - name: title
+    required: true
+  - name: content
+    required: true
+role: lint.factual-consistency
+response_format: json_object
+---
+
+You are a factual-consistency checker for a compiled wiki. Given the following page content, identify any claims that appear unsupported or potentially contradictory. Return a JSON object with key 'issues' containing a list of objects with 'claim' and 'reason' fields. If everything is consistent, return {"issues": []}.
+
+Page: {{ title }}
+
+{{ content }}

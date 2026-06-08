@@ -1,0 +1,9 @@
+---
+variables:
+  - name: text
+    required: true
+role: wicer.probe
+response_format: json_object
+---
+
+Based on the following text, generate 2 Q&A pairs as a JSON list where each item has "question" and "answer" keys. Focus on factual content that can be verified. Text: {{ text }}

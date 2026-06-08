@@ -1,0 +1,11 @@
+---
+variables: []
+role: resolve
+response_format: json_object
+---
+
+Extract named entities and resolve cross-references from the text below. Return a JSON object with these keys:
+  - "entities": list of {"name": str, "type": str, "context": str}
+  - "relations": list of {"source": str, "target": str, "type": str}
+  - "resolved_references": list of resolved reference strings
+If no entities are found return empty lists.

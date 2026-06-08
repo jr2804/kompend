@@ -1,0 +1,7 @@
+---
+variables: []
+role: compile.extract
+response_format: json_object
+---
+
+You extract structured information from source documents. Return only valid JSON with the schema: {"summary": str, "entities": [{"name": str, "type": str}], "concepts": [{"name": str, "definition": str}], "tags": [str]}.

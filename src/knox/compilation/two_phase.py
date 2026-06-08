@@ -24,32 +24,11 @@ import litellm
 
 from knox.compilation.base import BaseCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.template_loader import TemplateLoader
 
 logger = logging.getLogger(__name__)
 
-_EXTRACTION_SYSTEM = (
-    "You extract structured information from source documents. "
-    "Return only valid JSON with the schema: "
-    '{"summary": str, "entities": [{"name": str, "type": str}], '
-    '"concepts": [{"name": str, "definition": str}], "tags": [str]}.'
-)
-
-_EXTRACTION_TEMPLATE = (
-    "Read the following source and return a JSON object with: "
-    '"summary" (1-3 sentence summary), "entities" (list of objects with name and type), '
-    '"concepts" (list of objects with name and definition), "tags" (list of short tags). '
-    "Source: {text}"
-)
-
-_GENERATION_SYSTEM = 'You generate knowledge-base pages. Return only valid JSON: {"pages": [{"title": str, "content": str, "provenance": [str]}]}'
-
-_GENERATION_TEMPLATE = (
-    "Generate one knowledge-base page for each concept. "
-    "Each page's content must include claim-level provenance in the form "
-    '"^[source.pdf:42-58]" appended to the claim it supports. '
-    "Concepts (across all sources): {concepts_json}\n"
-    "Source content (fair-share truncated): {content}"
-)
+_loader = TemplateLoader()
 
 
 @dataclass
@@ -225,8 +204,9 @@ class TwoPhaseCompiler(BaseCompiler):
 
         for source, source_chunks in by_source.items():
             text = "\n\n".join(rc.chunk.text for rc in source_chunks if rc.chunk.text)
-            prompt = _EXTRACTION_TEMPLATE.format(text=text[:6000])
-            data = _try_litellm_json(prompt, system=_EXTRACTION_SYSTEM)
+            prompt = _loader.render("compilation/extraction_prompt.md.j2", text=text[:6000])
+            extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
+            data = _try_litellm_json(prompt, system=extraction_system)
             if isinstance(data, dict):
                 extractions.add(
                     Extraction(
@@ -269,11 +249,13 @@ class TwoPhaseCompiler(BaseCompiler):
             )
 
         content_block = "\n\n".join(f"### {label}\n{content}" for label, content, _ in truncated)
-        prompt = _GENERATION_TEMPLATE.format(
+        prompt = _loader.render(
+            "compilation/generation_prompt.md.j2",
             concepts_json=json.dumps(concepts),
             content=content_block,
         )
-        data = _try_litellm_json(prompt, system=_GENERATION_SYSTEM, model=self._model)
+        generation_system = _loader.get_body("compilation/generation_system.md.j2")
+        data = _try_litellm_json(prompt, system=generation_system, model=self._model)
 
         nodes: list[WikiNode] = []
         edges: list[dict[str, Any]] = []

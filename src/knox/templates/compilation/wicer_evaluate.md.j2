@@ -1,0 +1,17 @@
+---
+variables:
+  - name: wiki_text
+    required: true
+  - name: probes_json
+    required: true
+role: wicer.judge
+response_format: json_object
+---
+
+You are evaluating a compiled wiki for factual correctness and completeness. Given the following probe questions and the wiki content, determine whether each question is correctly answered. Return a JSON object with key "results" which is a list of dicts, each with "question", "expected_answer", "found_answer" (the text from the wiki that answers it, or empty string if missing), and "correct" (boolean).
+
+Wiki content:
+{{ wiki_text }}
+
+Probes:
+{{ probes_json }}

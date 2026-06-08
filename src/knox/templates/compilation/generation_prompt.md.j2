@@ -1,0 +1,12 @@
+---
+variables:
+  - name: concepts_json
+    required: true
+  - name: content
+    required: true
+role: compile.generate
+response_format: json_object
+---
+
+Generate one knowledge-base page for each concept. Each page's content must include claim-level provenance in the form "^[source.pdf:42-58]" appended to the claim it supports. Concepts (across all sources): {{ concepts_json }}
+Source content (fair-share truncated): {{ content }}

@@ -1,0 +1,21 @@
+---
+variables:
+  - name: claim
+    required: true
+  - name: source
+    required: true
+  - name: start
+    required: true
+  - name: end
+    required: true
+  - name: excerpt
+    required: true
+role: verify.claim
+response_format: json_object
+---
+
+Claim: {{ claim }}
+
+Cited source ({{ source }}, lines {{ start }}-{{ end }}): {{ excerpt }}
+
+Return a JSON object with verdict, confidence, and reason.

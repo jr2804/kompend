@@ -1,0 +1,12 @@
+---
+variables:
+  - name: wiki_summary
+    required: true
+role: lint.coverage-gap
+response_format: json_object
+---
+
+You are a coverage-gap detector for a compiled wiki. Given the following wiki page titles and summaries, identify any important concepts that appear to be missing — concepts that should logically be present based on the existing content. Return a JSON object with key 'gaps' containing a list of objects with 'concept' and 'reason' fields. If coverage looks complete, return {"gaps": []}.
+
+Wiki pages:
+{{ wiki_summary }}

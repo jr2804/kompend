@@ -10,9 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from knox.core.template_loader import TemplateLoader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 logger = logging.getLogger(__name__)
+
+_loader = TemplateLoader()
 
 # ── Rule 9: factual-consistency ──────────────────────────────────────────
 
@@ -50,15 +53,7 @@ class FactualConsistencyRule(BaseLintRule):
                     self.context_budget,
                 )
                 content = content[: self.context_budget]
-            prompt = (
-                "You are a factual-consistency checker for a compiled wiki. "
-                "Given the following page content, identify any claims that "
-                "appear unsupported or potentially contradictory. "
-                "Return a JSON object with key 'issues' containing a list of "
-                "objects with 'claim' and 'reason' fields. "
-                'If everything is consistent, return {"issues": []}.\n\n'
-                f"Page: {node.title}\n\n{content}"
-            )
+            prompt = _loader.render("lint/factual-consistency.md.j2", title=node.title, content=content)
             try:
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
@@ -138,13 +133,7 @@ class ClarityScoreRule(BaseLintRule):
                     self.context_budget,
                 )
                 content = content[: self.context_budget]
-            prompt = (
-                "Rate the following wiki page on readability, coherence, "
-                "and conciseness on a scale of 1-10. Return a JSON object "
-                "with keys 'score' (integer 1-10) and 'feedback' (string). "
-                "A score below 6 indicates poor quality.\n\n"
-                f"Page: {node.title}\n\n{content}"
-            )
+            prompt = _loader.render("lint/clarity-score.md.j2", title=node.title, content=content)
             try:
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
@@ -221,16 +210,7 @@ class CoverageGapRule(BaseLintRule):
         per_node_budget = max(200, self.context_budget // 30)
         wiki_summary = "\n".join(f"- {n.title}: {(n.content or '')[:per_node_budget]}" for n in wiki.nodes[:30])
 
-        prompt = (
-            "You are a coverage-gap detector for a compiled wiki. "
-            "Given the following wiki page titles and summaries, identify "
-            "any important concepts that appear to be missing — concepts "
-            "that should logically be present based on the existing content. "
-            "Return a JSON object with key 'gaps' containing a list of "
-            "objects with 'concept' and 'reason' fields. "
-            'If coverage looks complete, return {"gaps": []}.\n\n'
-            f"Wiki pages:\n{wiki_summary}"
-        )
+        prompt = _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
 
         try:
             llm_result = self.llm_client.try_complete(
