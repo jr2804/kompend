@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from chonkie import RecursiveChunker, SemanticChunker
+
 from knox.chunking.base import BaseChunker
 from knox.core.models import Chunk, ElementType, ParsedDocument
 
 logger = logging.getLogger(__name__)
-
-from chonkie import Chunker as ChonkieChunker
-from chonkie import RecursiveChunker, SemanticChunker
 
 
 class ChonkieChunker(BaseChunker):

@@ -74,7 +74,8 @@ class BaseLintRule(ABC):
     @abstractmethod
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:
+    @staticmethod
+    def fix(wiki: Any, results: list[LintResult]) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
 
         Default implementation returns results unchanged.

@@ -116,37 +116,6 @@ class TokenOverlapRetriever:
         except Exception as exc:
             logger.warning("Query expansion failed: %s", exc)
             return [query]
-        if not query_tokens:
-            return []
-
-        scored: list[tuple[float, WikiNode]] = []
-        for node in self._wiki.nodes:
-            content: str = node.content or node.title
-            node_tokens: set[str] = set(_tokenize(content))
-            if not node_tokens:
-                continue
-            overlap: int = len(query_tokens & node_tokens)
-            score: float = overlap / len(query_tokens)
-            scored.append((score, node))
-
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-
-        results: list[SearchResult] = []
-        for score, node in scored[:top_k]:
-            snippet: str = _extract_snippet(node.content, query_tokens) if node.content else node.title
-            source_file: str | None = None
-            if node.metadata and "source" in node.metadata:
-                source_file = str(node.metadata["source"])
-            results.append(
-                SearchResult(
-                    article_id=node.id,
-                    title=node.title,
-                    snippet=snippet,
-                    score=score,
-                    source_file=source_file,
-                )
-            )
-        return results
 
     def synthesize(
         self,
@@ -226,10 +195,7 @@ class TokenOverlapRetriever:
 
         results: list[SearchResult] = []
         for score, path, content in scored[:top_k]:
-            snippet: str = (
-                _extract_snippet(content, query_tokens)
-                if content else path.name
-            )
+            snippet: str = _extract_snippet(content, query_tokens) if content else path.name
             results.append(
                 SearchResult(
                     article_id=path.stem,
@@ -248,11 +214,7 @@ class TokenOverlapRetriever:
         top_k: int = 5,
     ) -> list[SearchResult]:
         wiki_results: list[SearchResult] = self.search(query, top_k=top_k)
-        raw_results: list[SearchResult] = (
-            self.search_raw(query, sources_dir, top_k=top_k)
-            if sources_dir and sources_dir.is_dir()
-            else []
-        )
+        raw_results: list[SearchResult] = self.search_raw(query, sources_dir, top_k=top_k) if sources_dir and sources_dir.is_dir() else []
 
         if not raw_results:
             return wiki_results
@@ -277,9 +239,7 @@ class TokenOverlapRetriever:
                 r.score = round(r.score, 3)
                 merged[key] = r
 
-        sorted_results: list[SearchResult] = sorted(
-            merged.values(), key=lambda x: x.score, reverse=True
-        )
+        sorted_results: list[SearchResult] = sorted(merged.values(), key=lambda x: x.score, reverse=True)
         return sorted_results[:top_k]
 
 

@@ -12,7 +12,12 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from knox.capture.capture import capture
+from knox.capture.learn import learn
 from knox.core.pipeline import PipelineConfig, build_pipeline
+from knox.llm.client import LLMClient
+from knox.preprocessing.parsers.base import ParserRouter
+from knox.preprocessing.parsers.docling_parser import DoclingParser
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +27,6 @@ server = FastMCP("KNOX")
 @server.tool(name="parse_document")
 def parse_document(file_path: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
-    from knox.preprocessing.parsers.base import ParserRouter
-    from knox.preprocessing.parsers.docling_parser import DoclingParser
-
     path = Path(file_path)
     if not path.exists():
         return {"status": "error", "message": f"File not found: {file_path}"}
@@ -137,14 +139,10 @@ def wiki_capture(
     Uses LLM to extract decisions, discoveries, corrections, and references
     from conversation text. Results are written to sources/_captured/.
     """
-    from knox.capture.capture import capture  # noqa: PLC0415
-
     source_path = Path(sources_dir)
     source_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        from knox.llm.client import LLMClient  # noqa: PLC0415
-
         llm_client = LLMClient(default_model="ollama/llama3.2")
     except Exception:
         llm_client = None
@@ -170,8 +168,6 @@ def wiki_learn(
 
     Unlike wiki_capture, this stores the text verbatim without LLM extraction.
     """
-    from knox.capture.learn import learn  # noqa: PLC0415
-
     source_path = Path(sources_dir)
     source_path.mkdir(parents=True, exist_ok=True)
 

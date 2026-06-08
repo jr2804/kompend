@@ -15,7 +15,7 @@ class PdfPlumberParser(BaseParser):
 
     supported_extensions = {FileExtension.PDF}
 
-    def parse(self, source_path: Path) -> ParsedDocument:
+    def parse(self, source_path: Path) -> ParsedDocument:  # noqa: PLR6301
         elements: list[DocumentElement] = []
         with pdfplumber.open(source_path) as pdf:
             page_count = len(pdf.pages)

@@ -86,9 +86,9 @@ def load_gitignore(source_dir: Path) -> list[str]:
             try:
                 text = gitignore.read_text(encoding="utf-8", errors="replace")
                 for line in text.splitlines():
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        patterns.append(line)
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        patterns.append(stripped)
                 logger.debug("Loaded %d patterns from %s", len(patterns), gitignore)
             except Exception as exc:
                 logger.debug("Failed to read %s: %s", gitignore, exc)

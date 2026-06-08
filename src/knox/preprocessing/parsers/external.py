@@ -39,7 +39,16 @@ def parse_result_from_json(data: dict[str, Any], source_path: Path) -> ParsedDoc
             "language": "en",
             "page_count": 0,
             "metadata": {},
-            "elements": [{"type": "TEXT|HEADING|TABLE|LIST|FIGURE|CODE", "content": "...", "page": 1, "reading_order": 0, "heading_level": null, "metadata": {}}],
+            "elements": [
+                {
+                    "type": "TEXT|HEADING|TABLE|LIST|FIGURE|CODE",
+                    "content": "...",
+                    "page": 1,
+                    "reading_order": 0,
+                    "heading_level": null,
+                    "metadata": {},
+                }
+            ],
         }
     """
     elements: list[DocumentElement] = []
@@ -109,11 +118,12 @@ class ExternalParser(BaseParser):
         """Run the external CLI tool and parse its JSON output."""
         logger.debug("Running external parser: %s %s", self._command, source_path)
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 [self._command, str(source_path)],
                 capture_output=True,
                 text=True,
                 timeout=60,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             raise TimeoutError(f"External parser '{self._command}' timed out after 60s") from None

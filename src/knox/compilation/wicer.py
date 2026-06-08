@@ -208,7 +208,8 @@ class WiCERCompiler(BaseCompiler):
 
         return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
-    def _refine(self, wiki: CompiledWiki, pinned_facts: list[str]) -> CompiledWiki:
+    @staticmethod
+    def _refine(wiki: CompiledWiki, pinned_facts: list[str]) -> CompiledWiki:
         """Step D: re-compile with pinned facts appended."""
         if not pinned_facts:
             return wiki

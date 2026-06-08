@@ -70,14 +70,16 @@ def search_fts(query: str, index_path: Path, top_k: int = 5) -> list[dict[str, A
 
         results: list[dict[str, Any]] = []
         for row in rows:
-            results.append({
-                "id": row[0],
-                "article_id": row[1],
-                "title": row[2],
-                "content": row[3],
-                "source_file": row[4],
-                "score": 1.0 / (1.0 + abs(row[5])) if row[5] is not None else 0.0,
-            })
+            results.append(
+                {
+                    "id": row[0],
+                    "article_id": row[1],
+                    "title": row[2],
+                    "content": row[3],
+                    "source_file": row[4],
+                    "score": 1.0 / (1.0 + abs(row[5])) if row[5] is not None else 0.0,
+                }
+            )
         return results
     finally:
         conn.close()

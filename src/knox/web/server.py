@@ -85,7 +85,14 @@ async def dashboard() -> str:
     <h2>Recent Wiki Pages</h2>
     <table>
       <tr><th>Title</th><th>Type</th><th>Source</th></tr>
-      {''.join(f'<tr><td><a href="/wiki/{n.get("id","")}">{n.get("title","")}</a></td><td>{n.get("node_type","")}</td><td>{n.get("metadata",{}).get("source","")}</td></tr>' for n in nodes[:10])}
+      {
+        "".join(
+            f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
+            f"<td>{n.get('node_type', '')}</td>"
+            f"<td>{n.get('metadata', {}).get('source', '')}</td></tr>"
+            for n in nodes[:10]
+        )
+    }
     </table>
   </div>
 </div>
@@ -98,9 +105,9 @@ async def wiki_list() -> str:
     wiki = _load_wiki()
     nodes = wiki.get("nodes", [])
     rows = "".join(
-        f'<tr><td><a href="/wiki/{n.get("id","")}">{n.get("title","")}</a></td>'
-        f'<td>{n.get("node_type","")}</td>'
-        f'<td>{n.get("metadata",{}).get("source","")}</td></tr>'
+        f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
+        f"<td>{n.get('node_type', '')}</td>"
+        f"<td>{n.get('metadata', {}).get('source', '')}</td></tr>"
         for n in nodes
     )
     return f"""<!DOCTYPE html>
@@ -150,7 +157,7 @@ async def wiki_page(node_id: str) -> str:
     content = node.get("content", "")
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>{node.get("title","")} - KNOX</title>
+<head><meta charset="UTF-8"><title>{node.get("title", "")} - KNOX</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -166,8 +173,8 @@ async def wiki_page(node_id: str) -> str:
 <nav><a href="/">KNOX</a><a href="/wiki">Wiki</a></nav>
 <div class="container">
   <div class="content">
-    <h1>{node.get("title","")}</h1>
-    <div class="meta">Type: {node.get("node_type","")} | Source: {node.get("metadata",{}).get("source","")}</div>
+    <h1>{node.get("title", "")}</h1>
+    <div class="meta">Type: {node.get("node_type", "")} | Source: {node.get("metadata", {}).get("source", "")}</div>
     <pre style="white-space:pre-wrap;font-family:inherit">{content}</pre>
   </div>
 </div>
@@ -252,10 +259,7 @@ async def query_page(q: str = Query(default="")) -> str:
 @app.get("/graph", response_class=HTMLResponse)
 async def force_graph() -> str:
     wiki = _load_wiki()
-    nodes_json = json.dumps([
-        {"id": n.get("id"), "title": n.get("title"), "type": n.get("node_type")}
-        for n in wiki.get("nodes", [])
-    ])
+    nodes_json = json.dumps([{"id": n.get("id"), "title": n.get("title"), "type": n.get("node_type")} for n in wiki.get("nodes", [])])
     edges_json = json.dumps(list(wiki.get("edges", [])))
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -446,6 +450,7 @@ async def settings_page() -> str:
 @app.post("/api/ingest-url")
 async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
     from knox.capture.ingest import ingest  # noqa: PLC0415
+
     result = ingest(url, sources_dir=_CWD / "sources")
     if result:
         return JSONResponse({"status": "ok", "file": str(result)})
@@ -455,6 +460,7 @@ async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
 @app.post("/api/learn")
 async def api_learn(text: str = Query(...)) -> JSONResponse:
     from knox.capture.learn import learn  # noqa: PLC0415
+
     path = learn(text, sources_dir=_CWD / "sources")
     return JSONResponse({"status": "ok", "file": str(path)})
 
@@ -463,7 +469,8 @@ async def api_learn(text: str = Query(...)) -> JSONResponse:
 async def api_compile() -> JSONResponse:
     import subprocess  # noqa: PLC0415
     import sys  # noqa: PLC0415
-    result = subprocess.run([sys.executable, "-m", "knox.cli.app", "compile"], capture_output=True, text=True, cwd=str(_CWD))
+
+    result = subprocess.run([sys.executable, "-m", "knox.cli.app", "compile"], capture_output=True, text=True, cwd=str(_CWD), check=False)  # noqa: S603
     if result.returncode == 0:
         return JSONResponse({"status": "ok", "output": result.stdout})
     return JSONResponse({"status": "error", "message": result.stderr or result.stdout}, status_code=400)
@@ -471,6 +478,7 @@ async def api_compile() -> JSONResponse:
 
 def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = False) -> None:
     import uvicorn  # noqa: PLC0415
+
     if open_browser:
         webbrowser.open(f"http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")

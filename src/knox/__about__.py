@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from knox import __version__
-
 __title__ = "knox"
 __description__ = "Knowledge Organizer for eXtended documents"
 __version__ = ""  # injected by uv-dynamic-versioning

@@ -38,7 +38,7 @@ class OpenDataLoaderParser(BaseParser):
             "Use DoclingParser or PdfPlumberParser instead."
         )
 
-    def parse(self, source_path: Path) -> ParsedDocument:
+    def parse(self, source_path: Path) -> ParsedDocument:  # noqa: PLR6301
         """Parse a PDF using opendataloader and map to ParsedDocument.
 
         TODO: Full implementation. Currently a thin adapter skeleton.

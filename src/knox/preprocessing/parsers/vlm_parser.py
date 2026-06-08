@@ -80,7 +80,8 @@ class VLMParser(BaseParser):
             metadata=metadata,
         )
 
-    def _extract_metadata(self, source_path: Path) -> tuple[list[str], int, int, str]:
+    @staticmethod
+    def _extract_metadata(source_path: Path) -> tuple[list[str], int, int, str]:
         """Extract basic image metadata."""
         try:
             img = PILImage.open(source_path)
@@ -106,7 +107,8 @@ class VLMParser(BaseParser):
                 "unknown",
             )
 
-    def _generate_caption(self, source_path: Path) -> str | None:
+    @staticmethod
+    def _generate_caption(source_path: Path) -> str | None:
         """Generate a text description for the image using the VLM.
 
         TODO: Wire into ``VLMInlineModel`` once docling-slim exposes a

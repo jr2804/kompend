@@ -11,6 +11,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from docling.document_converter import DocumentConverter
+
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
@@ -144,11 +146,9 @@ class DoclingParser(BaseParser):
             metadata={"parser": "docling"},
         )
 
-    def _get_converter(self):
+    def _get_converter(self) -> DocumentConverter:
         """Create or return the cached DocumentConverter."""
         if self._converter is None:
-            from docling.document_converter import DocumentConverter
-
             self._converter = DocumentConverter()
         return self._converter
 

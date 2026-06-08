@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,15 +67,15 @@ def _check_parsers() -> CheckResult:
         from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
 
         router.register(PdfPlumberParser())
-    except Exception:
-        pass  # optional parser
+    except Exception as exc:
+        logger.debug("PdfPlumberParser not available: %s", exc)
 
     try:
         from knox.preprocessing.parsers.pandoc_parser import PandocParser  # noqa: PLC0415
 
         router.register(PandocParser())
-    except Exception:
-        pass  # optional parser
+    except Exception as exc:
+        logger.debug("PandocParser not available: %s", exc)
 
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
@@ -116,18 +117,20 @@ def _check_llm_connectivity(verbose: bool = False) -> CheckResult:
 def _check_git_repo() -> CheckResult:
     """Check if we are inside a git repository."""
     name = "git-repo"
+    git_path = shutil.which("git")
+    if git_path is None:
+        return CheckResult(name, True, "Git not installed — OK")
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
+        result = subprocess.run(  # noqa: S603
+            [git_path, "rev-parse", "--is-inside-work-tree"],
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
         if result.returncode == 0:
             return CheckResult(name, True, "Inside a git repository")
         return CheckResult(name, True, "Not a git repository — OK")
-    except FileNotFoundError:
-        return CheckResult(name, True, "Git not installed — OK")
     except subprocess.TimeoutExpired:
         return CheckResult(name, True, "Git check timed out — OK")
 

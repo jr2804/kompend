@@ -30,10 +30,9 @@ def get_supported_extensions() -> set[str]:
         from knox.preprocessing.parsers._registry import get_all_extensions  # noqa: PLC0415
 
         extensions.update(get_all_extensions())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Could not load external parser extensions: %s", exc)
     return extensions
-
 
 
 def resolve_files(

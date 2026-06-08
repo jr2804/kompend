@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from knox.lint.base import LintResult, LintRuleOutcome
+from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES
 
@@ -145,8 +145,6 @@ def _build_report(results: list[LintResult]) -> LintReport:
     ``health_score = 100 * max(0, 1 - penalty / max_possible)``
     where ``max_possible = total_checks * 3`` (worst case: all errors).
     """
-    from knox.lint.base import Severity
-
     failures = sum(1 for r in results if r.outcome == LintRuleOutcome.FAIL)
     passes = sum(1 for r in results if r.outcome == LintRuleOutcome.PASS)
     skips = sum(1 for r in results if r.outcome == LintRuleOutcome.SKIP)

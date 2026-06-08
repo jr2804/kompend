@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import re
 from pathlib import Path
 from urllib.parse import urlparse
+
+from crawl4ai import AsyncWebCrawler
 
 from knox.preprocessing.downloaders.base import BaseDownloader
 
@@ -25,8 +28,6 @@ class WebCrawler(BaseDownloader):
 
         try:
             if loop and loop.is_running():
-                import concurrent.futures
-
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     return pool.submit(asyncio.run, self._download_async(url, target_dir)).result()
             return asyncio.run(self._download_async(url, target_dir))
@@ -46,10 +47,9 @@ class WebCrawler(BaseDownloader):
                 logger.exception("Failed to download %s", url)
         return results
 
-    async def _download_async(self, url: str, target_dir: Path) -> Path | None:
+    @staticmethod
+    async def _download_async(url: str, target_dir: Path) -> Path | None:
         """Async implementation: crawl URL with crawl4ai and save as markdown."""
-        from crawl4ai import AsyncWebCrawler
-
         parsed = urlparse(url)
         domain = parsed.netloc or parsed.hostname or "unknown"
         safe_domain = re.sub(r"[^a-zA-Z0-9_.-]", "_", domain)

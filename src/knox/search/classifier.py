@@ -43,32 +43,67 @@ _OFFTOPIC_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 _GREETING_RESPONSE: str = (
-    "Hello! I can answer questions about your compiled wiki. "
-    "Try asking something like 'what is flash attention?' "
-    "or run `knox query --help` for more options."
+    "Hello! I can answer questions about your compiled wiki. Try asking something like 'what is flash attention?' or run `knox query --help` for more options."
 )
-_GRATITUDE_RESPONSE: str = (
-    "You're welcome! If you have more questions about your wiki, just ask."
-)
-_HELP_RESPONSE: str = (
-    "I can search your compiled wiki for relevant information. "
-    "Try: `knox query \"your question\"` or `knox query --help`."
-)
+_GRATITUDE_RESPONSE: str = "You're welcome! If you have more questions about your wiki, just ask."
+_HELP_RESPONSE: str = 'I can search your compiled wiki for relevant information. Try: `knox query "your question"` or `knox query --help`.'
 _OFFTOPIC_RESPONSE: str = (
-    "I'm a knowledge base assistant. I can answer questions about your "
-    "compiled wiki. Try asking something about the documents you've compiled."
+    "I'm a knowledge base assistant. I can answer questions about your compiled wiki. Try asking something about the documents you've compiled."
 )
 
 
-_STOP: frozenset[str] = frozenset({
-    "the", "and", "for", "are", "but", "not", "you", "all", "can",
-    "had", "her", "was", "one", "our", "out", "has", "have", "been",
-    "some", "them", "than", "that", "this", "very", "just", "also",
-    "from", "with", "what", "when", "where", "which", "will", "your",
-    "hi", "hello", "hey", "thanks", "thank", "good", "morning",
-    "afternoon", "evening", "help", "please",
-    "appreciate", "welcome", "howdy",
-})
+_STOP: frozenset[str] = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "are",
+        "but",
+        "not",
+        "you",
+        "all",
+        "can",
+        "had",
+        "her",
+        "was",
+        "one",
+        "our",
+        "out",
+        "has",
+        "have",
+        "been",
+        "some",
+        "them",
+        "than",
+        "that",
+        "this",
+        "very",
+        "just",
+        "also",
+        "from",
+        "with",
+        "what",
+        "when",
+        "where",
+        "which",
+        "will",
+        "your",
+        "hi",
+        "hello",
+        "hey",
+        "thanks",
+        "thank",
+        "good",
+        "morning",
+        "afternoon",
+        "evening",
+        "help",
+        "please",
+        "appreciate",
+        "welcome",
+        "howdy",
+    }
+)
 
 
 def _has_substance(query: str) -> bool:

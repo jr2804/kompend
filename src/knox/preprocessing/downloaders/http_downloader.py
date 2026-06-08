@@ -21,8 +21,13 @@ class HTTPDownloader(BaseDownloader):
     def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
 
+    _ALLOWED_SCHEMES = {"http", "https"}
+
     def download(self, url: str, target_dir: Path) -> Path | None:
         parsed = urlparse(url)
+        if parsed.scheme not in self._ALLOWED_SCHEMES:
+            logger.warning("Blocked URL with disallowed scheme: %s", url)
+            return None
         filename = Path(parsed.path).name or self._hash_url(url)
         target_path = target_dir / filename
 
@@ -37,8 +42,8 @@ class HTTPDownloader(BaseDownloader):
 
         logger.info("Downloading %s -> %s", url, target_path)
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 target_path.write_bytes(response.read())
         except Exception:
             logger.exception("Failed to download %s", url)
