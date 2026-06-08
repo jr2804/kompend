@@ -71,10 +71,10 @@ The WiCER compiler lives in `src/knox/compilation/wicer.py`:
 | Component | Method | Purpose |
 |-----------|--------|---------|
 | `WiCERCompiler` | `compile()` | Main loop orchestrator |
-| `_blind_compile()` | Initial one-shot compilation |
-| `_evaluate()` | Probe Q&A generation + scoring |
-| `_diagnose()` | Trace failures to source facts |
-| `_refine()` | Re-compile with pinned facts |
+| `_blind_compile()` | Initial one-shot compilation |  |
+| `_evaluate()` | Probe Q&A generation + scoring |  |
+| `_diagnose()` | Trace failures to source facts |  |
+| `_refine()` | Re-compile with pinned facts |  |
 
 The `GraphCompiler` in `src/knox/compilation/graph.py` provides the two-phase
 (extract-then-generate) alternative without the iterative loop.

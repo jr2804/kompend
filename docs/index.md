@@ -4,7 +4,7 @@ icon: lucide/book-open
 
 # KNOX
 
-**Knowledge Organizer for eXtended documents**
+## Knowledge Organizer for eXtended documents
 
 A compiled LLM-wiki system for scientific and technical documents.
 Parse, chunk, resolve, and compile PDFs, DOCX, spreadsheets, and

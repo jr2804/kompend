@@ -8,7 +8,7 @@ where, why, and the design rules for new caches.
 
 Default output directory is `wiki/`. All state lives under `wiki/.knox/`:
 
-```
+```text
 wiki/
 ├── .knox/
 │   ├── last_wiki.json          # Serialized CompiledWiki (N1.5)
@@ -46,11 +46,13 @@ wiki/
 **All KNOX caches are project-local and should stay that way.**
 
 A cache belongs in `.knox/` (inside the output directory) when:
+
 - It contains **derived data** specific to a particular source corpus
 - It is **not reusable** across different projects
 - Rebuilding it requires the original source files
 
 Global caches (e.g. `~/.cache/knox/`) would only make sense for:
+
 - **Downloaded ML models** — but HuggingFace, sentence-transformers, and
   Docling already manage their own caches under `~/.cache/huggingface/`
   and `~/.cache/docling/`
