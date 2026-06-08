@@ -16,6 +16,8 @@ uv sync --dev
 mise install
 ```
 
+> **Full contributor guide at [knox.anomalyco.dev](https://knox.anomalyco.dev)** — architecture, CLI reference, and design decisions.
+
 ## Running Tests
 
 ```bash

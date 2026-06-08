@@ -147,19 +147,22 @@ Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: C
 
 **T5 Output** — Write the compiled wiki as Markdown, JSON, or Typst. Optionally index for semantic search via zvec.
 
-For the full architecture, see [`docs/architecture.md`](./docs/architecture.md).
+For the full architecture, see [`docs/architecture/index.md`](./docs/architecture/index.md).
 
 ## Documentation
 
-| Document | Description |
+> **Read the full docs at [knox.anomalyco.dev](https://knox.anomalyco.dev)** — architecture deep-dives, pipeline tier references, WiCER loop explainer, CLI guides, and integration docs.
+
+For a quick reference:
+
+| Topic | Location |
 |---|---|
-| [`docs/overview.md`](./docs/overview.md) | Project summary, design philosophy, core principles |
-| [`docs/architecture.md`](./docs/architecture.md) | 5-tier pipeline, data models, integration points |
-| [`docs/status.md`](./docs/status.md) | Implementation status — what's built, what's partial, known gaps |
-| [`docs/roadmap.md`](./docs/roadmap.md) | Milestones, priorities, open questions |
-| [`docs/decisions.md`](./docs/decisions.md) | Decision log — what was chosen and why |
-| [`docs/ecosurvey.md`](./docs/ecosurvey.md) | Survey of existing tools, parsers, chunkers, MCP servers |
-| [`docs/openwebui.md`](./docs/openwebui.md) | Connecting KNOX with Open-WebUI for chat/RAG |
+| Architecture & data models | [`docs/architecture/index.md`](./docs/architecture/index.md) |
+| Implementation status | [`docs/about/status.md`](./docs/about/status.md) |
+| Roadmap & milestones | [`docs/about/roadmap.md`](./docs/about/roadmap.md) |
+| Decision log | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) |
+| Ecosystem survey | [`docs/reference/ecosystem.md`](./docs/reference/ecosystem.md) |
+| Open-WebUI integration | [`docs/integrations/open-webui.md`](./docs/integrations/open-webui.md) |
 
 ## Development
 

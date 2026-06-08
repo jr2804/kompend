@@ -127,6 +127,64 @@ def compile_wiki(
         return {"status": "error", "message": str(exc)}
 
 
+@server.tool(name="wiki_capture")
+def wiki_capture(
+    text: str,
+    sources_dir: str = "./sources",
+) -> dict[str, Any]:
+    """Extract knowledge items from text and save as source files.
+
+    Uses LLM to extract decisions, discoveries, corrections, and references
+    from conversation text. Results are written to sources/_captured/.
+    """
+    from knox.capture.capture import capture  # noqa: PLC0415
+
+    source_path = Path(sources_dir)
+    source_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from knox.llm.client import LLMClient  # noqa: PLC0415
+
+        llm_client = LLMClient(default_model="ollama/llama3.2")
+    except Exception:
+        llm_client = None
+
+    try:
+        paths = capture(text, sources_dir=source_path, llm_client=llm_client)
+        return {
+            "status": "ok",
+            "count": len(paths),
+            "files": [str(p) for p in paths],
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@server.tool(name="wiki_learn")
+def wiki_learn(
+    text: str,
+    sources_dir: str = "./sources",
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Store a single fact directly as a source file.
+
+    Unlike wiki_capture, this stores the text verbatim without LLM extraction.
+    """
+    from knox.capture.learn import learn  # noqa: PLC0415
+
+    source_path = Path(sources_dir)
+    source_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        path = learn(text, sources_dir=source_path, tags=tags)
+        return {
+            "status": "ok",
+            "file": str(path),
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
 def main() -> None:
     """Run the KNOX MCP server over stdio transport."""
     server.run(transport="stdio")

@@ -9,6 +9,7 @@ from typing import Any
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import TemplateLoader
 from knox.llm.client import LLMClient
+from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,90 @@ class SynthesisResult:
 
 
 class TokenOverlapRetriever:
-    def __init__(self, wiki: CompiledWiki) -> None:
+    def __init__(self, wiki: CompiledWiki, index_path: Path | None = None) -> None:
         self._wiki: CompiledWiki = wiki
         self._template_loader: TemplateLoader = TemplateLoader()
+        self._index_path: Path | None = index_path
+        if index_path is not None and not index_path.exists():
+            build_chunk_index(wiki, index_path)
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        if self._index_path and self._index_path.exists():
+            fts_results = search_fts(query, self._index_path, top_k=top_k)
+            if fts_results:
+                results: list[SearchResult] = []
+                for r in fts_results:
+                    results.append(
+                        SearchResult(
+                            article_id=r["article_id"],
+                            title=r["title"],
+                            snippet=r["content"][:300],
+                            score=r["score"],
+                            source_file=r.get("source_file"),
+                        )
+                    )
+                return results
+
         query_tokens: set[str] = set(_tokenize(query))
+        if not query_tokens:
+            return []
+
+        scored: list[tuple[float, WikiNode]] = []
+        for node in self._wiki.nodes:
+            content: str = node.content or node.title
+            node_tokens: set[str] = set(_tokenize(content))
+            if not node_tokens:
+                continue
+            overlap: int = len(query_tokens & node_tokens)
+            score: float = overlap / len(query_tokens)
+            scored.append((score, node))
+
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+
+        results: list[SearchResult] = []
+        for score, node in scored[:top_k]:
+            snippet: str = _extract_snippet(node.content, query_tokens) if node.content else node.title
+            source_file: str | None = None
+            if node.metadata and "source" in node.metadata:
+                source_file = str(node.metadata["source"])
+            results.append(
+                SearchResult(
+                    article_id=node.id,
+                    title=node.title,
+                    snippet=snippet,
+                    score=score,
+                    source_file=source_file,
+                )
+            )
+        return results
+
+    def expand_query(self, query: str, llm_client: LLMClient | None = None) -> list[str]:
+        if llm_client is None:
+            return [query]
+
+        try:
+            system_prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
+            result = llm_client.complete(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query},
+                ],
+                role="search.expand",
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+            if result.json_data is None:
+                return [query]
+
+            expansions: list[str] = [query]
+            for key in ("keyword_rewrites", "semantic_rewrites"):
+                items = result.json_data.get(key, [])
+                if isinstance(items, list):
+                    expansions.extend(str(e) for e in items if isinstance(e, str))
+            return expansions[:7]
+        except Exception as exc:
+            logger.warning("Query expansion failed: %s", exc)
+            return [query]
         if not query_tokens:
             return []
 

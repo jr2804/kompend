@@ -571,3 +571,63 @@ QuerySourcesDir = Annotated[
         help=f"Sources directory for raw/hybrid search. Default: '{DEFAULT_SOURCES_DIR}' in CWD.",
     ),
 ]
+
+# ── Q22 capture/learn/ingest commands ────────────────────────────────────
+
+CaptureText = Annotated[
+    str,
+    typer.Argument(
+        help="Text to extract knowledge items from.",
+    ),
+]
+
+LearnText = Annotated[
+    str,
+    typer.Argument(
+        help="Fact or snippet to store directly as a source file.",
+    ),
+]
+
+LearnTags = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--tag",
+        help="Tags to attach to the learned fact (repeatable).",
+    ),
+]
+
+IngestTarget = Annotated[
+    str,
+    typer.Argument(
+        help="URL or file path to ingest into the sources directory.",
+    ),
+]
+
+# ── N5 web serve command ─────────────────────────────────────────────────
+
+ServeHost = Annotated[
+    str,
+    typer.Option(
+        "--host",
+        help="Host to bind the web server to. Default: 127.0.0.1 (localhost only).",
+    ),
+]
+
+ServePort = Annotated[
+    int,
+    typer.Option(
+        "--port",
+        "-p",
+        help="Port to bind the web server to.",
+        min=1024,
+        max=65535,
+    ),
+]
+
+ServeOpen = Annotated[
+    bool,
+    typer.Option(
+        "--open",
+        help="Open the web UI in the default browser automatically.",
+    ),
+]

@@ -22,6 +22,7 @@ from knox.cli.args import (
     DEFAULT_PROMPT_BUDGET,
     DEFAULT_SOURCES_DIR,
     BypassReview,
+    CaptureText,
     ChunkSize,
     CompileFiles,
     CompileLint,
@@ -34,8 +35,11 @@ from knox.cli.args import (
     Ignore,
     ImageMode,
     IndexStore,
+    IngestTarget,
     JsonOutput,
     KindOption,
+    LearnTags,
+    LearnText,
     LintFix,
     LintLlm,
     LintOutputDir,
@@ -59,15 +63,11 @@ from knox.cli.args import (
     Progress,
     PromptBudget,
     Provenance,
-    QueryFormat,
-    QueryNoClassify,
-    QueryRaw,
-    QueryScope,
-    QuerySourcesDir,
-    QueryText,
-    QueryTopK,
     Recursive,
     ReviewMode,
+    ServeHost,
+    ServeOpen,
+    ServePort,
     SourcesDir,
     SynthesizeFlag,
     TargetFormat,
@@ -942,6 +942,122 @@ def query_cmd(
         for i, c in enumerate(synthesis.citations, 1):
             source_str: str = c.get("source") or "wiki"
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
+
+
+# ── capture ──────────────────────────────────────────────────────────────
+
+
+@app.command(name="capture")
+def capture_cmd(
+    text: CaptureText,
+    sources_dir: SourcesDir = None,
+) -> None:
+    """Extract knowledge items from text and save as source files.
+
+    Uses LLM to extract decisions, discoveries, corrections, and references
+    from conversation text or notes. Results are written to sources/_captured/.
+
+    Examples:
+        knox capture "We decided to use QKV projections with RoPE"
+    """
+    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+
+    from knox.capture.capture import capture  # noqa: PLC0415
+
+    try:
+        from knox.llm.client import LLMClient  # noqa: PLC0415
+        from knox.core.config import resolve_config  # noqa: PLC0415
+
+        cfg = resolve_config()
+        default_model = cfg.get("compile.llm.default_model", "ollama/llama3.2")
+        llm_client = LLMClient(default_model=default_model)
+    except Exception:
+        llm_client = None
+
+    paths = capture(text, sources_dir=sources_dir_path, llm_client=llm_client)
+    typer.echo(f"Captured {len(paths)} item(s) to {sources_dir_path / '_captured'}")
+    for p in paths:
+        typer.echo(f"  {p.name}")
+
+
+# ── learn ────────────────────────────────────────────────────────────────
+
+
+@app.command(name="learn")
+def learn_cmd(
+    text: LearnText,
+    tag: LearnTags = None,
+    sources_dir: SourcesDir = None,
+) -> None:
+    """Store a single fact directly as a source file.
+
+    Unlike 'capture', this stores the text verbatim without LLM extraction.
+    Results are written to sources/_captured/.
+
+    Examples:
+        knox learn "The transformer uses d_model=512 and h=8"
+        knox learn "QKV with RoPE" --tag attention --tag architecture
+    """
+    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+
+    from knox.capture.learn import learn  # noqa: PLC0415
+
+    path = learn(text, sources_dir=sources_dir_path, tags=tag)
+    typer.echo(f"Learned fact -> {path.name}")
+
+
+# ── ingest ────────────────────────────────────────────────────────────────
+
+
+@app.command(name="ingest")
+def ingest_cmd(
+    target: IngestTarget,
+    sources_dir: SourcesDir = None,
+) -> None:
+    """Download a URL or copy a file into the sources directory.
+
+    URLs are downloaded via HTTP. Local files are copied in.
+    After ingestion, run 'knox compile' to process the new source.
+
+    Examples:
+        knox ingest https://arxiv.org/pdf/1234.56789
+        knox ingest notes/meeting-notes.md
+    """
+    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+
+    from knox.capture.ingest import ingest  # noqa: PLC0415
+
+    result = ingest(target, sources_dir=sources_dir_path)
+    if result is None:
+        typer.echo(f"Failed to ingest: {target}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Ingested -> {result}")
+
+
+# ── serve ─────────────────────────────────────────────────────────────────
+
+
+@app.command(name="serve")
+def serve_cmd(
+    host: ServeHost = "127.0.0.1",
+    port: ServePort = 8765,
+    open_browser: ServeOpen = False,
+) -> None:
+    """Start the KNOX web UI server.
+
+    Opens a browser-based dashboard for browsing, searching, and managing
+    the compiled wiki. Binds to localhost by default.
+
+    Examples:
+        knox serve
+        knox serve --port 8080 --open
+    """
+    from knox.web.server import serve  # noqa: PLC0415
+
+    typer.echo(f"Starting KNOX web UI at http://{host}:{port}")
+    if host != "127.0.0.1":
+        typer.echo("Warning: Binding to non-localhost exposes the server to the network.", err=True)
+    serve(host=host, port=port, open_browser=open_browser)
 
 
 # ── Internal helpers ────────────────────────────────────────────────────
