@@ -219,10 +219,40 @@ def find_global_config() -> Path | None:
 # ── TOML loading ────────────────────────────────────────────────────────
 
 
+def _expand_env_vars(value: str) -> str:
+    """Expand ``$VAR`` and ``${VAR}`` patterns in a string.
+
+    Unknown variables are left as-is. This is applied to string values
+    when loading TOML config files so users can reference env vars like
+    ``$HOME`` in path settings.
+    """
+    import re  # noqa: PLC0415
+
+    def _replace(match: re.Match) -> str:
+        var = match.group(1) or match.group(2) or ""
+        return os.environ.get(var, match.group(0))
+
+    return re.sub(r"\$([A-Z_][A-Z0-9_]*|\{[A-Z_][A-Z0-9_]*\})|\$\{(\w+)", _replace, value)
+
+
+def _expand_env_vars_recursive(data: Any) -> Any:
+    """Recursively expand env vars in all string values."""
+    if isinstance(data, str):
+        return _expand_env_vars(data)
+    if isinstance(data, dict):
+        return {k: _expand_env_vars_recursive(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_expand_env_vars_recursive(v) for v in data]
+    return data
+
+
 def _load_toml(path: Path) -> dict[str, Any]:
-    """Load a TOML file, returning an empty dict on failure."""
+    """Load a TOML file, returning an empty dict on failure.
+
+    String values are processed through ``_expand_env_vars`` to support
+    ``$VAR`` and ``${VAR}`` patterns.
+    """
     try:
-        # Python 3.11+ has tomllib in stdlib
         import tomllib  # noqa: PLC0415
     except ImportError:
         try:
@@ -235,7 +265,7 @@ def _load_toml(path: Path) -> dict[str, Any]:
         raw = path.read_bytes()
         data: dict[str, Any] = tomllib.loads(raw.decode("utf-8"))
         logger.debug("Loaded config from %s", path)
-        return data
+        return _expand_env_vars_recursive(data)
     except Exception as exc:
         logger.warning("Failed to load config %s: %s", path, exc)
         return {}
@@ -348,6 +378,7 @@ def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
 def resolve_config(
     *,
     cli_overrides: dict[str, Any] | None = None,
+    config_path: str | Path | None = None,
 ) -> ResolvedConfig:
     """Build a fully resolved config by merging all 5 layers.
 
@@ -357,6 +388,10 @@ def resolve_config(
         Flat dotted-key dict of CLI-provided values. Only non-``None``
         values should be included — the caller filters out unspecified
         flags.
+    config_path:
+        Explicit config file path (``--config`` flag). When set, this
+        is treated as a project-level override — it replaces the
+        auto-discovered project config but is still merged below CLI.
 
     Returns:
     -------
@@ -377,12 +412,21 @@ def resolve_config(
         if global_data:
             result = _merge_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
-    # Layer 3: project config
-    project_path = find_project_config()
-    if project_path is not None:
-        project_data = _load_toml(project_path)
-        if project_data:
-            result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_path)))
+    # Layer 3: project config (explicit --config overrides auto-discovered)
+    if config_path is not None:
+        project_path = Path(config_path)
+        if project_path.is_file():
+            project_data = _load_toml(project_path)
+            if project_data:
+                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_path)))
+        else:
+            logger.warning("Config file not found: %s", config_path)
+    else:
+        project_path = find_project_config()
+        if project_path is not None:
+            project_data = _load_toml(project_path)
+            if project_data:
+                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_path)))
 
     # Layer 2: env vars
     env_data = _read_env_vars()

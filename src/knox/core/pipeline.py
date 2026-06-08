@@ -560,9 +560,11 @@ def build_pipeline(
     if two_phase:
         from knox.compilation.two_phase import TwoPhaseCompiler  # local import: avoid cycle
 
+        resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
         base_compiler = TwoPhaseCompiler(
             base=GraphCompiler(),
             prompt_budget=prompt_budget,
+            model=resolved_model,
         )
 
     return WikiPipeline(

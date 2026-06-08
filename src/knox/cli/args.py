@@ -371,6 +371,21 @@ LlmFallbackMaxRetries = Annotated[
     ),
 ]
 
+LlmRoleModel = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--llm-role-model",
+        help=(
+            "Override primary model for a pipeline role (repeatable). "
+            "Format: 'role=provider/model', e.g. "
+            "'resolve=openai/gpt-4o-mini' "
+            "'compile=anthropic/claude-3.5-sonnet'. "
+            "Roles: resolve, compile, enrich, query."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_LLM_ROLE_MODEL",
+    ),
+]
+
 LlmContextBudget = Annotated[
     int | None,
     typer.Option(
@@ -448,5 +463,21 @@ CompileLint = Annotated[
     typer.Option(
         "--lint",
         help="Run lint after compilation and report quality issues.",
+    ),
+]
+
+# ── Q15 config file path ────────────────────────────────────────────────
+
+ConfigPath = Annotated[
+    str | None,
+    typer.Option(
+        "--config",
+        "-c",
+        help=(
+            "Path to configuration file. "
+            "Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml. "
+            f"Env: {APP_NAME_UPPERCASE}_CONFIG."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_CONFIG",
     ),
 ]

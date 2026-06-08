@@ -41,6 +41,7 @@ from knox.cli.args import (
     LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
+    LlmRoleModel,
     NoCacheFlag,
     OnlineUrls,
     OutputDir,
@@ -59,6 +60,7 @@ from knox.cli.args import (
     TwoPhase,
     Verbose,
     Verify,
+    ConfigPath,
     Workers,
 )
 from knox.core.config import resolve_config
@@ -117,6 +119,7 @@ def compile_cmd(
     files: CompileFiles,
     sources_dir: SourcesDir = None,
     output_dir: OutputDir = None,
+    config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     recursive: Recursive = False,
     target_format: TargetFormat = DEFAULT_COMPILE_FORMAT,
@@ -144,6 +147,7 @@ def compile_cmd(
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
+    llm_role_model: LlmRoleModel = None,
     compile_lint: CompileLint = False,
 ) -> None:
     """Compile documents into a knowledge wiki.
@@ -221,8 +225,9 @@ def compile_cmd(
         llm_default_model=llm_default_model,
         llm_fallback_chain=llm_fallback_chain,
         llm_fallback_max_retries=llm_fallback_max_retries,
+        llm_role_model=llm_role_model,
     )
-    cfg = resolve_config(cli_overrides=cli_overrides)
+    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
 
     # Extract resolved values from the merged config
     resolved_flavor = cfg.get("compile.output.flavor")
@@ -276,6 +281,9 @@ def compile_cmd(
         wiki = pipeline.run()
         typer.echo(f"Compiled wiki written to {output_dir_path}")
 
+        # Cache wiki for standalone knox lint / provenance / eval
+        _write_wiki_cache(wiki, output_dir_path)
+
         if review and not bypass_review:
             _send_to_review_queue(wiki, output_dir_path)
             typer.echo(f"Pages pending review in {output_dir_path / '.knox' / 'review'}")
@@ -289,7 +297,8 @@ def compile_cmd(
             _mark_private(wiki, output_dir_path)
 
         if verify:
-            _verify_claims(wiki, output_dir_path)
+            resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
+            _verify_claims(wiki, output_dir_path, model=resolved_model)
 
         # N11: Generate index.md + log.md
         from knox.output.wiki_index import write_index_and_log, write_overview  # noqa: PLC0415
@@ -687,7 +696,7 @@ def config_cmd(
         knox config --source       # show where each value comes from
         knox config --json         # machine-readable output
     """
-    cfg = resolve_config()
+    cfg = resolve_config(config_path=config)
     flat = cfg.flat()
 
     if json_output:
@@ -862,11 +871,11 @@ def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
     mark_wiki_private(wiki, output_dir_path)
 
 
-def _verify_claims(wiki: CompiledWiki, output_dir_path: Path) -> None:
+def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "ollama/llama3.2") -> None:
     """Run grounding verification over wiki claims."""
     from knox.verification import verify_wiki  # noqa: PLC0415
 
-    result = verify_wiki(wiki, output_dir_path)
+    result = verify_wiki(wiki, output_dir_path, model=model)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 

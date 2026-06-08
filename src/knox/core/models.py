@@ -113,6 +113,7 @@ def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
     """Load the last compiled wiki from the on-disk cache.
 
     Returns ``None`` if no cache exists or the data is corrupt.
+    Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
     import json  # noqa: PLC0415
     import logging  # noqa: PLC0415
@@ -123,7 +124,17 @@ def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
         return None
     try:
         data = json.loads(cache_file.read_text(encoding="utf-8"))
-        return CompiledWiki(**data)
+        # Reconstruct WikiNode objects from plain dicts
+        raw_nodes = data.get("nodes", [])
+        nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
+        return CompiledWiki(
+            nodes=nodes,
+            edges=data.get("edges", []),
+            toc=data.get("toc", []),
+            quality_score=data.get("quality_score", 0.0),
+            iteration=data.get("iteration", 0),
+            metadata=data.get("metadata", {}),
+        )
     except Exception as exc:
         logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc)
         return None
