@@ -307,3 +307,10 @@ source.pdf
 - Docling: <https://github.com/DS4SD/docling>
 - Chonkie: <https://github.com/chonkie-inc/chonkie>
 - litellm: <https://github.com/BerriAI/litellm>
+
+## See also
+
+| Document | Description |
+|---|---|
+| [Output architecture](architecture/output.md) | Output writers, DocumentRenderer, flavor system |
+| [Cache and state directory](architecture/cache.md) | `.knox/` layout, project-local vs global, cache lifecycle |
