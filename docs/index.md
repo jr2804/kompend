@@ -45,5 +45,5 @@ knox query "what is the main result?"
 ---
 
 [Getting Started](guides/cli.md){ .md-button }
-[Architecture](architecture.md){ .md-button }
+[Architecture](architecture/index.md){ .md-button }
 [GitHub](https://github.com/anomalyco/knox){ .md-button }

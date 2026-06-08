@@ -546,3 +546,28 @@ QueryFormat = Annotated[
         help="Output format: text (default) or json.",
     ),
 ]
+
+QueryNoClassify = Annotated[
+    bool,
+    typer.Option(
+        "--no-classify",
+        help="Skip intent classification (always retrieve).",
+    ),
+]
+
+QueryScope = Annotated[
+    str,
+    typer.Option(
+        "--scope",
+        help="Search scope: wiki (compiled pages), raw (source files), or hybrid (both).",
+    ),
+]
+
+QuerySourcesDir = Annotated[
+    str | None,
+    typer.Option(
+        "--sources-dir",
+        "-s",
+        help=f"Sources directory for raw/hybrid search. Default: '{DEFAULT_SOURCES_DIR}' in CWD.",
+    ),
+]

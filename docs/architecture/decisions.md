@@ -102,7 +102,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 **Date:** Jun 6, 2026  
 **Context:** Different models have different context windows (4K, 8K, 32K, 128K, 1M). Manual configuration is error-prone.  
 **Decision:** Use litellm's model metadata to auto-detect context window. Reserve 20% for system prompts.
-**Consequences:** Requires litellm to have metadata for the model. Edge cases: unknown modelsfall back to 32K default.
+**Consequences:** Requires litellm to have metadata for the model. Edge cases: unknown models fall back to 32K default.
 
 ## Resolution
 

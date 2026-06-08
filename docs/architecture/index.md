@@ -18,7 +18,7 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
 │  ┌─────────────────┐  ┌────────────┐  ┌──────────┐  ┌──────────┐     │
 │  │ Docling (PDF)   │  │ Pandoc     │  │ pandas   │  │ HTTP     │     │
 │  │ │ IBM 60.7k★   │  │ │ (DOCX)   │  │ │(XLSX)  │  │ │ Down-  │     │
-│  │ │ Extracts:     │  │ │ Fallback │  │ │ tabulate│  │ │ loader │     │
+│  │ │ Extracts:     │  │ │ Fallback  │  │ │ tabulate│  │ │ loader │     │
 │  │ │ tables, figs, │  │ │ for all  │  │ │ for     │  │ │ for    │     │
 │  │ │ equations,    │  │ │ formats  │  │ │ spreadsheets│ │ remote │     │
 │  │ │ LaTeX,        │  │ │          │  │ │         │  │ │ files  │     │
@@ -312,5 +312,6 @@ source.pdf
 
 | Document | Description |
 |---|---|
-| [Output architecture](architecture/output.md) | Output writers, DocumentRenderer, flavor system |
-| [Cache and state directory](architecture/cache.md) | `.knox/` layout, project-local vs global, cache lifecycle |
+| [Output architecture](output.md) | Output writers, DocumentRenderer, flavor system |
+| [Cache and state directory](cache.md) | `.knox/` layout, project-local vs global, cache lifecycle |
+| [Decision log](decisions.md) | Architectural decisions and rationale |

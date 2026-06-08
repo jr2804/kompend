@@ -70,4 +70,4 @@ Current state of the KNOX codebase as of the latest `main` branch.
 | `online_sources` | `[]` | HTTPDownloader |
 | `input_files` | `None` | Pipeline (auto-discover when None) |
 
-See [`docs/roadmap.md`](./roadmap.md) for milestone-level planning and [`docs/architecture.md`](./architecture.md) for the full pipeline design.
+See [roadmap](./roadmap.md) for milestone-level planning and [architecture](../architecture/index.md) for the full pipeline design.

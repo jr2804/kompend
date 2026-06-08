@@ -135,7 +135,7 @@
 
 ## Decision Log
 
-See [`decisions.md`](./decisions.md) for all decisions made and why.
+See [decision log](../architecture/decisions.md) for all decisions made and why.
 
 ## Weekly Research
 

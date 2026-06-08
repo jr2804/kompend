@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
@@ -122,6 +123,85 @@ class TokenOverlapRetriever:
             )
 
         return SynthesisResult(answer=answer, citations=citations_out)
+
+    def search_raw(self, query: str, sources_dir: Path, top_k: int = 5) -> list[SearchResult]:  # noqa: PLR6301
+        query_tokens: set[str] = set(_tokenize(query))
+        if not query_tokens or not sources_dir.is_dir():
+            return []
+
+        scored: list[tuple[float, Path, str]] = []
+        for md_file in sources_dir.rglob("*.md"):
+            try:
+                content: str = md_file.read_text(encoding="utf-8", errors="replace")
+            except Exception as exc:
+                logger.warning("Skipping unreadable source %s: %s", md_file, exc)
+                continue
+            file_tokens: set[str] = set(_tokenize(content))
+            if not file_tokens:
+                continue
+            overlap: int = len(query_tokens & file_tokens)
+            score: float = overlap / len(query_tokens)
+            scored.append((score, md_file, content))
+
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+
+        results: list[SearchResult] = []
+        for score, path, content in scored[:top_k]:
+            snippet: str = (
+                _extract_snippet(content, query_tokens)
+                if content else path.name
+            )
+            results.append(
+                SearchResult(
+                    article_id=path.stem,
+                    title=path.stem.replace("-", " ").replace("_", " ").title(),
+                    snippet=snippet,
+                    score=score,
+                    source_file=str(path),
+                )
+            )
+        return results
+
+    def search_hybrid(
+        self,
+        query: str,
+        sources_dir: Path | None = None,
+        top_k: int = 5,
+    ) -> list[SearchResult]:
+        wiki_results: list[SearchResult] = self.search(query, top_k=top_k)
+        raw_results: list[SearchResult] = (
+            self.search_raw(query, sources_dir, top_k=top_k)
+            if sources_dir and sources_dir.is_dir()
+            else []
+        )
+
+        if not raw_results:
+            return wiki_results
+        if not wiki_results:
+            for r in raw_results:
+                r.score = round(r.score, 3)
+            return raw_results[:top_k]
+
+        merged: dict[str, SearchResult] = {}
+        seen: set[str] = set()
+
+        wiki_boost: float = 1.5
+        for _rank, r in enumerate(wiki_results):
+            r.score = round(r.score * wiki_boost, 3)
+            key: str = r.article_id
+            merged[key] = r
+            seen.add(key)
+
+        for _rank, r in enumerate(raw_results):
+            key = r.article_id
+            if key not in seen:
+                r.score = round(r.score, 3)
+                merged[key] = r
+
+        sorted_results: list[SearchResult] = sorted(
+            merged.values(), key=lambda x: x.score, reverse=True
+        )
+        return sorted_results[:top_k]
 
 
 def _tokenize(text: str) -> list[str]:

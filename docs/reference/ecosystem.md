@@ -71,7 +71,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 **Version:** v1.6.8 (Jun 1, 2026), SIMD-accelerated at 100+ GB/s, 45+ integrations.
 
-**KNOX approach:** Custom structure-aware chunker (headings → atomic elements) + Chonkie for text-heavy groups. See `architecture.md` for full design.
+**KNOX approach:** Custom structure-aware chunker (headings → atomic elements) + Chonkie for text-heavy groups. See [architecture](../architecture/index.md) for full design.
 
 ## Hybrid RAG Components (Sidecar)
 

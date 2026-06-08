@@ -60,7 +60,10 @@ from knox.cli.args import (
     PromptBudget,
     Provenance,
     QueryFormat,
+    QueryNoClassify,
     QueryRaw,
+    QueryScope,
+    QuerySourcesDir,
     QueryText,
     QueryTopK,
     Recursive,
@@ -818,6 +821,9 @@ def query_cmd(
     format: QueryFormat = "text",
     output_dir: OutputDir = None,
     config: ConfigPath = None,
+    no_classify: QueryNoClassify = False,
+    scope: QueryScope = "hybrid",
+    sources_dir: QuerySourcesDir = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki.
 
@@ -827,6 +833,28 @@ def query_cmd(
     """
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
+    # Intent classification (N7)
+    if not no_classify:
+        from knox.search.classifier import classify  # noqa: PLC0415
+
+        result = classify(query)
+        if result.response is not None:
+            if format == "json":
+                import json as j  # noqa: PLC0415
+
+                typer.echo(
+                    j.dumps(
+                        {
+                            "intent": result.intent.value,
+                            "response": result.response,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                typer.echo(result.response)
+            return
+
     wiki = load_cached_wiki(output_dir_path)
     if wiki is None:
         typer.echo(
@@ -835,13 +863,28 @@ def query_cmd(
         )
         raise typer.Exit(1)
 
+    sources_dir_path: Path | None = (
+        Path(sources_dir) if sources_dir
+        else (Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).is_dir() else None)
+    )
+
     from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
 
     retriever = TokenOverlapRetriever(wiki)
-    results = retriever.search(query, top_k=top_k)
+
+    if scope == "raw":
+        if sources_dir_path is None:
+            typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
+            raise typer.Exit(1)
+        results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
+        raw = True  # skip synthesis for raw scope
+    elif scope == "hybrid":
+        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k)
+    else:
+        results = retriever.search(query, top_k=top_k)
 
     if not results:
-        typer.echo("No relevant content found in the compiled wiki.")
+        typer.echo("No relevant content found.")
         raise typer.Exit(0)
 
     if raw:
@@ -878,8 +921,6 @@ def query_cmd(
             typer.echo(f"        {r.snippet}")
             typer.echo("")
         return
-
-    from knox.search.retriever import SynthesisResult  # noqa: PLC0415
 
     try:
         synthesis = retriever.synthesize(query, results, llm_client=llm_client)

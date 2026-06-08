@@ -86,7 +86,7 @@ decisions. Many thanks to their creators and contributors.
 | **YAML workflow execution** | `run-from-yaml WORKFLOW.yaml` for repeatable, composable research workflows. | **Under consideration.** Useful for batch/scripted compilation. |
 | **Typed error handling** | Protocol-based boundaries, typed runner errors, typed flow phases. No bare `except` anywhere. | **Planned (Q12 enhancement).** TransientError / PermanentError / ConfigurationError hierarchy. |
 | **Staged writes + manifest.json** | Per-run manifest for audit trail. Writes go through stages (staging → commit). | **Related to N8 (review queue).** Prevents partial corruption. |
-| **Template-based rendering** | Jinja2 templates for entity pages. Separates content from presentation. | **Planned (Q24 enhancement).** Makes customization accessible. |
+| **Template-based rendering (Jinja2)** | Jinja2 templates for entity pages. Separates content from presentation. | **Planned (Q24 enhancement).** Makes customization accessible. |
 | **Config precedence chain** | Environment variables > project.yaml > .env > defaults. Clear, documented priority. | **Adopted for Q15.** Same chain design. |
 
 ### llm-wiki-pm (anh-chu)
