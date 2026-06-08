@@ -3,15 +3,39 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from pathlib import Path
 
 from knox.core.models import ParsedDocument
 
 
+class FileExtension(StrEnum):
+    """Canonical file extensions supported by KNOX parsers."""
+
+    PDF = ".pdf"
+    DOCX = ".docx"
+    DOC = ".doc"
+    EPUB = ".epub"
+    HTML = ".html"
+    PPTX = ".pptx"
+    XLSX = ".xlsx"
+    ODT = ".odt"
+    RST = ".rst"
+    RTF = ".rtf"
+    TEX = ".tex"
+    MD = ".md"
+    TXT = ".txt"
+    PNG = ".png"
+    JPG = ".jpg"
+    JPEG = ".jpeg"
+    GIF = ".gif"
+    WEBP = ".webp"
+
+
 class BaseParser(ABC):
     """Parser-agnostic interface for KNOX Tier 1."""
 
-    supported_extensions: tuple[str, ...] = ()
+    supported_extensions: set[FileExtension] = set()
 
     @abstractmethod
     def parse(self, source_path: Path) -> ParsedDocument:

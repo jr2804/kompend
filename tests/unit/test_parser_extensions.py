@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from knox.preprocessing.parsers.base import ParserRouter
+from knox.preprocessing.parsers.base import FileExtension, ParserRouter
 from knox.preprocessing.parsers.opendataloader_parser import OpenDataLoaderParser
 from knox.preprocessing.parsers.vlm_parser import VLMParser
 
@@ -26,7 +26,7 @@ class TestOpenDataLoaderParser:
 
     def test_supported_extensions(self) -> None:
         """Only .pdf is supported."""
-        assert OpenDataLoaderParser.supported_extensions == (".pdf",)
+        assert OpenDataLoaderParser.supported_extensions == {FileExtension.PDF}
 
     def test_raises_notimplemented(self) -> None:
         """Instantiating OpenDataLoaderParser raises NotImplementedError (stub)."""
@@ -45,7 +45,7 @@ class TestVLMParser:
     def test_instantiation(self) -> None:
         """VLMParser can be instantiated."""
         parser = VLMParser()
-        assert parser.supported_extensions == (".png", ".jpg", ".jpeg", ".gif", ".webp")
+        assert parser.supported_extensions == {FileExtension.PNG, FileExtension.JPG, FileExtension.JPEG, FileExtension.GIF, FileExtension.WEBP}
 
     def test_parse_non_existent_image_returns_parsed_document(self) -> None:
         """Parsing a non-existent file returns a ParsedDocument with error info."""
@@ -161,4 +161,4 @@ class TestParserRouterRegistration:
         """OpenDataLoaderParser raises NotImplementedError on instantiation."""
         with pytest.raises(NotImplementedError):
             OpenDataLoaderParser()
-        assert OpenDataLoaderParser.supported_extensions == (".pdf",)
+        assert OpenDataLoaderParser.supported_extensions == {FileExtension.PDF}

@@ -7,13 +7,13 @@ from pathlib import Path
 import pdfplumber
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
-from knox.preprocessing.parsers.base import BaseParser
+from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 
 class PdfPlumberParser(BaseParser):
     """Lightweight PDF parser using pdfplumber."""
 
-    supported_extensions = (".pdf",)
+    supported_extensions = {FileExtension.PDF}
 
     def parse(self, source_path: Path) -> ParsedDocument:
         elements: list[DocumentElement] = []

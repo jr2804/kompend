@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 
 from knox.core.models import DocumentElement, ParsedDocument
-from knox.preprocessing.parsers.base import BaseParser
+from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class OpenDataLoaderParser(BaseParser):
     instantiation.
     """
 
-    supported_extensions = (".pdf",)
+    supported_extensions = {FileExtension.PDF}
 
     def __init__(self) -> None:
         raise NotImplementedError(

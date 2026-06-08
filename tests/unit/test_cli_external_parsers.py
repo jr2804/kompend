@@ -83,7 +83,7 @@ class TestExternalParser:
 
     def test_supported_extensions(self) -> None:
         parser = ExternalParser(command="myparser", extensions=[".xyz", ".abc"])
-        assert parser.supported_extensions == (".xyz", ".abc")
+        assert parser.supported_extensions == {".xyz", ".abc"}
 
     def test_repr(self) -> None:
         parser = ExternalParser(command="mycli", extensions=[".xyz"])
@@ -105,7 +105,7 @@ class TestHTTPParser:
 
     def test_supported_extensions(self) -> None:
         parser = HTTPParser(endpoint="http://localhost:8080/convert", extensions=[".abc", ".def"])
-        assert parser.supported_extensions == (".abc", ".def")
+        assert parser.supported_extensions == {".abc", ".def"}
 
     def test_repr(self) -> None:
         parser = HTTPParser(endpoint="http://localhost:8080/convert", extensions=[".abc"])

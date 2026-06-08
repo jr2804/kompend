@@ -13,7 +13,7 @@ from typing import Any
 from PIL import Image as PILImage
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
-from knox.preprocessing.parsers.base import BaseParser
+from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class VLMParser(BaseParser):
     image metadata (path, size, format).
     """
 
-    supported_extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    supported_extensions = {FileExtension.PNG, FileExtension.JPG, FileExtension.JPEG, FileExtension.GIF, FileExtension.WEBP}
 
     def __init__(self) -> None:
         logger.info("VLMParser initialized with VLMInlineModel")

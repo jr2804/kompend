@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from knox.cli._sources import (
-    SUPPORTED_EXTENSIONS,
     _unique_path,
     ensure_in_sources,
+    get_supported_extensions,
     resolve_files,
 )
 
@@ -57,7 +57,7 @@ class TestResolveFiles:
         (tmp_path / "ignored.exe").write_text("nope")
         result = resolve_files(str(tmp_path))
         assert len(result) == 3
-        assert all(p.suffix in SUPPORTED_EXTENSIONS for p in result)
+        assert all(p.suffix in get_supported_extensions() for p in result)
 
     def test_directory_recursive(self, tmp_path: Path) -> None:
         deep_dir = tmp_path / "deep"
@@ -68,9 +68,9 @@ class TestResolveFiles:
         assert len(result) == 2
 
     def test_unsupported_extension_excluded(self, tmp_path: Path) -> None:
-        png_file = tmp_path / "image.png"
-        png_file.write_text("png")
-        result = resolve_files(str(png_file))
+        bin_file = tmp_path / "data.bin"
+        bin_file.write_text("binary")
+        result = resolve_files(str(bin_file))
         assert result == []
 
     def test_deduplication(self, tmp_path: Path) -> None:

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
-from knox.preprocessing.parsers.base import BaseParser
+from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class DoclingParser(BaseParser):
     the corresponding KNOX ``ElementType`` with full structure preservation.
     """
 
-    supported_extensions = (".pdf", ".docx")
+    supported_extensions = {FileExtension.PDF, FileExtension.DOCX}
 
     def __init__(
         self,

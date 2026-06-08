@@ -102,8 +102,8 @@ class ExternalParser(BaseParser):
         super().__init__()
 
     @property
-    def supported_extensions(self) -> tuple[str, ...]:
-        return self._exts
+    def supported_extensions(self) -> set[str]:
+        return set(self._exts)
 
     def parse(self, source_path: Path) -> ParsedDocument:
         """Run the external CLI tool and parse its JSON output."""
@@ -163,8 +163,8 @@ class HTTPParser(BaseParser):
         self._timeout = timeout
 
     @property
-    def supported_extensions(self) -> tuple[str, ...]:
-        return self._exts
+    def supported_extensions(self) -> set[str]:
+        return set(self._exts)
 
     def parse(self, source_path: Path) -> ParsedDocument:
         """POST the source file to the HTTP endpoint and return the parsed result."""

@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers.base import FileExtension
 
 logger = logging.getLogger(__name__)
 
@@ -21,40 +22,18 @@ logger = logging.getLogger(__name__)
 def get_supported_extensions() -> set[str]:
     """Return the set of supported file extensions.
 
-    Merges a hard-coded baseline with any extensions registered by parsers.
+    Merges the canonical FileExtension enum with any extensions
+    registered by external parsers.
     """
-    baseline = {
-        ".pdf",
-        ".docx",
-        ".doc",
-        ".epub",
-        ".md",
-        ".txt",
-        ".html",
-        ".pptx",
-        ".xlsx",
-    }
+    extensions: set[str] = set(FileExtension)
     try:
         from knox.preprocessing.parsers._registry import get_all_extensions  # noqa: PLC0415
 
-        return baseline | get_all_extensions()
+        extensions.update(get_all_extensions())
     except Exception:
-        return baseline
+        pass
+    return extensions
 
-
-# Baseline set used for module-level references and fast path checks.
-# Call get_supported_extensions() for the full set including registered parsers.
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".epub",
-    ".md",
-    ".txt",
-    ".html",
-    ".pptx",
-    ".xlsx",
-}
 
 
 def resolve_files(
