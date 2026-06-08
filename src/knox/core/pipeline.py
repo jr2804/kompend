@@ -111,6 +111,7 @@ class PipelineConfig:
     respect_gitignore: bool = True  # respect .gitignore in source dir
     flavor: str | None = None  # Markdown flavor (obsidian, gfm, mkdocs, etc.); None = auto-detect
     frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
+    page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     rumdl_config: Path | None = None  # path to custom .rumdl.toml config
 
 

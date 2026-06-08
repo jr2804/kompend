@@ -401,6 +401,22 @@ LlmContextBudget = Annotated[
     ),
 ]
 
+# ── N9 schema-driven compilation ────────────────────────────────────────
+
+KindOption = Annotated[
+    str | None,
+    typer.Option(
+        "--kind",
+        help=(
+            "Page kind for schema-driven compilation. "
+            "Built-in kinds: concept, entity, comparison, overview, custom. "
+            "When set, pages are compiled and validated against the kind's schema. "
+            f"Env: {APP_NAME_UPPERCASE}_KIND."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_KIND",
+    ),
+]
+
 
 # ── N1 lint command ────────────────────────────────────────────────────
 

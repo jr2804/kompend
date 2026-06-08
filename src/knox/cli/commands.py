@@ -39,6 +39,7 @@ from knox.cli.args import (
     ListTiers,
     LlmContextBudget,
     LlmDefaultModel,
+    KindOption,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     LlmRoleModel,
@@ -143,6 +144,7 @@ def compile_cmd(
     verify: Verify = False,
     flavor: OutputFlavor = None,
     frontmatter: Frontmatter = None,
+    kind: KindOption = None,
     synthesize: SynthesizeFlag = False,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -226,6 +228,7 @@ def compile_cmd(
         llm_fallback_chain=llm_fallback_chain,
         llm_fallback_max_retries=llm_fallback_max_retries,
         llm_role_model=llm_role_model,
+        kind=kind,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
 
@@ -269,6 +272,8 @@ def compile_cmd(
         llm_fallback_chain=fallback_chain_list,
         llm_fallback_max_retries_per_model=cfg.get("compile.llm.fallback_max_retries", llm_fallback_max_retries),
         llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
+        llm_role_models=_resolve_role_models(cfg),
+        page_kind=cfg.get("compile.page_kind", kind),
     )
 
     pipeline = build_pipeline(config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
@@ -740,6 +745,54 @@ def mcp_cmd() -> None:
     mcp_main()
 
 
+# ── pack commands ───────────────────────────────────────────────────────
+
+
+@app.command(name="pack-list")
+def pack_list_cmd() -> None:
+    """List installed contribution packs.
+
+    Examples:
+        knox pack-list
+    """
+    from knox.packs.base import get_registry  # noqa: PLC0415
+
+    registry = get_registry()
+    if not registry.names:
+        typer.echo("No packs registered.")
+        return
+    typer.echo(f"Registered packs ({len(registry.names)}):")
+    for pack in registry.all:
+        typer.echo(f"  {pack.name:<20} v{pack.version}  {pack.description}")
+
+
+@app.command(name="pack-install")
+def pack_install_cmd(
+    name: str = typer.Argument(..., help="Pack name to install (e.g. 'academic')."),
+) -> None:
+    """Install a built-in contribution pack.
+
+    Examples:
+        knox pack-install academic
+        knox pack-install technical
+    """
+    from knox.packs.base import get_registry  # noqa: PLC0415
+    from knox.packs.builtins import academic_pack, technical_pack  # noqa: PLC0415
+
+    registry = get_registry()
+    pack_map = {
+        "academic": academic_pack,
+        "technical": technical_pack,
+    }
+    pack = pack_map.get(name.lower())
+    if pack is None:
+        available = ", ".join(sorted(pack_map))
+        typer.echo(f"Unknown pack '{name}'. Available: {available}", err=True)
+        raise typer.Exit(1)
+    registry.register(pack)
+    typer.echo(f"Installed pack '{pack.name}' v{pack.version}")
+
+
 # ── Internal helpers ────────────────────────────────────────────────────
 
 
@@ -769,6 +822,8 @@ def _build_cli_overrides(
     llm_default_model: str | None = None,
     llm_fallback_chain: list[str] | None = None,
     llm_fallback_max_retries: int | None = None,
+    llm_role_model: list[str] | None = None,
+    kind: str | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
@@ -816,6 +871,16 @@ def _build_cli_overrides(
         overrides["compile.llm.fallback_chain"] = list(llm_fallback_chain)
     if llm_fallback_max_retries is not None:
         overrides["compile.llm.fallback_max_retries"] = llm_fallback_max_retries
+    if llm_role_model is not None:
+        parsed: dict[str, str] = {}
+        for item in llm_role_model:
+            if "=" in item:
+                role, model = item.split("=", 1)
+                parsed[role.strip()] = model.strip()
+        if parsed:
+            overrides["compile.llm.role_models"] = parsed
+    if kind is not None:
+        overrides["compile.page_kind"] = kind
     return overrides
 
 
@@ -886,6 +951,20 @@ def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_o
     runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
+
+
+def _resolve_role_models(cfg: Any) -> dict[str, str]:
+    """Extract per-role model overrides from resolved config (Q13).
+
+    Reads ``compile.llm.role_models`` from the merged config.
+    """
+    role_models: dict[str, str] = {}
+    raw = cfg.get("compile.llm.role_models", {})
+    if isinstance(raw, dict):
+        for role, model in raw.items():
+            if isinstance(model, str) and model.strip():
+                role_models[role] = model.strip()
+    return role_models
 
 
 def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
