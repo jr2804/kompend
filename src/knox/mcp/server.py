@@ -64,17 +64,31 @@ def compile_wiki(
     chunk_size: int = 512,
     image_mode: str = "file",
     urls: list[str] | None = None,
+    compiler: str = "graph",
 ) -> dict[str, Any]:
-    """Compile sources into a knowledge wiki."""
+    """Compile sources into a knowledge wiki.
+
+    Parameters
+    ----------
+    compiler:
+        Compiler backend: ``"graph"`` (default) or ``"wicer"``.
+    """
     source_path = Path(sources_dir)
     if not source_path.exists():
         return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
 
-    valid = {"markdown", "json", "typst"}
-    if output_format not in valid:
+    valid_formats = {"markdown", "json", "typst"}
+    if output_format not in valid_formats:
         return {
             "status": "error",
             "message": f"Unknown format: {output_format}. Use markdown, json, or typst.",
+        }
+
+    valid_compilers = {"graph", "wicer"}
+    if compiler not in valid_compilers:
+        return {
+            "status": "error",
+            "message": f"Unknown compiler: {compiler}. Use graph or wicer.",
         }
 
     config = PipelineConfig(
@@ -84,6 +98,7 @@ def compile_wiki(
         compile_target=output_format,
         chunk_size=chunk_size,
         image_mode=image_mode,
+        compiler=compiler,
     )
 
     pipeline = build_pipeline(config)

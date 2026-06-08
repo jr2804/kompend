@@ -11,8 +11,9 @@ import base64
 import logging
 from pathlib import Path
 
-from knox.core.models import ElementType, ResolvedChunk
+from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient
+from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,16 @@ _MIME_BY_EXT: dict[str, str] = {
 }
 
 
-class VLMEnricher:
+class VLMEnricher(BaseResolver):
     """Enrich IMAGE chunks by producing textual captions via a VLM.
 
     Routes the multimodal call through the shared LLM client so the
     failover chain (Q12) and per-stage configuration (Q13) apply
     consistently to vision models.
+
+    Implements :class:`BaseResolver` so it can participate in a
+    :class:`ResolverChain`. The :meth:`resolve` method wraps a bare
+    :class:`Chunk` into a :class:`ResolvedChunk` before enriching.
     """
 
     def __init__(
@@ -42,6 +47,11 @@ class VLMEnricher:
     ) -> None:
         self._client = client  # None is OK — enrich() handles it gracefully
         self._role = role
+
+    def resolve(self, chunk: Chunk) -> ResolvedChunk:
+        """BaseResolver interface: wrap chunk then enrich."""
+        resolved = ResolvedChunk(chunk=chunk)
+        return self.enrich(resolved)
 
     def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:
         """Add VLM-generated captions to IMAGE chunks. Never raises."""

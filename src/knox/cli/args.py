@@ -419,6 +419,20 @@ KindOption = Annotated[
     ),
 ]
 
+CompilerChoice = Annotated[
+    str,
+    typer.Option(
+        "--compiler",
+        help=(
+            "Compiler backend: graph (default, two-phase extract-then-generate) "
+            "or wicer (iterative compile-evaluate-refine loop). "
+            f"Env: {APP_NAME_UPPERCASE}_COMPILER."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_COMPILER",
+    ),
+]
+DEFAULT_COMPILER: str = "graph"
+
 
 # ── N1 lint command ────────────────────────────────────────────────────
 

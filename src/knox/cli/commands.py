@@ -15,6 +15,7 @@ from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_COMPILE_FORMAT,
     DEFAULT_COMPILE_MODE,
+    DEFAULT_COMPILER,
     DEFAULT_IMAGE_MODE,
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     DEFAULT_OUTPUT_DIR,
@@ -25,6 +26,7 @@ from knox.cli.args import (
     CompileFiles,
     CompileLint,
     CompileMode,
+    CompilerChoice,
     ConfigPath,
     EmbedModel,
     ForceTier,
@@ -149,6 +151,7 @@ def compile_cmd(
     flavor: OutputFlavor = None,
     frontmatter: Frontmatter = None,
     kind: KindOption = None,
+    compiler: CompilerChoice = DEFAULT_COMPILER,
     synthesize: SynthesizeFlag = False,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -234,6 +237,7 @@ def compile_cmd(
         llm_fallback_max_retries=llm_fallback_max_retries,
         llm_role_model=llm_role_model,
         kind=kind,
+        compiler=compiler,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
 
@@ -280,6 +284,7 @@ def compile_cmd(
         llm_role_models=_resolve_role_models(cfg),
         page_kind=cfg.get("compile.page_kind", kind),
         privacy_filter=cfg.get("trust.privacy_filter", True),
+        compiler=cfg.get("compile.compiler", compiler),
     )
 
     pipeline = build_pipeline(config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
@@ -830,6 +835,7 @@ def _build_cli_overrides(
     llm_fallback_max_retries: int | None = None,
     llm_role_model: list[str] | None = None,
     kind: str | None = None,
+    compiler: str | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
@@ -889,6 +895,8 @@ def _build_cli_overrides(
             overrides["compile.llm.role_models"] = parsed
     if kind is not None:
         overrides["compile.page_kind"] = kind
+    if compiler is not None:
+        overrides["compile.compiler"] = compiler
     return overrides
 
 

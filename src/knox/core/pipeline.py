@@ -8,7 +8,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from knox.chunking.base import BaseChunker
 from knox.chunking.hybrid import HybridChunker
@@ -114,6 +114,7 @@ class PipelineConfig:
     frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     rumdl_config: Path | None = None  # path to custom .rumdl.toml config
+    compiler: Literal["graph", "wicer"] = "graph"  # C4: compiler backend selection
 
 
 class WikiPipeline:
@@ -546,7 +547,9 @@ def build_pipeline(
     Constructs a WikiPipeline with default components:
     - DoclingParser (lazy-fallback)
     - HybridChunker
-    - TwoPhaseCompiler (when ``two_phase`` is True) wrapping GraphCompiler
+    - Compiler selected by ``config.compiler``:
+      - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
+      - ``"wicer"``: WiCERCompiler (compile-evaluate-refine loop)
     - Output writer selected by ``config.compile_target``
 
     Parameters
@@ -554,8 +557,10 @@ def build_pipeline(
     config:
         Pipeline configuration.
     two_phase:
-        When True (default), wrap the GraphCompiler in a TwoPhaseCompiler
-        that performs extraction + cross-source merging before generation.
+        When True (default) and ``config.compiler`` is ``"graph"``, wrap the
+        GraphCompiler in a TwoPhaseCompiler that performs extraction +
+        cross-source merging before generation. Ignored when compiler is
+        ``"wicer"``.
     prompt_budget:
         Per-concept char budget (N10 fair-share truncation).
     """
@@ -571,21 +576,33 @@ def build_pipeline(
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc)
 
-    base_compiler: BaseCompiler = GraphCompiler()
-    if two_phase:
-        from knox.compilation.two_phase import TwoPhaseCompiler  # local import: avoid cycle
+    resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
 
-        resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
-        base_compiler = TwoPhaseCompiler(
-            base=GraphCompiler(),
-            prompt_budget=prompt_budget,
-            model=resolved_model,
-        )
+    llm_client = build_llm_client(config)
+    resolver = _build_resolver_chain(config, llm_client)
+
+    base_compiler: BaseCompiler
+    if config.compiler == "wicer":
+        from knox.compilation.wicer import WiCERCompiler
+
+        wicer_client = build_llm_client(config)
+        base_compiler = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=wicer_client)
+    else:
+        base_compiler = GraphCompiler()
+        if two_phase:
+            from knox.compilation.two_phase import TwoPhaseCompiler
+
+            base_compiler = TwoPhaseCompiler(
+                base=GraphCompiler(),
+                prompt_budget=prompt_budget,
+                model=resolved_model,
+            )
 
     return WikiPipeline(
         config=config,
         parser=parser,
         chunker=HybridChunker(chunk_size=config.chunk_size),
+        resolver=resolver,
         compiler=base_compiler,
         output_writer=writer_cls(
             flavor=config.flavor,
@@ -593,3 +610,32 @@ def build_pipeline(
             rumdl_config=config.rumdl_config,
         ),
     )
+
+
+def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
+    """Construct the default resolver chain (M7).
+
+    Always includes :class:`LLMResolver`. When VLM is available
+    (``config.vlm_model`` is set and the model is reachable), a
+    :class:`VLMEnricher` is appended to the chain.
+    """
+    from knox.resolution.llm import LLMResolver
+
+    resolvers: list[BaseResolver] = [LLMResolver(client=llm_client)]
+
+    try:
+        from knox.resolution.vlm_enricher import VLMEnricher
+
+        vlm_client = LLMClient(
+            default_model=f"ollama/{config.vlm_model}",
+            fallback_chain=[],
+            max_retries_per_model=0,
+        )
+        resolvers.append(VLMEnricher(client=vlm_client))
+        logger.debug("VLMEnricher added to resolver chain (model=%s)", config.vlm_model)
+    except Exception as exc:
+        logger.debug("VLMEnricher not available: %s", exc)
+
+    from knox.resolution.chain import ResolverChain
+
+    return ResolverChain(resolvers)
