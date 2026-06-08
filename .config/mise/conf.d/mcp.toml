@@ -22,11 +22,10 @@ arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see
 '''
 #shell = "powershell"
 run = [
-	#"clear",
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai "grepai mcp-serve"',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp "cytoscnpy mcp-server"',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n graphify "python -m graphify.serve graphify-out/graph.json"',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun "fartrun mcp"',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck "npx -y @yuvrajangadsingh/vibecheck --mcp"',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads "beads-mcp"',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai --args mcp-serve grepai',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp --args mcp-server cytoscnpy',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n graphify --args -m --args graphify.serve --args graphify-out/graph.json python',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun --args mcp fartrun',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck --args --mcp',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads beads-mcp',
 ]
