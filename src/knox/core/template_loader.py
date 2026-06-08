@@ -1,0 +1,518 @@
+"""Layered Jinja2 template loader for KNOX.
+
+Loads templates from three sources in precedence order:
+
+1. **Project templates** — ``<project_root>/knox/templates/`` (alongside ``knox.toml``)
+2. **User global templates** — ``~/.config/knox/templates/`` (XDG_CONFIG_HOME)
+3. **Built-in templates** — inside the installed ``knox`` package (``importlib.resources``)
+
+Template variable validation
+----------------------------
+
+Every template is checked at render time:
+
+- **StrictUndefined** — any ``{{ var }}`` referenced in the template *must* have a
+  matching kwarg. Missing variables raise ``jinja2.UndefinedError`` immediately.
+- **Unused variable warning** — kwargs that are provided but never referenced in
+  the template are logged at ``WARNING`` level. This catches typos like passing
+  ``contnt`` when the template expects ``content``.
+- **AST introspection** — ``jinja2.meta.find_undeclared_variables()`` is used to
+  determine which variables the template actually uses, without rendering it.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from jinja2 import StrictUndefined
+
+logger = logging.getLogger(__name__)
+
+
+# ── Built-in template root ──────────────────────────────────────────────
+
+_BUILTIN_TEMPLATE_PACKAGE: str = "knox"
+_BUILTIN_TEMPLATE_DIR: str = "templates"
+
+# ── Search path constants ───────────────────────────────────────────────
+
+_USER_CONFIG_DIR: str = "knox"
+_USER_TEMPLATES_NAME: str = "templates"
+_PROJECT_TEMPLATES_DIR: str = "knox"
+_PROJECT_TEMPLATES_NAME: str = "templates"
+
+
+# ── Dataclasses ─────────────────────────────────────────────────────────
+
+
+@dataclass
+class TemplateSource:
+    """Identifies where a loaded template came from."""
+
+    source: str  # "builtin", "user", "project"
+    path: Path | str = ""
+
+
+@dataclass
+class TemplateMeta:
+    """Parsed metadata for a template, extracted from its YAML frontmatter.
+
+    Frontmatter is a YAML block delimited by ``---`` at the very top
+    of the template file::
+
+        ---
+        variables:
+          - name: title
+            required: true
+          - name: content
+            required: true
+        role: lint.factual-consistency
+        response_format: json_object
+        temperature: 0.5
+        ---
+
+        Your prompt text with {{ title }} and {{ content }}.
+    """
+
+    variables: list[dict[str, Any]] = field(default_factory=list)
+    """Declared variables with name, type hint, and required flag."""
+
+    role: str = ""
+    """Pipeline role this template is for (e.g. ``\"lint.clarity-score\"``)."""
+
+    response_format: str = ""
+    """Expected LLM response format (``\"json_object\"`` or ``\"text\"``)."""
+
+    temperature: float | None = None
+    """LLM temperature override for this template."""
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_yaml_block(cls, yaml_text: str) -> TemplateMeta:
+        """Parse a YAML frontmatter string into a TemplateMeta."""
+        try:
+            import yaml  # noqa: PLC0415
+        except ImportError:
+            return cls()
+
+        try:
+            data: dict[str, Any] = yaml.safe_load(yaml_text) or {}
+        except Exception:
+            return cls()
+
+        return cls(
+            variables=data.get("variables", []),
+            role=data.get("role", ""),
+            response_format=data.get("response_format", ""),
+            temperature=data.get("temperature"),
+            raw=data,
+        )
+
+    def required_variable_names(self) -> set[str]:
+        """Return the set of variable names marked as required."""
+        return {
+            v["name"]
+            for v in self.variables
+            if isinstance(v, dict) and v.get("required")
+        }
+
+    def declared_variable_names(self) -> set[str]:
+        """Return the set of all declared variable names."""
+        return {
+            v["name"]
+            for v in self.variables
+            if isinstance(v, dict) and v.get("name")
+        }
+
+
+# ── Frontmatter parsing ─────────────────────────────────────────────────
+
+_FRONTMATTER_RE: Any = None
+
+
+def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    """Split *text* into (frontmatter_dict, body).
+
+    Returns ``({}, text)`` when no frontmatter is found.
+    Frontmatter is a ``---``-delimited YAML block at the start of the file.
+    """
+    import re  # noqa: PLC0415
+
+    # Match: optional BOM/newlines, then ---\n ... \n---
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return {}, text
+
+    raw_yaml = match.group(1)
+    body = text[match.end():]
+
+    try:
+        import yaml  # noqa: PLC0415
+
+        fm: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
+    except Exception as exc:
+        logger.debug("Failed to parse template frontmatter: %s", exc)
+        fm = {}
+
+    return fm, body
+
+
+# ── TemplateLoader ──────────────────────────────────────────────────────
+
+
+@dataclass
+class TemplateLoader:
+    """Layered Jinja2 template loader with variable validation.
+
+    Usage::
+
+        loader = TemplateLoader()
+        html = loader.render("lint/factual-consistency.md.j2",
+                             title="My Page", content="...")
+        raw = loader.get_text("lint/factual-consistency.md.j2")
+        meta = loader.get_meta("lint/factual-consistency.md.j2")
+
+    Parameters
+    ----------
+    project_dir:
+        Override the project root for template lookup. When ``None``
+        (default), use :func:`_find_project_root` which walks up from
+        ``cwd`` looking for ``knox.toml``.
+    """
+
+    project_dir: Path | None = None
+
+    # Lazily built
+    _jinja_env: Any | None = None
+    _search_cache: dict[str, tuple[str, Path | str]] = field(default_factory=dict)
+    _meta_cache: dict[str, TemplateMeta] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.project_dir is None:
+            self.project_dir = _find_project_root()
+
+    # ── Public API ───────────────────────────────────────────────────
+
+    def render(self, template_path: str, **kwargs: Any) -> str:
+        """Load and render a Jinja2 template with variable validation.
+
+        Parameters
+        ----------
+        template_path:
+            Relative path inside the templates directory, e.g.
+            ``"lint/factual-consistency.md.j2"``.
+        **kwargs:
+            Variables for the Jinja2 template.
+
+        Returns:
+        -------
+        str
+            Rendered output.
+
+        Raises:
+        ------
+        jinja2.UndefinedError
+            A variable referenced in the template was not provided.
+        FileNotFoundError
+            The template does not exist in any search path.
+        """
+        meta = self.get_meta(template_path)
+        body_text = self._get_body(template_path)
+
+        # Validate: required declared variables
+        required = meta.required_variable_names()
+        missing = required - kwargs.keys()
+        if missing:
+            raise ValueError(
+                f"Template '{template_path}' requires missing variables: "
+                f"{', '.join(sorted(missing))}"
+            )
+
+        # Validate: undeclared (but used) variables via AST introspection
+        used = self._find_undeclared_variables(template_path)
+        extra = kwargs.keys() - used - set()
+        if extra:
+            logger.warning(
+                "Template '%s' unused variables: %s. "
+                "Expected: %s",
+                template_path,
+                ", ".join(sorted(extra)),
+                ", ".join(sorted(used)),
+            )
+
+        # Render with StrictUndefined (catches any missing vars not in frontmatter)
+        from jinja2 import Environment  # noqa: PLC0415
+
+        env = Environment(
+            loader=self._make_template_source_loader(),
+            autoescape=False,  # noqa: S701 — LLM prompts, not HTML
+            trim_blocks=True,
+            lstrip_blocks=True,
+            undefined=StrictUndefined,
+        )
+        template = env.from_string(body_text)
+        return template.render(**kwargs)
+
+    def render_from_env(self, template_path: str, **kwargs: Any) -> str:
+        """Render using the cached Jinja2 environment (no validation).
+
+        Faster than :meth:`render` for hot paths, but skips frontmatter
+        parsing and variable validation. Use when you have already
+        validated variables elsewhere.
+        """
+        env = self._get_env()
+        template = env.get_template(template_path)
+        return template.render(**kwargs)
+
+    def get_text(self, template_path: str) -> str:
+        """Load raw template text (including any YAML frontmatter)."""
+        source, _ = self._locate(template_path)
+        return source
+
+    def get_body(self, template_path: str) -> str:
+        """Load template body text (with frontmatter stripped)."""
+        return self._get_body(template_path)
+
+    def get_meta(self, template_path: str) -> TemplateMeta:
+        """Parse and return the template's YAML frontmatter metadata.
+
+        Results are cached after first parse.
+        """
+        if template_path in self._meta_cache:
+            return self._meta_cache[template_path]
+
+        text = self.get_text(template_path)
+        fm, _ = _parse_frontmatter(text)
+        meta = TemplateMeta.from_yaml_block(
+            "\n".join(f"{k}: {v}" for k, v in fm.items())
+        )
+        self._meta_cache[template_path] = meta
+        return meta
+
+    def locate(self, template_path: str) -> TemplateSource:
+        """Return where a template was found (source label + path)."""
+        _, identifier = self._locate(template_path)
+        return identifier
+
+    def list_templates(self) -> list[str]:
+        """Return all available template paths (flattened across all layers)."""
+        seen: set[str] = set()
+        for _layer, paths in self._list_layers().items():
+            for p in paths:
+                if p not in seen:
+                    seen.add(p)
+        return sorted(seen)
+
+    # ── Internals ───────────────────────────────────────────────────
+
+    def _get_body(self, template_path: str) -> str:
+        """Return template body with frontmatter stripped."""
+        text = self.get_text(template_path)
+        _, body = _parse_frontmatter(text)
+        return body
+
+    def _find_undeclared_variables(self, template_path: str) -> set[str]:
+        """Parse the template AST and return all referenced variable names.
+
+        Uses ``jinja2.meta.find_undeclared_variables()`` which parses
+        the template without rendering it.
+        """
+        from jinja2 import Environment, meta  # noqa: PLC0415
+
+        body = self._get_body(template_path)
+        env = Environment()  # noqa: S701 — only used for AST parsing, not rendering
+        ast = env.parse(body)
+        return meta.find_undeclared_variables(ast)
+
+    def _locate(self, template_path: str) -> tuple[str, TemplateSource]:
+        """Search project → user → builtin, return (source_text, source_info)."""
+        normalized = template_path.replace("\\", "/")
+
+        # Check cache (skip stale entries)
+        cached = self._search_cache.get(normalized)
+        if cached is not None:
+            label, identifier = cached
+            if label in ("project", "user"):
+                candidate = Path(identifier)
+                if candidate.is_file():
+                    return (candidate.read_text(encoding="utf-8"), TemplateSource(label, candidate))
+                # Stale cache entry — clear and re-search
+                del self._search_cache[normalized]
+
+        # 1. Project templates
+        project_tpl_dir = _project_templates_dir(self.project_dir)
+        if project_tpl_dir is not None:
+            candidate = project_tpl_dir / normalized
+            if candidate.is_file():
+                text = candidate.read_text(encoding="utf-8")
+                self._search_cache[normalized] = ("project", str(candidate))
+                return (text, TemplateSource("project", candidate))
+
+        # 2. User global templates
+        user_tpl_dir = _user_templates_dir()
+        if user_tpl_dir is not None:
+            candidate = user_tpl_dir / normalized
+            if candidate.is_file():
+                text = candidate.read_text(encoding="utf-8")
+                self._search_cache[normalized] = ("user", str(candidate))
+                return (text, TemplateSource("user", candidate))
+
+        # 3. Built-in templates
+        if _builtin_exists(normalized):
+            text = _read_builtin(normalized)
+            self._search_cache[normalized] = ("builtin", normalized)
+            return (text, TemplateSource("builtin", normalized))
+
+        self._search_cache[normalized] = ("not_found", "")
+        raise FileNotFoundError(
+            f"Template not found: {normalized} "
+            f"(searched project={project_tpl_dir}, "
+            f"user={user_tpl_dir}, builtin={_BUILTIN_TEMPLATE_DIR})"
+        )
+
+    def _get_env(self) -> Any:
+        """Build and cache the Jinja2 environment (no frontmatter stripping).
+
+        This environment uses ``StrictUndefined`` and expects templates
+        stored *without* frontmatter in the search paths. Built-in templates
+        must have frontmatter pre-stripped when stored.
+        """
+        if self._jinja_env is not None:
+            return self._jinja_env
+
+        from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader  # noqa: PLC0415
+
+        loaders: list[Any] = []
+
+        project_dir = _project_templates_dir(self.project_dir)
+        if project_dir is not None:
+            loaders.append(FileSystemLoader(str(project_dir)))
+
+        user_dir = _user_templates_dir()
+        if user_dir is not None:
+            loaders.append(FileSystemLoader(str(user_dir)))
+
+        try:
+            loaders.append(PackageLoader(_BUILTIN_TEMPLATE_PACKAGE, _BUILTIN_TEMPLATE_DIR))
+        except (ValueError, ModuleNotFoundError) as exc:
+            logger.debug("No built-in templates directory: %s", exc)
+
+        self._jinja_env = Environment(
+            loader=ChoiceLoader(loaders),
+            autoescape=False,  # noqa: S701 — LLM prompts, not HTML
+            trim_blocks=True,
+            lstrip_blocks=True,
+            undefined=StrictUndefined,
+        )
+        return self._jinja_env
+
+    def _make_template_source_loader(self) -> Any:
+        """Build a ``ChoiceLoader`` without caching (used for body-only render)."""
+        from jinja2 import ChoiceLoader, FileSystemLoader, PackageLoader  # noqa: PLC0415
+
+        loaders: list[Any] = []
+
+        project_dir = _project_templates_dir(self.project_dir)
+        if project_dir is not None:
+            loaders.append(FileSystemLoader(str(project_dir)))
+
+        user_dir = _user_templates_dir()
+        if user_dir is not None:
+            loaders.append(FileSystemLoader(str(user_dir)))
+
+        try:
+            loaders.append(PackageLoader(_BUILTIN_TEMPLATE_PACKAGE, _BUILTIN_TEMPLATE_DIR))
+        except (ValueError, ModuleNotFoundError) as exc:
+            logger.debug("No built-in templates directory: %s", exc)
+
+        return ChoiceLoader(loaders)
+
+    def _list_layers(self) -> dict[str, list[str]]:
+        """Return all templates per layer for debugging."""
+        layers: dict[str, list[str]] = {"project": [], "user": [], "builtin": []}
+
+        project_dir = _project_templates_dir(self.project_dir)
+        if project_dir and project_dir.is_dir():
+            for f in sorted(project_dir.rglob("*")):
+                if f.is_file():
+                    layers["project"].append(str(f.relative_to(project_dir).as_posix()))
+
+        user_dir = _user_templates_dir()
+        if user_dir and user_dir.is_dir():
+            for f in sorted(user_dir.rglob("*")):
+                if f.is_file():
+                    layers["user"].append(str(f.relative_to(user_dir).as_posix()))
+
+        try:
+            for f in _list_builtin_templates():
+                layers["builtin"].append(f)
+        except Exception as exc:
+            logger.debug("Failed to list built-in templates: %s", exc)
+
+        return layers
+
+
+# ── Path resolution ──────────────────────────────────────────────────
+
+
+def _find_project_root() -> Path | None:
+    """Walk up from cwd looking for ``knox.toml``, return the directory."""
+    from knox.core.config._core import find_project_config  # noqa: PLC0415
+
+    toml_path = find_project_config()
+    if toml_path is not None:
+        return toml_path.parent
+    return None
+
+
+def _project_templates_dir(project_root: Path | None) -> Path | None:
+    """Return the project-level templates directory path."""
+    if project_root is None:
+        return None
+    return project_root / _PROJECT_TEMPLATES_DIR / _PROJECT_TEMPLATES_NAME
+
+
+def _user_templates_dir() -> Path | None:
+    """Return the user global templates directory path."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    config_dir = Path(xdg) if xdg else Path.home() / ".config"
+    candidate = config_dir / _USER_CONFIG_DIR / _USER_TEMPLATES_NAME
+    return candidate if candidate.is_dir() else None
+
+
+# ── Built-in template access (importlib.resources) ─────────────────
+
+
+def _read_builtin(template_path: str) -> str:
+    """Read a built-in template from the installed knox package."""
+    import importlib.resources as ir  # noqa: PLC0415
+
+    ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_path
+    return ref.read_text(encoding="utf-8")
+
+
+def _builtin_exists(template_path: str) -> bool:
+    """Check if a built-in template exists."""
+    try:
+        _read_builtin(template_path)
+        return True
+    except Exception:
+        return False
+
+
+def _list_builtin_templates() -> list[str]:
+    """List all built-in template files."""
+    import importlib.resources as ir  # noqa: PLC0415
+
+    tpl_dir = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR
+    if not tpl_dir.is_dir():
+        return []
+    return sorted(
+        str(p.relative_to(tpl_dir).as_posix())
+        for p in tpl_dir.rglob("*")
+        if p.is_file()
+    )

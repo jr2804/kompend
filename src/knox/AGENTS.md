@@ -30,17 +30,37 @@ This rule exists because:
 
 ### How templates are loaded
 
-```python
-from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+All templates go through ``knox.core.template_loader.TemplateLoader``,
+which searches three locations in order (project > user > built-in):
 
-_loader = FileSystemLoader(Path(__file__).parent / "templates")
-_env = Environment(loader=_loader)
+| Priority | Location | Example path |
+|----------|----------|-------------|
+| 1 (highest) | Project overrides | ``./knox/templates/`` (next to ``knox.toml``) |
+| 2 | User global overrides | ``~/.config/knox/templates/`` |
+| 3 (lowest) | Built-in (package) | ``importlib.resources`` in ``knox/templates/`` |
 
-def _render(role: str, **kwargs: object) -> str:
-    template = _env.get_template(f"{role}.md.j2")
-    return template.render(**kwargs)
-```
+Usage::
+
+    from knox.core.template_loader import TemplateLoader
+
+    loader = TemplateLoader()
+    rendered = loader.render("lint/clarity-score.md.j2",
+                              title="My Page", content="...")
+
+### Template variable validation
+
+Every template is validated at render time:
+
+- **StrictUndefined** — Any ``{{ var }}`` referenced in the template *must* have
+  a matching kwarg. Missing variables raise ``jinja2.UndefinedError`` immediately.
+- **Required variable check** — If the template declares ``required: true`` in its
+  frontmatter, the loader raises ``ValueError`` before rendering if the variable
+  is missing.
+- **Unused variable warning** — Kwargs that are never referenced in the template
+  are logged at ``WARNING`` level. This catches typos like passing ``contnt``
+  when the template expects ``content``.
+- **AST introspection** — Uses ``jinja2.meta.find_undeclared_variables()`` to
+  determine which variables the template actually uses, without rendering it.
 
 ### Acceptable exceptions
 
@@ -68,26 +88,38 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 
 ## Jinja2 conventions
 
-- Template files use the `.md.j2` extension (markdown + Jinja2).
-- Variables use `{{ snake_case_name }}` syntax.
-- Control flow uses `{% for %}` / `{% if %}` blocks, never Python string concatenation.
-- Each template file starts with a YAML frontmatter block (in `{# #}` Jinja2 comment)
-  documenting the expected variables and response format:
+- Template files use the ``.md.j2`` extension (markdown + Jinja2).
+- Variables use ``{{ snake_case_name }}`` syntax.
+- Control flow uses ``{% for %}`` / ``{% if %}`` blocks, never Python string concatenation.
+- Each template file **starts with a YAML frontmatter block** delimited by ``---``.
+  This frontmatter is parsed by ``TemplateLoader`` and does not appear in the
+  rendered output::
 
-```jinja2
-{# ---
-variables:
-  - title: str        # page title
-  - content: str      # page content up to context_budget
-  - context_budget: int  # max chars to include
-response_format: json_object
-role: lint.factual-consistency
-temperature: 0.0
---- #}
-```
+    ---
+    variables:
+      - name: title
+        required: true
+      - name: content
+        required: true
+      - name: context_budget
+        required: false
+    role: lint.factual-consistency
+    response_format: json_object
+    temperature: 0.0
+    ---
 
-- Template directories contain an `_index.json` or `index.toml` listing all
-  available templates with their metadata (role, expected variables, format).
+    Your prompt text using {{ title }} and {{ content }}.
+
+  The frontmatter fields are:
+
+  - ``variables`` — list of expected variables with ``name`` and ``required``.
+  - ``role`` — pipeline role (e.g. ``"lint.clarity-score"``).
+  - ``response_format`` — LLM response format (``"json_object"`` or ``"text"``).
+  - ``temperature`` — LLM temperature override for this specific template.
+
+- Required variables declared in frontmatter are checked by the loader. If a
+  required variable is missing, ``ValueError`` is raised before the template
+  is ever rendered.
 
 ## Adding new text — checklist
 
