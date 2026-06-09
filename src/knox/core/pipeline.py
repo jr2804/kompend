@@ -1,4 +1,12 @@
-"""Pipeline orchestrator for the KNOX 5-tier architecture."""
+"""Pipeline orchestrator for the KNOX 5-tier architecture.
+
+Tier identifiers, mode definitions, tier descriptions, and
+:class:`PipelineConfig` live in :mod:`knox.core.pipeline_defs` so they
+can be shared with the CLI and other callers without dragging in the
+orchestrator. This module re-exports the legacy ``TIER_*`` string
+constants for backward compatibility with downstream callers that still
+import them from ``knox.core.pipeline``.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +14,8 @@ import hashlib
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any
 
 from knox.chunking.base import BaseChunker
 from knox.chunking.hybrid import HybridChunker
@@ -17,6 +24,15 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
+from knox.core.pipeline_defs import (
+    ALL_TIERS,
+    MODE_LEVELS,
+    TIER_DESCRIPTIONS,
+    TIER_LEVEL,
+    Mode,
+    PipelineConfig,
+    Tier,
+)
 from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -25,104 +41,23 @@ from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
-from knox.resolution.llm import LLMResolver
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
 logger = logging.getLogger(__name__)
 
-# TODO: move all constants and config definitions to a separate module for better separation of concerns and to avoid cluttering the pipeline orchestration code. This includes the tier identifiers, their descriptions, and the mode definitions.
-# TODO: make all these definitions a single source of truth for both the CLI and the WikiPipeline, to avoid drift and ensure the tier contract is well-defined and discoverable. This includes the tier identifiers, their descriptions, and the mode definitions.
-# TODO: Use StrEnum instead of ClassVar[str] for the tier identifiers once we require Python 3.11+.
-# Tier identifiers for the Q20 tiered compilation feature. They are
-# cumulative: tier 3 runs tiers 0+1+2+3, tier 1 runs tiers 0+1.
-TIER_INDEX: ClassVar[str] = "index"
-TIER_CHUNK: ClassVar[str] = "chunk"
-TIER_RESOLVE: ClassVar[str] = "resolve"
-TIER_COMPILE: ClassVar[str] = "compile"
-TIER_OUTPUT: ClassVar[str] = "output"
+# Legacy string-constant re-exports (kept for backward compatibility with
+# downstream callers that imported these names from ``knox.core.pipeline``).
+# New code should import :class:`Tier` / :class:`Mode` from
+# :mod:`knox.core.pipeline_defs` instead.
+TIER_INDEX: Tier = Tier.INDEX
+TIER_CHUNK: Tier = Tier.CHUNK
+TIER_RESOLVE: Tier = Tier.RESOLVE
+TIER_COMPILE: Tier = Tier.COMPILE
+TIER_OUTPUT: Tier = Tier.OUTPUT
 
-# Ordered list used for `--list-tiers` and tier-int validation.
-ALL_TIERS: ClassVar[tuple[str, ...]] = (TIER_INDEX, TIER_CHUNK, TIER_RESOLVE, TIER_COMPILE, TIER_OUTPUT)
-
-# Tier name -> level number used for skip decisions (higher = runs more).
-TIER_LEVEL: ClassVar[dict[str, int]] = {
-    TIER_INDEX: 0,
-    TIER_CHUNK: 1,
-    TIER_RESOLVE: 2,
-    TIER_COMPILE: 3,
-    TIER_OUTPUT: 4,
-}
-
-# Mode short-cuts: a mode expands to a set of tier levels that should run.
-MODE_LEVELS: ClassVar[dict[str, set[int]]] = {
-    "full": {0, 1, 2, 3, 4},
-    "index-only": {0, 1},
-    "resolve-only": {2, 3, 4},
-    "output-only": {4},
-}
-
-
-@dataclass
-class PipelineConfig:
-    """Configuration for the KNOX pipeline."""
-
-    source_dir: Path
-    output_dir: Path
-    image_mode: str = "file"  # "file" or "base64"
-    chunk_size: int = 512
-    compile_target: str = "markdown"  # "markdown", "json", "typst"
-    llm_model: str = "llama3.2"
-    llm_provider: str = "ollama"
-    vlm_model: str = "phi-3-vision"
-    llm_fallback_chain: list[str] = field(default_factory=list)
-    """Ordered list of fallback models tried when the primary model fails.
-
-    Each entry is a litellm-style ``"provider/model"`` string, e.g.
-    ``["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]``.
-    Empty (default) means single-model mode — backwards compatible
-    with the pre-Q12 behaviour.
-    """
-    llm_fallback_max_retries_per_model: int = 2
-    """Transient-error retries before advancing to the next model.
-
-    ``2`` means up to three attempts per model (1 + 2 retries).
-    """
-    llm_context_budget: int = 100000
-    """Max characters of page content sent to the LLM in a single lint call.
-
-    When page content exceeds this budget a warning is logged and the
-    content is truncated to this many characters. Users can adjust via
-    the ``--llm-context-budget`` CLI flag or the
-    ``KNOX_LLM_CONTEXT_BUDGET`` env var.
-
-    Default: 100 000 (roughly 25 000 tokens for most models).
-    """
-    llm_default_model_override: str | None = None
-    """Explicit default model in litellm format (``"provider/model"``).
-
-    When set, this is used directly as the primary model, bypassing
-    ``llm_provider`` and ``llm_model``. Intended for the
-    ``--llm-default-model`` CLI flag and ``KNOX_LLM_DEFAULT_MODEL``
-    env var. When ``None`` (default), the model is constructed from
-    ``llm_provider`` and ``llm_model`` as before.
-    """
-    online_sources: list[str] = field(default_factory=list)
-    input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
-    cache_dir: Path | None = None  # None = .knox/cache inside output_dir
-    no_cache: bool = False  # force re-parse even if cached
-    workers: int = 1  # parallel parse+chunk workers
-    mode: str = "full"  # full | index-only | resolve-only | output-only
-    force: bool = False  # bypass persistent tier state and re-process everything
-    tier_state_path: Path | None = None  # None = .knox/compile_state.json inside output_dir
-    ignore_patterns: list[str] | None = None  # glob patterns to exclude
-    respect_gitignore: bool = True  # respect .gitignore in source dir
-    flavor: str | None = None  # Markdown flavor (obsidian, gfm, mkdocs, etc.); None = auto-detect
-    frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
-    page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
-    rumdl_config: Path | None = None  # path to custom .rumdl.toml config
-    compiler: Literal["graph", "wicer"] = "graph"  # C4: compiler backend selection
-    privacy_filter: bool = True  # redact PII/secrets from parsed content
+# Backward-compat alias for the previously-private description map.
+_TIER_DESCRIPTIONS = TIER_DESCRIPTIONS
 
 
 class WikiPipeline:
@@ -162,7 +97,8 @@ class WikiPipeline:
 
     def active_levels(self) -> set[int]:
         """Return the set of tier levels enabled for the current mode."""
-        return MODE_LEVELS.get(self.config.mode, MODE_LEVELS["full"])
+        mode = self.config.mode if isinstance(self.config.mode, Mode) else Mode(self.config.mode)
+        return MODE_LEVELS.get(mode, MODE_LEVELS[Mode.FULL])
 
     def run(self) -> CompiledWiki:
         """Execute the full pipeline from sources to compiled wiki."""
@@ -209,7 +145,7 @@ class WikiPipeline:
             msg = f"Unknown tier {tier!r}. Valid: {ALL_TIERS}"
             raise ValueError(msg)
 
-        target_level = TIER_LEVEL[tier]
+        target_level = TIER_LEVEL[Tier(tier)]
 
         if target_level >= TIER_LEVEL[TIER_INDEX]:
             self._run_index_tier()
@@ -517,17 +453,6 @@ class WikiPipeline:
         digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
         return f"{source_file.stem}_{digest[:12]}"
 
-# TODO: expand descriptions with more details on what each tier does and its expected inputs/outputs, to clarify the contract for testing and future extensions.
-# TODO: move to docs and link from here, to avoid cluttering the code with long descriptions.
-# TODO: move to top of the file for better visibility, and/or to different module if the pipeline orchestration code grows significantly and we want to keep the config and constants separate.
-_TIER_DESCRIPTIONS: dict[str, str] = {
-    TIER_INDEX: "Parse documents and update tier state.",
-    TIER_CHUNK: "Chunk parsed documents.",
-    TIER_RESOLVE: "Resolve references and entities (LLM-dependent).",
-    TIER_COMPILE: "Compile resolved chunks into a knowledge graph.",
-    TIER_OUTPUT: "Render the compiled wiki to the output directory.",
-}
-
 
 def build_llm_client(config: PipelineConfig) -> LLMClient:
     """Construct an :class:`LLMClient` from a :class:`PipelineConfig`.
@@ -549,8 +474,12 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
 def build_pipeline(
     config: PipelineConfig,
     *,
-    two_phase: bool = True,
     prompt_budget: int = 200_000,
+    extract_budget: int = 6000,
+    gen_source_segment: int = 20000,
+    concepts_per_batch: int = 8,
+    wicer_probe_budget: int = 3000,
+    wicer_eval_budget: int = 4000,
 ) -> WikiPipeline:
     """Shared factory used by both CLI and MCP.
 
@@ -566,11 +495,6 @@ def build_pipeline(
     ----------
     config:
         Pipeline configuration.
-    two_phase:
-        When True (default) and ``config.compiler`` is ``"graph"``, wrap the
-        GraphCompiler in a TwoPhaseCompiler that performs extraction +
-        cross-source merging before generation. Ignored when compiler is
-        ``"wicer"``.
     prompt_budget:
         Per-concept char budget (N10 fair-share truncation).
     """
@@ -589,20 +513,21 @@ def build_pipeline(
     resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
 
     llm_client = build_llm_client(config)
-    resolver = _build_resolver_chain(config, llm_client, skip_llm_resolver=two_phase)
+    resolver = _build_resolver_chain(config, llm_client)
 
     base_compiler: BaseCompiler
     if config.compiler == "wicer":
         wicer_client = build_llm_client(config)
-        base_compiler = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=wicer_client)
+        base_compiler = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=wicer_client, probe_budget=wicer_probe_budget, eval_budget=wicer_eval_budget)
     else:
-        base_compiler = GraphCompiler()
-        if two_phase:
-            base_compiler = TwoPhaseCompiler(
-                base=GraphCompiler(),
-                prompt_budget=prompt_budget,
-                model=resolved_model,
-            )
+        base_compiler = TwoPhaseCompiler(
+            base=GraphCompiler(),
+            prompt_budget=prompt_budget,
+            model=resolved_model,
+            extract_budget=extract_budget,
+            gen_source_segment=gen_source_segment,
+            concepts_per_batch=concepts_per_batch,
+        )
 
     return WikiPipeline(
         config=config,
@@ -618,20 +543,13 @@ def build_pipeline(
     )
 
 
-def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient, *, skip_llm_resolver: bool = False) -> BaseResolver:
+def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
     """Construct the default resolver chain (M7).
-
-    When *skip_llm_resolver* is False (the default), the chain starts with
-    :class:`LLMResolver`.  When True (set when TwoPhaseCompiler is active),
-    per-chunk entity extraction is deferred to the compilation tier so
-    LLMResolver is omitted to avoid a redundant LLM call per chunk.
 
     When VLM is available (``config.vlm_model`` is set and the model is
     reachable), a :class:`VLMEnricher` is appended to the chain.
     """
     resolvers: list[BaseResolver] = []
-    if not skip_llm_resolver:
-        resolvers.append(LLMResolver(client=llm_client))
 
     try:
         vlm_client = LLMClient(
