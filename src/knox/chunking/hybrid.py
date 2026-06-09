@@ -169,6 +169,7 @@ def _atomic_chunk(
         source_elements=[idx],
         source_file=document.source_path,
         heading_context="",
+        metadata=dict(el.metadata) if el.metadata else {},
     )
 
 
