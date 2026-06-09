@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Never
 
+import pytest
+
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
@@ -147,7 +149,7 @@ class TestDetectFlavorFromDir:
 class TestMissingRumdlFallback:
     """Tests that DocumentRenderer gracefully handles missing rumdl."""
 
-    def test_fallback_on_import_error(self, monkeypatch) -> None:
+    def test_fallback_on_import_error(self, monkeypatch: pytest.Monkeypatch) -> None:
         """When rumdl is not on PATH, render should return raw markdown."""
         original = shutil.which
         monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "rumdl" else original(cmd))
@@ -161,7 +163,7 @@ class TestMissingRumdlFallback:
         assert "# Test" in result
         assert "Some **bold** content" in result
 
-    def test_fallback_on_subprocess_error(self, monkeypatch) -> None:
+    def test_fallback_on_subprocess_error(self, monkeypatch: pytest.Monkeypatch) -> None:
         """When rumdl crashes, render should return raw markdown."""
 
         def _fake_run(*args, **kwargs) -> Never:

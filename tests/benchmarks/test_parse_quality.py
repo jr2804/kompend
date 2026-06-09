@@ -61,16 +61,16 @@ class TestParserQualityBenchmark:
     """Quality benchmark for DoclingParser."""
 
     @pytest.fixture(scope="class")
-    def parser(self):
+    def parser(self) -> DoclingParser:
         return DoclingParser(extract_images=False)
 
     @pytest.fixture(scope="class")
-    def parsed_doc(self, parser) -> ParsedDocument:
+    def parsed_doc(self, parser: DoclingParser) -> ParsedDocument:
         """Parse the real PDF and return the ParsedDocument."""
         assert _REAL_PDF is not None
         return parser.parse(_REAL_PDF)
 
-    def test_benchmark_parse_speed(self, parser) -> None:
+    def test_benchmark_parse_speed(self, parser: DoclingParser) -> None:
         """Measure parsing speed (reports time, does not assert)."""
         assert _REAL_PDF is not None
         durations: list[float] = []

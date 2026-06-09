@@ -18,6 +18,7 @@ from knox.chunking.hybrid import HybridChunker
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ParsedDocument, ResolvedChunk
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
 
@@ -37,7 +38,7 @@ def _check_parser() -> bool:
     return False
 
 
-def _get_parser():
+def _get_parser() -> BaseParser:
     """Return the best available parser instance."""
     try:
         return DoclingParser(extract_images=False)
@@ -68,10 +69,10 @@ class TestRealCorpusParse:
     """Parse real PDFs from the test corpus and validate structure."""
 
     @pytest.fixture(scope="class")
-    def parser(self):
+    def parser(self) -> BaseParser:
         return _get_parser()
 
-    def test_parse_first_pdf(self, source_pdfs: list[Path], parser) -> None:
+    def test_parse_first_pdf(self, source_pdfs: list[Path], parser: BaseParser) -> None:
         """Parse the first PDF in the corpus — basic sanity."""
         assert len(source_pdfs) > 0, "No PDFs in tests/data/sources/"
         pdf = source_pdfs[0]
@@ -80,14 +81,14 @@ class TestRealCorpusParse:
         assert len(doc.elements) > 0, f"No elements parsed from {pdf.name}"
         assert doc.page_count > 0, f"page_count is 0 for {pdf.name}"
 
-    def test_parse_all_pdfs_succeed(self, source_pdfs: list[Path], parser) -> None:
+    def test_parse_all_pdfs_succeed(self, source_pdfs: list[Path], parser: BaseParser) -> None:
         """Every PDF in the corpus must parse without raising."""
         for pdf in source_pdfs:
             doc = parser.parse(pdf)
             assert isinstance(doc, ParsedDocument)
             assert len(doc.elements) > 0, f"No elements from {pdf.name}"
 
-    def test_all_pdfs_have_text(self, source_pdfs: list[Path], parser) -> None:
+    def test_all_pdfs_have_text(self, source_pdfs: list[Path], parser: BaseParser) -> None:
         """Every PDF must produce at least some text content."""
         for pdf in source_pdfs:
             doc = parser.parse(pdf)

@@ -37,15 +37,11 @@ from typing import Any
 
 import pytest
 
-import knox.output.json_writer
-import knox.output.markdown
-import knox.output.typst
 from knox.chunking.hybrid import HybridChunker
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
-from knox.core.models import ATOMIC_TYPES, ElementType, ResolvedChunk
-from knox.core.pipeline import PipelineConfig
+from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
 from knox.core.tier_state import TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -122,14 +118,13 @@ def small_corpus(source_pdfs_module: list[Path]) -> list[Path]:
 
 
 @pytest.fixture(scope="module")
-def llm_client():
+def llm_client() -> LLMClient:
     """LLM client wired to Ollama lfm2.5."""
-
     return LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
 
 
 @pytest.fixture(scope="module")
-def parsed_docs(small_corpus: list[Path]):
+def parsed_docs(small_corpus: list[Path]) -> list[ParsedDocument]:
     """Parse corpus PDFs once for all module-scoped tests."""
     if not small_corpus or not _PARSER_OK:
         return []
@@ -147,9 +142,8 @@ def parsed_docs(small_corpus: list[Path]):
 
 
 @pytest.fixture(scope="module")
-def raw_chunks(parsed_docs):
+def raw_chunks(parsed_docs: list[ParsedDocument]) -> list[ResolvedChunk]:
     """Chunk parsed documents once."""
-
     chunker = HybridChunker(max_tokens=512)
     all_chunks = []
     for doc in parsed_docs:
@@ -159,7 +153,7 @@ def raw_chunks(parsed_docs):
 
 
 @pytest.fixture(scope="module")
-def resolved_chunks(raw_chunks, llm_client):
+def resolved_chunks(raw_chunks: list[ResolvedChunk], llm_client: LLMClient) -> list[ResolvedChunk]:
     """Resolve chunks via LLMResolver (real LLM calls)."""
     if not raw_chunks or not _OLLAMA_OK:
         return []
@@ -178,7 +172,7 @@ def resolved_chunks(raw_chunks, llm_client):
 
 
 @pytest.fixture(scope="module")
-def graph_wiki(resolved_chunks):
+def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     """Compile resolved chunks via TwoPhaseCompiler (graph backend)."""
     if not resolved_chunks or not _OLLAMA_OK:
         return None
@@ -201,7 +195,6 @@ class TestTier1Preprocessing:
 
     def test_all_pdfs_parse_without_error(self, source_pdfs_module: list[Path]) -> None:
         """Every PDF must produce a non-empty ParsedDocument."""
-
         parser = DoclingParser(extract_images=False)
         for pdf in source_pdfs_module:
             doc = parser.parse(pdf)
@@ -209,16 +202,15 @@ class TestTier1Preprocessing:
             assert len(doc.elements) > 0, f"{pdf.name}: no elements"
             assert doc.page_count > 0, f"{pdf.name}: page_count=0"
 
-    def test_parsed_docs_have_text_and_headings(self, parsed_docs) -> None:
+    def test_parsed_docs_have_text_and_headings(self, parsed_docs: list[ParsedDocument]) -> None:
         """Each parsed document must have text elements and at least one heading."""
-
         assert len(parsed_docs) > 0, "No documents were parsed"
 
         for doc in parsed_docs:
             types = {e.type for e in doc.elements}
             assert ElementType.TEXT in types, f"{doc.source_path.name}: no TEXT elements"
 
-    def test_parsed_docs_minimum_content(self, parsed_docs) -> None:
+    def test_parsed_docs_minimum_content(self, parsed_docs: list[ParsedDocument]) -> None:
         """Every document must have at least 100 characters of text."""
         for doc in parsed_docs:
             total_chars = sum(len(e.content) for e in doc.elements if isinstance(e.content, str))
@@ -233,24 +225,24 @@ class TestTier1Preprocessing:
 class TestTier2Chunking:
     """Chunk corpus documents; verify token budget and structural integrity."""
 
-    def test_chunks_are_produced(self, raw_chunks) -> None:
+    def test_chunks_are_produced(self, raw_chunks: list[ResolvedChunk]) -> None:
         assert len(raw_chunks) > 0, "No chunks produced from corpus"
 
-    def test_chunk_ids_are_unique(self, raw_chunks) -> None:
+    def test_chunk_ids_are_unique(self, raw_chunks: list[ResolvedChunk]) -> None:
         ids = [c.id for c in raw_chunks]
         assert len(ids) == len(set(ids)), "Duplicate chunk IDs detected"
 
-    def test_chunks_respect_token_budget(self, raw_chunks) -> None:
+    def test_chunks_respect_token_budget(self, raw_chunks: list[ResolvedChunk]) -> None:
         oversized = [c for c in raw_chunks if c.token_count > 600]
         # Allow 5% tolerance for atomic elements that can't be split
         if len(oversized) > len(raw_chunks) * 0.05:
             pytest.fail(f"{len(oversized)}/{len(raw_chunks)} chunks exceed 600 token budget")
 
-    def test_every_chunk_has_element_types(self, raw_chunks) -> None:
+    def test_every_chunk_has_element_types(self, raw_chunks: list[ResolvedChunk]) -> None:
         for c in raw_chunks:
             assert len(c.element_types) > 0, f"Chunk {c.id} has no element_types"
 
-    def test_chunks_have_heading_context(self, raw_chunks) -> None:
+    def test_chunks_have_heading_context(self, raw_chunks: list[ResolvedChunk]) -> None:
         has_context = any(c.heading_context for c in raw_chunks)
         assert has_context, "No chunk has heading_context — structure not preserved"
 
@@ -264,12 +256,11 @@ class TestTier2Chunking:
 class TestTier3Resolution:
     """LLM-based entity/relation resolution against real corpus chunks."""
 
-    def test_resolved_chunks_count_matches_input(self, raw_chunks, resolved_chunks) -> None:
+    def test_resolved_chunks_count_matches_input(self, raw_chunks: list[ResolvedChunk], resolved_chunks: list[ResolvedChunk]) -> None:
         assert len(resolved_chunks) == len(raw_chunks), f"Got {len(resolved_chunks)} resolved chunks for {len(raw_chunks)} raw chunks"
 
-    def test_some_chunks_have_entities(self, resolved_chunks) -> None:
+    def test_some_chunks_have_entities(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """At least some text chunks should yield extracted entities."""
-
         non_atomic = [rc for rc in resolved_chunks if not ATOMIC_TYPES.intersection(rc.chunk.element_types)]
         with_entities = [rc for rc in non_atomic if rc.entities]
         # Allow model to produce entities for at least 10% of non-atomic chunks
@@ -285,9 +276,8 @@ class TestTier3Resolution:
             if ratio < 0.05:
                 pytest.xfail(f"Entity extraction rate very low ({ratio:.1%}) — model may not be following JSON schema")
 
-    def test_vlm_enricher_integration(self, raw_chunks) -> None:
+    def test_vlm_enricher_integration(self, raw_chunks: list[ResolvedChunk]) -> None:
         """VLMEnricher must accept IMAGE chunks without raising."""
-
         image_chunks = [c for c in raw_chunks if ElementType.IMAGE in c.element_types]
         if not image_chunks:
             pytest.skip("No IMAGE chunks in parsed corpus — VLM path not exercised")
@@ -314,28 +304,27 @@ class TestTier3Resolution:
 class TestTier4Compilation:
     """Compile resolved chunks into a wiki; verify structure and quality."""
 
-    def test_graph_wiki_has_nodes(self, graph_wiki) -> None:
+    def test_graph_wiki_has_nodes(self, graph_wiki: CompiledWiki) -> None:
         assert graph_wiki is not None, "GraphCompiler returned None"
         assert len(graph_wiki.nodes) > 0, "Wiki has no nodes"
 
-    def test_graph_wiki_has_toc(self, graph_wiki) -> None:
+    def test_graph_wiki_has_toc(self, graph_wiki: CompiledWiki) -> None:
         assert len(graph_wiki.toc) > 0, "Wiki TOC is empty"
 
-    def test_graph_wiki_has_quality_score(self, graph_wiki) -> None:
+    def test_graph_wiki_has_quality_score(self, graph_wiki: CompiledWiki) -> None:
         assert graph_wiki.quality_score >= 0.0
         logger.info("Wiki quality score: %.2f", graph_wiki.quality_score)
 
-    def test_wiki_nodes_have_content(self, graph_wiki) -> None:
+    def test_wiki_nodes_have_content(self, graph_wiki: CompiledWiki) -> None:
         empty = [n for n in graph_wiki.nodes if not n.content]
         assert len(empty) == 0, f"{len(empty)} wiki nodes have empty content"
 
-    def test_wiki_nodes_have_ids(self, graph_wiki) -> None:
+    def test_wiki_nodes_have_ids(self, graph_wiki: CompiledWiki) -> None:
         for node in graph_wiki.nodes:
             assert node.id, f"WikiNode with title={node.title!r} has no id"
 
-    def test_wicer_compiler(self, resolved_chunks) -> None:
+    def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
-
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
         compiler = WiCERCompiler(
             base_compiler=GraphCompiler(),
@@ -361,9 +350,8 @@ class TestTier4Compilation:
 class TestTier5Output:
     """Write the compiled wiki in all supported formats; verify artifacts."""
 
-    def test_markdown_vault_output(self, graph_wiki, tmp_path: Path) -> None:
+    def test_markdown_vault_output(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """MarkdownWriter in vault mode: one .md per node + index.md."""
-
         writer = MarkdownWriter(flavor="obsidian", vault_mode=True)
         out = writer.write(graph_wiki, tmp_path / "vault")
         assert out.exists(), "write() did not return a valid path"
@@ -377,9 +365,8 @@ class TestTier5Output:
 
         logger.info("Vault output: %d .md files in %s", len(md_files), tmp_path / "vault")
 
-    def test_markdown_single_file_output(self, graph_wiki, tmp_path: Path) -> None:
+    def test_markdown_single_file_output(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """MarkdownWriter in single-file mode: wiki.md."""
-
         writer = MarkdownWriter(flavor="gfm", vault_mode=False)
         writer.write(graph_wiki, tmp_path / "single")
         wiki_md = tmp_path / "single" / "wiki.md"
@@ -387,9 +374,8 @@ class TestTier5Output:
         content = wiki_md.read_text(encoding="utf-8")
         assert len(content) > 100, "wiki.md is too short"
 
-    def test_json_output(self, graph_wiki, tmp_path: Path) -> None:
+    def test_json_output(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """JsonWriter must produce a valid wiki.json."""
-
         writer = JsonWriter()
         writer.write(graph_wiki, tmp_path / "json")
         wiki_json = tmp_path / "json" / "wiki.json"
@@ -402,9 +388,8 @@ class TestTier5Output:
         assert len(data["nodes"]) > 0
         logger.info("JSON output: %d nodes", len(data["nodes"]))
 
-    def test_typst_output(self, graph_wiki, tmp_path: Path) -> None:
+    def test_typst_output(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """TypstWriter must produce a non-empty .typ file."""
-
         writer = TypstWriter()
         out = writer.write(graph_wiki, tmp_path / "typst")
         assert out.exists(), "TypstWriter did not create output file"
@@ -412,9 +397,8 @@ class TestTier5Output:
         assert "#set page" in content or len(content) > 50, "Typst output looks empty"
         logger.info("Typst output: %d chars in %s", len(content), out)
 
-    def test_wiki_index_and_log(self, graph_wiki, tmp_path: Path) -> None:
+    def test_wiki_index_and_log(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """wiki_index module must generate index.md and log.md."""
-
         out_dir = tmp_path / "wiki_index"
         result = write_index_and_log(graph_wiki, out_dir)
 
@@ -430,9 +414,8 @@ class TestTier5Output:
         log_text = result["log"].read_text(encoding="utf-8")
         assert "compile" in log_text.lower() or "source" in log_text.lower()
 
-    def test_frontmatter_defaults_propagate(self, graph_wiki, tmp_path: Path) -> None:
+    def test_frontmatter_defaults_propagate(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """Frontmatter defaults must appear in every generated .md file."""
-
         defaults = {"domain": "speech-research", "language": "en", "generated_by": "knox"}
         writer = MarkdownWriter(flavor="obsidian", frontmatter_defaults=defaults, vault_mode=True)
         writer.write(graph_wiki, tmp_path / "frontmatter")
@@ -455,9 +438,8 @@ class TestTier5Output:
 class TestSearchFTS:
     """SQLite FTS index built from compiled wiki."""
 
-    def test_build_and_search_fts_index(self, graph_wiki, tmp_path: Path) -> None:
+    def test_build_and_search_fts_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """FTS index must be queryable and return relevant results."""
-
         index_path = tmp_path / "search.db"
         build_chunk_index(graph_wiki, index_path)
         assert index_path.exists(), "FTS index file not created"
@@ -478,9 +460,8 @@ class TestSearchFTS:
         assert isinstance(results, list)
         logger.info("FTS search for %r: %d results", query_term, len(results))
 
-    def test_fts_returns_empty_list_for_unknown_term(self, graph_wiki, tmp_path: Path) -> None:
+    def test_fts_returns_empty_list_for_unknown_term(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """FTS search must return empty list for a term not in the corpus."""
-
         index_path = tmp_path / "search_empty.db"
         build_chunk_index(graph_wiki, index_path)
         results = search_fts("xyzzy_nonexistent_term_42", index_path, top_k=5)
@@ -496,9 +477,8 @@ class TestSearchFTS:
 class TestVectorStore:
     """Semantic search via ZvecWikiStore + Ollama granite-embedding."""
 
-    def test_build_and_search_vector_index(self, graph_wiki, tmp_path: Path) -> None:
+    def test_build_and_search_vector_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """Vector index must be buildable and return semantic search results."""
-
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         store = ZvecWikiStore(
             db_path=tmp_path / "vectors",
@@ -516,9 +496,8 @@ class TestVectorStore:
             first = results[0]
             assert "id" in first or "title" in first or "content" in first, f"Unexpected result format: {first}"
 
-    def test_vector_search_returns_ranked_results(self, graph_wiki, tmp_path: Path) -> None:
+    def test_vector_search_returns_ranked_results(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """Multiple queries must each return results (smoke test for ranking)."""
-
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         store = ZvecWikiStore(
             db_path=tmp_path / "vectors2",
@@ -609,7 +588,6 @@ class TestFullPipelineE2E:
 
     def test_tier_state_is_persisted(self, small_corpus: list[Path], tmp_path: Path) -> None:
         """TierStateStore must persist after a parse+chunk pass."""
-
         out_dir = tmp_path / "e2e_state"
         state_path = out_dir / ".knox" / "state.json"
         state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -635,7 +613,6 @@ class TestFullPipelineE2E:
 
     def test_wiki_index_written_alongside_vault(self, small_corpus: list[Path], tmp_path: Path) -> None:
         """After a full run, wiki_index pages must be written."""
-
         out_dir = tmp_path / "e2e_index"
         wiki = self._run_pipeline(
             small_corpus,
@@ -663,9 +640,8 @@ class TestFullPipelineE2E:
         flavor: str | None = "obsidian",
         frontmatter_defaults: dict | None = None,
         wicer_iterations: int = 1,
-    ):
+    ) -> CompiledWiki:
         """Parse → chunk → resolve → compile → write, without WikiPipeline.run()."""
-
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
 
         # Tier 1
@@ -692,14 +668,7 @@ class TestFullPipelineE2E:
                 resolved.append(ResolvedChunk(chunk=chunk))
 
         # Tier 4
-        if compiler == "wicer":
-            comp = WiCERCompiler(
-                base_compiler=GraphCompiler(),
-                llm_client=llm_client,
-                max_iterations=wicer_iterations,
-            )
-        else:
-            comp = GraphCompiler()
+        comp = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=llm_client, max_iterations=wicer_iterations) if compiler == "wicer" else GraphCompiler()
 
         wiki = comp.compile(resolved)
 

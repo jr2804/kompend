@@ -50,7 +50,7 @@ class TestMatchesAny:
 
     def test_no_match_when_outside_base(self, tmp_path: Path) -> None:
         """Path outside base_dir should still match by name."""
-        outside = Path("/tmp/outside.pdf")
+        outside = Path("/tmp/outside.pdf")  # noqa: S108
         assert matches_any(outside, ["*.pdf"]) is True
 
 

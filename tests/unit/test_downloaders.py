@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -90,7 +91,7 @@ class TestHTTPDownloader:
         """batch_download handles mixed success/failure without raising."""
         downloader = HTTPDownloader(timeout=5)
 
-        def _side_effect(request, timeout=None):
+        def _side_effect(request: Any, timeout: int | None = None) -> Any:
             if "fail" in request.full_url:
                 raise OSError("failure")
             return self._mock_urlopen()
@@ -108,7 +109,7 @@ class TestHTTPDownloader:
         assert all("fail" not in str(p) for p in results)
 
     @staticmethod
-    def _mock_urlopen(data: bytes = b"pdf-content"):
+    def _mock_urlopen(data: bytes = b"pdf-content") -> MagicMock:
         """Create a mock context manager for urllib.request.urlopen."""
         response = MagicMock()
         response.read.return_value = data
@@ -133,8 +134,7 @@ class TestWebCrawler:
 
     def test_download_success(self, tmp_path: Path) -> None:
         """Happy path: crawl4ai returns markdown and file is saved."""
-        crawl4ai = pytest.importorskip("crawl4ai")
-        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
+        pytest.importorskip("crawl4ai")
 
         mock_result = MagicMock()
         mock_result.markdown = "# Hello\n\nThis is markdown."
@@ -158,8 +158,7 @@ class TestWebCrawler:
 
     def test_download_no_markdown_returns_none(self, tmp_path: Path) -> None:
         """When crawl4ai returns no markdown, download returns None."""
-        crawl4ai = pytest.importorskip("crawl4ai")
-        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
+        pytest.importorskip("crawl4ai")
 
         mock_result = MagicMock()
         mock_result.markdown = None
@@ -181,8 +180,7 @@ class TestWebCrawler:
 
     def test_batch_download(self, tmp_path: Path) -> None:
         """batch_download processes multiple URLs."""
-        crawl4ai = pytest.importorskip("crawl4ai")
-        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
+        pytest.importorskip("crawl4ai")
 
         mock_result = MagicMock()
         mock_result.markdown = "# content"

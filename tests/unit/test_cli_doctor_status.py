@@ -118,7 +118,7 @@ def test_provenance_no_wiki() -> None:
     assert result.exit_code == 1
 
 
-def test_write_command_minimal(tmp_path: Path, monkeypatch) -> None:
+def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.Monkeypatch) -> None:
     """Knox write creates a file (or errors gracefully)."""
     # Change to tmp dir so output lands there
     monkeypatch.chdir(tmp_path)

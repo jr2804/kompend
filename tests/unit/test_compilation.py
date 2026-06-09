@@ -251,7 +251,7 @@ class TestWiCERCompilerUnavailable:
         assert "Fact two" in wiki.nodes[-1].content
 
     @pytest.fixture(autouse=True)
-    def _no_llm(self):
+    def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
             yield
 
@@ -365,7 +365,7 @@ class TestWiCERCompilerWithMock:
         """A custom BaseCompiler can be injected."""
 
         class DummyCompiler(BaseCompiler):
-            def compile(self, chunks):
+            def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
                 return CompiledWiki(
                     nodes=[WikiNode(id="dummy", title="Dummy", content="X", node_type="section")],
                     edges=[],
@@ -418,6 +418,6 @@ class TestWiCERWithGraphCompiler:
         assert isinstance(compiler._compiler, GraphCompiler)
 
     @pytest.fixture(autouse=True)
-    def _no_llm(self):
+    def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
             yield

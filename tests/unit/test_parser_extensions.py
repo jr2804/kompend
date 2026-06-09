@@ -50,7 +50,7 @@ class TestVLMParser:
     def test_parse_non_existent_image_returns_parsed_document(self) -> None:
         """Parsing a non-existent file returns a ParsedDocument with error info."""
         parser = VLMParser()
-        fake_path = Path("/tmp/nonexistent_image_xyz.png")
+        fake_path = Path("/tmp/nonexistent_image_xyz.png")  # noqa: S108
         doc = parser.parse(fake_path)
 
         assert doc.source_path == fake_path
@@ -147,7 +147,7 @@ class TestParserRouterRegistration:
         parser = VLMParser()
         router.register(parser)
 
-        doc = router.parse(Path("/tmp/vlm_router_test.png"))
+        doc = router.parse(Path("/tmp/vlm_router_test.png"))  # noqa: S108
         assert doc.metadata["parser"] == "vlm"
         assert doc.page_count == 1
 

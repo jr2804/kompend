@@ -33,7 +33,7 @@ class TestCompileWiki:
     def test_returns_error_on_unknown_format(self) -> None:
         with patch.object(Path, "exists", return_value=True):
             result = compile_wiki(
-                sources_dir="/tmp/fake",
+                sources_dir="/tmp/fake",  # noqa: S108
                 output_format="latex",
             )
         assert result["status"] == "error"

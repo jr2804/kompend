@@ -521,7 +521,6 @@ def review_cmd(
     json_output: JsonOutput = False,
 ) -> None:
     """Manage the review queue for compiled pages."""
-
     out = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     queue = ReviewQueue(review_dir=out / ".knox" / "review")
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
@@ -634,7 +633,6 @@ def lint_cmd(
         knox lint --rule broken-wikilinks --rule orphan-page
         knox lint --threshold 80        # exit 1 if score < 80
     """
-
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
 
@@ -730,7 +728,6 @@ def mcp_cmd() -> None:
         knox mcp                        # start stdio server
         knox mcp --help                 # this help
     """
-
     mcp_main()
 
 
@@ -744,7 +741,6 @@ def pack_list_cmd() -> None:
     Examples:
         knox pack-list
     """
-
     registry = get_registry()
     if not registry.names:
         typer.echo("No packs registered.")
@@ -764,7 +760,6 @@ def pack_install_cmd(
         knox pack-install academic
         knox pack-install technical
     """
-
     registry = get_registry()
     pack_map = {
         "academic": academic_pack,
@@ -1008,7 +1003,6 @@ def serve_cmd(
         knox serve
         knox serve --port 8080 --open
     """
-
     typer.echo(f"Starting KNOX web UI at http://{host}:{port}")
     if host != "127.0.0.1":
         typer.echo("Warning: Binding to non-localhost exposes the server to the network.", err=True)
@@ -1020,7 +1014,6 @@ def serve_cmd(
 
 def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
     """Format query result as JSON string."""
-
     output = {
         "answer": synthesis.answer,
         "citations": [
@@ -1038,7 +1031,6 @@ def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN4
 
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     """Build an LLMClient from config if a default model is set."""
-
     cfg = resolve_config(config_path=config)
     default_model: str | None = cfg.get("compile.llm.default_model")
     if not default_model:
@@ -1260,7 +1252,6 @@ def _cli_build_vector_index(
     embed_model: str | None,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
-
     count = build_vector_index(wiki, output_dir_path, embed_model=embed_model)
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
@@ -1282,7 +1273,6 @@ def _print_tier_listing(pipeline: object) -> None:
 
 def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
-
     queue = ReviewQueue(review_dir=output_dir_path / ".knox" / "review")
     for node in wiki.nodes:
         queue.enqueue(node)
@@ -1290,27 +1280,23 @@ def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
 
 def _annotate_provenance(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
-
     annotated = annotate_wiki_with_provenance(wiki, output_dir_path)
     typer.echo(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
 
 def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
-
     mark_wiki_private(wiki, output_dir_path)
 
 
 def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "ollama/llama3.2") -> None:
     """Run grounding verification over wiki claims."""
-
     result = verify_wiki(wiki, output_dir_path, model=model)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
 def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_output: bool = False) -> None:
     """Run lint after compilation and print the report."""
-
     runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
@@ -1336,7 +1322,6 @@ def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
     This lets standalone ``knox lint`` load the wiki without requiring
     a fresh compile. The cache is overwritten on every successful compile.
     """
-
     cache_dir = output_dir_path / ".knox"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / "last_wiki.json"

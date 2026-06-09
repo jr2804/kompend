@@ -24,7 +24,7 @@ def _atomic_chunk(elem_type: ElementType = ElementType.TABLE) -> Chunk:
     return Chunk(id="chunk_atomic", text="", element_types=[elem_type], source_elements=[1])
 
 
-def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:
+def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
     return Chunk(
         id="chunk_img_001",
         text="Figure showing architecture.",
