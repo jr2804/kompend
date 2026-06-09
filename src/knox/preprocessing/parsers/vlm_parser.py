@@ -1,11 +1,16 @@
-"""VLM-based image parser using docling-slim's VLM inline model.
+"""VLM-based image parser for text extraction from image files.
 
-Processes image files (.png, .jpg, .jpeg, .gif, .webp) through a Vision
-Language Model for text extraction.
+Supported formats: .png, .jpg, .jpeg, .gif, .webp
+
+When an :class:`knox.llm.LLMClient` is provided, the parser uses a
+Vision Language Model to generate textual captions from images.
+Without a client the parser falls back to descriptive placeholders
+(basic image dimensions and format).
 """
 
 from __future__ import annotations
 
+import base64
 import logging
 from pathlib import Path
 from typing import Any
@@ -17,20 +22,47 @@ from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = logging.getLogger(__name__)
 
+_MIME_BY_EXT: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
 
 class VLMParser(BaseParser):
-    """Parser for image files using a Vision Language Model.
+    """Parser for image files using a Vision Language Model for captioning.
 
-    Supported formats: .png, .jpg, .jpeg, .gif, .webp
-
-    The parser extracts a text description from each image and returns
-    image metadata (path, size, format).
+    Parameters
+    ----------
+    client :
+        Optional :class:`knox.llm.client.LLMClient`. When provided,
+        the VLM caption will be generated via the client's multimodal
+        completion path.
+    model :
+        Model name (litellm format, e.g. ``"ollama/glm-ocr"``).
+        Required when *client* is provided. Used for the VLM completion.
     """
 
-    supported_extensions = {FileExtension.PNG, FileExtension.JPG, FileExtension.JPEG, FileExtension.GIF, FileExtension.WEBP}
+    supported_extensions = {
+        FileExtension.PNG,
+        FileExtension.JPG,
+        FileExtension.JPEG,
+        FileExtension.GIF,
+        FileExtension.WEBP,
+    }
 
-    def __init__(self) -> None:
-        logger.info("VLMParser initialized with VLMInlineModel")
+    def __init__(
+        self,
+        client: Any = None,
+        model: str | None = None,
+    ) -> None:
+        self._client = client
+        self._model = model
+        if client is not None and model is None:
+            logger.warning("VLMParser given a client but no model; captions will use the client's default")
 
     def parse(self, source_path: Path) -> ParsedDocument:
         """Parse an image file and return document elements."""
@@ -80,6 +112,57 @@ class VLMParser(BaseParser):
             metadata=metadata,
         )
 
+    def _generate_caption(self, source_path: Path) -> str | None:
+        """Generate a text description for the image using the VLM.
+
+        If a :class:`LLMClient` was provided at instantiation, a
+        multimodal completion call is made. Otherwise a
+        descriptive placeholder is returned with basic image stats.
+        """
+        if self._client is None:
+            return self._fallback_caption(source_path)
+
+        path = Path(source_path)
+        if not path.is_file():
+            logger.warning("Image file not found for caption: %s", path)
+            return None
+
+        try:
+            raw_bytes = path.read_bytes()
+            b64 = base64.b64encode(raw_bytes).decode("utf-8")
+        except OSError as exc:
+            logger.warning("Failed to read %s for VLM caption: %s", path, exc)
+            return None
+
+        mime = _MIME_BY_EXT.get(path.suffix.lower(), "image/png")
+
+        try:
+            result = self._client.try_complete(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Describe this image in one sentence."},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        ],
+                    },
+                ],
+                role="vlm",
+                max_tokens=128,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("VLM caption generation failed for %s: %s", path, exc)
+            return None
+
+        if result is None:
+            return None
+
+        caption = getattr(result, "content", None)
+        if not caption:
+            return None
+
+        return caption.strip()
+
     @staticmethod
     def _extract_metadata(source_path: Path) -> tuple[list[str], int, int, str]:
         """Extract basic image metadata."""
@@ -108,21 +191,12 @@ class VLMParser(BaseParser):
             )
 
     @staticmethod
-    def _generate_caption(source_path: Path) -> str | None:
-        """Generate a text description for the image using the VLM.
-
-        TODO: Wire into ``VLMInlineModel`` once docling-slim exposes a
-        ready-to-use inline VLM.  For now returns a placeholder caption
-        that describes basic image stats.
-        """
+    def _fallback_caption(source_path: Path) -> str | None:
+        """Return a placeholder with image stats when no VLM is available."""
         try:
             img = PILImage.open(source_path)
             img.load()
-            # Placeholder: return basic image stats as a pseudo-caption.
-            # Replace with an actual VLMInlineModel call:
-            #   model = VLMInlineModel(...)
-            #   caption = model.describe(img)
-            return f"[VLM description pending — image: {img.size[0]}x{img.size[1]}, {img.mode}]"
-        except Exception as exc:
-            logger.warning("VLM caption generation failed for %s: %s", source_path, exc)
+            return f"[VLM caption unavailable — image: {img.size[0]}x{img.size[1]}, {img.mode}]"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Fallback caption failed for %s: %s", source_path, exc)
             return None

@@ -65,14 +65,14 @@ class LintRunner:
         rules: list[str] | None = None,
         enable_llm: bool = False,
         llm_client: Any | None = None,
-        context_budget: int | None = None,
+        lint_page_budget: int | None = None,
         fix: bool = False,
         sources_dir: str | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
         self.llm_client = llm_client
-        self.context_budget = context_budget or 100000
+        self.lint_page_budget = lint_page_budget or 100000
         self.fix = fix
         self.sources_dir = sources_dir
 
@@ -110,7 +110,7 @@ class LintRunner:
         """Build the list of rule instances to run."""
         rules: list[Any] = []
 
-        llm_kwargs = {"llm_client": self.llm_client, "context_budget": self.context_budget}
+        llm_kwargs = {"llm_client": self.llm_client, "lint_page_budget": self.lint_page_budget}
 
         if self.requested_rules:
             for name in self.requested_rules:
