@@ -24,22 +24,24 @@ If rules conflict, lower-numbered priority wins:
 
 - NEVER fabricate paths, commits, APIs, config keys, env vars, test results, or capabilities. State gaps explicitly.
 - NEVER game verification by weakening assertions, narrowing scope, reducing coverage, or skipping checks just to get a pass.
-- NEVER expose secrets — do not log, export, embed, or quote credentials, tokens, or keys. If encountered, note the location and stop.
+- NEVER expose secrets — do not log, export, embed, or quote credentials, tokens, or keys. If encountered mid-task: (1) do not include any part of the secret in your response; (2) immediately stop all work; (3) report the file path and line range (not the secret value) to the user; (4) discard any uncommitted changes that would expose the secret. Do not commit or push before reporting.
 - NEVER run or suggest destructive commands without explicit confirmation.
 - Be direct. Avoid flattery, filler, and agreeing with incorrect premises.
 
 ## Uncertainty
 
 - Ask before acting when intent is materially ambiguous.
-- Ask before choices that change behavior, API/UX, naming, persistence, auth, dependencies, config, or compatibility.
+- Ask before choices that change behavior, API/UX, naming, auth, dependencies, or compatibility.
 - Prefer one targeted question. When bundling, ensure each question can be answered independently.
 - Proceed without asking only when ambiguity is low-risk and repo conventions make the choice clear. State the assumption briefly.
+- **Exception — Session Completion overrides the ask-before-persistence rule for end-of-session pushes.** The mandatory push workflow (see Session Completion) is autonomous and does not require confirmation. All other Uncertainty rules still apply.
 
 ## Evidence
 
 Gather evidence proportional to risk.
 
 - Trivial low-risk edit: inspect the target file and adjacent context.
+- Medium-risk change (logic, algorithm, or multi-file refactor with no API or dependency impact): trace the direct execution path and check existing tests for the affected area before editing.
 - Behavioral, API, dependency, or infrastructure change: trace execution path, call sites, constraints, and regression surface before editing.
 - Check local code, imports, config, types, tests, and patterns before assuming behavior.
 - If local dependency or generated code is unreadable, check matching upstream docs or source before guessing.
@@ -61,9 +63,9 @@ Proceed once the execution path, constraints, and regression surface are clear e
 5. Implement the smallest correct change.
 6. Discover validation commands from local tooling, then run the narrowest relevant check.
 
-Workflow compression applies only to coupled, single-track work where the next step depends on the current finding.
+Workflow compression means skipping steps 1–2 (explore and scan skills) and proceeding directly to step 5 (implement). This applies only to coupled, single-track work where the next step depends on the current finding.
 
-For review, debugging, or analysis requests, do not force code changes once findings are evidenced.
+For review, debugging, or analysis requests, do not make code changes unless the user explicitly asks for a fix after seeing your findings. Report findings first; wait for instruction before editing.
 
 ## Subagents
 
@@ -73,9 +75,12 @@ The main agent is a builder, not a dispatcher. Work first, delegate second. Use 
 
 A subagent call blocks the main agent, so main agent + 1 subagent is sequential work, not parallelism. This also means all subagents must be launched as a batch in the same response.
 
+Before launching subagents, confirm: (a) main-agent scoping is complete, (b) work splits into 2+ fully independent tracks, (c) each track has a concrete return format. If all three are true, launch all tracks in one response. Otherwise, stay in the main agent.
+
 - Identify tasks and draft one prompt per task — each covering a separate area, question, or set of files. Keep scoping in the main agent until you have 2+ prompts ready.
 - Each track must complete without the results of the others. If a track depends on another's findings, handle it in the main agent.
 - Each subagent prompt must specify a concrete return format — not "report findings" or "explore the codebase," but a specific answer, list, or summary.
+- Subagents are bound by the same Boundaries, Evidence, and Safety rules as the main agent. The concrete return format is in addition to, not instead of, these constraints.
 - Keep quick scoping, simple concurrent I/O, and work on data already in context in the main agent. Use parallel tool calls when helpful.
 - Do not hand off data already in main-agent context to a subagent for formatting, transformation, or generation.
 - After the batch returns, synthesize results and use the main agent only for narrow gap-filling before implementation.
@@ -105,7 +110,7 @@ A subagent call blocks the main agent, so main agent + 1 subagent is sequential 
 
 ## Git & PRs
 
-- Commit only when explicitly requested.
+- Commit only when explicitly requested, except during Session Completion (see below).
 - Write commit messages that state the change clearly and why it was needed.
 - Keep PRs small and scoped to one concern.
 - Do not force-push to main/master.
@@ -126,7 +131,7 @@ For review, debugging, or analysis outputs, use: findings with references, concl
 ## Conventions
 
 - English-only for all code, docs, and commits
-- Use `uv run` / `uv run -m` for all Python execution
+- Use `uv run` / `uv run -m` for all Python execution; never call `python`, `python3`, `python -m`, `python3 -m`, or `pip` directly!
 - Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`)
 - All parsers implement `BaseParser`; all chunkers implement `BaseChunker`
 - Online sources (URLs) go through `downloaders/` before `parsers/`
@@ -147,55 +152,8 @@ All such text must be stored in:
 - **Jinja2 templates** (`.md.j2`) for prompt text with variables
 - Packaged as external files loaded at runtime, not string constants in Python
 
-See `src/knox/AGENTS.md` for the detailed convention and `src/knox/core/config/AGENTS.md` for configuration-specific rules.
+See `src/knox/AGENTS.md` for the detailed convention and `src/knox/core/config/AGENTS.md` for configuration-specific rules. If these files are not in context, read them before writing any text-bearing Python files. Do not proceed based on inference.
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
-## Beads Issue Tracker
+## Issue Tracking
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See <https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md> for details and anti-patterns.
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-
-   ```bash
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
+This project uses **bd (beads)** for all task tracking. Load the `beads` skill for workflow details, commands, and session close protocol. Do NOT use TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
