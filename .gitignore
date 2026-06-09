@@ -48,3 +48,7 @@ site/
 
 # KNOX project config (copy from knox.toml.example)
 knox.toml
+node_modules/
+example-wiki/
+package*.json
+.vitepress
