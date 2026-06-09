@@ -5,7 +5,7 @@ exercise every pipeline feature end-to-end:
 
   1. Tier 1 — Preprocessing:  DoclingParser on all corpus PDFs
   2. Tier 2 — Chunking:       HybridChunker (512 tokens)
-  3. Tier 3 — Resolution:     LLMResolver (lfm2.5) + VLMEnricher (glm-ocr)
+  3. Tier 3 — Resolution:     VLMEnricher (glm-ocr)
   4. Tier 4 — Compilation:    TwoPhaseCompiler / GraphCompiler (graph backend)
                                WiCERCompiler (wicer backend)
   5. Tier 5 — Output:         MarkdownWriter (vault, obsidian flavor)
@@ -48,10 +48,10 @@ from knox.output.base import BaseOutputWriter
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
-from knox.output.wiki_index import write_index_and_log
+from knox.output.wiki_index import write_index_and_log, write_overview
+from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
-from knox.resolution.llm import LLMResolver
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.search.index import build_chunk_index, search_fts
 
@@ -153,22 +153,11 @@ def raw_chunks(parsed_docs: list[ParsedDocument]) -> list[ResolvedChunk]:
 
 
 @pytest.fixture(scope="module")
-def resolved_chunks(raw_chunks: list[ResolvedChunk], llm_client: LLMClient) -> list[ResolvedChunk]:
-    """Resolve chunks via LLMResolver (real LLM calls)."""
-    if not raw_chunks or not _OLLAMA_OK:
+def resolved_chunks(raw_chunks: list[ResolvedChunk]) -> list[ResolvedChunk]:
+    """Wrap raw chunks into ResolvedChunks (passthrough — no per-chunk LLMResolver)."""
+    if not raw_chunks:
         return []
-
-    resolver = LLMResolver(client=llm_client)
-    resolved = []
-    for chunk in raw_chunks:
-        try:
-            rc = resolver.resolve(chunk)
-            resolved.append(rc)
-        except Exception:
-            logger.exception("Resolution failed for chunk %s", chunk.id)
-
-            resolved.append(ResolvedChunk(chunk=chunk))
-    return resolved
+    return [ResolvedChunk(chunk=c) for c in raw_chunks]
 
 
 @pytest.fixture(scope="module")
@@ -647,7 +636,6 @@ class TestFullPipelineE2E:
         # Tier 1
         parser = DoclingParser(extract_images=False)
         chunker = HybridChunker(max_tokens=512)
-        resolver = LLMResolver(client=llm_client)
 
         all_chunks = []
         for pdf in small_corpus:
@@ -659,13 +647,8 @@ class TestFullPipelineE2E:
 
         assert all_chunks, "E2E: no chunks produced"
 
-        # Tier 3
-        resolved = []
-        for chunk in all_chunks:
-            try:
-                resolved.append(resolver.resolve(chunk))
-            except Exception:
-                resolved.append(ResolvedChunk(chunk=chunk))
+        # Tier 3: wrap raw chunks (no LLMResolver — TwoPhaseCompiler handles extraction)
+        resolved = [ResolvedChunk(chunk=c) for c in all_chunks]
 
         # Tier 4
         comp = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=llm_client, max_iterations=wicer_iterations) if compiler == "wicer" else GraphCompiler()
@@ -682,3 +665,215 @@ class TestFullPipelineE2E:
         writer.write(wiki, out_dir)
 
         return wiki
+
+
+# ── URL Download ──────────────────────────────────────────────────────────────
+
+
+@_skip_no_parser
+class TestURLDownload:
+    """Download URLs from tests/data/urls.txt."""
+
+    def test_url_file_exists_and_has_urls(self, test_urls: list[str]) -> None:
+        """urls.txt must exist and contain at least one URL."""
+        assert len(test_urls) > 0, "tests/data/urls.txt is empty or missing"
+
+    def test_download_first_url(self, test_urls: list[str], tmp_path: Path) -> None:
+        """Download the first URL and verify it produces a parseable file."""
+        assert len(test_urls) > 0
+        downloader = HTTPDownloader(timeout=30)
+        path = downloader.download(test_urls[0], tmp_path)
+
+        if path is None:
+            pytest.skip(f"Could not download {test_urls[0]} (network or access issue)")
+
+        assert path.exists()
+        assert path.stat().st_size > 0
+
+        # Try to parse the downloaded file
+        doc = DoclingParser(extract_images=False).parse(path)
+        assert isinstance(doc, ParsedDocument)
+        assert len(doc.elements) > 0
+
+
+# ── Example Wiki Generation ───────────────────────────────────────────────────
+
+
+@_skip_no_ollama
+@_skip_no_parser
+@_skip_no_pdfs
+class TestGenerateExampleWiki:
+    """Generate the full example wiki from the complete corpus.
+
+    Output is written to ``tests/test-cache/example-wiki/`` so it persists
+    across test runs and can be inspected manually.
+    """
+
+    def test_generate_example_wiki(
+        self,
+        source_pdfs_module: list[Path],
+        test_urls: list[str],
+        request: pytest.FixtureRequest,
+    ) -> None:
+        """Parse → chunk → compile → write the full example wiki.
+
+        Uses TwoPhaseCompiler directly (skips per-chunk LLMResolver for speed)
+        and writes all output formats plus search indexes.
+        """
+        import shutil  # noqa: PLC0415
+
+        # Output directory inside pytest cache (persistent but .gitignored)
+        out_dir = Path(__file__).parent.parent / "test-cache" / "example-wiki"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Clean stale outputs but keep the directory itself
+        for sub in ("vault", "json", "gfm", "typst", ".knox"):
+            p = out_dir / sub
+            if p.exists():
+                shutil.rmtree(p)
+
+        # ── Tier 0: download URLs ─────────────────────────────────────
+        downloaded: list[Path] = []
+        download_dir = out_dir / ".downloaded"
+        download_dir.mkdir(parents=True, exist_ok=True)
+        for url in test_urls:
+            try:
+                path = HTTPDownloader(timeout=30).download(url, download_dir)
+                if path and path.exists() and path.stat().st_size > 0:
+                    downloaded.append(path)
+                    logger.info("Downloaded %s -> %s", url, path.name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Download failed for %s: %s", url, exc)
+
+        all_sources = list(source_pdfs_module) + downloaded
+        assert all_sources, "No sources to process"
+
+        # ── Tier 1: parse ─────────────────────────────────────────────
+        parser = DoclingParser(image_mode="file")
+        parsed_docs: list[ParsedDocument] = []
+        for src in all_sources:
+            try:
+                doc = parser.parse(src)
+                parsed_docs.append(doc)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Parse failed for %s: %s", src.name, exc)
+        assert parsed_docs, "No documents parsed"
+        logger.info("Parsed %d documents", len(parsed_docs))
+
+        # ── Tier 2: chunk ─────────────────────────────────────────────
+        chunker = HybridChunker(max_tokens=512)
+        all_chunks = []
+        for doc in parsed_docs:
+            all_chunks.extend(chunker.chunk(doc))
+        assert all_chunks, "No chunks produced"
+        logger.info("Total chunks: %d", len(all_chunks))
+
+        # ── Tier 3: SKIP LLMResolver (too slow for full corpus) ──────
+        resolved = [ResolvedChunk(chunk=c) for c in all_chunks]
+        logger.info("Resolution: wrapped %d raw chunks (LLMResolver skipped for speed)", len(resolved))
+
+        # ── Tier 4: compile with TwoPhaseCompiler ────────────────────
+        compiler = TwoPhaseCompiler(
+            base=GraphCompiler(),
+            prompt_budget=150_000,
+            model=LLM_MODEL,
+        )
+        wiki = compiler.compile(resolved)
+
+        if len(wiki.nodes) == 0:
+            logger.warning("TwoPhaseCompiler returned 0 nodes — falling back to GraphCompiler")
+            wiki = GraphCompiler().compile(resolved)
+
+        wiki.metadata.update(
+            {
+                "source_count": len(parsed_docs),
+                "source_names": [p.stem for p in all_sources],
+                "title": "Speech Intelligibility & Listening Effort — Knowledge Base",
+                "description": (f"A structured knowledge base compiled from {len(parsed_docs)} scientific publications."),
+            }
+        )
+        logger.info(
+            "Compiled: %d nodes, %d edges, quality=%.2f",
+            len(wiki.nodes),
+            len(wiki.edges),
+            wiki.quality_score,
+        )
+
+        # ── Tier 5: output ────────────────────────────────────────────
+        md_vault = out_dir / "vault"
+        MarkdownWriter(
+            flavor="obsidian",
+            frontmatter_defaults={
+                "domain": "speech-research",
+                "language": "en",
+                "generated_by": "knox",
+                "llm": "lfm2.5",
+            },
+            vault_mode=True,
+        ).write(wiki, md_vault)
+        md_files = list(md_vault.rglob("*.md"))
+        logger.info("Markdown vault: %d .md files", len(md_files))
+
+        # index + log
+        pages = write_index_and_log(wiki, md_vault)
+        assert pages["index"].exists()
+        assert pages["log"].exists()
+
+        # overview (LLM synthesis)
+        overview_path = write_overview(wiki, md_vault, model=LLM_MODEL)
+        if overview_path:
+            logger.info("overview.md generated")
+        else:
+            _write_fallback_overview(wiki, md_vault)
+            logger.warning("overview.md fallback written")
+
+        # JSON
+        JsonWriter().write(wiki, out_dir / "json")
+        assert (out_dir / "json" / "wiki.json").exists()
+
+        # GFM single-file
+        MarkdownWriter(flavor="gfm", vault_mode=False).write(wiki, out_dir / "gfm")
+        assert (out_dir / "gfm" / "wiki.md").exists()
+
+        # Typst
+        TypstWriter().write(wiki, out_dir / "typst")
+
+        # FTS
+        build_chunk_index(wiki, out_dir / ".knox" / "search.db")
+        logger.info("FTS index built")
+
+        # Vector index (best-effort — zvec may reject hyphenated IDs)
+        try:
+            embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
+            ZvecWikiStore(
+                db_path=out_dir / ".knox" / "vectors",
+                embedding_provider=embed_provider,
+                embedding_dim=EMBED_DIM,
+            ).build_index(wiki)
+            logger.info("Vector index built")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Vector index skipped: %s", exc)
+
+        # Final assertions
+        assert len(md_files) > 0, "No .md files produced"
+        assert len(wiki.nodes) > 0, "No wiki nodes produced"
+        logger.info("=" * 60)
+        logger.info("Example wiki complete: %s", out_dir.resolve())
+
+
+def _write_fallback_overview(wiki: CompiledWiki, output_dir: Path) -> None:
+    """Write a minimal overview.md from metadata when LLM synthesis fails."""
+    title = wiki.metadata.get("title", "Compiled Knowledge Base")
+    description = wiki.metadata.get("description", "")
+    sources = wiki.metadata.get("source_names", [])
+    lines = [
+        f"# {title}\n",
+        description + "\n" if description else "",
+        "## Sources\n",
+        *[f"- {s}" for s in sources],
+        "",
+        f"## Statistics\n\n- **Documents:** {wiki.metadata.get('source_count', '?')}",
+        f"- **Wiki pages:** {len(wiki.nodes)}",
+        f"- **Cross-references:** {len(wiki.edges)}",
+    ]
+    (output_dir / "overview.md").write_text("\n".join(lines), encoding="utf-8")
