@@ -82,7 +82,6 @@ from knox.cli.args import (
     SourcesDir,
     SynthesizeFlag,
     TargetFormat,
-    TwoPhase,
     Verbose,
     Verify,
     Workers,
@@ -173,7 +172,6 @@ def compile_cmd(
     workers: Workers = 1,
     force: ForceTier = False,
     list_tiers: ListTiers = False,
-    two_phase: TwoPhase = True,
     prompt_budget: PromptBudget = DEFAULT_PROMPT_BUDGET,
     review: ReviewMode = False,
     bypass_review: BypassReview = False,
@@ -252,7 +250,6 @@ def compile_cmd(
         no_cache=no_cache,
         workers=workers,
         force=force,
-        two_phase=two_phase,
         prompt_budget=prompt_budget,
         review=review,
         provenance=provenance,
@@ -294,7 +291,15 @@ def compile_cmd(
         llm_fallback_max_retries=llm_fallback_max_retries,
     )
 
-    pipeline = build_pipeline(pipeline_config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
+    pipeline = build_pipeline(
+        pipeline_config,
+        prompt_budget=cfg.get("compile.prompt_budget", prompt_budget),
+        extract_budget=cfg.get("compile.budget.extract", 6000),
+        gen_source_segment=cfg.get("compile.budget.generate_source_segment", 20000),
+        concepts_per_batch=cfg.get("compile.budget.concepts_per_batch", 8),
+        wicer_probe_budget=cfg.get("compile.budget.wicer_probe", 3000),
+        wicer_eval_budget=cfg.get("compile.budget.wicer_eval", 4000),
+    )
 
     if list_tiers:
         _print_tier_listing(pipeline)
@@ -656,7 +661,7 @@ def lint_cmd(
         rules=list(rule) if rule else None,
         enable_llm=llm,
         llm_client=llm_client,
-        context_budget=llm_context_budget,
+        lint_page_budget=llm_context_budget,
         fix=fix,
         sources_dir=sources_dir_str,
     )
@@ -1172,7 +1177,6 @@ def _build_cli_overrides(
     no_cache: bool | None = None,
     workers: int | None = None,
     force: bool | None = None,
-    two_phase: bool | None = None,
     prompt_budget: int | None = None,
     review: bool | None = None,
     provenance: bool | None = None,
@@ -1203,7 +1207,6 @@ def _build_cli_overrides(
         ("compile.image_mode", image_mode),
         ("compile.mode", mode),
         ("compile.workers", workers),
-        ("compile.two_phase", two_phase),
         ("compile.prompt_budget", prompt_budget),
         ("compile.output.flavor", flavor),
         ("compile.llm.default_model", llm_default_model),

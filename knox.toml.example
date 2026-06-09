@@ -24,11 +24,38 @@ mode = "full"
 # Parallel parse workers (1 = sequential)
 workers = 1
 
-# Two-phase compile (extract all, then generate)
-two_phase = true
-
 # Max source chars per concept (prompt budget)
 prompt_budget = 200000
+
+# ── Budget settings (expert knobs — config file only, no env/CLI) ──────
+
+[compile.budget]
+# Max source chars per extraction LLM call (longer = split + merge)
+extract = 6000
+
+# Max source chars per generation segment (longer = iterated)
+generate_source_segment = 20000
+
+# Max concepts per generation batch (keeps prompts manageable for small LLMs)
+concepts_per_batch = 8
+
+# Max chars per probe-generation LLM call
+wicer_probe = 3000
+
+# Max chars per evaluation segment
+wicer_eval = 4000
+
+# Max chars per overview-synthesis LLM call
+overview = 4000
+
+# Max chars per verification LLM call
+verify = 3000
+
+# Minimum n-gram length for fallback substring verification
+min_ngram = 3
+
+# Max chars per LLM lint call
+lint_page = 100000
 
 # ── LLM settings ────────────────────────────────────────────────────────
 

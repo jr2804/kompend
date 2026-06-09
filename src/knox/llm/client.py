@@ -196,8 +196,8 @@ class LLMClient:
         """Like :meth:`complete` but returns ``None`` instead of raising.
 
         Use this in pipeline tiers where the existing behaviour was a
-        passthrough on failure (e.g. :class:`LLMResolver`). The error
-        is logged with full diagnostics so failures are still visible.
+        passthrough on failure. The error is logged with full diagnostics
+        so failures are still visible.
         """
         try:
             return self.complete(

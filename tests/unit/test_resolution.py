@@ -1,8 +1,8 @@
 """Tests for KNOX Tier 3 resolvers and enrichers.
 
-LLMResolver and VLMEnricher now route through the shared
-:class:`knox.llm.LLMClient`. These tests inject a client whose
-``try_complete`` is patched so the tests stay fast and deterministic.
+VLMEnricher routes through the shared :class:`knox.llm.LLMClient`.
+These tests inject a client whose ``try_complete`` is patched so the
+tests stay fast and deterministic.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.failover import CallDiagnostics
-from knox.resolution import LLMResolver, VLMEnricher
+from knox.resolution import VLMEnricher
 
 
 def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> Chunk:
@@ -47,70 +47,6 @@ def _llm_result(data: dict, model: str = "ollama/test") -> LLMResult:
         json_data=data,
         diagnostics=CallDiagnostics(model_used=model, attempts=1, total_latency_s=0.01),
     )
-
-
-class TestLLMResolver:
-    def test_atomic_table_skipped(self) -> None:
-        """Atomic chunks bypass the LLM entirely."""
-        client = _make_client()
-        resolver = LLMResolver(client=client)
-        result = resolver.resolve(_atomic_chunk(ElementType.TABLE))
-        assert result.entities == []
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
-
-    def test_atomic_image_skipped(self) -> None:
-        client = _make_client()
-        resolver = LLMResolver(client=client)
-        result = resolver.resolve(_atomic_chunk(ElementType.IMAGE))
-        assert result.entities == []
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
-
-    def test_atomic_formula_skipped(self) -> None:
-        client = _make_client()
-        resolver = LLMResolver(client=client)
-        result = resolver.resolve(_atomic_chunk(ElementType.FORMULA))
-        assert result.entities == []
-
-    def test_atomic_code_skipped(self) -> None:
-        client = _make_client()
-        resolver = LLMResolver(client=client)
-        result = resolver.resolve(_atomic_chunk(ElementType.CODE))
-        assert result.entities == []
-
-    def test_llm_failure_falls_back_to_passthrough(self) -> None:
-        """When the client returns None, the resolver passes the chunk through."""
-        client = _make_client(try_complete_return=None)
-        resolver = LLMResolver(client=client)
-        chunk = _text_chunk()
-        result = resolver.resolve(chunk)
-        assert isinstance(result, ResolvedChunk)
-        assert result.chunk is chunk
-        assert result.entities == []
-        client.try_complete.assert_called_once()  # type: ignore[attr-defined]
-
-    def test_extracts_entities_from_llm_response(self) -> None:
-        """Successful client call populates entities/relations/refs."""
-        data = {
-            "entities": [{"name": "Apple Inc.", "type": "ORG", "context": "company"}],
-            "relations": [{"source": "Apple", "target": "Steve Jobs", "type": "founded_by"}],
-            "resolved_references": ["Apple Inc."],
-        }
-        client = _make_client(try_complete_return=_llm_result(data))
-        resolver = LLMResolver(client=client)
-        result = resolver.resolve(_text_chunk())
-        assert len(result.entities) == 1
-        assert result.entities[0]["name"] == "Apple Inc."
-        assert result.relations[0]["type"] == "founded_by"
-        assert result.metadata["resolved_by"] == "ollama/test"
-        assert result.metadata["llm_attempts"] == 1
-
-    def test_role_can_be_overridden(self) -> None:
-        """Custom role is forwarded to the client."""
-        client = _make_client(try_complete_return=None)
-        resolver = LLMResolver(client=client, role="custom.resolve")
-        resolver.resolve(_text_chunk())
-        call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
-        assert call_kwargs["role"] == "custom.resolve"
 
 
 class TestVLMEnricher:

@@ -217,17 +217,7 @@ ListTiers = Annotated[
     ),
 ]
 
-# ── N3 two-phase compile ────────────────────────────────────────────────
-
-TwoPhase = Annotated[
-    bool,
-    typer.Option(
-        "--two-phase/--single-pass",
-        help="Use two-phase compile (extract all, then generate). Default: two-phase.",
-    ),
-]
-
-# ── N10 per-concept budget ──────────────────────────────────────────────
+# ── Q22 capture/learn/ingest commands ────────────────────────────────────
 
 PromptBudget = Annotated[
     int,
