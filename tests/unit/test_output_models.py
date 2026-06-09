@@ -163,6 +163,7 @@ class TestMissingRumdlFallback:
 
     def test_fallback_on_subprocess_error(self, monkeypatch) -> None:
         """When rumdl crashes, render should return raw markdown."""
+
         def _fake_run(*args, **kwargs) -> Never:
             raise subprocess.TimeoutExpired(cmd=["rumdl"], timeout=30, output="")
 

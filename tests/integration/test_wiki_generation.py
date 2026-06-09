@@ -73,34 +73,39 @@ pytestmark = pytest.mark.integration
 
 # ── Skip guards ───────────────────────────────────────────────────────────────
 
+
 def _ollama_reachable() -> bool:
     try:
-
         urllib.request.urlopen(f"{OLLAMA_BASE}/api/tags", timeout=3)  # noqa: S310
         return True
     except Exception:
         return False
 
+
 def _parser_available() -> bool:
     try:
-
         DoclingParser(extract_images=False)
         return True
     except Exception:
         return False
+
 
 _OLLAMA_OK = _ollama_reachable()
 _PARSER_OK = _parser_available()
 
 _skip_no_ollama = pytest.mark.skipif(not _OLLAMA_OK, reason="Ollama not reachable at localhost:11434")
 _skip_no_parser = pytest.mark.skipif(not _PARSER_OK, reason="DoclingParser not available")
+
+
 def _has_pdfs() -> bool:
     sources = Path(__file__).parent.parent / "data" / "sources"
     return sources.exists() and bool(list(sources.glob("*.pdf")))
 
+
 _skip_no_pdfs = pytest.mark.skipif(not _has_pdfs(), reason="No PDFs in tests/data/sources/")
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="module")
 def source_pdfs_module() -> list[Path]:
@@ -109,16 +114,19 @@ def source_pdfs_module() -> list[Path]:
         return []
     return sorted(sources_dir.glob("*.pdf"))
 
+
 @pytest.fixture(scope="module")
 def small_corpus(source_pdfs_module: list[Path]) -> list[Path]:
     """Return at most 3 PDFs to keep LLM-dependent tests fast."""
     return source_pdfs_module[:3]
+
 
 @pytest.fixture(scope="module")
 def llm_client():
     """LLM client wired to Ollama lfm2.5."""
 
     return LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+
 
 @pytest.fixture(scope="module")
 def parsed_docs(small_corpus: list[Path]):
@@ -137,6 +145,7 @@ def parsed_docs(small_corpus: list[Path]):
             logger.exception("Failed to parse %s", pdf.name)
     return docs
 
+
 @pytest.fixture(scope="module")
 def raw_chunks(parsed_docs):
     """Chunk parsed documents once."""
@@ -147,6 +156,7 @@ def raw_chunks(parsed_docs):
         chunks = chunker.chunk(doc)
         all_chunks.extend(chunks)
     return all_chunks
+
 
 @pytest.fixture(scope="module")
 def resolved_chunks(raw_chunks, llm_client):
@@ -162,9 +172,10 @@ def resolved_chunks(raw_chunks, llm_client):
             resolved.append(rc)
         except Exception:
             logger.exception("Resolution failed for chunk %s", chunk.id)
-        
+
             resolved.append(ResolvedChunk(chunk=chunk))
     return resolved
+
 
 @pytest.fixture(scope="module")
 def graph_wiki(resolved_chunks):
@@ -179,7 +190,9 @@ def graph_wiki(resolved_chunks):
         logger.exception("TwoPhaseCompiler failed — falling back to GraphCompiler")
         return GraphCompiler().compile(resolved_chunks)
 
+
 # ── Tier 1: Preprocessing ─────────────────────────────────────────────────────
+
 
 @_skip_no_parser
 @_skip_no_pdfs
@@ -211,7 +224,9 @@ class TestTier1Preprocessing:
             total_chars = sum(len(e.content) for e in doc.elements if isinstance(e.content, str))
             assert total_chars > 100, f"{doc.source_path.name}: only {total_chars} chars"
 
+
 # ── Tier 2: Chunking ──────────────────────────────────────────────────────────
+
 
 @_skip_no_parser
 @_skip_no_pdfs
@@ -239,7 +254,9 @@ class TestTier2Chunking:
         has_context = any(c.heading_context for c in raw_chunks)
         assert has_context, "No chunk has heading_context — structure not preserved"
 
+
 # ── Tier 3: Resolution ────────────────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -270,7 +287,7 @@ class TestTier3Resolution:
 
     def test_vlm_enricher_integration(self, raw_chunks) -> None:
         """VLMEnricher must accept IMAGE chunks without raising."""
-    
+
         image_chunks = [c for c in raw_chunks if ElementType.IMAGE in c.element_types]
         if not image_chunks:
             pytest.skip("No IMAGE chunks in parsed corpus — VLM path not exercised")
@@ -281,13 +298,15 @@ class TestTier3Resolution:
             max_retries_per_model=0,
         )
         enricher = VLMEnricher(client=vlm_client)
-    
+
         # Enrich first image chunk — must not raise
         rc = ResolvedChunk(chunk=image_chunks[0])
         result = enricher.enrich(rc)
         assert result is not None
 
+
 # ── Tier 4: Compilation ───────────────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -316,7 +335,7 @@ class TestTier4Compilation:
 
     def test_wicer_compiler(self, resolved_chunks) -> None:
         """WiCERCompiler must produce a valid wiki."""
-        
+
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
         compiler = WiCERCompiler(
             base_compiler=GraphCompiler(),
@@ -332,7 +351,9 @@ class TestTier4Compilation:
             wiki.quality_score,
         )
 
+
 # ── Tier 5: Output ────────────────────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -424,7 +445,9 @@ class TestTier5Output:
         # Frontmatter block must contain the domain key
         assert "domain" in sample, f"Frontmatter key 'domain' missing from {md_files[0].name}"
 
+
 # ── Search: FTS index ─────────────────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -463,7 +486,9 @@ class TestSearchFTS:
         results = search_fts("xyzzy_nonexistent_term_42", index_path, top_k=5)
         assert results == [] or isinstance(results, list)
 
+
 # ── Search: Vector store ──────────────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -511,7 +536,9 @@ class TestVectorStore:
             results = store.search(query, top_k=3)
             assert isinstance(results, list), f"search({query!r}) did not return a list"
 
+
 # ── Full pipeline via WikiPipeline ────────────────────────────────────────────
+
 
 @_skip_no_ollama
 @_skip_no_parser
@@ -524,6 +551,106 @@ class TestFullPipelineE2E:
     Each test builds components from ``build_pipeline`` but calls tiers
     individually so the pipeline contract is still exercised.
     """
+
+    # ── tests ─────────────────────────────────────────────────────────────
+
+    def test_full_pipeline_graph_backend(self, small_corpus: list[Path], tmp_path: Path) -> None:
+        """Full pipeline with graph compiler → markdown vault."""
+        out_dir = tmp_path / "e2e_graph"
+        wiki = self._run_pipeline(
+            small_corpus,
+            out_dir,
+            compile_target="markdown",
+            compiler="graph",
+            flavor="obsidian",
+            frontmatter_defaults={"domain": "speech-research", "language": "en"},
+        )
+
+        assert len(wiki.nodes) > 0, "E2E pipeline produced no nodes"
+        md_files = list(out_dir.rglob("*.md"))
+        assert len(md_files) > 0, f"No .md files found under {out_dir}"
+        logger.info(
+            "E2E (graph) complete: %d nodes, %d edges, %d .md files",
+            len(wiki.nodes),
+            len(wiki.edges),
+            len(md_files),
+        )
+
+    def test_full_pipeline_wicer_backend(self, small_corpus: list[Path], tmp_path: Path) -> None:
+        """Full pipeline with WiCER compiler → markdown."""
+        out_dir = tmp_path / "e2e_wicer"
+        wiki = self._run_pipeline(
+            small_corpus,
+            out_dir,
+            compile_target="markdown",
+            compiler="wicer",
+            flavor="gfm",
+            wicer_iterations=1,
+        )
+
+        assert len(wiki.nodes) > 0, "WiCER E2E pipeline produced no nodes"
+        logger.info("E2E (wicer) complete: %d nodes, quality=%.2f", len(wiki.nodes), wiki.quality_score)
+
+    def test_json_output_format_e2e(self, small_corpus: list[Path], tmp_path: Path) -> None:
+        """Full pipeline with JSON output."""
+        out_dir = tmp_path / "e2e_json"
+        self._run_pipeline(
+            small_corpus[:1],
+            out_dir,
+            compile_target="json",
+            compiler="graph",
+            flavor=None,
+        )
+
+        wiki_json = out_dir / "wiki.json"
+        assert wiki_json.exists(), "wiki.json not found after JSON-format E2E run"
+        data = json.loads(wiki_json.read_text(encoding="utf-8"))
+        assert len(data.get("nodes", [])) > 0
+
+    def test_tier_state_is_persisted(self, small_corpus: list[Path], tmp_path: Path) -> None:
+        """TierStateStore must persist after a parse+chunk pass."""
+
+        out_dir = tmp_path / "e2e_state"
+        state_path = out_dir / ".knox" / "state.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+
+        store = TierStateStore(state_path)
+        state = store.load()
+
+        parser = DoclingParser(extract_images=False)
+        chunker = HybridChunker(max_tokens=512)
+
+        for pdf in small_corpus[:1]:
+            doc = parser.parse(pdf)
+            chunker.chunk(doc)
+            content_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+            store.record(state, pdf.stem, pdf, content_hash, tier=1)
+
+        store.save(state)
+
+        assert state_path.exists(), f"Tier state file not found at {state_path}"
+        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        assert len(state_data) > 0, "Tier state file is empty"
+        logger.info("Tier state entries: %s", list(state_data.keys())[:5])
+
+    def test_wiki_index_written_alongside_vault(self, small_corpus: list[Path], tmp_path: Path) -> None:
+        """After a full run, wiki_index pages must be written."""
+
+        out_dir = tmp_path / "e2e_index"
+        wiki = self._run_pipeline(
+            small_corpus,
+            out_dir,
+            compile_target="markdown",
+            compiler="graph",
+            flavor="obsidian",
+        )
+
+        pages = write_index_and_log(wiki, out_dir)
+        assert pages["index"].exists()
+        assert pages["log"].exists()
+
+        index_text = pages["index"].read_text(encoding="utf-8")
+        assert str(len(wiki.nodes)) in index_text or "Articles" in index_text, "index.md does not mention the article count"
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -538,8 +665,6 @@ class TestFullPipelineE2E:
         wicer_iterations: int = 1,
     ):
         """Parse → chunk → resolve → compile → write, without WikiPipeline.run()."""
-                    
-
 
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
 
@@ -588,100 +713,3 @@ class TestFullPipelineE2E:
         writer.write(wiki, out_dir)
 
         return wiki
-
-    # ── tests ─────────────────────────────────────────────────────────────
-
-    def test_full_pipeline_graph_backend(self, small_corpus: list[Path], tmp_path: Path) -> None:
-        """Full pipeline with graph compiler → markdown vault."""
-        out_dir = tmp_path / "e2e_graph"
-        wiki = self._run_pipeline(
-            small_corpus, out_dir,
-            compile_target="markdown",
-            compiler="graph",
-            flavor="obsidian",
-            frontmatter_defaults={"domain": "speech-research", "language": "en"},
-        )
-
-        assert len(wiki.nodes) > 0, "E2E pipeline produced no nodes"
-        md_files = list(out_dir.rglob("*.md"))
-        assert len(md_files) > 0, f"No .md files found under {out_dir}"
-        logger.info(
-            "E2E (graph) complete: %d nodes, %d edges, %d .md files",
-            len(wiki.nodes), len(wiki.edges), len(md_files),
-        )
-
-    def test_full_pipeline_wicer_backend(self, small_corpus: list[Path], tmp_path: Path) -> None:
-        """Full pipeline with WiCER compiler → markdown."""
-        out_dir = tmp_path / "e2e_wicer"
-        wiki = self._run_pipeline(
-            small_corpus, out_dir,
-            compile_target="markdown",
-            compiler="wicer",
-            flavor="gfm",
-            wicer_iterations=1,
-        )
-
-        assert len(wiki.nodes) > 0, "WiCER E2E pipeline produced no nodes"
-        logger.info("E2E (wicer) complete: %d nodes, quality=%.2f", len(wiki.nodes), wiki.quality_score)
-
-    def test_json_output_format_e2e(self, small_corpus: list[Path], tmp_path: Path) -> None:
-        """Full pipeline with JSON output."""
-        out_dir = tmp_path / "e2e_json"
-        self._run_pipeline(
-            small_corpus[:1], out_dir,
-            compile_target="json",
-            compiler="graph",
-            flavor=None,
-        )
-
-        wiki_json = out_dir / "wiki.json"
-        assert wiki_json.exists(), "wiki.json not found after JSON-format E2E run"
-        data = json.loads(wiki_json.read_text(encoding="utf-8"))
-        assert len(data.get("nodes", [])) > 0
-
-    def test_tier_state_is_persisted(self, small_corpus: list[Path], tmp_path: Path) -> None:
-        """TierStateStore must persist after a parse+chunk pass."""
-    
-        out_dir = tmp_path / "e2e_state"
-        state_path = out_dir / ".knox" / "state.json"
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-
-        store = TierStateStore(state_path)
-        state = store.load()
-
-        parser = DoclingParser(extract_images=False)
-        chunker = HybridChunker(max_tokens=512)
-
-        for pdf in small_corpus[:1]:
-            doc = parser.parse(pdf)
-            chunker.chunk(doc)
-            content_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
-            store.record(state, pdf.stem, pdf, content_hash, tier=1)
-
-        store.save(state)
-
-        assert state_path.exists(), f"Tier state file not found at {state_path}"
-        state_data = json.loads(state_path.read_text(encoding="utf-8"))
-        assert len(state_data) > 0, "Tier state file is empty"
-        logger.info("Tier state entries: %s", list(state_data.keys())[:5])
-
-    def test_wiki_index_written_alongside_vault(self, small_corpus: list[Path], tmp_path: Path) -> None:
-        """After a full run, wiki_index pages must be written."""
-
-        out_dir = tmp_path / "e2e_index"
-        wiki = self._run_pipeline(
-            small_corpus, out_dir,
-            compile_target="markdown",
-            compiler="graph",
-            flavor="obsidian",
-        )
-
-        pages = write_index_and_log(wiki, out_dir)
-        assert pages["index"].exists()
-        assert pages["log"].exists()
-
-        index_text = pages["index"].read_text(encoding="utf-8")
-        assert str(len(wiki.nodes)) in index_text or "Articles" in index_text, (
-            "index.md does not mention the article count"
-        )
-

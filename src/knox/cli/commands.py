@@ -116,6 +116,7 @@ logger = logging.getLogger(__name__)
 
 # ── parse ───────────────────────────────────────────────────────────────
 
+
 @app.command(name="parse")
 def parse_cmd(
     files: ParseFiles,
@@ -148,7 +149,9 @@ def parse_cmd(
         except Exception as exc:
             typer.echo(f"Error parsing {input_file}: {exc}", err=True)
 
+
 # ── compile ─────────────────────────────────────────────────────────────
+
 
 @app.command(name="compile")
 def compile_cmd(
@@ -271,13 +274,24 @@ def compile_cmd(
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     pipeline_config = _build_pipeline_config(
-        cfg, sources_dir_path=sources_dir_path, output_dir_path=output_dir_path,
-        all_input_files=all_input_files, target_format=target_format,
-        chunk_size=chunk_size, image_mode=image_mode, mode=mode,
-        no_cache=no_cache, workers=workers, force=force,
+        cfg,
+        sources_dir_path=sources_dir_path,
+        output_dir_path=output_dir_path,
+        all_input_files=all_input_files,
+        target_format=target_format,
+        chunk_size=chunk_size,
+        image_mode=image_mode,
+        mode=mode,
+        no_cache=no_cache,
+        workers=workers,
+        force=force,
         flavor=cfg.get("compile.output.flavor"),
-        frontmatter=frontmatter, ignore=ignore, kind=kind, compiler=compiler,
-        llm_default_model=llm_default_model, llm_fallback_max_retries=llm_fallback_max_retries,
+        frontmatter=frontmatter,
+        ignore=ignore,
+        kind=kind,
+        compiler=compiler,
+        llm_default_model=llm_default_model,
+        llm_fallback_max_retries=llm_fallback_max_retries,
     )
 
     pipeline = build_pipeline(pipeline_config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
@@ -291,17 +305,28 @@ def compile_cmd(
         typer.echo(f"Compiled wiki written to {output_dir_path}")
 
         _post_compile_actions(
-            wiki=wiki, pipeline_config=pipeline_config, output_dir_path=output_dir_path,
-            sources_dir_path=sources_dir_path, review=review, bypass_review=bypass_review,
-            provenance=provenance, private=private, verify=verify, synthesize=synthesize,
-            index_store=index_store, compile_lint=compile_lint, embed_model=embed_model,
+            wiki=wiki,
+            pipeline_config=pipeline_config,
+            output_dir_path=output_dir_path,
+            sources_dir_path=sources_dir_path,
+            review=review,
+            bypass_review=bypass_review,
+            provenance=provenance,
+            private=private,
+            verify=verify,
+            synthesize=synthesize,
+            index_store=index_store,
+            compile_lint=compile_lint,
+            embed_model=embed_model,
         )
 
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
+
 # ── doctor ──────────────────────────────────────────────────────────────
+
 
 @app.command(name="doctor")
 def doctor_cmd(
@@ -324,7 +349,9 @@ def doctor_cmd(
     if exit_code:
         raise typer.Exit(1)
 
+
 # ── status ──────────────────────────────────────────────────────────────
+
 
 @app.command(name="status")
 def status_cmd(
@@ -340,7 +367,9 @@ def status_cmd(
     stats = collect_stats(sources_dir=sources_dir, output_dir=output_dir)
     print_status(stats, json_output=json_output)
 
+
 # ── parser subcommand group ─────────────────────────────────────────────
+
 
 @app.command(name="list-parsers")
 def list_parsers_cmd(
@@ -353,7 +382,6 @@ def list_parsers_cmd(
     parsers = get_registered_parsers()
 
     if json_output:
-
         json.dump(parsers, sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")
         return
@@ -368,7 +396,9 @@ def list_parsers_cmd(
         ptype = p.get("type", "built-in")
         typer.echo(f"  • {p['name']} ({ptype})  [{exts}]")
 
+
 # ── write (Q18) ─────────────────────────────────────────────────────────
+
 
 @app.command(name="write")
 def write_cmd(
@@ -392,7 +422,6 @@ def write_cmd(
     # Collect source content
     body_parts: list[str] = []
     if source:
-
         source_files = resolve_files(*source)
         for sf in source_files:
             try:
@@ -415,7 +444,9 @@ def write_cmd(
     output_path.write_text(rendered, encoding="utf-8")
     typer.echo(f"Written: {output_path}")
 
+
 # ── provenance (Q16) ────────────────────────────────────────────────────
+
 
 @app.command(name="provenance")
 def provenance_cmd(
@@ -464,7 +495,9 @@ def provenance_cmd(
     else:
         typer.echo("  (no provenance tracked)")
 
+
 # ── review (N8) ─────────────────────────────────────────────────────────
+
 
 @app.command(name="review")
 def review_cmd(
@@ -493,10 +526,10 @@ def review_cmd(
     queue = ReviewQueue(review_dir=out / ".knox" / "review")
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
+
 def _review_list(queue: object, json_output: bool) -> None:
     entries = queue.list_entries()
     if json_output:
-
         typer.echo(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
         return
     if not entries:
@@ -504,6 +537,7 @@ def _review_list(queue: object, json_output: bool) -> None:
         return
     for e in entries:
         typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
+
 
 def _review_lock(queue: object, slug: str | None) -> None:
     if not slug:
@@ -515,6 +549,7 @@ def _review_lock(queue: object, slug: str | None) -> None:
     typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
     raise typer.Exit(1)
 
+
 def _review_unlock(queue: object, slug: str | None) -> None:
     lock_path = queue.review_dir / f"{slug}.locked" if slug else None
     if lock_path and lock_path.exists():
@@ -523,6 +558,7 @@ def _review_unlock(queue: object, slug: str | None) -> None:
         return
     typer.echo(f"No lock for {slug!r}.", err=True)
     raise typer.Exit(1)
+
 
 def _dispatch_review_action(
     queue: object,
@@ -569,7 +605,9 @@ def _dispatch_review_action(
     typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
     raise typer.Exit(1)
 
+
 # ── lint ───────────────────────────────────────────────────────────────
+
 
 @app.command(name="lint")
 def lint_cmd(
@@ -613,7 +651,7 @@ def lint_cmd(
                 err=True,
             )
             raise typer.Exit(1)
-    
+
         llm_client = LLMClient(default_model=llm_default_model)
 
     runner = LintRunner(
@@ -635,7 +673,9 @@ def lint_cmd(
         typer.echo(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.", err=True)
         raise typer.Exit(1)
 
+
 # ── config show ───────────────────────────────────────────────────────
+
 
 @app.command(name="config")
 def config_cmd(
@@ -657,7 +697,6 @@ def config_cmd(
     flat = cfg.flat()
 
     if json_output:
-
         data = {k: {"value": v, "source": str(cfg.source_of(k))} for k, v in flat.items()}
         typer.echo(json.dumps(data, indent=2, default=str))
         return
@@ -676,7 +715,9 @@ def config_cmd(
     if cfg.global_config_path:
         typer.echo(f"  Global config:  {cfg.global_config_path}")
 
+
 # ── mcp server ──────────────────────────────────────────────────────────
+
 
 @app.command(name="mcp")
 def mcp_cmd() -> None:
@@ -692,7 +733,9 @@ def mcp_cmd() -> None:
 
     mcp_main()
 
+
 # ── pack commands ───────────────────────────────────────────────────────
+
 
 @app.command(name="pack-list")
 def pack_list_cmd() -> None:
@@ -709,6 +752,7 @@ def pack_list_cmd() -> None:
     typer.echo(f"Registered packs ({len(registry.names)}):")
     for pack in registry.all:
         typer.echo(f"  {pack.name:<20} v{pack.version}  {pack.description}")
+
 
 @app.command(name="pack-install")
 def pack_install_cmd(
@@ -734,11 +778,12 @@ def pack_install_cmd(
     registry.register(pack)
     typer.echo(f"Installed pack '{pack.name}' v{pack.version}")
 
+
 # ── query ────────────────────────────────────────────────────────────────
+
 
 def _print_raw_results(results: list[Any], format: str) -> None:
     if format == "json":
-
         output = [
             {
                 "article": r.title,
@@ -757,6 +802,7 @@ def _print_raw_results(results: list[Any], format: str) -> None:
             typer.echo(f"        {r.snippet}")
             typer.echo("")
 
+
 def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     """Run intent classification and respond directly if classified.
 
@@ -769,7 +815,6 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     if result.response is None:
         return False
     if format == "json":
-
         typer.echo(
             json.dumps(
                 {
@@ -782,6 +827,7 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     else:
         typer.echo(result.response)
     return True
+
 
 @app.command(name="query")
 def query_cmd(
@@ -862,7 +908,9 @@ def query_cmd(
             source_str: str = c.get("source") or "wiki"
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
+
 # ── capture ──────────────────────────────────────────────────────────────
+
 
 @app.command(name="capture")
 def capture_cmd(
@@ -880,7 +928,6 @@ def capture_cmd(
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
 
     try:
-        
         cfg = resolve_config()
         default_model = cfg.get("compile.llm.default_model", "ollama/llama3.2")
         llm_client = LLMClient(default_model=default_model)
@@ -892,7 +939,9 @@ def capture_cmd(
     for p in paths:
         typer.echo(f"  {p.name}")
 
+
 # ── learn ────────────────────────────────────────────────────────────────
+
 
 @app.command(name="learn")
 def learn_cmd(
@@ -914,7 +963,9 @@ def learn_cmd(
     path = learn(text, sources_dir=sources_dir_path, tags=tag)
     typer.echo(f"Learned fact -> {path.name}")
 
+
 # ── ingest ────────────────────────────────────────────────────────────────
+
 
 @app.command(name="ingest")
 def ingest_cmd(
@@ -938,7 +989,9 @@ def ingest_cmd(
         raise typer.Exit(1)
     typer.echo(f"Ingested -> {result}")
 
+
 # ── serve ─────────────────────────────────────────────────────────────────
+
 
 @app.command(name="serve")
 def serve_cmd(
@@ -961,7 +1014,9 @@ def serve_cmd(
         typer.echo("Warning: Binding to non-localhost exposes the server to the network.", err=True)
     serve(host=host, port=port, open_browser=open_browser)
 
+
 # ── Internal helpers ────────────────────────────────────────────────────
+
 
 def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
     """Format query result as JSON string."""
@@ -980,6 +1035,7 @@ def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN4
     }
     return json.dumps(output, indent=2)
 
+
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     """Build an LLMClient from config if a default model is set."""
 
@@ -993,6 +1049,7 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
         fallback_chain=list(cfg.get("compile.llm.fallback_chain", [])),
         role_models=dict(cfg.get("compile.llm.role_models", {})),
     )
+
 
 def _build_pipeline_config(
     cfg: Any,
@@ -1056,6 +1113,7 @@ def _build_pipeline_config(
         compiler=cfg.get("compile.compiler", compiler),
     )
 
+
 def _post_compile_actions(
     *,
     wiki: CompiledWiki,
@@ -1109,6 +1167,7 @@ def _post_compile_actions(
         _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
 
     _write_wiki_cache(wiki, output_dir_path)
+
 
 def _build_cli_overrides(
     *,
@@ -1194,6 +1253,7 @@ def _build_cli_overrides(
             overrides["compile.llm.role_models"] = parsed
     return overrides
 
+
 def _cli_build_vector_index(
     wiki: CompiledWiki,
     output_dir_path: Path,
@@ -1207,7 +1267,9 @@ def _cli_build_vector_index(
     else:
         typer.echo("Warning: no nodes indexed — vector index skipped", err=True)
 
+
 # ── New feature helpers (Q20/N3/N8/N4/Q21) ──────────────────────────────
+
 
 def _print_tier_listing(pipeline: object) -> None:
     """Print the tier listing from a WikiPipeline."""
@@ -1217,6 +1279,7 @@ def _print_tier_listing(pipeline: object) -> None:
 
     typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))
 
+
 def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
 
@@ -1224,16 +1287,19 @@ def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
     for node in wiki.nodes:
         queue.enqueue(node)
 
+
 def _annotate_provenance(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
 
     annotated = annotate_wiki_with_provenance(wiki, output_dir_path)
     typer.echo(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
+
 def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
 
     mark_wiki_private(wiki, output_dir_path)
+
 
 def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "ollama/llama3.2") -> None:
     """Run grounding verification over wiki claims."""
@@ -1241,12 +1307,14 @@ def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "o
     result = verify_wiki(wiki, output_dir_path, model=model)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
+
 def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_output: bool = False) -> None:
     """Run lint after compilation and print the report."""
 
     runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
+
 
 def _resolve_role_models(cfg: Any) -> dict[str, str]:
     """Extract per-role model overrides from resolved config (Q13).
@@ -1260,6 +1328,7 @@ def _resolve_role_models(cfg: Any) -> dict[str, str]:
             if isinstance(model, str) and model.strip():
                 role_models[role] = model.strip()
     return role_models
+
 
 def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``.

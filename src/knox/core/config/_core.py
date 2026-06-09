@@ -241,6 +241,7 @@ def _expand_env_vars(value: str) -> str:
     when loading TOML config files so users can reference env vars like
     ``$HOME`` in path settings.
     """
+
     def _replace(match: re.Match) -> str:
         var = match.group(1) or match.group(2) or ""
         return os.environ.get(var, match.group(0))
