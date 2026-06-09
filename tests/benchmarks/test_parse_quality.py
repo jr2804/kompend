@@ -11,11 +11,13 @@ Skips with a clear message if no real PDF is found or DoclingParser unavailable.
 from __future__ import annotations
 
 import time
+from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from knox.core.models import ElementType, ParsedDocument
+from knox.preprocessing.parsers.docling_parser import DoclingParser
 
 # Test corpus: tests/data/sources/ (committed small samples) or local override
 _TEST_DIR = Path(__file__).resolve().parent.parent
@@ -39,8 +41,6 @@ for _candidate_dir in _CORPUS_CANDIDATES:
 def _check_docling() -> bool:
     """Return True if DoclingParser can be instantiated."""
     try:
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
-
         DoclingParser(extract_images=False)
         return True
     except Exception:
@@ -62,8 +62,6 @@ class TestParserQualityBenchmark:
 
     @pytest.fixture(scope="class")
     def parser(self):
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
-
         return DoclingParser(extract_images=False)
 
     @pytest.fixture(scope="class")
@@ -126,8 +124,6 @@ class TestParserQualityBenchmark:
 
     def test_element_types_distribution(self, parsed_doc: ParsedDocument) -> None:
         """Breakdown of element types found during parsing."""
-        from collections import Counter
-
         type_counts: Counter = Counter(getattr(e, "type", None).name if getattr(e, "type", None) else "UNKNOWN" for e in parsed_doc.elements)
         print("\n  📊 Element type distribution:")
         for tname, count in type_counts.most_common():

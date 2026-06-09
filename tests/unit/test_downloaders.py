@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -66,8 +67,6 @@ class TestHTTPDownloader:
             path = downloader.download("https://example.com", tmp_path)
 
         assert path is not None
-        from hashlib import sha256
-
         expected = sha256(b"https://example.com").hexdigest()[:16]
         assert path.stem == expected
 
@@ -134,10 +133,8 @@ class TestWebCrawler:
 
     def test_download_success(self, tmp_path: Path) -> None:
         """Happy path: crawl4ai returns markdown and file is saved."""
-        try:
-            from crawl4ai import AsyncWebCrawler  # noqa: F401
-        except ImportError:
-            pytest.skip("crawl4ai not installed")
+        crawl4ai = pytest.importorskip("crawl4ai")
+        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
 
         mock_result = MagicMock()
         mock_result.markdown = "# Hello\n\nThis is markdown."
@@ -161,10 +158,8 @@ class TestWebCrawler:
 
     def test_download_no_markdown_returns_none(self, tmp_path: Path) -> None:
         """When crawl4ai returns no markdown, download returns None."""
-        try:
-            from crawl4ai import AsyncWebCrawler  # noqa: F401
-        except ImportError:
-            pytest.skip("crawl4ai not installed")
+        crawl4ai = pytest.importorskip("crawl4ai")
+        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
 
         mock_result = MagicMock()
         mock_result.markdown = None
@@ -186,10 +181,8 @@ class TestWebCrawler:
 
     def test_batch_download(self, tmp_path: Path) -> None:
         """batch_download processes multiple URLs."""
-        try:
-            from crawl4ai import AsyncWebCrawler  # noqa: F401
-        except ImportError:
-            pytest.skip("crawl4ai not installed")
+        crawl4ai = pytest.importorskip("crawl4ai")
+        AsyncWebCrawler = crawl4ai.AsyncWebCrawler
 
         mock_result = MagicMock()
         mock_result.markdown = "# content"

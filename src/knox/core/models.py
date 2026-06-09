@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -113,9 +115,6 @@ def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
     Returns ``None`` if no cache exists or the data is corrupt.
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
-    import json  # noqa: PLC0415
-    import logging  # noqa: PLC0415
-
     logger = logging.getLogger(__name__)
     cache_file = output_dir / ".knox" / "last_wiki.json"
     if not cache_file.exists():

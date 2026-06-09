@@ -10,7 +10,9 @@ import logging
 import shutil
 from pathlib import Path
 
+from knox.cli._ignore import filter_files
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
 logger = logging.getLogger(__name__)
@@ -27,8 +29,6 @@ def get_supported_extensions() -> set[str]:
     """
     extensions: set[str] = set(FileExtension)
     try:
-        from knox.preprocessing.parsers._registry import get_all_extensions  # noqa: PLC0415
-
         extensions.update(get_all_extensions())
     except Exception as exc:
         logger.debug("Could not load external parser extensions: %s", exc)
@@ -84,8 +84,6 @@ def resolve_files(
 
     # Apply ignore patterns
     if ignore_patterns or respect_gitignore:
-        from knox.cli._ignore import filter_files  # noqa: PLC0415
-
         results = filter_files(
             results,
             ignore_patterns=ignore_patterns,

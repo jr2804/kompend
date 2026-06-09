@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -146,8 +147,6 @@ class TestMarkdownWriter:
         assert "# Wiki Index" in index
 
     def test_vault_mode_single_node(self, tmp_path: Path) -> None:
-        from knox.core.models import CompiledWiki, WikiNode
-
         wiki = CompiledWiki(
             nodes=[
                 WikiNode(id="test", title="Test Page", content="Hello.", node_type="concept"),
@@ -173,8 +172,6 @@ class TestMarkdownWriter:
 
 class TestJsonWriter:
     def test_writes_valid_json(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
-        import json
-
         writer = JsonWriter()
         result_path = writer.write(sample_wiki, temp_output)
 
@@ -202,8 +199,6 @@ class TestJsonWriter:
         assert data["iteration"] == 0
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
-        import json
-
         writer = JsonWriter()
         result_path = writer.write(empty_wiki, temp_output)
 

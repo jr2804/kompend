@@ -22,13 +22,18 @@ Every template is checked at render time:
 
 from __future__ import annotations
 
+import importlib.resources as ir
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from jinja2 import StrictUndefined
+import yaml
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined, meta
+
+from knox.core.config._core import find_project_config
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +108,6 @@ class TemplateMeta:
     def from_yaml_block(cls, yaml_text: str) -> TemplateMeta:
         """Parse a YAML frontmatter string into a TemplateMeta."""
         try:
-            import yaml  # noqa: PLC0415
-        except ImportError:
-            return cls()
-
-        try:
             data: dict[str, Any] = yaml.safe_load(yaml_text) or {}
         except Exception:
             return cls()
@@ -127,14 +127,6 @@ _FRONTMATTER_RE: Any = None
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """Split *text* into (frontmatter_dict, body).
-
-    Returns ``({}, text)`` when no frontmatter is found.
-    Frontmatter is a ``---``-delimited YAML block at the start of the file.
-    """
-    import re  # noqa: PLC0415
-
-    # Match: optional BOM/newlines, then ---\n ... \n---
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if not match:
         return {}, text
@@ -143,8 +135,6 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     body = text[match.end() :]
 
     try:
-        import yaml  # noqa: PLC0415
-
         fm: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
     except Exception as exc:
         logger.debug("Failed to parse template frontmatter: %s", exc)
@@ -232,8 +222,6 @@ class TemplateLoader:
             )
 
         # Render with StrictUndefined (catches any missing vars not in frontmatter)
-        from jinja2 import Environment  # noqa: PLC0415
-
         env = Environment(
             loader=self._make_template_source_loader(),
             autoescape=False,  # noqa: S701 — LLM prompts, not HTML
@@ -306,8 +294,6 @@ class TemplateLoader:
         Uses ``jinja2.meta.find_undeclared_variables()`` which parses
         the template without rendering it.
         """
-        from jinja2 import Environment, meta  # noqa: PLC0415
-
         body = self._get_body(template_path)
         env = Environment()  # noqa: S701 — only used for AST parsing, not rendering
         ast = env.parse(body)
@@ -365,8 +351,6 @@ class TemplateLoader:
         if self._jinja_env is not None:
             return self._jinja_env
 
-        from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader  # noqa: PLC0415
-
         loaders: list[Any] = []
 
         project_dir = _project_templates_dir(self.project_dir)
@@ -392,9 +376,6 @@ class TemplateLoader:
         return self._jinja_env
 
     def _make_template_source_loader(self) -> Any:
-        """Build a ``ChoiceLoader`` without caching (used for body-only render)."""
-        from jinja2 import ChoiceLoader, FileSystemLoader, PackageLoader  # noqa: PLC0415
-
         loaders: list[Any] = []
 
         project_dir = _project_templates_dir(self.project_dir)
@@ -441,9 +422,6 @@ class TemplateLoader:
 
 
 def _find_project_root() -> Path | None:
-    """Walk up from cwd looking for ``knox.toml``, return the directory."""
-    from knox.core.config._core import find_project_config  # noqa: PLC0415
-
     toml_path = find_project_config()
     if toml_path is not None:
         return toml_path.parent
@@ -469,9 +447,6 @@ def _user_templates_dir() -> Path | None:
 
 
 def _read_builtin(template_path: str) -> str:
-    """Read a built-in template from the installed knox package."""
-    import importlib.resources as ir  # noqa: PLC0415
-
     ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_path
     return ref.read_text(encoding="utf-8")
 
@@ -486,9 +461,6 @@ def _builtin_exists(template_path: str) -> bool:
 
 
 def _list_builtin_templates() -> list[str]:
-    """List all built-in template files."""
-    import importlib.resources as ir  # noqa: PLC0415
-
     tpl_dir = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR
     if not tpl_dir.is_dir():
         return []

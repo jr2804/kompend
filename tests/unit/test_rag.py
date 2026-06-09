@@ -1,5 +1,7 @@
 """Tests for KNOX Hybrid RAG — zvec vector store."""
 
+import gc
+import shutil
 from pathlib import Path
 
 import pytest
@@ -78,10 +80,7 @@ class TestZvecWikiStore:
             assert len(results) >= 1
             store.close()
         finally:
-            import gc
-            import shutil
-
-            gc.collect()  # release zvec LOCK file before rmtree on Windows
+            gc.collect()
             shutil.rmtree(zvec_db, ignore_errors=True)
 
     def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
@@ -100,10 +99,7 @@ class TestZvecWikiStore:
             assert db.parent.exists()
             store.close()
         finally:
-            import gc
-            import shutil
-
-            gc.collect()  # release zvec LOCK file before rmtree on Windows
+            gc.collect()
             shutil.rmtree(zvec_db, ignore_errors=True)
 
     def test_close_then_search_returns_empty(self) -> None:

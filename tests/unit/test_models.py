@@ -1,5 +1,6 @@
 """Tests for KNOX core data models."""
 
+import json
 from pathlib import Path
 
 from knox.core.models import Chunk, CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
@@ -102,8 +103,6 @@ def test_compiled_wiki_creation() -> None:
 
 def test_element_type_json_roundtrip() -> None:
     """StrEnum values survive JSON serialization."""
-    import json
-
     chunk = Chunk(
         id="c1",
         text="hello",

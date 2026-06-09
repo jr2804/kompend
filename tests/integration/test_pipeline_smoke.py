@@ -6,8 +6,10 @@ to verify that chunks have the correct structure.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from knox.chunking.hybrid import HybridChunker
-from knox.core.models import ElementType
+from knox.core.models import DocumentElement, ElementType
 from tests.fixtures.documents import make_test_doc
 
 
@@ -87,10 +89,6 @@ class TestPipelineSmoke:
 
     def test_single_atomic_element(self) -> None:
         """A document with only a table should produce one chunk."""
-        from pathlib import Path
-
-        from knox.core.models import DocumentElement
-
         doc = make_test_doc(num_paragraphs=0, include_tables=False, include_code=False, include_images=False)
         doc.elements = [
             DocumentElement(type=ElementType.TABLE, content=[["A", "B"], ["1", "2"]]),
@@ -104,8 +102,6 @@ class TestPipelineSmoke:
     def test_chunk_id_format(self) -> None:
         """Chunk IDs should be stable and use the source filename."""
         doc = make_test_doc(num_paragraphs=1, include_tables=False, include_code=False, include_images=False)
-        from pathlib import Path
-
         doc.source_path = Path("my_report.pdf")
         chunks = HybridChunker(max_tokens=512).chunk(doc)
         for c in chunks:

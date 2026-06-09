@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from knox.cli.commands import _write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 
 
@@ -29,9 +30,6 @@ def _make_wiki() -> CompiledWiki:
 
 class TestWriteWikiCache:
     def test_writes_cache_file(self, tmp_path: Any) -> None:
-        # Import here to avoid circular imports at module level
-        from knox.cli.commands import _write_wiki_cache  # noqa: PLC0415
-
         wiki = _make_wiki()
         _write_wiki_cache(wiki, tmp_path)
 
@@ -45,16 +43,12 @@ class TestWriteWikiCache:
         assert data["iteration"] == 2
 
     def test_creates_knox_dir(self, tmp_path: Any) -> None:
-        from knox.cli.commands import _write_wiki_cache  # noqa: PLC0415
-
         wiki = _make_wiki()
         assert not (tmp_path / ".knox").exists()
         _write_wiki_cache(wiki, tmp_path)
         assert (tmp_path / ".knox").exists()
 
     def test_overwrites_existing(self, tmp_path: Any) -> None:
-        from knox.cli.commands import _write_wiki_cache  # noqa: PLC0415
-
         wiki1 = _make_wiki()
         _write_wiki_cache(wiki1, tmp_path)
 
@@ -73,8 +67,6 @@ class TestLoadCachedWiki:
         assert result is None
 
     def test_round_trip(self, tmp_path: Any) -> None:
-        from knox.cli.commands import _write_wiki_cache  # noqa: PLC0415
-
         wiki = _make_wiki()
         _write_wiki_cache(wiki, tmp_path)
 

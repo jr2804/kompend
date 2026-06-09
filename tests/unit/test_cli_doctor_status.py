@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from knox.cli.app import app
 from knox.cli.doctor import CheckResult, print_doctor_results, run_doctor
 from knox.cli.status import collect_stats, print_status
 
@@ -108,10 +110,6 @@ class TestCollectStats:
 
 def test_provenance_no_wiki() -> None:
     """Knox provenance without compiled wiki should exit with error."""
-    from typer.testing import CliRunner
-
-    from knox.cli.app import app
-
     runner = CliRunner()
     result = runner.invoke(app, ["provenance", "test-page"])
     assert result.exit_code != 0
@@ -122,10 +120,6 @@ def test_provenance_no_wiki() -> None:
 
 def test_write_command_minimal(tmp_path: Path, monkeypatch) -> None:
     """Knox write creates a file (or errors gracefully)."""
-    from typer.testing import CliRunner
-
-    from knox.cli.app import app
-
     # Change to tmp dir so output lands there
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()

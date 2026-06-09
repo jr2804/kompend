@@ -9,6 +9,7 @@ Patterns can come from:
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 from pathlib import Path
 
@@ -69,8 +70,6 @@ def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -
 
 def _glob_match(text: str, pattern: str) -> bool:
     """Simple glob matching, used as fallback."""
-    import fnmatch  # noqa: PLC0415
-
     return fnmatch.fnmatch(text, pattern)
 
 

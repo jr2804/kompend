@@ -8,6 +8,23 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from knox.preprocessing.parsers.base import ParserRouter
+
+try:
+    from knox.preprocessing.parsers.docling_parser import DoclingParser
+except ImportError:
+    DoclingParser = None
+
+try:
+    from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
+except ImportError:
+    PdfPlumberParser = None
+
+try:
+    from knox.preprocessing.parsers.pandoc_parser import PandocParser
+except ImportError:
+    PandocParser = None
+
 logger = logging.getLogger(__name__)
 
 # In-memory registry of all parsers
@@ -63,42 +80,37 @@ def get_all_extensions() -> set[str]:
     return extensions
 
 
-def build_default_router() -> ParserRouter:  # type: ignore[name-defined]  # noqa: F821
+def build_default_router() -> ParserRouter:
     """Construct a :class:`ParserRouter` with all built-in parsers registered.
 
     This is the single factory for creating a ready-to-use router.
     The CLI and any programmatic user should call this instead of
     manually constructing and registering parsers.
     """
-    from knox.preprocessing.parsers.base import ParserRouter  # noqa: PLC0415
-
     router = ParserRouter()
 
-    try:
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
+    if DoclingParser is not None:
+        try:
+            docling = DoclingParser()
+            router.register(docling)
+            register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
+        except Exception as exc:
+            logger.debug("DoclingParser not available: %s", exc)
 
-        docling = DoclingParser()
-        router.register(docling)
-        register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
-    except Exception as exc:
-        logger.debug("DoclingParser not available: %s", exc)
+    if PdfPlumberParser is not None:
+        try:
+            pdfplumber = PdfPlumberParser()
+            router.register(pdfplumber)
+            register_parser("PdfPlumberParser", "built-in", list(pdfplumber.supported_extensions))
+        except Exception as exc:
+            logger.debug("PdfPlumberParser not available: %s", exc)
 
-    try:
-        from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
-
-        pdfplumber = PdfPlumberParser()
-        router.register(pdfplumber)
-        register_parser("PdfPlumberParser", "built-in", list(pdfplumber.supported_extensions))
-    except Exception as exc:
-        logger.debug("PdfPlumberParser not available: %s", exc)
-
-    try:
-        from knox.preprocessing.parsers.pandoc_parser import PandocParser  # noqa: PLC0415
-
-        pandoc = PandocParser()
-        router.register(pandoc)
-        register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
-    except Exception as exc:
-        logger.debug("PandocParser not available: %s", exc)
+    if PandocParser is not None:
+        try:
+            pandoc = PandocParser()
+            router.register(pandoc)
+            register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
+        except Exception as exc:
+            logger.debug("PandocParser not available: %s", exc)
 
     return router

@@ -13,6 +13,26 @@ from knox.preprocessing.parsers.base import ParserRouter
 
 logger = logging.getLogger(__name__)
 
+try:
+    from knox.preprocessing.parsers.docling_parser import DoclingParser
+except ImportError:
+    DoclingParser = None
+
+try:
+    from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
+except ImportError:
+    PdfPlumberParser = None
+
+try:
+    from knox.preprocessing.parsers.pandoc_parser import PandocParser
+except ImportError:
+    PandocParser = None
+
+try:
+    from knox.llm.client import LLMClient
+except ImportError:
+    LLMClient = None
+
 # ── Check results ───────────────────────────────────────────────────────
 
 
@@ -56,26 +76,23 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 def _check_parsers() -> CheckResult:
     name = "parsers"
     router = ParserRouter()
-    try:
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
+    if DoclingParser is not None:
+        try:
+            router.register(DoclingParser())
+        except Exception as exc:
+            return CheckResult(name, False, f"DoclingParser init failed: {exc}")
 
-        router.register(DoclingParser())
-    except Exception as exc:
-        return CheckResult(name, False, f"DoclingParser init failed: {exc}")
+    if PdfPlumberParser is not None:
+        try:
+            router.register(PdfPlumberParser())
+        except Exception as exc:
+            logger.debug("PdfPlumberParser not available: %s", exc)
 
-    try:
-        from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
-
-        router.register(PdfPlumberParser())
-    except Exception as exc:
-        logger.debug("PdfPlumberParser not available: %s", exc)
-
-    try:
-        from knox.preprocessing.parsers.pandoc_parser import PandocParser  # noqa: PLC0415
-
-        router.register(PandocParser())
-    except Exception as exc:
-        logger.debug("PandocParser not available: %s", exc)
+    if PandocParser is not None:
+        try:
+            router.register(PandocParser())
+        except Exception as exc:
+            logger.debug("PandocParser not available: %s", exc)
 
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
@@ -93,9 +110,7 @@ def _check_env_vars(*vars_to_check: str) -> list[CheckResult]:
 def _check_llm_connectivity(verbose: bool = False) -> CheckResult:
     """Quick connectivity check — pings the configured LLM provider."""
     name = "llm-connectivity"
-    try:
-        from knox.llm.client import LLMClient  # noqa: PLC0415
-    except ImportError:
+    if LLMClient is None:
         return CheckResult(name, False, "knox.llm not available")
 
     try:
@@ -182,15 +197,13 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
     failed_count = sum(1 for r in results if not r.passed)
 
     if json_output:
-        import json as j  # noqa: PLC0415
-
         data = {
             "passed": passed_count,
             "failed": failed_count,
             "total": len(results),
             "checks": [r.to_dict() for r in results],
         }
-        j.dump(data, sys.stdout, indent=2)
+        json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
     else:
         for r in results:

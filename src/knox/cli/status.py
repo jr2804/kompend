@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from knox.cli._sources import get_supported_extensions
+from knox.core.config import find_project_config
 
 
 def collect_stats(
@@ -53,8 +54,6 @@ def collect_stats(
             stats["articles"]["count"] = max(stats["articles"]["count"], 1)
 
         # Config path
-        from knox.core.config import find_project_config  # noqa: PLC0415
-
         project_config = find_project_config()
         if project_config:
             stats["config_path"] = str(project_config)

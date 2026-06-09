@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import sys
@@ -10,6 +11,9 @@ from typing import Annotated, Any
 
 import typer
 
+from knox.capture.capture import capture
+from knox.capture.ingest import ingest
+from knox.capture.learn import learn
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
@@ -86,7 +90,23 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
-from knox.preprocessing.parsers._registry import build_default_router
+from knox.lint.runner import LintRunner, report_to_json, report_to_text
+from knox.llm.client import LLMClient
+from knox.mcp.server import main as mcp_main
+from knox.output.markdown import MarkdownWriter
+from knox.output.models import Document
+from knox.output.wiki_index import write_index_and_log, write_overview
+from knox.packs.base import get_registry
+from knox.packs.builtins import academic_pack, technical_pack
+from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
+from knox.provenance import annotate_wiki_with_provenance
+from knox.rag import build_vector_index
+from knox.review import ReviewQueue
+from knox.search.classifier import classify
+from knox.search.retriever import TokenOverlapRetriever
+from knox.trust import mark_wiki_private
+from knox.verification import verify_wiki
+from knox.web.server import serve
 
 from ._sources import download_urls, ensure_in_sources, resolve_files
 from .doctor import print_doctor_results, run_doctor
@@ -94,9 +114,7 @@ from .status import collect_stats, print_status
 
 logger = logging.getLogger(__name__)
 
-
 # ── parse ───────────────────────────────────────────────────────────────
-
 
 @app.command(name="parse")
 def parse_cmd(
@@ -130,9 +148,7 @@ def parse_cmd(
         except Exception as exc:
             typer.echo(f"Error parsing {input_file}: {exc}", err=True)
 
-
 # ── compile ─────────────────────────────────────────────────────────────
-
 
 @app.command(name="compile")
 def compile_cmd(
@@ -254,54 +270,17 @@ def compile_cmd(
         compiler=compiler,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-
-    # Extract resolved values from the merged config
-    resolved_flavor = cfg.get("compile.output.flavor")
-    fallback_chain_list = cfg.get("compile.llm.fallback_chain", [])
-
-    # Merge frontmatter: config defaults + CLI key=value overrides
-    frontmatter_defaults: dict[str, str] = dict(cfg.get("compile.output.frontmatter", {}))
-    if frontmatter:
-        for kv in frontmatter:
-            if "=" in kv:
-                k, v = kv.split("=", 1)
-                frontmatter_defaults[k.strip()] = v.strip()
-
-    # Merge ignore patterns: config + CLI additions
-    resolved_ignore = list(cfg.get("ignore.patterns", []))
-    if ignore:
-        resolved_ignore.extend(ignore)
-
-    rumdl_config_path = cfg.get("compile.output.rumdl_config")
-    if isinstance(rumdl_config_path, str):
-        rumdl_config_path = Path(rumdl_config_path)
-
-    config = PipelineConfig(
-        source_dir=sources_dir_path,
-        output_dir=output_dir_path,
-        online_sources=[],  # already downloaded above
-        compile_target=cfg.get("compile.format", target_format),
-        chunk_size=cfg.get("compile.chunk_size", chunk_size),
-        image_mode=cfg.get("compile.image_mode", image_mode),
-        input_files=all_input_files,
-        ignore_patterns=resolved_ignore,
-        mode=cfg.get("compile.mode", mode),
-        no_cache=cfg.get("compile.no_cache", no_cache),
-        workers=cfg.get("compile.workers", workers),
-        force=cfg.get("compile.force", force),
-        flavor=resolved_flavor,
-        frontmatter_defaults=frontmatter_defaults or None,
-        rumdl_config=rumdl_config_path,
-        llm_fallback_chain=fallback_chain_list,
-        llm_fallback_max_retries_per_model=cfg.get("compile.llm.fallback_max_retries", llm_fallback_max_retries),
-        llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
-        llm_role_models=_resolve_role_models(cfg),
-        page_kind=cfg.get("compile.page_kind", kind),
-        privacy_filter=cfg.get("trust.privacy_filter", True),
-        compiler=cfg.get("compile.compiler", compiler),
+    pipeline_config = _build_pipeline_config(
+        cfg, sources_dir_path=sources_dir_path, output_dir_path=output_dir_path,
+        all_input_files=all_input_files, target_format=target_format,
+        chunk_size=chunk_size, image_mode=image_mode, mode=mode,
+        no_cache=no_cache, workers=workers, force=force,
+        flavor=cfg.get("compile.output.flavor"),
+        frontmatter=frontmatter, ignore=ignore, kind=kind, compiler=compiler,
+        llm_default_model=llm_default_model, llm_fallback_max_retries=llm_fallback_max_retries,
     )
 
-    pipeline = build_pipeline(config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
+    pipeline = build_pipeline(pipeline_config, two_phase=cfg.get("compile.two_phase", two_phase), prompt_budget=cfg.get("compile.prompt_budget", prompt_budget))
 
     if list_tiers:
         _print_tier_listing(pipeline)
@@ -311,55 +290,18 @@ def compile_cmd(
         wiki = pipeline.run()
         typer.echo(f"Compiled wiki written to {output_dir_path}")
 
-        # Cache wiki for standalone knox lint / provenance / eval
-        _write_wiki_cache(wiki, output_dir_path)
-
-        if review and not bypass_review:
-            _send_to_review_queue(wiki, output_dir_path)
-            typer.echo(f"Pages pending review in {output_dir_path / '.knox' / 'review'}")
-        elif bypass_review and review:
-            typer.echo("--bypass-review overrides --review; writing pages directly.")
-
-        if provenance:
-            _annotate_provenance(wiki, output_dir_path)
-
-        if private:
-            _mark_private(wiki, output_dir_path)
-
-        if verify:
-            resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
-            _verify_claims(wiki, output_dir_path, model=resolved_model)
-
-        # N11: Generate index.md + log.md
-        from knox.output.wiki_index import write_index_and_log, write_overview  # noqa: PLC0415
-
-        generated = write_index_and_log(wiki, output_dir_path)
-        typer.echo(f"Index: {generated['index']}")
-        typer.echo(f"Log:   {generated['log']}")
-
-        if synthesize:
-            overview_path = write_overview(wiki, output_dir_path)
-            if overview_path:
-                typer.echo(f"Overview: {overview_path}")
-            else:
-                typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
-
-        if index_store:
-            _cli_build_vector_index(wiki, output_dir_path, embed_model)
-
-        if compile_lint:
-            _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
-
-        # Write cache so standalone ``knox lint`` can load the wiki
-        _write_wiki_cache(wiki, output_dir_path)
+        _post_compile_actions(
+            wiki=wiki, pipeline_config=pipeline_config, output_dir_path=output_dir_path,
+            sources_dir_path=sources_dir_path, review=review, bypass_review=bypass_review,
+            provenance=provenance, private=private, verify=verify, synthesize=synthesize,
+            index_store=index_store, compile_lint=compile_lint, embed_model=embed_model,
+        )
 
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-
 # ── doctor ──────────────────────────────────────────────────────────────
-
 
 @app.command(name="doctor")
 def doctor_cmd(
@@ -382,9 +324,7 @@ def doctor_cmd(
     if exit_code:
         raise typer.Exit(1)
 
-
 # ── status ──────────────────────────────────────────────────────────────
-
 
 @app.command(name="status")
 def status_cmd(
@@ -400,9 +340,7 @@ def status_cmd(
     stats = collect_stats(sources_dir=sources_dir, output_dir=output_dir)
     print_status(stats, json_output=json_output)
 
-
 # ── parser subcommand group ─────────────────────────────────────────────
-
 
 @app.command(name="list-parsers")
 def list_parsers_cmd(
@@ -411,14 +349,12 @@ def list_parsers_cmd(
     """List all registered parsers (built-in + external + HTTP)."""
     # Ensure built-in parsers are registered, then read from the registry
     build_default_router()
-    from knox.preprocessing.parsers._registry import get_registered_parsers  # noqa: PLC0415
 
     parsers = get_registered_parsers()
 
     if json_output:
-        import json as j  # noqa: PLC0415
 
-        j.dump(parsers, sys.stdout, indent=2, default=str)
+        json.dump(parsers, sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")
         return
 
@@ -432,14 +368,12 @@ def list_parsers_cmd(
         ptype = p.get("type", "built-in")
         typer.echo(f"  • {p['name']} ({ptype})  [{exts}]")
 
-
 # ── write (Q18) ─────────────────────────────────────────────────────────
-
 
 @app.command(name="write")
 def write_cmd(
     page_title: str = typer.Argument(..., help="Title of the page to create."),
-    source: list[str] = typer.Option([], "--source", "-s", help="Source file(s) to include (repeatable)."),
+    source: list[str] = typer.Option([], "--source", "-s", help="Source file(s) to include (repeatable)."),  # noqa: B008
     frontmatter: Frontmatter = None,
 ) -> None:
     """Create a one-shot wiki page from a title and optional sources.
@@ -458,7 +392,6 @@ def write_cmd(
     # Collect source content
     body_parts: list[str] = []
     if source:
-        from ._sources import resolve_files  # noqa: PLC0415
 
         source_files = resolve_files(*source)
         for sf in source_files:
@@ -471,10 +404,8 @@ def write_cmd(
     body = "\n\n".join(body_parts) if body_parts else "_(Content pending)_"
 
     # Render via flvor-aware MarkdownWriter
-    from knox.output.markdown import MarkdownWriter  # noqa: PLC0415
 
     writer = MarkdownWriter()
-    from knox.output.models import Document  # noqa: PLC0415
 
     doc = Document(title=page_title, body=body, frontmatter=fm)
     rendered = writer.renderer.render(doc)
@@ -484,9 +415,7 @@ def write_cmd(
     output_path.write_text(rendered, encoding="utf-8")
     typer.echo(f"Written: {output_path}")
 
-
 # ── provenance (Q16) ────────────────────────────────────────────────────
-
 
 @app.command(name="provenance")
 def provenance_cmd(
@@ -523,8 +452,6 @@ def provenance_cmd(
     source_chunks = node.source_chunks or []
 
     if json_output:
-
-
         data = {"page": node.title, "slug": node.id, "sources": source_chunks}
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
@@ -537,9 +464,7 @@ def provenance_cmd(
     else:
         typer.echo("  (no provenance tracked)")
 
-
 # ── review (N8) ─────────────────────────────────────────────────────────
-
 
 @app.command(name="review")
 def review_cmd(
@@ -563,12 +488,41 @@ def review_cmd(
     json_output: JsonOutput = False,
 ) -> None:
     """Manage the review queue for compiled pages."""
-    from knox.review import ReviewQueue  # noqa: PLC0415
 
     out = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     queue = ReviewQueue(review_dir=out / ".knox" / "review")
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
+def _review_list(queue: object, json_output: bool) -> None:
+    entries = queue.list_entries()
+    if json_output:
+
+        typer.echo(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
+        return
+    if not entries:
+        typer.echo("No pages in the review queue.")
+        return
+    for e in entries:
+        typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
+
+def _review_lock(queue: object, slug: str | None) -> None:
+    if not slug:
+        typer.echo("Lock requires a slug.", err=True)
+        raise typer.Exit(1)
+    if queue.lock(slug):
+        typer.echo(f"Locked: {slug}")
+        return
+    typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
+    raise typer.Exit(1)
+
+def _review_unlock(queue: object, slug: str | None) -> None:
+    lock_path = queue.review_dir / f"{slug}.locked" if slug else None
+    if lock_path and lock_path.exists():
+        lock_path.unlink()
+        typer.echo(f"Unlocked: {slug}")
+        return
+    typer.echo(f"No lock for {slug!r}.", err=True)
+    raise typer.Exit(1)
 
 def _dispatch_review_action(
     queue: object,
@@ -580,17 +534,7 @@ def _dispatch_review_action(
 ) -> None:
     """Dispatch a review command action. Extracted to keep ruff PLR0911 happy."""
     if action == "list":
-        entries = queue.list_entries()
-        if json_output:
-            import json as j  # noqa: PLC0415
-
-            typer.echo(j.dumps([e.to_dict() for e in entries], indent=2, default=str))
-            return
-        if not entries:
-            typer.echo("No pages in the review queue.")
-            return
-        for e in entries:
-            typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
+        _review_list(queue, json_output)
         return
 
     if action == "approve":
@@ -615,30 +559,17 @@ def _dispatch_review_action(
         return
 
     if action == "lock":
-        if not slug:
-            typer.echo("Lock requires a slug.", err=True)
-            raise typer.Exit(1)
-        if queue.lock(slug):
-            typer.echo(f"Locked: {slug}")
-            return
-        typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
-        raise typer.Exit(1)
+        _review_lock(queue, slug)
+        return
 
     if action == "unlock":
-        lock_path = queue.review_dir / f"{slug}.locked" if slug else None
-        if lock_path and lock_path.exists():
-            lock_path.unlink()
-            typer.echo(f"Unlocked: {slug}")
-            return
-        typer.echo(f"No lock for {slug!r}.", err=True)
-        raise typer.Exit(1)
+        _review_unlock(queue, slug)
+        return
 
     typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
     raise typer.Exit(1)
 
-
 # ── lint ───────────────────────────────────────────────────────────────
-
 
 @app.command(name="lint")
 def lint_cmd(
@@ -665,7 +596,6 @@ def lint_cmd(
         knox lint --rule broken-wikilinks --rule orphan-page
         knox lint --threshold 80        # exit 1 if score < 80
     """
-    from knox.lint.runner import LintRunner, report_to_json, report_to_text  # noqa: PLC0415
 
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
@@ -683,8 +613,7 @@ def lint_cmd(
                 err=True,
             )
             raise typer.Exit(1)
-        from knox.llm.client import LLMClient  # noqa: PLC0415
-
+    
         llm_client = LLMClient(default_model=llm_default_model)
 
     runner = LintRunner(
@@ -706,9 +635,7 @@ def lint_cmd(
         typer.echo(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.", err=True)
         raise typer.Exit(1)
 
-
 # ── config show ───────────────────────────────────────────────────────
-
 
 @app.command(name="config")
 def config_cmd(
@@ -730,10 +657,9 @@ def config_cmd(
     flat = cfg.flat()
 
     if json_output:
-        import json as j  # noqa: PLC0415
 
         data = {k: {"value": v, "source": str(cfg.source_of(k))} for k, v in flat.items()}
-        typer.echo(j.dumps(data, indent=2, default=str))
+        typer.echo(json.dumps(data, indent=2, default=str))
         return
 
     max_key_len = max(len(k) for k in flat) if flat else 20
@@ -750,9 +676,7 @@ def config_cmd(
     if cfg.global_config_path:
         typer.echo(f"  Global config:  {cfg.global_config_path}")
 
-
 # ── mcp server ──────────────────────────────────────────────────────────
-
 
 @app.command(name="mcp")
 def mcp_cmd() -> None:
@@ -765,13 +689,10 @@ def mcp_cmd() -> None:
         knox mcp                        # start stdio server
         knox mcp --help                 # this help
     """
-    from knox.mcp.server import main as mcp_main  # noqa: PLC0415
 
     mcp_main()
 
-
 # ── pack commands ───────────────────────────────────────────────────────
-
 
 @app.command(name="pack-list")
 def pack_list_cmd() -> None:
@@ -780,7 +701,6 @@ def pack_list_cmd() -> None:
     Examples:
         knox pack-list
     """
-    from knox.packs.base import get_registry  # noqa: PLC0415
 
     registry = get_registry()
     if not registry.names:
@@ -789,7 +709,6 @@ def pack_list_cmd() -> None:
     typer.echo(f"Registered packs ({len(registry.names)}):")
     for pack in registry.all:
         typer.echo(f"  {pack.name:<20} v{pack.version}  {pack.description}")
-
 
 @app.command(name="pack-install")
 def pack_install_cmd(
@@ -801,8 +720,6 @@ def pack_install_cmd(
         knox pack-install academic
         knox pack-install technical
     """
-    from knox.packs.base import get_registry  # noqa: PLC0415
-    from knox.packs.builtins import academic_pack, technical_pack  # noqa: PLC0415
 
     registry = get_registry()
     pack_map = {
@@ -817,9 +734,54 @@ def pack_install_cmd(
     registry.register(pack)
     typer.echo(f"Installed pack '{pack.name}' v{pack.version}")
 
-
 # ── query ────────────────────────────────────────────────────────────────
 
+def _print_raw_results(results: list[Any], format: str) -> None:
+    if format == "json":
+
+        output = [
+            {
+                "article": r.title,
+                "source": r.source_file,
+                "snippet": r.snippet,
+                "score": round(r.score, 3),
+            }
+            for r in results
+        ]
+        typer.echo(json.dumps(output, indent=2))
+    else:
+        for r in results:
+            typer.echo(f"  [{r.score:.3f}] {r.title}")
+            if r.source_file:
+                typer.echo(f"        Source: {r.source_file}")
+            typer.echo(f"        {r.snippet}")
+            typer.echo("")
+
+def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
+    """Run intent classification and respond directly if classified.
+
+    Returns True if the classifier produced a response (caller should return).
+    """
+    if no_classify:
+        return False
+
+    result = classify(query)
+    if result.response is None:
+        return False
+    if format == "json":
+
+        typer.echo(
+            json.dumps(
+                {
+                    "intent": result.intent.value,
+                    "response": result.response,
+                },
+                indent=2,
+            )
+        )
+    else:
+        typer.echo(result.response)
+    return True
 
 @app.command(name="query")
 def query_cmd(
@@ -841,27 +803,8 @@ def query_cmd(
     """
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
-    # Intent classification (N7)
-    if not no_classify:
-        from knox.search.classifier import classify  # noqa: PLC0415
-
-        result = classify(query)
-        if result.response is not None:
-            if format == "json":
-                import json as j  # noqa: PLC0415
-
-                typer.echo(
-                    j.dumps(
-                        {
-                            "intent": result.intent.value,
-                            "response": result.response,
-                        },
-                        indent=2,
-                    )
-                )
-            else:
-                typer.echo(result.response)
-            return
+    if _classify_intent(query, no_classify, format):
+        return
 
     wiki = load_cached_wiki(output_dir_path)
     if wiki is None:
@@ -871,12 +814,7 @@ def query_cmd(
         )
         raise typer.Exit(1)
 
-    sources_dir_path: Path | None = (
-        Path(sources_dir) if sources_dir
-        else (Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).is_dir() else None)
-    )
-
-    from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
+    sources_dir_path: Path | None = Path(sources_dir) if sources_dir else (Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).is_dir() else None)
 
     retriever = TokenOverlapRetriever(wiki)
 
@@ -896,38 +834,13 @@ def query_cmd(
         raise typer.Exit(0)
 
     if raw:
-        if format == "json":
-            import json as j  # noqa: PLC0415
-
-            output = [
-                {
-                    "article": r.title,
-                    "source": r.source_file,
-                    "snippet": r.snippet,
-                    "score": round(r.score, 3),
-                }
-                for r in results
-            ]
-            typer.echo(j.dumps(output, indent=2))
-        else:
-            for r in results:
-                typer.echo(f"  [{r.score:.3f}] {r.title}")
-                if r.source_file:
-                    typer.echo(f"        Source: {r.source_file}")
-                typer.echo(f"        {r.snippet}")
-                typer.echo("")
+        _print_raw_results(results, format)
         return
 
-    # Try LLM synthesis
     llm_client = _try_build_llm_client(config)
     if llm_client is None:
         typer.echo("Warning: No LLM configured. Showing raw context instead.", err=True)
-        for r in results:
-            typer.echo(f"  [{r.score:.3f}] {r.title}")
-            if r.source_file:
-                typer.echo(f"        Source: {r.source_file}")
-            typer.echo(f"        {r.snippet}")
-            typer.echo("")
+        _print_raw_results(results, "text")
         return
 
     try:
@@ -935,9 +848,7 @@ def query_cmd(
     except Exception as exc:
         typer.echo(f"LLM synthesis failed: {exc}", err=True)
         typer.echo("Showing raw context instead:", err=True)
-        for r in results:
-            typer.echo(f"  [{r.score:.3f}] {r.title}")
-            typer.echo(f"        {r.snippet}")
+        _print_raw_results(results, "text")
         raise typer.Exit(1)
 
     if format == "json":
@@ -951,9 +862,7 @@ def query_cmd(
             source_str: str = c.get("source") or "wiki"
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
-
 # ── capture ──────────────────────────────────────────────────────────────
-
 
 @app.command(name="capture")
 def capture_cmd(
@@ -970,12 +879,8 @@ def capture_cmd(
     """
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
 
-    from knox.capture.capture import capture  # noqa: PLC0415
-
     try:
-        from knox.core.config import resolve_config  # noqa: PLC0415
-        from knox.llm.client import LLMClient  # noqa: PLC0415
-
+        
         cfg = resolve_config()
         default_model = cfg.get("compile.llm.default_model", "ollama/llama3.2")
         llm_client = LLMClient(default_model=default_model)
@@ -987,9 +892,7 @@ def capture_cmd(
     for p in paths:
         typer.echo(f"  {p.name}")
 
-
 # ── learn ────────────────────────────────────────────────────────────────
-
 
 @app.command(name="learn")
 def learn_cmd(
@@ -1008,14 +911,10 @@ def learn_cmd(
     """
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
 
-    from knox.capture.learn import learn  # noqa: PLC0415
-
     path = learn(text, sources_dir=sources_dir_path, tags=tag)
     typer.echo(f"Learned fact -> {path.name}")
 
-
 # ── ingest ────────────────────────────────────────────────────────────────
-
 
 @app.command(name="ingest")
 def ingest_cmd(
@@ -1033,17 +932,13 @@ def ingest_cmd(
     """
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
 
-    from knox.capture.ingest import ingest  # noqa: PLC0415
-
     result = ingest(target, sources_dir=sources_dir_path)
     if result is None:
         typer.echo(f"Failed to ingest: {target}", err=True)
         raise typer.Exit(1)
     typer.echo(f"Ingested -> {result}")
 
-
 # ── serve ─────────────────────────────────────────────────────────────────
-
 
 @app.command(name="serve")
 def serve_cmd(
@@ -1060,20 +955,16 @@ def serve_cmd(
         knox serve
         knox serve --port 8080 --open
     """
-    from knox.web.server import serve  # noqa: PLC0415
 
     typer.echo(f"Starting KNOX web UI at http://{host}:{port}")
     if host != "127.0.0.1":
         typer.echo("Warning: Binding to non-localhost exposes the server to the network.", err=True)
     serve(host=host, port=port, open_browser=open_browser)
 
-
 # ── Internal helpers ────────────────────────────────────────────────────
-
 
 def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
     """Format query result as JSON string."""
-    import json as j  # noqa: PLC0415
 
     output = {
         "answer": synthesis.answer,
@@ -1087,19 +978,15 @@ def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN4
             for c in synthesis.citations
         ],
     }
-    return j.dumps(output, indent=2)
-
+    return json.dumps(output, indent=2)
 
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     """Build an LLMClient from config if a default model is set."""
-    from knox.core.config import resolve_config  # noqa: PLC0415
 
     cfg = resolve_config(config_path=config)
     default_model: str | None = cfg.get("compile.llm.default_model")
     if not default_model:
         return None
-
-    from knox.llm.client import LLMClient  # noqa: PLC0415, PLC811
 
     return LLMClient(
         default_model=default_model,
@@ -1107,6 +994,121 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
         role_models=dict(cfg.get("compile.llm.role_models", {})),
     )
 
+def _build_pipeline_config(
+    cfg: Any,
+    *,
+    sources_dir_path: Path,
+    output_dir_path: Path,
+    all_input_files: list[Path],
+    target_format: str | None,
+    chunk_size: int | None,
+    image_mode: str | None,
+    mode: str | None,
+    no_cache: bool | None,
+    workers: int | None,
+    force: bool | None,
+    flavor: str | None,
+    frontmatter: list[str] | None,
+    ignore: list[str] | None,
+    kind: str | None,
+    compiler: str | None,
+    llm_default_model: str | None,
+    llm_fallback_max_retries: int | None,
+) -> PipelineConfig:
+    """Build PipelineConfig from merged config and CLI args."""
+    frontmatter_defaults: dict[str, str] = dict(cfg.get("compile.output.frontmatter", {}))
+    if frontmatter:
+        for kv in frontmatter:
+            if "=" in kv:
+                k, v = kv.split("=", 1)
+                frontmatter_defaults[k.strip()] = v.strip()
+
+    resolved_ignore = list(cfg.get("ignore.patterns", []))
+    if ignore:
+        resolved_ignore.extend(ignore)
+
+    rumdl_config_path = cfg.get("compile.output.rumdl_config")
+    if isinstance(rumdl_config_path, str):
+        rumdl_config_path = Path(rumdl_config_path)
+
+    return PipelineConfig(
+        source_dir=sources_dir_path,
+        output_dir=output_dir_path,
+        online_sources=[],
+        compile_target=cfg.get("compile.format", target_format),
+        chunk_size=cfg.get("compile.chunk_size", chunk_size),
+        image_mode=cfg.get("compile.image_mode", image_mode),
+        input_files=all_input_files,
+        ignore_patterns=resolved_ignore,
+        mode=cfg.get("compile.mode", mode),
+        no_cache=cfg.get("compile.no_cache", no_cache),
+        workers=cfg.get("compile.workers", workers),
+        force=cfg.get("compile.force", force),
+        flavor=flavor,
+        frontmatter_defaults=frontmatter_defaults or None,
+        rumdl_config=rumdl_config_path,
+        llm_fallback_chain=cfg.get("compile.llm.fallback_chain", []),
+        llm_fallback_max_retries_per_model=cfg.get("compile.llm.fallback_max_retries", llm_fallback_max_retries),
+        llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
+        llm_role_models=_resolve_role_models(cfg),
+        page_kind=cfg.get("compile.page_kind", kind),
+        privacy_filter=cfg.get("trust.privacy_filter", True),
+        compiler=cfg.get("compile.compiler", compiler),
+    )
+
+def _post_compile_actions(
+    *,
+    wiki: CompiledWiki,
+    pipeline_config: PipelineConfig,
+    output_dir_path: Path,
+    sources_dir_path: Path,
+    review: bool | None,
+    bypass_review: bool | None,
+    provenance: bool | None,
+    private: bool | None,
+    verify: bool | None,
+    synthesize: bool | None,
+    index_store: bool | None,
+    compile_lint: bool | None,
+    embed_model: str | None,
+) -> None:
+    """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
+    _write_wiki_cache(wiki, output_dir_path)
+
+    if review and not bypass_review:
+        _send_to_review_queue(wiki, output_dir_path)
+        typer.echo(f"Pages pending review in {output_dir_path / '.knox' / 'review'}")
+    elif bypass_review and review:
+        typer.echo("--bypass-review overrides --review; writing pages directly.")
+
+    if provenance:
+        _annotate_provenance(wiki, output_dir_path)
+
+    if private:
+        _mark_private(wiki, output_dir_path)
+
+    if verify:
+        resolved_model = pipeline_config.llm_default_model_override or f"{pipeline_config.llm_provider}/{pipeline_config.llm_model}"
+        _verify_claims(wiki, output_dir_path, model=resolved_model)
+
+    generated = write_index_and_log(wiki, output_dir_path)
+    typer.echo(f"Index: {generated['index']}")
+    typer.echo(f"Log:   {generated['log']}")
+
+    if synthesize:
+        overview_path = write_overview(wiki, output_dir_path)
+        if overview_path:
+            typer.echo(f"Overview: {overview_path}")
+        else:
+            typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
+
+    if index_store:
+        _cli_build_vector_index(wiki, output_dir_path, embed_model)
+
+    if compile_lint:
+        _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
+
+    _write_wiki_cache(wiki, output_dir_path)
 
 def _build_cli_overrides(
     *,
@@ -1141,48 +1143,43 @@ def _build_cli_overrides(
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
-    if sources_dir is not None:
-        overrides["compile.sources_dir"] = sources_dir
-    if output_dir is not None:
-        overrides["compile.output_dir"] = output_dir
-    if target_format is not None:
-        overrides["compile.format"] = target_format
-    if chunk_size is not None:
-        overrides["compile.chunk_size"] = chunk_size
-    if image_mode is not None:
-        overrides["compile.image_mode"] = image_mode
-    if mode is not None:
-        overrides["compile.mode"] = mode
-    if no_cache:
-        overrides["compile.no_cache"] = no_cache
-    if workers is not None:
-        overrides["compile.workers"] = workers
-    if force:
-        overrides["compile.force"] = force
-    if two_phase is not None:
-        overrides["compile.two_phase"] = two_phase
-    if prompt_budget is not None:
-        overrides["compile.prompt_budget"] = prompt_budget
-    if review:
-        overrides["compile.review"] = review
-    if provenance:
-        overrides["compile.provenance"] = provenance
-    if private:
-        overrides["compile.private"] = private
+
+    _simple: list[tuple[str, Any]] = [
+        ("compile.sources_dir", sources_dir),
+        ("compile.output_dir", output_dir),
+        ("compile.format", target_format),
+        ("compile.chunk_size", chunk_size),
+        ("compile.image_mode", image_mode),
+        ("compile.mode", mode),
+        ("compile.workers", workers),
+        ("compile.two_phase", two_phase),
+        ("compile.prompt_budget", prompt_budget),
+        ("compile.output.flavor", flavor),
+        ("compile.llm.default_model", llm_default_model),
+        ("compile.page_kind", kind),
+        ("compile.compiler", compiler),
+    ]
+    for key, val in _simple:
+        if val is not None:
+            overrides[key] = val
+
+    _flags: list[tuple[str, bool | None]] = [
+        ("compile.no_cache", no_cache),
+        ("compile.force", force),
+        ("compile.review", review),
+        ("compile.provenance", provenance),
+        ("compile.private", private),
+        ("compile.verify", verify),
+        ("compile.synthesize", synthesize),
+        ("compile.index", index_store),
+        ("compile.lint", compile_lint),
+    ]
+    for key, val in _flags:
+        if val:
+            overrides[key] = val
+
     if no_privacy:
         overrides["trust.privacy_filter"] = False
-    if verify:
-        overrides["compile.verify"] = verify
-    if synthesize:
-        overrides["compile.synthesize"] = synthesize
-    if index_store:
-        overrides["compile.index"] = index_store
-    if compile_lint:
-        overrides["compile.lint"] = compile_lint
-    if flavor is not None:
-        overrides["compile.output.flavor"] = flavor
-    if llm_default_model is not None:
-        overrides["compile.llm.default_model"] = llm_default_model
     if llm_fallback_chain is not None:
         overrides["compile.llm.fallback_chain"] = list(llm_fallback_chain)
     if llm_fallback_max_retries is not None:
@@ -1195,12 +1192,7 @@ def _build_cli_overrides(
                 parsed[role.strip()] = model.strip()
         if parsed:
             overrides["compile.llm.role_models"] = parsed
-    if kind is not None:
-        overrides["compile.page_kind"] = kind
-    if compiler is not None:
-        overrides["compile.compiler"] = compiler
     return overrides
-
 
 def _cli_build_vector_index(
     wiki: CompiledWiki,
@@ -1208,7 +1200,6 @@ def _cli_build_vector_index(
     embed_model: str | None,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
-    from knox.rag import build_vector_index  # noqa: PLC0415
 
     count = build_vector_index(wiki, output_dir_path, embed_model=embed_model)
     if count > 0:
@@ -1216,60 +1207,46 @@ def _cli_build_vector_index(
     else:
         typer.echo("Warning: no nodes indexed — vector index skipped", err=True)
 
-
 # ── New feature helpers (Q20/N3/N8/N4/Q21) ──────────────────────────────
-
 
 def _print_tier_listing(pipeline: object) -> None:
     """Print the tier listing from a WikiPipeline."""
     if not hasattr(pipeline, "list_tiers"):
         typer.echo("Pipeline does not support tier listing.", err=True)
         return
-    import json as j  # noqa: PLC0415
 
-    typer.echo(j.dumps(pipeline.list_tiers(), indent=2, default=str))
-
+    typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))
 
 def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
-    from knox.review import ReviewQueue  # noqa: PLC0415
 
     queue = ReviewQueue(review_dir=output_dir_path / ".knox" / "review")
     for node in wiki.nodes:
         queue.enqueue(node)
 
-
 def _annotate_provenance(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
-    from knox.provenance import annotate_wiki_with_provenance  # noqa: PLC0415
 
     annotated = annotate_wiki_with_provenance(wiki, output_dir_path)
     typer.echo(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
-
 def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
-    from knox.trust import mark_wiki_private  # noqa: PLC0415
 
     mark_wiki_private(wiki, output_dir_path)
 
-
 def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "ollama/llama3.2") -> None:
     """Run grounding verification over wiki claims."""
-    from knox.verification import verify_wiki  # noqa: PLC0415
 
     result = verify_wiki(wiki, output_dir_path, model=model)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
-
 def _run_post_compile_lint(wiki: CompiledWiki, sources_dir_path: Path, *, json_output: bool = False) -> None:
     """Run lint after compilation and print the report."""
-    from knox.lint.runner import LintRunner, report_to_text  # noqa: PLC0415
 
     runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
-
 
 def _resolve_role_models(cfg: Any) -> dict[str, str]:
     """Extract per-role model overrides from resolved config (Q13).
@@ -1284,20 +1261,16 @@ def _resolve_role_models(cfg: Any) -> dict[str, str]:
                 role_models[role] = model.strip()
     return role_models
 
-
 def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``.
 
     This lets standalone ``knox lint`` load the wiki without requiring
     a fresh compile. The cache is overwritten on every successful compile.
     """
-    import json  # noqa: PLC0415
 
     cache_dir = output_dir_path / ".knox"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / "last_wiki.json"
-
-    import dataclasses  # noqa: PLC0415
 
     data = {
         "nodes": [dataclasses.asdict(n) for n in wiki.nodes],

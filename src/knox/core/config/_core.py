@@ -48,11 +48,20 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
 
 # ── File paths ───────────────────────────────────────────────────────────
 
@@ -232,8 +241,6 @@ def _expand_env_vars(value: str) -> str:
     when loading TOML config files so users can reference env vars like
     ``$HOME`` in path settings.
     """
-    import re  # noqa: PLC0415
-
     def _replace(match: re.Match) -> str:
         var = match.group(1) or match.group(2) or ""
         return os.environ.get(var, match.group(0))
@@ -258,14 +265,9 @@ def _load_toml(path: Path) -> dict[str, Any]:
     String values are processed through ``_expand_env_vars`` to support
     ``$VAR`` and ``${VAR}`` patterns.
     """
-    try:
-        import tomllib  # noqa: PLC0415
-    except ImportError:
-        try:
-            import tomli as tomllib  # type: ignore[no-redef]  # noqa: PLC0415
-        except ImportError:
-            logger.warning("No TOML parser available — cannot read %s", path)
-            return {}
+    if tomllib is None:
+        logger.warning("No TOML parser available — cannot read %s", path)
+        return {}
 
     try:
         raw = path.read_bytes()

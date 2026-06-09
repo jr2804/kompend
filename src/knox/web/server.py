@@ -1,13 +1,20 @@
-from __future__ import annotations
-
 import json
 import logging
+import subprocess
+import sys
 import webbrowser
 from pathlib import Path
 from typing import Any
 
+import uvicorn
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+
+from knox.capture.ingest import ingest
+from knox.capture.learn import learn
+from knox.core.models import CompiledWiki
+from knox.search.classifier import classify
+from knox.search.retriever import TokenOverlapRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +194,6 @@ async def query_page(q: str = Query(default="")) -> str:
     wiki = _load_wiki()
     answer_html = ""
     if q:
-        from knox.core.models import CompiledWiki  # noqa: PLC0415
-        from knox.search.retriever import TokenOverlapRetriever  # noqa: PLC0415
-
         w = CompiledWiki(
             nodes=wiki.get("nodes", []),
             edges=wiki.get("edges", []),
@@ -200,8 +204,6 @@ async def query_page(q: str = Query(default="")) -> str:
         )
         retriever = TokenOverlapRetriever(w)
         results = retriever.search(q, top_k=5)
-
-        from knox.search.classifier import classify  # noqa: PLC0415
 
         intent = classify(q)
         if intent != "knowledge":
@@ -449,8 +451,6 @@ async def settings_page() -> str:
 
 @app.post("/api/ingest-url")
 async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
-    from knox.capture.ingest import ingest  # noqa: PLC0415
-
     result = ingest(url, sources_dir=_CWD / "sources")
     if result:
         return JSONResponse({"status": "ok", "file": str(result)})
@@ -459,17 +459,12 @@ async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
 
 @app.post("/api/learn")
 async def api_learn(text: str = Query(...)) -> JSONResponse:
-    from knox.capture.learn import learn  # noqa: PLC0415
-
     path = learn(text, sources_dir=_CWD / "sources")
     return JSONResponse({"status": "ok", "file": str(path)})
 
 
 @app.post("/api/compile")
 async def api_compile() -> JSONResponse:
-    import subprocess  # noqa: PLC0415
-    import sys  # noqa: PLC0415
-
     result = subprocess.run([sys.executable, "-m", "knox.cli.app", "compile"], capture_output=True, text=True, cwd=str(_CWD), check=False)  # noqa: S603
     if result.returncode == 0:
         return JSONResponse({"status": "ok", "output": result.stdout})
@@ -477,8 +472,6 @@ async def api_compile() -> JSONResponse:
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = False) -> None:
-    import uvicorn  # noqa: PLC0415
-
     if open_browser:
         webbrowser.open(f"http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")

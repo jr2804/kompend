@@ -14,21 +14,22 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import ParsedDocument
+from knox.chunking.hybrid import HybridChunker
+from knox.compilation.graph import GraphCompiler
+from knox.core.models import ParsedDocument, ResolvedChunk
+from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
 
 
 def _check_parser() -> bool:
     """Return True if a parser can be instantiated."""
     try:
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
-
         DoclingParser(extract_images=False)
         return True
     except Exception:
         pass
     try:
-        from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
-
         PdfPlumberParser()
         return True
     except Exception:
@@ -39,14 +40,10 @@ def _check_parser() -> bool:
 def _get_parser():
     """Return the best available parser instance."""
     try:
-        from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: PLC0415
-
         return DoclingParser(extract_images=False)
     except Exception:
         pass
     try:
-        from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser  # noqa: PLC0415
-
         return PdfPlumberParser()
     except Exception:
         pass
@@ -112,10 +109,6 @@ class TestRealCorpusWiki:
 
     def test_compile_single_pdf_to_wiki(self, source_pdfs: list[Path]) -> None:
         """Parse → chunk → resolve → compile a single PDF into a CompiledWiki."""
-        from knox.chunking.hybrid import HybridChunker
-        from knox.compilation.graph import GraphCompiler
-        from knox.core.models import ResolvedChunk
-
         assert len(source_pdfs) > 0
         parser = _get_parser()
 
@@ -137,10 +130,6 @@ class TestRealCorpusWiki:
 
     def test_compile_all_pdfs_to_wiki(self, source_pdfs: list[Path]) -> None:
         """Parse and compile all corpus PDFs — verify no crashes."""
-        from knox.chunking.hybrid import HybridChunker
-        from knox.compilation.graph import GraphCompiler
-        from knox.core.models import ResolvedChunk
-
         parser = _get_parser()
         chunker = HybridChunker(max_tokens=512)
         compiler = GraphCompiler()
@@ -172,8 +161,6 @@ class TestURLDownload:
     def test_download_first_url(self, test_urls: list[str], tmp_path: Path) -> None:
         """Download the first URL and verify it produces a parseable file."""
         pytest.importorskip("knox.preprocessing.downloaders.http_downloader")
-
-        from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 
         assert len(test_urls) > 0
         downloader = HTTPDownloader(timeout=30)

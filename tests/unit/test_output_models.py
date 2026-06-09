@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Never
 
+from knox.core.models import CompiledWiki, WikiNode
+from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 from knox.output.renderer import (
     DocumentRenderer,
+    _check_rumdl,
     detect_flavor,
     render_frontmatter,
 )
@@ -144,11 +149,6 @@ class TestMissingRumdlFallback:
 
     def test_fallback_on_import_error(self, monkeypatch) -> None:
         """When rumdl is not on PATH, render should return raw markdown."""
-        # Simulate rumdl not found via shutil.which
-        import shutil
-
-        from knox.output.renderer import _check_rumdl
-
         original = shutil.which
         monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "rumdl" else original(cmd))
         assert not _check_rumdl()
@@ -163,8 +163,6 @@ class TestMissingRumdlFallback:
 
     def test_fallback_on_subprocess_error(self, monkeypatch) -> None:
         """When rumdl crashes, render should return raw markdown."""
-        import subprocess
-
         def _fake_run(*args, **kwargs) -> Never:
             raise subprocess.TimeoutExpired(cmd=["rumdl"], timeout=30, output="")
 
@@ -182,9 +180,6 @@ class TestMarkdownWriterRegression:
 
     def test_writes_valid_markdown_structure(self, tmp_path: Path) -> None:
         """MarkdownWriter.write() produces a file with expected structure."""
-        from knox.core.models import CompiledWiki, WikiNode
-        from knox.output.markdown import MarkdownWriter
-
         wiki = CompiledWiki(
             nodes=[
                 WikiNode(

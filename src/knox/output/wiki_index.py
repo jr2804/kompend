@@ -138,7 +138,7 @@ def write_overview(
     LLM client is unavailable.
     """
     try:
-        from knox.llm.client import LLMClient  # noqa: PLC0415
+        from knox.llm.client import LLMClient
     except ImportError:
         return None
 
