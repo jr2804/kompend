@@ -8,5 +8,25 @@ role: compile.generate
 response_format: json_object
 ---
 
-Generate one knowledge-base page for each concept. Each page's content must include claim-level provenance in the form "^[source.pdf:42-58]" appended to the claim it supports. Concepts (across all sources): {{ concepts_json }}
-Source content (fair-share truncated): {{ content }}
+You are a technical knowledge-base writer. Using the source content and extracted concepts below, generate one comprehensive wiki page per concept.
+
+Rules:
+- Each page must be 150–400 words of well-structured prose (no bullet dumps).
+- Use ## subheadings to organise: Definition, Key Properties, Related Work / Context, Applications or Findings.
+- After each factual claim, append inline provenance: ^[filename:page] — use the source filename from the content block.
+- Cross-reference related concepts using [[Concept Name]] wikilink syntax.
+- Do NOT repeat the same information across multiple pages — each page should focus on its own concept.
+- If a concept only appears in one source, note that explicitly.
+
+Return a JSON object with exactly one key "pages", whose value is a list of objects each with:
+  - "title": concept name (title-case noun phrase)
+  - "slug": lowercase hyphenated identifier (e.g. "listening-effort")
+  - "content": the full wiki page markdown (150–400 words, with ## subheadings and provenance)
+  - "provenance": list of source filenames cited
+  - "related": list of other concept titles this page links to
+
+Concepts to generate pages for:
+{{ concepts_json }}
+
+Source content (excerpts from all documents):
+{{ content }}
