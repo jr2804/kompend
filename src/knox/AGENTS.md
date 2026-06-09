@@ -86,6 +86,14 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 | `knox-8gj` (T9) | `output/wiki_index.py` | 1 synthesis prompt string |
 | `knox-sga` (T10) | `resolution/llm.py` | 1 default entity extraction prompt |
 
+## Python Antipatterns
+
+1. **Follow the `python-ultimate` skill.** When in doubt about Python coding style, structure, or conventions, load and follow the guidelines in the `python-ultimate` skill. It takes precedence over any conflicting habit or default.
+
+2. **No inline imports — PLC0415 is a hard error.** All imports must live at module level (standard library → third-party → local, per PEP 8 grouping). Importing inside functions, methods, or class bodies is forbidden. Using `# noqa: PLC0415` to suppress the lint error is itself an antipattern — it hides a real problem rather than fixing it. Move the import to the top of the file. The only accepted exceptions are cases where the import would cause a circular dependency or an unconditional heavy side-effect at import time; both must be documented with a comment explaining why.
+
+3. **No try/except ImportError guards for core dependencies.** Every package listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be installed. Wrapping `import mylib` in `try: ... except ImportError: mylib = None` is pointless boilerplate — it obscures the real dependency, adds dead branches, and masks actual install failures. Import at module level, unconditionally.
+
 ## Jinja2 conventions
 
 - Template files use the ``.md.j2`` extension (markdown + Jinja2).

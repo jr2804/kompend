@@ -137,22 +137,9 @@ For review, debugging, or analysis outputs, use: findings with references, concl
 - Online sources (URLs) go through `downloaders/` before `parsers/`
 - MCP server is a thin wrapper — no business logic duplication
 
-## Text in Code Rule
+## Text in Code
 
-**Text must never be embedded in Python code.** This includes:
-
-- LLM system prompts, user prompts, and instruction strings
-- Template strings with placeholders (`.format()`, f-strings)
-- Configuration data (page kind definitions, field schemas, hints)
-- Multi-line descriptive strings passed to the LLM
-
-All such text must be stored in:
-
-- **TOML files** for configuration data and prompt metadata
-- **Jinja2 templates** (`.md.j2`) for prompt text with variables
-- Packaged as external files loaded at runtime, not string constants in Python
-
-See `src/knox/AGENTS.md` for the detailed convention and `src/knox/core/config/AGENTS.md` for configuration-specific rules. If these files are not in context, read them before writing any text-bearing Python files. Do not proceed based on inference.
+Human-readable text must never be embedded in Python code. See `src/knox/AGENTS.md` for the full convention (what goes where, template loading, acceptable exceptions). See `src/knox/core/config/AGENTS.md` for configuration-specific rules. If these files are not in context, read them before writing any text-bearing Python files.
 
 ## Issue Tracking
 
