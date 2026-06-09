@@ -1,7 +1,7 @@
 # LLM Configuration
 
 KNOX routes every LLM call through a shared client
-([`knox.llm.LLMClient`](../../src/knox/llm/client.py)) so every tier
+([`knox.llm.LLMClient`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/client.py)) so every tier
 gets the same retry, failover and observability semantics.
 
 This guide covers the **Q12** features: typed errors and a
@@ -10,7 +10,7 @@ configurable failover chain.
 ## Typed errors
 
 The shared client raises one of three classes from
-[`knox.llm.errors`](../../src/knox/llm/errors.py) — never a raw
+[`knox.llm.errors`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/errors.py) — never a raw
 provider exception:
 
 | Class | When it fires | Retry behaviour |

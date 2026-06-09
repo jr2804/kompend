@@ -44,6 +44,11 @@ knox query "what is the main result?"
 
 ---
 
-[Getting Started](guides/cli.md){ .md-button }
-[Architecture](architecture/index.md){ .md-button }
-[GitHub](https://github.com/anomalyco/knox){ .md-button }
+## Documentation
+
+- [Getting Started](guides/cli.md) — CLI setup, compile/query examples
+- [Basic Principles](concepts/basic-principles.md) — What KNOX does and why
+- [Architecture](architecture/index.md) — 5-tier pipeline design
+- [Guides](guides/cli.md) — CLI setup, compilation, linting, LLM config, output formats
+- [Concepts](concepts/basic-principles.md) — Pipeline tiers, WiCER loop, design rationale
+- [Reference](reference/ecosystem.md) — Ecosystem survey of LLM-wiki tools
