@@ -14,7 +14,7 @@ from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     TwoPhaseCompiler,
-    fair_share_truncate,
+    _segment_sources,
 )
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline import (
@@ -275,27 +275,30 @@ class TestExtractionData:
         assert idx["KNOX"] == ["a.pdf", "b.pdf"]
 
 
-class TestFairShareTruncate:
-    """N10 fair-share budget logic."""
+class TestSegmentSources:
+    """Source segmentation — splits content without data loss."""
 
     def test_empty_sources_returns_empty(self) -> None:
-        assert fair_share_truncate([], 1000) == []
+        assert _segment_sources([], 1000) == []
 
-    def test_zero_budget_drops_everything(self) -> None:
-        result = fair_share_truncate([("a", "hello world")], 0)
-        assert result == [("a", "", len("hello world"))]
+    def test_under_segment_size_returns_single_segment(self) -> None:
+        result = _segment_sources([("a", "short")], 100)
+        assert len(result) == 1
+        assert result[0] == [("a", "short")]
 
-    def test_per_source_even_split(self) -> None:
-        result = fair_share_truncate(
-            [("a", "x" * 100), ("b", "y" * 100)],
-            total_budget=40,
+    def test_large_source_split_across_segments(self) -> None:
+        result = _segment_sources([("a", "x" * 100)], 30)
+        total_content = "".join(content for segment in result for _, content in segment)
+        assert len(total_content) == 100  # no data loss
+
+    def test_multiple_sources_packed_efficiently(self) -> None:
+        result = _segment_sources(
+            [("a", "x" * 20), ("b", "y" * 20)],
+            30,
         )
-        # 40 / 2 = 20 per source
-        assert all(len(content) == 20 for _, content, _ in result)
-
-    def test_under_budget_source_kept_intact(self) -> None:
-        result = fair_share_truncate([("a", "short")], 100)
-        assert result[0] == ("a", "short", 0)
+        # Both sources should be in one or two segments, no data lost
+        total = sum(len(content) for seg in result for _, content in seg)
+        assert total == 40  # no data loss
 
 
 class TestTwoPhaseCompiler:

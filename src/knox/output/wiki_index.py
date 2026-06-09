@@ -14,7 +14,9 @@ from pathlib import Path
 
 from knox.core.models import CompiledWiki
 from knox.core.template_loader import TemplateLoader
+from knox.llm.client import LLMClient
 
+# TODO: Improve, better to make a singleton? instead of reloading templates on every compile, maybe load once at module level?
 _loader = TemplateLoader()
 
 
@@ -116,50 +118,88 @@ def write_index_and_log(
     return {"index": index_path, "log": log_path}
 
 
-def generate_overview(source_texts: list[str], model: str = "llama3.2") -> str | None:
-    """Generate ``overview.md`` via LLM (opt-in).
+# Character budget per overview-synthesis LLM call. Source texts longer than
+# this are processed in multiple calls and the partial overviews are merged.
+_OVERVIEW_BUDGET = 4000
 
-    Returns the Markdown overview text, or ``None`` if unavailable.
+
+def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2") -> str | None:
+    """Generate an overview of the wiki from node content.
+
+    All *source_texts* are processed — no content is dropped.  If the total
+    exceeds ``_OVERVIEW_BUDGET`` chars, texts are batched and each batch
+    produces a partial overview.  The partials are then merged in a final
+    synthesis call.
+
+    Returns Markdown text, or ``None`` when the LLM is unavailable.
     """
-    # This is a stub — requires LLM client which may not be wired yet.
-    # The actual implementation will use LLMClient.complete() with a
-    # synthesis prompt.
-    return None
+    if not source_texts:
+        return None
+
+    try:
+        client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1)
+    except Exception:  # noqa: BLE001
+        return None
+
+    # Build budget-sized batches of source text.
+    batches: list[str] = []
+    current_parts: list[str] = []
+    current_len = 0
+    for text in source_texts:
+        if current_len + len(text) > _OVERVIEW_BUDGET and current_parts:
+            batches.append("\n---\n".join(current_parts))
+            current_parts = []
+            current_len = 0
+        current_parts.append(text)
+        current_len += len(text)
+    if current_parts:
+        batches.append("\n---\n".join(current_parts))
+
+    # Generate a partial overview from each batch.
+    partials: list[str] = []
+    for batch_text in batches:
+        prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
+        try:
+            result = client.complete(
+                role="synthesize",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            if result.content:
+                partials.append(result.content)
+        except Exception:  # noqa: BLE001
+            continue
+
+    if not partials:
+        return None
+
+    if len(partials) == 1:
+        return partials[0]
+
+    # Merge partial overviews.
+    combined = "\n\n".join(partials)
+    prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
+    try:
+        result = client.complete(
+            role="synthesize",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return result.content
+    except Exception:  # noqa: BLE001
+        # Return concatenated partials if the merge call fails.
+        return combined
 
 
 def write_overview(
     wiki: CompiledWiki,
     output_dir: Path,
-    model: str = "llama3.2",
+    model: str = "ollama/llama3.2",
 ) -> Path | None:
-    """Write ``overview.md`` (LLM-generated). Returns the path or None.
-
-    Requires Q12/Q13 (LLM client) to be wired. Returns None if the
-    LLM client is unavailable.
-    """
-    try:
-        from knox.llm.client import LLMClient
-    except ImportError:
-        return None
-
-    client = LLMClient()
-
+    """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
-    if not source_texts:
+    content = generate_overview(source_texts, model=model)
+    if not content:
         return None
 
-    wiki_content = "\n---\n".join(text[:2000] for text in source_texts[:10])
-    prompt = _loader.render("output/synthesize.md.j2", wiki_content=wiki_content)
-
-    try:
-        result = client.complete(
-            role="synthesize",
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-        )
-        content = result.content if hasattr(result, "content") else str(result)
-        overview_path = output_dir / "overview.md"
-        overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
-        return overview_path
-    except Exception:
-        return None
+    overview_path = output_dir / "overview.md"
+    overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
+    return overview_path

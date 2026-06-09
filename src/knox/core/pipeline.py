@@ -14,7 +14,9 @@ from knox.chunking.base import BaseChunker
 from knox.chunking.hybrid import HybridChunker
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument
+from knox.compilation.two_phase import TwoPhaseCompiler
+from knox.compilation.wicer import WiCERCompiler
+from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -22,11 +24,16 @@ from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
+from knox.resolution.chain import ResolverChain
+from knox.resolution.llm import LLMResolver
+from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
 logger = logging.getLogger(__name__)
 
-
+# TODO: move all constants and config definitions to a separate module for better separation of concerns and to avoid cluttering the pipeline orchestration code. This includes the tier identifiers, their descriptions, and the mode definitions.
+# TODO: make all these definitions a single source of truth for both the CLI and the WikiPipeline, to avoid drift and ensure the tier contract is well-defined and discoverable. This includes the tier identifiers, their descriptions, and the mode definitions.
+# TODO: Use StrEnum instead of ClassVar[str] for the tier identifiers once we require Python 3.11+.
 # Tier identifiers for the Q20 tiered compilation feature. They are
 # cumulative: tier 3 runs tiers 0+1+2+3, tier 1 runs tiers 0+1.
 TIER_INDEX: ClassVar[str] = "index"
@@ -115,6 +122,7 @@ class PipelineConfig:
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     rumdl_config: Path | None = None  # path to custom .rumdl.toml config
     compiler: Literal["graph", "wicer"] = "graph"  # C4: compiler backend selection
+    privacy_filter: bool = True  # redact PII/secrets from parsed content
 
 
 class WikiPipeline:
@@ -337,8 +345,6 @@ class WikiPipeline:
         except (OSError, json.JSONDecodeError):
             logger.debug("Compiled wiki snapshot unreadable — treating as missing")
             return None
-        from knox.core.models import WikiNode  # local import to avoid module-level cycle
-
         nodes = [WikiNode(**n) for n in data.get("nodes", [])]
         return CompiledWiki(
             nodes=nodes,
@@ -348,14 +354,6 @@ class WikiPipeline:
             iteration=data.get("iteration", 0),
             metadata=data.get("metadata", {}),
         )
-
-    def _load_resolved_from_disk(self) -> list[Any]:
-        """Best-effort load of previously resolved chunks (not yet implemented).
-
-        Returns an empty list — the resolver tier is idempotent and re-runs
-        cheaply when no snapshot is present.
-        """
-        return []
 
     def _parse_and_chunk(self) -> list[Any]:
         """Parse documents and chunk them, with optional caching and parallelism.
@@ -386,11 +384,7 @@ class WikiPipeline:
                         if not self.chunker:
                             return []
                         if self.config.privacy_filter:
-                            for el in parsed.elements:
-                                if isinstance(el.content, str):
-                                    el.content, _ = filter_sensitive(el.content)
-                                elif isinstance(el.content, list):
-                                    el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+                            self._apply_privacy_filter(parsed.elements)
                         return self.chunker.chunk(parsed)
 
             parsed = self._load_cache(source_file) if use_cache else None
@@ -399,7 +393,7 @@ class WikiPipeline:
                     return []
                 try:
                     parsed = self.parser.parse(source_file)
-                    parsed.elements  # ensure fully materialized
+                    _ = len(parsed.elements)  # ensure fully materialized
                 except Exception:
                     logger.exception("Failed to parse %s", source_file)
                     return []
@@ -409,11 +403,7 @@ class WikiPipeline:
                         content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
             if self.config.privacy_filter:
-                for el in parsed.elements:
-                    if isinstance(el.content, str):
-                        el.content, _ = filter_sensitive(el.content)
-                    elif isinstance(el.content, list):
-                        el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+                self._apply_privacy_filter(parsed.elements)
 
             if content_hash:
                 self.state_store.record(state, stem, source_file, content_hash, tier=1)
@@ -504,12 +494,32 @@ class WikiPipeline:
             logger.debug("Cache write failed for %s — ignoring", cache_path)
 
     @staticmethod
+    def _apply_privacy_filter(elements: list[Any]) -> None:
+        """Apply privacy filter in-place to document elements."""
+        for el in elements:
+            if isinstance(el.content, str):
+                el.content, _ = filter_sensitive(el.content)
+            elif isinstance(el.content, list):
+                el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+
+    @staticmethod
+    def _load_resolved_from_disk() -> list[Any]:
+        """Best-effort load of previously resolved chunks (not yet implemented).
+
+        Returns an empty list — the resolver tier is idempotent and re-runs
+        cheaply when no snapshot is present.
+        """
+        return []
+
+    @staticmethod
     def _cache_key(source_file: Path) -> str:
         """SHA-256 of file contents for cache key."""
         digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
         return f"{source_file.stem}_{digest[:12]}"
 
-
+# TODO: expand descriptions with more details on what each tier does and its expected inputs/outputs, to clarify the contract for testing and future extensions.
+# TODO: move to docs and link from here, to avoid cluttering the code with long descriptions.
+# TODO: move to top of the file for better visibility, and/or to different module if the pipeline orchestration code grows significantly and we want to keep the config and constants separate.
 _TIER_DESCRIPTIONS: dict[str, str] = {
     TIER_INDEX: "Parse documents and update tier state.",
     TIER_CHUNK: "Chunk parsed documents.",
@@ -579,19 +589,15 @@ def build_pipeline(
     resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
 
     llm_client = build_llm_client(config)
-    resolver = _build_resolver_chain(config, llm_client)
+    resolver = _build_resolver_chain(config, llm_client, skip_llm_resolver=two_phase)
 
     base_compiler: BaseCompiler
     if config.compiler == "wicer":
-        from knox.compilation.wicer import WiCERCompiler
-
         wicer_client = build_llm_client(config)
         base_compiler = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=wicer_client)
     else:
         base_compiler = GraphCompiler()
         if two_phase:
-            from knox.compilation.two_phase import TwoPhaseCompiler
-
             base_compiler = TwoPhaseCompiler(
                 base=GraphCompiler(),
                 prompt_budget=prompt_budget,
@@ -612,20 +618,22 @@ def build_pipeline(
     )
 
 
-def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
+def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient, *, skip_llm_resolver: bool = False) -> BaseResolver:
     """Construct the default resolver chain (M7).
 
-    Always includes :class:`LLMResolver`. When VLM is available
-    (``config.vlm_model`` is set and the model is reachable), a
-    :class:`VLMEnricher` is appended to the chain.
-    """
-    from knox.resolution.llm import LLMResolver
+    When *skip_llm_resolver* is False (the default), the chain starts with
+    :class:`LLMResolver`.  When True (set when TwoPhaseCompiler is active),
+    per-chunk entity extraction is deferred to the compilation tier so
+    LLMResolver is omitted to avoid a redundant LLM call per chunk.
 
-    resolvers: list[BaseResolver] = [LLMResolver(client=llm_client)]
+    When VLM is available (``config.vlm_model`` is set and the model is
+    reachable), a :class:`VLMEnricher` is appended to the chain.
+    """
+    resolvers: list[BaseResolver] = []
+    if not skip_llm_resolver:
+        resolvers.append(LLMResolver(client=llm_client))
 
     try:
-        from knox.resolution.vlm_enricher import VLMEnricher
-
         vlm_client = LLMClient(
             default_model=f"ollama/{config.vlm_model}",
             fallback_chain=[],
@@ -635,7 +643,5 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
         logger.debug("VLMEnricher added to resolver chain (model=%s)", config.vlm_model)
     except Exception as exc:
         logger.debug("VLMEnricher not available: %s", exc)
-
-    from knox.resolution.chain import ResolverChain
 
     return ResolverChain(resolvers)

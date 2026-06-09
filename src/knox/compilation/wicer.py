@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 _loader = TemplateLoader()
 
+# Character budget per LLM call in probe generation and evaluation.
+# Text longer than this is split into multiple calls; results are merged.
+_PROBE_BUDGET = 3000
+_EVAL_BUDGET = 4000
+
 
 class WiCERCompiler(BaseCompiler):
     """Compile-Evaluate-Refine loop for improved compilation quality.
@@ -124,9 +129,45 @@ class WiCERCompiler(BaseCompiler):
         return self._compiler.compile(chunks)
 
     def _generate_probes(self, wiki: CompiledWiki, chunks: list[ResolvedChunk]) -> list[dict]:
-        """Step B: generate probe Q&A pairs from source chunks."""
-        sample_texts = [rc.chunk.text for rc in chunks[:5] if rc.chunk.text]
-        combined = "\n\n".join(sample_texts)
+        """Step B: generate probe Q&A pairs from source chunks.
+
+        All chunks are processed in batches of ``_PROBE_BUDGET`` chars
+        so no source content is dropped.
+        """
+        all_probes: list[dict] = []
+        seen_questions: set[str] = set()
+
+        # Accumulate chunk texts into budget-sized batches.
+        batch_parts: list[str] = []
+        batch_len = 0
+
+        for rc in chunks:
+            if not rc.chunk.text:
+                continue
+            if batch_len + len(rc.chunk.text) > _PROBE_BUDGET and batch_parts:
+                probes = self._probe_batch("\n\n".join(batch_parts))
+                for p in probes:
+                    q = p.get("question", "")
+                    if q not in seen_questions:
+                        all_probes.append(p)
+                        seen_questions.add(q)
+                batch_parts = []
+                batch_len = 0
+            batch_parts.append(rc.chunk.text)
+            batch_len += len(rc.chunk.text)
+
+        if batch_parts:
+            probes = self._probe_batch("\n\n".join(batch_parts))
+            for p in probes:
+                q = p.get("question", "")
+                if q not in seen_questions:
+                    all_probes.append(p)
+                    seen_questions.add(q)
+
+        return all_probes
+
+    def _probe_batch(self, combined: str) -> list[dict]:
+        """Generate probes from a single batch of combined text."""
         if not combined:
             return []
 
@@ -137,7 +178,7 @@ class WiCERCompiler(BaseCompiler):
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
-                {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined[:3000])},
+                {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined)},
             ],
             role="wicer.probe",
             response_format={"type": "json_object"},
@@ -147,11 +188,15 @@ class WiCERCompiler(BaseCompiler):
         if probes is not None:
             return probes
 
-        # Fallback: simple text-based probes
         return self._fallback_probes(combined)
 
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
-        """Step B: evaluate wiki against probes using LLM-as-judge."""
+        """Step B: evaluate wiki against probes using LLM-as-judge.
+
+        Wiki content is processed in segments of ``_EVAL_BUDGET`` chars
+        so the full wiki is checked, not just the first few kilobytes.
+        A probe is marked correct if it passes in ANY segment.
+        """
         wiki_text = "\n\n".join(n.content for n in wiki.nodes if n.content)
         if not wiki_text:
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
@@ -160,26 +205,40 @@ class WiCERCompiler(BaseCompiler):
             logger.debug("WiCER has no LLM client — using fallback evaluation")
             return self._fallback_evaluate(wiki_text, probes)
 
-        result = self._client.try_complete(
-            messages=[
-                {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
-                {
-                    "role": "user",
-                    "content": _loader.render(
-                        "compilation/wicer_evaluate.md.j2",
-                        wiki_text=wiki_text[:4000],
-                        probes_json=json.dumps(probes),
-                    ),
-                },
-            ],
-            role="wicer.judge",
-            response_format={"type": "json_object"},
-        )
+        # Track probe correctness across segments — a probe passing in any
+        # segment is considered passed.
+        probe_results: dict[int, dict] = {}
 
-        if result is not None and result.json_data is not None:
-            results = result.json_data.get("results", [])
-            if isinstance(results, list):
-                return results
+        for seg_start in range(0, len(wiki_text), _EVAL_BUDGET):
+            segment = wiki_text[seg_start : seg_start + _EVAL_BUDGET]
+
+            result = self._client.try_complete(
+                messages=[
+                    {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
+                    {
+                        "role": "user",
+                        "content": _loader.render(
+                            "compilation/wicer_evaluate.md.j2",
+                            wiki_text=segment,
+                            probes_json=json.dumps(probes),
+                        ),
+                    },
+                ],
+                role="wicer.judge",
+                response_format={"type": "json_object"},
+            )
+
+            if result is not None and result.json_data is not None:
+                results = result.json_data.get("results", [])
+                if isinstance(results, list):
+                    for i, r in enumerate(results):
+                        if i >= len(probes):
+                            break
+                        if r.get("correct", False) or i not in probe_results:
+                            probe_results[i] = r
+
+        if probe_results:
+            return [probe_results.get(i, {"question": p.get("question", ""), "correct": False}) for i, p in enumerate(probes)]
 
         return self._fallback_evaluate(wiki_text, probes)
 

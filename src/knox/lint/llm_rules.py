@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 _loader = TemplateLoader()
 
+# Character budget per LLM lint call. Page content exceeding this is
+# processed in multiple passes (chunk-and-iterate) so nothing is dropped.
+_LINT_PAGE_BUDGET = 100_000
+
 # ── Rule 9: factual-consistency ──────────────────────────────────────────
 
 
@@ -44,39 +48,33 @@ class FactualConsistencyRule(BaseLintRule):
         for node in wiki.nodes:
             if not node.content or not node.source_chunks:
                 continue
+            # Chunk-and-iterate: process content in budget-sized segments.
             content = node.content
-            if len(content) > self.context_budget:
-                logger.warning(
-                    "factual-consistency: page '%s' content (%d chars) exceeds context budget (%d), truncating",
-                    node.title,
-                    len(content),
-                    self.context_budget,
-                )
-                content = content[: self.context_budget]
-            prompt = _loader.render("lint/factual-consistency.md.j2", title=node.title, content=content)
-            try:
-                llm_result = self.llm_client.try_complete(
-                    [{"role": "user", "content": prompt}],
-                    role="lint.factual-consistency",
-                    response_format={"type": "json_object"},
-                )
-            except Exception as exc:
-                logger.warning("factual-consistency LLM call failed: %s", exc)
-                results.append(
-                    LintResult(
-                        rule=self.name,
-                        outcome=LintRuleOutcome.SKIP,
-                        message=f"LLM call failed: {exc}",
-                        page_id=node.id,
+            for seg_start in range(0, len(content), _LINT_PAGE_BUDGET):
+                segment = content[seg_start : seg_start + _LINT_PAGE_BUDGET]
+                prompt = _loader.render("lint/factual-consistency.md.j2", title=node.title, content=segment)
+                try:
+                    llm_result = self.llm_client.try_complete(
+                        [{"role": "user", "content": prompt}],
+                        role="lint.factual-consistency",
+                        response_format={"type": "json_object"},
                     )
-                )
-                continue
+                except Exception as exc:
+                    logger.warning("factual-consistency LLM call failed: %s", exc)
+                    results.append(
+                        LintResult(
+                            rule=self.name,
+                            outcome=LintRuleOutcome.SKIP,
+                            message=f"LLM call failed: {exc}",
+                            page_id=node.id,
+                        )
+                    )
+                    continue
 
-            if llm_result is None or llm_result.json_data is None:
-                continue
+                if llm_result is None or llm_result.json_data is None:
+                    continue
 
-            issues = llm_result.json_data.get("issues", [])
-            if issues:
+                issues = llm_result.json_data.get("issues", [])
                 for issue in issues:
                     results.append(
                         LintResult(
@@ -124,52 +122,54 @@ class ClarityScoreRule(BaseLintRule):
         for node in wiki.nodes:
             if not node.content:
                 continue
+            # Chunk-and-iterate: process content in budget-sized segments,
+            # keeping the best (highest) score.
             content = node.content
-            if len(content) > self.context_budget:
-                logger.warning(
-                    "clarity-score: page '%s' content (%d chars) exceeds context budget (%d), truncating",
-                    node.title,
-                    len(content),
-                    self.context_budget,
-                )
-                content = content[: self.context_budget]
-            prompt = _loader.render("lint/clarity-score.md.j2", title=node.title, content=content)
-            try:
-                llm_result = self.llm_client.try_complete(
-                    [{"role": "user", "content": prompt}],
-                    role="lint.clarity-score",
-                    response_format={"type": "json_object"},
-                )
-            except Exception as exc:
-                logger.warning("clarity-score LLM call failed: %s", exc)
+            best_score = 0
+            best_feedback = ""
+            for seg_start in range(0, len(content), _LINT_PAGE_BUDGET):
+                segment = content[seg_start : seg_start + _LINT_PAGE_BUDGET]
+                prompt = _loader.render("lint/clarity-score.md.j2", title=node.title, content=segment)
+                try:
+                    llm_result = self.llm_client.try_complete(
+                        [{"role": "user", "content": prompt}],
+                        role="lint.clarity-score",
+                        response_format={"type": "json_object"},
+                    )
+                except Exception as exc:
+                    logger.warning("clarity-score LLM call failed: %s", exc)
+                    results.append(
+                        LintResult(
+                            rule=self.name,
+                            outcome=LintRuleOutcome.SKIP,
+                            message=f"LLM call failed: {exc}",
+                            page_id=node.id,
+                        )
+                    )
+                    continue
+
+                if llm_result is None or llm_result.json_data is None:
+                    continue
+
+                score = llm_result.json_data.get("score", 0)
+                feedback = llm_result.json_data.get("feedback", "")
+                if score > best_score:
+                    best_score = score
+                    best_feedback = feedback
+
+            if best_score > 0:
+                outcome = LintRuleOutcome.PASS if best_score >= 6 else LintRuleOutcome.FAIL
+                severity = Severity.INFO if best_score >= 6 else Severity.WARNING
                 results.append(
                     LintResult(
                         rule=self.name,
-                        outcome=LintRuleOutcome.SKIP,
-                        message=f"LLM call failed: {exc}",
+                        outcome=outcome,
+                        severity=severity,
+                        message=f"Clarity score for '{node.title}': {best_score}/10 — {best_feedback}",
                         page_id=node.id,
+                        details={"score": best_score, "feedback": best_feedback},
                     )
                 )
-                continue
-
-            if llm_result is None or llm_result.json_data is None:
-                continue
-
-            score = llm_result.json_data.get("score", 0)
-            feedback = llm_result.json_data.get("feedback", "")
-            outcome = LintRuleOutcome.PASS if score >= 6 else LintRuleOutcome.FAIL
-            severity = Severity.INFO if score >= 6 else Severity.WARNING
-
-            results.append(
-                LintResult(
-                    rule=self.name,
-                    outcome=outcome,
-                    severity=severity,
-                    message=f"Clarity score for '{node.title}': {score}/10 — {feedback}",
-                    page_id=node.id,
-                    details={"score": score, "feedback": feedback},
-                )
-            )
 
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
@@ -205,30 +205,38 @@ class CoverageGapRule(BaseLintRule):
         if not wiki.nodes:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Empty wiki")]
 
-        # Build a summary of all wiki content for the LLM
-        # Use the context budget, divided evenly across up to 30 pages
-        per_node_budget = max(200, self.context_budget // 30)
-        wiki_summary = "\n".join(f"- {n.title}: {(n.content or '')[:per_node_budget]}" for n in wiki.nodes[:30])
+        # Build wiki summary in batches so all nodes are included.
+        # Each batch produces a partial coverage check; gaps from any batch
+        # are reported.
+        all_gaps: list[dict] = []
+        batch_size = max(1, self.context_budget // max(200, len(wiki.nodes)))
+        batch_size = min(batch_size, 30)  # cap to keep prompts manageable
 
-        prompt = _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
+        for batch_start in range(0, len(wiki.nodes), batch_size):
+            batch = wiki.nodes[batch_start : batch_start + batch_size]
+            wiki_summary = "\n".join(f"- {n.title}: {n.content or ''}" for n in batch)
 
-        try:
-            llm_result = self.llm_client.try_complete(
-                [{"role": "user", "content": prompt}],
-                role="lint.coverage-gap",
-                response_format={"type": "json_object"},
-            )
-        except Exception as exc:
-            logger.warning("coverage-gap LLM call failed: %s", exc)
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"LLM call failed: {exc}")]
+            prompt = _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
 
-        if llm_result is None or llm_result.json_data is None:
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="LLM returned no data")]
+            try:
+                llm_result = self.llm_client.try_complete(
+                    [{"role": "user", "content": prompt}],
+                    role="lint.coverage-gap",
+                    response_format={"type": "json_object"},
+                )
+            except Exception as exc:
+                logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc)
+                continue
 
-        gaps = llm_result.json_data.get("gaps", [])
+            if llm_result is None or llm_result.json_data is None:
+                continue
+
+            gaps = llm_result.json_data.get("gaps", [])
+            if isinstance(gaps, list):
+                all_gaps.extend(gaps)
         results: list[LintResult] = []
-        if gaps:
-            for gap in gaps:
+        if all_gaps:
+            for gap in all_gaps:
                 results.append(
                     LintResult(
                         rule=self.name,

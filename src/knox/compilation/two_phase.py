@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import litellm
@@ -29,6 +31,38 @@ from knox.core.template_loader import TemplateLoader
 logger = logging.getLogger(__name__)
 
 _loader = TemplateLoader()
+
+# Maximum concepts per generation batch. Keeps each prompt to a manageable size
+# for smaller LLMs (e.g. 7B quantised models via Ollama).
+_CONCEPTS_PER_BATCH = 8
+
+# Character budget per extraction LLM call. Source text longer than this is
+# split into multiple calls and the results are merged.
+_EXTRACT_BUDGET = 6000
+
+# Character budget per source-content segment in generation. Source content
+# longer than this is iterated across multiple generation rounds so no data
+# is dropped.
+_GEN_SOURCE_SEGMENT = 20_000
+
+
+def _slugify(text: str) -> str:
+    """Convert a title to a lowercase hyphenated slug."""
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_]+", "-", text)
+    return text.strip("-") or "concept"
+
+
+def _dedup_id(node_id: str, seen: set[str]) -> str:
+    """Append a numeric suffix if node_id already exists in *seen*, then add."""
+    candidate = node_id
+    counter = 2
+    while candidate in seen:
+        candidate = f"{node_id}-{counter}"
+        counter += 1
+    seen.add(candidate)
+    return candidate
 
 
 @dataclass
@@ -98,7 +132,7 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(prompt: str, system: str | None = None) -> Any | None:
+def _try_litellm_json(prompt: str, system: str | None = None, model: str = "ollama/llama3.2") -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     try:
         messages: list[dict[str, str]] = []
@@ -106,7 +140,7 @@ def _try_litellm_json(prompt: str, system: str | None = None) -> Any | None:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
         response = litellm.completion(
-            model="ollama/llama3.2",
+            model=model,
             messages=messages,
             response_format={"type": "json_object"},
             temperature=0.0,
@@ -133,26 +167,80 @@ def _fallback_extraction(source: str, text: str) -> Extraction:
     )
 
 
-def fair_share_truncate(
+def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
+    """Merge multiple batch extractions for the same source into one."""
+    if not parts:
+        return Extraction(source=source)
+    if len(parts) == 1:
+        return parts[0]
+
+    summary = " ".join(p.summary for p in parts if p.summary)
+    entities: list[dict[str, str]] = []
+    concepts: list[dict[str, str]] = []
+    tags: list[str] = []
+    seen_entities: set[str] = set()
+    seen_concepts: set[str] = set()
+    seen_tags: set[str] = set()
+    for p in parts:
+        for e in p.entities:
+            key = e.get("name", "").strip().lower()
+            if key and key not in seen_entities:
+                entities.append(e)
+                seen_entities.add(key)
+        for c in p.concepts:
+            key = c.get("name", "").strip().lower()
+            if key and key not in seen_concepts:
+                concepts.append(c)
+                seen_concepts.add(key)
+        for t in p.tags:
+            if t not in seen_tags:
+                tags.append(t)
+                seen_tags.add(t)
+    return Extraction(source=source, summary=summary, entities=entities, concepts=concepts, tags=tags)
+
+
+def _segment_sources(
     sources: list[tuple[str, str]],
-    total_budget: int,
-) -> list[tuple[str, str, int]]:
-    """Distribute ``total_budget`` chars across ``sources`` fairly.
+    segment_size: int,
+) -> list[list[tuple[str, str]]]:
+    """Split source content into segments of at most *segment_size* chars.
 
-    Returns ``(source_label, content, dropped_chars)`` per source. The
-    dropped-chars value is logged so the user can adjust the budget.
+    Returns a list of segments, where each segment is a list of
+    ``(label, content)`` pairs.  No data is dropped — sources that
+    exceed *segment_size* are split across multiple segments.
     """
-    if total_budget <= 0 or not sources:
-        return [(label, "", len(content)) for label, content in sources]
+    if not sources:
+        return []
 
-    per_source = total_budget // len(sources)
-    out: list[tuple[str, str, int]] = []
+    segments: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    current_len = 0
+
     for label, content in sources:
-        if len(content) <= per_source:
-            out.append((label, content, 0))
-        else:
-            out.append((label, content[:per_source], len(content) - per_source))
-    return out
+        remaining = content
+        while remaining:
+            space = segment_size - current_len
+            if space <= 0:
+                segments.append(current)
+                current = []
+                current_len = 0
+                space = segment_size
+            if len(remaining) <= space:
+                current.append((label, remaining))
+                current_len += len(remaining)
+                remaining = ""
+            else:
+                # Split at the last newline within budget, or hard-cut.
+                cut = remaining.rfind("\n", 0, space)
+                if cut <= 0:
+                    cut = space
+                current.append((label, remaining[:cut]))
+                current_len += cut
+                remaining = remaining[cut:]
+
+    if current:
+        segments.append(current)
+    return segments
 
 
 class TwoPhaseCompiler(BaseCompiler):
@@ -171,9 +259,11 @@ class TwoPhaseCompiler(BaseCompiler):
         self,
         base: BaseCompiler | None = None,
         prompt_budget: int = 200_000,
+        model: str = "ollama/llama3.2",
     ) -> None:
         self._base = base
         self.prompt_budget = prompt_budget
+        self._model = model
 
     # ------------------------------------------------------------------
     # Public API
@@ -193,7 +283,12 @@ class TwoPhaseCompiler(BaseCompiler):
         return self.generate(extractions, chunks)
 
     def extract(self, chunks: list[ResolvedChunk]) -> ExtractionSet:
-        """Phase 1: run the LLM in extraction mode for each source."""
+        """Phase 1: run the LLM in extraction mode for each source.
+
+        Source text is processed in batches of ``_EXTRACT_BUDGET`` chars
+        so that no content is silently dropped.  Results from each batch
+        are merged into a single :class:`Extraction` per source.
+        """
         _ = self  # noqa: PLR6301 — instance method for future per-compiler config
         extractions = ExtractionSet()
         # Group chunks by source file so each source is extracted once.
@@ -202,105 +297,171 @@ class TwoPhaseCompiler(BaseCompiler):
             label = str(rc.chunk.source_file or "unknown")
             by_source[label].append(rc)
 
+        extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
+
         for source, source_chunks in by_source.items():
-            text = "\n\n".join(rc.chunk.text for rc in source_chunks if rc.chunk.text)
-            prompt = _loader.render("compilation/extraction_prompt.md.j2", text=text[:6000])
-            extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
-            data = _try_litellm_json(prompt, system=extraction_system)
-            if isinstance(data, dict):
-                extractions.add(
-                    Extraction(
-                        source=source,
-                        summary=str(data.get("summary", "")),
-                        entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
-                        concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
-                        tags=[str(t) for t in data.get("tags", []) if t],
-                    )
-                )
-            else:
-                extractions.add(_fallback_extraction(source, text))
+            texts = [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+            if not texts:
+                extractions.add(Extraction(source=source))
+                continue
+
+            # Batch texts into budget-sized groups so nothing is dropped.
+            batch_parts: list[str] = []
+            batch_len = 0
+            batch_extractions: list[Extraction] = []
+
+            for text in texts:
+                if batch_len + len(text) > _EXTRACT_BUDGET and batch_parts:
+                    combined = "\n\n".join(batch_parts)
+                    batch_extractions.append(self._extract_one(source, combined, extraction_system))
+                    batch_parts = []
+                    batch_len = 0
+                batch_parts.append(text)
+                batch_len += len(text)
+
+            if batch_parts:
+                combined = "\n\n".join(batch_parts)
+                batch_extractions.append(self._extract_one(source, combined, extraction_system))
+
+            # Merge all batch extractions for this source.
+            extractions.add(_merge_extractions(source, batch_extractions))
         return extractions
 
+    def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
+        """Run a single extraction LLM call for *source* on *combined* text."""
+        prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
+        data = _try_litellm_json(prompt, system=extraction_system, model=self._model)
+        if isinstance(data, dict):
+            return Extraction(
+                source=source,
+                summary=str(data.get("summary", "")),
+                entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
+                concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
+                tags=[str(t) for t in data.get("tags", []) if t],
+            )
+        return _fallback_extraction(source, combined)
+
     def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk]) -> CompiledWiki:
-        """Phase 2: merge extractions and generate per-concept pages."""
+        """Phase 2: merge extractions and generate per-concept pages.
+
+        Batches concepts into groups of ``_CONCEPTS_PER_BATCH`` to avoid
+        overwhelming the LLM with a single massive prompt.
+        """
         concepts = extractions.concept_pages()
         if not concepts:
             # Nothing to merge — fall back to the base compiler.
             return self._fallback_compile(chunks)
 
-        # Fair-share truncate source content for the generation prompt.
-        sources: list[tuple[str, str]] = []
+        # Per-source content, collected in full.
         by_source: dict[str, str] = defaultdict(str)
         for rc in chunks:
-            label = str(rc.chunk.source_file or "unknown")
+            label = Path(str(rc.chunk.source_file or "unknown")).stem
             if rc.chunk.text:
                 by_source[label] += rc.chunk.text + "\n\n"
-        for label, text in by_source.items():
-            sources.append((label, text))
+        sources: list[tuple[str, str]] = list(by_source.items())
 
-        truncated = fair_share_truncate(sources, self.prompt_budget)
-        dropped_total = sum(d for _, _, d in truncated)
-        if dropped_total > 0:
-            logger.warning(
-                "TwoPhase: prompt budget %d truncated %d chars across %d sources",
-                self.prompt_budget,
-                dropped_total,
-                len(truncated),
-            )
+        # Split source content into segments so each generation call
+        # receives a manageable chunk without dropping data.
+        source_segments = _segment_sources(sources, _GEN_SOURCE_SEGMENT)
 
-        content_block = "\n\n".join(f"### {label}\n{content}" for label, content, _ in truncated)
-        prompt = _loader.render(
-            "compilation/generation_prompt.md.j2",
-            concepts_json=json.dumps(concepts),
-            content=content_block,
-        )
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
-        data = _try_litellm_json(prompt, system=generation_system, model=self._model)
-
         nodes: list[WikiNode] = []
         edges: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
 
-        if isinstance(data, dict):
-            for idx, page in enumerate(data.get("pages", [])):
-                if not isinstance(page, dict):
-                    continue
-                nodes.append(
-                    WikiNode(
-                        id=f"page_{idx}",
-                        title=str(page.get("title", f"Concept {idx}")),
-                        content=str(page.get("content", "")),
-                        node_type="concept",
-                        source_chunks=[],
-                        metadata={
-                            "provenance": list(page.get("provenance", []) or []),
-                            "two_phase": True,
-                        },
-                    )
+        # Batch concepts to keep each prompt manageable.
+        batch_size = _CONCEPTS_PER_BATCH
+        for batch_start in range(0, len(concepts), batch_size):
+            batch = concepts[batch_start : batch_start + batch_size]
+
+            # Iterate through ALL source segments for this concept batch,
+            # generating pages from each segment and merging.
+            for seg_idx, segment in enumerate(source_segments):
+                content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
+
+                prompt = _loader.render(
+                    "compilation/generation_prompt.md.j2",
+                    concepts_json=json.dumps(batch),
+                    content=content_block,
                 )
-            # Cross-source edges: pair-wise connect pages that share an entity.
-            entity_index = extractions.entity_index()
-            entity_to_page: dict[str, set[int]] = defaultdict(set)
-            for ent_name in entity_index:
+                data = _try_litellm_json(prompt, system=generation_system, model=self._model)
+
+                if not isinstance(data, dict):
+                    logger.warning(
+                        "TwoPhase: LLM returned non-dict for batch %d-%d, segment %d — using fallback",
+                        batch_start,
+                        batch_start + len(batch),
+                        seg_idx,
+                    )
+                    if seg_idx == 0:
+                        # Only create fallback nodes from the first segment
+                        # to avoid duplicates.
+                        for idx, concept in enumerate(batch):
+                            node_id = _slugify(concept.get("name", f"concept-{batch_start + idx}"))
+                            node_id = _dedup_id(node_id, seen_ids)
+                            nodes.append(
+                                WikiNode(
+                                    id=node_id,
+                                    title=concept.get("name", "Unknown"),
+                                    content=concept.get("definition", ""),
+                                    node_type="concept",
+                                    source_chunks=[],
+                                    metadata={"provenance": concept.get("sources", []), "two_phase": True},
+                                )
+                            )
+                    continue
+
                 for idx, page in enumerate(data.get("pages", [])):
                     if not isinstance(page, dict):
                         continue
-                    if ent_name.lower() in str(page.get("content", "")).lower():
-                        entity_to_page[ent_name].add(idx)
-            for ent_name, page_idxs in entity_to_page.items():
-                sorted_idxs = sorted(page_idxs)
-                for i in range(len(sorted_idxs)):
-                    for j in range(i + 1, len(sorted_idxs)):
-                        edges.append(
-                            {
-                                "source": nodes[sorted_idxs[i]].id,
-                                "target": nodes[sorted_idxs[j]].id,
-                                "type": "entity_reference",
-                                "entity": ent_name,
-                            }
+                    raw_slug = str(page.get("slug", "")).strip().lower()
+                    node_id = raw_slug if raw_slug else _slugify(str(page.get("title", f"concept-{batch_start + idx}")))
+                    node_id = _dedup_id(node_id, seen_ids)
+                    nodes.append(
+                        WikiNode(
+                            id=node_id,
+                            title=str(page.get("title", f"Concept {batch_start + idx}")),
+                            content=str(page.get("content", "")),
+                            node_type="concept",
+                            source_chunks=[],
+                            metadata={
+                                "provenance": list(page.get("provenance", []) or []),
+                                "related": list(page.get("related", []) or []),
+                                "two_phase": True,
+                            },
                         )
-        else:
-            # LLM failed — fall back to base compiler for substance.
+                    )
+
+        if not nodes:
             return self._fallback_compile(chunks)
+
+        # Cross-source edges: pair-wise connect pages that share an entity.
+        entity_index = extractions.entity_index()
+        entity_to_node: dict[str, set[str]] = defaultdict(set)
+        for ent_name in entity_index:
+            for node in nodes:
+                if ent_name.lower() in node.content.lower():
+                    entity_to_node[ent_name].add(node.id)
+        for ent_name, node_ids in entity_to_node.items():
+            sorted_ids = sorted(node_ids)
+            for i in range(len(sorted_ids)):
+                for j in range(i + 1, len(sorted_ids)):
+                    edges.append(
+                        {
+                            "source": sorted_ids[i],
+                            "target": sorted_ids[j],
+                            "type": "entity_reference",
+                            "entity": ent_name,
+                        }
+                    )
+
+        # Also wire up explicit "related" links from the LLM response.
+        title_to_id = {n.title: n.id for n in nodes}
+        for node in nodes:
+            for related_title in node.metadata.get("related", []):
+                target_id = title_to_id.get(related_title)
+                if target_id and target_id != node.id:
+                    edges.append({"source": node.id, "target": target_id, "type": "related", "entity": related_title})
 
         toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
         return CompiledWiki(
@@ -314,7 +475,6 @@ class TwoPhaseCompiler(BaseCompiler):
                 "two_phase": True,
                 "concepts_merged": len(concepts),
                 "prompt_budget": self.prompt_budget,
-                "truncated_chars": dropped_total,
             },
         )
 

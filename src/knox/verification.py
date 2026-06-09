@@ -29,6 +29,11 @@ _loader = TemplateLoader()
 
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
+# Minimum n-gram length for fallback substring verification.
+# _fallback_verify tries n-grams from the full claim down to this length.
+_MIN_NGRAM = 3
+
+# TODO: Too many hard-coded strings in the prompt construction and fallback logic. We should move these to config, templates or module containing constant expressions/StrEnums.
 
 @dataclass
 class ClaimVerification:
@@ -104,14 +109,14 @@ def _try_litellm_json(prompt: str, system: str | None = None, *, model: str = "o
 
 
 def _load_excerpt(source: str, sources_dir: Path) -> str:
-    """Best-effort load of the cited source excerpt from the sources dir."""
+    """Load the full cited source text from the sources dir."""
     if not sources_dir.exists():
         return ""
     target = sources_dir / source
     if not target.exists():
         return ""
     try:
-        return target.read_text(encoding="utf-8", errors="ignore")[:50_000]
+        return target.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return ""
 
@@ -127,27 +132,33 @@ def _fallback_verify(claim: str, excerpt: str) -> ClaimVerification:
             confidence=0.0,
             reason="source not found",
         )
-    # Pick the most distinctive 5-gram from the claim and look it up.
+    # Try n-grams from the full claim down to _MIN_NGRAM words.
+    # Longer n-grams are more distinctive — return on the first hit.
     tokens = claim.split()
-    if len(tokens) < 5:
-        return ClaimVerification(
-            node_id="",
-            claim=claim,
-            citation=None,
-            verdict="unsupported",
-            confidence=0.0,
-            reason="claim too short",
-        )
-    probe = " ".join(tokens[:5]).lower()
-    if probe in excerpt.lower():
+    excerpt_lower = excerpt.lower()
+    best_match_len = 0
+
+    for n in range(len(tokens), _MIN_NGRAM - 1, -1):
+        for start in range(len(tokens) - n + 1):
+            probe = " ".join(tokens[start : start + n]).lower()
+            if probe in excerpt_lower and n > best_match_len:
+                best_match_len = n
+                break  # found a match at this n-gram size, no need to check more starts
+        if best_match_len > 0:
+            break  # found the longest matching n-gram
+
+    if best_match_len > 0:
+        # Confidence proportional to how much of the claim matched.
+        coverage = best_match_len / len(tokens)
         return ClaimVerification(
             node_id="",
             claim=claim,
             citation=None,
             verdict="supported",
-            confidence=0.6,
-            reason="substring match (fallback)",
+            confidence=round(0.3 + 0.4 * coverage, 2),
+            reason=f"substring match ({best_match_len}/{len(tokens)} words, fallback)",
         )
+
     return ClaimVerification(
         node_id="",
         claim=claim,
@@ -156,6 +167,85 @@ def _fallback_verify(claim: str, excerpt: str) -> ClaimVerification:
         confidence=0.2,
         reason="no substring match (fallback)",
     )
+
+
+# Character budget per verification LLM call. Excerpts longer than this
+# are checked in multiple passes so the full source is covered.
+_VERIFY_BUDGET = 3000
+
+
+def _verify_claim_with_excerpt(
+    claim: str,
+    excerpt: str,
+    citation: Citation,
+    node_id: str,
+    model: str,
+) -> ClaimVerification:
+    """Verify a single claim against an excerpt, iterating if needed."""
+    verify_system = _loader.get_body("verification/verify_system.md.j2")
+
+    # If the excerpt fits in one call, verify directly.
+    if len(excerpt) <= _VERIFY_BUDGET:
+        prompt = _loader.render(
+            "verification/verify_claim.md.j2",
+            claim=claim,
+            source=citation.source,
+            start=citation.start,
+            end=citation.end,
+            excerpt=excerpt,
+        )
+        data = _try_litellm_json(prompt, system=verify_system, model=model)
+        if isinstance(data, dict):
+            return ClaimVerification(
+                node_id=node_id,
+                claim=claim,
+                citation=citation,
+                verdict=str(data.get("verdict", "unsupported")),
+                confidence=float(data.get("confidence", 0.0)),
+                reason=str(data.get("reason", "")),
+            )
+        fallback = _fallback_verify(claim, excerpt)
+        fallback.node_id = node_id
+        fallback.citation = citation
+        return fallback
+
+    # Excerpt exceeds budget — iterate through segments.
+    # A claim is supported if it passes in ANY segment.
+    best: ClaimVerification | None = None
+    for seg_start in range(0, len(excerpt), _VERIFY_BUDGET):
+        segment = excerpt[seg_start : seg_start + _VERIFY_BUDGET]
+        prompt = _loader.render(
+            "verification/verify_claim.md.j2",
+            claim=claim,
+            source=citation.source,
+            start=citation.start,
+            end=citation.end,
+            excerpt=segment,
+        )
+        data = _try_litellm_json(prompt, system=verify_system, model=model)
+        if isinstance(data, dict):
+            confidence = float(data.get("confidence", 0.0))
+            verdict = str(data.get("verdict", "unsupported"))
+            if best is None or confidence > best.confidence:
+                best = ClaimVerification(
+                    node_id=node_id,
+                    claim=claim,
+                    citation=citation,
+                    verdict=verdict,
+                    confidence=confidence,
+                    reason=str(data.get("reason", "")),
+                )
+            if verdict == "supported":
+                return best  # early exit — claim confirmed
+
+    if best is not None:
+        return best
+
+    # All segments failed LLM call — use substring fallback on full excerpt.
+    fallback = _fallback_verify(claim, excerpt)
+    fallback.node_id = node_id
+    fallback.citation = citation
+    return fallback
 
 
 def verify_node(
@@ -190,34 +280,7 @@ def verify_node(
             )
             continue
 
-        prompt = _loader.render(
-            "verification/verify_claim.md.j2",
-            claim=claim,
-            source=citation.source,
-            start=citation.start,
-            end=citation.end,
-            excerpt=excerpt[:3000],
-        )
-        verify_system = _loader.get_body("verification/verify_system.md.j2")
-        data = _try_litellm_json(prompt, system=verify_system, model=model)
-        if isinstance(data, dict):
-            confidence = float(data.get("confidence", 0.0))
-            verdict = str(data.get("verdict", "unsupported"))
-            out.append(
-                ClaimVerification(
-                    node_id=node.id,
-                    claim=claim,
-                    citation=citation,
-                    verdict=verdict,
-                    confidence=confidence,
-                    reason=str(data.get("reason", "")),
-                )
-            )
-        else:
-            fallback = _fallback_verify(claim, excerpt)
-            fallback.node_id = node.id
-            fallback.citation = citation
-            out.append(fallback)
+        out.append(_verify_claim_with_excerpt(claim, excerpt, citation, node.id, model))
     return out
 
 
