@@ -13,11 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from knox.core.models import CompiledWiki
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
-# TODO: Improve, better to make a singleton? instead of reloading templates on every compile, maybe load once at module level?
-_loader = TemplateLoader()
+_loader = get_template_loader()
 
 
 def generate_index(wiki: CompiledWiki) -> str:
@@ -118,16 +117,12 @@ def write_index_and_log(
     return {"index": index_path, "log": log_path}
 
 
-# Character budget per overview-synthesis LLM call. Source texts longer than
-# this are processed in multiple calls and the partial overviews are merged.
-_OVERVIEW_BUDGET = 4000
 
-
-def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2") -> str | None:
+def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2", overview_budget: int = 4000) -> str | None:
     """Generate an overview of the wiki from node content.
 
     All *source_texts* are processed — no content is dropped.  If the total
-    exceeds ``_OVERVIEW_BUDGET`` chars, texts are batched and each batch
+    exceeds ``overview_budget`` chars, texts are batched and each batch
     produces a partial overview.  The partials are then merged in a final
     synthesis call.
 
@@ -146,7 +141,7 @@ def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2") -
     current_parts: list[str] = []
     current_len = 0
     for text in source_texts:
-        if current_len + len(text) > _OVERVIEW_BUDGET and current_parts:
+        if current_len + len(text) > overview_budget and current_parts:
             batches.append("\n---\n".join(current_parts))
             current_parts = []
             current_len = 0
@@ -193,10 +188,11 @@ def write_overview(
     wiki: CompiledWiki,
     output_dir: Path,
     model: str = "ollama/llama3.2",
+    overview_budget: int = 4000,
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
-    content = generate_overview(source_texts, model=model)
+    content = generate_overview(source_texts, model=model, overview_budget=overview_budget)
     if not content:
         return None
 

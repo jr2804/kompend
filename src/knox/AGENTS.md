@@ -41,9 +41,9 @@ which searches three locations in order (project > user > built-in):
 
 Usage::
 
-    from knox.core.template_loader import TemplateLoader
+    from knox.core.template_loader import get_template_loader
 
-    loader = TemplateLoader()
+    loader = get_template_loader()
     rendered = loader.render("lint/clarity-score.md.j2",
                               title="My Page", content="...")
 

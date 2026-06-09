@@ -20,20 +20,15 @@ from typing import Any
 import litellm
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import get_template_loader
 from knox.provenance import Citation, extract_citations
 
 logger = logging.getLogger(__name__)
 
-_loader = TemplateLoader()
+_loader = get_template_loader()
 
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
-# Minimum n-gram length for fallback substring verification.
-# _fallback_verify tries n-grams from the full claim down to this length.
-_MIN_NGRAM = 3
-
-# TODO: Too many hard-coded strings in the prompt construction and fallback logic. We should move these to config, templates or module containing constant expressions/StrEnums.
 
 @dataclass
 class ClaimVerification:
@@ -121,7 +116,7 @@ def _load_excerpt(source: str, sources_dir: Path) -> str:
         return ""
 
 
-def _fallback_verify(claim: str, excerpt: str) -> ClaimVerification:
+def _fallback_verify(claim: str, excerpt: str, min_ngram: int = 3) -> ClaimVerification:
     """Substring-based verification used when the LLM is unavailable."""
     if not excerpt:
         return ClaimVerification(
@@ -132,13 +127,13 @@ def _fallback_verify(claim: str, excerpt: str) -> ClaimVerification:
             confidence=0.0,
             reason="source not found",
         )
-    # Try n-grams from the full claim down to _MIN_NGRAM words.
+    # Try n-grams from the full claim down to min_ngram words.
     # Longer n-grams are more distinctive — return on the first hit.
     tokens = claim.split()
     excerpt_lower = excerpt.lower()
     best_match_len = 0
 
-    for n in range(len(tokens), _MIN_NGRAM - 1, -1):
+    for n in range(len(tokens), min_ngram - 1, -1):
         for start in range(len(tokens) - n + 1):
             probe = " ".join(tokens[start : start + n]).lower()
             if probe in excerpt_lower and n > best_match_len:
@@ -169,23 +164,20 @@ def _fallback_verify(claim: str, excerpt: str) -> ClaimVerification:
     )
 
 
-# Character budget per verification LLM call. Excerpts longer than this
-# are checked in multiple passes so the full source is covered.
-_VERIFY_BUDGET = 3000
-
-
 def _verify_claim_with_excerpt(
     claim: str,
     excerpt: str,
     citation: Citation,
     node_id: str,
     model: str,
+    verify_budget: int = 3000,
+    min_ngram: int = 3,
 ) -> ClaimVerification:
     """Verify a single claim against an excerpt, iterating if needed."""
     verify_system = _loader.get_body("verification/verify_system.md.j2")
 
     # If the excerpt fits in one call, verify directly.
-    if len(excerpt) <= _VERIFY_BUDGET:
+    if len(excerpt) <= verify_budget:
         prompt = _loader.render(
             "verification/verify_claim.md.j2",
             claim=claim,
@@ -204,7 +196,7 @@ def _verify_claim_with_excerpt(
                 confidence=float(data.get("confidence", 0.0)),
                 reason=str(data.get("reason", "")),
             )
-        fallback = _fallback_verify(claim, excerpt)
+        fallback = _fallback_verify(claim, excerpt, min_ngram=min_ngram)
         fallback.node_id = node_id
         fallback.citation = citation
         return fallback
@@ -212,8 +204,8 @@ def _verify_claim_with_excerpt(
     # Excerpt exceeds budget — iterate through segments.
     # A claim is supported if it passes in ANY segment.
     best: ClaimVerification | None = None
-    for seg_start in range(0, len(excerpt), _VERIFY_BUDGET):
-        segment = excerpt[seg_start : seg_start + _VERIFY_BUDGET]
+    for seg_start in range(0, len(excerpt), verify_budget):
+        segment = excerpt[seg_start : seg_start + verify_budget]
         prompt = _loader.render(
             "verification/verify_claim.md.j2",
             claim=claim,
@@ -254,6 +246,8 @@ def verify_node(
     *,
     min_confidence: float = 0.4,
     model: str = "ollama/llama3.2",
+    verify_budget: int = 3000,
+    min_ngram: int = 3,
 ) -> list[ClaimVerification]:
     """Verify the claims in a single node."""
     claims = _split_claims(node.content)
@@ -280,7 +274,7 @@ def verify_node(
             )
             continue
 
-        out.append(_verify_claim_with_excerpt(claim, excerpt, citation, node.id, model))
+        out.append(_verify_claim_with_excerpt(claim, excerpt, citation, node.id, model, verify_budget=verify_budget, min_ngram=min_ngram))
     return out
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
 from knox.search.index import build_chunk_index, search_fts
 
@@ -34,7 +34,7 @@ class SynthesisResult:
 class TokenOverlapRetriever:
     def __init__(self, wiki: CompiledWiki, index_path: Path | None = None) -> None:
         self._wiki: CompiledWiki = wiki
-        self._template_loader: TemplateLoader = TemplateLoader()
+        self._template_loader: TemplateLoader = get_template_loader()
         self._index_path: Path | None = index_path
         if index_path is not None and not index_path.exists():
             build_chunk_index(wiki, index_path)

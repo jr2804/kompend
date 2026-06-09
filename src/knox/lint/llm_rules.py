@@ -10,16 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 logger = logging.getLogger(__name__)
 
-_loader = TemplateLoader()
-
-# Character budget per LLM lint call. Page content exceeding this is
-# processed in multiple passes (chunk-and-iterate) so nothing is dropped.
-_LINT_PAGE_BUDGET = 100_000
+_loader = get_template_loader()
 
 # ── Rule 9: factual-consistency ──────────────────────────────────────────
 
@@ -30,9 +26,9 @@ class FactualConsistencyRule(BaseLintRule):
     name = "factual-consistency"
     description = "Claims in page contradict source material"
 
-    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
+    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
         self.llm_client = llm_client
-        self.context_budget = context_budget
+        self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -50,8 +46,8 @@ class FactualConsistencyRule(BaseLintRule):
                 continue
             # Chunk-and-iterate: process content in budget-sized segments.
             content = node.content
-            for seg_start in range(0, len(content), _LINT_PAGE_BUDGET):
-                segment = content[seg_start : seg_start + _LINT_PAGE_BUDGET]
+            for seg_start in range(0, len(content), self.lint_page_budget):
+                segment = content[seg_start : seg_start + self.lint_page_budget]
                 prompt = _loader.render("lint/factual-consistency.md.j2", title=node.title, content=segment)
                 try:
                     llm_result = self.llm_client.try_complete(
@@ -104,9 +100,9 @@ class ClarityScoreRule(BaseLintRule):
     name = "clarity-score"
     description = "Readability, coherence, conciseness score (1-10)"
 
-    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
+    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
         self.llm_client = llm_client
-        self.context_budget = context_budget
+        self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -127,8 +123,8 @@ class ClarityScoreRule(BaseLintRule):
             content = node.content
             best_score = 0
             best_feedback = ""
-            for seg_start in range(0, len(content), _LINT_PAGE_BUDGET):
-                segment = content[seg_start : seg_start + _LINT_PAGE_BUDGET]
+            for seg_start in range(0, len(content), self.lint_page_budget):
+                segment = content[seg_start : seg_start + self.lint_page_budget]
                 prompt = _loader.render("lint/clarity-score.md.j2", title=node.title, content=segment)
                 try:
                     llm_result = self.llm_client.try_complete(
@@ -188,9 +184,9 @@ class CoverageGapRule(BaseLintRule):
     name = "coverage-gap"
     description = "Important concepts mentioned in sources but missing from wiki"
 
-    def __init__(self, llm_client: Any | None = None, context_budget: int = 100000) -> None:
+    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
         self.llm_client = llm_client
-        self.context_budget = context_budget
+        self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         if self.llm_client is None:
@@ -209,7 +205,7 @@ class CoverageGapRule(BaseLintRule):
         # Each batch produces a partial coverage check; gaps from any batch
         # are reported.
         all_gaps: list[dict] = []
-        batch_size = max(1, self.context_budget // max(200, len(wiki.nodes)))
+        batch_size = max(1, self.lint_page_budget // max(200, len(wiki.nodes)))
         batch_size = min(batch_size, 30)  # cap to keep prompts manageable
 
         for batch_start in range(0, len(wiki.nodes), batch_size):

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ source: capture
 
 
 def _extract_with_llm(text: str, llm_client: LLMClient) -> list[CapturedItem]:
-    loader = TemplateLoader()
+    loader = get_template_loader()
     system_prompt = loader.render("capture/capture_system.md.j2")
     user_prompt = f"Extract knowledge items from this text:\n\n{text}"
 

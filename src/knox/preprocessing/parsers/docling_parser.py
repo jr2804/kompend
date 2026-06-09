@@ -96,16 +96,25 @@ class DoclingParser(BaseParser):
 
             elif element_type == ElementType.IMAGE:
                 content = self._extract_image(item, source_path, reading_order)
+                img_meta: dict[str, Any] = {
+                    "docling_type": class_name,
+                    "image_mode": self.image_mode,
+                }
+                # Store the path so VLMEnricher can read the file
+                if self.image_mode == "file" and content and not content.startswith("["):
+                    img_meta["image_path"] = content
+                elif self.image_mode == "base64" and content.startswith("data:"):
+                    img_meta["image_base64"] = content
+                captions = getattr(item, "captions", [])
+                if captions:
+                    img_meta["caption"] = str(captions[0])
                 elements.append(
                     DocumentElement(
                         type=element_type,
                         content=content,
                         page=page_no,
                         reading_order=reading_order,
-                        metadata={
-                            "docling_type": class_name,
-                            "image_mode": self.image_mode,
-                        },
+                        metadata=img_meta,
                     )
                 )
 
@@ -176,12 +185,28 @@ class DoclingParser(BaseParser):
 
         if self.image_mode == "file":
             captions = getattr(item, "captions", [])
-            captions[0] if captions else f"image_{idx}"
             stem = source_path.stem
-            if self.images_dir:
-                out_path = self.images_dir / f"{stem}_img_{idx}.png"
-                return str(out_path)
-            return f"{stem}_img_{idx}.png"
+            images_dir = self.images_dir or (source_path.parent / f"{stem}_images")
+            images_dir.mkdir(parents=True, exist_ok=True)
+            out_path = images_dir / f"{stem}_img_{idx}.png"
+
+            # Try to save the actual image bytes from the PictureItem
+            saved = False
+            image = getattr(item, "image", None)
+            if image is not None:
+                pil_image = image.get_pil_image() if hasattr(image, "get_pil_image") else None
+                if pil_image is not None:
+                    try:
+                        pil_image.save(out_path, format="PNG")
+                        saved = True
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            if saved:
+                return str(out_path.resolve())
+            # No pixel data available — return descriptive placeholder
+            caption_text = str(captions[0]) if captions else ""
+            return f"[Image: {caption_text if caption_text else 'figure'}]"
 
         # Default: placeholder
         return f"[Image #{idx}]"

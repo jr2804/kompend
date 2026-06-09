@@ -26,24 +26,11 @@ import litellm
 
 from knox.compilation.base import BaseCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
-from knox.core.template_loader import TemplateLoader
+from knox.core.template_loader import get_template_loader
 
 logger = logging.getLogger(__name__)
 
-_loader = TemplateLoader()
-
-# Maximum concepts per generation batch. Keeps each prompt to a manageable size
-# for smaller LLMs (e.g. 7B quantised models via Ollama).
-_CONCEPTS_PER_BATCH = 8
-
-# Character budget per extraction LLM call. Source text longer than this is
-# split into multiple calls and the results are merged.
-_EXTRACT_BUDGET = 6000
-
-# Character budget per source-content segment in generation. Source content
-# longer than this is iterated across multiple generation rounds so no data
-# is dropped.
-_GEN_SOURCE_SEGMENT = 20_000
+_loader = get_template_loader()
 
 
 def _slugify(text: str) -> str:
@@ -260,10 +247,16 @@ class TwoPhaseCompiler(BaseCompiler):
         base: BaseCompiler | None = None,
         prompt_budget: int = 200_000,
         model: str = "ollama/llama3.2",
+        extract_budget: int = 6000,
+        gen_source_segment: int = 20000,
+        concepts_per_batch: int = 8,
     ) -> None:
         self._base = base
         self.prompt_budget = prompt_budget
         self._model = model
+        self._extract_budget = extract_budget
+        self._gen_source_segment = gen_source_segment
+        self._concepts_per_batch = concepts_per_batch
 
     # ------------------------------------------------------------------
     # Public API
@@ -285,7 +278,7 @@ class TwoPhaseCompiler(BaseCompiler):
     def extract(self, chunks: list[ResolvedChunk]) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source.
 
-        Source text is processed in batches of ``_EXTRACT_BUDGET`` chars
+        Source text is processed in batches of ``self._extract_budget`` chars
         so that no content is silently dropped.  Results from each batch
         are merged into a single :class:`Extraction` per source.
         """
@@ -311,7 +304,7 @@ class TwoPhaseCompiler(BaseCompiler):
             batch_extractions: list[Extraction] = []
 
             for text in texts:
-                if batch_len + len(text) > _EXTRACT_BUDGET and batch_parts:
+                if batch_len + len(text) > self._extract_budget and batch_parts:
                     combined = "\n\n".join(batch_parts)
                     batch_extractions.append(self._extract_one(source, combined, extraction_system))
                     batch_parts = []
@@ -327,24 +320,10 @@ class TwoPhaseCompiler(BaseCompiler):
             extractions.add(_merge_extractions(source, batch_extractions))
         return extractions
 
-    def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
-        """Run a single extraction LLM call for *source* on *combined* text."""
-        prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(prompt, system=extraction_system, model=self._model)
-        if isinstance(data, dict):
-            return Extraction(
-                source=source,
-                summary=str(data.get("summary", "")),
-                entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
-                concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
-                tags=[str(t) for t in data.get("tags", []) if t],
-            )
-        return _fallback_extraction(source, combined)
-
     def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages.
 
-        Batches concepts into groups of ``_CONCEPTS_PER_BATCH`` to avoid
+        Batches concepts into groups of ``self._concepts_per_batch`` to avoid
         overwhelming the LLM with a single massive prompt.
         """
         concepts = extractions.concept_pages()
@@ -362,7 +341,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         # Split source content into segments so each generation call
         # receives a manageable chunk without dropping data.
-        source_segments = _segment_sources(sources, _GEN_SOURCE_SEGMENT)
+        source_segments = _segment_sources(sources, self._gen_source_segment)
 
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
         nodes: list[WikiNode] = []
@@ -370,7 +349,7 @@ class TwoPhaseCompiler(BaseCompiler):
         seen_ids: set[str] = set()
 
         # Batch concepts to keep each prompt manageable.
-        batch_size = _CONCEPTS_PER_BATCH
+        batch_size = self._concepts_per_batch
         for batch_start in range(0, len(concepts), batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
 
@@ -477,6 +456,20 @@ class TwoPhaseCompiler(BaseCompiler):
                 "prompt_budget": self.prompt_budget,
             },
         )
+
+    def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
+        """Run a single extraction LLM call for *source* on *combined* text."""
+        prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
+        data = _try_litellm_json(prompt, system=extraction_system, model=self._model)
+        if isinstance(data, dict):
+            return Extraction(
+                source=source,
+                summary=str(data.get("summary", "")),
+                entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
+                concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
+                tags=[str(t) for t in data.get("tags", []) if t],
+            )
+        return _fallback_extraction(source, combined)
 
     # ------------------------------------------------------------------
     # Internal

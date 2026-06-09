@@ -37,6 +37,23 @@ from knox.core.config._core import find_project_config
 
 logger = logging.getLogger(__name__)
 
+# ── Module-level singleton ───────────────────────────────────────────
+
+_loader_instance: list[TemplateLoader] = []  # mutable container avoids global statement
+
+
+def get_template_loader() -> TemplateLoader:
+    """Return the shared :class:`TemplateLoader` singleton.
+
+    Instantiates on first call, then reuses the same instance for every
+    subsequent call.  This avoids repeated filesystem walks in
+    :func:`find_project_config` when multiple modules create their own
+    ``TemplateLoader()`` at import time.
+    """
+    if not _loader_instance:
+        _loader_instance.append(TemplateLoader())
+    return _loader_instance[0]
+
 
 # ── Built-in template root ──────────────────────────────────────────────
 
@@ -152,7 +169,9 @@ class TemplateLoader:
 
     Usage::
 
-        loader = TemplateLoader()
+        from knox.core.template_loader import get_template_loader
+
+        loader = get_template_loader()
         html = loader.render("lint/factual-consistency.md.j2", title="My Page", content="...")
         raw = loader.get_text("lint/factual-consistency.md.j2")
         meta = loader.get_meta("lint/factual-consistency.md.j2")
