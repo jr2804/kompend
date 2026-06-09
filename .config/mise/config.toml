@@ -21,6 +21,8 @@ ripgrep = "latest"
 
 "pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
 
+"npm:vitepress" = "latest"
+
 [settings.npm]
 package_manager = "bun"
 

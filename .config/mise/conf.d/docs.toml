@@ -1,3 +1,7 @@
-[tasks.docs]
-description = "Build documentation with Zensical"
+[tasks.docs-vitepress]
+description = "Build documentation with VitePress"
+run = ["vitepress build docs"]
+
+[tasks.docs-zensical]
+description = "Build documentation with VitePress"
 run = ["uv run zensical build"]

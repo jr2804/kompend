@@ -3,6 +3,36 @@ site_name = "KNOX"
 site_description = "A compiled LLM-wiki system for scientific and technical documents. Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web sources into an interlinked, queryable knowledge base."
 site_author = "Jan Reimes"
 copyright = "Copyright &copy; 2026 Jan Reimes — MIT License"
+repo_url = "https://codeberg.org/jr2804/knox"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting Started" = "guides/cli.md" },
+  { "Concepts" = "concepts/basic-principles.md" },
+  { "Architecture" = "architecture/index.md" },
+  { "Guides" = [
+    { "CLI" = "guides/cli.md" },
+    { "Compilation" = "guides/compilation.md" },
+    { "Lint" = "guides/lint.md" },
+    { "LLM Config" = "guides/llm-config.md" },
+    { "Output" = "guides/output.md" },
+    { "Provenance" = "guides/provenance.md" },
+    { "Review" = "guides/review.md" },
+    { "Trust" = "guides/trust.md" },
+    { "Wiki Structure" = "guides/wiki-structure.md" },
+  ] },
+  { "Reference" = [
+    { "Ecosystem" = "reference/ecosystem.md" },
+  ] },
+  { "Integrations" = [
+    { "Open WebUI" = "integrations/open-webui.md" },
+  ] },
+  { "About" = [
+    { "Status" = "about/status.md" },
+    { "Roadmap" = "about/roadmap.md" },
+    { "Acknowledgements" = "about/acknowledgements.md" },
+  ] },
+]
 
 [project.theme]
 language = "en"
@@ -62,3 +92,4 @@ combine_header_slug = true
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
 [project.markdown_extensions.pymdownx.tilde]
+
