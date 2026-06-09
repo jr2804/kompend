@@ -5,6 +5,7 @@ All LLM calls in the pipeline go through :class:`LLMClient` from
 
 - A typed error hierarchy (:mod:`knox.llm.errors`)
 - Configurable fallback chains (:mod:`knox.llm.failover`)
+- An exception classifier (:mod:`knox.llm.classifier`)
 - Per-call observability (model_used, attempts, latency)
 
 This module is the single source of truth for LLM semantics in KNOX.
@@ -15,13 +16,14 @@ from __future__ import annotations
 
 import logging
 
+from knox.llm.classifier import classify_litellm_error
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.errors import (
+    AmbiguousError,
     ConfigurationError,
     LLMError,
     PermanentError,
     TransientError,
-    classify_litellm_error,
 )
 from knox.llm.failover import FailoverChain
 
@@ -43,6 +45,7 @@ except ImportError:
         logger.debug("Failed to install litellm AgenticLoopPlan compat: %s", _exc)
 
 __all__ = [
+    "AmbiguousError",
     "ConfigurationError",
     "FailoverChain",
     "LLMClient",

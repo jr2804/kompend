@@ -1,9 +1,8 @@
 """Typed error hierarchy for KNOX LLM calls.
 
 Every business module that talks to an LLM must catch one of these
-classes — never bare ``Exception``. The classifier
-:func:`classify_litellm_error` maps litellm's exception zoo onto this
-hierarchy so call sites stay readable.
+classes — never bare ``Exception``. Use :func:`~knox.llm.classifier.classify_litellm_error`
+to map raw litellm exceptions onto this hierarchy.
 
 Design rationale: bare ``except Exception`` swallows real bugs (bad
 prompts, missing API keys, code errors) into the same code path as
@@ -12,8 +11,6 @@ retries only what is genuinely retriable.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 
 class LLMError(Exception):
@@ -63,76 +60,15 @@ class ConfigurationError(LLMError):
     """
 
 
-# ── litellm exception classifier ────────────────────────────────────────
+class AmbiguousError(LLMError):
+    """Context-dependent failure — could be transient or permanent.
 
-# Names of litellm exception classes that map to each KNOX error type.
-# We match by class ``__name__`` to avoid importing litellm at module
-# load time (keeps test imports fast and tolerates litellm version drift).
-_TRANSIENT_NAMES: frozenset[str] = frozenset(
-    {
-        "RateLimitError",
-        "Timeout",
-        "APIConnectionError",
-        "APIError",  # generic 5xx-ish
-        "ServiceUnavailableError",
-        "InternalServerError",
-    }
-)
+    Raised by :func:`~knox.llm.classifier.classify_litellm_error` when
+    the exception type alone is insufficient to determine retryability.
+    The failover chain inspects available metadata (e.g. HTTP status
+    code, error message) to decide whether to retry or abort.
 
-_PERMANENT_NAMES: frozenset[str] = frozenset(
-    {
-        "BadRequestError",
-        "ContentPolicyViolationError",
-        "ContextWindowExceededError",
-        "InvalidRequestError",
-        "UnprocessableEntityError",
-    }
-)
-
-_CONFIGURATION_NAMES: frozenset[str] = frozenset(
-    {
-        "AuthenticationError",
-        "PermissionDeniedError",
-        "NotFoundError",
-        "BadRequestError",  # ambiguous: also permanent — see classify_litellm_error
-    }
-)
-
-
-def classify_litellm_error(exc: BaseException, *, model: str | None = None) -> LLMError:
-    """Map a raw litellm exception onto KNOX's typed hierarchy.
-
-    Falls back to :class:`TransientError` for unknown exception types so
-    the failover chain still gets a chance to recover. If the original
-    exception is already an :class:`LLMError`, it is returned unchanged.
+    Example: ``BadRequestError`` can represent a malformed prompt
+    (permanent) or an auth format issue (configuration) depending on
+    context.
     """
-    if isinstance(exc, LLMError):
-        return exc
-
-    name = type(exc).__name__
-    message = str(exc) or name
-
-    # AuthenticationError and similar provider-config errors must fail fast.
-    if name in {"AuthenticationError", "PermissionDeniedError"}:
-        return ConfigurationError(message, model=model, cause=exc)
-    if name == "NotFoundError":
-        # Often "model not found" → configuration issue.
-        return ConfigurationError(message, model=model, cause=exc)
-
-    if name in _PERMANENT_NAMES:
-        return PermanentError(message, model=model, cause=exc)
-    if name in _TRANSIENT_NAMES:
-        return TransientError(message, model=model, cause=exc)
-
-    # Heuristic: HTTP status code on the exception (litellm sets it)
-    status: Any = getattr(exc, "status_code", None)
-    if isinstance(status, int):
-        if status == 429 or 500 <= status < 600:
-            return TransientError(message, model=model, cause=exc)
-        if status in {400, 422}:
-            return PermanentError(message, model=model, cause=exc)
-        if status in {401, 403, 404}:
-            return ConfigurationError(message, model=model, cause=exc)
-
-    # Unknown — assume transient so the chain still tries to recover.
-    return TransientError(message, model=model, cause=exc)

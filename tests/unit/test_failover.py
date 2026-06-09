@@ -119,7 +119,7 @@ class TestChainAdvancement:
         def call(model: str) -> str:
             seen.append(model)
             if model == "m1":
-                raise _exc("BadRequestError")
+                raise _exc("ContentPolicyViolationError")
             return "ok"
 
         result = chain.run(call)
@@ -158,7 +158,7 @@ class TestChainExhaustion:
         chain, _ = _chain(["m1", "m2"], max_retries_per_model=3)
 
         def call(model: str) -> str:
-            raise _exc("BadRequestError")
+            raise _exc("ContentPolicyViolationError")
 
         with pytest.raises(PermanentError) as exc_info:
             chain.run(call)

@@ -4,6 +4,7 @@ A :class:`FailoverChain` is an ordered list of models tried in
 sequence. For each model it applies retry-with-backoff on transient
 errors; once retries are exhausted it advances to the next model.
 ``PermanentError`` and ``ConfigurationError`` short-circuit the chain.
+``AmbiguousError`` is resolved by inspecting the wrapping context.
 
 The chain is callable as ``chain.run(call)`` where ``call`` accepts a
 single argument (the model name) and returns the litellm response.
@@ -17,14 +18,15 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
+from knox.llm.classifier import classify_litellm_error
 from knox.llm.errors import (
+    AmbiguousError,
     ConfigurationError,
     LLMError,
     PermanentError,
     TransientError,
-    classify_litellm_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,34 @@ class CallResult[T]:
 
     value: T
     diagnostics: CallDiagnostics
+
+
+def _resolve_ambiguous(err: AmbiguousError) -> type[LLMError]:
+    """Inspect ``AmbiguousError`` metadata to decide final category.
+
+    Checks the original exception for an HTTP ``status_code`` attribute
+    and maps it via :func:`_STATUS_ERROR_MAP` semantics. Falls back to
+    :class:`TransientError` (safe default — lets the retry logic
+    attempt recovery).
+    """
+    cause = err.cause
+    if cause is not None:
+        status: Any = getattr(cause, "status_code", None)
+        if isinstance(status, int):
+            if 500 <= status < 600:
+                return TransientError
+            _status_map: dict[int, type[LLMError]] = {
+                429: TransientError,
+                400: PermanentError,
+                422: PermanentError,
+                401: ConfigurationError,
+                403: ConfigurationError,
+                404: ConfigurationError,
+            }
+            mapped = _status_map.get(status)
+            if mapped is not None:
+                return mapped
+    return TransientError
 
 
 class FailoverChain:
@@ -100,6 +130,10 @@ class FailoverChain:
         :class:`ConfigurationError` if the chain itself is unusable,
         otherwise the last :class:`PermanentError` or, if all errors
         were transient, a :class:`TransientError` aggregating the chain.
+
+        :class:`AmbiguousError` is resolved at runtime by inspecting
+        the original exception metadata (e.g. HTTP status code) before
+        deciding retry vs. advance vs. abort.
         """
         attempts = 0
         start = time.monotonic()
@@ -117,6 +151,47 @@ class FailoverChain:
                     if isinstance(err, ConfigurationError):
                         err.attempts = attempts
                         raise err from exc
+
+                    # Ambiguous: inspect metadata to decide category.
+                    if isinstance(err, AmbiguousError):
+                        resolved = _resolve_ambiguous(err)
+                        if resolved is ConfigurationError:
+                            err.__class__ = ConfigurationError
+                            err.attempts = attempts
+                            raise err from exc
+                        if resolved is PermanentError:
+                            logger.warning(
+                                "LLM ambiguous-resolved-permanent on %s (attempt %d): %s",
+                                model,
+                                attempts,
+                                err,
+                            )
+                            last_error = err
+                            break  # next model
+                        # resolved == TransientError: fall through to retry logic.
+                        logger.info(
+                            "LLM ambiguous-resolved-transient on %s (attempt %d): %s",
+                            model,
+                            attempts,
+                            err,
+                        )
+                        last_error = err
+                        if retry < self.max_retries_per_model:
+                            delay = min(
+                                self.initial_backoff_s * (2**retry),
+                                self.max_backoff_s,
+                            )
+                            logger.info(
+                                "LLM retry %d/%d on %s after %.1fs: %s",
+                                retry + 1,
+                                self.max_retries_per_model,
+                                model,
+                                delay,
+                                err,
+                            )
+                            self._sleep(delay)
+                            continue
+                        break  # next model
 
                     # Permanent errors: advance to next model immediately.
                     if isinstance(err, PermanentError):

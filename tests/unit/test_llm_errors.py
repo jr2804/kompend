@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from knox.llm.classifier import classify_litellm_error
 from knox.llm.errors import (
+    AmbiguousError,
     ConfigurationError,
     LLMError,
     PermanentError,
     TransientError,
-    classify_litellm_error,
 )
 
 
@@ -29,6 +30,7 @@ class TestErrorHierarchy:
         assert issubclass(TransientError, LLMError)
         assert issubclass(PermanentError, LLMError)
         assert issubclass(ConfigurationError, LLMError)
+        assert issubclass(AmbiguousError, LLMError)
 
     def test_error_carries_model_and_attempts(self) -> None:
         err = TransientError("rate-limited", model="openai/gpt-4o", attempts=3)
@@ -56,9 +58,10 @@ class TestClassifyLitellmError:
         err = classify_litellm_error(_make_exc("APIConnectionError"))
         assert isinstance(err, TransientError)
 
-    def test_bad_request_is_permanent(self) -> None:
+    def test_bad_request_is_ambiguous(self) -> None:
+        """BadRequestError has no fixed category — classifier returns AmbiguousError."""
         err = classify_litellm_error(_make_exc("BadRequestError"))
-        assert isinstance(err, PermanentError)
+        assert isinstance(err, AmbiguousError)
 
     def test_content_policy_is_permanent(self) -> None:
         err = classify_litellm_error(_make_exc("ContentPolicyViolationError"))
@@ -108,5 +111,11 @@ class TestClassifyLitellmError:
     def test_llmerror_passthrough(self) -> None:
         """If the exception is already typed, return it unchanged."""
         original = PermanentError("already classified", model="m")
+        err = classify_litellm_error(original)
+        assert err is original
+
+    def test_ambiguouserror_passthrough(self) -> None:
+        """AmbiguousError is already an LLMError, returned unchanged."""
+        original = AmbiguousError("already ambiguous", model="m")
         err = classify_litellm_error(original)
         assert err is original
