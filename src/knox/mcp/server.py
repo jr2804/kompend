@@ -14,9 +14,9 @@ from mcp.server.fastmcp import FastMCP
 
 from knox.capture.capture import capture
 from knox.capture.learn import learn
-from knox.core.config import resolve_config
+from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig, resolve_config
 from knox.core.pipeline import build_pipeline
-from knox.core.pipeline_defs import Compiler, PipelineConfig
+from knox.core.pipeline_defs import Compiler, ImageMode, OutputFormat, PipelineConfig
 from knox.llm.client import LLMClient
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -81,13 +81,7 @@ def compile_wiki(
     if not source_path.exists():
         return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
 
-    valid_formats = {"markdown", "json", "typst"}
-    if output_format not in valid_formats:
-        return {
-            "status": "error",
-            "message": f"Unknown format: {output_format}. Use markdown, json, or typst.",
-        }
-
+    # Validate and convert string params to enums
     try:
         compiler_enum = Compiler(compiler)
     except ValueError:
@@ -96,13 +90,28 @@ def compile_wiki(
             "message": f"Unknown compiler: {compiler!r}. Use graph or wicer.",
         }
 
+    try:
+        format_enum = OutputFormat(output_format)
+    except ValueError:
+        return {
+            "status": "error",
+            "message": f"Unknown format: {output_format}. Use markdown, json, or typst.",
+        }
+
+    try:
+        image_mode_enum = ImageMode(image_mode)
+    except ValueError:
+        return {"status": "error", "message": f"Unknown image_mode: {image_mode!r}. Use file or base64."}
+
     config = PipelineConfig(
         source_dir=source_path,
         output_dir=Path(output),
+        llm=LLMConfig(default_model="", vlm_model=""),
+        embedding=EmbeddingConfig(model=""),
         online_sources=urls or [],
-        compile_target=output_format,
+        output=OutputConfig(format=format_enum),
         chunk_size=chunk_size,
-        image_mode=image_mode,
+        image_mode=image_mode_enum,
         compiler=compiler_enum,
     )
 

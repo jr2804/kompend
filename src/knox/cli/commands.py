@@ -1138,12 +1138,7 @@ def _post_compile_actions(
 
     if verify:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
-        _verify_claims(
-            wiki,
-            output_dir_path,
-            model=resolved_model,
-            verify_budget=pipeline_config.budget.verify
-        )
+        _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify)
 
     generated = write_index_and_log(wiki, output_dir_path)
     typer.echo(f"Index: {generated['index']}")
@@ -1152,11 +1147,7 @@ def _post_compile_actions(
     if synthesize:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
         overview_path = write_overview(
-            wiki,
-            output_dir_path,
-            model=resolved_model,
-            overview_budget=pipeline_config.budget.overview,
-            timeout=pipeline_config.llm.timeout
+            wiki, output_dir_path, model=resolved_model, overview_budget=pipeline_config.budget.overview, timeout=pipeline_config.llm.timeout
         )
         if overview_path:
             typer.echo(f"Overview: {overview_path}")

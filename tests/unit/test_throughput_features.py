@@ -217,7 +217,9 @@ class TestWikiPipelineTiered:
         assert pipeline.active_levels() == {0, 1, 2, 3, 4}
 
     def test_active_levels_output_only(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="output-only")
+        config = PipelineConfig(
+            source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="output-only"
+        )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         assert pipeline.active_levels() == {4}
 
@@ -576,7 +578,7 @@ class TestVerificationFallback:
             content="This claim has no citation.",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, model='test/model')
+        result = verify_node(node, tmp_path, model="test/model")
         assert result[0].verdict == "unsupported"
         assert result[0].confidence < 0.5
 
@@ -587,7 +589,7 @@ class TestVerificationFallback:
             content="A claim with a missing source citation. ^[missing.pdf:1-3]",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, model='test/model')
+        result = verify_node(node, tmp_path, model="test/model")
         assert result[0].verdict == "unsupported"
 
     def test_substring_fallback_match(self, tmp_path: Path) -> None:
@@ -603,7 +605,7 @@ class TestVerificationFallback:
             content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
             node_type="section",
         )
-        result = verify_node(node, sources, model='test/model')
+        result = verify_node(node, sources, model="test/model")
         assert result[0].verdict == "supported"
         assert result[0].confidence > 0.5
 
@@ -613,7 +615,7 @@ class TestVerificationFallback:
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, tmp_path, model='test/model')
+        result = verify_wiki(wiki, tmp_path, model="test/model")
         assert result.total >= 1
         report = tmp_path / ".knox" / "verification.json"
         assert report.exists()

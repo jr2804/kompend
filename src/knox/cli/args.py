@@ -13,6 +13,8 @@ from typing import Annotated
 import typer
 
 from knox.core.pipeline_defs import Compiler
+from knox.core.pipeline_defs import ImageMode as ImageModeEnum
+from knox.core.pipeline_defs import OutputFormat as OutputFormatEnum
 
 # Application name used for environment variable prefixes.
 APP_NAME_UPPERCASE = "KNOX"
@@ -21,9 +23,9 @@ APP_NAME_UPPERCASE = "KNOX"
 
 DEFAULT_SOURCES_DIR: str = "sources"
 DEFAULT_OUTPUT_DIR: str = "wiki"
-DEFAULT_COMPILE_FORMAT: str = "markdown"
+DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
 DEFAULT_CHUNK_SIZE: int = 512
-DEFAULT_IMAGE_MODE: str = "file"
+DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
 DEFAULT_COMPILE_MODE: str = "full"
 DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
@@ -99,7 +101,7 @@ OnlineUrls = Annotated[
 ]
 
 TargetFormat = Annotated[
-    str,
+    OutputFormatEnum,
     typer.Option(
         "--format",
         "-f",
@@ -117,7 +119,7 @@ ChunkSize = Annotated[
 ]
 
 ImageMode = Annotated[
-    str,
+    ImageModeEnum,
     typer.Option(
         "--image-mode",
         help="Image handling: file, base64.",

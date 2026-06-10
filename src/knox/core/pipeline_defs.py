@@ -21,7 +21,15 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from knox.core.config import BudgetConfig, EmbeddingConfig, LLMConfig, OutputConfig, ResolvedConfig
+from knox.core.config import (
+    BudgetConfig,
+    EmbeddingConfig,
+    ImageMode,
+    LLMConfig,
+    OutputConfig,
+    OutputFormat,
+    ResolvedConfig,
+)
 
 
 class Tier(StrEnum):
@@ -112,14 +120,14 @@ class PipelineConfig:
     output_dir: Path
     llm: LLMConfig
     embedding: EmbeddingConfig
-    image_mode: str = "file"  # "file" or "base64"
+    image_mode: ImageMode = ImageMode.FILE
     chunk_size: int = 512
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = .knox/cache inside output_dir
     no_cache: bool = False  # force re-parse even if cached
     workers: int = 1  # parallel parse+chunk workers
-    mode: str = Mode.FULL  # full | index-only | resolve-only | output-only
+    mode: Mode = Mode.FULL
     force: bool = False  # bypass persistent tier state and re-process everything
     tier_state_path: Path | None = None  # None = .knox/compile_state.json inside output_dir
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
@@ -133,14 +141,7 @@ class PipelineConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
 
     @classmethod
-    def from_resolved(
-        cls,
-        cfg: ResolvedConfig,
-        *,
-        source_dir: Path,
-        output_dir: Path,
-        input_files: list[Path] | None = None
-    ) -> PipelineConfig:
+    def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
         # Read old flat keys to populate flat fields
         llm_fallback_chain = cfg.get("compile.llm.fallback_chain", [])
@@ -194,14 +195,14 @@ class PipelineConfig:
         return cls(
             source_dir=source_dir,
             output_dir=output_dir,
-            image_mode=cfg.get("compile.image_mode", "file"),
+            image_mode=ImageMode(cfg.get("compile.image_mode", ImageMode.FILE)),
             chunk_size=cfg.get("compile.chunk_size", 512),
             online_sources=[],
             input_files=input_files,
             cache_dir=cfg.get("compile.cache_dir"),
             no_cache=cfg.get("compile.no_cache", False),
             workers=cfg.get("compile.workers", 1),
-            mode=cfg.get("compile.mode", Mode.FULL),
+            mode=Mode(cfg.get("compile.mode", Mode.FULL)),
             force=cfg.get("compile.force", False),
             tier_state_path=cfg.get("compile.tier_state_path"),
             ignore_patterns=list(cfg.get("ignore.patterns", [])),
@@ -222,7 +223,9 @@ __all__ = [
     "TIER_DESCRIPTIONS",
     "TIER_LEVEL",
     "Compiler",
+    "ImageMode",
     "Mode",
+    "OutputFormat",
     "PipelineConfig",
     "Tier",
 ]
