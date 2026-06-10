@@ -556,8 +556,12 @@ def build_pipeline(
 
     base_compiler: BaseCompiler
     if config.compiler == "wicer":
-        wicer_client = build_llm_client(config)
-        base_compiler = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=wicer_client, probe_budget=wicer_probe_budget, eval_budget=wicer_eval_budget)
+        base_compiler = WiCERCompiler(
+            base_compiler=GraphCompiler(),
+            llm_client=llm_client,
+            probe_budget=wicer_probe_budget,
+            eval_budget=wicer_eval_budget,
+        )
     else:
         base_compiler = TwoPhaseCompiler(
             base=GraphCompiler(),
