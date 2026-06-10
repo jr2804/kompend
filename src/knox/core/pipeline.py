@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,13 @@ from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
 logger = logging.getLogger(__name__)
+
+# Type for progress event callbacks. Parameters:
+#   phase   – pipeline phase ("index", "parse", "resolve", "compile", "output")
+#   current – current item (0 = phase starting, >0 = progress)
+#   total   – total items in this phase
+#   detail  – human detail (filename, status, etc.)
+ProgressCallback = Callable[[str, int, int, str], None]
 
 # Legacy string-constant re-exports (kept for backward compatibility with
 # downstream callers that imported these names from ``knox.core.pipeline``).
@@ -82,6 +90,7 @@ class WikiPipeline:
         self.compiler = compiler
         self.output_writer = output_writer
         self.state_store = state_store or TierStateStore(self._default_state_path())
+        self._progress_callback: ProgressCallback | None = None
 
     @property
     def state(self) -> TierState:
@@ -100,8 +109,24 @@ class WikiPipeline:
         mode = self.config.mode if isinstance(self.config.mode, Mode) else Mode(self.config.mode)
         return MODE_LEVELS.get(mode, MODE_LEVELS[Mode.FULL])
 
-    def run(self) -> CompiledWiki:
-        """Execute the full pipeline from sources to compiled wiki."""
+    def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+        """Emit a progress event if a callback is registered."""
+        if self._progress_callback is not None:
+            try:
+                self._progress_callback(phase, current, total, detail)
+            except Exception:  # noqa: BLE001
+                logger.debug("Progress callback error", exc_info=True)
+
+    def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:
+        """Execute the full pipeline from sources to compiled wiki.
+
+        Parameters
+        ----------
+        progress_callback:
+            Optional ``(phase, current, total, detail)`` callable.
+            Purely informational — core logic never depends on it.
+        """
+        self._progress_callback = progress_callback
         logger.info("Starting KNOX pipeline (mode=%s): %s", self.config.mode, self.config.source_dir)
 
         levels = self.active_levels()
@@ -110,27 +135,36 @@ class WikiPipeline:
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
 
         if 0 in levels:
+            self._emit("index", 0, 1, "starting")
             self.run_tier(TIER_INDEX)
+            self._emit("index", 1, 1, "done")
         if 1 in levels:
             all_chunks = self._parse_and_chunk()
         if 2 in levels:
+            self._emit("resolve", 0, len(all_chunks), "starting")
             if all_chunks:
                 resolved = [self.resolver.resolve(chunk) for chunk in all_chunks] if self.resolver else list(all_chunks)
             else:
                 resolved = self._load_resolved_from_disk() or []
+            self._emit("resolve", len(resolved), len(resolved), "done")
         if 3 in levels:
+            self._emit("compile", 0, 1, "starting")
             if self.compiler:
                 wiki = self.compiler.compile(resolved)
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
+            self._emit("compile", 1, 1, "done")
         else:
             wiki = self._load_compiled_wiki() or wiki
         if 4 in levels and self.output_writer:
+            self._emit("output", 0, 1, "starting")
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             self.output_writer.write(wiki, self.config.output_dir)
+            self._emit("output", 1, 1, "done")
 
         self.save_state()
+        self._progress_callback = None
         logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
         return wiki
 
@@ -302,6 +336,8 @@ class WikiPipeline:
         if not source_files:
             return []
 
+        self._emit("parse", 0, len(source_files), "starting")
+
         workers = max(1, self.config.workers)
         use_cache = not self.config.no_cache
 
@@ -358,9 +394,11 @@ class WikiPipeline:
                         sf = futures[future]
                         logger.exception("Worker failed for %s", sf)
         else:
-            for sf in source_files:
+            for idx, sf in enumerate(source_files):
                 all_chunks.extend(_process_one(sf))
+                self._emit("parse", idx + 1, len(source_files), sf.name)
 
+        self._emit("parse", len(source_files), len(source_files), "done")
         return all_chunks
 
     def _cache_dir(self) -> Path:
@@ -480,6 +518,7 @@ def build_pipeline(
     concepts_per_batch: int = 8,
     wicer_probe_budget: int = 3000,
     wicer_eval_budget: int = 4000,
+    timeout: int | None = None,
 ) -> WikiPipeline:
     """Shared factory used by both CLI and MCP.
 
@@ -527,6 +566,7 @@ def build_pipeline(
             extract_budget=extract_budget,
             gen_source_segment=gen_source_segment,
             concepts_per_batch=concepts_per_batch,
+            timeout=timeout,
         )
 
     return WikiPipeline(
