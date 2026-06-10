@@ -80,7 +80,7 @@ def _split_claims(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_RE.findall(text) if len(s.strip()) >= 12]
 
 
-def _try_litellm_json(prompt: str, system: str | None = None, *, model: str = "ollama/llama3.2") -> dict[str, Any] | None:
+def _try_litellm_json(prompt: str, model: str, system: str | None = None) -> dict[str, Any] | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     try:
         messages: list[dict[str, str]] = []
@@ -243,9 +243,9 @@ def _verify_claim_with_excerpt(
 def verify_node(
     node: WikiNode,
     sources_dir: Path,
+    model: str,
     *,
     min_confidence: float = 0.4,
-    model: str = "ollama/llama3.2",
     verify_budget: int = 3000,
     min_ngram: int = 3,
 ) -> list[ClaimVerification]:
@@ -278,7 +278,7 @@ def verify_node(
     return out
 
 
-def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str = "ollama/llama3.2") -> VerificationResult:
+def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str, verify_budget: int = 3000, min_ngram: int = 3) -> VerificationResult:
     """Verify every node in a compiled wiki.
 
     The ``output_dir`` is expected to be a sibling of the ``sources/``
@@ -291,7 +291,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str = "ollama/ll
 
     result = VerificationResult()
     for node in wiki.nodes:
-        claims = verify_node(node, sources_dir, model=model)
+        claims = verify_node(node, sources_dir, model=model, verify_budget=verify_budget, min_ngram=min_ngram)
         result.claims.extend(claims)
 
     result.total = len(result.claims)

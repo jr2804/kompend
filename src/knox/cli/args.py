@@ -175,6 +175,15 @@ EmbedModel = Annotated[
     ),
 ]
 
+EmbedDim = Annotated[
+    int | None,
+    typer.Option(
+        "--embed-dim",
+        help="Embedding dimension.",
+        rich_help_panel="Advanced",
+    ),
+]
+
 # ── Q20 tiered compilation ──────────────────────────────────────────────
 
 CompileMode = Annotated[
@@ -227,6 +236,78 @@ PromptBudget = Annotated[
         "--prompt-budget",
         help="Maximum total chars of source content per concept (N10 fair-share).",
         min=1,
+    ),
+]
+
+BudgetExtract = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-extract",
+        help="Extraction batch size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetGenSegment = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-gen-segment",
+        help="Generation segment size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetConcepts = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-concepts",
+        help="Number of concepts per generation batch.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetOverview = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-overview",
+        help="Overview batch size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetVerify = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-verify",
+        help="Verification batch size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetWicerProbe = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-wicer-probe",
+        help="WiCER probe batch size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+BudgetWicerEval = Annotated[
+    int | None,
+    typer.Option(
+        "--budget-wicer-eval",
+        help="WiCER eval batch size budget.",
+        rich_help_panel="Advanced",
+    ),
+]
+
+LlmTimeout = Annotated[
+    float | None,
+    typer.Option(
+        "--llm-timeout",
+        help="LLM call timeout in seconds.",
+        rich_help_panel="Advanced",
     ),
 ]
 

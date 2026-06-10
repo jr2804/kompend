@@ -118,7 +118,7 @@ def write_index_and_log(
 
 
 
-def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2", overview_budget: int = 4000) -> str | None:
+def generate_overview(source_texts: list[str], model: str, overview_budget: int = 4000, timeout: float | None = None) -> str | None:
     """Generate an overview of the wiki from node content.
 
     All *source_texts* are processed — no content is dropped.  If the total
@@ -132,7 +132,7 @@ def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2", o
         return None
 
     try:
-        client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1)
+        client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1, timeout=timeout)
     except Exception:  # noqa: BLE001
         return None
 
@@ -187,12 +187,13 @@ def generate_overview(source_texts: list[str], model: str = "ollama/llama3.2", o
 def write_overview(
     wiki: CompiledWiki,
     output_dir: Path,
-    model: str = "ollama/llama3.2",
+    model: str,
     overview_budget: int = 4000,
+    timeout: float | None = None,
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
-    content = generate_overview(source_texts, model=model, overview_budget=overview_budget)
+    content = generate_overview(source_texts, model=model, overview_budget=overview_budget, timeout=timeout)
     if not content:
         return None
 

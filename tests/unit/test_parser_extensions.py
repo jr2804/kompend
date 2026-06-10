@@ -7,6 +7,8 @@ Covers:
 
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
@@ -31,7 +33,7 @@ def _make_mock_opendataloader(tmp_json: dict) -> ModuleType:
     """Create a minimal mock ``opendataloader_pdf`` module."""
     mod = ModuleType("opendataloader_pdf")
 
-    def _convert(*, input_path, output_dir, format) -> None:  # noqa: A002, ARG001
+    def _convert(*, input_path: str, output_dir: str, format: str) -> None:  # noqa: A002, ARG001
         Path(output_dir).joinpath("result.json").write_text(__import__("json").dumps(tmp_json), encoding="utf-8")
 
     mod.convert = _convert
@@ -45,14 +47,13 @@ class TestOpenDataLoaderParser:
         assert OpenDataLoaderParser.supported_extensions == {FileExtension.PDF}
 
     def test_import_error_without_package(self) -> None:
-        with pytest.raises(ImportError, match="opendataloader-pdf"):
-            # Force the import path to fail
-            with patch.dict("sys.modules", {"opendataloader_pdf": None}):
-                # Remove opendataloader_pdf from sys.modules if present
-                import sys  # noqa: PLC0415
-
-                sys.modules.pop("opendataloader_pdf", None)
-                OpenDataLoaderParser()
+        """Constructing OpenDataLoaderParser raises ImportError when package is missing."""
+        with patch.dict("sys.modules", {"opendataloader_pdf": None}):
+            # Re-import to get a fresh class that hasn't cached the module
+            sys.modules.pop("knox.preprocessing.parsers.opendataloader_parser", None)
+            mod = importlib.import_module("knox.preprocessing.parsers.opendataloader_parser")
+            with pytest.raises(ImportError, match="opendataloader_pdf"):
+                mod.OpenDataLoaderParser()
 
     def test_parse_maps_json_to_document(self, tmp_path: Path) -> None:
         mock_result = {
@@ -333,7 +334,10 @@ class TestParserRouterRegistration:
             router.parse(Path("unknown.jfif"))
 
     def test_router_opendataloader_import_error(self) -> None:
-        """OpenDataLoaderParser raises ImportError when package is not installed."""
-        with pytest.raises(ImportError, match="opendataloader-pdf"):
-            OpenDataLoaderParser()
-        assert OpenDataLoaderParser.supported_extensions == {FileExtension.PDF}
+        """OpenDataLoaderParser raises ImportError on construction when package is missing."""
+        with patch.dict("sys.modules", {"opendataloader_pdf": None}):
+            sys.modules.pop("knox.preprocessing.parsers.opendataloader_parser", None)
+            mod = importlib.import_module("knox.preprocessing.parsers.opendataloader_parser")
+            with pytest.raises(ImportError, match="opendataloader_pdf"):
+                mod.OpenDataLoaderParser()
+            assert mod.OpenDataLoaderParser.supported_extensions == {FileExtension.PDF}

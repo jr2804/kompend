@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import base64
 import logging
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from docling.document_converter import DocumentConverter
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
@@ -37,6 +38,10 @@ class DoclingParser(BaseParser):
     Uses Docling's ``iterate_items()`` API to walk the document body and map
     each item (TextItem, SectionHeaderItem, TableItem, PictureItem, etc.) to
     the corresponding KNOX ``ElementType`` with full structure preservation.
+
+    When ``image_mode`` is ``"file"`` or ``"base64"``, the parser configures
+    Docling's pipeline with ``generate_picture_images=True`` so actual pixel
+    data is extracted from embedded PDF images, not just structure markers.
     """
 
     supported_extensions = {FileExtension.PDF, FileExtension.DOCX}
@@ -156,9 +161,20 @@ class DoclingParser(BaseParser):
         )
 
     def _get_converter(self) -> DocumentConverter:
-        """Create or return the cached DocumentConverter."""
+        """Create or return the cached DocumentConverter.
+
+        When ``image_mode`` is ``"file"`` or ``"base64"``, the PDF pipeline is
+        configured with ``generate_picture_images=True`` so that
+        :class:`PictureItem` instances carry actual pixel data (via the
+        ``image.uri`` data-URI attribute) instead of empty structure markers.
+        """
         if self._converter is None:
-            self._converter = DocumentConverter()
+            if self.image_mode in ("file", "base64"):
+                pipeline_opts = PdfPipelineOptions(generate_picture_images=True)
+                pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
+                self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
+            else:
+                self._converter = DocumentConverter()
         return self._converter
 
     def _extract_image(self, item: Any, source_path: Path, idx: int) -> str:
@@ -166,23 +182,30 @@ class DoclingParser(BaseParser):
 
         Returns a string: base64 data-URI for 'base64', file path for 'file',
         or a placeholder description.
+
+        Docling stores the actual pixel data as a base64 data URI in
+        ``item.image.uri`` when ``generate_picture_images=True`` is enabled
+        in the pipeline options.
         """
+        # ── Try to get raw pixel data from the ImageRef URI ─────────────
+        image_ref = getattr(item, "image", None)
+        uri_str = None
+        if image_ref is not None:
+            uri = getattr(image_ref, "uri", None)
+            if uri is not None:
+                uri_str = str(uri)
+
+        # ── base64 mode ────────────────────────────────────────────────
         if self.image_mode == "base64":
-            # Try to get image bytes from docling's PictureItem
-            image = getattr(item, "image", None)
-            if image is not None:
-                pil_image = image.get_pil_image() if hasattr(image, "get_pil_image") else None
-                if pil_image is not None:
-                    buf = BytesIO()
-                    pil_image.save(buf, format="PNG")
-                    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-                    return f"data:image/png;base64,{b64}"
+            if uri_str and uri_str.startswith("data:"):
+                return uri_str
             # Fallback to text description
             captions = getattr(item, "captions", [])
             if captions:
                 return f"[Image: {captions[0]}]"
             return f"[Image #{idx}]"
 
+        # ── file mode ──────────────────────────────────────────────────
         if self.image_mode == "file":
             captions = getattr(item, "captions", [])
             stem = source_path.stem
@@ -190,25 +213,20 @@ class DoclingParser(BaseParser):
             images_dir.mkdir(parents=True, exist_ok=True)
             out_path = images_dir / f"{stem}_img_{idx}.png"
 
-            # Try to save the actual image bytes from the PictureItem
-            saved = False
-            image = getattr(item, "image", None)
-            if image is not None:
-                pil_image = image.get_pil_image() if hasattr(image, "get_pil_image") else None
-                if pil_image is not None:
-                    try:
-                        pil_image.save(out_path, format="PNG")
-                        saved = True
-                    except Exception:  # noqa: BLE001
-                        pass
+            if uri_str and uri_str.startswith("data:"):
+                try:
+                    header, b64data = uri_str.split(",", 1)
+                    raw = base64.b64decode(b64data)
+                    out_path.write_bytes(raw)
+                    return str(out_path.resolve())
+                except Exception:  # noqa: BLE001
+                    logger.warning("Failed to save image from data URI for %s", out_path.name)
 
-            if saved:
-                return str(out_path.resolve())
             # No pixel data available — return descriptive placeholder
             caption_text = str(captions[0]) if captions else ""
             return f"[Image: {caption_text if caption_text else 'figure'}]"
 
-        # Default: placeholder
+        # ── Default: placeholder ──────────────────────────────────────
         return f"[Image #{idx}]"
 
     # ── helpers ────────────────────────────────────────────────────────

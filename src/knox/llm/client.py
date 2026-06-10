@@ -81,6 +81,7 @@ class LLMClient:
     fallback_chain: list[str] = field(default_factory=list)
     role_models: dict[str, list[str]] = field(default_factory=dict)
     max_retries_per_model: int = 2
+    timeout: float | None = None
 
     def chain_for(self, role: str) -> FailoverChain:
         """Return the :class:`FailoverChain` to use for ``role``.
@@ -122,6 +123,8 @@ class LLMClient:
                 kwargs["response_format"] = response_format
             if max_tokens is not None:
                 kwargs["max_tokens"] = max_tokens
+            if self.timeout is not None:
+                kwargs["timeout"] = self.timeout
             return litellm.completion(**kwargs)
 
         result = chain.run(_call)

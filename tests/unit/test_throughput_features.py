@@ -305,7 +305,8 @@ class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 
     def test_empty_input(self) -> None:
-        compiler = TwoPhaseCompiler()
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        compiler = TwoPhaseCompiler(config=config)
         wiki = compiler.compile([])
         assert wiki.metadata["two_phase"] is True
         assert wiki.nodes == []
@@ -313,7 +314,8 @@ class TestTwoPhaseCompiler:
     def test_fallback_to_base(self) -> None:
         """When extraction returns nothing, fall back to base compiler."""
         base = GraphCompiler()
-        compiler = TwoPhaseCompiler(base=base)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        compiler = TwoPhaseCompiler(config=config, base=base)
         chunks = [
             ResolvedChunk(
                 chunk=Chunk(
@@ -332,7 +334,8 @@ class TestTwoPhaseCompiler:
         assert wiki.metadata.get("two_phase") is True
 
     def test_extract_returns_extractions(self) -> None:
-        compiler = TwoPhaseCompiler()
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(
                 chunk=Chunk(
@@ -572,7 +575,7 @@ class TestVerificationFallback:
             content="This claim has no citation.",
             node_type="section",
         )
-        result = verify_node(node, tmp_path)
+        result = verify_node(node, tmp_path, model='test/model')
         assert result[0].verdict == "unsupported"
         assert result[0].confidence < 0.5
 
@@ -583,7 +586,7 @@ class TestVerificationFallback:
             content="A claim with a missing source citation. ^[missing.pdf:1-3]",
             node_type="section",
         )
-        result = verify_node(node, tmp_path)
+        result = verify_node(node, tmp_path, model='test/model')
         assert result[0].verdict == "unsupported"
 
     def test_substring_fallback_match(self, tmp_path: Path) -> None:
@@ -599,7 +602,7 @@ class TestVerificationFallback:
             content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
             node_type="section",
         )
-        result = verify_node(node, sources)
+        result = verify_node(node, sources, model='test/model')
         assert result[0].verdict == "supported"
         assert result[0].confidence > 0.5
 
@@ -609,7 +612,7 @@ class TestVerificationFallback:
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, tmp_path)
+        result = verify_wiki(wiki, tmp_path, model='test/model')
         assert result.total >= 1
         report = tmp_path / ".knox" / "verification.json"
         assert report.exists()

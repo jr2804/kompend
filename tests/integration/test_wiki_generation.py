@@ -42,7 +42,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
-from knox.core.pipeline_defs import Compiler
+from knox.core.pipeline_defs import Compiler, PipelineConfig
 from knox.core.tier_state import TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -167,7 +167,10 @@ def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     if not resolved_chunks or not _OLLAMA_OK:
         return None
 
-    compiler = TwoPhaseCompiler(base=GraphCompiler(), prompt_budget=200_000, timeout=120)
+    config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+    config.budget.prompt = 200_000
+    config.llm.timeout = 120
+    compiler = TwoPhaseCompiler(config=config, base=GraphCompiler())
     try:
         return compiler.compile(resolved_chunks)
     except Exception:
@@ -316,10 +319,12 @@ class TestTier4Compilation:
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(
+            config=config,
             base_compiler=GraphCompiler(),
             llm_client=llm_client,
-            max_iterations=1,  # one iteration for speed
         )
         wiki = compiler.compile(resolved_chunks)
         assert len(wiki.nodes) > 0, "WiCERCompiler produced no nodes"
@@ -652,7 +657,9 @@ class TestFullPipelineE2E:
         resolved = [ResolvedChunk(chunk=c) for c in all_chunks]
 
         # Tier 4
-        comp = WiCERCompiler(base_compiler=GraphCompiler(), llm_client=llm_client, max_iterations=wicer_iterations) if compiler == "wicer" else GraphCompiler()
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = wicer_iterations
+        comp = WiCERCompiler(config=config, base_compiler=GraphCompiler(), llm_client=llm_client) if compiler == "wicer" else GraphCompiler()
 
         wiki = comp.compile(resolved)
 
@@ -774,11 +781,13 @@ class TestGenerateExampleWiki:
         logger.info("Resolution: wrapped %d raw chunks (LLMResolver skipped for speed)", len(resolved))
 
         # ── Tier 4: compile with TwoPhaseCompiler ────────────────────
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.prompt = 150_000
+        config.llm.default_model = LLM_MODEL
+        config.llm.timeout = 120
         compiler = TwoPhaseCompiler(
+            config=config,
             base=GraphCompiler(),
-            prompt_budget=150_000,
-            model=LLM_MODEL,
-            timeout=120,
         )
         wiki = compiler.compile(resolved)
 

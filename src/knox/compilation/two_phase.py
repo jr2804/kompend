@@ -25,7 +25,9 @@ import litellm
 from slugify import slugify as _slugify_impl
 
 from knox.compilation.base import BaseCompiler
+from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 
 logger = logging.getLogger(__name__)
@@ -116,7 +118,7 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(prompt: str, system: str | None = None, model: str = "ollama/llama3.2", timeout: float | None = None) -> Any | None:
+def _try_litellm_json(prompt: str, model: str, system: str | None = None, timeout: float | None = None) -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     try:
         messages: list[dict[str, str]] = []
@@ -244,21 +246,17 @@ class TwoPhaseCompiler(BaseCompiler):
 
     def __init__(
         self,
+        config: PipelineConfig,
         base: BaseCompiler | None = None,
-        prompt_budget: int = 200_000,
-        model: str = "ollama/llama3.2",
-        extract_budget: int = 6000,
-        gen_source_segment: int = 20000,
-        concepts_per_batch: int = 8,
-        timeout: float | None = None,
     ) -> None:
-        self._base = base
-        self.prompt_budget = prompt_budget
-        self._model = model
-        self._extract_budget = extract_budget
-        self._gen_source_segment = gen_source_segment
-        self._concepts_per_batch = concepts_per_batch
-        self._timeout = timeout
+        self._base = base or GraphCompiler()
+        self.prompt_budget = config.budget.prompt
+        self._model = config.llm.default_model
+        
+        self._extract_budget = config.budget.extract
+        self._gen_source_segment = config.budget.generate_source_segment
+        self._concepts_per_batch = config.budget.concepts_per_batch
+        self._timeout = config.llm.timeout
 
     # ------------------------------------------------------------------
     # Public API

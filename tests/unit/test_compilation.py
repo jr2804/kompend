@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.compilation import GraphCompiler, WiCERCompiler
+from knox.core.pipeline_defs import PipelineConfig
+from pathlib import Path
 from knox.compilation.base import BaseCompiler
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.llm.client import LLMClient
@@ -199,7 +201,9 @@ class TestWiCERCompilerUnavailable:
     """
 
     def test_empty_input(self) -> None:
-        compiler = WiCERCompiler()
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config)
         wiki = compiler.compile([])
         assert isinstance(wiki, CompiledWiki)
         assert wiki.nodes == []
@@ -208,7 +212,9 @@ class TestWiCERCompilerUnavailable:
     def test_fallback_blind_compilation_no_litellm(self) -> None:
         """Without litellm, WiCER does a single blind compilation."""
         chunks = _make_chunks(count=2, heading="Test Section")
-        compiler = WiCERCompiler(max_iterations=3)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].title == "Test Section"
@@ -217,20 +223,26 @@ class TestWiCERCompilerUnavailable:
     def test_fallback_probes_generated_from_text(self) -> None:
         """Without LLM, fallback probes are generated from text."""
         chunks = _make_chunks(count=2, heading="Test")
-        compiler = WiCERCompiler(max_iterations=1)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 1
+        compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
         assert isinstance(wiki, CompiledWiki)
         assert len(wiki.nodes) >= 1
 
     def test_no_crash_on_empty_chunks(self) -> None:
-        compiler = WiCERCompiler(max_iterations=3)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config)
         wiki = compiler.compile([])
         assert wiki.metadata["chunk_count"] == 0
 
     def test_refine_appends_facts(self) -> None:
         """_refine adds a pinned facts node."""
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=0)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 0
+        compiler = WiCERCompiler(config=config)
         wiki = compiler._blind_compile(chunks)
         pinned = ["KNOX is a knowledge base project.", "WiCER is iterative."]
         refined = compiler._refine(wiki, pinned)
@@ -242,7 +254,9 @@ class TestWiCERCompilerUnavailable:
     def test_refine_updates_existing_fact_node(self) -> None:
         """Repeated refinement updates the same pinned facts node."""
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=0)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 0
+        compiler = WiCERCompiler(config=config)
         wiki = compiler._blind_compile(chunks)
         wiki = compiler._refine(wiki, ["Fact one."])
         wiki = compiler._refine(wiki, ["Fact two."])
@@ -300,7 +314,9 @@ class TestWiCERCompilerWithMock:
 
         mock_llm.side_effect = respond
         chunks = _make_chunks(count=2, heading="Test")
-        compiler = WiCERCompiler(max_iterations=1, llm_client=_make_test_client())
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 1
+        compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_probes_generated"] == 2
 
@@ -326,7 +342,9 @@ class TestWiCERCompilerWithMock:
             ),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=1, llm_client=_make_test_client())
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 1
+        compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_refinements"] == 1
 
@@ -347,7 +365,9 @@ class TestWiCERCompilerWithMock:
             ),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        compiler = WiCERCompiler(max_iterations=3, llm_client=_make_test_client())
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_iterations"] == 1
         assert wiki.metadata["wicer_refinements"] == 0
@@ -355,7 +375,9 @@ class TestWiCERCompilerWithMock:
     def test_llm_failure_falls_back_gracefully(self) -> None:
         """When the LLM client returns None, WiCER falls back to blind compilation."""
         chunks = _make_chunks(count=2, heading="Fallback")
-        compiler = WiCERCompiler(max_iterations=2)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 2
+        compiler = WiCERCompiler(config=config)
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
             wiki = compiler.compile(chunks)
         assert len(wiki.nodes) >= 1
@@ -373,7 +395,9 @@ class TestWiCERCompilerWithMock:
                     metadata={"custom": True},
                 )
 
-        compiler = WiCERCompiler(base_compiler=DummyCompiler())
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config, base_compiler=DummyCompiler())
         c = _chunk(text="test", heading="H")
         wiki = compiler.compile([ResolvedChunk(chunk=c)])
         assert len(wiki.nodes) == 1
@@ -405,7 +429,9 @@ class TestWiCERWithGraphCompiler:
 
     def test_compiles_multi_section_doc(self) -> None:
         chunks = _make_diverse_chunks()
-        compiler = WiCERCompiler(max_iterations=1)
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 1
+        compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 4  # 4 sections
         assert "KNOX" in str(wiki.edges)
@@ -413,7 +439,9 @@ class TestWiCERWithGraphCompiler:
 
     def test_default_initializer(self) -> None:
         """WiCERCompiler() creates a GraphCompiler internally."""
-        compiler = WiCERCompiler()
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config.budget.wicer_max_iterations = 3
+        compiler = WiCERCompiler(config=config)
         assert compiler._compiler is not None
         assert isinstance(compiler._compiler, GraphCompiler)
 

@@ -20,6 +20,7 @@ from typing import Any
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -50,17 +51,15 @@ class WiCERCompiler(BaseCompiler):
 
     def __init__(
         self,
+        config: PipelineConfig,
         base_compiler: BaseCompiler | None = None,
-        max_iterations: int = 3,
         llm_client: LLMClient | None = None,
-        probe_budget: int = 3000,
-        eval_budget: int = 4000,
     ) -> None:
         self._compiler = base_compiler or GraphCompiler()
-        self.max_iterations = max_iterations
+        self.max_iterations = config.budget.wicer_max_iterations
         self._client = llm_client  # None is OK — caller handles graceful degradation
-        self._probe_budget = probe_budget
-        self._eval_budget = eval_budget
+        self._probe_budget = config.budget.wicer_probe
+        self._eval_budget = config.budget.wicer_eval
 
     # ------------------------------------------------------------------
     # Public API

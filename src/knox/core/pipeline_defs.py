@@ -22,6 +22,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from knox.core.config import BudgetConfig, EmbeddingConfig, LLMConfig, OutputConfig, ResolvedConfig
+
 
 class Tier(StrEnum):
     """Identifiers for the KNOX 5-tier compilation pipeline.
@@ -111,42 +113,6 @@ class PipelineConfig:
     output_dir: Path
     image_mode: str = "file"  # "file" or "base64"
     chunk_size: int = 512
-    compile_target: str = "markdown"  # "markdown", "json", "typst"
-    llm_model: str = "llama3.2"
-    llm_provider: str = "ollama"
-    vlm_model: str = "phi-3-vision"
-    llm_fallback_chain: list[str] = field(default_factory=list)
-    """Ordered list of fallback models tried when the primary model fails.
-
-    Each entry is a litellm-style ``"provider/model"`` string, e.g.
-    ``["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]``.
-    Empty (default) means single-model mode — backwards compatible
-    with the pre-Q12 behaviour.
-    """
-    llm_fallback_max_retries_per_model: int = 2
-    """Transient-error retries before advancing to the next model.
-
-    ``2`` means up to three attempts per model (1 + 2 retries).
-    """
-    llm_context_budget: int = 100000
-    """Max characters of page content sent to the LLM in a single lint call.
-
-    When page content exceeds this budget a warning is logged and the
-    content is truncated to this many characters. Users can adjust via
-    the ``--llm-context-budget`` CLI flag or the
-    ``KNOX_LLM_CONTEXT_BUDGET`` env var.
-
-    Default: 100 000 (roughly 25 000 tokens for most models).
-    """
-    llm_default_model_override: str | None = None
-    """Explicit default model in litellm format (``"provider/model"``).
-
-    When set, this is used directly as the primary model, bypassing
-    ``llm_provider`` and ``llm_model``. Intended for the
-    ``--llm-default-model`` CLI flag and ``KNOX_LLM_DEFAULT_MODEL`` env var.
-    When ``None`` (default), the model is constructed from ``llm_provider``
-    and ``llm_model`` as before.
-    """
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = .knox/cache inside output_dir
@@ -157,12 +123,100 @@ class PipelineConfig:
     tier_state_path: Path | None = None  # None = .knox/compile_state.json inside output_dir
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
-    flavor: str | None = None  # Markdown flavor (obsidian, gfm, mkdocs, etc.); None = auto-detect
-    frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
-    rumdl_config: Path | None = None  # path to custom .rumdl.toml config
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
+    
+    # Sub-configs (additive for backward compatibility)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    budget: BudgetConfig = field(default_factory=BudgetConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+    embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+
+    @classmethod
+    def from_resolved(
+        cls, 
+        cfg: ResolvedConfig, 
+        *, 
+        source_dir: Path, 
+        output_dir: Path, 
+        input_files: list[Path] | None = None
+    ) -> PipelineConfig:
+        """Build PipelineConfig from a fully resolved config dict."""
+        # Read old flat keys to populate flat fields
+        llm_fallback_chain = cfg.get("compile.llm.fallback_chain", [])
+        llm_fallback_max_retries = cfg.get("compile.llm.fallback_max_retries", 2)
+        llm_default_model_override = cfg.get("compile.llm.default_model")
+        role_models_raw = cfg.get("compile.llm.role_models", {})
+        role_models = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()} if isinstance(role_models_raw, dict) else {}
+        
+        frontmatter_defaults = dict(cfg.get("compile.output.frontmatter", {}))
+        rumdl_config = cfg.get("compile.output.rumdl_config")
+        if isinstance(rumdl_config, str):
+            rumdl_config = Path(rumdl_config)
+
+        # Read sub-configs
+        llm_config = LLMConfig(
+            default_model=cfg.get("compile.llm.default_model", LLMConfig().default_model),
+            provider=cfg.get("compile.llm.provider", LLMConfig().provider),
+            fallback_chain=llm_fallback_chain,
+            fallback_max_retries=llm_fallback_max_retries,
+            context_budget=cfg.get("compile.llm.context_budget", LLMConfig().context_budget),
+            timeout=cfg.get("compile.llm.timeout", LLMConfig().timeout),
+            role_models=role_models,
+            vlm_model=cfg.get("compile.llm.vlm_model", LLMConfig().vlm_model),
+        )
+
+        budget_config = BudgetConfig(
+            prompt=cfg.get("compile.prompt_budget", BudgetConfig().prompt),
+            extract=cfg.get("compile.budget.extract", BudgetConfig().extract),
+            generate_source_segment=cfg.get("compile.budget.generate_source_segment", BudgetConfig().generate_source_segment),
+            concepts_per_batch=cfg.get("compile.budget.concepts_per_batch", BudgetConfig().concepts_per_batch),
+            overview=cfg.get("compile.budget.overview", BudgetConfig().overview),
+            verify=cfg.get("compile.budget.verify", BudgetConfig().verify),
+            verify_min_ngram=cfg.get("compile.budget.min_ngram", BudgetConfig().verify_min_ngram),
+            lint_page=cfg.get("compile.budget.lint_page", BudgetConfig().lint_page),
+            wicer_probe=cfg.get("compile.budget.wicer_probe", BudgetConfig().wicer_probe),
+            wicer_eval=cfg.get("compile.budget.wicer_eval", BudgetConfig().wicer_eval),
+            wicer_max_iterations=cfg.get("compile.budget.wicer_max_iterations", BudgetConfig().wicer_max_iterations),
+        )
+
+        output_config = OutputConfig(
+            format=cfg.get("compile.format", OutputConfig().format),
+            flavor=cfg.get("compile.output.flavor", OutputConfig().flavor),
+            frontmatter=frontmatter_defaults,
+            rumdl_config=rumdl_config,
+        )
+
+        embedding_config = EmbeddingConfig(
+            model=cfg.get("compile.embedding.model", EmbeddingConfig().model),
+            provider=cfg.get("compile.embedding.provider", EmbeddingConfig().provider),
+            dim=cfg.get("compile.embedding.dim", EmbeddingConfig().dim),
+        )
+
+        return cls(
+            source_dir=source_dir,
+            output_dir=output_dir,
+            image_mode=cfg.get("compile.image_mode", "file"),
+            chunk_size=cfg.get("compile.chunk_size", 512),
+            online_sources=[],
+            input_files=input_files,
+            cache_dir=cfg.get("compile.cache_dir"),
+            no_cache=cfg.get("compile.no_cache", False),
+            workers=cfg.get("compile.workers", 1),
+            mode=cfg.get("compile.mode", Mode.FULL),
+            force=cfg.get("compile.force", False),
+            tier_state_path=cfg.get("compile.tier_state_path"),
+            ignore_patterns=list(cfg.get("ignore.patterns", [])),
+            respect_gitignore=cfg.get("compile.respect_gitignore", True),
+            page_kind=cfg.get("compile.page_kind"),
+            compiler=cfg.get("compile.compiler", Compiler.GRAPH),
+            privacy_filter=cfg.get("trust.privacy_filter", True),
+            llm=llm_config,
+            budget=budget_config,
+            output=output_config,
+            embedding=embedding_config,
+        )
 
 
 __all__ = [

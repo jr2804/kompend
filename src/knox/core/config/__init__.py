@@ -11,6 +11,7 @@
 See ``knox.core.config.AGENTS.md`` for coding conventions.
 """
 
+from knox.core.config._configs import BudgetConfig, EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.config._core import (
     DEFAULTS,
     ConfigSource,
@@ -22,7 +23,11 @@ from knox.core.config._core import (
 
 __all__ = [
     "DEFAULTS",
+    "BudgetConfig",
     "ConfigSource",
+    "EmbeddingConfig",
+    "LLMConfig",
+    "OutputConfig",
     "ResolvedConfig",
     "find_global_config",
     "find_project_config",

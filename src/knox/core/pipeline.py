@@ -496,30 +496,22 @@ class WikiPipeline:
 def build_llm_client(config: PipelineConfig) -> LLMClient:
     """Construct an :class:`LLMClient` from a :class:`PipelineConfig`.
 
-    When ``config.llm_default_model_override`` is set it is used
-    directly as the primary model. Otherwise the model is constructed
-    from ``llm_provider`` and ``llm_model``. The fallback chain is
-    taken verbatim from ``config.llm_fallback_chain`` and the retry
-    budget from ``config.llm_fallback_max_retries_per_model``.
+    The model is constructed
+    from ``llm.default_model``. The fallback chain is
+    taken verbatim from ``config.llm.fallback_chain`` and the retry
+    budget from ``config.llm.fallback_max_retries``.
     """
-    default_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
+    default_model = config.llm.default_model
+            
     return LLMClient(
         default_model=default_model,
-        fallback_chain=list(config.llm_fallback_chain),
-        max_retries_per_model=config.llm_fallback_max_retries_per_model,
+        fallback_chain=list(config.llm.fallback_chain),
+        max_retries_per_model=config.llm.fallback_max_retries,
     )
 
 
 def build_pipeline(
     config: PipelineConfig,
-    *,
-    prompt_budget: int = 200_000,
-    extract_budget: int = 6000,
-    gen_source_segment: int = 20000,
-    concepts_per_batch: int = 8,
-    wicer_probe_budget: int = 3000,
-    wicer_eval_budget: int = 4000,
-    timeout: int | None = None,
 ) -> WikiPipeline:
     """Shared factory used by both CLI and MCP.
 
@@ -538,10 +530,10 @@ def build_pipeline(
     prompt_budget:
         Per-concept char budget (N10 fair-share truncation).
     """
-    writer_cls = BaseOutputWriter.get(config.compile_target)
+    writer_cls = BaseOutputWriter.get(config.output.format)
     if writer_cls is None:
         available = ", ".join(BaseOutputWriter.available_formats())
-        msg = f"Unknown output format {config.compile_target!r}. Available: {available}"
+        msg = f"Unknown output format {config.output.format!r}. Available: {available}"
         raise ValueError(msg)
 
     parser = None
@@ -550,28 +542,20 @@ def build_pipeline(
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc)
 
-    resolved_model = config.llm_default_model_override or f"{config.llm_provider}/{config.llm_model}"
-
     llm_client = build_llm_client(config)
     resolver = _build_resolver_chain(config, llm_client)
 
     base_compiler: BaseCompiler
     if config.compiler == Compiler.WICER:
         base_compiler = WiCERCompiler(
+            config=config,
             base_compiler=GraphCompiler(),
             llm_client=llm_client,
-            probe_budget=wicer_probe_budget,
-            eval_budget=wicer_eval_budget,
         )
     elif config.compiler == Compiler.GRAPH:
         base_compiler = TwoPhaseCompiler(
+            config=config,
             base=GraphCompiler(),
-            prompt_budget=prompt_budget,
-            model=resolved_model,
-            extract_budget=extract_budget,
-            gen_source_segment=gen_source_segment,
-            concepts_per_batch=concepts_per_batch,
-            timeout=timeout,
         )
     else:
         msg = f"Unknown compiler: {config.compiler!r}"
@@ -584,9 +568,9 @@ def build_pipeline(
         resolver=resolver,
         compiler=base_compiler,
         output_writer=writer_cls(
-            flavor=config.flavor,
-            frontmatter_defaults=config.frontmatter_defaults or {},
-            rumdl_config=config.rumdl_config,
+            flavor=config.output.flavor,
+            frontmatter_defaults=config.output.frontmatter or {},
+            rumdl_config=config.output.rumdl_config,
         ),
     )
 
@@ -601,12 +585,12 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
 
     try:
         vlm_client = LLMClient(
-            default_model=f"ollama/{config.vlm_model}",
+            default_model=f"ollama/{config.llm.vlm_model}",
             fallback_chain=[],
             max_retries_per_model=0,
         )
         resolvers.append(VLMEnricher(client=vlm_client))
-        logger.debug("VLMEnricher added to resolver chain (model=%s)", config.vlm_model)
+        logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
     except Exception as exc:
         logger.debug("VLMEnricher not available: %s", exc)
 

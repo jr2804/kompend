@@ -14,6 +14,7 @@ import typer
 from knox.capture.capture import capture
 from knox.capture.ingest import ingest
 from knox.capture.learn import learn
+from knox.cli._progress import PipelineProgress
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
@@ -25,6 +26,13 @@ from knox.cli.args import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROMPT_BUDGET,
     DEFAULT_SOURCES_DIR,
+    BudgetConcepts,
+    BudgetExtract,
+    BudgetGenSegment,
+    BudgetOverview,
+    BudgetVerify,
+    BudgetWicerEval,
+    BudgetWicerProbe,
     BypassReview,
     CaptureText,
     ChunkSize,
@@ -33,6 +41,7 @@ from knox.cli.args import (
     CompileMode,
     CompilerChoice,
     ConfigPath,
+    EmbedDim,
     EmbedModel,
     ForceTier,
     Frontmatter,
@@ -56,6 +65,7 @@ from knox.cli.args import (
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     LlmRoleModel,
+    LlmTimeout,
     NoCacheFlag,
     NoPrivacy,
     OnlineUrls,
@@ -189,6 +199,15 @@ def compile_cmd(
     llm_default_model: LlmDefaultModel = None,
     llm_role_model: LlmRoleModel = None,
     compile_lint: CompileLint = False,
+    budget_extract: BudgetExtract = None,
+    budget_gen_segment: BudgetGenSegment = None,
+    budget_concepts: BudgetConcepts = None,
+    budget_overview: BudgetOverview = None,
+    budget_verify: BudgetVerify = None,
+    budget_wicer_probe: BudgetWicerProbe = None,
+    budget_wicer_eval: BudgetWicerEval = None,
+    embed_dim: EmbedDim = None,
+    llm_timeout: LlmTimeout = None,
 ) -> None:
     """Compile documents into a knowledge wiki.
 
@@ -268,27 +287,23 @@ def compile_cmd(
         llm_role_model=llm_role_model,
         kind=kind,
         compiler=compiler,
+        budget_extract=budget_extract,
+        budget_gen_segment=budget_gen_segment,
+        budget_concepts=budget_concepts,
+        budget_overview=budget_overview,
+        budget_verify=budget_verify,
+        budget_wicer_probe=budget_wicer_probe,
+        budget_wicer_eval=budget_wicer_eval,
+        embed_dim=embed_dim,
+        embed_model=embed_model,
+        llm_timeout=llm_timeout,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    pipeline_config = _build_pipeline_config(
+    pipeline_config = PipelineConfig.from_resolved(
         cfg,
-        sources_dir_path=sources_dir_path,
-        output_dir_path=output_dir_path,
-        all_input_files=all_input_files,
-        target_format=target_format,
-        chunk_size=chunk_size,
-        image_mode=image_mode,
-        mode=mode,
-        no_cache=no_cache,
-        workers=workers,
-        force=force,
-        flavor=cfg.get("compile.output.flavor"),
-        frontmatter=frontmatter,
-        ignore=ignore,
-        kind=kind,
-        compiler=compiler,
-        llm_default_model=llm_default_model,
-        llm_fallback_max_retries=llm_fallback_max_retries,
+        source_dir=sources_dir_path,
+        output_dir=output_dir_path,
+        input_files=all_input_files,
     )
 
     pipeline = build_pipeline(
@@ -306,8 +321,6 @@ def compile_cmd(
         return
 
     # ── Progress bar ──────────────────────────────────────────────────
-    from knox.cli._progress import PipelineProgress
-
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,
@@ -1092,69 +1105,6 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     )
 
 
-def _build_pipeline_config(
-    cfg: Any,
-    *,
-    sources_dir_path: Path,
-    output_dir_path: Path,
-    all_input_files: list[Path],
-    target_format: str | None,
-    chunk_size: int | None,
-    image_mode: str | None,
-    mode: str | None,
-    no_cache: bool | None,
-    workers: int | None,
-    force: bool | None,
-    flavor: str | None,
-    frontmatter: list[str] | None,
-    ignore: list[str] | None,
-    kind: str | None,
-    compiler: str | None,
-    llm_default_model: str | None,
-    llm_fallback_max_retries: int | None,
-) -> PipelineConfig:
-    """Build PipelineConfig from merged config and CLI args."""
-    frontmatter_defaults: dict[str, str] = dict(cfg.get("compile.output.frontmatter", {}))
-    if frontmatter:
-        for kv in frontmatter:
-            if "=" in kv:
-                k, v = kv.split("=", 1)
-                frontmatter_defaults[k.strip()] = v.strip()
-
-    resolved_ignore = list(cfg.get("ignore.patterns", []))
-    if ignore:
-        resolved_ignore.extend(ignore)
-
-    rumdl_config_path = cfg.get("compile.output.rumdl_config")
-    if isinstance(rumdl_config_path, str):
-        rumdl_config_path = Path(rumdl_config_path)
-
-    return PipelineConfig(
-        source_dir=sources_dir_path,
-        output_dir=output_dir_path,
-        online_sources=[],
-        compile_target=cfg.get("compile.format", target_format),
-        chunk_size=cfg.get("compile.chunk_size", chunk_size),
-        image_mode=cfg.get("compile.image_mode", image_mode),
-        input_files=all_input_files,
-        ignore_patterns=resolved_ignore,
-        mode=cfg.get("compile.mode", mode),
-        no_cache=cfg.get("compile.no_cache", no_cache),
-        workers=cfg.get("compile.workers", workers),
-        force=cfg.get("compile.force", force),
-        flavor=flavor,
-        frontmatter_defaults=frontmatter_defaults or None,
-        rumdl_config=rumdl_config_path,
-        llm_fallback_chain=cfg.get("compile.llm.fallback_chain", []),
-        llm_fallback_max_retries_per_model=cfg.get("compile.llm.fallback_max_retries", llm_fallback_max_retries),
-        llm_default_model_override=cfg.get("compile.llm.default_model", llm_default_model),
-        llm_role_models=_resolve_role_models(cfg),
-        page_kind=cfg.get("compile.page_kind", kind),
-        privacy_filter=cfg.get("trust.privacy_filter", True),
-        compiler=cfg.get("compile.compiler", compiler),
-    )
-
-
 def _post_compile_actions(
     *,
     wiki: CompiledWiki,
@@ -1187,22 +1137,34 @@ def _post_compile_actions(
         _mark_private(wiki, output_dir_path)
 
     if verify:
-        resolved_model = pipeline_config.llm_default_model_override or f"{pipeline_config.llm_provider}/{pipeline_config.llm_model}"
-        _verify_claims(wiki, output_dir_path, model=resolved_model)
+        resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
+        _verify_claims(
+            wiki, 
+            output_dir_path, 
+            model=resolved_model,
+            verify_budget=pipeline_config.budget.verify
+        )
 
     generated = write_index_and_log(wiki, output_dir_path)
     typer.echo(f"Index: {generated['index']}")
     typer.echo(f"Log:   {generated['log']}")
 
     if synthesize:
-        overview_path = write_overview(wiki, output_dir_path)
+        resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
+        overview_path = write_overview(
+            wiki, 
+            output_dir_path,
+            model=resolved_model,
+            overview_budget=pipeline_config.budget.overview,
+            timeout=pipeline_config.llm.timeout
+        )
         if overview_path:
             typer.echo(f"Overview: {overview_path}")
         else:
             typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
     if index_store:
-        _cli_build_vector_index(wiki, output_dir_path, embed_model)
+        _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model)
 
     if compile_lint:
         _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
@@ -1239,6 +1201,16 @@ def _build_cli_overrides(
     llm_role_model: list[str] | None = None,
     kind: str | None = None,
     compiler: str | None = None,
+    budget_extract: int | None = None,
+    budget_gen_segment: int | None = None,
+    budget_concepts: int | None = None,
+    budget_overview: int | None = None,
+    budget_verify: int | None = None,
+    budget_wicer_probe: int | None = None,
+    budget_wicer_eval: int | None = None,
+    embed_model: str | None = None,
+    embed_dim: int | None = None,
+    llm_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
@@ -1256,6 +1228,16 @@ def _build_cli_overrides(
         ("compile.llm.default_model", llm_default_model),
         ("compile.page_kind", kind),
         ("compile.compiler", compiler),
+        ("compile.budget.extract", budget_extract),
+        ("compile.budget.generate_source_segment", budget_gen_segment),
+        ("compile.budget.concepts_per_batch", budget_concepts),
+        ("compile.budget.overview", budget_overview),
+        ("compile.budget.verify", budget_verify),
+        ("compile.budget.wicer_probe", budget_wicer_probe),
+        ("compile.budget.wicer_eval", budget_wicer_eval),
+        ("compile.embedding.model", embed_model),
+        ("compile.embedding.dim", embed_dim),
+        ("compile.llm.timeout", llm_timeout),
     ]
     for key, val in _simple:
         if val is not None:
@@ -1336,9 +1318,9 @@ def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
     mark_wiki_private(wiki, output_dir_path)
 
 
-def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str = "ollama/llama3.2") -> None:
+def _verify_claims(wiki: CompiledWiki, output_dir_path: Path, *, model: str, verify_budget: int = 3000) -> None:
     """Run grounding verification over wiki claims."""
-    result = verify_wiki(wiki, output_dir_path, model=model)
+    result = verify_wiki(wiki, output_dir_path, model=model, verify_budget=verify_budget)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 

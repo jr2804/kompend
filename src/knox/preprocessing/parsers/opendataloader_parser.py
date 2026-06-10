@@ -1,12 +1,19 @@
 """opendataloader-pdf adapter for PDF parsing.
 
-Requires ``opendataloader-pdf`` to be installed separately:
+Requires ``opendataloader-pdf`` to be installed.  The package is *not*
+a hard dependency of knox — it must be installed separately::
 
     pip install opendataloader-pdf
 
-This parser routes PDFs through OpenDataLoader's high-accuracy extraction
-pipeline and converts the structured JSON output into KNOX's
-:class:`ParsedDocument` / :class:`DocumentElement` model.
+This parser is **not** wired into the default pipeline (which uses
+:class:`DoclingParser`).  It is registered via
+:class:`~knox.preprocessing.parsers.base.ParserRouter` and can be
+selected explicitly when the caller knows ``opendataloader-pdf`` is
+available.
+
+The ``opendataloader_pdf`` package is imported at :meth:`parse` time.
+If it is not installed, :class:`ImportError` is raised on the first
+call — the module itself is always importable.
 """
 
 from __future__ import annotations
@@ -37,18 +44,15 @@ _OD_TYPE_MAP: dict[str, ElementType] = {
 class OpenDataLoaderParser(BaseParser):
     """PDF parser using ``opendataloader-pdf`` as the extraction backend.
 
-    Raises :class:`ImportError` on instantiation when
-    ``opendataloader-pdf`` is not installed.
+    ``opendataloader_pdf`` is imported on first use so that this module
+    can always be imported even when the package is not installed.
     """
 
     supported_extensions = {FileExtension.PDF}
 
     def __init__(self) -> None:
-        try:
-            import opendataloader_pdf  # noqa: F811
-        except ImportError as exc:  # pragma: no cover
-            msg = "OpenDataLoaderParser requires 'opendataloader-pdf'. Install it with: pip install opendataloader-pdf"
-            raise ImportError(msg) from exc
+        import opendataloader_pdf  # noqa: PLC0415 – deliberate lazy import for optional package
+
         self._mod = opendataloader_pdf
 
     def parse(self, source_path: Path) -> ParsedDocument:
