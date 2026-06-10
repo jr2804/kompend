@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from slugify import slugify as _slugify_impl
+
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -104,7 +106,4 @@ def _make_title(text: str, max_len: int = 60) -> str:
 
 
 def _make_slug(text: str, max_len: int = 40) -> str:
-    words = text.strip().split()[:6]
-    slug = "-".join(words).lower()
-    slug = "".join(c for c in slug if c.isalnum() or c in "-_")
-    return slug[:max_len].strip("-")
+    return _slugify_impl(text, max_length=max_len)[:max_len].strip("-")

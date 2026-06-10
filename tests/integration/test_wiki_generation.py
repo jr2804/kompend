@@ -166,7 +166,7 @@ def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     if not resolved_chunks or not _OLLAMA_OK:
         return None
 
-    compiler = TwoPhaseCompiler(base=GraphCompiler(), prompt_budget=200_000)
+    compiler = TwoPhaseCompiler(base=GraphCompiler(), prompt_budget=200_000, timeout=120)
     try:
         return compiler.compile(resolved_chunks)
     except Exception:
@@ -777,6 +777,7 @@ class TestGenerateExampleWiki:
             base=GraphCompiler(),
             prompt_budget=150_000,
             model=LLM_MODEL,
+            timeout=120,
         )
         wiki = compiler.compile(resolved)
 
@@ -842,17 +843,14 @@ class TestGenerateExampleWiki:
         build_chunk_index(wiki, out_dir / ".knox" / "search.db")
         logger.info("FTS index built")
 
-        # Vector index (best-effort — zvec may reject hyphenated IDs)
-        try:
-            embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
-            ZvecWikiStore(
-                db_path=out_dir / ".knox" / "vectors",
-                embedding_provider=embed_provider,
-                embedding_dim=EMBED_DIM,
-            ).build_index(wiki)
-            logger.info("Vector index built")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Vector index skipped: %s", exc)
+        # Vector index
+        embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
+        ZvecWikiStore(
+            db_path=out_dir / ".knox" / "vectors",
+            embedding_provider=embed_provider,
+            embedding_dim=EMBED_DIM,
+        ).build_index(wiki)
+        logger.info("Vector index built")
 
         # Final assertions
         assert len(md_files) > 0, "No .md files produced"

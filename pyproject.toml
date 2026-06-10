@@ -36,6 +36,7 @@ dependencies = [
     "mcp>=1.27.2",
     "pandoc>=2.4",
     "pydantic>=2.13.4",
+    "python-slugify[unidecode]>=8.0.4",
 ]
 
 [project.scripts]

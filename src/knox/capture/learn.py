@@ -4,6 +4,8 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from slugify import slugify as _slugify_impl
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +41,4 @@ source: manual
 
 
 def _make_slug(text: str, max_len: int = 40) -> str:
-    words = text.strip().split()[:6]
-    slug = "-".join(words).lower()
-    slug = "".join(c for c in slug if c.isalnum() or c in "-_")
-    return slug[:max_len].strip("-")
+    return _slugify_impl(text, max_length=max_len)[:max_len].strip("-")

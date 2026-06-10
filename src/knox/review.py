@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -23,16 +22,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from slugify import slugify as _slugify_impl
+
 from knox.core.models import WikiNode
 
 logger = logging.getLogger(__name__)
 
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
-
 
 def slugify(title: str) -> str:
     """Convert a title into a filesystem-safe slug."""
-    return _SLUG_RE.sub("_", title.lower()).strip("_") or "untitled"
+    result = _slugify_impl(title)
+    return result if result else "untitled"
 
 
 @dataclass

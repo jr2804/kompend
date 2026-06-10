@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import litellm
+from slugify import slugify as _slugify_impl
 
 from knox.compilation.base import BaseCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
@@ -35,10 +35,7 @@ _loader = get_template_loader()
 
 def _slugify(text: str) -> str:
     """Convert a title to a lowercase hyphenated slug."""
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text)
-    return text.strip("-") or "concept"
+    return _slugify_impl(text) or "concept"
 
 
 def _dedup_id(node_id: str, seen: set[str]) -> str:
@@ -119,19 +116,22 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(prompt: str, system: str | None = None, model: str = "ollama/llama3.2") -> Any | None:
+def _try_litellm_json(prompt: str, system: str | None = None, model: str = "ollama/llama3.2", timeout: float | None = None) -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     try:
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        response = litellm.completion(
-            model=model,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.0,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+            "temperature": 0.0,
+        }
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        response = litellm.completion(**kwargs)
         content = response.choices[0].message.content
         if not content:
             return None
@@ -250,6 +250,7 @@ class TwoPhaseCompiler(BaseCompiler):
         extract_budget: int = 6000,
         gen_source_segment: int = 20000,
         concepts_per_batch: int = 8,
+        timeout: float | None = None,
     ) -> None:
         self._base = base
         self.prompt_budget = prompt_budget
@@ -257,6 +258,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._extract_budget = extract_budget
         self._gen_source_segment = gen_source_segment
         self._concepts_per_batch = concepts_per_batch
+        self._timeout = timeout
 
     # ------------------------------------------------------------------
     # Public API
@@ -363,7 +365,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     concepts_json=json.dumps(batch),
                     content=content_block,
                 )
-                data = _try_litellm_json(prompt, system=generation_system, model=self._model)
+                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout)
 
                 if not isinstance(data, dict):
                     logger.warning(
@@ -460,7 +462,7 @@ class TwoPhaseCompiler(BaseCompiler):
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
         """Run a single extraction LLM call for *source* on *combined* text."""
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(prompt, system=extraction_system, model=self._model)
+        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout)
         if isinstance(data, dict):
             return Extraction(
                 source=source,

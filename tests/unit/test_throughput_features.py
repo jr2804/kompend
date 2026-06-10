@@ -369,18 +369,18 @@ class TestReviewQueue:
         queue = ReviewQueue(review_dir=tmp_path / "review")
         node = WikiNode(id="n1", title="Hello World", content="body", node_type="section")
         queue.enqueue(node)
-        assert (tmp_path / "review" / "hello_world.md").exists()
+        assert (tmp_path / "review" / "hello-world.md").exists()
         assert (tmp_path / "review" / "_state.json").exists()
 
     def test_approve_moves_file(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / "review")
         node = WikiNode(id="n1", title="My Page", content="b", node_type="section")
         queue.enqueue(node)
-        approved = queue.approve("my_page")
+        approved = queue.approve("my-page")
         assert approved
         assert approved[0].status == "approved"
-        assert (tmp_path / "review" / "my_page.approved.md").exists()
-        assert not (tmp_path / "review" / "my_page.md").exists()
+        assert (tmp_path / "review" / "my-page.approved.md").exists()
+        assert not (tmp_path / "review" / "my-page.md").exists()
 
     def test_approve_all(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / "review")
@@ -411,7 +411,7 @@ class TestReviewQueue:
         assert entries[0].status == "pending"
 
     def test_slugify(self) -> None:
-        assert slugify("Hello, World!") == "hello_world"
+        assert slugify("Hello, World!") == "hello-world"
         assert slugify("---") == "untitled"
 
 
