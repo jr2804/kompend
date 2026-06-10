@@ -94,6 +94,115 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 
 3. **No try/except ImportError guards for core dependencies.** Every package listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be installed. Wrapping `import mylib` in `try: ... except ImportError: mylib = None` is pointless boilerplate — it obscures the real dependency, adds dead branches, and masks actual install failures. Import at module level, unconditionally.
 
+## Parameter and default-value antipatterns
+
+These three patterns are **forbidden in new code**. Existing occurrences are
+technical debt to be cleaned up incrementally.
+
+### Antipattern 1 — Hard-coded provider/model names
+
+**Never** hard-code an LLM model identifier as a function default or inline
+string literal. Model names are configuration, not code.
+
+```python
+# ❌ FORBIDDEN — model name baked into code
+"ollama/llama3.2"
+    ) -> Any | None:
+```
+
+```python
+# ❌ FORBIDDEN — same antipattern in __init__, verify_wiki, etc.
+
+def verify_wiki(wiki, output_dir, *, model="ollama/llama3.2") -> VerificationResult:
+```
+
+```python
+# ✅ CORRECT — model comes from config, the only place the default lives
+
+def _try_litellm_json(prompt, system, model, timeout) -> Any | None:
+    # model is always provided by the caller, who reads it from LLMConfig
+```
+
+**Rule:** The string `"ollama/"` (or any other provider prefix) must never
+appear outside of:
+
+- `PipelineConfig` / sub-config dataclass field defaults (single source of truth)
+- `DEFAULTS` in `_core.py`
+- `knox.toml` / `knox.toml.example`
+- Test fixtures with an explicit comment `# model name is the system under test`
+
+### Antipattern 2 — Hard-coded domain values as function defaults
+
+When a parameter's default is a domain-specific value (budget, threshold,
+chunk size, iteration count), it **must** come from the config layer, not from
+the function signature. The function signature should either accept a
+grouped config object or require the caller to pass the value explicitly.
+
+```python
+# ❌ FORBIDDEN — domain defaults scattered across signatures
+
+def __init__(self, prompt_budget: int = 200_000, extract_budget: int = 6000,
+             concepts_per_batch: int = 8, timeout: float | None = None):
+```
+
+```python
+# ✅ CORRECT — defaults live in one place (the config dataclass)
+
+@dataclass
+class BudgetConfig:
+    prompt: int = 200_000
+    extract: int = 6_000
+    concepts_per_batch: int = 8
+
+class TwoPhaseCompiler:
+    def __init__(self, config: PipelineConfig) -> None:
+        self._budget = config.budget  # single source of truth
+```
+
+### Antipattern 3 — `| None = None` with hidden default inside the body
+
+When a parameter is declared as `x: SomeType | None = None` and the function
+body resolves it to a real default via `x = x or REAL_VALUE` or
+`if x is None: x = REAL_VALUE`, the real default is invisible at the call
+site and untestable without reading the implementation.
+
+```python
+# ❌ FORBIDDEN — real default (100000) hidden inside the function
+
+def __init__(self, lint_page_budget: int | None = None) -> None:
+    self.lint_page_budget = lint_page_budget or 100000
+```
+
+```python
+# ✅ CORRECT — default is explicit in the type; None is only for
+#              "not provided" at the config layer (DI / testing)
+
+def __init__(self, budget: BudgetConfig) -> None:
+    self.lint_page_budget = budget.lint_page  # default 100_000 in dataclass
+```
+
+If `None` is truly needed (e.g. "use whatever the parent provides"), document
+what the effective fallback is in the docstring:
+
+```python
+# Acceptable when None has a well-defined fallback chain
+
+def __init__(self, state_store: TierStateStore | None = None) -> None:
+    """...
+    Args:
+        state_store: Persistent state handler. When ``None``, defaults to
+            ``TierStateStore(output_dir / ".knox" / "compile_state.json")``.
+    """
+```
+
+### Summary
+
+| Pattern | Forbidden | Correct approach |
+|---------|-----------|-----------------|
+| `model="ollama/llama3.2"` | ❌ | Config object / explicit param |
+| `budget: int = 6000` | ❌ | Config object with grouped defaults |
+| `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
+
 ## Jinja2 conventions
 
 - Template files use the ``.md.j2`` extension (markdown + Jinja2).
