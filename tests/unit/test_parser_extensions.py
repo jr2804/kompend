@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import ElementType, ParsedDocument
 from knox.preprocessing.parsers.base import FileExtension, ParserRouter
 from knox.preprocessing.parsers.opendataloader_parser import (
     _OD_TYPE_MAP,
@@ -31,7 +31,7 @@ def _make_mock_opendataloader(tmp_json: dict) -> ModuleType:
     """Create a minimal mock ``opendataloader_pdf`` module."""
     mod = ModuleType("opendataloader_pdf")
 
-    def _convert(*, input_path, output_dir, format):  # noqa: A002, ARG001
+    def _convert(*, input_path, output_dir, format) -> None:  # noqa: A002, ARG001
         Path(output_dir).joinpath("result.json").write_text(__import__("json").dumps(tmp_json), encoding="utf-8")
 
     mod.convert = _convert
