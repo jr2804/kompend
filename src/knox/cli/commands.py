@@ -305,8 +305,51 @@ def compile_cmd(
         _print_tier_listing(pipeline)
         return
 
+    # ── Progress bar ──────────────────────────────────────────────────
+    from knox.cli._progress import PipelineProgress
+
+    tracker = PipelineProgress.create(
+        total_files=len(all_input_files),
+        force_progress=show_progress,
+    )
+
+    def _progress_cb(phase: str, current: int, total: int, detail: str) -> None:
+        """Translate core pipeline events into Rich progress updates."""
+        if phase == "parse":
+            if current == 0:
+                tracker.start()
+            elif detail == "done":
+                tracker.message(f"Parsed {total} file(s)")
+            else:
+                tracker.start_file(detail)
+                tracker.step("Parse")
+                tracker.step("Chunk")
+                tracker.finish_file(detail, "OK")
+        elif phase == "index":
+            if current == 0:
+                tracker.start()
+                tracker.message("Downloading sources…")
+            else:
+                tracker.message("Download complete")
+        elif phase == "resolve":
+            if current == 0:
+                tracker.message("Resolving chunks…")
+            else:
+                tracker.message("Resolve complete")
+        elif phase == "compile":
+            if current == 0:
+                tracker.message("Compiling wiki…")
+            else:
+                tracker.message("Compile complete")
+        elif phase == "output":
+            if current == 0:
+                tracker.message("Writing output…")
+            else:
+                tracker.message("Output complete")
+
     try:
-        wiki = pipeline.run()
+        wiki = pipeline.run(progress_callback=_progress_cb if tracker.enabled else None)
+        tracker.finish()
         typer.echo(f"Compiled wiki written to {output_dir_path}")
 
         _post_compile_actions(
@@ -326,6 +369,7 @@ def compile_cmd(
         )
 
     except Exception as exc:
+        tracker.stop()
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 

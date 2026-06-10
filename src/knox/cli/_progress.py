@@ -209,6 +209,9 @@ class PipelineProgress:
         """Start the overall progress display."""
         if self._file_tracker:
             self._file_tracker.start()
+        # Connect step tracker to the now-created Rich Progress instance.
+        if self._step_tracker and self._file_tracker:
+            self._step_tracker.parent_progress = self._file_tracker._progress
 
     def start_file(self, file_name: str) -> None:
         """Start tracking progress for a new file."""
@@ -227,6 +230,18 @@ class PipelineProgress:
             self._step_tracker.finish(file_name, status)
         if self._file_tracker:
             self._file_tracker.advance()
+
+    def message(self, msg: str) -> None:
+        """Update the overall task description with a coarse status message.
+
+        Used for non-file phases (resolve, compile, output) where
+        per-file tracking doesn't apply.
+        """
+        if self._file_tracker and self._file_tracker._progress and self._file_tracker._overall_task is not None:
+            self._file_tracker._progress.update(
+                self._file_tracker._overall_task,
+                description=msg,
+            )
 
     def finish(self) -> None:
         """Mark overall progress as complete."""
@@ -255,7 +270,9 @@ class PipelineProgress:
             return cls(enabled=False)
 
         file_tracker = FileProgressTracker(total=total_files)
-        step_tracker = StepTracker(parent_progress=file_tracker._progress)
+        # StepTracker parent_progress is set lazily in start() after
+        # FileProgressTracker creates the Rich Progress widget.
+        step_tracker = StepTracker(parent_progress=None)
         return cls(enabled=True, _file_tracker=file_tracker, _step_tracker=step_tracker)
 
 
