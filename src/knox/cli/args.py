@@ -12,6 +12,8 @@ from typing import Annotated
 
 import typer
 
+from knox.core.pipeline_defs import Compiler
+
 # Application name used for environment variable prefixes.
 APP_NAME_UPPERCASE = "KNOX"
 
@@ -410,7 +412,7 @@ KindOption = Annotated[
 ]
 
 CompilerChoice = Annotated[
-    str,
+    Compiler,
     typer.Option(
         "--compiler",
         help=(
@@ -421,7 +423,7 @@ CompilerChoice = Annotated[
         envvar=f"{APP_NAME_UPPERCASE}_COMPILER",
     ),
 ]
-DEFAULT_COMPILER: str = "graph"
+DEFAULT_COMPILER: Compiler = Compiler.GRAPH
 
 
 # ── N1 lint command ────────────────────────────────────────────────────

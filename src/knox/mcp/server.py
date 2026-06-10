@@ -15,6 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from knox.capture.capture import capture
 from knox.capture.learn import learn
 from knox.core.pipeline import PipelineConfig, build_pipeline
+from knox.core.pipeline_defs import Compiler
 from knox.llm.client import LLMClient
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -86,11 +87,12 @@ def compile_wiki(
             "message": f"Unknown format: {output_format}. Use markdown, json, or typst.",
         }
 
-    valid_compilers = {"graph", "wicer"}
-    if compiler not in valid_compilers:
+    try:
+        compiler_enum = Compiler(compiler)
+    except ValueError:
         return {
             "status": "error",
-            "message": f"Unknown compiler: {compiler}. Use graph or wicer.",
+            "message": f"Unknown compiler: {compiler!r}. Use graph or wicer.",
         }
 
     config = PipelineConfig(
@@ -100,7 +102,7 @@ def compile_wiki(
         compile_target=output_format,
         chunk_size=chunk_size,
         image_mode=image_mode,
-        compiler=compiler,
+        compiler=compiler_enum,
     )
 
     pipeline = build_pipeline(config)

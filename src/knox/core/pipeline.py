@@ -30,6 +30,7 @@ from knox.core.pipeline_defs import (
     MODE_LEVELS,
     TIER_DESCRIPTIONS,
     TIER_LEVEL,
+    Compiler,
     Mode,
     PipelineConfig,
     Tier,
@@ -108,14 +109,6 @@ class WikiPipeline:
         """Return the set of tier levels enabled for the current mode."""
         mode = self.config.mode if isinstance(self.config.mode, Mode) else Mode(self.config.mode)
         return MODE_LEVELS.get(mode, MODE_LEVELS[Mode.FULL])
-
-    def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
-        """Emit a progress event if a callback is registered."""
-        if self._progress_callback is not None:
-            try:
-                self._progress_callback(phase, current, total, detail)
-            except Exception:  # noqa: BLE001
-                logger.debug("Progress callback error", exc_info=True)
 
     def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:
         """Execute the full pipeline from sources to compiled wiki.
@@ -239,6 +232,14 @@ class WikiPipeline:
                 "description": f"sample sources: {[e.stem for e in sample]}",
             },
         ]
+
+    def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+        """Emit a progress event if a callback is registered."""
+        if self._progress_callback is not None:
+            try:
+                self._progress_callback(phase, current, total, detail)
+            except Exception:  # noqa: BLE001
+                logger.debug("Progress callback error", exc_info=True)
 
     def _default_state_path(self) -> Path:
         """Resolve the persistent state file path."""
@@ -555,14 +556,14 @@ def build_pipeline(
     resolver = _build_resolver_chain(config, llm_client)
 
     base_compiler: BaseCompiler
-    if config.compiler == "wicer":
+    if config.compiler == Compiler.WICER:
         base_compiler = WiCERCompiler(
             base_compiler=GraphCompiler(),
             llm_client=llm_client,
             probe_budget=wicer_probe_budget,
             eval_budget=wicer_eval_budget,
         )
-    else:
+    elif config.compiler == Compiler.GRAPH:
         base_compiler = TwoPhaseCompiler(
             base=GraphCompiler(),
             prompt_budget=prompt_budget,
@@ -572,6 +573,9 @@ def build_pipeline(
             concepts_per_batch=concepts_per_batch,
             timeout=timeout,
         )
+    else:
+        msg = f"Unknown compiler: {config.compiler!r}"
+        raise ValueError(msg)
 
     return WikiPipeline(
         config=config,

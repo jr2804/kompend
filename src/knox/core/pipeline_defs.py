@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 
 class Tier(StrEnum):
@@ -35,6 +35,17 @@ class Tier(StrEnum):
     RESOLVE = "resolve"
     COMPILE = "compile"
     OUTPUT = "output"
+
+
+class Compiler(StrEnum):
+    """Compiler backend selection.
+
+    - ``GRAPH``: TwoPhaseCompiler (two-phase extract-then-generate, default)
+    - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
+    """
+
+    GRAPH = "graph"
+    WICER = "wicer"
 
 
 class Mode(StrEnum):
@@ -150,7 +161,7 @@ class PipelineConfig:
     frontmatter_defaults: dict[str, Any] | None = None  # default frontmatter fields for all pages (Q18)
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     rumdl_config: Path | None = None  # path to custom .rumdl.toml config
-    compiler: Literal["graph", "wicer"] = "graph"  # C4: compiler backend selection
+    compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
 
 
@@ -159,6 +170,7 @@ __all__ = [
     "MODE_LEVELS",
     "TIER_DESCRIPTIONS",
     "TIER_LEVEL",
+    "Compiler",
     "Mode",
     "PipelineConfig",
     "Tier",

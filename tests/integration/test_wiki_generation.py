@@ -42,6 +42,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
+from knox.core.pipeline_defs import Compiler
 from knox.core.tier_state import TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -566,7 +567,7 @@ class TestFullPipelineE2E:
             small_corpus[:1],
             out_dir,
             compile_target="json",
-            compiler="graph",
+            compiler=Compiler.GRAPH,
             flavor=None,
         )
 
@@ -821,7 +822,7 @@ class TestGenerateExampleWiki:
         assert pages["log"].exists()
 
         # overview (LLM synthesis)
-        overview_path = write_overview(wiki, md_vault, model=LLM_MODEL)
+        overview_path = write_overview(wiki, md_vault, model=LLM_MODEL, timeout=120)
         if overview_path:
             logger.info("overview.md generated")
         else:
