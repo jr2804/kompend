@@ -306,15 +306,7 @@ def compile_cmd(
         input_files=all_input_files,
     )
 
-    pipeline = build_pipeline(
-        pipeline_config,
-        prompt_budget=cfg.get("compile.prompt_budget", prompt_budget),
-        extract_budget=cfg.get("compile.budget.extract", 6000),
-        gen_source_segment=cfg.get("compile.budget.generate_source_segment", 20000),
-        concepts_per_batch=cfg.get("compile.budget.concepts_per_batch", 8),
-        wicer_probe_budget=cfg.get("compile.budget.wicer_probe", 3000),
-        wicer_eval_budget=cfg.get("compile.budget.wicer_eval", 4000),
-    )
+    pipeline = build_pipeline(pipeline_config)
 
     if list_tiers:
         _print_tier_listing(pipeline)
