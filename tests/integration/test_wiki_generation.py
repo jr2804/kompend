@@ -41,6 +41,7 @@ from knox.chunking.hybrid import HybridChunker
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
+from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
 from knox.core.pipeline_defs import Compiler, PipelineConfig
 from knox.core.tier_state import TierStateStore
@@ -167,15 +168,15 @@ def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     if not resolved_chunks or not _OLLAMA_OK:
         return None
 
-    config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+    config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
     config.budget.prompt = 200_000
     config.llm.timeout = 120
-    compiler = TwoPhaseCompiler(config=config, base=GraphCompiler())
+    compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
     try:
         return compiler.compile(resolved_chunks)
     except Exception:
         logger.exception("TwoPhaseCompiler failed — falling back to GraphCompiler")
-        return GraphCompiler().compile(resolved_chunks)
+        return GraphCompiler("model").compile(resolved_chunks)
 
 
 # ── Tier 1: Preprocessing ─────────────────────────────────────────────────────
@@ -319,11 +320,11 @@ class TestTier4Compilation:
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(
             config=config,
-            base_compiler=GraphCompiler(),
+            base_compiler=GraphCompiler("model"),
             llm_client=llm_client,
         )
         wiki = compiler.compile(resolved_chunks)
@@ -481,7 +482,7 @@ class TestVectorStore:
             embedding_dim=EMBED_DIM,
         )
 
-        store.build_index(graph_wiki)
+        store.build_index(graph_wiki, embedding_model="hash")
 
         # Search for a term present in the domain
         results = store.search("speech intelligibility hearing", top_k=3)
@@ -499,7 +500,7 @@ class TestVectorStore:
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         )
-        store.build_index(graph_wiki)
+        store.build_index(graph_wiki, embedding_model="hash")
 
         queries = [
             "noise reduction algorithm",
@@ -657,9 +658,9 @@ class TestFullPipelineE2E:
         resolved = [ResolvedChunk(chunk=c) for c in all_chunks]
 
         # Tier 4
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = wicer_iterations
-        comp = WiCERCompiler(config=config, base_compiler=GraphCompiler(), llm_client=llm_client) if compiler == "wicer" else GraphCompiler()
+        comp = WiCERCompiler(config=config, base_compiler=GraphCompiler("model"), llm_client=llm_client) if compiler == "wicer" else GraphCompiler("model")
 
         wiki = comp.compile(resolved)
 
@@ -713,15 +714,16 @@ class TestURLDownload:
 class TestGenerateExampleWiki:
     """Generate the full example wiki from the complete corpus.
 
-    Output is written to ``tests/test-cache/example-wiki/`` so it persists
-    across test runs and can be inspected manually.
+    Output is written to the ``example-wiki/`` subdirectory of the pytest
+    cache (configured via ``cache_dir`` in ``pyproject.toml``).  Artifacts
+    persist across test runs and can be inspected manually.
     """
 
     def test_generate_example_wiki(
         self,
         source_pdfs_module: list[Path],
         test_urls: list[str],
-        request: pytest.FixtureRequest,
+        example_wiki_cache: Path,
     ) -> None:
         """Parse → chunk → compile → write the full example wiki.
 
@@ -730,8 +732,7 @@ class TestGenerateExampleWiki:
         """
         import shutil  # noqa: PLC0415
 
-        # Output directory inside pytest cache (persistent but .gitignored)
-        out_dir = Path(__file__).parent.parent / "test-cache" / "example-wiki"
+        out_dir = example_wiki_cache
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Clean stale outputs but keep the directory itself
@@ -781,19 +782,19 @@ class TestGenerateExampleWiki:
         logger.info("Resolution: wrapped %d raw chunks (LLMResolver skipped for speed)", len(resolved))
 
         # ── Tier 4: compile with TwoPhaseCompiler ────────────────────
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.prompt = 150_000
         config.llm.default_model = LLM_MODEL
         config.llm.timeout = 120
         compiler = TwoPhaseCompiler(
             config=config,
-            base=GraphCompiler(),
+            base=GraphCompiler("model"),
         )
         wiki = compiler.compile(resolved)
 
         if len(wiki.nodes) == 0:
             logger.warning("TwoPhaseCompiler returned 0 nodes — falling back to GraphCompiler")
-            wiki = GraphCompiler().compile(resolved)
+            wiki = GraphCompiler("model").compile(resolved)
 
         wiki.metadata.update(
             {
@@ -859,7 +860,7 @@ class TestGenerateExampleWiki:
             db_path=out_dir / ".knox" / "vectors",
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
-        ).build_index(wiki)
+        ).build_index(wiki, embedding_model="hash")
         logger.info("Vector index built")
 
         # Final assertions

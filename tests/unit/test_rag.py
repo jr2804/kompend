@@ -50,7 +50,7 @@ class TestZvecWikiStore:
     def test_empty_wiki_returns_zero_indexed(self) -> None:
         empty = CompiledWiki(nodes=[], edges=[], toc=[])
         store = ZvecWikiStore()
-        assert store.build_index(empty) == 0
+        assert store.build_index(empty, embedding_model="hash") == 0
 
     def test_build_index_works(self, zvec_db: Path) -> None:
         wiki = CompiledWiki(
@@ -59,7 +59,7 @@ class TestZvecWikiStore:
             toc=[],
         )
         store = ZvecWikiStore(db_path=str(zvec_db))
-        assert store.build_index(wiki) == 1
+        assert store.build_index(wiki, embedding_model="hash") == 1
         store.close()
 
     def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
@@ -74,7 +74,7 @@ class TestZvecWikiStore:
                 edges=[],
                 toc=[],
             )
-            count = store.build_index(wiki)
+            count = store.build_index(wiki, embedding_model="hash")
             assert count == 2, "Should index 2 nodes"
             results = store.search("test")
             assert len(results) >= 1
@@ -94,7 +94,7 @@ class TestZvecWikiStore:
                 edges=[],
                 toc=[],
             )
-            count = store.build_index(wiki)
+            count = store.build_index(wiki, embedding_model="hash")
             assert count == 1
             assert db.parent.exists()
             store.close()

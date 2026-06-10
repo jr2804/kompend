@@ -986,7 +986,7 @@ def capture_cmd(
 
     try:
         cfg = resolve_config()
-        default_model = cfg.get("compile.llm.default_model", "ollama/llama3.2")
+        default_model = cfg.get("compile.llm.default_model")
         llm_client = LLMClient(default_model=default_model)
     except Exception:
         llm_client = None
@@ -1139,8 +1139,8 @@ def _post_compile_actions(
     if verify:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
         _verify_claims(
-            wiki, 
-            output_dir_path, 
+            wiki,
+            output_dir_path,
             model=resolved_model,
             verify_budget=pipeline_config.budget.verify
         )
@@ -1152,7 +1152,7 @@ def _post_compile_actions(
     if synthesize:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
         overview_path = write_overview(
-            wiki, 
+            wiki,
             output_dir_path,
             model=resolved_model,
             overview_budget=pipeline_config.budget.overview,
@@ -1281,6 +1281,10 @@ def _cli_build_vector_index(
     embed_model: str | None,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
+    if not embed_model:
+        typer.echo("Error: --embed-model must be provided when --index is used.", err=True)
+        raise typer.Exit(1)
+
     count = build_vector_index(wiki, output_dir_path, embed_model=embed_model)
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")

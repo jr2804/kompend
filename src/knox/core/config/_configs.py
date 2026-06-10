@@ -6,17 +6,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+
 @dataclass
 class LLMConfig:
     """Configuration for LLM models, timeouts, and fallback behavior."""
-    default_model: str = "ollama/llama3.2"
-    provider: str = "ollama"
+    default_model: str
+    vlm_model: str
     fallback_chain: list[str] = field(default_factory=list)
     fallback_max_retries: int = 2
     context_budget: int = 100_000
     timeout: float = 120.0
     role_models: dict[str, str] = field(default_factory=dict)
-    vlm_model: str = "phi-3-vision"
 
 @dataclass
 class BudgetConfig:
@@ -44,6 +44,5 @@ class OutputConfig:
 @dataclass
 class EmbeddingConfig:
     """Configuration for embedding models and dimensions."""
-    model: str | None = None
-    provider: str = "auto"
+    model: str
     dim: int = 384

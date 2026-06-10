@@ -16,6 +16,7 @@ from knox.compilation.two_phase import (
     TwoPhaseCompiler,
     _segment_sources,
 )
+from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline import (
     ALL_TIERS,
@@ -207,27 +208,27 @@ class TestWikiPipelineTiered:
     """WikiPipeline.run() and run_tier() with mode filtering."""
 
     def test_pipeline_config_has_mode(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         assert config.mode == "full"
 
     def test_active_levels_full(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), mode="full")
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="full")
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         assert pipeline.active_levels() == {0, 1, 2, 3, 4}
 
     def test_active_levels_output_only(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), mode="output-only")
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="output-only")
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         assert pipeline.active_levels() == {4}
 
     def test_run_tier_unknown_raises(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         with pytest.raises(ValueError, match="Unknown tier"):
             pipeline.run_tier("nonsense")
 
     def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path)
+        config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path, llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         pipeline = WikiPipeline(
             config=config,
             state_store=TierStateStore(tmp_path / "state.json"),
@@ -305,7 +306,7 @@ class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 
     def test_empty_input(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         compiler = TwoPhaseCompiler(config=config)
         wiki = compiler.compile([])
         assert wiki.metadata["two_phase"] is True
@@ -313,8 +314,8 @@ class TestTwoPhaseCompiler:
 
     def test_fallback_to_base(self) -> None:
         """When extraction returns nothing, fall back to base compiler."""
-        base = GraphCompiler()
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        base = GraphCompiler("model")
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         compiler = TwoPhaseCompiler(config=config, base=base)
         chunks = [
             ResolvedChunk(
@@ -334,7 +335,7 @@ class TestTwoPhaseCompiler:
         assert wiki.metadata.get("two_phase") is True
 
     def test_extract_returns_extractions(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(

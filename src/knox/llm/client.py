@@ -83,6 +83,10 @@ class LLMClient:
     max_retries_per_model: int = 2
     timeout: float | None = None
 
+    def __post_init__(self) -> None:
+        if not self.default_model:
+            raise ValueError("An explicit 'default_model' is required but was not provided.")
+
     def chain_for(self, role: str) -> FailoverChain:
         """Return the :class:`FailoverChain` to use for ``role``.
 

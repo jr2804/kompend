@@ -14,8 +14,9 @@ from mcp.server.fastmcp import FastMCP
 
 from knox.capture.capture import capture
 from knox.capture.learn import learn
-from knox.core.pipeline import PipelineConfig, build_pipeline
-from knox.core.pipeline_defs import Compiler
+from knox.core.config import resolve_config
+from knox.core.pipeline import build_pipeline
+from knox.core.pipeline_defs import Compiler, PipelineConfig
 from knox.llm.client import LLMClient
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -145,7 +146,9 @@ def wiki_capture(
     source_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        llm_client = LLMClient(default_model="ollama/llama3.2")
+        cfg = resolve_config()
+        default_model = cfg.get("compile.llm.default_model")
+        llm_client = LLMClient(default_model=default_model)
     except Exception:
         llm_client = None
 

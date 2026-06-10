@@ -249,10 +249,10 @@ class TwoPhaseCompiler(BaseCompiler):
         config: PipelineConfig,
         base: BaseCompiler | None = None,
     ) -> None:
-        self._base = base or GraphCompiler()
+        self._base = base or GraphCompiler(model=config.llm.default_model)
         self.prompt_budget = config.budget.prompt
         self._model = config.llm.default_model
-        
+
         self._extract_budget = config.budget.extract
         self._gen_source_segment = config.budget.generate_source_segment
         self._concepts_per_batch = config.budget.concepts_per_batch

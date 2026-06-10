@@ -105,7 +105,6 @@ DEFAULTS: dict[str, Any] = {
             "lint_page": 100000,
         },
         "llm": {
-            "default_model": None,
             "fallback_chain": [],
             "fallback_max_retries": 2,
         },
@@ -115,8 +114,6 @@ DEFAULTS: dict[str, Any] = {
             "rumdl_config": None,
         },
         "embedding": {
-            "model": None,
-            "provider": "auto",
             "dim": 384,
         },
     },

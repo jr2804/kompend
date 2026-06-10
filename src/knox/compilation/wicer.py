@@ -52,10 +52,11 @@ class WiCERCompiler(BaseCompiler):
     def __init__(
         self,
         config: PipelineConfig,
-        base_compiler: BaseCompiler | None = None,
         llm_client: LLMClient | None = None,
+        base_compiler: BaseCompiler | None = None,
     ) -> None:
-        self._compiler = base_compiler or GraphCompiler()
+        self._config = config
+        self._compiler = base_compiler or GraphCompiler(model=config.llm.default_model)
         self.max_iterations = config.budget.wicer_max_iterations
         self._client = llm_client  # None is OK — caller handles graceful degradation
         self._probe_budget = config.budget.wicer_probe

@@ -122,7 +122,7 @@ class TestRealCorpusWiki:
         # Wrap raw chunks into ResolvedChunks (skip resolution tier for this test)
         resolved = [ResolvedChunk(chunk=c) for c in chunks]
 
-        compiler = GraphCompiler()
+        compiler = GraphCompiler("model")
         wiki = compiler.compile(resolved)
 
         assert len(wiki.nodes) > 0
@@ -133,7 +133,7 @@ class TestRealCorpusWiki:
         """Parse and compile all corpus PDFs — verify no crashes."""
         parser = _get_parser()
         chunker = HybridChunker(max_tokens=512)
-        compiler = GraphCompiler()
+        compiler = GraphCompiler("model")
 
         for pdf in source_pdfs:
             doc = parser.parse(pdf)

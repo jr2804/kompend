@@ -502,7 +502,7 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
     budget from ``config.llm.fallback_max_retries``.
     """
     default_model = config.llm.default_model
-            
+
     return LLMClient(
         default_model=default_model,
         fallback_chain=list(config.llm.fallback_chain),
@@ -549,13 +549,13 @@ def build_pipeline(
     if config.compiler == Compiler.WICER:
         base_compiler = WiCERCompiler(
             config=config,
-            base_compiler=GraphCompiler(),
+            base_compiler=GraphCompiler(model=config.llm.default_model),
             llm_client=llm_client,
         )
     elif config.compiler == Compiler.GRAPH:
         base_compiler = TwoPhaseCompiler(
             config=config,
-            base=GraphCompiler(),
+            base=GraphCompiler(model=config.llm.default_model),
         )
     else:
         msg = f"Unknown compiler: {config.compiler!r}"
@@ -585,7 +585,7 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
 
     try:
         vlm_client = LLMClient(
-            default_model=f"ollama/{config.llm.vlm_model}",
+            default_model=config.llm.vlm_model,
             fallback_chain=[],
             max_retries_per_model=0,
         )

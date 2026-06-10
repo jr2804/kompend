@@ -27,13 +27,10 @@ class GraphCompiler(BaseCompiler):
     ----------
     model:
         Model name (reserved for future LLM-guided compilation).
-    provider:
-        Provider prefix (reserved for future LLM-guided compilation).
     """
 
-    def __init__(self, model: str = "local", provider: str = "ollama") -> None:
+    def __init__(self, model: str) -> None:
         self.model = model
-        self.provider = provider
 
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Blind compilation of resolved chunks into a knowledge graph.
@@ -45,7 +42,7 @@ class GraphCompiler(BaseCompiler):
                 nodes=[],
                 edges=[],
                 toc=[],
-                metadata={"chunk_count": 0, "model": self.model, "provider": self.provider},
+                metadata={"chunk_count": 0, "model": self.model},
             )
 
         # ------------------------------------------------------------------
@@ -125,6 +122,5 @@ class GraphCompiler(BaseCompiler):
                 "node_count": len(nodes),
                 "edge_count": len(edges),
                 "model": self.model,
-                "provider": self.provider,
             },
         )

@@ -40,7 +40,11 @@ def test_urls() -> list[str]:
     return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
 
 
-@pytest.fixture(scope="session")
-def cache_subdir(request: pytest.FixtureRequest, subdir: str) -> Path:
-    """Return a subdirectory in the pytest cache directory."""
-    return Path(request.config.cache.mkdir(subdir))
+@pytest.fixture
+def example_wiki_cache(request: pytest.FixtureRequest) -> Path:
+    """Create and return the ``example-wiki/`` cache subdirectory.
+
+    Uses ``request.config.cache.mkdir()`` — the official pytest Cache API.
+    The cache root is configured via ``cache_dir`` in ``pyproject.toml``.
+    """
+    return Path(str(request.config.cache.mkdir("example-wiki")))

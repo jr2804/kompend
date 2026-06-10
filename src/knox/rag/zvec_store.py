@@ -68,12 +68,9 @@ class HashEmbeddingProvider(EmbeddingProvider):
 
 
 class SentenceTransformerProvider(EmbeddingProvider):
-    """Real embedding via sentence-transformers.
+    """Real embedding via sentence-transformers."""
 
-    Defaults to all-MiniLM-L6-v2 (384-dim, fast, good quality).
-    """
-
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+    def __init__(self, model_name: str) -> None:
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
         self._dim: int = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
@@ -90,7 +87,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
 class LiteLLMEmbeddingProvider(EmbeddingProvider):
     """Cloud embedding via litellm (OpenAI, Azure, etc.)."""
 
-    def __init__(self, model: str = "text-embedding-3-small", dim: int = 1536) -> None:
+    def __init__(self, model: str, dim: int) -> None:
         self._model = model
         self._dim = dim
 
@@ -104,20 +101,20 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
 
 
 def _make_provider(
-    embedding_model: str | None = None,
-    dim: int = 384,
+    embedding_model: str,
+    dim: int,
 ) -> EmbeddingProvider:
     """Select an embedding provider based on model name.
 
-    - None or "hash" → HashEmbeddingProvider (tests/dev)
+    - "hash" → HashEmbeddingProvider (tests/dev)
     - "all-MiniLM-L6-v2" or other ST model names → SentenceTransformerProvider
     - "text-embedding-*" or explicit litellm prefix → LiteLLMEmbeddingProvider
     """
-    if embedding_model is None or embedding_model == "hash":
+    if embedding_model == "hash":
         return HashEmbeddingProvider(dim=dim)
     if embedding_model.startswith("text-embedding") or embedding_model.startswith("litellm:"):
         model = embedding_model.removeprefix("litellm:")
-        return LiteLLMEmbeddingProvider(model=model)
+        return LiteLLMEmbeddingProvider(model=model, dim=dim)
     return SentenceTransformerProvider(model_name=embedding_model)
 
 
@@ -145,7 +142,7 @@ class ZvecWikiStore:
     def build_index(
         self,
         wiki: CompiledWiki,
-        embedding_model: str | None = None,
+        embedding_model: str,
     ) -> int:
         """Index compiled wiki nodes into the zvec store.
 
@@ -155,8 +152,7 @@ class ZvecWikiStore:
         if not wiki.nodes:
             return 0
 
-        # Select provider if caller specified a model
-        if embedding_model is not None and isinstance(self._provider, HashEmbeddingProvider):
+        if isinstance(self._provider, HashEmbeddingProvider):
             self._provider = _make_provider(embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 

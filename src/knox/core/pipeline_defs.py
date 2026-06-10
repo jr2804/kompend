@@ -20,7 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from knox.core.config import BudgetConfig, EmbeddingConfig, LLMConfig, OutputConfig, ResolvedConfig
 
@@ -111,6 +110,8 @@ class PipelineConfig:
 
     source_dir: Path
     output_dir: Path
+    llm: LLMConfig
+    embedding: EmbeddingConfig
     image_mode: str = "file"  # "file" or "base64"
     chunk_size: int = 512
     online_sources: list[str] = field(default_factory=list)
@@ -126,30 +127,28 @@ class PipelineConfig:
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
-    
+
     # Sub-configs (additive for backward compatibility)
-    llm: LLMConfig = field(default_factory=LLMConfig)
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
 
     @classmethod
     def from_resolved(
-        cls, 
-        cfg: ResolvedConfig, 
-        *, 
-        source_dir: Path, 
-        output_dir: Path, 
+        cls,
+        cfg: ResolvedConfig,
+        *,
+        source_dir: Path,
+        output_dir: Path,
         input_files: list[Path] | None = None
     ) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
         # Read old flat keys to populate flat fields
         llm_fallback_chain = cfg.get("compile.llm.fallback_chain", [])
         llm_fallback_max_retries = cfg.get("compile.llm.fallback_max_retries", 2)
-        llm_default_model_override = cfg.get("compile.llm.default_model")
+        cfg.get("compile.llm.default_model")
         role_models_raw = cfg.get("compile.llm.role_models", {})
         role_models = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()} if isinstance(role_models_raw, dict) else {}
-        
+
         frontmatter_defaults = dict(cfg.get("compile.output.frontmatter", {}))
         rumdl_config = cfg.get("compile.output.rumdl_config")
         if isinstance(rumdl_config, str):
@@ -157,14 +156,13 @@ class PipelineConfig:
 
         # Read sub-configs
         llm_config = LLMConfig(
-            default_model=cfg.get("compile.llm.default_model", LLMConfig().default_model),
-            provider=cfg.get("compile.llm.provider", LLMConfig().provider),
+            default_model=cfg.get("compile.llm.default_model"),
+            vlm_model=cfg.get("compile.llm.vlm_model"),
             fallback_chain=llm_fallback_chain,
             fallback_max_retries=llm_fallback_max_retries,
-            context_budget=cfg.get("compile.llm.context_budget", LLMConfig().context_budget),
-            timeout=cfg.get("compile.llm.timeout", LLMConfig().timeout),
+            context_budget=cfg.get("compile.llm.context_budget", 100_000),
+            timeout=cfg.get("compile.llm.timeout", 120.0),
             role_models=role_models,
-            vlm_model=cfg.get("compile.llm.vlm_model", LLMConfig().vlm_model),
         )
 
         budget_config = BudgetConfig(
@@ -189,9 +187,8 @@ class PipelineConfig:
         )
 
         embedding_config = EmbeddingConfig(
-            model=cfg.get("compile.embedding.model", EmbeddingConfig().model),
-            provider=cfg.get("compile.embedding.provider", EmbeddingConfig().provider),
-            dim=cfg.get("compile.embedding.dim", EmbeddingConfig().dim),
+            model=cfg.get("compile.embedding.model"),
+            dim=cfg.get("compile.embedding.dim", 384),
         )
 
         return cls(
