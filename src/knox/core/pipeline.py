@@ -583,15 +583,18 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
     """
     resolvers: list[BaseResolver] = []
 
-    try:
-        vlm_client = LLMClient(
-            default_model=config.llm.vlm_model,
-            fallback_chain=[],
-            max_retries_per_model=0,
-        )
-        resolvers.append(VLMEnricher(client=vlm_client))
-        logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
-    except Exception as exc:
-        logger.debug("VLMEnricher not available: %s", exc)
+    if config.llm.vlm_model:
+        try:
+            vlm_client = LLMClient(
+                default_model=config.llm.vlm_model,
+                fallback_chain=[],
+                max_retries_per_model=0,
+            )
+            resolvers.append(VLMEnricher(client=vlm_client))
+            logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
+        except Exception as exc:
+            logger.debug("VLMEnricher not available: %s", exc)
+    else:
+        logger.info("No VLM model configured — chunks will pass through without resolution")
 
     return ResolverChain(resolvers)

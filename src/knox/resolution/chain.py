@@ -24,13 +24,15 @@ class ResolverChain(BaseResolver):
     """
 
     def __init__(self, resolvers: list[BaseResolver]) -> None:
-        if not resolvers:
-            msg = "ResolverChain requires at least one resolver"
-            raise ValueError(msg)
         self._resolvers = resolvers
 
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
-        """Run all resolvers in sequence, returning the final result."""
+        """Run all resolvers in sequence, returning the final result.
+
+        When no resolvers are configured, chunks pass through unchanged.
+        """
+        if not self._resolvers:
+            return ResolvedChunk(chunk=chunk)
         result: ResolvedChunk = self._resolvers[0].resolve(chunk)
         for resolver in self._resolvers[1:]:
             try:
