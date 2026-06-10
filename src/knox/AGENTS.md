@@ -94,6 +94,13 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 
 3. **No try/except ImportError guards for core dependencies.** Every package listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be installed. Wrapping `import mylib` in `try: ... except ImportError: mylib = None` is pointless boilerplate — it obscures the real dependency, adds dead branches, and masks actual install failures. Import at module level, unconditionally.
 
+4. **All packages are core dependencies unless explicitly marked optional.** Unless a package is declared under `[project.optional-dependencies]` in `pyproject.toml`, assume it is always available in the venv. Never write defensive import logic that treats a required package as optional — if the code needs it, it's a dependency.
+
+5. **Install what you need.** When code requires a package that is not yet in `pyproject.toml`, add it immediately:
+   - `uv add <package>` to install and register the dependency.
+   - If `pyproject.toml` was patched manually (e.g. by another agent), run `uv sync -U` to bring the venv in sync before importing.
+   - Never `import` a package that isn't in the lockfile — the CI and other developers will fail.
+
 ## Parameter and default-value antipatterns
 
 These three patterns are **forbidden in new code**. Existing occurrences are
