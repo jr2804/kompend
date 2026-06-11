@@ -24,6 +24,7 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
+from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 from knox.core.pipeline_defs import (
     ALL_TIERS,
@@ -92,6 +93,7 @@ class WikiPipeline:
         self.output_writer = output_writer
         self.state_store = state_store or TierStateStore(self._default_state_path())
         self._progress_callback: ProgressCallback | None = None
+        self._cache_store = CacheStore(self._cache_dir())
 
     @property
     def state(self) -> TierState:
@@ -135,10 +137,7 @@ class WikiPipeline:
             all_chunks = self._parse_and_chunk()
         if 2 in levels:
             self._emit("resolve", 0, len(all_chunks), "starting")
-            if all_chunks:
-                resolved = [self.resolver.resolve(chunk) for chunk in all_chunks] if self.resolver else list(all_chunks)
-            else:
-                resolved = self._load_resolved_from_disk() or []
+            resolved = self._resolve_chunks(all_chunks) if all_chunks else self._load_resolved_from_disk() or []
             self._emit("resolve", len(resolved), len(resolved), "done")
         if 3 in levels:
             self._emit("compile", 0, 1, "starting")
@@ -326,7 +325,7 @@ class WikiPipeline:
             metadata=data.get("metadata", {}),
         )
 
-    def _parse_and_chunk(self) -> list[Any]:
+    def _parse_and_chunk(self) -> list[Any]:  # noqa: PLR0915 — nested _process_one plus chunk cache logic
         """Parse documents and chunk them, with optional caching and parallelism.
 
         When tier state is available, sources that already match the
@@ -348,41 +347,61 @@ class WikiPipeline:
             """Parse a single file (cache-aware) and chunk it."""
             stem = source_file.stem
             content_hash = ""
+
+            # 1. Load or parse the document.
             if use_cache and not self.config.force:
                 content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-                cached_entry = state.entries.get(stem)
-                if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
-                    parsed = self._load_cache(source_file)
-                    if parsed is not None:
-                        if not self.chunker:
-                            return []
-                        if self.config.privacy_filter:
-                            self._apply_privacy_filter(parsed.elements)
-                        return self.chunker.chunk(parsed)
 
             parsed = self._load_cache(source_file) if use_cache else None
             if parsed is None:
-                if not self.parser:
-                    return []
-                try:
-                    parsed = self.parser.parse(source_file)
-                    _ = len(parsed.elements)  # ensure fully materialized
-                except Exception:
-                    logger.exception("Failed to parse %s", source_file)
-                    return []
-                if use_cache:
-                    self._save_cache(source_file, parsed)
-                    if not content_hash:
-                        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+                if use_cache and not self.config.force:
+                    # Check tier state for a cache hit.
+                    cached_entry = state.entries.get(stem)
+                    if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
+                        parsed = self._load_cache(source_file)
+                if parsed is None:
+                    if not self.parser:
+                        return []
+                    try:
+                        parsed = self.parser.parse(source_file)
+                        _ = len(parsed.elements)
+                    except Exception:
+                        logger.exception("Failed to parse %s", source_file)
+                        return []
+                    if use_cache:
+                        self._save_cache(source_file, parsed)
+                        if not content_hash:
+                            content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
             if self.config.privacy_filter:
                 self._apply_privacy_filter(parsed.elements)
 
-            if content_hash:
-                self.state_store.record(state, stem, source_file, content_hash, tier=1)
             if not self.chunker:
                 return []
-            return self.chunker.chunk(parsed)
+
+            # 2a. Chunk cache lookup (Tier 1).
+            if use_cache and content_hash:
+                chunk_deps = {
+                    "source": content_hash,
+                    "chunk_size": str(self.config.chunk_size),
+                }
+                cached = self._cache_store.get("chunk", chunk_deps)
+                if cached is not None:
+                    if content_hash:
+                        self.state_store.record(state, stem, source_file, content_hash, tier=1)
+                    return cached
+
+            # 2b. Chunk and cache.
+            chunks = self.chunker.chunk(parsed)
+
+            if content_hash:
+                self.state_store.record(state, stem, source_file, content_hash, tier=1)
+                chunk_deps = {
+                    "source": content_hash,
+                    "chunk_size": str(self.config.chunk_size),
+                }
+                self._cache_store.set("chunk", chunk_deps, chunks)
+            return chunks
 
         all_chunks: list[Any] = []
         if workers > 1 and len(source_files) > 1:
@@ -476,6 +495,38 @@ class WikiPipeline:
                 el.content, _ = filter_sensitive(el.content)
             elif isinstance(el.content, list):
                 el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+
+    def _resolve_chunks(self, chunks: list[Any]) -> list[Any]:
+        """Resolve chunks with per-chunk cache (Tier 2)."""
+        if not self.resolver:
+            return list(chunks)
+
+        resolved: list[Any] = []
+        vlm_model = self.config.llm.vlm_model or "none"
+        use_cache = not self.config.no_cache
+
+        for chunk in chunks:
+            if use_cache and chunk.text:
+                deps = {
+                    "chunk_text": hashlib.sha256(chunk.text.encode()).hexdigest(),
+                    "vlm_model": vlm_model,
+                }
+                cached = self._cache_store.get("resolve", deps)
+                if cached is not None:
+                    resolved.append(cached)
+                    continue
+
+            rc = self.resolver.resolve(chunk)
+
+            if use_cache and chunk.text:
+                deps = {
+                    "chunk_text": hashlib.sha256(chunk.text.encode()).hexdigest(),
+                    "vlm_model": vlm_model,
+                }
+                self._cache_store.set("resolve", deps, rc)
+            resolved.append(rc)
+
+        return resolved
 
     @staticmethod
     def _load_resolved_from_disk() -> list[Any]:

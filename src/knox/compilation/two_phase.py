@@ -14,6 +14,7 @@ remains useful offline.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -27,6 +28,7 @@ from slugify import slugify as _slugify_impl
 
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
+from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
@@ -286,8 +288,10 @@ class TwoPhaseCompiler(BaseCompiler):
         self._extract_budget = config.budget.extract
         self._gen_source_segment = config.budget.generate_source_segment
         self._concepts_per_batch = config.budget.concepts_per_batch
+        self._config = config
         self._timeout = config.llm.timeout
         self._num_ctx = config.llm.num_ctx
+        self._cache_store = CacheStore(config.output_dir / ".knox" / "cache")
 
     # ------------------------------------------------------------------
     # Public API
@@ -495,17 +499,30 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
-        """Run a single extraction LLM call for *source* on *combined* text."""
+        """Run a single extraction LLM call with cache (Tier 3 Phase 1)."""
+        extract_deps = {
+            "source_text": hashlib.sha256(combined.encode()).hexdigest(),
+            "model": self._model,
+            "extract_budget": str(self._extract_budget),
+        }
+        if not self._config.no_cache:
+            cached = self._cache_store.get("extract", extract_deps)
+            if cached is not None:
+                return cached
+
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
         data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout, num_ctx=self._num_ctx)
         if isinstance(data, dict):
-            return Extraction(
+            result = Extraction(
                 source=source,
                 summary=str(data.get("summary", "")),
                 entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
                 concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
                 tags=[str(t) for t in data.get("tags", []) if t],
             )
+            if not self._config.no_cache:
+                self._cache_store.set("extract", extract_deps, result)
+            return result
         return _fallback_extraction(source, combined)
 
     # ------------------------------------------------------------------
