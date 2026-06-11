@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,8 +119,15 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(prompt: str, model: str, system: str | None = None, timeout: float | None = None) -> Any | None:
+def _try_litellm_json(
+    prompt: str,
+    model: str,
+    system: str | None = None,
+    timeout: float | None = None,
+    num_ctx: int | None = None,
+) -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
+    start = time.monotonic()
     try:
         messages: list[dict[str, str]] = []
         if system:
@@ -133,13 +141,35 @@ def _try_litellm_json(prompt: str, model: str, system: str | None = None, timeou
         }
         if timeout is not None:
             kwargs["timeout"] = timeout
+        if num_ctx is not None:
+            kwargs["num_ctx"] = num_ctx
         response = litellm.completion(**kwargs)
+        elapsed = time.monotonic() - start
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            try:
+                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                pt = 0
+            try:
+                ct = int(getattr(usage, "completion_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                ct = 0
+            tt = pt + ct
+            tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
+            logger.info(
+                "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
+                model, elapsed, pt, ct, tt, tps,
+            )
+        else:
+            logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
         content = response.choices[0].message.content
         if not content:
             return None
         return json.loads(content)
     except Exception:
-        logger.exception("litellm call failed in two-phase compiler")
+        elapsed = time.monotonic() - start
+        logger.error("LLM fail model=%s in=%.1fs", model, elapsed, exc_info=True)
         return None
 
 
@@ -257,6 +287,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._gen_source_segment = config.budget.generate_source_segment
         self._concepts_per_batch = config.budget.concepts_per_batch
         self._timeout = config.llm.timeout
+        self._num_ctx = config.llm.num_ctx
 
     # ------------------------------------------------------------------
     # Public API
@@ -291,8 +322,11 @@ class TwoPhaseCompiler(BaseCompiler):
             by_source[label].append(rc)
 
         extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
+        num_sources = len(by_source)
+        logger.info("TwoPhase: extracting %d source(s)", num_sources)
 
-        for source, source_chunks in by_source.items():
+        for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
+            logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
             texts = [rc.chunk.text for rc in source_chunks if rc.chunk.text]
             if not texts:
                 extractions.add(Extraction(source=source))
@@ -348,14 +382,17 @@ class TwoPhaseCompiler(BaseCompiler):
         edges: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
 
-        # Batch concepts to keep each prompt manageable.
+        num_concepts = len(concepts)
+        num_segments = len(source_segments)
         batch_size = self._concepts_per_batch
-        for batch_start in range(0, len(concepts), batch_size):
+        logger.info("TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d)", num_concepts, num_segments, batch_size)
+        for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
 
             # Iterate through ALL source segments for this concept batch,
             # generating pages from each segment and merging.
             for seg_idx, segment in enumerate(source_segments):
+                logger.info("TwoPhase: gen batch %d-%d/%d segment %d/%d", batch_start, len(batch), num_concepts, seg_idx + 1, num_segments)
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
                 prompt = _loader.render(
@@ -363,7 +400,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     concepts_json=json.dumps(batch),
                     content=content_block,
                 )
-                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout)
+                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout, num_ctx=self._num_ctx)
 
                 if not isinstance(data, dict):
                     logger.warning(
@@ -460,7 +497,7 @@ class TwoPhaseCompiler(BaseCompiler):
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
         """Run a single extraction LLM call for *source* on *combined* text."""
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout)
+        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout, num_ctx=self._num_ctx)
         if isinstance(data, dict):
             return Extraction(
                 source=source,

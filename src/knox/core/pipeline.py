@@ -507,6 +507,8 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
         default_model=default_model,
         fallback_chain=list(config.llm.fallback_chain),
         max_retries_per_model=config.llm.fallback_max_retries,
+        timeout=config.llm.timeout,
+        num_ctx=config.llm.num_ctx,
     )
 
 
@@ -589,6 +591,8 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 default_model=config.llm.vlm_model,
                 fallback_chain=[],
                 max_retries_per_model=0,
+                timeout=config.llm.timeout,
+                num_ctx=config.llm.num_ctx,
             )
             resolvers.append(VLMEnricher(client=vlm_client))
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)

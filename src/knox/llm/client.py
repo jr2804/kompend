@@ -82,6 +82,7 @@ class LLMClient:
     role_models: dict[str, list[str]] = field(default_factory=dict)
     max_retries_per_model: int = 2
     timeout: float | None = None
+    num_ctx: int | None = None
 
     def __post_init__(self) -> None:
         if not self.default_model:
@@ -129,6 +130,8 @@ class LLMClient:
                 kwargs["max_tokens"] = max_tokens
             if self.timeout is not None:
                 kwargs["timeout"] = self.timeout
+            if self.num_ctx is not None:
+                kwargs["num_ctx"] = self.num_ctx
             return litellm.completion(**kwargs)
 
         result = chain.run(_call)
@@ -177,13 +180,34 @@ class LLMClient:
                 )
             json_data = parsed
 
-        logger.debug(
-            "LLM ok role=%s model=%s attempts=%d latency_s=%.2f",
-            role,
-            diagnostics.model_used,
-            diagnostics.attempts,
-            diagnostics.total_latency_s,
-        )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            try:
+                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                pt = 0
+            try:
+                ct = int(getattr(usage, "completion_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                ct = 0
+            tt = pt + ct
+            tps = f"{tt / diagnostics.total_latency_s:.1f}" if diagnostics.total_latency_s > 0 else "?"
+            logger.info(
+                "LLM ok role=%s model=%s attempts=%d in=%.1fs in=%d out=%d total=%d tok/s=%s",
+                role,
+                diagnostics.model_used,
+                diagnostics.attempts,
+                diagnostics.total_latency_s,
+                pt, ct, tt, tps,
+            )
+        else:
+            logger.info(
+                "LLM ok role=%s model=%s attempts=%d in=%.1fs (no token info)",
+                role,
+                diagnostics.model_used,
+                diagnostics.attempts,
+                diagnostics.total_latency_s,
+            )
 
         return LLMResult(
             content=content,

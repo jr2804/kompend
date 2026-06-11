@@ -163,6 +163,7 @@ class PipelineConfig:
             fallback_max_retries=llm_fallback_max_retries,
             context_budget=cfg.get("compile.llm.context_budget", 100_000),
             timeout=cfg.get("compile.llm.timeout", 120.0),
+            num_ctx=cfg.get("compile.llm.num_ctx"),
             role_models=role_models,
         )
 

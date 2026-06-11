@@ -42,6 +42,7 @@ class LLMConfig:
     fallback_max_retries: int = 2
     context_budget: int = 100_000
     timeout: float = 120.0
+    num_ctx: int | None = None
     role_models: dict[str, str] = field(default_factory=dict)
 
 
