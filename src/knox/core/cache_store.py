@@ -133,6 +133,7 @@ class CacheStore:
             with os.fdopen(fd, "wb") as f:
                 pickle.dump(entry, f)
             os.replace(tmp, path)
+            logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, path.stat().st_size)
         except Exception:
             logger.debug("Cache write error for %s", path, exc_info=True)
 
