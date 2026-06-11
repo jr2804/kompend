@@ -169,6 +169,7 @@ def compile_cmd(
     output_dir: OutputDir = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
+    url_file: UrlFile = None,
     recursive: Recursive = False,
     target_format: TargetFormat = DEFAULT_COMPILE_FORMAT,
     chunk_size: ChunkSize = DEFAULT_CHUNK_SIZE,
@@ -221,6 +222,11 @@ def compile_cmd(
     """
     if online_urls is None:
         online_urls = []
+    if url_file is not None:
+        for line in url_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                online_urls.append(line)
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 

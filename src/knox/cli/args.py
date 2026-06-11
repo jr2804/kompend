@@ -100,6 +100,15 @@ OnlineUrls = Annotated[
     ),
 ]
 
+UrlFile = Annotated[
+    Path | None,
+    typer.Option(
+        "--url-file",
+        help="File with URLs to download (one per line, # comments ignored).",
+        rich_help_panel="Sources",
+    ),
+]
+
 TargetFormat = Annotated[
     OutputFormatEnum,
     typer.Option(
