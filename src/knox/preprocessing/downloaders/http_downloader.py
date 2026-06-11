@@ -12,7 +12,7 @@ from knox.preprocessing.downloaders.base import BaseDownloader
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "KNOX/0.1 (Knowledge Organizer for eXtended Documents)"
+_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
 class HTTPDownloader(BaseDownloader):
@@ -42,7 +42,14 @@ class HTTPDownloader(BaseDownloader):
 
         logger.debug("Downloading %s -> %s", url, target_path)
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
+            request = urllib.request.Request(  # noqa: S310
+                url,
+                headers={
+                    "User-Agent": _USER_AGENT,
+                    "Accept": "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                },
+            )
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 target_path.write_bytes(response.read())
         except Exception:
