@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import typer
+
 from knox.preprocessing.parsers.base import ParserRouter
 
 logger = logging.getLogger(__name__)
@@ -209,12 +211,12 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
     else:
         for r in results:
             icon = "[OK]" if r.passed else "[!!]"
-            print(f"  {icon} {r.name}: {r.message}")
+            typer.echo(f"  {icon} {r.name}: {r.message}")
 
         total = len(results)
-        print(f"\n  {passed_count}/{total} checks passed", end="")
+        typer.echo(f"\n  {passed_count}/{total} checks passed", nl=False)
         if failed_count:
-            print(f", {failed_count} failed", end="")
-        print()
+            typer.echo(f", {failed_count} failed", nl=False)
+        typer.echo("")
 
     return 1 if failed_count else 0

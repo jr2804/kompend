@@ -92,6 +92,7 @@ from knox.cli.args import (
     SourcesDir,
     SynthesizeFlag,
     TargetFormat,
+    UrlFile,
     Verbose,
     Verify,
     Workers,
