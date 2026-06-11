@@ -298,7 +298,7 @@ class TwoPhaseCompiler(BaseCompiler):
     # ------------------------------------------------------------------
 
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
-        """Run the two-phase compile."""
+        """Run the two-phase compile with generation cache (Tier 3 Phase 2)."""
         if not chunks:
             return CompiledWiki(
                 nodes=[],
@@ -308,7 +308,23 @@ class TwoPhaseCompiler(BaseCompiler):
             )
 
         extractions = self.extract(chunks)
-        return self.generate(extractions, chunks)
+
+        # Generation cache: keyed by all extractions + model + gen config.
+        gen_deps = self._gen_cache_deps(extractions)
+        if not self._config.no_cache:
+            cached = self._cache_store.get("generate", gen_deps)
+            if cached is not None:
+                logger.info(
+                    "TwoPhase: generation cache hit (%d nodes, %d edges)",
+                    len(cached.nodes), len(cached.edges),
+                )
+                return cached
+
+        wiki = self.generate(extractions, chunks)
+
+        if not self._config.no_cache:
+            self._cache_store.set("generate", gen_deps, wiki)
+        return wiki
 
     def extract(self, chunks: list[ResolvedChunk]) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source.
@@ -528,6 +544,19 @@ class TwoPhaseCompiler(BaseCompiler):
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _gen_cache_deps(self, extractions: ExtractionSet) -> dict[str, str]:
+        """Compute dependency hashes for generation cache."""
+        blob = "|".join(
+            json.dumps(e.to_dict(), sort_keys=True) for e in extractions.extractions
+        )
+        ext_hash = hashlib.sha256(blob.encode()).hexdigest()
+        return {
+            "extractions": ext_hash,
+            "model": self._model,
+            "gen_source_segment": str(self._gen_source_segment),
+            "concepts_per_batch": str(self._concepts_per_batch),
+        }
 
     def _fallback_compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         if self._base is not None:

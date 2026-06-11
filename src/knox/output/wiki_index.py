@@ -9,9 +9,11 @@ N11 generates three complementary pages after every compile:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
+from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
@@ -27,7 +29,7 @@ def generate_index(wiki: CompiledWiki) -> str:
     source_count = wiki.metadata.get("source_count", 0)
     article_count = len(wiki.nodes)
     total_words = sum(len(n.content.split()) for n in wiki.nodes)
-    last_compile = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    last_compile = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     lines.append("## Summary\n")
     lines.append(f"- **Sources:** {source_count}")
@@ -60,7 +62,7 @@ def generate_log_entry(wiki: CompiledWiki) -> str:
     Returns a Markdown section with timestamp, source/article counts,
     and lists of created/updated pages.
     """
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     source_count = wiki.metadata.get("source_count", 0)
     article_count = len(wiki.nodes)
 
@@ -193,9 +195,26 @@ def write_overview(
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
+
+    # Overview cache
+    cache_store = CacheStore(output_dir / ".knox" / "cache")
+    text_block = "\n".join(sorted(source_texts))
+    overview_deps = {
+        "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
+        "model": model,
+        "overview_budget": str(overview_budget),
+    }
+    cached = cache_store.get("overview", overview_deps)
+    if cached is not None:
+        overview_path = output_dir / "overview.md"
+        overview_path.write_text(cached, encoding="utf-8")
+        return overview_path
+
     content = generate_overview(source_texts, model=model, overview_budget=overview_budget, timeout=timeout)
     if not content:
         return None
+
+    cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
 
     overview_path = output_dir / "overview.md"
     overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
