@@ -38,18 +38,84 @@ class TestHTTPDownloader:
         call_args = mock_open.call_args
         assert call_args[1]["timeout"] == 5
 
-    def test_download_collision_safe_filename(self, tmp_path: Path) -> None:
-        """When file exists, append a counter suffix."""
-        existing = tmp_path / "test.pdf"
-        existing.write_text("dummy")
+    def test_download_same_url_twice_skips_second(self, tmp_path: Path) -> None:
+        """When same URL is downloaded twice with detector, second is skipped."""
+        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        downloader = HTTPDownloader(timeout=5, detector=detector)
 
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
+            path1 = downloader.download("https://example.com/test.pdf", tmp_path)
+            path2 = downloader.download("https://example.com/test.pdf", tmp_path)
+
+        assert path1 is not None
+        assert path2 is not None
+        assert path1 == path2
+        # File should only be written once
+        assert path1.read_bytes() == b"pdf-content"
+
+    def test_download_same_url_file_deleted_redownloads(self, tmp_path: Path) -> None:
+        """When file was deleted but URL is known, re-download occurs."""
+        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        downloader = HTTPDownloader(timeout=5, detector=detector)
+
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
+            path1 = downloader.download("https://example.com/test.pdf", tmp_path)
+
+        assert path1 is not None
+        path1.unlink()
+
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
+            path2 = downloader.download("https://example.com/test.pdf", tmp_path)
+
+        assert path2 is not None
+        assert path2.exists()
+
+    def test_download_content_dedup_same_content(self, tmp_path: Path) -> None:
+        """When different URL produces same content, skip download."""
+        downloader = HTTPDownloader(timeout=5)
+        # Pre-create file with same content
+        existing = tmp_path / "other.pdf"
+        existing.write_bytes(b"pdf-content")
+
+        with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
+            path = downloader.download("https://example.com/test.pdf", tmp_path)
+
+        assert path is not None
+        assert path == existing  # Returns existing file, not new one
+
+    def test_download_different_content_both_saved(self, tmp_path: Path) -> None:
+        """Different content from different URLs are both saved."""
+        downloader = HTTPDownloader(timeout=5)
+
+        def _side_effect(request: Any, timeout: int | None = None) -> Any:
+            response = MagicMock()
+            if "a.pdf" in request.full_url:
+                response.read.return_value = b"content-a"
+            else:
+                response.read.return_value = b"content-b"
+            response.__enter__ = lambda s: response
+            response.__exit__ = MagicMock(return_value=False)
+            return response
+
+        with patch("urllib.request.urlopen", side_effect=_side_effect):
+            path1 = downloader.download("https://example.com/a.pdf", tmp_path)
+            path2 = downloader.download("https://example.com/b.pdf", tmp_path)
+
+        assert path1 is not None
+        assert path2 is not None
+        assert path1 != path2
+        assert path1.read_bytes() == b"content-a"
+        assert path2.read_bytes() == b"content-b"
+
+    def test_download_no_detector_still_works(self, tmp_path: Path) -> None:
+        """Downloader works without detector (backward compatible)."""
         downloader = HTTPDownloader(timeout=5)
 
         with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
             path = downloader.download("https://example.com/test.pdf", tmp_path)
 
         assert path is not None
-        assert path.name == "test_1.pdf"
+        assert path.name == "test.pdf"
 
     def test_download_failure_returns_none(self, tmp_path: Path) -> None:
         """Network error returns None without raising."""
@@ -155,6 +221,30 @@ class TestWebCrawler:
         assert result is not None
         assert result.name == "docs.example.com.md"
         assert result.read_text(encoding="utf-8") == "# Hello\n\nThis is markdown."
+
+    def test_download_same_url_skips_with_detector(self, tmp_path: Path) -> None:
+        """When same URL is crawled twice with detector, second is skipped."""
+        pytest.importorskip("crawl4ai")
+
+        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        mock_result = MagicMock()
+        mock_result.markdown = "# Hello\n\nThis is markdown."
+
+        async def _fake_arun(_url: str) -> MagicMock:  # noqa: ANN401
+            return mock_result
+
+        with patch("crawl4ai.AsyncWebCrawler") as mock_crawler_cls:
+            mock_instance = MagicMock()
+            mock_instance.arun.side_effect = _fake_arun
+            mock_crawler_cls.return_value.__aenter__.return_value = mock_instance
+
+            crawler = WebCrawler(detector=detector)
+            result1 = crawler.download("https://docs.example.com", tmp_path)
+            result2 = crawler.download("https://docs.example.com", tmp_path)
+
+        assert result1 is not None
+        assert result2 is not None
+        assert result1 == result2
 
     def test_download_no_markdown_returns_none(self, tmp_path: Path) -> None:
         """When crawl4ai returns no markdown, download returns None."""

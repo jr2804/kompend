@@ -245,8 +245,9 @@ BudgetExtract = Annotated[
     int | None,
     typer.Option(
         "--budget-extract",
-        help="Extraction batch size budget.",
+        help="(deprecated — use knox.toml budget.extract_* instead)",
         rich_help_panel="Advanced",
+        hidden=True,
     ),
 ]
 
@@ -254,7 +255,7 @@ BudgetGenSegment = Annotated[
     int | None,
     typer.Option(
         "--budget-gen-segment",
-        help="Generation segment size budget.",
+        help="Generation output max tokens per concept.",
         rich_help_panel="Advanced",
     ),
 ]
@@ -272,8 +273,9 @@ BudgetOverview = Annotated[
     int | None,
     typer.Option(
         "--budget-overview",
-        help="Overview batch size budget.",
+        help="(deprecated — use knox.toml budget.overview_* instead)",
         rich_help_panel="Advanced",
+        hidden=True,
     ),
 ]
 
@@ -281,8 +283,9 @@ BudgetVerify = Annotated[
     int | None,
     typer.Option(
         "--budget-verify",
-        help="Verification batch size budget.",
+        help="(deprecated — use knox.toml budget.verify_* instead)",
         rich_help_panel="Advanced",
+        hidden=True,
     ),
 ]
 
@@ -290,8 +293,9 @@ BudgetWicerProbe = Annotated[
     int | None,
     typer.Option(
         "--budget-wicer-probe",
-        help="WiCER probe batch size budget.",
+        help="(deprecated — use knox.toml budget.wicer_probe_output_max instead)",
         rich_help_panel="Advanced",
+        hidden=True,
     ),
 ]
 
@@ -299,8 +303,9 @@ BudgetWicerEval = Annotated[
     int | None,
     typer.Option(
         "--budget-wicer-eval",
-        help="WiCER eval batch size budget.",
+        help="(deprecated — use knox.toml budget.wicer_eval_output_max instead)",
         rich_help_panel="Advanced",
+        hidden=True,
     ),
 ]
 

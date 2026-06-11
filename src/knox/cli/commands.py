@@ -269,7 +269,6 @@ def compile_cmd(
         no_cache=no_cache,
         workers=workers,
         force=force,
-        prompt_budget=prompt_budget,
         review=review,
         provenance=provenance,
         private=private,
@@ -287,13 +286,8 @@ def compile_cmd(
         llm_role_model=llm_role_model,
         kind=kind,
         compiler=compiler,
-        budget_extract=budget_extract,
         budget_gen_segment=budget_gen_segment,
         budget_concepts=budget_concepts,
-        budget_overview=budget_overview,
-        budget_verify=budget_verify,
-        budget_wicer_probe=budget_wicer_probe,
-        budget_wicer_eval=budget_wicer_eval,
         embed_dim=embed_dim,
         embed_model=embed_model,
         llm_timeout=llm_timeout,
@@ -1130,7 +1124,7 @@ def _post_compile_actions(
 
     if verify:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
-        _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify)
+        _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
     generated = write_index_and_log(wiki, output_dir_path)
     typer.echo(f"Index: {generated['index']}")
@@ -1139,7 +1133,9 @@ def _post_compile_actions(
     if synthesize:
         resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
         overview_path = write_overview(
-            wiki, output_dir_path, model=resolved_model, overview_budget=pipeline_config.budget.overview, timeout=pipeline_config.llm.timeout
+            wiki, output_dir_path, model=resolved_model,
+            overview_budget=pipeline_config.budget.overview_output_max * 4,
+            timeout=pipeline_config.llm.timeout,
         )
         if overview_path:
             typer.echo(f"Overview: {overview_path}")
@@ -1166,7 +1162,6 @@ def _build_cli_overrides(
     no_cache: bool | None = None,
     workers: int | None = None,
     force: bool | None = None,
-    prompt_budget: int | None = None,
     review: bool | None = None,
     provenance: bool | None = None,
     private: bool | None = None,
@@ -1184,13 +1179,8 @@ def _build_cli_overrides(
     llm_role_model: list[str] | None = None,
     kind: str | None = None,
     compiler: str | None = None,
-    budget_extract: int | None = None,
-    budget_gen_segment: int | None = None,
     budget_concepts: int | None = None,
-    budget_overview: int | None = None,
-    budget_verify: int | None = None,
-    budget_wicer_probe: int | None = None,
-    budget_wicer_eval: int | None = None,
+    budget_gen_segment: int | None = None,
     embed_model: str | None = None,
     embed_dim: int | None = None,
     llm_timeout: float | None = None,
@@ -1206,18 +1196,12 @@ def _build_cli_overrides(
         ("compile.image_mode", image_mode),
         ("compile.mode", mode),
         ("compile.workers", workers),
-        ("compile.prompt_budget", prompt_budget),
         ("compile.output.flavor", flavor),
         ("compile.llm.default_model", llm_default_model),
         ("compile.page_kind", kind),
         ("compile.compiler", compiler),
-        ("compile.budget.extract", budget_extract),
-        ("compile.budget.generate_source_segment", budget_gen_segment),
         ("compile.budget.concepts_per_batch", budget_concepts),
-        ("compile.budget.overview", budget_overview),
-        ("compile.budget.verify", budget_verify),
-        ("compile.budget.wicer_probe", budget_wicer_probe),
-        ("compile.budget.wicer_eval", budget_wicer_eval),
+        ("compile.budget.gen_output_max", budget_gen_segment),
         ("compile.embedding.model", embed_model),
         ("compile.embedding.dim", embed_dim),
         ("compile.llm.timeout", llm_timeout),

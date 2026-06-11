@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 from knox.cli._ignore import filter_files
+from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
@@ -101,6 +102,8 @@ def ensure_in_sources(
     """Copy files that are not already inside *sources_dir* into it.
 
     Files already residing under *sources_dir* are returned as-is.
+    If a file with the same name and identical content already exists in
+    *sources_dir*, the copy is skipped and the existing file is returned.
     Returns a new list with paths relative to *sources_dir*.
     """
     sources_dir = sources_dir.resolve()
@@ -116,7 +119,12 @@ def ensure_in_sources(
         except ValueError:
             # Not inside sources_dir — copy it in
             target_file = sources_dir / input_file.name
-            target_file = _unique_path(target_file)
+            if target_file.exists():
+                if target_file.read_bytes() == resolved_input.read_bytes():
+                    logger.debug("Skipping %s — identical file exists in sources", input_file)
+                    result.append(target_file)
+                    continue
+                target_file = _unique_path(target_file)
             shutil.copy2(resolved_input, target_file)
             logger.debug("Copied %s -> %s", input_file, target_file)
             result.append(target_file)
@@ -128,12 +136,17 @@ def download_urls(
     urls: list[str],
     sources_dir: Path,
 ) -> list[Path]:
-    """Download URLs into *sources_dir*, return paths of successful downloads."""
+    """Download URLs into *sources_dir*, return paths of successful downloads.
+
+    Uses a DuplicateDetector to skip URLs that have already been downloaded.
+    The detector database is stored in ``sources_dir/.knox/downloaded.json``.
+    """
     if not urls:
         return []
     sources_dir = sources_dir.resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
-    downloader = HTTPDownloader()
+    detector = DuplicateDetector(sources_dir / ".knox" / "downloaded.json")
+    downloader = HTTPDownloader(detector=detector)
     results: list[Path] = []
     for url in urls:
         downloaded_file = downloader.download(url, sources_dir)

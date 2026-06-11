@@ -579,7 +579,10 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
         fallback_chain=list(config.llm.fallback_chain),
         max_retries_per_model=config.llm.fallback_max_retries,
         timeout=config.llm.timeout,
-        num_ctx=config.llm.num_ctx,
+        _fallback_max_input=config.llm.fallback_max_input,
+        _fallback_max_output=config.llm.fallback_max_output,
+        _num_ctx_min=config.llm.num_ctx_min,
+        _num_ctx_max=config.llm.num_ctx_max,
     )
 
 
@@ -600,8 +603,6 @@ def build_pipeline(
     ----------
     config:
         Pipeline configuration.
-    prompt_budget:
-        Per-concept char budget (N10 fair-share truncation).
     """
     writer_cls = BaseOutputWriter.get(config.output.format)
     if writer_cls is None:
@@ -663,7 +664,10 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 fallback_chain=[],
                 max_retries_per_model=0,
                 timeout=config.llm.timeout,
-                num_ctx=config.llm.num_ctx,
+                _fallback_max_input=config.llm.fallback_max_input,
+                _fallback_max_output=config.llm.fallback_max_output,
+                _num_ctx_min=config.llm.num_ctx_min,
+                _num_ctx_max=config.llm.num_ctx_max,
             )
             resolvers.append(VLMEnricher(client=vlm_client))
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)

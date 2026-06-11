@@ -32,10 +32,23 @@ from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
+from knox.llm.client import _discover_context_window
 
 logger = logging.getLogger(__name__)
 
 _loader = get_template_loader()
+
+_CHARS_PER_TOKEN = 4  # Approximate for English text.
+
+
+def _tokens_to_chars(tokens: int) -> int:
+    """Convert token count to approximate character count."""
+    return tokens * _CHARS_PER_TOKEN
+
+
+def _chars_to_tokens(chars: int) -> int:
+    """Convert character count to approximate token count."""
+    return max(1, chars // _CHARS_PER_TOKEN)
 
 
 def _slugify(text: str) -> str:
@@ -126,7 +139,6 @@ def _try_litellm_json(
     model: str,
     system: str | None = None,
     timeout: float | None = None,
-    num_ctx: int | None = None,
 ) -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure."""
     start = time.monotonic()
@@ -143,8 +155,6 @@ def _try_litellm_json(
         }
         if timeout is not None:
             kwargs["timeout"] = timeout
-        if num_ctx is not None:
-            kwargs["num_ctx"] = num_ctx
         response = litellm.completion(**kwargs)
         elapsed = time.monotonic() - start
         usage = getattr(response, "usage", None)
@@ -265,15 +275,14 @@ def _segment_sources(
 
 
 class TwoPhaseCompiler(BaseCompiler):
-    """N3 two-phase compiler with cross-source merging and N10 fair-share budget.
+    """N3 two-phase compiler with cross-source merging and adaptive budgets.
 
     Parameters
     ----------
+    config:
+        Pipeline configuration including budget and context window settings.
     base:
         Compiler used as a fallback when the LLM is unavailable.
-    prompt_budget:
-        Maximum total chars of source content used to generate a single
-        concept page (N10 fair-share truncation).
     """
 
     def __init__(
@@ -282,16 +291,32 @@ class TwoPhaseCompiler(BaseCompiler):
         base: BaseCompiler | None = None,
     ) -> None:
         self._base = base or GraphCompiler(model=config.llm.default_model)
-        self.prompt_budget = config.budget.prompt
+        self._budget = config.budget
         self._model = config.llm.default_model
-
-        self._extract_budget = config.budget.extract
-        self._gen_source_segment = config.budget.generate_source_segment
-        self._concepts_per_batch = config.budget.concepts_per_batch
         self._config = config
         self._timeout = config.llm.timeout
-        self._num_ctx = config.llm.num_ctx
         self._cache_store = CacheStore(config.output_dir / ".knox" / "cache")
+
+        # Discover context window for adaptive sizing.
+        cw = _discover_context_window(
+            self._model,
+            fallback_max_input=config.llm.fallback_max_input,
+            fallback_max_output=config.llm.fallback_max_output,
+            num_ctx_min=config.llm.num_ctx_min,
+            num_ctx_max=config.llm.num_ctx_max,
+        )
+        self._context_window = cw
+
+        # Estimate system prompt token overhead (rough: 4 chars/token).
+        extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
+        generation_system = _loader.get_body("compilation/generation_system.md.j2")
+        self._extract_system_tokens = max(1, len(extraction_system) // 4)
+        self._gen_system_tokens = max(1, len(generation_system) // 4)
+
+        logger.info(
+            "TwoPhase: context_window=%d in, %d out (source=%s)",
+            cw.max_input, cw.max_output, cw.source,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -329,9 +354,10 @@ class TwoPhaseCompiler(BaseCompiler):
     def extract(self, chunks: list[ResolvedChunk]) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source.
 
-        Source text is processed in batches of ``self._extract_budget`` chars
-        so that no content is silently dropped.  Results from each batch
-        are merged into a single :class:`Extraction` per source.
+        Source text is processed in batches sized to fill the context window
+        (minus system prompt and output budget) so that no content is silently
+        dropped.  Results from each batch are merged into a single
+        :class:`Extraction` per source.
         """
         _ = self  # noqa: PLR6301 — instance method for future per-compiler config
         extractions = ExtractionSet()
@@ -344,6 +370,14 @@ class TwoPhaseCompiler(BaseCompiler):
         extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
         num_sources = len(by_source)
         logger.info("TwoPhase: extracting %d source(s)", num_sources)
+
+        # Adaptive extract batch size: fill context window, clamped to safety rails.
+        cw = self._context_window
+        budget = self._budget
+        extract_char_budget = _tokens_to_chars(
+            max(1, cw.max_input - self._extract_system_tokens - budget.extract_output_max),
+        )
+        extract_char_budget = max(_tokens_to_chars(budget.chunk_size_min), min(extract_char_budget, _tokens_to_chars(budget.chunk_size_max)))
 
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
@@ -358,7 +392,7 @@ class TwoPhaseCompiler(BaseCompiler):
             batch_extractions: list[Extraction] = []
 
             for text in texts:
-                if batch_len + len(text) > self._extract_budget and batch_parts:
+                if batch_len + len(text) > extract_char_budget and batch_parts:
                     combined = "\n\n".join(batch_parts)
                     batch_extractions.append(self._extract_one(source, combined, extraction_system))
                     batch_parts = []
@@ -374,11 +408,12 @@ class TwoPhaseCompiler(BaseCompiler):
             extractions.add(_merge_extractions(source, batch_extractions))
         return extractions
 
-    def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk]) -> CompiledWiki:
+    def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk]) -> CompiledWiki:  # noqa: PLR0915
         """Phase 2: merge extractions and generate per-concept pages.
 
-        Batches concepts into groups of ``self._concepts_per_batch`` to avoid
-        overwhelming the LLM with a single massive prompt.
+        Batches concepts into groups of ``concepts_per_batch`` to avoid
+        overwhelming the LLM with a single massive prompt. Source segments
+        are sized adaptively based on the discovered context window.
         """
         concepts = extractions.concept_pages()
         if not concepts:
@@ -393,9 +428,15 @@ class TwoPhaseCompiler(BaseCompiler):
                 by_source[label] += rc.chunk.text + "\n\n"
         sources: list[tuple[str, str]] = list(by_source.items())
 
-        # Split source content into segments so each generation call
-        # receives a manageable chunk without dropping data.
-        source_segments = _segment_sources(sources, self._gen_source_segment)
+        # Adaptive segment size: fill context window, clamped to safety rails.
+        cw = self._context_window
+        budget = self._budget
+        segment_char_size = _tokens_to_chars(
+            max(1, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
+        )
+        segment_char_size = max(_tokens_to_chars(budget.chunk_size_min), min(segment_char_size, _tokens_to_chars(budget.chunk_size_max)))
+
+        source_segments = _segment_sources(sources, segment_char_size)
 
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
         nodes: list[WikiNode] = []
@@ -404,7 +445,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         num_concepts = len(concepts)
         num_segments = len(source_segments)
-        batch_size = self._concepts_per_batch
+        batch_size = budget.concepts_per_batch
         logger.info("TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d)", num_concepts, num_segments, batch_size)
         for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
@@ -420,7 +461,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     concepts_json=json.dumps(batch),
                     content=content_block,
                 )
-                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout, num_ctx=self._num_ctx)
+                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout)
 
                 if not isinstance(data, dict):
                     logger.warning(
@@ -510,16 +551,18 @@ class TwoPhaseCompiler(BaseCompiler):
                 "edge_count": len(edges),
                 "two_phase": True,
                 "concepts_merged": len(concepts),
-                "prompt_budget": self.prompt_budget,
+                "context_window": cw.max_input,
             },
         )
 
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
         """Run a single extraction LLM call with cache (Tier 3 Phase 1)."""
+        budget = self._budget
         extract_deps = {
             "source_text": hashlib.sha256(combined.encode()).hexdigest(),
             "model": self._model,
-            "extract_budget": str(self._extract_budget),
+            "chunk_size_min": str(budget.chunk_size_min),
+            "chunk_size_max": str(budget.chunk_size_max),
         }
         if not self._config.no_cache:
             cached = self._cache_store.get("extract", extract_deps)
@@ -527,7 +570,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout, num_ctx=self._num_ctx)
+        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout)
         if isinstance(data, dict):
             result = Extraction(
                 source=source,
@@ -551,11 +594,13 @@ class TwoPhaseCompiler(BaseCompiler):
             json.dumps(e.to_dict(), sort_keys=True) for e in extractions.extractions
         )
         ext_hash = hashlib.sha256(blob.encode()).hexdigest()
+        budget = self._budget
         return {
             "extractions": ext_hash,
             "model": self._model,
-            "gen_source_segment": str(self._gen_source_segment),
-            "concepts_per_batch": str(self._concepts_per_batch),
+            "chunk_size_min": str(budget.chunk_size_min),
+            "chunk_size_max": str(budget.chunk_size_max),
+            "concepts_per_batch": str(budget.concepts_per_batch),
         }
 
     def _fallback_compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:

@@ -21,9 +21,21 @@ def _make_exc(name: str) -> Exception:
 
 
 def _mock_response(content: str) -> MagicMock:
-    """Build a fake litellm response with the given content string."""
+    """Build a fake litellm response that works as both stream and non-stream."""
+    # Non-streaming attributes.
+    message = MagicMock()
+    message.content = content
+    choice = MagicMock()
+    choice.message = message
+    choice.delta = message  # streaming uses .delta
     resp = MagicMock()
-    resp.choices = [MagicMock(message=MagicMock(content=content))]
+    resp.choices = [choice]
+    resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    # Streaming: make it iterable, yielding one event.
+    event = MagicMock()
+    event.choices = [choice]
+    event.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    resp.__iter__ = lambda self: iter([event])
     return resp
 
 

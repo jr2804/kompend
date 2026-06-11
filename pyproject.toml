@@ -37,7 +37,8 @@ dependencies = [
     "pandoc>=2.4",
     "pydantic>=2.13.4",
     "python-slugify[unidecode]>=8.0.4",
-    "opendataloader-pdf[all,hybrid]>=2.4.7",
+    "opendataloader-pdf[hybrid]>=2.4.7",
+    "onnxruntime>=1.26.0",
 ]
 
 [project.scripts]

@@ -169,7 +169,9 @@ def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
         return None
 
     config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
-    config.budget.prompt = 200_000
+    # prompt is no longer a fixed field — context window is discovered.
+    # The chunk_size_min/max safety rails provide the equivalent.
+    assert config.budget.chunk_size_min > 0
     config.llm.timeout = 120
     compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
     try:
@@ -783,7 +785,7 @@ class TestGenerateExampleWiki:
 
         # ── Tier 4: compile with TwoPhaseCompiler ────────────────────
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
-        config.budget.prompt = 150_000
+        assert config.budget.chunk_size_min > 0
         config.llm.default_model = LLM_MODEL
         config.llm.timeout = 120
         compiler = TwoPhaseCompiler(

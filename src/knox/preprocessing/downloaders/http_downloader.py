@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from knox.preprocessing.downloaders.base import BaseDownloader
+from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,9 @@ _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHT
 class HTTPDownloader(BaseDownloader):
     """Downloads direct file URLs (PDF, DOCX, etc.) into the sources directory."""
 
-    def __init__(self, timeout: int = 30) -> None:
+    def __init__(self, timeout: int = 30, detector: DuplicateDetector | None = None) -> None:
         self.timeout = timeout
+        self._detector = detector
 
     _ALLOWED_SCHEMES = {"http", "https"}
 
@@ -31,14 +33,13 @@ class HTTPDownloader(BaseDownloader):
         filename = Path(parsed.path).name or self._hash_url(url)
         target_path = target_dir / filename
 
-        # Collision-safe filename
-        counter = 1
-        original_target = target_path
-        while target_path.exists():
-            stem = original_target.stem
-            suffix = original_target.suffix
-            target_path = target_dir / f"{stem}_{counter}{suffix}"
-            counter += 1
+        # Check duplicate detector: skip download if URL already known
+        if self._detector and self._detector.is_duplicate(url):
+            if target_path.exists():
+                logger.info("Skipping already-downloaded URL: %s", url)
+                return target_path
+            # URL was recorded but file was deleted — re-download
+            logger.debug("URL %s was recorded but file missing, re-downloading", url)
 
         logger.debug("Downloading %s -> %s", url, target_path)
         try:
@@ -51,10 +52,31 @@ class HTTPDownloader(BaseDownloader):
                 },
             )
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
-                target_path.write_bytes(response.read())
+                content = response.read()
         except Exception:
             logger.exception("Failed to download %s", url)
             return None
+
+        # Content-based dedup: skip if identical content already exists in target_dir
+        content_hash = hashlib.sha256(content).hexdigest()
+        for existing_file in target_dir.iterdir():
+            if (
+                existing_file.is_file()
+                and existing_file.suffix == target_path.suffix
+                and existing_file.read_bytes() == content
+            ):
+                logger.info(
+                    "Skipping %s — identical content already exists as %s",
+                    url,
+                    existing_file.name,
+                )
+                if self._detector:
+                    self._detector.mark_downloaded(url, content_hash)
+                return existing_file
+
+        target_path.write_bytes(content)
+        if self._detector:
+            self._detector.mark_downloaded(url, content_hash)
         return target_path
 
     def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
@@ -74,7 +96,7 @@ class HTTPDownloader(BaseDownloader):
                 if path:
                     results.append(path)
             except Exception:
-                logger.exception(f"Failed to download {url}")
+                logger.exception("Failed to download %s", url)
         return results
 
     @staticmethod

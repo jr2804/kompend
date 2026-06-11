@@ -136,6 +136,23 @@ class TestEnsureInSources:
         result = ensure_in_sources([new_file], sources_dir)
         assert result[0].name == "doc_1.pdf"
 
+    def test_identical_content_skips_copy(self, tmp_path: Path) -> None:
+        """When target file has identical content, copy is skipped."""
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "doc.pdf").write_text("same content")
+
+        external_dir = tmp_path / "ext"
+        external_dir.mkdir()
+        new_file = external_dir / "doc.pdf"
+        new_file.write_text("same content")
+
+        result = ensure_in_sources([new_file], sources_dir)
+        assert len(result) == 1
+        assert result[0].name == "doc.pdf"
+        # No _1 file created
+        assert list(sources_dir.glob("doc*.pdf")) == [sources_dir / "doc.pdf"]
+
     def test_sources_dir_created_if_missing(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "not_yet_existing"
         ext_dir = tmp_path / "ext"

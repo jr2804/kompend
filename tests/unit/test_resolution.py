@@ -131,7 +131,17 @@ class TestVLMEnricherIntegration:
         enricher = VLMEnricher(client=client)
 
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock(message=MagicMock(content="caption text"))]
+        mock_message = MagicMock(content="caption text")
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.delta = mock_message
+        mock_response.choices = [mock_choice]
+        mock_response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+        # Streaming support.
+        event = MagicMock()
+        event.choices = [mock_choice]
+        event.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
+        mock_response.__iter__ = lambda self: iter([event])
         with patch("litellm.completion", return_value=mock_response) as mock_completion:
             resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
 

@@ -55,3 +55,8 @@ package*.json
 
 # outputs generated in test data folders
 tests/data/**/*.png
+tests/data/**/*.
+wiki/
+.knox/
+demo-wiki/
+sources/

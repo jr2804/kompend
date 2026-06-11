@@ -40,27 +40,57 @@ class LLMConfig:
     vlm_model: str
     fallback_chain: list[str] = field(default_factory=list)
     fallback_max_retries: int = 2
-    context_budget: int = 100_000
     timeout: float = 120.0
-    num_ctx: int | None = None
+    fallback_max_input: int = 8192
+    fallback_max_output: int = 4096
+    num_ctx_min: int = 2048
+    num_ctx_max: int = 131072
     role_models: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class BudgetConfig:
-    """Token/character budgets for various LLM operations."""
+    """Adaptive token budgets for LLM operations.
 
-    prompt: int = 200_000
-    extract: int = 6_000
-    generate_source_segment: int = 20_000
+    Fixed char budgets have been replaced with adaptive sizing:
+    - Input: context window discovered from model (knox-0rq)
+    - Output: clamp(input_tokens * ratio, output_min, output_max) per phase (knox-vxd)
+    - Chunking: clamp(available_tokens, chunk_size_min, chunk_size_max) (knox-7sp)
+    """
+
+    # Structural controls (not token budgets)
     concepts_per_batch: int = 8
-    overview: int = 4_000
-    verify: int = 3_000
     verify_min_ngram: int = 3
-    lint_page: int = 100_000
-    wicer_probe: int = 3_000
-    wicer_eval: int = 4_000
     wicer_max_iterations: int = 3
+
+    # Chunk sizing safety rails (tokens)
+    chunk_size_min: int = 2048
+    chunk_size_max: int = 131072
+
+    # Extraction output: ratio × input, clamped
+    extract_output_ratio: float = 0.3
+    extract_output_min: int = 512
+    extract_output_max: int = 8192
+
+    # Generation output: fixed ceiling per concept (expansion, not compression)
+    gen_output_max: int = 16384
+
+    # Overview output: ratio × total sources, clamped
+    overview_output_ratio: float = 0.1
+    overview_output_min: int = 256
+    overview_output_max: int = 4096
+
+    # Verification output: ratio × excerpt, clamped
+    verify_output_ratio: float = 0.2
+    verify_output_min: int = 256
+    verify_output_max: int = 4096
+
+    # Lint output
+    lint_output_max: int = 8192
+
+    # WiCER probe/eval output
+    wicer_probe_output_max: int = 4096
+    wicer_eval_output_max: int = 4096
 
 
 @dataclass

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,6 +39,109 @@ class LLMResult:
     content: str
     json_data: dict[str, Any] | None
     diagnostics: CallDiagnostics
+
+
+@dataclass(frozen=True)
+class _StreamResult:
+    """Internal: assembled content + timing from a streamed response."""
+
+    content: str
+    prompt_tokens: int
+    completion_tokens: int
+    ttft_s: float  # time from call start to first token
+
+
+@dataclass(frozen=True)
+class ContextWindow:
+    """Discovered context window limits for a model.
+
+    ``max_input`` and ``max_output`` are in **tokens**.
+    ``source`` records where the values came from for diagnostics.
+    """
+
+    max_input: int
+    max_output: int
+    source: str  # "litellm" | "ollama" | "fallback"
+
+
+_MAX_CONTEXT_WINDOW = ContextWindow(max_input=2_097_152, max_output=2_097_152, source="hardcoded")
+
+
+def _discover_context_window(
+    model: str,
+    *,
+    fallback_max_input: int = 8192,
+    fallback_max_output: int = 4096,
+    num_ctx_min: int = 2048,
+    num_ctx_max: int = 131072,
+) -> ContextWindow:
+    """Discover the context window for *model*.
+
+    Strategy:
+    1. Try ``litellm.get_model_info()`` for static max_input/max_output.
+    2. For Ollama models, query ``GET /api/show`` for the runtime
+       ``num_ctx`` parameter.
+    3. Fall back to *fallback_max_input* / *fallback_max_output*.
+
+    The result is clamped to ``[num_ctx_min, num_ctx_max]``.
+    """
+    max_input: int | None = None
+    max_output: int | None = None
+    source = "fallback"
+
+    # 1. litellm model info
+    try:
+        info = litellm.get_model_info(model)
+        if info:
+            max_input = info.get("max_input_tokens")
+            max_output = info.get("max_output_tokens")
+            if max_input is not None:
+                source = "litellm"
+    except Exception:  # noqa: BLE001
+        logger.debug("litellm.get_model_info failed for %s", model, exc_info=True)
+
+    # 2. Ollama runtime num_ctx (overrides litellm if available).
+    if model.startswith("ollama/"):
+        ollama_ctx = _query_ollama_num_ctx(model.removeprefix("ollama/"))
+        if ollama_ctx is not None:
+            # Ollama's num_ctx is the total context (input + output).
+            if max_input is None or ollama_ctx < max_input:
+                max_input = ollama_ctx
+                source = "ollama"
+            if max_output is None or ollama_ctx < max_output:
+                max_output = ollama_ctx
+
+    # 3. Fallback
+    if max_input is None:
+        max_input = fallback_max_input
+    if max_output is None:
+        max_output = fallback_max_output
+
+    # Clamp to safety rails.
+    max_input = max(num_ctx_min, min(max_input, num_ctx_max))
+    max_output = max(num_ctx_min, min(max_output, num_ctx_max))
+
+    return ContextWindow(max_input=max_input, max_output=max_output, source=source)
+
+
+def _query_ollama_num_ctx(model_name: str) -> int | None:
+    """Query Ollama ``GET /api/show`` for the model's runtime ``num_ctx``.
+
+    Returns ``None`` if Ollama is not running or the model is not found.
+    """
+    try:
+        url = "http://localhost:11434/api/show"
+        payload = json.dumps({"name": model_name}).encode()
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            data = json.loads(resp.read())
+        params = data.get("parameters", {})
+        num_ctx_str = params.get("num_ctx")
+        if num_ctx_str is not None:
+            return int(num_ctx_str)
+    except Exception:  # noqa: BLE001
+        logger.debug("Ollama /api/show query failed for %s", model_name, exc_info=True)
+    return None
 
 
 @dataclass
@@ -67,6 +172,9 @@ class LLMClient:
         for that role.
     max_retries_per_model:
         Forwarded to :class:`FailoverChain`.
+    context_window:
+        Discovered context window limits. If ``None``, discovered
+        automatically from litellm / Ollama at init time.
     """
 
     default_model: str
@@ -82,11 +190,30 @@ class LLMClient:
     role_models: dict[str, list[str]] = field(default_factory=dict)
     max_retries_per_model: int = 2
     timeout: float | None = None
-    num_ctx: int | None = None
+    context_window: ContextWindow | None = None
+    _fallback_max_input: int = field(default=8192, repr=False)
+    _fallback_max_output: int = field(default=4096, repr=False)
+    _num_ctx_min: int = field(default=2048, repr=False)
+    _num_ctx_max: int = field(default=131072, repr=False)
 
     def __post_init__(self) -> None:
         if not self.default_model:
             raise ValueError("An explicit 'default_model' is required but was not provided.")
+        if self.context_window is None:
+            self.context_window = _discover_context_window(
+                self.default_model,
+                fallback_max_input=self._fallback_max_input,
+                fallback_max_output=self._fallback_max_output,
+                num_ctx_min=self._num_ctx_min,
+                num_ctx_max=self._num_ctx_max,
+            )
+            logger.info(
+                "Context window: model=%s max_input=%d max_output=%d source=%s",
+                self.default_model,
+                self.context_window.max_input,
+                self.context_window.max_output,
+                self.context_window.source,
+            )
 
     def chain_for(self, role: str) -> FailoverChain:
         """Return the :class:`FailoverChain` to use for ``role``.
@@ -100,7 +227,7 @@ class LLMClient:
             max_retries_per_model=self.max_retries_per_model,
         )
 
-    def complete(
+    def complete(  # noqa: PLR0915
         self,
         messages: list[dict[str, Any]],
         *,
@@ -117,6 +244,8 @@ class LLMClient:
         failure — never a raw provider exception and never silently.
         """
         chain = self.chain_for(role)
+        cw = self.context_window or _MAX_CONTEXT_WINDOW
+        call_start = time.monotonic()
 
         def _call(model: str) -> Any:
             kwargs: dict[str, Any] = {
@@ -130,26 +259,53 @@ class LLMClient:
                 kwargs["max_tokens"] = max_tokens
             if self.timeout is not None:
                 kwargs["timeout"] = self.timeout
-            if self.num_ctx is not None:
-                kwargs["num_ctx"] = self.num_ctx
-            return litellm.completion(**kwargs)
+            # Streaming enables TTFT measurement for split TPS metrics.
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            try:
+                stream = litellm.completion(**kwargs)
+            except (TypeError, ValueError):
+                # Some providers don't support streaming params.
+                kwargs.pop("stream", None)
+                kwargs.pop("stream_options", None)
+                resp = litellm.completion(**kwargs)
+                content = resp.choices[0].message.content or ""
+                usage = getattr(resp, "usage", None)
+                pt = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+                ct = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
+                elapsed = time.monotonic() - call_start
+                return _StreamResult(content=content, prompt_tokens=pt, completion_tokens=ct, ttft_s=elapsed)
+
+            ttft: float | None = None
+            chunks: list[str] = []
+            pt = 0
+            ct = 0
+            for event in stream:
+                if ttft is None:
+                    ttft = time.monotonic() - call_start
+                if event.choices:
+                    delta = event.choices[0].delta
+                    if delta and delta.content:
+                        chunks.append(delta.content)
+                u = getattr(event, "usage", None)
+                if u is not None:
+                    pt = int(getattr(u, "prompt_tokens", 0) or 0)
+                    ct = int(getattr(u, "completion_tokens", 0) or 0)
+            return _StreamResult(
+                content="".join(chunks),
+                prompt_tokens=pt,
+                completion_tokens=ct,
+                ttft_s=ttft if ttft is not None else time.monotonic() - call_start,
+            )
 
         result = chain.run(_call)
-        response = result.value
+        sr = result.value
         diagnostics = result.diagnostics
 
-        # Extract content (raise PermanentError on missing/empty content).
-        try:
-            content = response.choices[0].message.content
-        except (AttributeError, IndexError) as exc:  # malformed response
-            msg = "LLM response missing choices[0].message.content"
-            raise PermanentError(
-                msg,
-                model=diagnostics.model_used,
-                attempts=diagnostics.attempts,
-                cause=exc,
-            ) from exc
+        total_latency = diagnostics.total_latency_s
+        content = sr.content
 
+        # Extract content (raise PermanentError on missing/empty content).
         if not content:
             msg = "LLM returned empty content"
             raise PermanentError(
@@ -180,25 +336,23 @@ class LLMClient:
                 )
             json_data = parsed
 
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            try:
-                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                pt = 0
-            try:
-                ct = int(getattr(usage, "completion_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                ct = 0
-            tt = pt + ct
-            tps = f"{tt / diagnostics.total_latency_s:.1f}" if diagnostics.total_latency_s > 0 else "?"
+        # Log split TPS metrics.
+        pt = sr.prompt_tokens
+        ct = sr.completion_tokens
+        ttft_s = sr.ttft_s
+        if pt or ct:
+            gen_time = max(total_latency - ttft_s, 0.001)
+            p_tps = f"{pt / ttft_s:.1f}" if ttft_s > 0 else "?"
+            c_tps = f"{ct / gen_time:.1f}"
+            t_tps = f"{(pt + ct) / total_latency:.1f}" if total_latency > 0 else "?"
             logger.info(
-                "LLM ok role=%s model=%s attempts=%d in=%.1fs in=%d out=%d total=%d tok/s=%s",
+                "LLM ok role=%s model=%s attempts=%d ttft=%.1fs in=%d out=%d max_in=%d p_tps=%s c_tps=%s t_tps=%s",
                 role,
                 diagnostics.model_used,
                 diagnostics.attempts,
-                diagnostics.total_latency_s,
-                pt, ct, tt, tps,
+                ttft_s,
+                pt, ct, cw.max_input,
+                p_tps, c_tps, t_tps,
             )
         else:
             logger.info(
@@ -206,7 +360,7 @@ class LLMClient:
                 role,
                 diagnostics.model_used,
                 diagnostics.attempts,
-                diagnostics.total_latency_s,
+                total_latency,
             )
 
         return LLMResult(
