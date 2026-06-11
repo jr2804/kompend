@@ -60,11 +60,7 @@ class HTTPDownloader(BaseDownloader):
         # Content-based dedup: skip if identical content already exists in target_dir
         content_hash = hashlib.sha256(content).hexdigest()
         for existing_file in target_dir.iterdir():
-            if (
-                existing_file.is_file()
-                and existing_file.suffix == target_path.suffix
-                and existing_file.read_bytes() == content
-            ):
+            if existing_file.is_file() and existing_file.suffix == target_path.suffix and existing_file.read_bytes() == content:
                 logger.info(
                     "Skipping %s — identical content already exists as %s",
                     url,

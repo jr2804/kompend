@@ -80,11 +80,7 @@ class WebCrawler(BaseDownloader):
 
             # Content-based dedup: skip if identical content already exists
             for existing_file in target_dir.iterdir():
-                if (
-                    existing_file.is_file()
-                    and existing_file.suffix == ".md"
-                    and existing_file.read_bytes() == content_bytes
-                ):
+                if existing_file.is_file() and existing_file.suffix == ".md" and existing_file.read_bytes() == content_bytes:
                     logger.info(
                         "Skipping %s — identical content already exists as %s",
                         url,
