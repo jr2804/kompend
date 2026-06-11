@@ -124,6 +124,11 @@ class WikiPipeline:
         self._progress_callback = progress_callback
         logger.info("Starting KNOX pipeline (mode=%s): %s", self.config.mode, self.config.source_dir)
 
+        # --force: invalidate all caches before starting.
+        if self.config.force:
+            logger.info("Force mode enabled — invalidating all caches")
+            self._cache_store.invalidate()
+
         levels = self.active_levels()
         all_chunks: list[Any] = []
         resolved: list[Any] = []
@@ -138,6 +143,7 @@ class WikiPipeline:
         if 2 in levels:
             self._emit("resolve", 0, len(all_chunks), "starting")
             resolved = self._resolve_chunks(all_chunks) if all_chunks else self._load_resolved_from_disk() or []
+            self._record_tier_state(2)
             self._emit("resolve", len(resolved), len(resolved), "done")
         if 3 in levels:
             self._emit("compile", 0, 1, "starting")
@@ -145,6 +151,7 @@ class WikiPipeline:
                 wiki = self.compiler.compile(resolved)
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
+            self._record_tier_state(3)
             self._emit("compile", 1, 1, "done")
         else:
             wiki = self._load_compiled_wiki() or wiki
@@ -153,6 +160,7 @@ class WikiPipeline:
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             self.output_writer.write(wiki, self.config.output_dir)
+            self._record_tier_state(4)
             self._emit("output", 1, 1, "done")
 
         self.save_state()
@@ -245,6 +253,18 @@ class WikiPipeline:
         if self.config.tier_state_path is not None:
             return self.config.tier_state_path
         return self.config.output_dir / ".knox" / "compile_state.json"
+
+    def _record_tier_state(self, tier: int) -> None:
+        """Update current_tier for every known source file."""
+        state = self.state
+        for source_file in self.iter_sources():
+            stem = source_file.stem
+            try:
+                content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+            except OSError:
+                continue
+            self.state_store.record(state, stem, source_file, content_hash, tier=tier)
+        self.state_store.save(state)
 
     def _run_index_tier(self) -> None:
         """Tier 0: download online sources and record state for local files."""
