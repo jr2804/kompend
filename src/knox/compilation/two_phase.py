@@ -171,7 +171,12 @@ def _try_litellm_json(
             tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
             logger.info(
                 "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
-                model, elapsed, pt, ct, tt, tps,
+                model,
+                elapsed,
+                pt,
+                ct,
+                tt,
+                tps,
             )
         else:
             logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
@@ -315,7 +320,9 @@ class TwoPhaseCompiler(BaseCompiler):
 
         logger.info(
             "TwoPhase: context_window=%d in, %d out (source=%s)",
-            cw.max_input, cw.max_output, cw.source,
+            cw.max_input,
+            cw.max_output,
+            cw.source,
         )
 
     # ------------------------------------------------------------------
@@ -341,7 +348,8 @@ class TwoPhaseCompiler(BaseCompiler):
             if cached is not None:
                 logger.info(
                     "TwoPhase: generation cache hit (%d nodes, %d edges)",
-                    len(cached.nodes), len(cached.edges),
+                    len(cached.nodes),
+                    len(cached.edges),
                 )
                 return cached
 
@@ -590,9 +598,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
     def _gen_cache_deps(self, extractions: ExtractionSet) -> dict[str, str]:
         """Compute dependency hashes for generation cache."""
-        blob = "|".join(
-            json.dumps(e.to_dict(), sort_keys=True) for e in extractions.extractions
-        )
+        blob = "|".join(json.dumps(e.to_dict(), sort_keys=True) for e in extractions.extractions)
         ext_hash = hashlib.sha256(blob.encode()).hexdigest()
         budget = self._budget
         return {

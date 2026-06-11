@@ -92,9 +92,7 @@ class CacheStore:
         stored_deps = entry.get("deps", {})
         for dep_name, stored_hash in stored_deps.items():
             if deps.get(dep_name) != stored_hash:
-                logger.debug(
-                    "Cache dep mismatch %s/%s: %s changed", layer, key, dep_name
-                )
+                logger.debug("Cache dep mismatch %s/%s: %s changed", layer, key, dep_name)
                 return None
 
         return entry.get("value")

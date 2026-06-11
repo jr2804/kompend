@@ -111,24 +111,18 @@ technical debt to be cleaned up incrementally.
 **Never** hard-code an LLM model identifier as a function default or inline
 string literal. Model names are configuration, not code.
 
-```python
-# ❌ FORBIDDEN — model name baked into code
-"ollama/llama3.2"
-    ) -> Any | None:
-```
+    # ❌ FORBIDDEN — model name baked into code
+    "ollama/llama3.2"
+        ) -> Any | None:
 
-```python
-# ❌ FORBIDDEN — same antipattern in __init__, verify_wiki, etc.
+    # ❌ FORBIDDEN — same antipattern in __init__, verify_wiki, etc.
 
-def verify_wiki(wiki, output_dir, *, model="ollama/llama3.2") -> VerificationResult:
-```
+    def verify_wiki(wiki, output_dir, *, model="ollama/llama3.2") -> VerificationResult:
 
-```python
-# ✅ CORRECT — model comes from config, the only place the default lives
+    # ✅ CORRECT — model comes from config, the only place the default lives
 
-def _try_litellm_json(prompt, system, model, timeout) -> Any | None:
-    # model is always provided by the caller, who reads it from LLMConfig
-```
+    def _try_litellm_json(prompt, system, model, timeout) -> Any | None:
+        # model is always provided by the caller, who reads it from LLMConfig
 
 **Rule:** The string `"ollama/"` (or any other provider prefix) must never
 appear outside of:
@@ -145,26 +139,22 @@ chunk size, iteration count), it **must** come from the config layer, not from
 the function signature. The function signature should either accept a
 grouped config object or require the caller to pass the value explicitly.
 
-```python
-# ❌ FORBIDDEN — domain defaults scattered across signatures
+    # ❌ FORBIDDEN — domain defaults scattered across signatures
 
-def __init__(self, prompt_budget: int = 200_000, extract_budget: int = 6000,
-             concepts_per_batch: int = 8, timeout: float | None = None):
-```
+    def __init__(self, prompt_budget: int = 200_000, extract_budget: int = 6000,
+                 concepts_per_batch: int = 8, timeout: float | None = None):
 
-```python
-# ✅ CORRECT — defaults live in one place (the config dataclass)
+    # ✅ CORRECT — defaults live in one place (the config dataclass)
 
-@dataclass
-class BudgetConfig:
-    prompt: int = 200_000
-    extract: int = 6_000
-    concepts_per_batch: int = 8
+    @dataclass
+    class BudgetConfig:
+        prompt: int = 200_000
+        extract: int = 6_000
+        concepts_per_batch: int = 8
 
-class TwoPhaseCompiler:
-    def __init__(self, config: PipelineConfig) -> None:
-        self._budget = config.budget  # single source of truth
-```
+    class TwoPhaseCompiler:
+        def __init__(self, config: PipelineConfig) -> None:
+            self._budget = config.budget  # single source of truth
 
 ### Antipattern 3 — `| None = None` with hidden default inside the body
 
@@ -173,34 +163,28 @@ body resolves it to a real default via `x = x or REAL_VALUE` or
 `if x is None: x = REAL_VALUE`, the real default is invisible at the call
 site and untestable without reading the implementation.
 
-```python
-# ❌ FORBIDDEN — real default (100000) hidden inside the function
+    # ❌ FORBIDDEN — real default (100000) hidden inside the function
 
-def __init__(self, lint_page_budget: int | None = None) -> None:
-    self.lint_page_budget = lint_page_budget or 100000
-```
+    def __init__(self, lint_page_budget: int | None = None) -> None:
+        self.lint_page_budget = lint_page_budget or 100000
 
-```python
-# ✅ CORRECT — default is explicit in the type; None is only for
-#              "not provided" at the config layer (DI / testing)
+    # ✅ CORRECT — default is explicit in the type; None is only for
+    #              "not provided" at the config layer (DI / testing)
 
-def __init__(self, budget: BudgetConfig) -> None:
-    self.lint_page_budget = budget.lint_page  # default 100_000 in dataclass
-```
+    def __init__(self, budget: BudgetConfig) -> None:
+        self.lint_page_budget = budget.lint_page  # default 100_000 in dataclass
 
 If `None` is truly needed (e.g. "use whatever the parent provides"), document
 what the effective fallback is in the docstring:
 
-```python
-# Acceptable when None has a well-defined fallback chain
+    # Acceptable when None has a well-defined fallback chain
 
-def __init__(self, state_store: TierStateStore | None = None) -> None:
-    """...
-    Args:
-        state_store: Persistent state handler. When ``None``, defaults to
-            ``TierStateStore(output_dir / ".knox" / "compile_state.json")``.
-    """
-```
+    def __init__(self, state_store: TierStateStore | None = None) -> None:
+        """...
+        Args:
+            state_store: Persistent state handler. When ``None``, defaults to
+                ``TierStateStore(output_dir / ".knox" / "compile_state.json")``.
+        """
 
 ### Summary
 

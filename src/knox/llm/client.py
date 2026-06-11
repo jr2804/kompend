@@ -351,8 +351,12 @@ class LLMClient:
                 diagnostics.model_used,
                 diagnostics.attempts,
                 ttft_s,
-                pt, ct, cw.max_input,
-                p_tps, c_tps, t_tps,
+                pt,
+                ct,
+                cw.max_input,
+                p_tps,
+                c_tps,
+                t_tps,
             )
         else:
             logger.info(

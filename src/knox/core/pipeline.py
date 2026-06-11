@@ -507,15 +507,6 @@ class WikiPipeline:
         except Exception:
             logger.debug("Cache write failed for %s — ignoring", cache_path)
 
-    @staticmethod
-    def _apply_privacy_filter(elements: list[Any]) -> None:
-        """Apply privacy filter in-place to document elements."""
-        for el in elements:
-            if isinstance(el.content, str):
-                el.content, _ = filter_sensitive(el.content)
-            elif isinstance(el.content, list):
-                el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
-
     def _resolve_chunks(self, chunks: list[Any]) -> list[Any]:
         """Resolve chunks with per-chunk cache (Tier 2)."""
         if not self.resolver:
@@ -547,6 +538,15 @@ class WikiPipeline:
             resolved.append(rc)
 
         return resolved
+
+    @staticmethod
+    def _apply_privacy_filter(elements: list[Any]) -> None:
+        """Apply privacy filter in-place to document elements."""
+        for el in elements:
+            if isinstance(el.content, str):
+                el.content, _ = filter_sensitive(el.content)
+            elif isinstance(el.content, list):
+                el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
 
     @staticmethod
     def _load_resolved_from_disk() -> list[Any]:

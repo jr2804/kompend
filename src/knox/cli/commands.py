@@ -27,12 +27,7 @@ from knox.cli.args import (
     DEFAULT_PROMPT_BUDGET,
     DEFAULT_SOURCES_DIR,
     BudgetConcepts,
-    BudgetExtract,
     BudgetGenSegment,
-    BudgetOverview,
-    BudgetVerify,
-    BudgetWicerEval,
-    BudgetWicerProbe,
     BypassReview,
     CaptureText,
     ChunkSize,
@@ -201,13 +196,8 @@ def compile_cmd(
     llm_default_model: LlmDefaultModel = None,
     llm_role_model: LlmRoleModel = None,
     compile_lint: CompileLint = False,
-    budget_extract: BudgetExtract = None,
     budget_gen_segment: BudgetGenSegment = None,
     budget_concepts: BudgetConcepts = None,
-    budget_overview: BudgetOverview = None,
-    budget_verify: BudgetVerify = None,
-    budget_wicer_probe: BudgetWicerProbe = None,
-    budget_wicer_eval: BudgetWicerEval = None,
     embed_dim: EmbedDim = None,
     llm_timeout: LlmTimeout = None,
 ) -> None:
@@ -1130,7 +1120,7 @@ def _post_compile_actions(
         _mark_private(wiki, output_dir_path)
 
     if verify:
-        resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
+        resolved_model = pipeline_config.llm.default_model
         _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
     generated = write_index_and_log(wiki, output_dir_path)
@@ -1138,9 +1128,11 @@ def _post_compile_actions(
     typer.echo(f"Log:   {generated['log']}")
 
     if synthesize:
-        resolved_model = pipeline_config.llm_default_model_override or pipeline_config.llm.default_model
+        resolved_model = pipeline_config.llm.default_model
         overview_path = write_overview(
-            wiki, output_dir_path, model=resolved_model,
+            wiki,
+            output_dir_path,
+            model=resolved_model,
             overview_budget=pipeline_config.budget.overview_output_max * 4,
             timeout=pipeline_config.llm.timeout,
         )

@@ -251,16 +251,6 @@ PromptBudget = Annotated[
     ),
 ]
 
-BudgetExtract = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-extract",
-        help="(deprecated — use knox.toml budget.extract_* instead)",
-        rich_help_panel="Advanced",
-        hidden=True,
-    ),
-]
-
 BudgetGenSegment = Annotated[
     int | None,
     typer.Option(
@@ -276,46 +266,6 @@ BudgetConcepts = Annotated[
         "--budget-concepts",
         help="Number of concepts per generation batch.",
         rich_help_panel="Advanced",
-    ),
-]
-
-BudgetOverview = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-overview",
-        help="(deprecated — use knox.toml budget.overview_* instead)",
-        rich_help_panel="Advanced",
-        hidden=True,
-    ),
-]
-
-BudgetVerify = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-verify",
-        help="(deprecated — use knox.toml budget.verify_* instead)",
-        rich_help_panel="Advanced",
-        hidden=True,
-    ),
-]
-
-BudgetWicerProbe = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-wicer-probe",
-        help="(deprecated — use knox.toml budget.wicer_probe_output_max instead)",
-        rich_help_panel="Advanced",
-        hidden=True,
-    ),
-]
-
-BudgetWicerEval = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-wicer-eval",
-        help="(deprecated — use knox.toml budget.wicer_eval_output_max instead)",
-        rich_help_panel="Advanced",
-        hidden=True,
     ),
 ]
 

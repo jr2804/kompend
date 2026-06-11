@@ -9,7 +9,7 @@ if nothing changed, everything is skipped.
 
 ## Architecture
 
-```
+```text
                           ┌─────────────────────────────────────┐
                           │          CacheStore                  │
                           │  get(layer, deps) → value | None    │
@@ -34,6 +34,7 @@ if nothing changed, everything is skipped.
 ## Cache Layers (bottom-up)
 
 ### Layer 1: Parse Cache (Tier 1, *existing*)
+
 - **Location**: `.knox/cache/<sha256-prefix>.json`
 - **Key**: SHA-256 of source file bytes + `image_mode`
 - **Deps**: none (file content is the input)
@@ -41,6 +42,7 @@ if nothing changed, everything is skipped.
 - **Inherited**: was already implemented before this caching work
 
 ### Layer 2: Chunk Cache (Tier 1, *new*)
+
 - **Location**: `.knox/cache/chunk/<sha256-key>.pkl`
 - **Key**: `sha256(source_file_bytes)` + `chunk_size`
 - **Deps**: `{"source": <sha256>, "chunk_size": "<n>"}`
@@ -49,6 +51,7 @@ if nothing changed, everything is skipped.
 - **On hit**: skips `chunker.chunk()` entirely
 
 ### Layer 3: Resolution Cache (Tier 2, *new*)
+
 - **Location**: `.knox/cache/resolve/<sha256-key>.pkl`
 - **Key**: `sha256(chunk.text)` + `vlm_model`
 - **Deps**: `{"chunk_text": <sha256>, "vlm_model": "<model>"}`
@@ -57,6 +60,7 @@ if nothing changed, everything is skipped.
 - **On hit**: skips VLM enrichment for that chunk
 
 ### Layer 4: Extraction Cache (Tier 3 Phase 1, *new*)
+
 - **Location**: `.knox/cache/extract/<sha256-key>.pkl`
 - **Key**: `sha256(source_text)` + `model` + `extract_budget`
 - **Deps**: `{"source_text": <sha256>, "model": "<model>", "extract_budget": "<n>"}`
@@ -65,6 +69,7 @@ if nothing changed, everything is skipped.
 - **On hit**: skips LLM extraction call for that source
 
 ### Layer 5: Generation Cache (Tier 3 Phase 2, *new*)
+
 - **Location**: `.knox/cache/generate/<sha256-key>.pkl`
 - **Key**: `sha256(all_extractions)` + `model` + `gen_source_segment` + `concepts_per_batch`
 - **Deps**: `{"extractions": <sha256>, "model": "<model>", "gen_source_segment": "<n>", "concepts_per_batch": "<n>"}`
@@ -73,6 +78,7 @@ if nothing changed, everything is skipped.
 - **On hit**: skips all LLM generation calls; returns cached wiki directly
 
 ### Layer 6: Overview Cache (post-compile, *new*)
+
 - **Location**: `.knox/cache/overview/<sha256-key>.pkl`
 - **Key**: `sha256(all_node_contents)` + `model` + `overview_budget`
 - **Deps**: `{"source_texts": <sha256>, "model": "<model>", "overview_budget": "<n>"}`
@@ -89,6 +95,7 @@ differs from the current one, the entry is treated as stale and a cache
 miss is returned.
 
 This means:
+
 - **File change**: source file modified → `sha256(source_bytes)` changes →
   chunk, resolve, extract caches all miss automatically
 - **Config change**: `chunk_size` changed → `chunk_size` in deps changes →
