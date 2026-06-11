@@ -40,7 +40,7 @@ class HTTPDownloader(BaseDownloader):
             target_path = target_dir / f"{stem}_{counter}{suffix}"
             counter += 1
 
-        logger.info("Downloading %s -> %s", url, target_path)
+        logger.debug("Downloading %s -> %s", url, target_path)
         try:
             request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310

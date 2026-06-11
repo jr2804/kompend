@@ -177,7 +177,7 @@ class LLMClient:
                 )
             json_data = parsed
 
-        logger.info(
+        logger.debug(
             "LLM ok role=%s model=%s attempts=%d latency_s=%.2f",
             role,
             diagnostics.model_used,

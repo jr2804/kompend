@@ -118,7 +118,7 @@ def ensure_in_sources(
             target_file = sources_dir / input_file.name
             target_file = _unique_path(target_file)
             shutil.copy2(resolved_input, target_file)
-            logger.info("Copied %s -> %s", input_file, target_file)
+            logger.debug("Copied %s -> %s", input_file, target_file)
             result.append(target_file)
 
     return result
