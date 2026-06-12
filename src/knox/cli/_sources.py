@@ -139,13 +139,13 @@ def download_urls(
     """Download URLs into *sources_dir*, return paths of successful downloads.
 
     Uses a DuplicateDetector to skip URLs that have already been downloaded.
-    The detector database is stored in ``sources_dir/.knox/downloaded.json``.
+    The detector database is stored in ``base_dir/.knox/downloaded.json``.
     """
     if not urls:
         return []
     sources_dir = sources_dir.resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
-    detector = DuplicateDetector(sources_dir / ".knox" / "downloaded.json")
+    detector = DuplicateDetector(sources_dir.parent / ".knox" / "downloaded.json")
     downloader = HTTPDownloader(detector=detector)
     results: list[Path] = []
     for url in urls:
