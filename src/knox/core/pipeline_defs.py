@@ -114,27 +114,48 @@ class PipelineConfig:
     This dataclass is the single shape consumed by :class:`WikiPipeline` and
     its factory :func:`build_pipeline`. Defaults are intentionally conservative
     so the pipeline can run on a developer laptop without any configuration.
+
+    Directory layout::
+
+        base_dir/
+        ├── .knox/         ← internal state (cache, tier state, vectors, etc.)
+        ├── sources/        ← source_dir: user-owned inputs
+        ├── wiki/           ← output_dir: generated pages
+        ├── index.md        ← entry point (TOC)
+        └── overview.md      ← LLM-generated overview (opt-in)
+
+    When ``base_dir`` is not set explicitly, it defaults to ``output_dir.parent``.
+    All ``.knox`` paths resolve relative to ``base_dir``.
     """
 
     source_dir: Path
     output_dir: Path
     llm: LLMConfig
     embedding: EmbeddingConfig
+    base_dir: Path | None = None  # None → output_dir.parent; .knox lives here
     image_mode: ImageMode = ImageMode.FILE
     chunk_size: int = 512
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
-    cache_dir: Path | None = None  # None = .knox/cache inside output_dir
+    cache_dir: Path | None = None  # None = base_dir/.knox/cache
     no_cache: bool = False  # force re-parse even if cached
     workers: int = 1  # parallel parse+chunk workers
     mode: Mode = Mode.FULL
     force: bool = False  # bypass persistent tier state and re-process everything
-    tier_state_path: Path | None = None  # None = .knox/compile_state.json inside output_dir
+    tier_state_path: Path | None = None  # None = base_dir/.knox/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
+
+    def resolved_base_dir(self) -> Path:
+        """Return the effective base directory."""
+        return self.base_dir if self.base_dir is not None else self.output_dir.parent
+
+    def knox_dir(self) -> Path:
+        """Return the ``.knox`` directory (always inside base_dir)."""
+        return self.resolved_base_dir() / ".knox"
 
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)

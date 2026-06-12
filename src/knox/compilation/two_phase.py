@@ -67,6 +67,57 @@ def _dedup_id(node_id: str, seen: set[str]) -> str:
     return candidate
 
 
+def _merge_node(
+    existing: WikiNode,
+    incoming: WikiNode,
+) -> WikiNode:
+    """Merge *incoming* node into *existing*, keeping the richer content.
+
+    If the existing node has empty/short content, the incoming content replaces it.
+    Otherwise, the incoming content is appended as additional context.
+    Provenance lists are unioned.
+    """
+    # Keep the longer (more informative) content
+    if len(existing.content or "") <= 10:
+        merged_content = incoming.content or ""
+        merged_title = incoming.title or existing.title
+    elif len(incoming.content or "") > len(existing.content or ""):
+        merged_content = incoming.content or existing.content
+        merged_title = incoming.title or existing.title
+    else:
+        # Append as supplementary content (avoid duplication)
+        existing_text = existing.content or ""
+        incoming_text = incoming.content or ""
+        if incoming_text not in existing_text:
+            merged_content = existing_text + "\n\n" + incoming_text
+        else:
+            merged_content = existing_text
+        merged_title = existing.title
+
+    # Merge provenance
+    existing_prov = set(existing.metadata.get("provenance", []) or [])
+    incoming_prov = set(incoming.metadata.get("provenance", []) or [])
+    merged_prov = sorted(existing_prov | incoming_prov)
+
+    # Merge related
+    existing_rel = set(existing.metadata.get("related", []) or [])
+    incoming_rel = set(incoming.metadata.get("related", []) or [])
+    merged_rel = sorted(existing_rel | incoming_rel)
+
+    return WikiNode(
+        id=existing.id,
+        title=merged_title,
+        content=merged_content,
+        node_type=existing.node_type,
+        source_chunks=list(dict.fromkeys(existing.source_chunks + incoming.source_chunks)),
+        metadata={
+            **existing.metadata,
+            "provenance": merged_prov,
+            "related": merged_rel,
+        },
+    )
+
+
 @dataclass
 class Extraction:
     """Phase-1 extraction result for a single source."""
@@ -300,7 +351,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._model = config.llm.default_model
         self._config = config
         self._timeout = config.llm.timeout
-        self._cache_store = CacheStore(config.output_dir / ".knox" / "cache")
+        self._cache_store = CacheStore(config.knox_dir() / "cache")
 
         # Discover context window for adaptive sizing.
         cw = _discover_context_window(
@@ -449,7 +500,17 @@ class TwoPhaseCompiler(BaseCompiler):
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
         nodes: list[WikiNode] = []
         edges: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
+        slug_to_idx: dict[str, int] = {}  # slug → index in nodes (for merging)
+
+        def _upsert_node(new_node: WikiNode) -> None:
+            """Insert a new node, or merge with existing if slug matches."""
+            slug = new_node.id
+            if slug in slug_to_idx:
+                idx = slug_to_idx[slug]
+                nodes[idx] = _merge_node(nodes[idx], new_node)
+            else:
+                slug_to_idx[slug] = len(nodes)
+                nodes.append(new_node)
 
         num_concepts = len(concepts)
         num_segments = len(source_segments)
@@ -483,8 +544,7 @@ class TwoPhaseCompiler(BaseCompiler):
                         # to avoid duplicates.
                         for idx, concept in enumerate(batch):
                             node_id = _slugify(concept.get("name", f"concept-{batch_start + idx}"))
-                            node_id = _dedup_id(node_id, seen_ids)
-                            nodes.append(
+                            _upsert_node(
                                 WikiNode(
                                     id=node_id,
                                     title=concept.get("name", "Unknown"),
@@ -499,10 +559,9 @@ class TwoPhaseCompiler(BaseCompiler):
                 for idx, page in enumerate(data.get("pages", [])):
                     if not isinstance(page, dict):
                         continue
-                    raw_slug = str(page.get("slug", "")).strip().lower()
-                    node_id = raw_slug if raw_slug else _slugify(str(page.get("title", f"concept-{batch_start + idx}")))
-                    node_id = _dedup_id(node_id, seen_ids)
-                    nodes.append(
+                    # Always derive slug from title for consistency — ignore LLM slug
+                    node_id = _slugify(str(page.get("title", f"concept-{batch_start + idx}")))
+                    _upsert_node(
                         WikiNode(
                             id=node_id,
                             title=str(page.get("title", f"Concept {batch_start + idx}")),

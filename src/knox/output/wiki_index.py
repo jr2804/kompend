@@ -99,20 +99,23 @@ def append_log(log_path: Path, entry: str) -> None:
 def write_index_and_log(
     wiki: CompiledWiki,
     output_dir: Path,
+    *,
+    base_dir: Path | None = None,
 ) -> dict[str, Path]:
     """Write ``index.md`` and ``log.md`` for a compiled wiki.
 
     Returns a dict of ``{name: path}`` for generated files.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_base = base_dir if base_dir is not None else output_dir
+    resolved_base.mkdir(parents=True, exist_ok=True)
 
-    # index.md (regenerated each compile)
-    index_path = output_dir / "index.md"
+    # index.md — entry point at base_dir level
+    index_path = resolved_base / "index.md"
     index_content = generate_index(wiki)
     index_path.write_text(index_content, encoding="utf-8")
 
     # log.md (appended, never overwritten)
-    log_path = output_dir / "log.md"
+    log_path = resolved_base / "log.md"
     log_entry = generate_log_entry(wiki)
     append_log(log_path, log_entry)
 
@@ -188,7 +191,7 @@ def generate_overview(source_texts: list[str], model: str, overview_budget: int 
 
 def write_overview(
     wiki: CompiledWiki,
-    output_dir: Path,
+    base_dir: Path,
     model: str,
     overview_budget: int = 4000,
     timeout: float | None = None,
@@ -196,8 +199,8 @@ def write_overview(
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
 
-    # Overview cache
-    cache_store = CacheStore(output_dir / ".knox" / "cache")
+    # Overview cache (inside .knox)
+    cache_store = CacheStore(base_dir / ".knox" / "cache")
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
@@ -206,7 +209,7 @@ def write_overview(
     }
     cached = cache_store.get("overview", overview_deps)
     if cached is not None:
-        overview_path = output_dir / "overview.md"
+        overview_path = base_dir / "overview.md"
         overview_path.write_text(cached, encoding="utf-8")
         return overview_path
 
@@ -216,6 +219,6 @@ def write_overview(
 
     cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
 
-    overview_path = output_dir / "overview.md"
+    overview_path = base_dir / "overview.md"
     overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
     return overview_path

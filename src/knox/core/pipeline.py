@@ -252,7 +252,7 @@ class WikiPipeline:
         """Resolve the persistent state file path."""
         if self.config.tier_state_path is not None:
             return self.config.tier_state_path
-        return self.config.output_dir / ".knox" / "compile_state.json"
+        return self.config.knox_dir() / "compile_state.json"
 
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
@@ -300,7 +300,7 @@ class WikiPipeline:
         self.output_writer.write(wiki, self.config.output_dir)
 
     def _compiled_wiki_path(self) -> Path:
-        return self.config.output_dir / ".knox" / "compiled_wiki.json"
+        return self.config.knox_dir() / "compiled_wiki.json"
 
     def _save_compiled_wiki(self, wiki: CompiledWiki) -> None:
 
@@ -445,7 +445,7 @@ class WikiPipeline:
         """Resolve the cache directory."""
         if self.config.cache_dir:
             return self.config.cache_dir
-        return self.config.output_dir / ".knox" / "cache"
+        return self.config.knox_dir() / "cache"
 
     def _load_cache(self, source_file: Path) -> ParsedDocument | None:
         """Load a cached ParsedDocument if available."""

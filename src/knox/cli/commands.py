@@ -567,7 +567,8 @@ def review_cmd(
 ) -> None:
     """Manage the review queue for compiled pages."""
     out = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
-    queue = ReviewQueue(review_dir=out / ".knox" / "review")
+    base_dir = out.parent
+    queue = ReviewQueue(review_dir=base_dir / ".knox" / "review")
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 
@@ -1105,11 +1106,12 @@ def _post_compile_actions(
     embed_model: str | None,
 ) -> None:
     """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
-    _write_wiki_cache(wiki, output_dir_path)
+    base_dir = pipeline_config.resolved_base_dir()
+    _write_wiki_cache(wiki, base_dir)
 
     if review and not bypass_review:
-        _send_to_review_queue(wiki, output_dir_path)
-        typer.echo(f"Pages pending review in {output_dir_path / '.knox' / 'review'}")
+        _send_to_review_queue(wiki, base_dir)
+        typer.echo(f"Pages pending review in {base_dir / '.knox' / 'review'}")
     elif bypass_review and review:
         typer.echo("--bypass-review overrides --review; writing pages directly.")
 
@@ -1123,7 +1125,7 @@ def _post_compile_actions(
         resolved_model = pipeline_config.llm.default_model
         _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
-    generated = write_index_and_log(wiki, output_dir_path)
+    generated = write_index_and_log(wiki, output_dir_path, base_dir=base_dir)
     typer.echo(f"Index: {generated['index']}")
     typer.echo(f"Log:   {generated['log']}")
 
@@ -1131,7 +1133,7 @@ def _post_compile_actions(
         resolved_model = pipeline_config.llm.default_model
         overview_path = write_overview(
             wiki,
-            output_dir_path,
+            base_dir,
             model=resolved_model,
             overview_budget=pipeline_config.budget.overview_output_max * 4,
             timeout=pipeline_config.llm.timeout,
@@ -1142,12 +1144,12 @@ def _post_compile_actions(
             typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
     if index_store:
-        _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model)
+        _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model, base_dir=base_dir)
 
     if compile_lint:
         _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
 
-    _write_wiki_cache(wiki, output_dir_path)
+    _write_wiki_cache(wiki, base_dir)
 
 
 def _build_cli_overrides(
@@ -1245,13 +1247,15 @@ def _cli_build_vector_index(
     wiki: CompiledWiki,
     output_dir_path: Path,
     embed_model: str | None,
+    *,
+    base_dir: Path | None = None,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
     if not embed_model:
         typer.echo("Error: --embed-model must be provided when --index is used.", err=True)
         raise typer.Exit(1)
 
-    count = build_vector_index(wiki, output_dir_path, embed_model=embed_model)
+    count = build_vector_index(wiki, output_dir_path, embed_model=embed_model, base_dir=base_dir)
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
     else:
@@ -1270,9 +1274,9 @@ def _print_tier_listing(pipeline: object) -> None:
     typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))
 
 
-def _send_to_review_queue(wiki: CompiledWiki, output_dir_path: Path) -> None:
+def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
-    queue = ReviewQueue(review_dir=output_dir_path / ".knox" / "review")
+    queue = ReviewQueue(review_dir=base_dir / ".knox" / "review")
     for node in wiki.nodes:
         queue.enqueue(node)
 
@@ -1315,13 +1319,13 @@ def _resolve_role_models(cfg: Any) -> dict[str, str]:
     return role_models
 
 
-def _write_wiki_cache(wiki: CompiledWiki, output_dir_path: Path) -> None:
+def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``.
 
     This lets standalone ``knox lint`` load the wiki without requiring
     a fresh compile. The cache is overwritten on every successful compile.
     """
-    cache_dir = output_dir_path / ".knox"
+    cache_dir = base_dir / ".knox"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / "last_wiki.json"
 

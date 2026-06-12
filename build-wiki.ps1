@@ -22,6 +22,7 @@ $ErrorActionPreference = "Stop"
 
 # ── Configuration ──────────────────────────────────────────────────────
 $ProjectRoot = $PSScriptRoot
+$BaseDir     = Join-Path $ProjectRoot "demo-wiki"
 
 $LLMModel   = "ollama/deepseek-v4-flash:cloud"
 $EmbedModel = "ollama/granite-embedding:278m"
@@ -29,12 +30,9 @@ $EmbedDim   = 768
 
 # ── Clean (if -Force) ──────────────────────────────────────────────────
 if ($Force) {
-    foreach ($Dir in @("sources", "wiki")) {
-        $Path = Join-Path $ProjectRoot $Dir
-        if (Test-Path $Path) {
-            Write-Host "Removing $Path" -ForegroundColor Yellow
-            if (-not $WhatIf) { Remove-Item -Recurse -Force $Path }
-        }
+    if (Test-Path $BaseDir) {
+        Write-Host "Removing $BaseDir" -ForegroundColor Yellow
+        if (-not $WhatIf) { Remove-Item -Recurse -Force $BaseDir }
     }
 }
 
@@ -42,8 +40,8 @@ if ($Force) {
 $Args = @(
     "uv", "run", "knox", "compile",
     (Join-Path $ProjectRoot "tests/data/sources"),
-    "--sources-dir",    (Join-Path $ProjectRoot "sources"),
-    "--output-dir",     (Join-Path $ProjectRoot "wiki"),
+    "--sources-dir",    (Join-Path $BaseDir "sources"),
+    "--output-dir",     (Join-Path $BaseDir "wiki"),
     "--url-file",       (Join-Path $ProjectRoot "tests/data/urls.txt"),
     "--llm-default-model", $LLMModel,
     "--embed-model",    $EmbedModel,
@@ -69,10 +67,13 @@ if (-not $WhatIf) {
 }
 
 # ── Done ───────────────────────────────────────────────────────────────
-$OutputDir = Join-Path $ProjectRoot "wiki"
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green
-if (-not $WhatIf -and (Test-Path $OutputDir)) {
-    $Files = Get-ChildItem -Path $OutputDir -Filter "*.md" -Recurse
-    Write-Host "  Output: $OutputDir ($($Files.Count) markdown file(s))"
+if (-not $WhatIf -and (Test-Path $BaseDir)) {
+    $MdFiles = Get-ChildItem -Path $BaseDir -Filter "*.md" -Recurse
+    Write-Host "  Output: $BaseDir ($($MdFiles.Count) markdown file(s))"
+    $Index = Join-Path $BaseDir "index.md"
+    if (Test-Path $Index) {
+        Write-Host "  Entry:  $Index" -ForegroundColor Cyan
+    }
 }
