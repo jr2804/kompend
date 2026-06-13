@@ -1,0 +1,43 @@
+---
+variables:
+  - name: notes
+    required: true
+  - name: group_tag
+    required: true
+role: capture.crystallize
+response_format: json_object
+temperature: 0.2
+---
+
+You are a knowledge synthesis assistant. Given a set of captured notes sharing the tag "{{ group_tag }}", integrate them into a single coherent wiki page.
+
+## Captured notes
+
+{% for note in notes %}
+### {{ note.title }}
+
+{{ note.content }}
+
+*Source: {{ note.source }}*
+
+{% endfor %}
+
+## Instructions
+
+Synthesize the notes above into one well-structured markdown page. Return a JSON object:
+
+```json
+{
+  "title": "Concise page title reflecting the combined topic",
+  "content": "Full markdown body integrating all notes. Use ## headings, lists, and paragraphs. Preserve every factual claim, decision, and correction. Resolve contradictions by noting both positions. Remove redundancy.",
+  "tags": ["{{ group_tag }}", "additional", "tags"]
+}
+```
+
+Rules:
+- Merge related points; do not list notes verbatim
+- Preserve all factual details, decisions, and corrections
+- If two notes contradict each other, present both with context
+- Use clear section headings (##)
+- Keep the page focused and readable
+- The title should be descriptive, not generic

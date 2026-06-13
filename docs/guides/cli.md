@@ -197,6 +197,18 @@ knox capture "We decided to use QKV projections with RoPE"
 knox learn "The transformer uses d_model=512 and h=8" --tag attention
 ```
 
+## `knox crystallize`
+
+Synthesize captured notes from `sources/_captured/` into coherent wiki pages. Notes are grouped by tag and merged (LLM-powered or deterministic fallback). Output goes to `sources/_crystallized/`.
+
+```bash
+# Merge all captured notes into synthesized pages
+knox crystallize
+
+# Then compile to incorporate crystallized pages
+knox compile
+```
+
 ## Environment Variables
 
 | Variable | Description |

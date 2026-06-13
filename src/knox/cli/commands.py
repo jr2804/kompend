@@ -13,6 +13,7 @@ from typing import Annotated, Any
 import typer
 
 from knox.capture.capture import capture
+from knox.capture.crystallize import crystallize
 from knox.capture.ingest import ingest
 from knox.capture.learn import learn
 from knox.cli._progress import PipelineProgress
@@ -1057,6 +1058,41 @@ def learn_cmd(
 
     path = learn(text, sources_dir=sources_dir_path, tags=tag)
     typer.echo(f"Learned fact -> {path.name}")
+
+
+# ── crystallize ───────────────────────────────────────────────────────────
+
+
+@app.command(name="crystallize")
+def crystallize_cmd(
+    sources_dir: SourcesDir = None,
+) -> None:
+    """Synthesize captured notes into coherent wiki pages.
+
+    Reads all notes from sources/_captured/, groups them by tag, and uses an
+    LLM to merge each group into a single well-structured page written to
+    sources/_crystallized/. Run 'knox compile' afterwards to incorporate
+    the crystallized pages into the wiki.
+
+    Examples:
+        knox crystallize
+    """
+    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+
+    try:
+        cfg = resolve_config()
+        default_model = cfg.get("compile.llm.default_model")
+        llm_client = LLMClient(default_model=default_model)
+    except Exception:
+        llm_client = None
+
+    paths = crystallize(sources_dir_path, llm_client=llm_client)
+    if not paths:
+        typer.echo("No captured notes found to crystallize.")
+        return
+    typer.echo(f"Crystallized {len(paths)} page(s) to {sources_dir_path / '_crystallized'}")
+    for p in paths:
+        typer.echo(f"  {p.name}")
 
 
 # ── ingest ────────────────────────────────────────────────────────────────
