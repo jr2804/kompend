@@ -209,7 +209,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "crawl4ai.AsyncWebCrawler",
+            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
@@ -233,7 +233,7 @@ class TestWebCrawler:
         async def _fake_arun(_url: str) -> MagicMock:  # noqa: ANN401
             return mock_result
 
-        with patch("crawl4ai.AsyncWebCrawler") as mock_crawler_cls:
+        with patch("knox.preprocessing.downloaders.crawler.AsyncWebCrawler") as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
             mock_crawler_cls.return_value.__aenter__.return_value = mock_instance
@@ -257,7 +257,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "crawl4ai.AsyncWebCrawler",
+            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
@@ -279,7 +279,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "crawl4ai.AsyncWebCrawler",
+            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
