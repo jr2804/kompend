@@ -46,7 +46,7 @@ $Args = @(
     "--llm-default-model", $LLMModel,
     "--embed-model",    $EmbedModel,
     "--embed-dim",      $EmbedDim,
-    "--index", "--synthesize", "--progress"
+    "--index", "--index-store", "--synthesize", "--progress"
 )
 
 if ($Force) {
