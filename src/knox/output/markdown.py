@@ -55,9 +55,15 @@ class MarkdownWriter(BaseOutputWriter):
             frontmatter = dict(self.frontmatter_defaults)
             frontmatter.update(node.metadata.get("frontmatter", {}))
 
+            # Build body with embedded images
+            body = node.content or ""
+            images = node.metadata.get("images", [])
+            if images:
+                body = self._embed_images(body, images)
+
             doc = Document(
                 title=node.title or "Untitled",
-                body=node.content or "",
+                body=body,
                 frontmatter=frontmatter,
                 heading_level=node.metadata.get("heading_level", 1),
                 source_chunks=node.source_chunks,
@@ -66,6 +72,35 @@ class MarkdownWriter(BaseOutputWriter):
             docs.append(doc)
 
         return docs
+
+    @staticmethod
+    def _embed_images(body: str, images: list[dict[str, Any]]) -> str:
+        """Embed image references into the document body.
+
+        Each image dict should have:
+        - ``path``: file path or base64 data URI
+        - ``caption``: optional VLM-generated caption (used as alt text)
+        - ``element_type``: "image" (for future extensibility)
+
+        Images are appended after the body text with proper Markdown syntax.
+        """
+        lines: list[str] = [body.rstrip(), ""] if body.strip() else []
+
+        for img in images:
+            img_path = img.get("path", "")
+            caption = img.get("caption", "")
+
+            if not img_path:
+                continue
+
+            # Build Markdown image syntax: ![alt](path)
+            alt_text = caption or "image"
+            lines.append(f"![{alt_text}]({img_path})")
+            if caption:
+                lines.append(f"*{caption}*")
+            lines.append("")
+
+        return "\n".join(lines)
 
     # ── Vault mode ──────────────────────────────────────────────────────
 

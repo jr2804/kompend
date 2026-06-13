@@ -29,7 +29,7 @@ from slugify import slugify as _slugify_impl
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import _discover_context_window
@@ -65,6 +65,46 @@ def _dedup_id(node_id: str, seen: set[str]) -> str:
         counter += 1
     seen.add(candidate)
     return candidate
+
+
+def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
+    """Extract image metadata from IMAGE chunks.
+
+    Returns a list of dicts with keys: path, caption, element_type.
+    Images are collected from:
+    - chunk.metadata["image_path"] (file mode)
+    - chunk.metadata["image_base64"] (base64 mode)
+    - VLM captions from resolved.entities with type="image_description"
+    """
+    images: list[dict[str, Any]] = []
+
+    for rc in chunks:
+        if ElementType.IMAGE not in rc.chunk.element_types:
+            continue
+
+        # Get image path or base64 data
+        img_path = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
+        if not img_path:
+            # Try resolved metadata
+            img_path = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
+
+        if not img_path:
+            continue
+
+        # Get VLM caption if available
+        caption = ""
+        for entity in rc.entities:
+            if entity.get("type") == "image_description" and entity.get("context"):
+                caption = entity["context"]
+                break
+
+        images.append({
+            "path": img_path,
+            "caption": caption,
+            "element_type": "image",
+        })
+
+    return images
 
 
 def _merge_node(
@@ -479,6 +519,9 @@ class TwoPhaseCompiler(BaseCompiler):
             # Nothing to merge — fall back to the base compiler.
             return self._fallback_compile(chunks)
 
+        # Collect images from IMAGE chunks for embedding in output
+        all_images = _extract_images_from_chunks(chunks)
+
         # Per-source content, collected in full.
         by_source: dict[str, str] = defaultdict(str)
         for rc in chunks:
@@ -551,7 +594,11 @@ class TwoPhaseCompiler(BaseCompiler):
                                     content=concept.get("definition", ""),
                                     node_type="concept",
                                     source_chunks=[],
-                                    metadata={"provenance": concept.get("sources", []), "two_phase": True},
+                                    metadata={
+                                        "provenance": concept.get("sources", []),
+                                        "two_phase": True,
+                                        "images": all_images,
+                                    },
                                 )
                             )
                     continue
@@ -572,6 +619,7 @@ class TwoPhaseCompiler(BaseCompiler):
                                 "provenance": list(page.get("provenance", []) or []),
                                 "related": list(page.get("related", []) or []),
                                 "two_phase": True,
+                                "images": all_images,
                             },
                         )
                     )

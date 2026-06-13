@@ -6,6 +6,7 @@ import dataclasses
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -344,7 +345,15 @@ def compile_cmd(
                 tracker.message("Output complete")
 
     try:
+        start_time = time.monotonic()
         wiki = pipeline.run(progress_callback=_progress_cb if tracker.enabled else None)
+        elapsed = time.monotonic() - start_time
+
+        # Enrich wiki metadata with timing and source info
+        wiki.metadata["duration_seconds"] = round(elapsed, 2)
+        wiki.metadata["source_count"] = len(all_input_files)
+        wiki.metadata["source_names"] = [Path(f).name for f in all_input_files[:20]]
+
         tracker.finish()
         typer.echo(f"Compiled wiki written to {output_dir_path}")
 

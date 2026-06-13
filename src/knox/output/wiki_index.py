@@ -30,12 +30,15 @@ def generate_index(wiki: CompiledWiki) -> str:
     article_count = len(wiki.nodes)
     total_words = sum(len(n.content.split()) for n in wiki.nodes)
     last_compile = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    duration = wiki.metadata.get("duration_seconds")
 
     lines.append("## Summary\n")
     lines.append(f"- **Sources:** {source_count}")
     lines.append(f"- **Articles:** {article_count}")
     lines.append(f"- **Total words:** {total_words:,}")
     lines.append(f"- **Last compile:** {last_compile}")
+    if duration is not None:
+        lines.append(f"- **Duration:** {duration:.1f}s")
     if wiki.quality_score:
         lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
     lines.append("")
@@ -60,19 +63,34 @@ def generate_log_entry(wiki: CompiledWiki) -> str:
     """Generate a single log entry for ``log.md``.
 
     Returns a Markdown section with timestamp, source/article counts,
-    and lists of created/updated pages.
+    duration, and lists of created/updated pages.
     """
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     source_count = wiki.metadata.get("source_count", 0)
     article_count = len(wiki.nodes)
+    duration = wiki.metadata.get("duration_seconds")
 
-    lines: list[str] = [
-        f"## [{now}] compile | {source_count} source(s) → {article_count} page(s)",
-    ]
+    # Build header with timing
+    header = f"## [{now}] compile | {source_count} source(s) → {article_count} page(s)"
+    if duration is not None:
+        header += f" | {duration:.1f}s"
+    lines: list[str] = [header]
 
     sources = wiki.metadata.get("source_names", [])
     if sources:
         lines.append(f"- Sources: {', '.join(sources)}")
+
+    # Per-document stats
+    if wiki.nodes:
+        total_words = sum(len(n.content.split()) for n in wiki.nodes)
+        avg_words = total_words // article_count if article_count else 0
+        lines.append(f"- Words: {total_words:,} total, ~{avg_words:,} avg/page")
+
+    # Timing breakdown
+    if duration is not None:
+        lines.append(f"- Duration: {duration:.1f}s")
+        if source_count and duration > 0:
+            lines.append(f"  - Per source: {duration / source_count:.1f}s")
 
     # List all pages as wikilinks
     if wiki.nodes:
@@ -80,6 +98,11 @@ def generate_log_entry(wiki: CompiledWiki) -> str:
         lines.append(f"- Created: {', '.join(page_links)}")
         if len(wiki.nodes) > 20:
             lines.append(f"- ... and {len(wiki.nodes) - 20} more")
+
+    # Edge and node counts
+    edge_count = len(wiki.edges)
+    if edge_count:
+        lines.append(f"- Edges: {edge_count} (cross-references)")
 
     return "\n".join(lines) + "\n"
 
