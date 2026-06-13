@@ -19,6 +19,8 @@ decisions. Many thanks to their creators and contributors.
 | **WeKnora** by Tencent | [Tencent/WeKnora](https://github.com/Tencent/WeKnora) | MIT | Enterprise wiki mode, ReACT agent orchestration, 20+ LLM providers, RBAC, multi-source sync |
 | **sage-wiki** by xoai | [xoai/sage-wiki](https://github.com/xoai/sage-wiki) | MIT | Configuration design, per-task model selection, output trust, contribution packs |
 | **Karpathy's LLM Wiki** | [gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | — | Foundational concept: LLM-maintained, self-compiling wiki from raw sources |
+| **Rohit G00's LLM Wiki v2** | [gist](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) | — | Memory lifecycle (confidence, supersession, forgetting, consolidation tiers), typed knowledge graph, hybrid BM25+vector+RRF search, event-driven hooks, quality scoring, and crystallization pattern |
+| **WiCER paper** (Huerta, Zinnia Tech) | [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1) | — | Iterative compile-evaluate-refine loop; CEGAR-style quality recovery |
 
 ## Per-Project Deep Dives
 
