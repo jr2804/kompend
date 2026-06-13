@@ -32,6 +32,18 @@ workers = 1
 # Minimum confidence (0.0-1.0) for typed relations to be kept.
 # relation_confidence_threshold = 0.0
 
+# ── Memory lifecycle ──────────────────────────────────────────────────────
+#
+# KNOX tracks a lifecycle state per wiki node across compiles:
+#   - confidence (evolves toward 1.0 with each re-compile)
+#   - tier (working → episodic → semantic → procedural)
+#   - supersession (old nodes replaced by same-title new nodes)
+#   - retention/decay (exponential forgetting curve)
+# Disabled by default to keep first-run output clean.
+# memory_enabled = true
+# memory_half_life_days = 90.0
+# memory_decay_threshold = 0.3
+
 # ── Budget settings ───────────────────────────────────────────────────────
 #
 # All budgets are in TOKENS (not characters). Approximate conversion:

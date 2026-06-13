@@ -310,17 +310,17 @@ class TestHeadingSkipRule:
 
 
 class TestStalePageRule:
-    def test_no_sources_dir_skips(self) -> None:
+    def test_no_sources_dir_passes_with_no_memory(self) -> None:
         wiki = _make_wiki([_make_node("n1", "Alpha", "Content")])
         rule = StalePageRule()
         results = rule.check(wiki)
-        assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
 
-    def test_nonexistent_sources_dir_skips(self, tmp_path: Any) -> None:
+    def test_nonexistent_sources_dir_passes_with_no_memory(self, tmp_path: Any) -> None:
         wiki = _make_wiki([_make_node("n1", "Alpha", "Content")])
         rule = StalePageRule()
         results = rule.check(wiki, sources_dir=str(tmp_path / "nonexistent"))
-        assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
 
     def test_source_file_not_found(self, tmp_path: Any) -> None:
         node = _make_node("n1", "Alpha", "Content", metadata={"source_file": "missing.pdf"})
@@ -337,6 +337,27 @@ class TestStalePageRule:
         rule = StalePageRule()
         results = rule.check(wiki, sources_dir=str(tmp_path))
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_superseded_node_flagged(self) -> None:
+        node = _make_node("n1", "Old Page", "Content")
+        wiki = _make_wiki([node])
+        wiki.metadata["memory"] = {"superseded": ["n1"]}
+        rule = StalePageRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details.get("reason") == "superseded"
+
+    def test_decayed_node_flagged(self) -> None:
+        node = _make_node("n1", "Stale Page", "Content")
+        wiki = _make_wiki([node])
+        wiki.metadata["memory"] = {"stale": ["n1"]}
+        rule = StalePageRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details.get("reason") == "decayed"
+        assert failures[0].severity.value == "info"
 
 
 # ── Rule 8: source-not-found ────────────────────────────────────────────

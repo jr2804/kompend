@@ -428,6 +428,47 @@ RelationConfidenceThreshold = Annotated[
     ),
 ]
 
+MemoryEnabled = Annotated[
+    bool,
+    typer.Option(
+        "--memory/--no-memory",
+        help=(
+            "Track node lifecycle (confidence, tiers, supersession, retention/decay) "
+            "across compiles. Disabled skips the memory update pass. "
+            f"Env: {APP_NAME_UPPERCASE}_MEMORY_ENABLED."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_ENABLED",
+    ),
+]
+
+MemoryHalfLifeDays = Annotated[
+    float,
+    typer.Option(
+        "--memory-half-life-days",
+        help=(
+            "Retention half-life in days for the memory decay curve. "
+            "Nodes whose retention drops below the decay threshold are flagged as stale. "
+            f"Env: {APP_NAME_UPPERCASE}_MEMORY_HALF_LIFE_DAYS."
+        ),
+        min=1.0,
+        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_HALF_LIFE_DAYS",
+    ),
+]
+
+MemoryDecayThreshold = Annotated[
+    float,
+    typer.Option(
+        "--memory-decay-threshold",
+        help=(
+            "Retention value (0.0-1.0) below which a node is considered stale. "
+            f"Env: {APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD."
+        ),
+        min=0.0,
+        max=1.0,
+        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD",
+    ),
+]
+
 LlmFallbackChain = Annotated[
     list[str] | None,
     typer.Option(

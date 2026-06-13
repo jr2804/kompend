@@ -302,42 +302,72 @@ class HeadingSkipRule(BaseLintRule):
 
 
 class StalePageRule(BaseLintRule):
-    """Detect pages whose source files have been modified since last compile."""
+    """Detect pages whose source files have been modified since last compile.
+
+    Also checks the memory lifecycle store for superseded and decayed (stale)
+    nodes when memory metadata is present in ``wiki.metadata``.
+    """
 
     name = "stale-page"
     description = "Pages whose source files changed since last compile"
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
-        if sources_dir is None:
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
-            return results
 
-        sources_path = Path(sources_dir)
-        if not sources_path.exists():
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=f"Sources directory not found: {sources_dir}"))
-            return results
+        # ── Source file existence check ──
+        if sources_dir is not None:
+            sources_path = Path(sources_dir)
+            if sources_path.exists():
+                for node in wiki.nodes:
+                    source_file_str = node.metadata.get("source_file")
+                    if not source_file_str:
+                        continue
+                    source_file = Path(source_file_str)
+                    if not source_file.is_absolute():
+                        source_file = sources_path / source_file
+                    if not source_file.exists():
+                        results.append(
+                            LintResult(
+                                rule=self.name,
+                                outcome=LintRuleOutcome.FAIL,
+                                severity=Severity.WARNING,
+                                message=f"Source file not found for page '{node.title}': {source_file}",
+                                page_id=node.id,
+                                details={"source_file": str(source_file)},
+                            )
+                        )
+
+        # ── Memory lifecycle checks ──
+        memory_meta = wiki.metadata.get("memory", {})
+        superseded_ids = set(memory_meta.get("superseded", []))
+        stale_ids = set(memory_meta.get("stale", []))
 
         for node in wiki.nodes:
-            source_file_str = node.metadata.get("source_file")
-            if not source_file_str:
-                continue
-            source_file = Path(source_file_str)
-            if not source_file.is_absolute():
-                source_file = sources_path / source_file
-            if not source_file.exists():
+            if node.id in superseded_ids:
                 results.append(
                     LintResult(
                         rule=self.name,
                         outcome=LintRuleOutcome.FAIL,
                         severity=Severity.WARNING,
-                        message=f"Source file not found for page '{node.title}': {source_file}",
+                        message=f"Page '{node.title}' has been superseded by a newer node",
                         page_id=node.id,
-                        details={"source_file": str(source_file)},
+                        details={"reason": "superseded"},
                     )
                 )
+            elif node.id in stale_ids:
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.FAIL,
+                        severity=Severity.INFO,
+                        message=f"Page '{node.title}' has decayed below retention threshold",
+                        page_id=node.id,
+                        details={"reason": "decayed"},
+                    )
+                )
+
         if not results:
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All source files intact"))
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All source files intact and memory fresh"))
         return results
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301

@@ -150,6 +150,9 @@ class PipelineConfig:
     privacy_filter: bool = True  # redact PII/secrets from parsed content
     resolve_relations: bool = False  # Run LLM relation extraction during Tier 2
     relation_confidence_threshold: float = 0.0  # Minimum confidence for typed relations
+    memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
+    memory_half_life_days: float = 90.0  # Retention half-life in days
+    memory_decay_threshold: float = 0.3  # Retention below this = stale
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -245,6 +248,9 @@ class PipelineConfig:
             privacy_filter=cfg.get("trust.privacy_filter", True),
             resolve_relations=cfg.get("compile.resolve_relations", False),
             relation_confidence_threshold=cfg.get("compile.relation_confidence_threshold", 0.0),
+            memory_enabled=cfg.get("compile.memory_enabled", True),
+            memory_half_life_days=cfg.get("compile.memory_half_life_days", 90.0),
+            memory_decay_threshold=cfg.get("compile.memory_decay_threshold", 0.3),
             llm=llm_config,
             budget=budget_config,
             output=output_config,

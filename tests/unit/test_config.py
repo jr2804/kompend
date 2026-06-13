@@ -243,6 +243,28 @@ class TestResolveConfig:
         assert cfg.get("compile.resolve_relations") is False
         assert cfg.get("compile.relation_confidence_threshold") == 0.9
 
+    def test_memory_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.memory_enabled") is True
+        assert cfg.get("compile.memory_half_life_days") == 90.0
+        assert cfg.get("compile.memory_decay_threshold") == 0.3
+
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile]\nmemory_enabled = false\nmemory_half_life_days = 180.0\nmemory_decay_threshold = 0.2\n")
+        cfg = resolve_config()
+        assert cfg.get("compile.memory_enabled") is False
+        assert cfg.get("compile.memory_half_life_days") == 180.0
+        assert cfg.get("compile.memory_decay_threshold") == 0.2
+
+        monkeypatch.setenv("KNOX_MEMORY_ENABLED", "true")
+        monkeypatch.setenv("KNOX_MEMORY_HALF_LIFE_DAYS", "45.0")
+        monkeypatch.setenv("KNOX_MEMORY_DECAY_THRESHOLD", "0.1")
+        cfg = resolve_config()
+        assert cfg.get("compile.memory_enabled") is True
+        assert cfg.get("compile.memory_half_life_days") == 45.0
+        assert cfg.get("compile.memory_decay_threshold") == 0.1
+
     def test_provenance_tracking(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
         config_file.write_text("[compile]\nchunk_size = 128\n")

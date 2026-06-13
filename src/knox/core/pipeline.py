@@ -26,6 +26,7 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
 from knox.core.hooks import HookEvent, fire_hook
+from knox.core.memory import update_memory_for_compile
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 from knox.core.pipeline_defs import (
     ALL_TIERS,
@@ -173,6 +174,16 @@ class WikiPipeline:
 
         self.save_state()
         self._progress_callback = None
+
+        if self.config.memory_enabled and wiki.nodes:
+            base_dir = self.config.resolved_base_dir()
+            update_memory_for_compile(
+                wiki,
+                base_dir,
+                half_life_days=self.config.memory_half_life_days,
+                decay_threshold=self.config.memory_decay_threshold,
+            )
+
         logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
         fire_hook(
             HookEvent.POST_COMPILE,
