@@ -221,3 +221,23 @@ knox compile
 | `KNOX_VLM_MODEL` | Vision model for image captioning |
 | `KNOX_RESOLVE_RELATIONS` | Enable typed relation extraction (true/false) |
 | `KNOX_RELATION_CONFIDENCE_THRESHOLD` | Minimum confidence for typed relations |
+
+## Event Hooks
+
+KNOX fires hooks at key pipeline events. Register callbacks in `knox.toml` under `[hooks]` using `module:attribute` syntax:
+
+```toml
+[hooks]
+post_compile = ["mypkg.hooks:auto_lint"]
+on_capture = ["mypkg.hooks:notify"]
+```
+
+| Event | Fired by | Context data |
+|-------|----------|-------------|
+| `pre_compile` | `compile` | `source_dir`, `output_dir`, `mode` |
+| `post_compile` | `compile` | `wiki`, `output_dir`, `node_count` |
+| `on_capture` | `capture`, `learn` | `paths`, `sources_dir` |
+| `on_query` | `query` | `query`, `results`, `scope` |
+| `on_lint` | `lint` | `report`, `wiki` |
+
+Callbacks receive a `HookContext` with `.event` and `.data`. Exceptions in callbacks are swallowed and logged so they never break the pipeline.

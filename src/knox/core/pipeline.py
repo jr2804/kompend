@@ -25,6 +25,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
+from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 from knox.core.pipeline_defs import (
     ALL_TIERS,
@@ -124,6 +125,12 @@ class WikiPipeline:
         """
         self._progress_callback = progress_callback
         logger.info("Starting KNOX pipeline (mode=%s): %s", self.config.mode, self.config.source_dir)
+        fire_hook(
+            HookEvent.PRE_COMPILE,
+            source_dir=str(self.config.source_dir),
+            output_dir=str(self.config.output_dir),
+            mode=str(self.config.mode),
+        )
 
         # --force: invalidate all caches before starting.
         if self.config.force:
@@ -167,6 +174,12 @@ class WikiPipeline:
         self.save_state()
         self._progress_callback = None
         logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
+        fire_hook(
+            HookEvent.POST_COMPILE,
+            wiki=wiki,
+            output_dir=str(self.config.output_dir),
+            node_count=len(wiki.nodes),
+        )
         return wiki
 
     def run_tier(self, tier: str) -> None:

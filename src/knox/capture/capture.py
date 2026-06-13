@@ -7,6 +7,7 @@ from pathlib import Path
 
 from slugify import slugify as _slugify_impl
 
+from knox.core.hooks import HookEvent, fire_hook
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -58,6 +59,7 @@ source: capture
         logger.info("Captured %s -> %s", item.kind, filepath)
         paths.append(filepath)
 
+    fire_hook(HookEvent.ON_CAPTURE, items=items, paths=paths)
     return paths
 
 

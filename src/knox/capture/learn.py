@@ -6,6 +6,8 @@ from pathlib import Path
 
 from slugify import slugify as _slugify_impl
 
+from knox.core.hooks import HookEvent, fire_hook
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,7 @@ source: manual
 """
     filepath.write_text(frontmatter, encoding="utf-8")
     logger.info("Learned fact -> %s", filepath)
+    fire_hook(HookEvent.ON_CAPTURE, paths=[filepath], text=text)
     return filepath
 
 

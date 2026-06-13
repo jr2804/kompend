@@ -161,3 +161,13 @@ history_size = 20
 [ignore]
 # Glob patterns excluded from source discovery
 # patterns = ["*.tmp", ".drafts/", "*.bak"]
+
+# ── Event hooks ─────────────────────────────────────────────────────────
+# Register Python callables that fire on pipeline events.
+# Each value is a list of "module:attribute" import paths.
+# Events: pre_compile, post_compile, on_capture, on_query, on_lint
+
+[hooks]
+# post_compile = ["mypkg.hooks:auto_lint"]
+# on_capture = ["mypkg.hooks:notify"]
+# on_query = ["mypkg.hooks:log_query"]

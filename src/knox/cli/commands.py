@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -98,6 +99,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
+from knox.core.hooks import HookEvent, clear_hooks, fire_hook, load_hooks_from_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
@@ -135,6 +137,86 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
     if not rule:
         return False
     return any(r in LLM_RULE_BY_NAME for r in rule)
+
+
+def _load_hooks() -> None:
+    """Load event hooks from the resolved config into the global registry."""
+    clear_hooks()
+    try:
+        cfg = resolve_config()
+        load_hooks_from_config(cfg.raw)
+    except Exception:
+        logger.debug("Could not load hooks from config", exc_info=True)
+
+
+def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:
+    """Build a progress callback that translates pipeline events into Rich updates."""
+
+    def _cb(phase: str, current: int, total: int, detail: str) -> None:
+        if phase == "parse":
+            if current == 0:
+                tracker.start()
+            elif detail == "done":
+                tracker.message(f"Parsed {total} file(s)")
+            else:
+                tracker.start_file(detail)
+                tracker.step("Parse")
+                tracker.step("Chunk")
+                tracker.finish_file(detail, "OK")
+        elif phase == "index":
+            if current == 0:
+                tracker.start()
+                tracker.message("Downloading sources…")
+            else:
+                tracker.message("Download complete")
+        elif phase == "resolve":
+            if current == 0:
+                tracker.message("Resolving chunks…")
+            else:
+                tracker.message("Resolve complete")
+        elif phase == "compile":
+            if current == 0:
+                tracker.message("Compiling wiki…")
+            else:
+                tracker.message("Compile complete")
+        elif phase == "output":
+            if current == 0:
+                tracker.message("Writing output…")
+            else:
+                tracker.message("Output complete")
+
+    return _cb
+
+
+def _resolve_compile_inputs(
+    files: CompileFiles,
+    online_urls: list[str],
+    url_file: UrlFile,
+    sources_dir_path: Path,
+    recursive: Recursive,
+    ignore: Ignore,
+) -> list[Path]:
+    """Resolve file arguments and URLs into a deduplicated input file list."""
+    if url_file is not None:
+        for raw_line in url_file.read_text(encoding="utf-8").splitlines():
+            stripped = raw_line.strip()
+            if stripped and not stripped.startswith("#"):
+                online_urls.append(stripped)
+
+    resolved = resolve_files(*files, recursive=recursive, ignore_patterns=ignore)
+
+    sources_dir_path.mkdir(parents=True, exist_ok=True)
+    local_files = ensure_in_sources(resolved, sources_dir_path)
+    downloaded = download_urls(online_urls, sources_dir_path)
+
+    all_input_files = list(dict.fromkeys(local_files + downloaded))
+    if not all_input_files:
+        all_input_files = resolve_files(
+            str(sources_dir_path),
+            recursive=recursive,
+            ignore_patterns=ignore,
+        )
+    return all_input_files
 
 
 @app.command(name="parse")
@@ -231,42 +313,12 @@ def compile_cmd(
     """
     if online_urls is None:
         online_urls = []
-    if url_file is not None:
-        for raw_line in url_file.read_text(encoding="utf-8").splitlines():
-            stripped = raw_line.strip()
-            if stripped and not stripped.startswith("#"):
-                online_urls.append(stripped)
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
-    # 1. Resolve file arguments (with optional ignore patterns)
-    resolved = resolve_files(
-        *files,
-        recursive=recursive,
-        ignore_patterns=ignore,
+    all_input_files = _resolve_compile_inputs(
+        files, online_urls, url_file, sources_dir_path, recursive, ignore,
     )
-    if not resolved and not online_urls:
-        typer.echo("No files or URLs to compile.", err=True)
-        raise typer.Exit(1)
-
-    # 2. Ensure sources dir exists
-    sources_dir_path.mkdir(parents=True, exist_ok=True)
-
-    # 3. Copy external files into sources dir
-    local_files = ensure_in_sources(resolved, sources_dir_path)
-
-    # 4. Download URLs into sources dir
-    downloaded = download_urls(online_urls, sources_dir_path)
-
-    # 5. If the only argument was a directory (or no files resolved),
-    #    scan the sources dir for all supported files
-    all_input_files = list(dict.fromkeys(local_files + downloaded))  # dedupe, preserve order
-    if not all_input_files:
-        all_input_files = resolve_files(
-            str(sources_dir_path),
-            recursive=recursive,
-            ignore_patterns=ignore,
-        )
     if not all_input_files:
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
         raise typer.Exit(1)
@@ -319,6 +371,7 @@ def compile_cmd(
     )
 
     pipeline = build_pipeline(pipeline_config)
+    _load_hooks()
 
     if list_tiers:
         _print_tier_listing(pipeline)
@@ -329,44 +382,11 @@ def compile_cmd(
         total_files=len(all_input_files),
         force_progress=show_progress,
     )
-
-    def _progress_cb(phase: str, current: int, total: int, detail: str) -> None:
-        """Translate core pipeline events into Rich progress updates."""
-        if phase == "parse":
-            if current == 0:
-                tracker.start()
-            elif detail == "done":
-                tracker.message(f"Parsed {total} file(s)")
-            else:
-                tracker.start_file(detail)
-                tracker.step("Parse")
-                tracker.step("Chunk")
-                tracker.finish_file(detail, "OK")
-        elif phase == "index":
-            if current == 0:
-                tracker.start()
-                tracker.message("Downloading sources…")
-            else:
-                tracker.message("Download complete")
-        elif phase == "resolve":
-            if current == 0:
-                tracker.message("Resolving chunks…")
-            else:
-                tracker.message("Resolve complete")
-        elif phase == "compile":
-            if current == 0:
-                tracker.message("Compiling wiki…")
-            else:
-                tracker.message("Compile complete")
-        elif phase == "output":
-            if current == 0:
-                tracker.message("Writing output…")
-            else:
-                tracker.message("Output complete")
+    progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
 
     try:
         start_time = time.monotonic()
-        wiki = pipeline.run(progress_callback=_progress_cb if tracker.enabled else None)
+        wiki = pipeline.run(progress_callback=progress_cb)
         elapsed = time.monotonic() - start_time
 
         # Enrich wiki metadata with timing and source info
@@ -738,6 +758,8 @@ def lint_cmd(
         sources_dir=sources_dir_str,
     )
     report = runner.run(wiki)
+    _load_hooks()
+    fire_hook(HookEvent.ON_LINT, report=report, wiki=wiki)
 
     if json_output:
         typer.echo(report_to_json(report))
@@ -943,6 +965,7 @@ def query_cmd(
     """
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
     base_dir = output_dir_path.parent
+    _load_hooks()
 
     if _classify_intent(query, no_classify, format):
         return
@@ -969,6 +992,8 @@ def query_cmd(
     finally:
         if vector_store is not None:
             vector_store.close()
+
+    fire_hook(HookEvent.ON_QUERY, query=query, results=results, scope=scope)
 
     if not results:
         typer.echo("No relevant content found.")

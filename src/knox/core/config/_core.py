@@ -143,6 +143,7 @@ DEFAULTS: dict[str, Any] = {
     "ignore": {
         "patterns": [],
     },
+    "hooks": {},
 }
 
 # ── Env var mapping ──────────────────────────────────────────────────────
