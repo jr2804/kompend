@@ -101,6 +101,7 @@ class OutputConfig:
     flavor: str | None = None
     frontmatter: dict[str, Any] = field(default_factory=dict)
     rumdl_config: Path | None = None
+    max_related_links: int = 15
 
 
 @dataclass

@@ -44,6 +44,7 @@ from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
+from knox.resolution.llm_resolver import LLMResolver
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
@@ -645,6 +646,7 @@ def build_pipeline(
             flavor=config.output.flavor,
             frontmatter_defaults=config.output.frontmatter or {},
             rumdl_config=config.output.rumdl_config,
+            max_related_links=config.output.max_related_links,
         ),
     )
 
@@ -652,10 +654,27 @@ def build_pipeline(
 def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
     """Construct the default resolver chain (M7).
 
-    When VLM is available (``config.vlm_model`` is set and the model is
-    reachable), a :class:`VLMEnricher` is appended to the chain.
+    When relation extraction is enabled, an :class:`LLMResolver` runs first
+    to extract typed relations with confidence. When a VLM model is
+    configured, a :class:`VLMEnricher` is appended to enrich image chunks
+    without discarding earlier resolver output.
     """
     resolvers: list[BaseResolver] = []
+
+    if config.resolve_relations:
+        if config.llm.default_model:
+            resolvers.append(
+                LLMResolver(
+                    client=llm_client,
+                    confidence_threshold=config.relation_confidence_threshold,
+                )
+            )
+            logger.debug(
+                "LLMResolver added to resolver chain (threshold=%s)",
+                config.relation_confidence_threshold,
+            )
+        else:
+            logger.warning("Relation extraction requested but no default LLM model is configured")
 
     if config.llm.vlm_model:
         try:
@@ -673,7 +692,8 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
         except Exception as exc:
             logger.debug("VLMEnricher not available: %s", exc)
-    else:
-        logger.info("No VLM model configured — chunks will pass through without resolution")
+
+    if not resolvers:
+        logger.info("No resolvers configured — chunks will pass through without resolution")
 
     return ResolverChain(resolvers)

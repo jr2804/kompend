@@ -138,6 +138,24 @@ class TestMarkdownWriter:
         assert "## Related" in intro
         assert "[[Core Concepts]]" in intro
 
+    def test_vault_mode_typed_relation_annotation(self, temp_output: Path) -> None:
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="a", title="Page A", content="A.", node_type="section"),
+                WikiNode(id="b", title="Page B", content="B.", node_type="section"),
+            ],
+            edges=[
+                {"source": "a", "target": "b", "type": "uses", "confidence": 0.91},
+            ],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(wiki, temp_output)
+
+        page_a = (temp_output / "a.md").read_text(encoding="utf-8")
+        assert "## Related" in page_a
+        assert "[[Page B]] (uses) — confidence 0.91" in page_a
+
     def test_vault_mode_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=True)
         result_path = writer.write(empty_wiki, temp_output)

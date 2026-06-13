@@ -46,6 +46,7 @@ Config files use TOML. Example ``knox.toml``::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -83,6 +84,8 @@ DEFAULTS: dict[str, Any] = {
         "no_cache": False,
         "force": False,
         "page_kind": None,
+        "resolve_relations": False,
+        "relation_confidence_threshold": 0.0,
         "review": False,
         "bypass_review": False,
         "provenance": False,
@@ -112,6 +115,7 @@ DEFAULTS: dict[str, Any] = {
             "wicer_eval_output_max": 4096,
         },
         "llm": {
+            "vlm_model": None,
             "fallback_chain": [],
             "fallback_max_retries": 2,
         },
@@ -119,6 +123,7 @@ DEFAULTS: dict[str, Any] = {
             "flavor": None,
             "frontmatter": {},
             "rumdl_config": None,
+            "max_related_links": 15,
         },
         "embedding": {
             "dim": 384,
@@ -168,10 +173,14 @@ _ENV_MAP: dict[str, str] = {
     "compile.budget.overview_output_min": "KNOX_BUDGET_OVERVIEW_OUTPUT_MIN",
     "compile.budget.overview_output_max": "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
     "compile.llm.default_model": "KNOX_LLM_DEFAULT_MODEL",
+    "compile.llm.vlm_model": "KNOX_VLM_MODEL",
+    "compile.resolve_relations": "KNOX_RESOLVE_RELATIONS",
+    "compile.relation_confidence_threshold": "KNOX_RELATION_CONFIDENCE_THRESHOLD",
     "compile.llm.fallback_chain": "KNOX_LLM_FALLBACK_CHAIN",
     "compile.llm.fallback_max_retries": "KNOX_LLM_FALLBACK_MAX_RETRIES",
     "compile.output.flavor": "KNOX_OUTPUT_FLAVOR",
     "compile.output.rumdl_config": "KNOX_RUMDL_CONFIG",
+    "compile.output.max_related_links": "KNOX_OUTPUT_MAX_RELATED_LINKS",
     "compile.embedding.model": "KNOX_EMBEDDING_MODEL",
     "compile.embedding.provider": "KNOX_EMBEDDING_PROVIDER",
     "compile.embedding.dim": "KNOX_EMBEDDING_DIM",
@@ -330,7 +339,10 @@ def _read_env_vars() -> dict[str, Any]:
             coerced = False
         elif value.isdigit():
             coerced = int(value)
-        elif "," in value:
+        else:
+            with contextlib.suppress(ValueError):
+                coerced = float(value)
+        if "," in value and not isinstance(coerced, (int, float)):
             coerced = [v.strip() for v in value.split(",") if v.strip()]
         _set_dot(result, dotted_key, coerced)
     return result

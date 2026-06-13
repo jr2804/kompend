@@ -29,6 +29,7 @@ def _chunk(
     text: str = "Sample text.",
     heading: str = "",
     chunk_id: str = "chunk_001",
+    source_file: Path | None = None,
 ) -> Chunk:
     return Chunk(
         id=chunk_id,
@@ -36,6 +37,7 @@ def _chunk(
         element_types=[ElementType.TEXT],
         source_elements=[0],
         heading_context=heading,
+        source_file=source_file,
     )
 
 
@@ -100,6 +102,8 @@ class TestGraphCompiler:
         assert wiki.edges == []
         assert wiki.toc == []
         assert wiki.metadata["chunk_count"] == 0
+        assert wiki.metadata["source_count"] == 0
+        assert wiki.metadata["source_names"] == []
 
     def test_heading_groups_form_nodes(self) -> None:
         chunks = _make_chunks(count=4, heading="Section A")
@@ -178,12 +182,87 @@ class TestGraphCompiler:
         assert wiki.metadata["node_count"] == 1  # all same heading
         assert "model" in wiki.metadata
 
+    def test_source_count_and_names_from_chunks(self) -> None:
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="A", heading="Sec", chunk_id="c1", source_file=Path("paper1.pdf"))),
+            ResolvedChunk(chunk=_chunk(text="B", heading="Sec", chunk_id="c2", source_file=Path("paper1.pdf"))),
+            ResolvedChunk(chunk=_chunk(text="C", heading="Sec", chunk_id="c3", source_file=Path("paper2.pdf"))),
+        ]
+        compiler = GraphCompiler("model")
+        wiki = compiler.compile(chunks)
+        assert wiki.metadata["source_count"] == 2
+        assert wiki.metadata["source_names"] == ["paper1.pdf", "paper2.pdf"]
+
     def test_no_entities_no_edges(self) -> None:
         c = _chunk(text="Simple text.", heading="Docs")
         rc = ResolvedChunk(chunk=c, entities=[])
         compiler = GraphCompiler("model")
         wiki = compiler.compile([rc])
         assert wiki.edges == []
+
+    def test_typed_relations_create_edges(self) -> None:
+        c1 = _chunk(text="KNOX overview.", heading="Overview", chunk_id="c1")
+        c2 = _chunk(text="WiCER details.", heading="Methods", chunk_id="c2")
+        rc1 = ResolvedChunk(
+            chunk=c1,
+            entities=[{"name": "KNOX", "type": "project"}],
+            relations=[{"source": "KNOX", "target": "WiCER", "type": "uses", "confidence": 0.85}],
+        )
+        rc2 = ResolvedChunk(
+            chunk=c2,
+            entities=[{"name": "WiCER", "type": "method"}],
+            relations=[],
+        )
+        compiler = GraphCompiler("model")
+        wiki = compiler.compile([rc1, rc2])
+        typed = [e for e in wiki.edges if e.get("type") == "uses"]
+        assert len(typed) == 1
+        assert typed[0]["source"] != typed[0]["target"]
+        assert typed[0]["confidence"] == pytest.approx(0.85)
+
+    def test_typed_relations_skip_missing_entities(self) -> None:
+        c1 = _chunk(text="KNOX overview.", heading="Overview", chunk_id="c1")
+        rc1 = ResolvedChunk(
+            chunk=c1,
+            entities=[{"name": "KNOX", "type": "project"}],
+            relations=[{"source": "KNOX", "target": "Missing", "type": "uses", "confidence": 0.9}],
+        )
+        compiler = GraphCompiler("model")
+        wiki = compiler.compile([rc1])
+        assert wiki.edges == []
+
+    def test_overview_kind_inferred(self) -> None:
+        c = _chunk(text="Overview content.", heading="", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c)
+        wiki = GraphCompiler("model").compile([rc])
+        assert wiki.nodes[0].node_type == "overview"
+        assert wiki.nodes[0].metadata["frontmatter"]["kind"] == "overview"
+
+    def test_comparison_kind_inferred(self) -> None:
+        c = _chunk(text="Comparison text.", heading="Comparison of Methods", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c)
+        wiki = GraphCompiler("model").compile([rc])
+        assert wiki.nodes[0].node_type == "comparison"
+
+    def test_entity_kind_inferred_when_title_matches_entity(self) -> None:
+        c = _chunk(text="KNOX details.", heading="KNOX", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "KNOX", "type": "project"}])
+        wiki = GraphCompiler("model").compile([rc])
+        assert wiki.nodes[0].node_type == "entity"
+
+    def test_concept_kind_default(self) -> None:
+        c = _chunk(text="Some concept.", heading="Signal Theory", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "KNOX", "type": "project"}])
+        wiki = GraphCompiler("model").compile([rc])
+        assert wiki.nodes[0].node_type == "concept"
+
+    def test_kind_distribution_in_metadata(self) -> None:
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="Overview.", heading="", chunk_id="c1")),
+            ResolvedChunk(chunk=_chunk(text="Comparison.", heading="Comparison", chunk_id="c2")),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert wiki.metadata["kinds"] == {"overview": 1, "comparison": 1}
 
 
 # ===========================================================================
@@ -207,6 +286,8 @@ class TestWiCERCompilerUnavailable:
         wiki = compiler.compile([])
         assert isinstance(wiki, CompiledWiki)
         assert wiki.nodes == []
+        assert wiki.metadata["source_count"] == 0
+        assert wiki.metadata["source_names"] == []
         assert wiki.metadata["wicer_iterations"] == 0
 
     def test_fallback_blind_compilation_no_litellm(self) -> None:

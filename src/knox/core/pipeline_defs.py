@@ -148,6 +148,8 @@ class PipelineConfig:
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
+    resolve_relations: bool = False  # Run LLM relation extraction during Tier 2
+    relation_confidence_threshold: float = 0.0  # Minimum confidence for typed relations
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -241,6 +243,8 @@ class PipelineConfig:
             page_kind=cfg.get("compile.page_kind"),
             compiler=cfg.get("compile.compiler", Compiler.GRAPH),
             privacy_filter=cfg.get("trust.privacy_filter", True),
+            resolve_relations=cfg.get("compile.resolve_relations", False),
+            relation_confidence_threshold=cfg.get("compile.relation_confidence_threshold", 0.0),
             llm=llm_config,
             budget=budget_config,
             output=output_config,

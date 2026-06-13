@@ -36,7 +36,7 @@ class ResolverChain(BaseResolver):
         result: ResolvedChunk = self._resolvers[0].resolve(chunk)
         for resolver in self._resolvers[1:]:
             try:
-                enriched = resolver.resolve(chunk)
+                enriched = resolver.enrich(result)
                 if enriched is not None:
                     result = enriched
             except Exception:

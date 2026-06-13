@@ -137,6 +137,11 @@ class TestEnvVars:
         result = _read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
+    def test_vlm_model_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
+        result = _read_env_vars()
+        assert result["compile"]["llm"]["vlm_model"] == "openai/gpt-4o"
+
 
 # ── Config file discovery ───────────────────────────────────────────────
 
@@ -185,6 +190,7 @@ class TestResolveConfig:
         assert cfg.get("compile.chunk_size") == 512
         assert cfg.get("compile.format") == "markdown"
         assert cfg.get("compile.llm.fallback_max_retries") == 2
+        assert cfg.get("compile.llm.vlm_model") is None
 
     def test_project_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
@@ -207,6 +213,35 @@ class TestResolveConfig:
         monkeypatch.setenv("KNOX_CHUNK_SIZE", "64")
         cfg = resolve_config(cli_overrides={"compile.chunk_size": 32})
         assert cfg.get("compile.chunk_size") == 32
+
+    def test_vlm_model_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text('[compile.llm]\nvlm_model = "ollama/llava"\n')
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("compile.llm.vlm_model") == "ollama/llava"
+
+        monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
+        assert resolve_config().get("compile.llm.vlm_model") == "openai/gpt-4o"
+
+        assert resolve_config(cli_overrides={"compile.llm.vlm_model": "anthropic/claude-sonnet"}).get("compile.llm.vlm_model") == "anthropic/claude-sonnet"
+
+    def test_relation_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.resolve_relations") is False
+        assert cfg.get("compile.relation_confidence_threshold") == 0.0
+
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile]\nresolve_relations = true\nrelation_confidence_threshold = 0.5\n")
+        cfg = resolve_config()
+        assert cfg.get("compile.resolve_relations") is True
+        assert cfg.get("compile.relation_confidence_threshold") == 0.5
+
+        monkeypatch.setenv("KNOX_RESOLVE_RELATIONS", "false")
+        monkeypatch.setenv("KNOX_RELATION_CONFIDENCE_THRESHOLD", "0.9")
+        cfg = resolve_config()
+        assert cfg.get("compile.resolve_relations") is False
+        assert cfg.get("compile.relation_confidence_threshold") == 0.9
 
     def test_provenance_tracking(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"

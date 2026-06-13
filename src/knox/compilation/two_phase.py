@@ -98,41 +98,106 @@ def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, A
                 caption = entity["context"]
                 break
 
-        images.append({
-            "path": img_path,
-            "caption": caption,
-            "element_type": "image",
-        })
+        images.append(
+            {
+                "path": img_path,
+                "caption": caption,
+                "element_type": "image",
+            }
+        )
 
     return images
+
+
+def _split_sections(text: str) -> dict[str, str]:
+    """Split markdown text into sections keyed by heading.
+
+    Content before the first heading is stored under the empty-string key.
+    """
+    sections: dict[str, str] = {}
+    current_heading = ""
+    current_lines: list[str] = []
+
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("## "):
+            if current_lines:
+                sections[current_heading] = "\n".join(current_lines).strip()
+            current_heading = stripped[3:].strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections[current_heading] = "\n".join(current_lines).strip()
+
+    return sections
+
+
+def _merge_sections(existing: dict[str, str], incoming: dict[str, str]) -> str:
+    """Merge two section dicts, keeping the richer version per heading."""
+    merged: dict[str, str] = {}
+    for heading in dict.fromkeys(list(existing) + list(incoming)):
+        ex = existing.get(heading, "")
+        inc = incoming.get(heading, "")
+        merged[heading] = ex if len(ex) >= len(inc) else inc
+
+    result = ""
+    for heading, body in merged.items():
+        if heading:
+            result += f"## {heading}\n{body}\n\n"
+        elif body:
+            result += f"{body}\n\n"
+    return result.strip()
+
+
+def _compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
+    """Compute a 0–100 quality score for a compiled wiki.
+
+    Weighted average of three sub-scores:
+    - **Completeness** (40 %): fraction of nodes with non-trivial content (>50 chars)
+    - **Connectivity** (30 %): edge density relative to a target of ~3 edges/node
+    - **Richness** (30 %): average content length normalised against a 500-char target
+    """
+    n = len(nodes)
+    if n == 0:
+        return 0.0
+
+    non_empty = sum(1 for node in nodes if len((node.content or "").strip()) > 50)
+    completeness = non_empty / n
+
+    target_edges = n * 3
+    connectivity = min(len(edges) / target_edges, 1.0) if target_edges > 0 else 0.0
+
+    avg_len = sum(len(node.content or "") for node in nodes) / n
+    richness = min(avg_len / 500.0, 1.0)
+
+    return round((completeness * 0.4 + connectivity * 0.3 + richness * 0.3) * 100, 1)
 
 
 def _merge_node(
     existing: WikiNode,
     incoming: WikiNode,
 ) -> WikiNode:
-    """Merge *incoming* node into *existing*, keeping the richer content.
+    """Merge *incoming* node into *existing* using section-aware dedup.
 
-    If the existing node has empty/short content, the incoming content replaces it.
-    Otherwise, the incoming content is appended as additional context.
+    Sections with the same heading are de-duplicated, keeping the longer
+    (richer) version.  Sections unique to either source are appended.
     Provenance lists are unioned.
     """
-    # Keep the longer (more informative) content
-    if len(existing.content or "") <= 10:
-        merged_content = incoming.content or ""
-        merged_title = incoming.title or existing.title
-    elif len(incoming.content or "") > len(existing.content or ""):
-        merged_content = incoming.content or existing.content
-        merged_title = incoming.title or existing.title
+    existing_text = existing.content or ""
+    incoming_text = incoming.content or ""
+
+    if not existing_text.strip():
+        merged_content = incoming_text
+    elif not incoming_text.strip():
+        merged_content = existing_text
     else:
-        # Append as supplementary content (avoid duplication)
-        existing_text = existing.content or ""
-        incoming_text = incoming.content or ""
-        if incoming_text not in existing_text:
-            merged_content = existing_text + "\n\n" + incoming_text
-        else:
-            merged_content = existing_text
-        merged_title = existing.title
+        ex_sections = _split_sections(existing_text)
+        inc_sections = _split_sections(incoming_text)
+        merged_content = _merge_sections(ex_sections, inc_sections)
+
+    merged_title = existing.title or incoming.title
 
     # Merge provenance
     existing_prov = set(existing.metadata.get("provenance", []) or [])
@@ -620,6 +685,9 @@ class TwoPhaseCompiler(BaseCompiler):
                                 "related": list(page.get("related", []) or []),
                                 "two_phase": True,
                                 "images": all_images,
+                                "frontmatter": {
+                                    "title": str(page.get("title", f"Concept {batch_start + idx}")),
+                                },
                             },
                         )
                     )
@@ -628,16 +696,28 @@ class TwoPhaseCompiler(BaseCompiler):
             return self._fallback_compile(chunks)
 
         # Cross-source edges: pair-wise connect pages that share an entity.
+        # Only match entities against title + summary (first 200 chars), not
+        # the entire page content — full-content matching creates near-complete
+        # graphs in narrow domains.
         entity_index = extractions.entity_index()
         entity_to_node: dict[str, set[str]] = defaultdict(set)
         for ent_name in entity_index:
+            ent_lower = ent_name.lower()
             for node in nodes:
-                if ent_name.lower() in node.content.lower():
+                match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
+                if ent_lower in match_text:
                     entity_to_node[ent_name].add(node.id)
+
+        # Deduplicate edges — same pair may appear from both entity and related links
+        seen_edges: set[tuple[str, str]] = set()
         for ent_name, node_ids in entity_to_node.items():
             sorted_ids = sorted(node_ids)
             for i in range(len(sorted_ids)):
                 for j in range(i + 1, len(sorted_ids)):
+                    pair = (sorted_ids[i], sorted_ids[j])
+                    if pair in seen_edges:
+                        continue
+                    seen_edges.add(pair)
                     edges.append(
                         {
                             "source": sorted_ids[i],
@@ -653,13 +733,20 @@ class TwoPhaseCompiler(BaseCompiler):
             for related_title in node.metadata.get("related", []):
                 target_id = title_to_id.get(related_title)
                 if target_id and target_id != node.id:
+                    pair = tuple(sorted([node.id, target_id]))
+                    if pair in seen_edges:
+                        continue
+                    seen_edges.add(pair)
                     edges.append({"source": node.id, "target": target_id, "type": "related", "entity": related_title})
+
+        quality = _compute_quality_score(nodes, edges)
 
         toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
         return CompiledWiki(
             nodes=nodes,
             edges=edges,
             toc=toc,
+            quality_score=quality,
             metadata={
                 "chunk_count": len(chunks),
                 "node_count": len(nodes),

@@ -77,7 +77,12 @@ class WiCERCompiler(BaseCompiler):
                 nodes=[],
                 edges=[],
                 toc=[],
-                metadata={"chunk_count": 0, "wicer_iterations": 0},
+                metadata={
+                    "chunk_count": 0,
+                    "source_count": 0,
+                    "source_names": [],
+                    "wicer_iterations": 0,
+                },
             )
 
         wiki = self._blind_compile(chunks)

@@ -28,11 +28,13 @@ class MarkdownWriter(BaseOutputWriter):
         frontmatter_defaults: dict[str, Any] | None = None,
         rumdl_config: Path | None = None,
         vault_mode: bool = True,
+        max_related_links: int = 15,
     ) -> None:
         super().__init__(flavor=flavor)
         self.frontmatter_defaults = frontmatter_defaults or {}
         self.renderer = DocumentRenderer(flavor=flavor, rumdl_config=rumdl_config)
         self.vault_mode = vault_mode
+        self.max_related_links = max_related_links
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +75,32 @@ class MarkdownWriter(BaseOutputWriter):
 
         return docs
 
+    # ── Vault mode ──────────────────────────────────────────────────────
+
+    def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
+        """Write each document as a separate ``.md`` file, plus ``index.md``."""
+        node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
+
+        related_edges = self._build_related_edges(wiki.edges, node_map)
+
+        for doc in docs:
+            filename = f"{doc.page_slug or 'untitled'}.md"
+            rendered = self.renderer.render(doc)
+
+            entries = related_edges.get(doc.page_slug, [])
+            if entries:
+                rendered += "\n## Related\n\n"
+                for title, rel_type, confidence in entries[: self.max_related_links]:
+                    annotation = f" ({rel_type})" if rel_type else ""
+                    if confidence is not None:
+                        annotation += f" — confidence {confidence:.2f}"
+                    rendered += f"- [[{title}]]{annotation}\n"
+
+            (output_dir / filename).write_text(rendered, encoding="utf-8")
+
+        self._write_index(docs, output_dir, wiki)
+        return output_dir / "index.md"
+
     @staticmethod
     def _embed_images(body: str, images: list[dict[str, Any]]) -> str:
         """Embed image references into the document body.
@@ -102,44 +130,51 @@ class MarkdownWriter(BaseOutputWriter):
 
         return "\n".join(lines)
 
-    # ── Vault mode ──────────────────────────────────────────────────────
+    @staticmethod
+    def _build_related_edges(
+        edges: list[dict[str, Any]],
+        node_map: dict[str, str],
+    ) -> dict[str, list[tuple[str, str, float | None]]]:
+        """Build a map of page slug -> sorted list of related page entries.
 
-    def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
-        """Write each document as a separate ``.md`` file, plus ``index.md``."""
-        node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
-
-        adj = self._build_adjacency(wiki.edges)
-
-        for doc in docs:
-            filename = f"{doc.page_slug or 'untitled'}.md"
-            rendered = self.renderer.render(doc)
-
-            linked_ids = adj.get(doc.page_slug, set())
-            if linked_ids:
-                related = [node_map[lnk] for lnk in linked_ids if lnk in node_map]
-                if related:
-                    rendered += "\n## Related\n\n"
-                    for title in sorted(related):
-                        rendered += f"- [[{title}]]\n"
-
-            (output_dir / filename).write_text(rendered, encoding="utf-8")
-
-        self._write_index(docs, output_dir, wiki)
-        return output_dir / "index.md"
-
-    def _build_adjacency(self, edges: list[dict[str, Any]]) -> dict[str, set[str]]:
-        """Build undirected adjacency from edge list."""
-        adj: dict[str, set[str]] = {}
+        Each entry is ``(target_title, relation_type, confidence)``. Typed
+        relation edges carry their type and confidence; plain entity-reference
+        edges are rendered without an annotation.
+        """
+        related: dict[str, dict[str, tuple[str, float | None]]] = {}
         for edge in edges:
             source = edge.get("source", "")
             target = edge.get("target", "")
-            if source:
-                adj.setdefault(source, set()).add(target)
-            if target:
-                adj.setdefault(target, set()).add(source)
-        return adj
+            rel_type = edge.get("type", "")
+            confidence = edge.get("confidence")
+            confidence = float(confidence) if isinstance(confidence, (int, float)) else None
 
-    def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None:
+            for src, tgt in ((source, target), (target, source)):
+                if not src or not tgt or src == tgt:
+                    continue
+                if src not in node_map or tgt not in node_map:
+                    continue
+                target_title = node_map[tgt]
+                current = related.setdefault(src, {})
+                # Prefer the highest-confidence annotation per target.
+                if target_title not in current or (
+                    confidence is not None
+                    and (current[target_title][1] is None or confidence > current[target_title][1])
+                ):
+                    current[target_title] = (rel_type, confidence)
+
+        result: dict[str, list[tuple[str, str, float | None]]] = {}
+        for slug, targets in related.items():
+            sorted_targets = sorted(
+                targets.items(),
+                key=lambda item: (item[1][1] if item[1][1] is not None else -1.0, item[0]),
+                reverse=True,
+            )
+            result[slug] = [(title, rel_type, confidence) for title, (rel_type, confidence) in sorted_targets]
+        return result
+
+    @staticmethod
+    def _write_index(docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None:
         """Generate ``index.md`` with a table of contents."""
         title = wiki.metadata.get("title", "Wiki Index")
         lines: list[str] = [f"# {title}\n"]
