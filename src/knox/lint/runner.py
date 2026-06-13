@@ -50,7 +50,7 @@ class LintRunner:
     rules:
         Explicit list of rule names to run. ``None`` means all structural.
     enable_llm:
-        Also run the 3 LLM-powered rules (requires an LLM client).
+        Also run the LLM-powered rules (requires an LLM client).
     llm_client:
         An :class:`LLMClient` instance for LLM-powered rules.
     fix:

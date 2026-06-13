@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from unittest.mock import MagicMock
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
@@ -20,6 +21,8 @@ from knox.lint.structural import (
     SourceNotFoundRule,
     StalePageRule,
 )
+from knox.llm.client import LLMResult
+from knox.llm.failover import CallDiagnostics
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -516,3 +519,74 @@ class TestEdgeCases:
             "source-not-found",
         }
         assert set(RULE_BY_NAME.keys()) == expected
+
+
+# ── LLM rule: contradiction-detection ────────────────────────────────────
+
+
+def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
+    client = MagicMock()
+    client.try_complete.return_value = LLMResult(
+        content="",
+        json_data=json_data,
+        diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
+    )
+    return client
+
+
+class TestContradictionDetectionRule:
+    def test_skips_without_client(self) -> None:
+        wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
+        runner = LintRunner(rules=["contradiction-detection"])
+        report = runner.run(wiki)
+        assert all(r.outcome == LintRuleOutcome.SKIP for r in report.results)
+
+    def test_passes_with_single_page(self) -> None:
+        wiki = _make_wiki([_make_node("n1", "A", "x")])
+        runner = LintRunner(rules=["contradiction-detection"], llm_client=_mock_llm_client({"contradictions": []}))
+        report = runner.run(wiki)
+        assert any(r.outcome == LintRuleOutcome.PASS and "at least two pages" in r.message for r in report.results)
+
+    def test_reports_contradictions(self) -> None:
+        wiki = _make_wiki(
+            [
+                _make_node("n1", "Page A", "The sky is blue."),
+                _make_node("n2", "Page B", "The sky is green."),
+            ]
+        )
+        client = _mock_llm_client(
+            {
+                "contradictions": [
+                    {
+                        "page_a": "Page A",
+                        "page_b": "Page B",
+                        "claim_a": "The sky is blue.",
+                        "claim_b": "The sky is green.",
+                        "explanation": "Colors differ",
+                        "severity": "error",
+                        "confidence": 0.9,
+                    }
+                ]
+            }
+        )
+        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        report = runner.run(wiki)
+        failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].page_id == "n1"
+        assert failures[0].severity == Severity.ERROR
+        assert failures[0].details["page_b_id"] == "n2"
+
+    def test_passes_when_none_found(self) -> None:
+        wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
+        runner = LintRunner(rules=["contradiction-detection"], llm_client=_mock_llm_client({"contradictions": []}))
+        report = runner.run(wiki)
+        assert any(r.outcome == LintRuleOutcome.PASS and "No contradictions detected" in r.message for r in report.results)
+
+    def test_handles_llm_failure(self) -> None:
+        wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
+        client = MagicMock()
+        client.try_complete.side_effect = RuntimeError("boom")
+        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        report = runner.run(wiki)
+        assert any(r.outcome == LintRuleOutcome.SKIP and "LLM call failed" in r.message for r in report.results)

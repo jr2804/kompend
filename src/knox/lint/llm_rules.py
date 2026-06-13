@@ -250,12 +250,114 @@ class CoverageGapRule(BaseLintRule):
         return list(results)
 
 
+# ── Rule 12: contradiction-detection ────────────────────────────────────
+
+
+class ContradictionDetectionRule(BaseLintRule):
+    """Detect pairs of wiki pages that make contradictory claims."""
+
+    name = "contradiction-detection"
+    description = "Contradictory claims across wiki pages"
+
+    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
+        self.llm_client = llm_client
+        self.lint_page_budget = lint_page_budget
+
+    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+        if self.llm_client is None:
+            return [
+                LintResult(
+                    rule=self.name,
+                    outcome=LintRuleOutcome.SKIP,
+                    message="No LLM client available",
+                )
+            ]
+
+        if len(wiki.nodes) < 2:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="Need at least two pages to detect contradictions")]
+
+        results: list[LintResult] = []
+
+        # Each batch contains multiple pages so the LLM can compare them.
+        batch_size = max(2, self.lint_page_budget // 2000)
+        batch_size = min(batch_size, 20)
+
+        for batch_start in range(0, len(wiki.nodes), batch_size):
+            batch = wiki.nodes[batch_start : batch_start + batch_size]
+            title_to_node = {n.title.lower(): n for n in batch}
+            wiki_summary = "\n\n---\n\n".join(f"Title: {n.title}\n{n.content or ''}" for n in batch)
+
+            prompt = _loader.render("lint/contradiction-detection.md.j2", wiki_summary=wiki_summary)
+            try:
+                llm_result = self.llm_client.try_complete(
+                    [{"role": "user", "content": prompt}],
+                    role="lint.contradiction-detection",
+                    response_format={"type": "json_object"},
+                )
+            except Exception as exc:
+                logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc)
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.SKIP,
+                        message=f"LLM call failed: {exc}",
+                    )
+                )
+                continue
+
+            if llm_result is None or llm_result.json_data is None:
+                continue
+
+            contradictions = llm_result.json_data.get("contradictions", [])
+            if not isinstance(contradictions, list):
+                continue
+
+            for contradiction in contradictions:
+                if not isinstance(contradiction, dict):
+                    continue
+                page_a_title = contradiction.get("page_a", "")
+                page_b_title = contradiction.get("page_b", "")
+                node_a = title_to_node.get(page_a_title.lower())
+                node_b = title_to_node.get(page_b_title.lower())
+                if node_a is None or node_b is None:
+                    continue
+
+                severity = Severity.ERROR if str(contradiction.get("severity", "")).lower() == "error" else Severity.WARNING
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.FAIL,
+                        severity=severity,
+                        message=(f"Contradiction between '{node_a.title}' and '{node_b.title}': {contradiction.get('explanation', '')}"),
+                        page_id=node_a.id,
+                        details={
+                            "page_a_id": node_a.id,
+                            "page_a_title": node_a.title,
+                            "page_b_id": node_b.id,
+                            "page_b_title": node_b.title,
+                            "claim_a": contradiction.get("claim_a", ""),
+                            "claim_b": contradiction.get("claim_b", ""),
+                            "explanation": contradiction.get("explanation", ""),
+                            "confidence": contradiction.get("confidence"),
+                        },
+                    )
+                )
+
+        if not results:
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
+        return results
+
+    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+        return list(results)
+
+
 # ── Registry ────────────────────────────────────────────────────────────
 
 LLM_RULES: list[Any] = [
     FactualConsistencyRule,
     ClarityScoreRule,
     CoverageGapRule,
+    ContradictionDetectionRule,
 ]
 
 LLM_RULE_BY_NAME: dict[str, type] = {r.name: r for r in LLM_RULES}

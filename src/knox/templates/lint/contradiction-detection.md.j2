@@ -1,0 +1,24 @@
+---
+variables:
+  - name: wiki_summary
+    required: true
+role: lint.contradiction-detection
+response_format: json_object
+---
+
+You are a contradiction-detection checker for a compiled wiki. Analyze the pages below and identify any pairs of pages that make directly contradictory claims about the same topic. Do not flag mere differences in emphasis or perspective; only flag claims that cannot both be true.
+
+Return a JSON object with key 'contradictions' containing a list of objects. Each object must have:
+- 'page_a': title of the first page
+- 'page_b': title of the second page
+- 'claim_a': the conflicting claim from page_a, quoted briefly
+- 'claim_b': the conflicting claim from page_b, quoted briefly
+- 'explanation': short explanation of why the claims contradict
+- 'severity': either 'warning' or 'error'
+- 'confidence': a number between 0.0 and 1.0
+
+If there are no contradictions, return {"contradictions": []}.
+
+Pages:
+
+{{ wiki_summary }}
