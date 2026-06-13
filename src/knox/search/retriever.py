@@ -9,6 +9,7 @@ from typing import Any
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
+from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
@@ -243,30 +244,227 @@ class TokenOverlapRetriever:
         return sorted_results[:top_k]
 
 
+class HybridRetriever:
+    """Combine FTS, vector, token-overlap, and raw-source search via RRF."""
+
+    _RRF_K: int = 60
+
+    def __init__(
+        self,
+        wiki: CompiledWiki,
+        index_path: Path | None = None,
+        vector_store: ZvecWikiStore | None = None,
+        sources_dir: Path | None = None,
+    ) -> None:
+        self._wiki = wiki
+        self._index_path = index_path
+        self._vector_store = vector_store
+        self._sources_dir = sources_dir
+        self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}
+
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        return self.search_hybrid(query, self._sources_dir, top_k=top_k)
+
+    def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        query_tokens = _tokenize(query)
+        fts_results = self._wiki_fts_results(query, top_k)
+        vector_results = self._wiki_vector_results(query, top_k)
+        token_results = self._wiki_token_results(query, query_tokens, top_k)
+        return self._fuse_results(fts_results, vector_results, token_results, top_k=top_k)
+
+    def search_raw(self, query: str, sources_dir: Path, top_k: int = 5) -> list[SearchResult]:
+        return self._raw_results(query, sources_dir, top_k)
+
+    def search_hybrid(
+        self,
+        query: str,
+        sources_dir: Path | None = None,
+        top_k: int = 5,
+    ) -> list[SearchResult]:
+        wiki_results = self.search_wiki(query, top_k=top_k)
+        raw_results: list[SearchResult] = []
+        if sources_dir is not None and sources_dir.is_dir():
+            raw_results = self.search_raw(query, sources_dir, top_k=top_k)
+        if not raw_results:
+            return wiki_results
+        if not wiki_results:
+            return raw_results[:top_k]
+        return self._fuse_results(wiki_results, raw_results, top_k=top_k)
+
+    def _wiki_fts_results(self, query: str, top_k: int) -> list[SearchResult]:
+        if self._index_path is None or not self._index_path.exists():
+            return []
+        try:
+            rows = search_fts(query, self._index_path, top_k=top_k)
+        except Exception as exc:
+            logger.warning("FTS search failed: %s", exc)
+            return []
+        query_tokens = set(_tokenize(query))
+        results: list[SearchResult] = []
+        for row in rows:
+            content = row.get("content") or ""
+            snippet = _extract_snippet(content, query_tokens) if content else ""
+            results.append(
+                SearchResult(
+                    article_id=row["article_id"],
+                    title=row.get("title", ""),
+                    snippet=snippet,
+                    score=float(row.get("score", 0.0)),
+                    source_file=row.get("source_file"),
+                )
+            )
+        return results
+
+    def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
+        if self._vector_store is None or not self._vector_store.available:
+            return []
+        try:
+            hits = self._vector_store.search(query, top_k=top_k)
+        except Exception as exc:
+            logger.warning("Vector search failed: %s", exc)
+            return []
+        query_tokens = set(_tokenize(query))
+        results: list[SearchResult] = []
+        for hit in hits:
+            node_id = hit.get("id", "")
+            node = self._node_by_id.get(node_id)
+            title = hit.get("title") or (node.title if node else node_id)
+            snippet = _extract_snippet(node.content, query_tokens) if node and node.content else hit.get("content_preview", "") or title
+            source_file: str | None = hit.get("source_file")
+            if source_file is None and node and node.metadata and node.metadata.get("source"):
+                source_file = str(node.metadata["source"])
+            results.append(
+                SearchResult(
+                    article_id=node_id,
+                    title=title,
+                    snippet=snippet,
+                    score=float(hit.get("score", 0.0)),
+                    source_file=source_file,
+                )
+            )
+        return results
+
+    def _wiki_token_results(
+        self,
+        query: str,
+        query_tokens: list[str],
+        top_k: int,
+    ) -> list[SearchResult]:
+        if not query_tokens:
+            return []
+        query_set = set(query_tokens)
+        scored: list[tuple[float, WikiNode]] = []
+        for node in self._wiki.nodes:
+            content = node.content or node.title
+            node_tokens = set(_tokenize(content))
+            if not node_tokens:
+                continue
+            overlap = len(query_set & node_tokens)
+            score = overlap / len(query_set)
+            if score > 0:
+                scored.append((score, node))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        results: list[SearchResult] = []
+        for score, node in scored[:top_k]:
+            snippet = _extract_snippet(node.content, query_set) if node.content else node.title
+            source_file = None
+            if node.metadata and node.metadata.get("source"):
+                source_file = str(node.metadata["source"])
+            results.append(
+                SearchResult(
+                    article_id=node.id,
+                    title=node.title,
+                    snippet=snippet,
+                    score=score,
+                    source_file=source_file,
+                )
+            )
+        return results
+
+    def _fuse_results(self, *lists: list[SearchResult], top_k: int) -> list[SearchResult]:
+        scores: dict[str, float] = {}
+        representatives: dict[str, SearchResult] = {}
+        for result_list in lists:
+            for rank, result in enumerate(result_list):
+                scores[result.article_id] = scores.get(result.article_id, 0.0) + 1.0 / (self._RRF_K + rank)
+                if result.article_id not in representatives:
+                    representatives[result.article_id] = result
+        fused: list[SearchResult] = []
+        for article_id, score in scores.items():
+            r = representatives[article_id]
+            fused.append(
+                SearchResult(
+                    article_id=article_id,
+                    title=r.title,
+                    snippet=r.snippet,
+                    score=round(score, 6),
+                    source_file=r.source_file,
+                )
+            )
+        fused.sort(key=lambda x: x.score, reverse=True)
+        return fused[:top_k]
+
+    @staticmethod
+    def _raw_results(query: str, sources_dir: Path, top_k: int) -> list[SearchResult]:
+        query_tokens = set(_tokenize(query))
+        if not query_tokens or not sources_dir.is_dir():
+            return []
+        scored: list[tuple[float, Path, str]] = []
+        for md_file in sources_dir.rglob("*.md"):
+            try:
+                content = md_file.read_text(encoding="utf-8", errors="replace")
+            except Exception as exc:
+                logger.warning("Skipping unreadable source %s: %s", md_file, exc)
+                continue
+            file_tokens = set(_tokenize(content))
+            if not file_tokens:
+                continue
+            overlap = len(query_tokens & file_tokens)
+            score = overlap / len(query_tokens)
+            if score > 0:
+                scored.append((score, md_file, content))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        results: list[SearchResult] = []
+        for score, path, content in scored[:top_k]:
+            snippet = _extract_snippet(content, query_tokens) if content else path.name
+            results.append(
+                SearchResult(
+                    article_id=path.stem,
+                    title=path.stem.replace("-", " ").replace("_", " ").title(),
+                    snippet=snippet,
+                    score=score,
+                    source_file=str(path),
+                )
+            )
+        return results
+
+
 def _tokenize(text: str) -> list[str]:
     tokens: list[str] = _TOKEN_SPLIT_RE.split(text.lower())
     return [t for t in tokens if len(t) > 1]
 
 
 def _extract_snippet(content: str, query_tokens: set[str], max_chars: int = 300) -> str:
-    _TOKEN_SPLIT_RE.split(content)
     best_score: int = 0
-    best_start: int = 0
+    best_first_match: int = 0
     words: list[str] = _TOKEN_SPLIT_RE.split(content.lower())
 
     for i in range(len(words)):
         score: int = 0
+        first_match: int | None = None
         for j in range(i, min(i + 60, len(words))):
             if words[j] in query_tokens:
                 score += 1
+                if first_match is None:
+                    first_match = j
         if score > best_score:
             best_score = score
-            _word_to_char_index(content, i)
+            best_first_match = first_match if first_match is not None else i
 
     if best_score == 0:
         return content[:max_chars].rsplit(" ", 1)[0] + "..."
 
-    start_char: int = _word_to_char_index(content, best_start)
+    start_char: int = _word_to_char_index(content, best_first_match)
     return content[start_char : start_char + max_chars].rsplit(" ", 1)[0] + "..."
 
 

@@ -130,3 +130,50 @@ class TestZvecWikiStore:
         store = ZvecWikiStore()
         store.close()
         store.close()  # should not raise
+
+    def test_open_existing_store_and_search(self, zvec_db: Path) -> None:
+        """Opening an existing collection allows querying without rebuilding."""
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="n1", title="Testing", content="test content here", node_type="section")],
+            edges=[],
+            toc=[],
+        )
+        store = ZvecWikiStore(db_path=str(zvec_db))
+        store.build_index(wiki, embedding_model="hash")
+        store.close()
+
+        try:
+            reopened = ZvecWikiStore.open(str(zvec_db), embedding_model="hash", embedding_dim=384)
+            assert reopened.available
+            results = reopened.search("test")
+            assert any(r["id"] == "n1" for r in results)
+            reopened.close()
+        finally:
+            gc.collect()
+            shutil.rmtree(zvec_db, ignore_errors=True)
+
+    def test_source_file_is_preserved_in_search_results(self, zvec_db: Path) -> None:
+        """Node source metadata is stored as a searchable field."""
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="n1",
+                    title="Methods",
+                    content="Analysis methods used in the study.",
+                    node_type="section",
+                    metadata={"source": "paper.pdf"},
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        store = ZvecWikiStore(db_path=str(zvec_db))
+        store.build_index(wiki, embedding_model="hash")
+        try:
+            results = store.search("methods")
+            assert results
+            assert results[0].get("source_file") == "paper.pdf"
+        finally:
+            store.close()
+            gc.collect()
+            shutil.rmtree(zvec_db, ignore_errors=True)

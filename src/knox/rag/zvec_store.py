@@ -124,6 +124,8 @@ class ZvecWikiStore:
     The store is dormant until build_index() is called.
     """
 
+    _PREVIEW_LEN: int = 1000
+
     def __init__(
         self,
         db_path: str | Path = "./.knox/vectors",
@@ -163,6 +165,7 @@ class ZvecWikiStore:
                 fields=[
                     _zvec.FieldSchema("title", _zvec.DataType.STRING),
                     _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
+                    _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
                     _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
                 ],
                 vectors=_zvec.VectorSchema(
@@ -183,7 +186,8 @@ class ZvecWikiStore:
                 fields={
                     "title": node.title,
                     "node_type": node.node_type,
-                    "content_preview": node.content[:200],
+                    "source_file": str(node.metadata.get("source", "")) if node.metadata else "",
+                    "content_preview": node.content[: self._PREVIEW_LEN],
                 },
             )
             for node in wiki.nodes
@@ -214,3 +218,21 @@ class ZvecWikiStore:
             with contextlib.suppress(Exception):
                 self._collection.flush()
             self._collection = None
+
+    @classmethod
+    def open(
+        cls,
+        db_path: str | Path,
+        embedding_model: str,
+        embedding_dim: int | None = None,
+    ) -> ZvecWikiStore:
+        """Open an existing zvec collection for querying.
+
+        The collection must have been created previously with
+        :meth:`build_index`. The embedding model/dimension are used to
+        reconstruct the correct provider.
+        """
+        provider = _make_provider(embedding_model, dim=embedding_dim or 384)
+        store = cls(db_path=db_path, embedding_provider=provider, embedding_dim=provider.dim)
+        store._collection = _zvec.open(path=str(store.db_path))
+        return store
