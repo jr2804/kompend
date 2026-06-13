@@ -89,7 +89,7 @@ flowchart LR
 | Class | File | Purpose |
 |-------|------|---------|
 | `BaseResolver` | `resolution/_base.py` | Abstract interface: `resolve(chunks) → list[ResolvedChunk]` |
-| `LLMResolver` | `resolution/llm.py` | Abbreviation expansion, term disambiguation |
+| `LLMResolver` | `resolution/llm_resolver.py` | Typed relation extraction with confidence (`uses`, `depends_on`, `contradicts`, …) |
 | `VLMEnricher` | `resolution/vlm_enricher.py` | Figure captioning via vision LLM |
 | `ResolverChain` | `resolution/chain.py` | Sequential resolver application |
 
@@ -114,7 +114,8 @@ flowchart LR
 | Class | File | Purpose |
 |-------|------|---------|
 | `BaseCompiler` | `compilation/_base.py` | Abstract interface: `compile(chunks) → CompiledWiki` |
-| `GraphCompiler` | `compilation/graph.py` | Two-phase extract-then-generate |
+| `GraphCompiler` | `compilation/graph.py` | Heading-based grouping, page-kind inference, typed edges |
+| `TwoPhaseCompiler` | `compilation/two_phase.py` | Two-phase extract-then-generate |
 | `WiCERCompiler` | `compilation/wicer.py` | Iterative compile-evaluate-refine loop |
 
 See [WiCER Loop](wicer-loop.md) for a detailed walkthrough.
@@ -151,5 +152,5 @@ flowchart LR
 | `PipelineConfig` | `core/pipeline.py` | Configuration dataclass for all tiers |
 | `LLMClient` | `llm/client.py` | Shared litellm wrapper with failover chain |
 | `TemplateLoader` | `core/template_loader.py` | Jinja2 template loading with override chain |
-| `LintRunner` | `lint/runner.py` | 8 structural + 3 LLM-powered lint rules |
+| `LintRunner` | `lint/runner.py` | 8 structural + 4 LLM-powered lint rules |
 | `MCP Server` | `mcp/server.py` | stdio MCP tools for agent integration |

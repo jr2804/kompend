@@ -204,9 +204,10 @@ class Chunk:
 @dataclass
 class ResolvedChunk:
     chunk: Chunk
-    entities: list[Entity]     # resolved terms, abbreviations, etc.
-    relations: list[Relation]  # typed, confidence-scoped edges
-    confidence: float
+    entities: list[dict[str, Any]]       # resolved terms, abbreviations, etc.
+    relations: list[dict[str, Any]]      # typed, confidence-scored edges
+    resolved_references: list[str]
+    metadata: dict[str, Any]
 ```
 
 ### `CompiledWiki`
@@ -215,11 +216,11 @@ class ResolvedChunk:
 @dataclass
 class CompiledWiki:
     nodes: list[WikiNode]
-    cross_references: list[CrossReference]
-    contradictions: list[Contradiction]
-    metadata: WikiMetadata
-    quality_score: float  # WiCER evaluation metric
-    iteration: int       # WiCER loop count
+    edges: list[dict[str, Any]]    # typed graph edges (entity_reference, uses, …)
+    toc: list[dict[str, Any]]      # table of contents
+    quality_score: float           # WiCER evaluation metric
+    iteration: int                 # WiCER loop count
+    metadata: dict[str, Any]       # source_count, kinds, memory, …
 ```
 
 ## Core Principles (Expanded)
@@ -248,7 +249,7 @@ Three interfaces, same core:
 
 - **CLI:** `knox compile sources/ --output wiki/`
 - **Python SDK:** `pipeline.compile(sources=[Path("paper.pdf")])`
-- **MCP Server:** `mcp_knox_compile`, `mcp_knox_query` tools for Hermes/Claude Code/Codex
+- **MCP Server:** `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` tools for Hermes/Claude Code/Codex
 
 No GUI. No web server required. Headless cron-friendly.
 
@@ -262,7 +263,7 @@ Default: one-shot ingestion (fast). Opt-in per document: multi-turn resolution (
 
 ### 6. Multimodal
 
-Vision-capable LLMs analyze extracted figures during compilation. The `VLMBoundBoxAnalyzer` sends figure images + surrounding text + figure caption to a vision model. Output: searchable caption + classification ("architecture diagram", "performance graph", "workflow"). Figures become first-class wiki nodes.
+Vision-capable LLMs analyze extracted figures during compilation. The `VLMEnricher` sends figure images + surrounding text + figure caption to a vision model. Output: searchable caption + classification ("architecture diagram", "performance graph", "workflow"). Figures become first-class wiki nodes. Enable with `--vlm-model` or `KNOX_VLM_MODEL`.
 
 ### 7. Iterative Compilation (WiCER)
 
@@ -276,7 +277,7 @@ Structure-aware first: tables/figures/equations never split. Heading hierarchy g
 
 ### Hermes Agent
 
-KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `parse_document` and `compile_wiki` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
+KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `parse_document`, `compile_wiki`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
 
 ### Open-WebUI
 

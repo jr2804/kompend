@@ -61,25 +61,46 @@ The summary is printed to stdout:
 Verified 12/18 claims (avg confidence 0.74)
 ```
 
-## Lifecycle states
+## Memory lifecycle
 
-Compiled pages can move through five lifecycle states:
+Compiled pages are tracked through a memory lifecycle that models
+confidence decay, tier promotion, and supersession. The store lives
+at `base_dir/.knox/memory.json` and is updated automatically on each
+compile when `compile.memory_enabled` is `True` (the default).
+
+### Tiers
 
 ```text
-draft → reviewed → verified → stale → archived
+WORKING → EPISODIC → SEMANTIC → PROCEDURAL
 ```
 
-| State | Meaning |
-|-------|---------|
-| `draft` | Initial output, not yet reviewed |
-| `reviewed` | Human has approved the page |
-| `verified` | LLM grounding check passed |
-| `stale` | Older than 90 days without activity |
-| `archived` | Manually removed from active set |
+| Tier | Promotion threshold | Meaning |
+|------|---------------------|---------|
+| `WORKING` | initial | Freshly compiled, untested |
+| `EPISODIC` | 2 reviews | Survived multiple compiles |
+| `SEMANTIC` | 5 reviews | Stable, high-confidence knowledge |
+| `PROCEDURAL` | 10 reviews | Core, rarely-changing reference |
 
-Stale pages are auto-detected on the next lifecycle check. To enable
-lifecycle tracking, integrate the `LifecycleStore` into your
-post-compile step.
+### Confidence decay
+
+Each page has a confidence score (0.5 → 1.0, asymptotic). Retention
+decays exponentially:
+
+```text
+retention = confidence × e^(−elapsed_days / half_life)
+```
+
+The half-life defaults to 90 days (`compile.memory_half_life_days`).
+Pages whose retention falls below the decay threshold
+(`compile.memory_decay_threshold`, default 0.3) are flagged as stale
+by the `stale-page` lint rule.
+
+### Supersession
+
+When a page is recompiled under a different node ID (e.g., heading
+restructuring), the old page is marked `superseded_by` the new one.
+Superseded pages are excluded from stale detection and reported in
+`wiki.metadata["memory"]["superseded"]`.
 
 ## FAQ
 

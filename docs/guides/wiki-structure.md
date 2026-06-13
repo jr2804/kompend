@@ -115,11 +115,21 @@ asked to produce 2-3 paragraphs covering:
 After a full compile+synth, your output directory looks like:
 
 ```text
-wiki/
-├── index.md          # TOC + stats (regenerated each compile)
-├── log.md            # Activity journal (appended, never overwritten)
-├── overview.md       # LLM summary (if --synthesize)
-├── wiki.md           # Full compiled wiki
-└── .knox/            # Internal metadata
-    └── last_wiki.json
+project/
+├── sources/                 # Raw + captured + crystallized sources
+│   ├── _captured/           # capture/learn output
+│   └── _crystallized/       # crystallize output
+├── wiki/                    # Compiled wiki (--output-dir, default: wiki)
+│   ├── index.md             # TOC + stats (regenerated each compile)
+│   ├── log.md               # Activity journal (appended, never overwritten)
+│   ├── overview.md          # LLM summary (if --synthesize)
+│   ├── wiki.md              # Full compiled wiki
+│   └── *.md                 # Individual wiki pages
+└── .knox/                   # Internal metadata (in base_dir, i.e. project root)
+    ├── compile_state.json   # Tier checkpoints per source
+    ├── last_wiki.json       # Cached CompiledWiki for query/lint/status
+    ├── search.db            # FTS5 index (if --index-store)
+    ├── memory.json          # Memory lifecycle state
+    └── zvec/                # Vector store sidecar (if --index-store)
+```
 ```

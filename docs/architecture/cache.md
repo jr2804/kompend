@@ -1,32 +1,41 @@
 # Cache and State Directory
 
 KNOX stores derived data, pipeline state, and indexes inside a `.knox/`
-directory within the output directory. This document describes what goes
-where, why, and the design rules for new caches.
+directory. This document describes what goes where, why, and the design
+rules for new caches.
 
 ## Directory layout
 
-Default output directory is `wiki/`. All state lives under `wiki/.knox/`:
+The `.knox/` directory lives at `base_dir/.knox/`, where `base_dir`
+defaults to `output_dir.parent`. For the default layout
+(`output_dir = wiki/`, `base_dir = .`), this means `.knox/` is at the
+project root — **not** inside `wiki/`.
 
 ```text
-wiki/
+.  (base_dir)
 ├── .knox/
-│   ├── last_wiki.json          # Serialized CompiledWiki (N1.5)
-│   ├── compile_state.json      # Tier state tracking (Q20)
+│   ├── last_wiki.json          # Serialized CompiledWiki
+│   ├── compile_state.json      # Tier state tracking
+│   ├── search.db               # FTS5 full-text index for hybrid search
+│   ├── memory.json             # Memory lifecycle store (confidence/tiers)
 │   ├── cache/                  # Parse result cache
 │   │   ├── a1b2c3d4.json       # Per-source parsed document
 │   │   └── ...
 │   ├── vectors/                # Zvec vector index (RAG)
-│   ├── review/                 # Review queue entries (N8)
+│   ├── review/                 # Review queue entries
 │   │   ├── node_0.json
 │   │   └── ...
-│   ├── provenance/             # Per-node citation data (N4)
+│   ├── provenance/             # Per-node citation data
 │   │   ├── intro.json
 │   │   └── ...
-│   └── private.json            # Private page index (Q21)
-├── index.md                    # Auto-generated wiki index
-├── log.md                      # Compilation log
-└── ...                         # Compiled wiki pages
+│   └── private.json            # Private page index
+├── wiki/                       # Compiled wiki output
+│   ├── index.md                # Auto-generated wiki index
+│   ├── log.md                  # Compilation log
+│   └── ...                     # Compiled wiki pages
+├── sources/
+│   ├── _captured/              # Captured notes (knox capture / knox learn)
+│   └── _crystallized/          # Synthesized wiki pages (knox crystallize)
 ```
 
 ## What is stored and why
@@ -35,6 +44,8 @@ wiki/
 |------|----------|-------------|-------|-----------|
 | `last_wiki.json` | Full `CompiledWiki` dataclass as JSON | 10 KB – 10 MB | Project-local | Pipeline after compile |
 | `compile_state.json` | Per-file tier progress (parsed, chunked, etc.) | < 50 KB | Project-local | `TierStateStore` |
+| `search.db` | SQLite FTS5 index over compiled wiki pages | < 10 MB | Project-local | Compile with `--index-store` |
+| `memory.json` | Memory lifecycle: confidence, tiers, supersession | < 100 KB | Project-local | `update_memory_for_compile` |
 | `cache/*.json` | Cached `ParsedDocument` per source file (hash-keyed) | 100 KB – 100 MB | Project-local | Pipeline parse tier |
 | `vectors/` | Zvec embedded vector database for semantic search | 1 – 100 MB | Project-local | `ZvecWikiStore` |
 | `review/*.json` | Wiki nodes pending human review | < 100 KB | Project-local | `ReviewQueue` |
@@ -77,6 +88,8 @@ the KNOX project template).
 | `cache/*.json` | Source file modified or `--no-cache` flag | Delete `.knox/cache/` or re-run compile |
 | `compile_state.json` | Any source file changes | `--force` flag re-processes everything |
 | `last_wiki.json` | After every successful compile | Overwritten automatically |
+| `search.db` | After compile changes node content | Re-run `--index-store` |
+| `memory.json` | After every successful compile (when `memory_enabled`) | Overwritten automatically |
 | `vectors/` | After compile changes node content | Re-run `--index` |
 | `review/` | After review actions | Entries removed as they are approved/rejected |
 

@@ -8,7 +8,7 @@ Current state of the KNOX codebase as of the latest `main` branch.
 |------|-----------|--------|-------|
 | T1 | Preprocessing | ✅ Done | Docling, pdfplumber, pandoc, VLM parsers; HTTP downloader + web crawler |
 | T2 | Chunking | ✅ Done | HybridChunker (atomic + Chonkie RecursiveChunker), DevChunker, standalone ChonkieChunker adapter |
-| T3 | Resolution | ⚠️ Partial | `LLMResolver` works; `VLMEnricher` implemented but not wired into pipeline |
+| T3 | Resolution | ✅ Done | `LLMResolver` (typed relations), `VLMEnricher` (image captioning), pluggable resolver chain |
 | T4 | Compilation | ✅ Done | `GraphCompiler` + `WiCERCompiler` (iterative compile-evaluate-refine loop) |
 | T5 | Output | ✅ Done | Markdown, JSON, Typst writers |
 
@@ -17,24 +17,25 @@ Current state of the KNOX codebase as of the latest `main` branch.
 | Component | Status | Notes |
 |-----------|--------|-------|
 | CLI (`knox compile`, `knox parse`) | ✅ Done | Full option set: recursive, format, chunk-size, image-mode, URL download, zvec indexing |
-| MCP Server | ⚠️ Partial | Functional stdio server with `parse_document` and `compile_wiki` tools. Uses newline-delimited JSON, not JSON-RPC 2.0 |
-| RAG / Vector Search | ⚠️ Partial | `ZvecWikiStore` works but uses hash-based pseudo-embeddings; needs real embedding model integration |
-| Data Models | ⚠️ Partial | Core models (`ElementType`, `Chunk`, `CompiledWiki`) are stable. Some fields in docs differ from implementation |
+| MCP Server | ⚠️ Partial | Functional stdio server with `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` tools. Uses newline-delimited JSON, not JSON-RPC 2.0 |
+| RAG / Vector Search | ✅ Done | `ZvecWikiStore` with sentence-transformers / LiteLLM embedding providers; `HybridRetriever` fuses FTS + vector + token-overlap + raw sources via RRF |
+| Memory Lifecycle | ✅ Done | Confidence decay, tier promotion (working→episodic→semantic→procedural), supersession detection, stale-page lint integration |
+| Event Hooks | ✅ Done | `PRE_COMPILE`, `POST_COMPILE`, `ON_CAPTURE`, `ON_QUERY`, `ON_LINT` hooks; configurable via `[hooks]` in knox.toml |
+| Data Models | ✅ Done | Core models (`ElementType`, `Chunk`, `ResolvedChunk`, `CompiledWiki`) are stable |
 
 ## Known Gaps
 
-- **VLMEnricher not in pipeline**: `VLMEnricher` exists in `resolution/vlm_enricher.py` but the CLI and MCP server skip resolution entirely. Needs a resolver chain (M7).
-- **ZvecWikiStore embeddings**: Uses deterministic hash-based vectors for search. Real embeddings (e.g. sentence-transformers) need integration (M6).
 - **MCP protocol**: Server reads newline-delimited JSON instead of JSON-RPC 2.0. Needs proper protocol implementation.
 - **HybridChunker budget**: Measures budget in characters, not tokens (M3).
 - **DoclingParser**: Requires update for Docling 2.x API — `doc.pages` yields ints, not page objects (C2).
+- **Eval harness**: Health score, citation coverage, CI thresholds not yet implemented (N2).
 
 ## Lint
 
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Structural lint rules (8) | ✅ Done | broken-wikilinks, missing-frontmatter, orphan-page, duplicate-title, empty-page, heading-skip, stale-page, source-not-found |
-| LLM-powered lint rules (3) | ✅ Done | factual-consistency, clarity-score, coverage-gap (opt-in via `--llm`) |
+| LLM-powered lint rules (4) | ✅ Done | factual-consistency, clarity-score, coverage-gap, contradiction-detection (opt-in via `--llm`) |
 | CLI: `knox lint` | ✅ Done | --fix, --llm, --rule, --threshold, --json |
 | CLI: `knox compile --lint` | ✅ Done | Runs lint post-compile |
 | Eval harness (N2) | ⏳ Pending | Health score, citation coverage, CI thresholds |
@@ -59,15 +60,19 @@ Current state of the KNOX codebase as of the latest `main` branch.
 
 | Field | Default | Used by |
 |-------|---------|---------|
-| `source_dir` | required | Pipeline |
-| `output_dir` | required | Pipeline |
-| `image_mode` | `"file"` | DoclingParser |
-| `chunk_size` | `512` | HybridChunker |
-| `compile_target` | `"markdown"` | Output writer selection |
-| `llm_model` | `"llama3.2"` | LLMResolver (when wired) |
-| `llm_provider` | `"ollama"` | LLMResolver (when wired) |
-| `vlm_model` | `"phi-3-vision"` | VLMEnricher (when wired) |
-| `online_sources` | `[]` | HTTPDownloader |
-| `input_files` | `None` | Pipeline (auto-discover when None) |
+| `compile.sources_dir` | `"sources"` | Pipeline |
+| `compile.output_dir` | `"wiki"` | Pipeline |
+| `compile.image_mode` | `"file"` | DoclingParser |
+| `compile.chunk_size` | `512` | HybridChunker |
+| `compile.format` | `"markdown"` | Output writer selection |
+| `compile.llm.default_model` | set via env / knox.toml | LLMResolver, LLMClient |
+| `compile.llm.vlm_model` | `None` (disabled) | VLMEnricher (`--vlm-model`) |
+| `compile.resolve_relations` | `False` | LLMResolver typed relation extraction |
+| `compile.relation_confidence_threshold` | `0.0` | Relation filtering |
+| `compile.memory_enabled` | `True` | Memory lifecycle (`--memory`/`--no-memory`) |
+| `compile.memory_half_life_days` | `90.0` | Confidence decay rate |
+| `compile.memory_decay_threshold` | `0.3` | Stale-page detection |
+| `compile.embedding.dim` | `384` | zvec vector store |
+| `hooks` | `{}` | Event-driven hooks |
 
 See [roadmap](./roadmap.md) for milestone-level planning and [architecture](../architecture/index.md) for the full pipeline design.
