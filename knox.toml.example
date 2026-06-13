@@ -24,6 +24,14 @@ mode = "full"
 # Parallel parse workers (1 = sequential)
 workers = 1
 
+# Typed relation extraction during Tier 2 (uses the default LLM model).
+# When enabled, the resolver extracts typed relations such as uses/depends_on
+# between entities and the compiler emits them as graph edges.
+# resolve_relations = false
+
+# Minimum confidence (0.0-1.0) for typed relations to be kept.
+# relation_confidence_threshold = 0.0
+
 # ── Budget settings ───────────────────────────────────────────────────────
 #
 # All budgets are in TOKENS (not characters). Approximate conversion:
@@ -78,6 +86,10 @@ wicer_eval_output_max = 4096
 # Primary model in litellm format ("provider/model")
 default_model = "ollama/llama3.2"
 
+# Vision model for captioning IMAGE chunks during resolution.
+# When set, VLMEnricher is added to the resolver chain.
+# vlm_model = "openai/gpt-4o"
+
 # Ordered fallback models tried when the primary fails
 # fallback_chain = ["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]
 
@@ -111,6 +123,9 @@ timeout = 120.0
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
 # Set to auto-detect when omitted.
 # flavor = "obsidian"
+
+# Max related-links per page in vault mode (0 = unlimited)
+# max_related_links = 15
 
 # Default frontmatter fields added to every page
 # [compile.output.frontmatter]

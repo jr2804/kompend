@@ -69,6 +69,7 @@ def compile_wiki(
     image_mode: str = "file",
     urls: list[str] | None = None,
     compiler: str = "graph",
+    vlm_model: str = "",
 ) -> dict[str, Any]:
     """Compile sources into a knowledge wiki.
 
@@ -106,7 +107,7 @@ def compile_wiki(
     config = PipelineConfig(
         source_dir=source_path,
         output_dir=Path(output),
-        llm=LLMConfig(default_model="", vlm_model=""),
+        llm=LLMConfig(default_model="", vlm_model=vlm_model),
         embedding=EmbeddingConfig(model=""),
         online_sources=urls or [],
         output=OutputConfig(format=format_enum),

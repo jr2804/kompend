@@ -81,6 +81,8 @@ from knox.cli.args import (
     QueryText,
     QueryTopK,
     Recursive,
+    RelationConfidenceThreshold,
+    ResolveRelations,
     ReviewMode,
     ServeHost,
     ServeOpen,
@@ -91,11 +93,13 @@ from knox.cli.args import (
     UrlFile,
     Verbose,
     Verify,
+    VlmModel,
     Workers,
 )
 from knox.core.config import resolve_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
+from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.mcp.server import main as mcp_main
@@ -107,9 +111,11 @@ from knox.packs.builtins import academic_pack, technical_pack
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
+from knox.rag.zvec_store import ZvecWikiStore
 from knox.review import ReviewQueue
 from knox.search.classifier import classify
-from knox.search.retriever import TokenOverlapRetriever
+from knox.search.index import build_chunk_index
+from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 from knox.trust import mark_wiki_private
 from knox.verification import verify_wiki
 from knox.web.server import serve
@@ -121,6 +127,13 @@ from .status import collect_stats, print_status
 logger = logging.getLogger(__name__)
 
 # ── parse ───────────────────────────────────────────────────────────────
+
+
+def _uses_llm_rule(rule: list[str] | None) -> bool:
+    """Return True if any requested rule name is LLM-powered."""
+    if not rule:
+        return False
+    return any(r in LLM_RULE_BY_NAME for r in rule)
 
 
 @app.command(name="parse")
@@ -195,6 +208,9 @@ def compile_cmd(
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
+    vlm_model: VlmModel = None,
+    resolve_relations: ResolveRelations = False,
+    relation_confidence_threshold: RelationConfidenceThreshold = 0.0,
     llm_role_model: LlmRoleModel = None,
     compile_lint: CompileLint = False,
     budget_gen_segment: BudgetGenSegment = None,
@@ -215,10 +231,10 @@ def compile_cmd(
     if online_urls is None:
         online_urls = []
     if url_file is not None:
-        for line in url_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                online_urls.append(line)
+        for raw_line in url_file.read_text(encoding="utf-8").splitlines():
+            stripped = raw_line.strip()
+            if stripped and not stripped.startswith("#"):
+                online_urls.append(stripped)
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
@@ -279,6 +295,9 @@ def compile_cmd(
         frontmatter=frontmatter,
         ignore=ignore,
         llm_default_model=llm_default_model,
+        vlm_model=vlm_model,
+        resolve_relations=resolve_relations,
+        relation_confidence_threshold=relation_confidence_threshold,
         llm_fallback_chain=llm_fallback_chain,
         llm_fallback_max_retries=llm_fallback_max_retries,
         llm_role_model=llm_role_model,
@@ -516,13 +535,14 @@ def provenance_cmd(
     """
     # Read the compiled wiki
     output_dir = Path(DEFAULT_OUTPUT_DIR)
+    base_dir = output_dir.parent
     wiki_file = output_dir / "wiki.md"
     if not wiki_file.exists():
         typer.echo(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
 
     # Try loading the wiki from cache
-    wiki = load_cached_wiki(output_dir)
+    wiki = load_cached_wiki(base_dir)
     if wiki is None:
         typer.echo("Could not load compiled wiki metadata.", err=True)
         raise typer.Exit(1)
@@ -689,15 +709,16 @@ def lint_cmd(
         knox lint --threshold 80        # exit 1 if score < 80
     """
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
+    base_dir = output_dir_path.parent
     sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
 
-    wiki = load_cached_wiki(output_dir_path)
+    wiki = load_cached_wiki(base_dir)
     if wiki is None:
-        typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
+        typer.echo(f"No compiled wiki found in {base_dir}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
 
     llm_client = None
-    if llm or (rule and any(r in ("factual-consistency", "clarity-score", "coverage-gap") for r in rule)):
+    if llm or _uses_llm_rule(rule):
         if not llm_default_model:
             typer.echo(
                 "LLM-powered lint rules require --llm-default-model (e.g. --llm-default-model openai/gpt-4o).",
@@ -879,6 +900,28 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     return True
 
 
+def _execute_query_search(
+    retriever: HybridRetriever,
+    query: str,
+    scope: str,
+    sources_dir_path: Path | None,
+    top_k: int,
+) -> tuple[list[Any], bool]:
+    """Dispatch to the requested search scope and return results + raw flag."""
+    raw = False
+    if scope == "raw":
+        if sources_dir_path is None:
+            typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
+            raise typer.Exit(1)
+        results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
+        raw = True
+    elif scope == "hybrid":
+        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k)
+    else:
+        results = retriever.search_wiki(query, top_k=top_k)
+    return results, raw
+
+
 @app.command(name="query")
 def query_cmd(
     query: QueryText,
@@ -898,32 +941,33 @@ def query_cmd(
     synthesis and see the source context directly.
     """
     output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
+    base_dir = output_dir_path.parent
 
     if _classify_intent(query, no_classify, format):
         return
 
-    wiki = load_cached_wiki(output_dir_path)
+    wiki = load_cached_wiki(base_dir)
     if wiki is None:
         typer.echo(
-            f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.",
+            f"No compiled wiki found in {base_dir}. Run 'knox compile' first.",
             err=True,
         )
         raise typer.Exit(1)
 
     sources_dir_path: Path | None = Path(sources_dir) if sources_dir else (Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).is_dir() else None)
 
-    retriever = TokenOverlapRetriever(wiki)
-
-    if scope == "raw":
-        if sources_dir_path is None:
-            typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
-            raise typer.Exit(1)
-        results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
-        raw = True  # skip synthesis for raw scope
-    elif scope == "hybrid":
-        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k)
-    else:
-        results = retriever.search(query, top_k=top_k)
+    vector_store = _open_vector_store(base_dir, wiki)
+    try:
+        retriever = HybridRetriever(
+            wiki,
+            index_path=base_dir / ".knox" / "search.db",
+            vector_store=vector_store,
+            sources_dir=sources_dir_path,
+        )
+        results, raw = _execute_query_search(retriever, query, scope, sources_dir_path, top_k)
+    finally:
+        if vector_store is not None:
+            vector_store.close()
 
     if not results:
         typer.echo("No relevant content found.")
@@ -940,7 +984,8 @@ def query_cmd(
         return
 
     try:
-        synthesis = retriever.synthesize(query, results, llm_client=llm_client)
+        synthesizer = TokenOverlapRetriever(wiki)
+        synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
     except Exception as exc:
         typer.echo(f"LLM synthesis failed: {exc}", err=True)
         typer.echo("Showing raw context instead:", err=True)
@@ -1098,6 +1143,21 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     )
 
 
+def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
+    """Open the zvec sidecar index built during compile, if it exists."""
+    db_path = base_dir / ".knox" / "vectors"
+    if not db_path.exists():
+        return None
+
+    embed_model = wiki.metadata.get("embedding_model", "hash")
+    embed_dim = wiki.metadata.get("embedding_dim", 384)
+    try:
+        return ZvecWikiStore.open(db_path, embedding_model=embed_model or "hash", embedding_dim=embed_dim)
+    except Exception as exc:
+        logger.warning("Could not open vector store at %s: %s", db_path, exc)
+        return None
+
+
 def _post_compile_actions(
     *,
     wiki: CompiledWiki,
@@ -1153,6 +1213,10 @@ def _post_compile_actions(
             typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
     if index_store:
+        search_db_path = base_dir / ".knox" / "search.db"
+        build_chunk_index(wiki, search_db_path)
+        wiki.metadata["embedding_model"] = embed_model
+        wiki.metadata["embedding_dim"] = pipeline_config.embedding.dim
         _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model, base_dir=base_dir)
 
     if compile_lint:
@@ -1184,6 +1248,9 @@ def _build_cli_overrides(
     frontmatter: list[str] | None = None,
     ignore: list[str] | None = None,
     llm_default_model: str | None = None,
+    vlm_model: str | None = None,
+    resolve_relations: bool | None = None,
+    relation_confidence_threshold: float | None = None,
     llm_fallback_chain: list[str] | None = None,
     llm_fallback_max_retries: int | None = None,
     llm_role_model: list[str] | None = None,
@@ -1208,6 +1275,8 @@ def _build_cli_overrides(
         ("compile.workers", workers),
         ("compile.output.flavor", flavor),
         ("compile.llm.default_model", llm_default_model),
+        ("compile.llm.vlm_model", vlm_model),
+        ("compile.relation_confidence_threshold", relation_confidence_threshold),
         ("compile.page_kind", kind),
         ("compile.compiler", compiler),
         ("compile.budget.concepts_per_batch", budget_concepts),
@@ -1230,6 +1299,7 @@ def _build_cli_overrides(
         ("compile.synthesize", synthesize),
         ("compile.index", index_store),
         ("compile.lint", compile_lint),
+        ("compile.resolve_relations", resolve_relations),
     ]
     for key, val in _flags:
         if val:

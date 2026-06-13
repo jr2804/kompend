@@ -38,3 +38,26 @@ class TestCompileWiki:
             )
         assert result["status"] == "error"
         assert "Unknown format" in result["message"]
+
+    def test_vlm_model_passed_to_pipeline(self) -> None:
+        with patch.object(Path, "exists", return_value=True), patch("knox.mcp.server.build_pipeline") as mock_build:
+            mock_pipeline = mock_build.return_value
+            mock_pipeline.run.return_value = type(
+                "Wiki",
+                (),
+                {
+                    "nodes": [],
+                    "edges": [],
+                    "toc": [],
+                    "quality_score": 0.0,
+                    "iteration": 0,
+                    "metadata": {},
+                },
+            )()
+            compile_wiki(
+                sources_dir="/tmp/fake",  # noqa: S108
+                vlm_model="openai/gpt-4o",
+            )
+        assert mock_build.called
+        passed_config = mock_build.call_args.args[0]
+        assert passed_config.llm.vlm_model == "openai/gpt-4o"

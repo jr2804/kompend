@@ -389,6 +389,45 @@ LlmDefaultModel = Annotated[
     ),
 ]
 
+VlmModel = Annotated[
+    str | None,
+    typer.Option(
+        "--vlm-model",
+        help=(
+            "Vision model in litellm format ('provider/model') used to caption "
+            "IMAGE chunks during resolution. When set, VLMEnricher is added to "
+            "the resolver chain. Example: 'openai/gpt-4o'. "
+            f"Env: {APP_NAME_UPPERCASE}_VLM_MODEL."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_VLM_MODEL",
+    ),
+]
+
+ResolveRelations = Annotated[
+    bool,
+    typer.Option(
+        "--resolve-relations/--no-resolve-relations",
+        help=(
+            "Run LLM relation extraction during Tier 2. When enabled, the resolver "
+            "extracts typed relations (uses, depends_on, contradicts, ...) between "
+            "entities and the compiler emits them as graph edges. "
+            f"Env: {APP_NAME_UPPERCASE}_RESOLVE_RELATIONS."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_RESOLVE_RELATIONS",
+    ),
+]
+
+RelationConfidenceThreshold = Annotated[
+    float,
+    typer.Option(
+        "--relation-confidence-threshold",
+        help=(f"Minimum confidence (0.0-1.0) for typed relations to be kept. Env: {APP_NAME_UPPERCASE}_RELATION_CONFIDENCE_THRESHOLD."),
+        min=0.0,
+        max=1.0,
+        envvar=f"{APP_NAME_UPPERCASE}_RELATION_CONFIDENCE_THRESHOLD",
+    ),
+]
+
 LlmFallbackChain = Annotated[
     list[str] | None,
     typer.Option(
