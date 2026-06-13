@@ -74,15 +74,16 @@ When `--fix` is passed:
 - **missing-frontmatter**: Adds `title` from the node title
 - Other rules: Cannot be auto-fixed (require manual editing or re-compilation)
 
-## LLM-Powered Rules (3)
+## LLM-Powered Rules (4)
 
-These rules call an LLM via LiteLLM and are opt-in with `--llm`.
+These rules call an LLM via LiteLLM and are opt-in with `--llm` or `--rule <name>`.
 
 | Rule | What it checks |
 |------|---------------|
 | `factual-consistency` | Claims in a page contradict source material |
 | `clarity-score` | Readability, coherence, conciseness (1-10 score) |
 | `coverage-gap` | Important concepts from sources missing in the wiki |
+| `contradiction-detection` | Pairs of wiki pages that make contradictory claims, with confidence and severity |
 
 LLM rules require a configured LLM. If no LLM is available, they report `SKIP`.
 

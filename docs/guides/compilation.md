@@ -51,6 +51,44 @@ To use the simpler one-pass mode:
 knox compile *.pdf --single-pass
 ```
 
+## Vision enrichment (VLM)
+
+When a vision-capable model is configured, KNOX can caption extracted images and figures during Tier 2 resolution:
+
+```bash
+knox compile *.pdf --vlm-model openai/gpt-4o
+# or via environment variable
+export KNOX_VLM_MODEL=ollama/llava
+knox compile *.pdf
+```
+
+The VLM receives the extracted image plus surrounding context and produces a caption that is carried into the compiled wiki.
+
+## Typed knowledge-graph relations
+
+By default, KNOX links pages only by shared entity mentions (`entity_reference`). With relation extraction enabled, the resolver asks the LLM to identify typed relations between entities (e.g., `uses`, `depends_on`, `contradicts`, `caused`, `fixed`, `supersedes`) and attaches a confidence score:
+
+```bash
+knox compile *.pdf --resolve-relations --relation-confidence-threshold 0.7
+# or via config
+export KNOX_RESOLVE_RELATIONS=true
+```
+
+Typed relations are emitted as graph edges and rendered in the `Related` section of each wiki page (`[[Page]] (uses) — confidence 0.85`).
+
+## Page kinds
+
+The default `graph` compiler infers a built-in page kind for each wiki page:
+
+| Kind | Heuristic |
+|------|-----------|
+| `overview` | Root or "Overview" page |
+| `comparison` | Comparison/contrast-style heading context |
+| `entity` | Page title matches a resolved entity name |
+| `concept` | Default for everything else |
+
+The kind is written to the page frontmatter (`kind: entity`) and included in the compiled wiki metadata distribution.
+
 ## Prompt budget
 
 Each concept page in phase 2 sees at most `--prompt-budget` characters

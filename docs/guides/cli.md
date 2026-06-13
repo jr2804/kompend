@@ -63,8 +63,12 @@ knox compile [OPTIONS] FILES...
 | `--format`, `-f` | `markdown` | Output format: markdown, json, typst |
 | `--chunk-size` | `512` | Chunk size in tokens |
 | `--image-mode` | `file` | Image handling: file, base64 |
-| `--index` | — | Index compiled wiki for semantic search |
-| `--embed-model` | — | Embedding model for vector indexing |
+| `--index` | — | Index compiled wiki in zvec for semantic search |
+| `--embed-model` | — | Embedding model for zvec indexing |
+| `--embed-dim` | — | Embedding dimension |
+| `--vlm-model` | — | Vision model for captioning images during resolution |
+| `--resolve-relations` | — | Extract typed relations (uses, depends_on, contradicts, ...) between entities |
+| `--relation-confidence-threshold` | `0.0` | Minimum confidence for typed relations to be kept |
 | `--ignore` | — | Ignore pattern (glob-style, repeatable) |
 | `--progress/--no-progress` | auto | Show rich progress bars (auto-detected for TTY) |
 
@@ -162,6 +166,37 @@ knox list-parsers [OPTIONS]
 |------|-------------|
 | `--json` | Output in JSON format |
 
+## `knox query`
+
+Ask a natural-language question against the compiled wiki.
+
+```text
+knox query [OPTIONS] QUESTION
+```
+
+`knox query` loads the cached wiki and uses hybrid search (FTS + vector + token overlap + raw sources fused with reciprocal rank fusion) when an index has been built with `knox compile --index`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--top-k` | `5` | Number of context chunks to retrieve |
+| `--scope` | `hybrid` | Search scope: `wiki`, `raw`, or `hybrid` |
+| `--sources-dir`, `-s` | `sources` | Sources directory for raw/hybrid search |
+| `--format` | `text` | Output format: `text` or `json` |
+| `--raw` | — | Return raw context chunks without LLM synthesis |
+| `--no-classify` | — | Skip intent classification |
+
+## `knox capture` and `knox learn`
+
+Quickly persist notes, facts, or conversation snippets as source files in `sources/_captured/`.
+
+```bash
+# LLM extraction into one or more knowledge items
+knox capture "We decided to use QKV projections with RoPE"
+
+# Store a fact verbatim
+knox learn "The transformer uses d_model=512 and h=8" --tag attention
+```
+
 ## Environment Variables
 
 | Variable | Description |
@@ -171,3 +206,6 @@ knox list-parsers [OPTIONS]
 | `KNOX_RECURSIVE` | Default recursive mode (true/false) |
 | `KNOX_LLM_MODEL` | Default LLM model |
 | `KNOX_LLM_PROVIDER` | Default LLM provider |
+| `KNOX_VLM_MODEL` | Vision model for image captioning |
+| `KNOX_RESOLVE_RELATIONS` | Enable typed relation extraction (true/false) |
+| `KNOX_RELATION_CONFIDENCE_THRESHOLD` | Minimum confidence for typed relations |

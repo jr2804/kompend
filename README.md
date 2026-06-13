@@ -181,6 +181,7 @@ AGPL-3.0. See [LICENSE](./LICENSE).
 ## Acknowledgments
 
 - [Karpathy's compiled LLM-wiki Gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the core concept
+- [Rohit G00's LLM Wiki v2 Gist](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) — memory lifecycle, knowledge graph, hybrid search, and event-driven extensions
 - [WiCER paper](https://arxiv.org/pdf/2605.07068v1) (Huerta, Zinnia Tech) — iterative compilation loop
 - [Docling](https://github.com/DS4SD/docling) (IBM) — structure-preserving parsing
 - [Chonkie](https://github.com/chonkie-inc/chonkie) — multi-strategy chunking

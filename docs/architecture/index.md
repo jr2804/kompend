@@ -79,21 +79,22 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
 │  TIER 3: RESOLUTION (Optional, Multi-Turn)                            │
 │  ┌──────────────┐  ┌─────────────────┐  ┌─────────────────┐           │
 │  │ LLM Resolver │  │ VLM Enricher    │  │ MCP Tool Hooks  │           │
-│  │ │ abbreviat- │  │ │ analyze       │  │ │ external      │           │
-│  │ │ ion expand │  │ │ extracted figs│  │ │ lookup tools  │           │
-│  │ │ cross-ref  │  │ │ via context   │  │ │ (DOI, gloss-  │           │
-│  │ │ validation │  │ │ from nearby   │  │ │ ary, etc.)    │           │
-│  │ │ term dis-  │  │ │ text          │  │ │               │           │
-│  │ │ ambig-     │  │ └─────────────────┘  │               │           │
-│  │ │ uation     │  └──────────────────────┘               │           │
-│  │ └──────────────┘                                        │           │
+│  │ │ extracts   │  │ │ analyze       │  │ │ external      │           │
+│  │ │ typed      │  │ │ extracted figs│  │ │ lookup tools  │           │
+│  │ │ relations  │  │ │ via context   │  │ │ (DOI, gloss-  │           │
+│  │ │ with conf- │  │ │ from nearby   │  │ │ ary, etc.)    │           │
+│  │ │ idence     │  │ └─────────────────┘  │               │           │
+│  │ └──────────────┘  └──────────────────────┘               │           │
 │  │                                                         │           │
 │  │  Per-document resolution workflow:                       │           │
 │  │  ├─ Default: one-shot (no resolution, fastest)           │           │
-│  │  └─ Opt-in: multi-turn chat for document                │           │
+│  │  ├─ Opt-in: typed relation extraction (uses, depends_on, │           │
+│  │  │   contradicts, ...) with confidence scores            │           │
+│  │  └─ Opt-in: VLM captions for extracted images/figures    │           │
 │  │                                                           │           │
 │  │  Each resolver is pluggable via MCP or CLI tool.         │           │
 │  └─────────────────────────────────────────────────────────────────────┘
+
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -204,7 +205,7 @@ class Chunk:
 class ResolvedChunk:
     chunk: Chunk
     entities: list[Entity]     # resolved terms, abbreviations, etc.
-    relationships: list[Relationship]  # cross-document links
+    relations: list[Relation]  # typed, confidence-scoped edges
     confidence: float
 ```
 
@@ -281,13 +282,21 @@ KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `parse_document`
 
 No custom GUI. KNOX exposes a queryable JSON graph / SQLite database. Open-WebUI connects via API. This follows the user's explicit requirement to minimize UI overhead.
 
-### Hybrid RAG (Optional)
+### Hybrid RAG
 
-For sidecar traditional RAG alongside the compiled wiki:
+`knox query` fuses multiple signals when an index has been built with `knox compile --index`:
+
+- **FTS5** over compiled wiki pages
+- **zvec vector search** over chunk embeddings
+- **Token overlap** fallback
+- **Raw-source token overlap** for hybrid scope
+
+Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.knox/zvec/`; an FTS index is stored in `.knox/search.db`.
+
+Optional extras:
 
 - **alibaba/zvec** — embedded vector database for similarity search
 - **tobi/qmd** — local CLI search engine over the wiki corpus
-Both are optional extras. KNOX works without them.
 
 ## File Flow
 
