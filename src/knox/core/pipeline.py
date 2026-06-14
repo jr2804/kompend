@@ -1,11 +1,11 @@
 """Pipeline orchestrator for the KNOX 5-tier architecture.
 
-Tier identifiers, mode definitions, tier descriptions, and
-:class:`PipelineConfig` live in :mod:`knox.core.pipeline_defs` so they
-can be shared with the CLI and other callers without dragging in the
-orchestrator. This module re-exports the legacy ``TIER_*`` string
-constants for backward compatibility with downstream callers that still
-import them from ``knox.core.pipeline``.
+Tier identifiers, tier descriptions, and :class:`PipelineConfig` live in
+:mod:`knox.core.pipeline_defs` so they can be shared with the CLI and
+other callers without dragging in the orchestrator. This module
+re-exports the legacy ``TIER_*`` string constants for backward
+compatibility with downstream callers that still import them from
+``knox.core.pipeline``.
 """
 
 from __future__ import annotations
@@ -30,11 +30,9 @@ from knox.core.memory import update_memory_for_compile
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
 from knox.core.pipeline_defs import (
     ALL_TIERS,
-    MODE_LEVELS,
     TIER_DESCRIPTIONS,
     TIER_LEVEL,
     Compiler,
-    Mode,
     PipelineConfig,
     Tier,
 )
@@ -110,10 +108,42 @@ class WikiPipeline:
         if hasattr(self, "_state"):
             self.state_store.save(self._state)
 
-    def active_levels(self) -> set[int]:
-        """Return the set of tier levels enabled for the current mode."""
-        mode = self.config.mode if isinstance(self.config.mode, Mode) else Mode(self.config.mode)
-        return MODE_LEVELS.get(mode, MODE_LEVELS[Mode.FULL])
+    def start_level(self) -> int:
+        """Numeric level of the first tier to run."""
+        return TIER_LEVEL[self.config.start_at_tier]
+
+    def stop_level(self) -> int:
+        """Numeric level of the last tier to run."""
+        return TIER_LEVEL[self.config.stop_at_tier]
+
+    def _should_run(self, tier: Tier) -> bool:
+        """Check whether ``tier`` falls within [start, stop]."""
+        level = TIER_LEVEL[tier]
+        return self.start_level() <= level <= self.stop_level()
+
+    def _validate_prerequisites(self) -> None:
+        """Ensure previous tiers are cached when starting at a later one."""
+        start = self.start_level()
+        if start == 0:
+            return
+
+        state = self.state
+        required_level = start - 1
+        if not state.entries:
+            msg = (
+                f"Cannot start at tier '{self.config.start_at_tier.value}' "
+                f"— no previous run found. Run 'knox ingest' or 'knox compile' first."
+            )
+            raise ValueError(msg)
+
+        ready = [e for e in state.entries.values() if e.current_tier >= required_level]
+        if not ready:
+            msg = (
+                f"Cannot start at tier '{self.config.start_at_tier.value}' "
+                f"— no sources have completed tier {required_level}. "
+                f"Run 'knox ingest' or 'knox compile' first."
+            )
+            raise ValueError(msg)
 
     def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:
         """Execute the full pipeline from sources to compiled wiki.
@@ -125,36 +155,45 @@ class WikiPipeline:
             Purely informational — core logic never depends on it.
         """
         self._progress_callback = progress_callback
-        logger.info("Starting KNOX pipeline (mode=%s): %s", self.config.mode, self.config.source_dir)
+        logger.info(
+            "Starting KNOX pipeline (tiers %s→%s): %s",
+            self.config.start_at_tier.value,
+            self.config.stop_at_tier.value,
+            self.config.source_dir,
+        )
         fire_hook(
             HookEvent.PRE_COMPILE,
             source_dir=str(self.config.source_dir),
             output_dir=str(self.config.output_dir),
-            mode=str(self.config.mode),
+            start_at_tier=self.config.start_at_tier.value,
+            stop_at_tier=self.config.stop_at_tier.value,
         )
+
+        # Validate prerequisites when starting at a later tier.
+        self._validate_prerequisites()
 
         # --force: invalidate all caches before starting.
         if self.config.force:
             logger.info("Force mode enabled — invalidating all caches")
             self._cache_store.invalidate()
 
-        levels = self.active_levels()
         all_chunks: list[Any] = []
         resolved: list[Any] = []
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
 
-        if 0 in levels:
+        if self._should_run(Tier.INDEX):
             self._emit("index", 0, 1, "starting")
             self.run_tier(TIER_INDEX)
             self._emit("index", 1, 1, "done")
-        if 1 in levels:
+        if self._should_run(Tier.CHUNK):
             all_chunks = self._parse_and_chunk()
-        if 2 in levels:
+            self._record_tier_state(1)
+        if self._should_run(Tier.RESOLVE):
             self._emit("resolve", 0, len(all_chunks), "starting")
             resolved = self._resolve_chunks(all_chunks) if all_chunks else self._load_resolved_from_disk() or []
             self._record_tier_state(2)
             self._emit("resolve", len(resolved), len(resolved), "done")
-        if 3 in levels:
+        if self._should_run(Tier.COMPILE):
             self._emit("compile", 0, 1, "starting")
             if self.compiler:
                 wiki = self.compiler.compile(resolved)
@@ -164,7 +203,7 @@ class WikiPipeline:
             self._emit("compile", 1, 1, "done")
         else:
             wiki = self._load_compiled_wiki() or wiki
-        if 4 in levels and self.output_writer:
+        if self._should_run(Tier.OUTPUT) and self.output_writer:
             self._emit("output", 0, 1, "starting")
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)

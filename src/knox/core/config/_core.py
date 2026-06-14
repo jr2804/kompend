@@ -129,7 +129,9 @@ DEFAULTS: dict[str, Any] = {
             "max_related_links": 15,
         },
         "embedding": {
+            "model": "hash",
             "dim": 384,
+            "batch_size": 10,
         },
     },
     "lint": {
@@ -159,7 +161,7 @@ _ENV_MAP: dict[str, str] = {
     "compile.format": "KNOX_FORMAT",
     "compile.chunk_size": "KNOX_CHUNK_SIZE",
     "compile.image_mode": "KNOX_IMAGE_MODE",
-    "compile.mode": "KNOX_MODE",
+    "compile.start_at_tier": "KNOX_START_AT_TIER",
     "compile.workers": "KNOX_WORKERS",
     "compile.no_cache": "KNOX_NO_CACHE",
     "compile.force": "KNOX_FORCE",
@@ -191,6 +193,7 @@ _ENV_MAP: dict[str, str] = {
     "compile.embedding.model": "KNOX_EMBEDDING_MODEL",
     "compile.embedding.provider": "KNOX_EMBEDDING_PROVIDER",
     "compile.embedding.dim": "KNOX_EMBEDDING_DIM",
+    "compile.embedding.batch_size": "KNOX_EMBEDDING_BATCH_SIZE",
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     "trust.privacy_filter": "KNOX_PRIVACY_FILTER",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",

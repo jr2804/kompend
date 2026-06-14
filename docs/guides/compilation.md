@@ -1,7 +1,7 @@
 # Compilation Guide
 
 KNOX compiles documents into a knowledge wiki through a five-tier pipeline.
-This guide explains the compilation modes, two-phase execution, prompt
+This guide explains incremental compilation, compiler backends, prompt
 budgeting, and per-source state.
 
 ## Pipeline tiers
@@ -14,23 +14,34 @@ budgeting, and per-source state.
 | 3 | Compile | Resolve → wiki pages | ~$0.05/doc | ✅ |
 | 4 | Output | Write wiki to disk | Free | ✅ |
 
-## Compilation modes
+## Incremental compilation
 
-Use `--mode` to skip tiers you don't need:
+Use `--start-at-tier` to skip tiers whose cached output is still valid. The pipeline validates that previous tiers ran before continuing.
 
 ```bash
-knox compile *.pdf                           # full
-knox compile *.pdf --mode index-only         # re-index only
-knox compile *.pdf --mode resolve-only       # skip re-parsing
-knox compile *.pdf --mode output-only        # re-render only
+knox compile *.pdf                                # full pipeline (T0→T4)
+knox compile *.pdf --start-at-tier resolve        # skip re-parse+chunk, T2→T4
+knox compile *.pdf --start-at-tier output         # re-render existing wiki, T4 only
+knox compile *.pdf --force                        # invalidate all caches, full re-run
 ```
 
-| Mode | Tiers run |
-|------|-----------|
-| `full` | 0, 1, 2, 3, 4 |
-| `index-only` | 0, 1 |
-| `resolve-only` | 2, 3, 4 |
-| `output-only` | 4 |
+| Flag | Effect |
+|------|--------|
+| `--start-at-tier index` (default) | Run T0→T4 |
+| `--start-at-tier chunk` | Skip T0 (uses cached parse output) |
+| `--start-at-tier resolve` | Skip T0+T1 (uses cached chunks) |
+| `--start-at-tier compile` | Skip T0–T2 (uses cached resolved graph) |
+| `--start-at-tier output` | Re-render from cached CompiledWiki only |
+| `--force` | Ignore all caches; full re-run |
+
+### Ingest (T0+T1 only)
+
+`knox ingest` runs parse + chunk and stops. Use it to pre-stage large corpora cheaply before an LLM compile:
+
+```bash
+knox ingest *.pdf              # stage + parse + chunk only
+knox compile --start-at-tier resolve   # later: T2→T4 using cached chunks
+```
 
 The pipeline loads its tier checkpoint from `.knox/compile_state.json`
 inside the output directory. On restart, unchanged sources are skipped.
@@ -233,7 +244,7 @@ A: In two-phase mode, entities/concepts from the new source are merged
 with existing pages — old content is preserved, new provenance is added.
 
 **Q: Can I run just the LLM stages?**
-A: Yes: `knox compile *.pdf --mode resolve-only` skips re-parsing.
+A: Yes: `knox compile *.pdf --start-at-tier resolve` skips re-parsing and chunking.
 
 **Q: How do I get a JSON status report?**
 A: `knox compile *.pdf --list-tiers` outputs JSON.

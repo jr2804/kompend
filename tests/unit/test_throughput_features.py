@@ -20,7 +20,6 @@ from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline import (
     ALL_TIERS,
-    MODE_LEVELS,
     TIER_CHUNK,
     TIER_COMPILE,
     TIER_INDEX,
@@ -75,22 +74,39 @@ def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
 # ===========================================================================
 
 
-class TestTierModeLevels:
-    """MODE_LEVELS / TIER_LEVEL sanity."""
+class TestTierLevelRanges:
+    """TIER_LEVEL and tier range sanity."""
 
     def test_all_tiers_ordered(self) -> None:
         assert ALL_TIERS == (TIER_INDEX, TIER_CHUNK, TIER_RESOLVE, TIER_COMPILE, TIER_OUTPUT)
 
-    def test_modes_are_subsets(self) -> None:
-        full = MODE_LEVELS["full"]
-        for mode, levels in MODE_LEVELS.items():
-            assert levels <= full, f"mode {mode!r} levels exceed full"
+    def test_should_run_default_runs_all(self) -> None:
+        config = PipelineConfig(
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
+        )
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        from knox.core.pipeline_defs import Tier
+        for tier in Tier:
+            assert pipeline._should_run(tier)
 
-    def test_output_only_only_runs_output(self) -> None:
-        assert MODE_LEVELS["output-only"] == {4}
-
-    def test_index_only_runs_tiers_0_and_1(self) -> None:
-        assert MODE_LEVELS["index-only"] == {0, 1}
+    def test_should_run_output_only(self) -> None:
+        from knox.core.pipeline_defs import Tier
+        config = PipelineConfig(
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
+            start_at_tier=Tier.OUTPUT,
+        )
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        assert not pipeline._should_run(Tier.INDEX)
+        assert not pipeline._should_run(Tier.CHUNK)
+        assert not pipeline._should_run(Tier.RESOLVE)
+        assert not pipeline._should_run(Tier.COMPILE)
+        assert pipeline._should_run(Tier.OUTPUT)
 
 
 class TestTierStateStore:
@@ -205,23 +221,44 @@ class TestAutoPromoteDemote:
 
 
 class TestWikiPipelineTiered:
-    """WikiPipeline.run() and run_tier() with mode filtering."""
+    """WikiPipeline.run() and run_tier() with tier range filtering."""
 
-    def test_pipeline_config_has_mode(self) -> None:
+    def test_pipeline_config_defaults(self) -> None:
         config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
-        assert config.mode == "full"
+        assert config.start_at_tier == "index"
+        assert config.stop_at_tier == "output"
 
-    def test_active_levels_full(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="full")
+    def test_start_level_default(self) -> None:
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
-        assert pipeline.active_levels() == {0, 1, 2, 3, 4}
+        assert pipeline.start_level() == 0
+        assert pipeline.stop_level() == 4
 
-    def test_active_levels_output_only(self) -> None:
+    def test_start_level_output_only(self) -> None:
+        from knox.core.pipeline_defs import Tier
         config = PipelineConfig(
-            source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"), mode="output-only"
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
+            start_at_tier=Tier.OUTPUT,
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
-        assert pipeline.active_levels() == {4}
+        assert pipeline.start_level() == 4
+        assert pipeline.stop_level() == 4
+
+    def test_validate_prerequisites_empty_state_raises(self) -> None:
+        from knox.core.pipeline_defs import Tier
+        config = PipelineConfig(
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
+            start_at_tier=Tier.RESOLVE,
+        )
+        pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
+        with pytest.raises(ValueError, match="no previous run"):
+            pipeline._validate_prerequisites()
 
     def test_run_tier_unknown_raises(self) -> None:
         config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))

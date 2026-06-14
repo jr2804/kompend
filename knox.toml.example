@@ -18,8 +18,8 @@ chunk_size = 512
 # Image handling: file (extract to disk) | base64 (inline)
 image_mode = "file"
 
-# Pipeline mode: full | index-only | resolve-only | output-only
-mode = "full"
+# Pipeline start tier: index | chunk | resolve | compile | output
+# start_at_tier = "index"
 
 # Parallel parse workers (1 = sequential)
 workers = 1

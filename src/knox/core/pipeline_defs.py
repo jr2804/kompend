@@ -3,10 +3,8 @@
 This module is the single source of truth for:
 
 - :class:`Tier` — the 5 pipeline tier identifiers
-- :class:`Mode` — high-level pipeline run modes (short-cuts over tier levels)
 - :data:`ALL_TIERS` — ordered tuple of every tier
 - :data:`TIER_LEVEL` — tier name → numeric level (used for skip/ordering decisions)
-- :data:`MODE_LEVELS` — mode name → set of tier levels to run
 - :data:`TIER_DESCRIPTIONS` — human-readable description per tier (with inputs/outputs)
 - :data:`PipelineConfig` — dataclass holding the full pipeline configuration
 
@@ -49,25 +47,12 @@ class Tier(StrEnum):
 class Compiler(StrEnum):
     """Compiler backend selection.
 
-    - ``GRAPH``: TwoPhaseCompiler (two-phase extract-then-generate, default)
+    - ``GRAPH``: GraphCompiler (heading-based grouping, default)
     - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
     """
 
     GRAPH = "graph"
     WICER = "wicer"
-
-
-class Mode(StrEnum):
-    """High-level pipeline run modes.
-
-    A mode expands to the set of tier levels that should run for
-    that mode. See :data:`MODE_LEVELS` for the mapping.
-    """
-
-    FULL = "full"
-    INDEX_ONLY = "index-only"
-    RESOLVE_ONLY = "resolve-only"
-    OUTPUT_ONLY = "output-only"
 
 
 # Ordered tuple used for `--list-tiers` and tier-name validation.
@@ -86,14 +71,6 @@ TIER_LEVEL: dict[Tier, int] = {
     Tier.RESOLVE: 2,
     Tier.COMPILE: 3,
     Tier.OUTPUT: 4,
-}
-
-# Mode → set of tier levels to run.
-MODE_LEVELS: dict[Mode, set[int]] = {
-    Mode.FULL: {0, 1, 2, 3, 4},
-    Mode.INDEX_ONLY: {0, 1},
-    Mode.RESOLVE_ONLY: {2, 3, 4},
-    Mode.OUTPUT_ONLY: {4},
 }
 
 # Tier name → human-readable description (with inputs and outputs).
@@ -140,7 +117,8 @@ class PipelineConfig:
     cache_dir: Path | None = None  # None = base_dir/.knox/cache
     no_cache: bool = False  # force re-parse even if cached
     workers: int = 1  # parallel parse+chunk workers
-    mode: Mode = Mode.FULL
+    start_at_tier: Tier = Tier.INDEX  # pipeline entry point (T0 by default)
+    stop_at_tier: Tier = Tier.OUTPUT  # pipeline exit point (T4 by default; T1 for ingest)
     force: bool = False  # bypass persistent tier state and re-process everything
     tier_state_path: Path | None = None  # None = base_dir/.knox/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
@@ -238,7 +216,8 @@ class PipelineConfig:
             cache_dir=cfg.get("compile.cache_dir"),
             no_cache=cfg.get("compile.no_cache", False),
             workers=cfg.get("compile.workers", 1),
-            mode=Mode(cfg.get("compile.mode", Mode.FULL)),
+            start_at_tier=Tier(cfg.get("compile.start_at_tier", Tier.INDEX)),
+            stop_at_tier=Tier(cfg.get("compile.stop_at_tier", Tier.OUTPUT)),
             force=cfg.get("compile.force", False),
             tier_state_path=cfg.get("compile.tier_state_path"),
             ignore_patterns=list(cfg.get("ignore.patterns", [])),
@@ -260,12 +239,10 @@ class PipelineConfig:
 
 __all__ = [
     "ALL_TIERS",
-    "MODE_LEVELS",
     "TIER_DESCRIPTIONS",
     "TIER_LEVEL",
     "Compiler",
     "ImageMode",
-    "Mode",
     "OutputFormat",
     "PipelineConfig",
     "Tier",

@@ -27,7 +27,6 @@ DEFAULT_OUTPUT_DIR: str = "wiki"
 DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
 DEFAULT_CHUNK_SIZE: int = 512
 DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
-DEFAULT_COMPILE_MODE: str = "full"
 DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
 
@@ -196,15 +195,33 @@ EmbedDim = Annotated[
     ),
 ]
 
-# ── Q20 tiered compilation ──────────────────────────────────────────────
-
-CompileMode = Annotated[
-    str,
+EmbedBatchSize = Annotated[
+    int | None,
     typer.Option(
-        "--mode",
-        help="Compilation mode: full | index-only | resolve-only | output-only. Tiers below the selected mode are skipped (cached state is reused).",
+        "--embed-batch-size",
+        help="Batch size for embedding generation during indexing.",
+        min=1,
+        max=1000,
+        rich_help_panel="Advanced",
     ),
 ]
+
+# ── Q20 tiered compilation ──────────────────────────────────────────────
+
+StartAtTier = Annotated[
+    str,
+    typer.Option(
+        "--start-at-tier",
+        help=(
+            "Pipeline entry point: index | chunk | resolve | compile | output. "
+            "Tiers before this are skipped (cached results reused). "
+            "Previous tiers must have been completed in a prior run. "
+            f"Env: {APP_NAME_UPPERCASE}_START_AT_TIER."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_START_AT_TIER",
+    ),
+]
+DEFAULT_START_AT_TIER: str = "index"
 
 NoCacheFlag = Annotated[
     bool,

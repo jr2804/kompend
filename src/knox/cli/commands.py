@@ -20,20 +20,19 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 
 from knox.capture.capture import capture
 from knox.capture.crystallize import crystallize
-from knox.capture.ingest import ingest
 from knox.capture.learn import learn
 from knox.cli._progress import PipelineProgress
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_COMPILE_FORMAT,
-    DEFAULT_COMPILE_MODE,
     DEFAULT_COMPILER,
     DEFAULT_IMAGE_MODE,
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROMPT_BUDGET,
     DEFAULT_SOURCES_DIR,
+    DEFAULT_START_AT_TIER,
     BudgetConcepts,
     BudgetGenSegment,
     BypassReview,
@@ -41,9 +40,9 @@ from knox.cli.args import (
     ChunkSize,
     CompileFiles,
     CompileLint,
-    CompileMode,
     CompilerChoice,
     ConfigPath,
+    EmbedBatchSize,
     EmbedDim,
     EmbedModel,
     ForceTier,
@@ -51,7 +50,6 @@ from knox.cli.args import (
     Ignore,
     ImageMode,
     IndexStore,
-    IngestTarget,
     JsonOutput,
     KindOption,
     LearnTags,
@@ -98,6 +96,7 @@ from knox.cli.args import (
     ServeOpen,
     ServePort,
     SourcesDir,
+    StartAtTier,
     SynthesizeFlag,
     TargetFormat,
     UrlFile,
@@ -110,6 +109,7 @@ from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, clear_hooks, fire_hook, load_hooks_from_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
+from knox.core.pipeline_defs import Tier
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
@@ -279,7 +279,7 @@ def compile_cmd(
     embed_model: EmbedModel = None,
     ignore: Ignore = None,
     show_progress: Progress = None,
-    mode: CompileMode = DEFAULT_COMPILE_MODE,
+    start_at_tier: StartAtTier = DEFAULT_START_AT_TIER,
     no_cache: NoCacheFlag = False,
     workers: Workers = 1,
     force: ForceTier = False,
@@ -310,6 +310,7 @@ def compile_cmd(
     budget_gen_segment: BudgetGenSegment = None,
     budget_concepts: BudgetConcepts = None,
     embed_dim: EmbedDim = None,
+    embed_batch_size: EmbedBatchSize = None,
     llm_timeout: LlmTimeout = None,
 ) -> None:
     """Compile documents into a knowledge wiki.
@@ -343,7 +344,7 @@ def compile_cmd(
         target_format=target_format,
         chunk_size=chunk_size,
         image_mode=image_mode,
-        mode=mode,
+        start_at_tier=start_at_tier,
         no_cache=no_cache,
         workers=workers,
         force=force,
@@ -1142,25 +1143,89 @@ def crystallize_cmd(
 
 @app.command(name="ingest")
 def ingest_cmd(
-    target: IngestTarget,
+    files: CompileFiles,
     sources_dir: SourcesDir = None,
+    output_dir: OutputDir = None,
+    config: ConfigPath = None,
+    online_urls: OnlineUrls = None,
+    url_file: UrlFile = None,
+    recursive: Recursive = False,
+    chunk_size: ChunkSize = DEFAULT_CHUNK_SIZE,
+    image_mode: ImageMode = DEFAULT_IMAGE_MODE,
+    ignore: Ignore = None,
+    show_progress: Progress = None,
+    no_cache: NoCacheFlag = False,
+    workers: Workers = 1,
+    force: ForceTier = False,
+    llm_default_model: LlmDefaultModel = None,
+    vlm_model: VlmModel = None,
 ) -> None:
-    """Download a URL or copy a file into the sources directory.
+    """Stage and parse documents into chunks (Tier 0 + Tier 1).
 
-    URLs are downloaded via HTTP. Local files are copied in.
-    After ingestion, run 'knox compile' to process the new source.
+    Downloads URLs and copies local files into the sources directory,
+    then parses and chunks them. Results are cached for subsequent
+    'knox compile' runs.
+
+    After ingest, run 'knox compile' to resolve, compile, and render
+    the wiki.
 
     Examples:
-        knox ingest https://arxiv.org/pdf/1234.56789
-        knox ingest notes/meeting-notes.md
+        knox ingest *.pdf
+        knox ingest --url-file urls.txt
     """
+    if online_urls is None:
+        online_urls = []
     sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
-    result = ingest(target, sources_dir=sources_dir_path)
-    if result is None:
-        typer.echo(f"Failed to ingest: {target}", err=True)
+    all_input_files = _resolve_compile_inputs(
+        files, online_urls, url_file, sources_dir_path, recursive, ignore,
+    )
+    if not all_input_files:
+        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
         raise typer.Exit(1)
-    typer.echo(f"Ingested -> {result}")
+
+    typer.echo(f"Ingesting {len(all_input_files)} document(s) -> {sources_dir_path}")
+
+    cli_overrides = _build_cli_overrides(
+        sources_dir=sources_dir,
+        output_dir=output_dir,
+        chunk_size=chunk_size,
+        image_mode=image_mode,
+        no_cache=no_cache,
+        workers=workers,
+        force=force,
+        ignore=ignore,
+        llm_default_model=llm_default_model,
+        vlm_model=vlm_model,
+    )
+    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    pipeline_config = PipelineConfig.from_resolved(
+        cfg,
+        source_dir=sources_dir_path,
+        output_dir=output_dir_path,
+        input_files=all_input_files,
+    )
+    pipeline_config.stop_at_tier = Tier.CHUNK
+
+    pipeline = build_pipeline(pipeline_config)
+    _load_hooks()
+
+    tracker = PipelineProgress.create(
+        total_files=len(all_input_files),
+        force_progress=show_progress,
+    )
+    progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
+
+    try:
+        pipeline.run(progress_callback=progress_cb)
+        tracker.finish()
+        typer.echo(f"Ingested {len(all_input_files)} document(s) -> {sources_dir_path}")
+        typer.echo("Run 'knox compile' to resolve, compile, and render the wiki.")
+    except Exception as exc:
+        tracker.finish()
+        typer.echo(f"Ingest failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 # ── serve ─────────────────────────────────────────────────────────────────
@@ -1310,7 +1375,7 @@ def _build_cli_overrides(
     target_format: str | None = None,
     chunk_size: int | None = None,
     image_mode: str | None = None,
-    mode: str | None = None,
+    start_at_tier: str | None = None,
     no_cache: bool | None = None,
     workers: int | None = None,
     force: bool | None = None,
@@ -1341,6 +1406,7 @@ def _build_cli_overrides(
     budget_gen_segment: int | None = None,
     embed_model: str | None = None,
     embed_dim: int | None = None,
+    embed_batch_size: int | None = None,
     llm_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
@@ -1352,7 +1418,7 @@ def _build_cli_overrides(
         ("compile.format", target_format),
         ("compile.chunk_size", chunk_size),
         ("compile.image_mode", image_mode),
-        ("compile.mode", mode),
+        ("compile.start_at_tier", start_at_tier),
         ("compile.workers", workers),
         ("compile.output.flavor", flavor),
         ("compile.llm.default_model", llm_default_model),
@@ -1366,6 +1432,7 @@ def _build_cli_overrides(
         ("compile.budget.gen_output_max", budget_gen_segment),
         ("compile.embedding.model", embed_model),
         ("compile.embedding.dim", embed_dim),
+        ("compile.embedding.batch_size", embed_batch_size),
         ("compile.llm.timeout", llm_timeout),
     ]
     for key, val in _simple:
