@@ -20,7 +20,6 @@ depends = ["dev"]
 usage = '''
 arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see https://github.com/neondatabase/add-mcp)"
 '''
-#shell = "powershell"
 run = [
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai --args mcp-serve grepai',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp --args mcp-server cytoscnpy',
