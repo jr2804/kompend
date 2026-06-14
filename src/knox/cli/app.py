@@ -54,10 +54,15 @@ def main() -> None:
     app()
 
 
-# Import commands to register them with app
+# Import command modules to register them with app
 from knox.cli import (  # noqa: E402
-    commands,  # noqa: F401
+    capture_cmds,  # noqa: F401
     config_cmd,  # noqa: F401
     init,  # noqa: F401
     memory_cmd,  # noqa: F401
+    pack_cmds,  # noqa: F401
+    pipeline_cmds,  # noqa: F401
+    quality_cmds,  # noqa: F401
+    query_cmds,  # noqa: F401
+    serve_cmds,  # noqa: F401
 )

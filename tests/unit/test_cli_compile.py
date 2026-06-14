@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.cli.commands import _build_cli_overrides
+from knox.cli._shared import build_cli_overrides as _build_cli_overrides
 from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import Compiler, ImageMode, PipelineConfig

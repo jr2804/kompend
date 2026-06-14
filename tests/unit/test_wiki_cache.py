@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from knox.cli.commands import _write_wiki_cache
+from knox.cli.pipeline_cmds import _write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 
 
