@@ -190,12 +190,31 @@ class TemplateLoader:
     _jinja_env: Any | None = None
     _search_cache: dict[str, tuple[str, Path | str]] = field(default_factory=dict)
     _meta_cache: dict[str, TemplateMeta] = field(default_factory=dict)
+    # Variables injected into every render call (only if the template uses them)
+    _global_context: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.project_dir is None:
             self.project_dir = _find_project_root()
 
     # ── Public API ───────────────────────────────────────────────────
+
+    def set_global_context(self, **kwargs: Any) -> None:
+        """Set variables that are injected into every ``render()`` call.
+
+        Only variables that a template actually references are injected,
+        so adding ``user_notes`` here will not trigger unused-variable
+        warnings for templates that do not use it.
+
+        Call :meth:`clear_global_context` when the context is no longer
+        needed (e.g. after the pipeline finishes) to avoid leaking
+        state across runs.
+        """
+        self._global_context.update(kwargs)
+
+    def clear_global_context(self) -> None:
+        """Remove all global context variables."""
+        self._global_context.clear()
 
     def render(self, template_path: str, **kwargs: Any) -> str:
         """Load and render a Jinja2 template with variable validation.
@@ -223,6 +242,16 @@ class TemplateLoader:
         meta = self.get_meta(template_path)
         body_text = self._get_body(template_path)
 
+        # Determine which variables the template actually uses
+        used = self._find_undeclared_variables(template_path)
+
+        # Inject global context for variables the template uses but the
+        # caller did not provide.  This lets pipeline-wide variables like
+        # ``user_notes`` flow into templates without threading them through
+        # every call site.
+        for key in used & self._global_context.keys():
+            kwargs.setdefault(key, self._global_context[key])
+
         # Validate: required declared variables
         required = meta.required_variable_names()
         missing = required - kwargs.keys()
@@ -230,7 +259,6 @@ class TemplateLoader:
             raise ValueError(f"Template '{template_path}' requires missing variables: {', '.join(sorted(missing))}")
 
         # Validate: undeclared (but used) variables via AST introspection
-        used = self._find_undeclared_variables(template_path)
         extra = kwargs.keys() - used - set()
         if extra:
             logger.warning(

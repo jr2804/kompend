@@ -153,6 +153,9 @@ DEFAULTS: dict[str, Any] = {
         "cache_dir": ".knox/cache",
         "state_dir": ".knox",
     },
+    "notes": {
+        "file": "NOTES.md",
+    },
 }
 
 # ── Env var mapping ──────────────────────────────────────────────────────
@@ -204,6 +207,7 @@ _ENV_MAP: dict[str, str] = {
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     "trust.privacy_filter": "KNOX_PRIVACY_FILTER",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
+    "notes.file": "KNOX_NOTES_FILE",
 }
 
 

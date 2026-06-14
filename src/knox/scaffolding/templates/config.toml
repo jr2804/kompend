@@ -12,6 +12,13 @@ output_dir = "wiki"
 cache_dir = ".knox/cache"
 state_dir = ".knox"
 
+# ── User notes ──────────────────────────────────────────────────────────
+# Free-form context injected into LLM templates as {{ user_notes }}.
+# Knox never modifies this file. Missing file = no error.
+
+[notes]
+file = "NOTES.md"
+
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]

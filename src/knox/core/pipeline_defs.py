@@ -131,6 +131,7 @@ class PipelineConfig:
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
+    notes_file: Path | None = None  # User notes file path (None = no notes)
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -206,6 +207,14 @@ class PipelineConfig:
             dim=cfg.get("compile.embedding.dim", 384),
         )
 
+        # Resolve notes file path relative to wiki_dir
+        notes_file_name = cfg.get("notes.file", "NOTES.md")
+        wiki_dir = cfg.get("paths.wiki_dir")
+        notes_file: Path | None = None
+        if notes_file_name:
+            base = Path(wiki_dir) if wiki_dir else output_dir.parent
+            notes_file = base / notes_file_name
+
         return cls(
             source_dir=source_dir,
             output_dir=output_dir,
@@ -230,6 +239,7 @@ class PipelineConfig:
             memory_enabled=cfg.get("compile.memory_enabled", True),
             memory_half_life_days=cfg.get("compile.memory_half_life_days", 90.0),
             memory_decay_threshold=cfg.get("compile.memory_decay_threshold", 0.3),
+            notes_file=notes_file,
             llm=llm_config,
             budget=budget_config,
             output=output_config,

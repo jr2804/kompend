@@ -36,6 +36,7 @@ from knox.core.pipeline_defs import (
     PipelineConfig,
     Tier,
 )
+from knox.core.template_loader import get_template_loader
 from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
@@ -116,35 +117,6 @@ class WikiPipeline:
         """Numeric level of the last tier to run."""
         return TIER_LEVEL[self.config.stop_at_tier]
 
-    def _should_run(self, tier: Tier) -> bool:
-        """Check whether ``tier`` falls within [start, stop]."""
-        level = TIER_LEVEL[tier]
-        return self.start_level() <= level <= self.stop_level()
-
-    def _validate_prerequisites(self) -> None:
-        """Ensure previous tiers are cached when starting at a later one."""
-        start = self.start_level()
-        if start == 0:
-            return
-
-        state = self.state
-        required_level = start - 1
-        if not state.entries:
-            msg = (
-                f"Cannot start at tier '{self.config.start_at_tier.value}' "
-                f"— no previous run found. Run 'knox ingest' or 'knox compile' first."
-            )
-            raise ValueError(msg)
-
-        ready = [e for e in state.entries.values() if e.current_tier >= required_level]
-        if not ready:
-            msg = (
-                f"Cannot start at tier '{self.config.start_at_tier.value}' "
-                f"— no sources have completed tier {required_level}. "
-                f"Run 'knox ingest' or 'knox compile' first."
-            )
-            raise ValueError(msg)
-
     def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:  # noqa: PLR0915
         """Execute the full pipeline from sources to compiled wiki.
 
@@ -155,6 +127,15 @@ class WikiPipeline:
             Purely informational — core logic never depends on it.
         """
         self._progress_callback = progress_callback
+
+        # Load user notes and inject into template global context
+        if self.config.notes_file and self.config.notes_file.exists():
+            notes_content = self.config.notes_file.read_text(encoding="utf-8")
+            get_template_loader().set_global_context(user_notes=notes_content)
+            logger.info("Loaded user notes from %s", self.config.notes_file)
+        else:
+            get_template_loader().clear_global_context()
+
         logger.info(
             "Starting KNOX pipeline (tiers %s→%s): %s",
             self.config.start_at_tier.value,
@@ -222,6 +203,7 @@ class WikiPipeline:
 
         self.save_state()
         self._progress_callback = None
+        get_template_loader().clear_global_context()
 
         if self.config.memory_enabled and wiki.nodes:
             base_dir = self.config.resolved_base_dir()
@@ -312,6 +294,32 @@ class WikiPipeline:
                 "description": f"sample sources: {[e.stem for e in sample]}",
             },
         ]
+
+    def _should_run(self, tier: Tier) -> bool:
+        """Check whether ``tier`` falls within [start, stop]."""
+        level = TIER_LEVEL[tier]
+        return self.start_level() <= level <= self.stop_level()
+
+    def _validate_prerequisites(self) -> None:
+        """Ensure previous tiers are cached when starting at a later one."""
+        start = self.start_level()
+        if start == 0:
+            return
+
+        state = self.state
+        required_level = start - 1
+        if not state.entries:
+            msg = f"Cannot start at tier '{self.config.start_at_tier.value}' — no previous run found. Run 'knox ingest' or 'knox compile' first."
+            raise ValueError(msg)
+
+        ready = [e for e in state.entries.values() if e.current_tier >= required_level]
+        if not ready:
+            msg = (
+                f"Cannot start at tier '{self.config.start_at_tier.value}' "
+                f"— no sources have completed tier {required_level}. "
+                f"Run 'knox ingest' or 'knox compile' first."
+            )
+            raise ValueError(msg)
 
     def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
         """Emit a progress event if a callback is registered."""
