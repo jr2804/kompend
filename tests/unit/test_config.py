@@ -6,6 +6,8 @@ import json
 import os
 from typing import Any
 
+import pytest
+
 from knox.core.config._core import (
     _deep_merge,
     _flat_keys,
@@ -13,10 +15,15 @@ from knox.core.config._core import (
     _load_toml,
     _read_env_vars,
     _set_dot,
+    coerce_config_value,
     find_all_project_configs,
     find_global_config,
     find_project_config,
+    get_global_config_path,
+    get_project_config_path,
     resolve_config,
+    set_config_file_value,
+    validate_config_key,
 )
 
 # ── Deep merge ──────────────────────────────────────────────────────────
@@ -449,3 +456,111 @@ class TestHierarchicalConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.chunk_size") == 64
+
+
+# ── Config mutation helpers ───────────────────────────────────────────────
+
+
+class TestValidateConfigKey:
+    def test_known_leaf_key(self) -> None:
+        assert validate_config_key("compile.chunk_size") is True
+
+    def test_unknown_key(self) -> None:
+        assert validate_config_key("compile.does_not_exist") is False
+
+    def test_section_key_rejected(self) -> None:
+        assert validate_config_key("compile") is False
+
+
+class TestCoerceConfigValue:
+    def test_coerce_integer(self) -> None:
+        assert coerce_config_value("1024", "compile.chunk_size") == 1024
+
+    def test_coerce_float(self) -> None:
+        assert coerce_config_value("1.5", "compile.memory_half_life_days") == 1.5
+
+    def test_coerce_boolean_true(self) -> None:
+        assert coerce_config_value("true", "compile.no_cache") is True
+
+    def test_coerce_boolean_false(self) -> None:
+        assert coerce_config_value("no", "compile.force") is False
+
+    def test_coerce_list(self) -> None:
+        assert coerce_config_value("a, b, c", "compile.llm.fallback_chain") == ["a", "b", "c"]
+
+    def test_coerce_empty_list(self) -> None:
+        assert coerce_config_value("", "compile.llm.fallback_chain") == []
+
+    def test_coerce_string(self) -> None:
+        assert coerce_config_value("openai/gpt-4o", "compile.llm.default_model") == "openai/gpt-4o"
+
+    def test_coerce_boolean_invalid_raises(self) -> None:
+        with pytest.raises(ValueError, match="expected boolean"):
+            coerce_config_value("maybe", "compile.no_cache")
+
+
+class TestGetProjectConfigPath:
+    def test_returns_existing_knox_toml(self, tmp_path: Any) -> None:
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("")
+        assert get_project_config_path(start_dir=tmp_path) == config_file
+
+    def test_prefers_dot_knox_config(self, tmp_path: Any) -> None:
+        dot_knox = tmp_path / ".knox"
+        dot_knox.mkdir()
+        dot_knox_file = dot_knox / "config.toml"
+        dot_knox_file.write_text("")
+        (tmp_path / "knox.toml").write_text("")
+        assert get_project_config_path(start_dir=tmp_path) == dot_knox_file
+
+    def test_creates_dot_knox_when_missing(self, tmp_path: Any) -> None:
+        path = get_project_config_path(start_dir=tmp_path, create=True)
+        assert path == tmp_path / ".knox" / "config.toml"
+        assert path.parent.is_dir()
+
+
+class TestGetGlobalConfigPath:
+    def test_uses_xdg_config_home(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        path = get_global_config_path()
+        assert path == tmp_path / "knox" / "config.toml"
+
+    def test_creates_parent_dir(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        path = get_global_config_path(create=True)
+        assert path.parent.is_dir()
+
+
+class TestSetConfigFileValue:
+    def test_creates_file_and_sets_key(self, tmp_path: Any) -> None:
+        path = tmp_path / "config.toml"
+        set_config_file_value(path, "compile.chunk_size", 1024)
+        data = _load_toml(path)
+        assert data["compile"]["chunk_size"] == 1024
+
+    def test_updates_existing_key(self, tmp_path: Any) -> None:
+        path = tmp_path / "config.toml"
+        path.write_text("[compile]\nchunk_size = 512\n")
+        set_config_file_value(path, "compile.chunk_size", 256)
+        data = _load_toml(path)
+        assert data["compile"]["chunk_size"] == 256
+
+    def test_adds_key_to_existing_section(self, tmp_path: Any) -> None:
+        path = tmp_path / "config.toml"
+        path.write_text('[compile]\nformat = "markdown"\n')
+        set_config_file_value(path, "compile.chunk_size", 128)
+        data = _load_toml(path)
+        assert data["compile"]["format"] == "markdown"
+        assert data["compile"]["chunk_size"] == 128
+
+    def test_creates_backup(self, tmp_path: Any) -> None:
+        path = tmp_path / "config.toml"
+        path.write_text("[compile]\nchunk_size = 512\n")
+        set_config_file_value(path, "compile.chunk_size", 256)
+        backup = path.with_suffix(path.suffix + ".bak")
+        assert backup.is_file()
+        assert "chunk_size = 512" in backup.read_text(encoding="utf-8")
+
+    def test_unknown_key_raises(self, tmp_path: Any) -> None:
+        with pytest.raises(KeyError):
+            set_config_file_value(tmp_path / "config.toml", "compile.unknown", "x")

@@ -17,10 +17,15 @@ from knox.core.config._core import (
     DEFAULTS,
     ConfigSource,
     ResolvedConfig,
+    coerce_config_value,
     find_all_project_configs,
     find_global_config,
     find_project_config,
+    get_global_config_path,
+    get_project_config_path,
     resolve_config,
+    set_config_file_value,
+    validate_config_key,
 )
 
 __all__ = [
@@ -33,8 +38,13 @@ __all__ = [
     "OutputConfig",
     "OutputFormat",
     "ResolvedConfig",
+    "coerce_config_value",
     "find_all_project_configs",
     "find_global_config",
     "find_project_config",
+    "get_global_config_path",
+    "get_project_config_path",
     "resolve_config",
+    "set_config_file_value",
+    "validate_config_key",
 ]

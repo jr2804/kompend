@@ -56,6 +56,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import tomli_w
+
 logger = logging.getLogger(__name__)
 
 # ── File paths ───────────────────────────────────────────────────────────
@@ -542,3 +544,111 @@ def resolve_config(
         project_config_paths=project_configs,
         global_config_path=global_path,
     )
+
+
+# ── Config mutation helpers ───────────────────────────────────────────────
+
+
+def _flat_schema() -> set[str]:
+    """Return all leaf dotted keys present in :data:`DEFAULTS`."""
+    return set(_flat_keys(DEFAULTS))
+
+
+def validate_config_key(key: str) -> bool:
+    """Return ``True`` if *key* is a known leaf config key."""
+    return key in _flat_schema()
+
+
+def coerce_config_value(value: str, key: str) -> Any:
+    """Coerce a CLI string to the type expected by ``DEFAULTS`` for *key*.
+
+    Raises:
+        ValueError: when *value* cannot be coerced to the expected type.
+    """
+    current = _get_dot(DEFAULTS, key)
+    lowered = value.lower()
+    true_values = {"true", "1", "yes", "on"}
+    false_values = {"false", "0", "no", "off"}
+    coerced: Any
+
+    if isinstance(current, bool):
+        if lowered in true_values:
+            coerced = True
+        elif lowered in false_values:
+            coerced = False
+        else:
+            raise ValueError(f"expected boolean for {key}")
+    elif isinstance(current, int):
+        coerced = int(value)
+    elif isinstance(current, float):
+        coerced = float(value)
+    elif isinstance(current, list):
+        coerced = [] if value == "" else [v.strip() for v in value.split(",") if v.strip()]
+    elif lowered in true_values:
+        coerced = True
+    elif lowered in false_values:
+        coerced = False
+    else:
+        coerced = value
+        with contextlib.suppress(ValueError):
+            coerced = int(value)
+        if coerced == value:
+            with contextlib.suppress(ValueError):
+                coerced = float(value)
+
+    return coerced
+
+
+def get_project_config_path(start_dir: Path | None = None, *, create: bool = False) -> Path:
+    """Return the project config file path used by ``knox config set``.
+
+    Prefers ``.knox/config.toml`` over ``knox.toml``. If no project config
+    exists and *create* is ``True``, returns ``<start_dir>/.knox/config.toml``
+    and creates the parent directory.
+    """
+    current = (start_dir or Path.cwd()).resolve()
+    found = find_project_config(current)
+    if found is not None:
+        return found
+    target = current / ".knox" / "config.toml"
+    if create:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def get_global_config_path(*, create: bool = False) -> Path:
+    """Return the global config file path.
+
+    Location follows the XDG convention. When *create* is ``True``, the
+    parent directory is created if it does not exist.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    config_dir = Path(xdg) if xdg else Path.home() / ".config"
+    target = config_dir / _GLOBAL_CONFIG_DIR / _GLOBAL_CONFIG_NAME
+    if create:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _atomic_write_toml(path: Path, data: dict[str, Any]) -> None:
+    """Write *data* to *path* atomically, keeping a ``.bak`` copy."""
+    if path.is_file():
+        backup = path.with_suffix(path.suffix + ".bak")
+        backup.write_bytes(path.read_bytes())
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(tomli_w.dumps(data), encoding="utf-8")
+    tmp.replace(path)
+
+
+def set_config_file_value(path: Path, key: str, value: Any) -> None:
+    """Set *key* to *value* in *path*, creating the file if needed.
+
+    Raises:
+        KeyError: if *key* is not a known config key.
+        ValueError: if *value* cannot be serialised as TOML.
+    """
+    if not validate_config_key(key):
+        raise KeyError(f"unknown config key: {key}")
+    data = _load_toml(path) if path.is_file() else {}
+    _set_dot(data, key, value)
+    _atomic_write_toml(path, data)
