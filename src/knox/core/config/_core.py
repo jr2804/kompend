@@ -4,7 +4,8 @@
 
 1. CLI flags           — explicit per-invocation overrides
 2. Shell env vars      — ``KNOX_*`` per-session overrides
-3. Project config      — ``./knox.toml`` (checked into repo)
+3. Project config      — ``./knox.toml`` and ``./.knox/config.toml``,
+                         discovered hierarchically by walking up from cwd
 4. Global config       — ``~/.config/knox/config.toml`` (per-user)
 5. Built-in defaults   — hard-coded in :data:`DEFAULTS`
 
@@ -50,23 +51,16 @@ import contextlib
 import logging
 import os
 import re
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib
-    except ImportError:
-        tomllib = None
-
 # ── File paths ───────────────────────────────────────────────────────────
 
-_PROJECT_CONFIG_NAMES: tuple[str, ...] = ("knox.toml",)
+_PROJECT_CONFIG_NAMES: tuple[str, ...] = (".knox/config.toml", "knox.toml")
 _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = "config.toml"
 
@@ -256,8 +250,9 @@ def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
 
 
 def find_project_config(start_dir: Path | None = None) -> Path | None:
-    """Walk up from *start_dir* looking for ``knox.toml``.
+    """Walk up from *start_dir* looking for project config files.
 
+    Prefers ``.knox/config.toml`` over ``knox.toml`` in the same directory.
     Returns the first found path, or ``None``.
     """
     current = (start_dir or Path.cwd()).resolve()
@@ -267,6 +262,28 @@ def find_project_config(start_dir: Path | None = None) -> Path | None:
             if candidate.is_file():
                 return candidate
     return None
+
+
+def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:
+    """Walk up from *start_dir* collecting all project config files.
+
+    Returns a list ordered from closest to farthest from *start_dir*.
+    Within each directory, ``.knox/config.toml`` is preferred over
+    ``knox.toml``; only one file per directory is returned.
+    """
+    current = (start_dir or Path.cwd()).resolve()
+    found: list[Path] = []
+    seen_dirs: set[Path] = set()
+    for parent in [current] + list(current.parents):
+        if parent in seen_dirs:
+            continue
+        seen_dirs.add(parent)
+        for name in _PROJECT_CONFIG_NAMES:
+            candidate = parent / name
+            if candidate.is_file():
+                found.append(candidate)
+                break
+    return found
 
 
 def find_global_config() -> Path | None:
@@ -317,10 +334,6 @@ def _load_toml(path: Path) -> dict[str, Any]:
     String values are processed through ``_expand_env_vars`` to support
     ``$VAR`` and ``${VAR}`` patterns.
     """
-    if tomllib is None:
-        logger.warning("No TOML parser available — cannot read %s", path)
-        return {}
-
     try:
         raw = path.read_bytes()
         data: dict[str, Any] = tomllib.loads(raw.decode("utf-8"))
@@ -386,6 +399,7 @@ class ResolvedConfig:
     raw: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, ConfigSource] = field(default_factory=dict)
     project_config_path: Path | None = None
+    project_config_paths: list[Path] = field(default_factory=list)
     global_config_path: Path | None = None
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -454,7 +468,7 @@ def resolve_config(
     config_path:
         Explicit config file path (``--config`` flag). When set, this
         is treated as a project-level override — it replaces the
-        auto-discovered project config but is still merged below CLI.
+        auto-discovered project hierarchy but is still merged below CLI.
 
     Returns:
     -------
@@ -476,6 +490,8 @@ def resolve_config(
             result = _merge_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
     # Layer 3: project config (explicit --config overrides auto-discovered)
+    project_path: Path | None = None
+    project_configs: list[Path] = []
     if config_path is not None:
         project_path = Path(config_path)
         if project_path.is_file():
@@ -485,11 +501,19 @@ def resolve_config(
         else:
             logger.warning("Config file not found: %s", config_path)
     else:
-        project_path = find_project_config()
-        if project_path is not None:
-            project_data = _load_toml(project_path)
-            if project_data:
-                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_path)))
+        project_configs = find_all_project_configs()
+        if project_configs:
+            # Merge from farthest to closest so closest wins.
+            merged_project: dict[str, Any] = {}
+            project_provenance: dict[str, ConfigSource] = {}
+            for path in reversed(project_configs):
+                file_data = _load_toml(path)
+                for key in _flat_keys(file_data):
+                    project_provenance[key] = ConfigSource("project", str(path))
+                merged_project = _deep_merge(merged_project, file_data)
+            if merged_project:
+                result = _deep_merge(result, merged_project)
+                provenance.update(project_provenance)
 
     # Layer 2: env vars
     env_data = _read_env_vars()
@@ -514,6 +538,7 @@ def resolve_config(
     return ResolvedConfig(
         raw=result,
         provenance=provenance,
-        project_config_path=project_path,
+        project_config_path=project_configs[0] if project_configs else project_path,
+        project_config_paths=project_configs,
         global_config_path=global_path,
     )

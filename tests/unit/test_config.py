@@ -13,6 +13,7 @@ from knox.core.config._core import (
     _load_toml,
     _read_env_vars,
     _set_dot,
+    find_all_project_configs,
     find_global_config,
     find_project_config,
     resolve_config,
@@ -356,3 +357,95 @@ class TestTomlLoading:
         data = _load_toml(f)
         assert data["compile"]["llm"]["default_model"] == "openai/gpt-4o"
         assert data["compile"]["llm"]["fallback_chain"] == ["anthropic/claude"]
+
+
+# ── Hierarchical config ─────────────────────────────────────────────────
+
+
+class TestHierarchicalConfig:
+    def test_find_all_project_configs_empty(self, tmp_path: Any) -> None:
+        assert find_all_project_configs(start_dir=tmp_path) == []
+
+    def test_find_all_project_configs_single(self, tmp_path: Any) -> None:
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile]\nchunk_size = 128\n")
+        result = find_all_project_configs(start_dir=tmp_path)
+        assert result == [config_file]
+
+    def test_find_all_project_configs_walks_up(self, tmp_path: Any) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        parent_file = parent / "knox.toml"
+        parent_file.write_text("[compile]\nchunk_size = 128\n")
+        child_file = child / "knox.toml"
+        child_file.write_text('[compile]\nformat = "json"\n')
+        result = find_all_project_configs(start_dir=child)
+        assert result == [child_file, parent_file]
+
+    def test_find_all_project_configs_prefers_dot_knox(self, tmp_path: Any) -> None:
+        dot_knox = tmp_path / ".knox"
+        dot_knox.mkdir()
+        dot_knox_file = dot_knox / "config.toml"
+        dot_knox_file.write_text("[compile]\nchunk_size = 64\n")
+        root_file = tmp_path / "knox.toml"
+        root_file.write_text("[compile]\nchunk_size = 128\n")
+        result = find_all_project_configs(start_dir=tmp_path)
+        assert result == [dot_knox_file]
+
+    def test_hierarchy_inherits_parent(self, tmp_path: Any, monkeypatch: Any) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        monkeypatch.chdir(child)
+        cfg = resolve_config()
+        assert cfg.get("compile.chunk_size") == 128
+
+    def test_hierarchy_child_overrides_parent(self, tmp_path: Any, monkeypatch: Any) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        (child / "knox.toml").write_text("[compile]\nchunk_size = 64\n")
+        monkeypatch.chdir(child)
+        cfg = resolve_config()
+        assert cfg.get("compile.chunk_size") == 64
+
+    def test_hierarchy_env_overrides_all(self, tmp_path: Any, monkeypatch: Any) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        (child / "knox.toml").write_text("[compile]\nchunk_size = 64\n")
+        monkeypatch.setenv("KNOX_CHUNK_SIZE", "32")
+        monkeypatch.chdir(child)
+        cfg = resolve_config()
+        assert cfg.get("compile.chunk_size") == 32
+
+    def test_hierarchy_provenance(self, tmp_path: Any, monkeypatch: Any) -> None:
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        parent_file = parent / "knox.toml"
+        parent_file.write_text("[compile]\nchunk_size = 128\nworkers = 2\n")
+        child_file = child / "knox.toml"
+        child_file.write_text("[compile]\nchunk_size = 64\n")
+        monkeypatch.chdir(child)
+        cfg = resolve_config()
+        assert str(parent_file) in str(cfg.source_of("compile.workers"))
+        assert str(child_file) in str(cfg.source_of("compile.chunk_size"))
+
+    def test_hierarchy_dot_knox_overrides_knox_toml(self, tmp_path: Any, monkeypatch: Any) -> None:
+        dot_knox = tmp_path / ".knox"
+        dot_knox.mkdir()
+        (dot_knox / "config.toml").write_text("[compile]\nchunk_size = 64\n")
+        (tmp_path / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.chunk_size") == 64
