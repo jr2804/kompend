@@ -1,0 +1,4 @@
+Next steps:
+  1. Drop source documents into the sources/ directory.
+  2. Edit .knox/config.toml to adjust settings.
+  3. Run 'knox compile' to build the wiki.

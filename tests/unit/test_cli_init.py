@@ -1,0 +1,92 @@
+"""CLI integration tests for the ``knox init`` command."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from knox.cli.app import app
+
+
+runner = CliRunner()
+
+
+class TestInitCommand:
+    def test_creates_wiki_in_target_dir(self, tmp_path: Path) -> None:
+        target = tmp_path / "my-wiki"
+        result = runner.invoke(app, ["init", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / "sources").is_dir()
+        assert (target / ".knox" / "config.toml").is_file()
+        assert "Created wiki project" in result.stdout
+
+    def test_creates_in_cwd_when_no_target(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+        assert (tmp_path / "sources").is_dir()
+        assert (tmp_path / ".knox" / "config.toml").is_file()
+
+    def test_bare_flag_skips_authored_files(self, tmp_path: Path) -> None:
+        target = tmp_path / "bare-wiki"
+        result = runner.invoke(app, ["init", "--bare", str(target)])
+        assert result.exit_code == 0
+        assert not (target / "NOTES.md").exists()
+        assert not (target / "README.md").exists()
+        assert "NOTES.md" in result.stdout
+        assert "README.md" in result.stdout
+
+    def test_existing_project_fails(self, tmp_path: Path) -> None:
+        target = tmp_path / "existing"
+        target.mkdir()
+        (target / "knox.toml").write_text("# existing", encoding="utf-8")
+        result = runner.invoke(app, ["init", str(target)])
+        assert result.exit_code == 1
+        combined = result.stdout + (result.stderr or "")
+        assert "Existing project" in combined
+
+    def test_force_flag_overwrites(self, tmp_path: Path) -> None:
+        target = tmp_path / "force-wiki"
+        target.mkdir()
+        (target / ".knox").mkdir()
+        (target / ".knox" / "config.toml").write_text("# old", encoding="utf-8")
+        result = runner.invoke(app, ["init", "--force", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / ".knox" / "config.toml").read_text(encoding="utf-8") != "# old"
+
+    def test_target_path_is_file_fails(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "not-a-dir"
+        file_path.write_text("file", encoding="utf-8")
+        result = runner.invoke(app, ["init", str(file_path)])
+        assert result.exit_code == 1
+
+    def test_git_flag_runs_git_init(self, tmp_path: Path) -> None:
+        if not _git_available():
+            pytest.skip("git not on PATH")
+        target = tmp_path / "git-wiki"
+        result = runner.invoke(app, ["init", "--git", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / ".git").is_dir()
+        assert "git init" in result.stdout
+
+    def test_help_lists_flags(self) -> None:
+        result = runner.invoke(app, ["init", "--help"])
+        assert result.exit_code == 0
+        assert "--bare" in result.stdout
+        assert "--force" in result.stdout
+        assert "--git" in result.stdout
+
+
+def _git_available() -> bool:
+    try:
+        subprocess.run(
+            ["git", "--version"],
+            check=True,
+            capture_output=True,
+        )
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False

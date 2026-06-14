@@ -1,0 +1,145 @@
+# KNOX configuration reference
+# Copy to .knox/config.toml and adjust for your project.
+# Full docs: https://knox.readthedocs.io/guides/config.html
+
+# ── Paths ────────────────────────────────────────────────────────────────
+# All paths are relative to the wiki root (the directory containing
+# `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
+
+[paths]
+sources = "sources"
+output = "wiki"
+cache = ".knox/cache"
+
+# ── Compile settings ────────────────────────────────────────────────────
+
+[compile]
+# Output format: markdown | json | typst
+format = "markdown"
+
+# Chunk size in tokens (atomic elements like tables are never split)
+chunk_size = 512
+
+# Image handling: file (extract to disk) | base64 (inline)
+image_mode = "file"
+
+# Pipeline start tier: index | chunk | resolve | compile | output
+# start_at_tier = "index"
+
+# Parallel parse workers (1 = sequential)
+workers = 1
+
+# Typed relation extraction during Tier 2 (uses the default LLM model).
+# When enabled, the resolver extracts typed relations such as uses/depends_on
+# between entities and the compiler emits them as graph edges.
+# resolve_relations = false
+
+# Minimum confidence (0.0-1.0) for typed relations to be kept.
+# relation_confidence_threshold = 0.0
+
+# ── Memory lifecycle ──────────────────────────────────────────────────────
+#
+# KNOX tracks a lifecycle state per wiki node across compiles:
+#   - confidence (evolves toward 1.0 with each re-compile)
+#   - tier (working → episodic → semantic → procedural)
+#   - supersession (old nodes replaced by same-title new nodes)
+#   - retention/decay (exponential forgetting curve)
+# Disabled by default to keep first-run output clean.
+# memory_enabled = true
+# memory_half_life_days = 90.0
+# memory_decay_threshold = 0.3
+
+# ── Budget settings ───────────────────────────────────────────────────────
+#
+# All budgets are in TOKENS (not characters). Approximate conversion:
+# 1 token ≈ 4 characters for English text.
+#
+# Input sizing is adaptive: the context window is discovered from the
+# model at startup (via litellm.get_model_info or Ollama /api/show).
+# Chunks fill the available context window, clamped to [chunk_size_min,
+# chunk_size_max]. The system NEVER silently truncates input.
+#
+# Output sizing is adaptive per phase:
+#   output_budget = clamp(input_tokens * ratio, output_min, output_max)
+
+[compile.budget]
+concepts_per_batch = 8
+verify_min_ngram = 3
+wicer_max_iterations = 3
+chunk_size_min = 2048
+chunk_size_max = 131072
+extract_output_ratio = 0.3
+extract_output_min = 512
+extract_output_max = 8192
+gen_output_max = 16384
+overview_output_ratio = 0.1
+overview_output_min = 256
+overview_output_max = 4096
+verify_output_ratio = 0.2
+verify_output_min = 256
+verify_output_max = 4096
+lint_output_max = 8192
+wicer_probe_output_max = 4096
+wicer_eval_output_max = 4096
+
+# ── LLM settings ──────────────────────────────────────────────────────────
+# KNOX uses litellm under the hood, so any model string supported by
+# litellm is valid. Examples: "ollama/llama3.2", "openai/gpt-4o",
+# "anthropic/claude-3-5-sonnet", "bedrock/anthropic.claude-3-sonnet".
+
+[compile.llm]
+default_model = "ollama/llama3.2"
+vlm_model = ""
+fallback_chain = []
+fallback_max_retries = 2
+
+# ── Output settings ───────────────────────────────────────────────────────
+
+[compile.output]
+# Output flavor: obsidian | mkdocs | zensical | generic
+flavor = "obsidian"
+max_related_links = 15
+
+[compile.output.frontmatter]
+language = "en"
+domain = "general"
+
+# ── Embedding settings ────────────────────────────────────────────────────
+
+[compile.embedding]
+model = "hash"
+dim = 384
+batch_size = 10
+
+# ── Lint settings ─────────────────────────────────────────────────────────
+# Run `knox lint` to check compiled wiki for structural issues.
+
+[lint]
+# None = all structural rules. Override to enable a subset.
+enabled = []
+threshold = 80
+
+# ── Eval settings ─────────────────────────────────────────────────────────
+
+[eval]
+threshold = 80
+history_size = 20
+
+# ── Trust / privacy ───────────────────────────────────────────────────────
+
+[trust]
+privacy_filter = true
+
+# ── Ignore patterns ───────────────────────────────────────────────────────
+# Additional patterns to exclude from source scanning (gitignore syntax).
+
+[ignore]
+patterns = []
+
+# ── User notes ────────────────────────────────────────────────────────────
+# Path to a user-authored notes file (relative to wiki root). KNOX reads
+# this file and exposes its content to compilation templates as
+# {{ user_notes }}. KNOX never writes to this file.
+
+[notes]
+file = "NOTES.md"

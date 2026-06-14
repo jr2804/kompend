@@ -1,0 +1,7 @@
+# ── Compiled output (regenerable) ────────────────────────────────────────
+wiki/
+
+# ── Internal state (regenerable) ─────────────────────────────────────────
+.knox/cache/
+.knox/state.json
+.knox/compile_state.json

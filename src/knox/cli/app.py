@@ -47,3 +47,4 @@ def main() -> None:
 
 # Import commands to register them with app
 from knox.cli import commands  # noqa: E402, F401
+from knox.cli import init  # noqa: E402, F401
