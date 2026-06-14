@@ -145,7 +145,7 @@ class WikiPipeline:
             )
             raise ValueError(msg)
 
-    def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:
+    def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:  # noqa: PLR0915
         """Execute the full pipeline from sources to compiled wiki.
 
         Parameters
@@ -189,11 +189,20 @@ class WikiPipeline:
             all_chunks = self._parse_and_chunk()
             self._record_tier_state(1)
         if self._should_run(Tier.RESOLVE):
+            # When T1 was skipped (start_at_tier >= resolve), warm-load
+            # chunks from the T1 cache so the resolver has input.
+            if not all_chunks:
+                all_chunks = self._parse_and_chunk()
             self._emit("resolve", 0, len(all_chunks), "starting")
-            resolved = self._resolve_chunks(all_chunks) if all_chunks else self._load_resolved_from_disk() or []
+            resolved = self._resolve_chunks(all_chunks)
             self._record_tier_state(2)
             self._emit("resolve", len(resolved), len(resolved), "done")
         if self._should_run(Tier.COMPILE):
+            # When T2 was skipped (start_at_tier >= compile), warm-load
+            # chunks and resolve them from cache.
+            if not resolved:
+                all_chunks = self._parse_and_chunk()
+                resolved = self._resolve_chunks(all_chunks)
             self._emit("compile", 0, 1, "starting")
             if self.compiler:
                 wiki = self.compiler.compile(resolved)
@@ -615,15 +624,6 @@ class WikiPipeline:
                 el.content, _ = filter_sensitive(el.content)
             elif isinstance(el.content, list):
                 el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
-
-    @staticmethod
-    def _load_resolved_from_disk() -> list[Any]:
-        """Best-effort load of previously resolved chunks (not yet implemented).
-
-        Returns an empty list — the resolver tier is idempotent and re-runs
-        cheaply when no snapshot is present.
-        """
-        return []
 
     @staticmethod
     def _cache_key(source_file: Path) -> str:
