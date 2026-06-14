@@ -16,6 +16,7 @@ def build_vector_index(
     embed_model: str,
     *,
     base_dir: Path | None = None,
+    batch_size: int = 10,
 ) -> int:
     """Build a vector index for semantic search over *wiki*.
 
@@ -26,6 +27,6 @@ def build_vector_index(
 
     resolved_base = base_dir if base_dir is not None else output_dir.parent
     store = ZvecWikiStore(db_path=resolved_base / ".knox" / "vectors")
-    count = store.build_index(wiki, embedding_model=embed_model)
+    count = store.build_index(wiki, embedding_model=embed_model, batch_size=batch_size)
     store.close()
     return count

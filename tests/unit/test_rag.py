@@ -3,11 +3,12 @@
 import gc
 import shutil
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import HashEmbeddingProvider, ZvecWikiStore
+from knox.rag.zvec_store import HashEmbeddingProvider, LiteLLMEmbeddingProvider, ZvecWikiStore
 
 
 @pytest.fixture
@@ -177,3 +178,70 @@ class TestZvecWikiStore:
             store.close()
             gc.collect()
             shutil.rmtree(zvec_db, ignore_errors=True)
+
+
+class TestLiteLLMEmbeddingProvider:
+    """Tests for LiteLLMEmbeddingProvider dimension handling and validation."""
+
+    def test_auto_detects_dimension_on_first_call(self) -> None:
+        """Provider should auto-detect dimension if not explicitly provided."""
+        provider = LiteLLMEmbeddingProvider(model="test-model")
+        mock_response = MagicMock()
+        mock_response.data = [{"embedding": [0.1] * 768}]
+        
+        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response):
+            vec = provider.embed("test text")
+            
+        assert len(vec) == 768
+        assert provider.dim == 768
+
+    def test_accepts_explicit_smaller_dimension(self) -> None:
+        """Provider should accept and use an explicitly requested smaller dimension."""
+        provider = LiteLLMEmbeddingProvider(model="test-model", dim=256)
+        mock_response = MagicMock()
+        mock_response.data = [{"embedding": [0.1] * 256}]
+        
+        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response) as mock_embed:
+            vec = provider.embed("test text")
+            
+        # Verify the dimensions kwarg was passed to litellm
+        mock_embed.assert_called_once_with(model="test-model", input=["test text"], dimensions=256)
+        assert len(vec) == 256
+        assert provider.dim == 256
+
+    def test_rejects_larger_requested_dimension(self) -> None:
+        """Provider should raise ValueError if model returns smaller vector than requested."""
+        # Simulates a model that ignores the 'dimensions' param and returns its native 768 dim
+        provider = LiteLLMEmbeddingProvider(model="test-model", dim=1024)
+        mock_response = MagicMock()
+        mock_response.data = [{"embedding": [0.1] * 768}]
+        
+        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response):
+            with pytest.raises(ValueError) as exc_info:
+                provider.embed("test text")
+                
+        assert "Embedding dimension mismatch" in str(exc_info.value)
+        assert "Requested 1024" in str(exc_info.value)
+        assert "returned a vector of size 768" in str(exc_info.value)
+
+    def test_rejects_smaller_requested_dimension(self) -> None:
+        """Provider should raise ValueError if model returns larger vector than requested."""
+        # Simulates a model that ignores the 'dimensions' param and returns its native 768 dim
+        provider = LiteLLMEmbeddingProvider(model="test-model", dim=128)
+        mock_response = MagicMock()
+        mock_response.data = [{"embedding": [0.1] * 768}]
+        
+        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response):
+            with pytest.raises(ValueError) as exc_info:
+                provider.embed("test text")
+                
+        assert "Embedding dimension mismatch" in str(exc_info.value)
+        assert "Requested 128" in str(exc_info.value)
+        assert "returned a vector of size 768" in str(exc_info.value)
+
+    def test_raises_if_dim_accessed_before_embed(self) -> None:
+        """Provider should raise RuntimeError if dim is accessed before first embed call."""
+        provider = LiteLLMEmbeddingProvider(model="test-model")
+        with pytest.raises(RuntimeError) as exc_info:
+            _ = provider.dim
+        assert "not yet determined" in str(exc_info.value)

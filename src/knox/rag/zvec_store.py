@@ -73,7 +73,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
-        self._dim: int = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
+        self._dim: int = self._model.get_embedding_dimension() or 384
 
     @property
     def dim(self) -> int:
@@ -85,24 +85,46 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
 
 class LiteLLMEmbeddingProvider(EmbeddingProvider):
-    """Cloud embedding via litellm (OpenAI, Azure, etc.)."""
+    """Embedding via litellm (supports local Ollama, OpenAI, Azure, etc.)."""
 
-    def __init__(self, model: str, dim: int) -> None:
+    def __init__(self, model: str, dim: int | None = None) -> None:
         self._model = model
-        self._dim = dim
+        self._dim: int | None = dim
 
     @property
     def dim(self) -> int:
+        if self._dim is None:
+            raise RuntimeError("Embedding dimension not yet determined. Call embed() first.")
         return self._dim
 
     def embed(self, text: str) -> list[float]:
-        response = litellm.embedding(model=self._model, input=[text])
-        return response.data[0]["embedding"]
+        kwargs: dict[str, Any] = {"model": self._model, "input": [text]}
+        # If user explicitly requested a smaller dimension, pass it to LiteLLM
+        # (Supported natively by models like OpenAI's text-embedding-3 series)
+        if self._dim is not None:
+            kwargs["dimensions"] = self._dim
+        
+        response = litellm.embedding(**kwargs)
+        vector = response.data[0]["embedding"]
+        actual_dim = len(vector)
+        
+        # Auto-detect dimension on first call if not explicitly provided
+        if self._dim is None:
+            self._dim = actual_dim
+        # Validate that the model actually respected the requested dimension
+        elif actual_dim != self._dim:
+            raise ValueError(
+                f"Embedding dimension mismatch: Requested {self._dim}, but model "
+                f"'{self._model}' returned a vector of size {actual_dim}. The model "
+                f"may not support the requested dimension, or it may ignore the parameter."
+            )
+            
+        return vector
 
 
 def _make_provider(
     embedding_model: str,
-    dim: int,
+    dim: int | None = None,
 ) -> EmbeddingProvider:
     """Select an embedding provider based on model name.
 
@@ -111,7 +133,7 @@ def _make_provider(
     - "text-embedding-*" or explicit litellm prefix → LiteLLMEmbeddingProvider
     """
     if embedding_model == "hash":
-        return HashEmbeddingProvider(dim=dim)
+        return HashEmbeddingProvider(dim=dim or 384)
     if embedding_model.startswith("text-embedding") or embedding_model.startswith("litellm:"):
         model = embedding_model.removeprefix("litellm:")
         return LiteLLMEmbeddingProvider(model=model, dim=dim)
@@ -145,6 +167,8 @@ class ZvecWikiStore:
         self,
         wiki: CompiledWiki,
         embedding_model: str,
+        *,
+        batch_size: int = 10,
     ) -> int:
         """Index compiled wiki nodes into the zvec store.
 
@@ -179,8 +203,14 @@ class ZvecWikiStore:
                 schema=schema,
             )
 
-        docs = [
-            _zvec.Doc(
+        # Process in batches to avoid holding all embeddings in memory
+        # and to provide incremental progress logging.
+        docs_batch: list[Any] = []
+        indexed_count = 0
+        total_nodes = len(wiki.nodes)
+
+        for node in wiki.nodes:
+            doc = _zvec.Doc(
                 id=node.id,
                 vectors={"embedding": self._provider.embed(f"{node.title}\n{node.content}")},
                 fields={
@@ -190,11 +220,21 @@ class ZvecWikiStore:
                     "content_preview": node.content[: self._PREVIEW_LEN],
                 },
             )
-            for node in wiki.nodes
-        ]
-        self._collection.insert(docs)
-        logger.info("Indexed %d nodes in zvec store at %s", len(docs), self.db_path)
-        return len(docs)
+            docs_batch.append(doc)
+            
+            if len(docs_batch) >= batch_size:
+                self._collection.insert(docs_batch)
+                indexed_count += len(docs_batch)
+                logger.info("Indexed %d/%d nodes in zvec store", indexed_count, total_nodes)
+                docs_batch = []
+
+        # Insert any remaining nodes
+        if docs_batch:
+            self._collection.insert(docs_batch)
+            indexed_count += len(docs_batch)
+            
+        logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_path)
+        return indexed_count
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity."""

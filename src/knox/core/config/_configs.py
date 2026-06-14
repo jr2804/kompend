@@ -110,3 +110,4 @@ class EmbeddingConfig:
 
     model: str
     dim: int = 384
+    batch_size: int = 10
