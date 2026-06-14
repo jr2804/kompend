@@ -74,9 +74,10 @@ if (-not $WhatIf) {
 Write-Host ""
 Write-Host "=== Stage 1: Ingest (parse + chunk) ===" -ForegroundColor Cyan
 $IngestArgs = @(
-    "uv", "run", "knox", "ingest",
-    $InputFiles,
+    "uv", "run", "knox",
     "--wiki-dir",    $BaseDir,
+    "ingest",
+    $InputFiles,
     "--url-file",    $UrlFile,
     "--workers",     "1",
     "--progress"
@@ -103,9 +104,10 @@ if (-not $WhatIf) {
 Write-Host ""
 Write-Host "=== Stage 2: Compile (resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
-    "uv", "run", "knox", "compile",
-    $InputFiles,
+    "uv", "run", "knox",
     "--wiki-dir",         $BaseDir,
+    "compile",
+    $InputFiles,
     "--start-at-tier",    "resolve",
     "--llm-default-model", $LLMModel,
     "--embed-model",      $EmbedModel,
@@ -134,8 +136,9 @@ if (-not $WhatIf) {
 Write-Host ""
 Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
-    "uv", "run", "knox", "lint",
+    "uv", "run", "knox",
     "--wiki-dir", $BaseDir,
+    "lint",
     "--llm",
     "--llm-default-model", $LLMModel,
     "--fix",
