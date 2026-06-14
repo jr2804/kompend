@@ -96,9 +96,13 @@ class FileProgressTracker:
     _progress: Progress | None = None
     _overall_task: TaskID | None = None
     _start_time: float = 0.0
+    _started: bool = False
 
     def start(self) -> None:
-        """Create and start the progress display."""
+        """Create and start the progress display (idempotent)."""
+        if self._started:
+            return
+        self._started = True
         self._start_time = time.time()
         self._progress = Progress(
             SpinnerColumn(),
