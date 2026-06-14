@@ -58,7 +58,7 @@ tests/data/**/*.png
 tests/data/**/*.
 wiki/
 .knox/
-demo-wiki/
+demo-wiki*/
 sources/
 .claude/
 /.commandcode
