@@ -27,8 +27,11 @@ graph LR
 ### Quick Start
 
 ```bash
+# Initialize a project
+knox init ./my-wiki && cd ./my-wiki
+
 # Compile documents into a wiki
-knox compile *.pdf --sources-dir ./sources
+knox compile *.pdf
 
 # Query the compiled wiki
 knox query "what is the main result?"
@@ -53,10 +56,13 @@ knox query "what is the main result?"
 ## Documentation
 
 - [Getting Started](guides/cli.md) — CLI setup, compile/query examples
+- [Initialization](guides/initialization.md) — `knox init` project scaffolding
+- [Configuration](guides/configuration.md) — 5-layer config system, `knox config` subcommands
 - [Basic Principles](concepts/basic-principles.md) — What KNOX does and why
 - [Architecture](architecture/index.md) — 5-tier pipeline design
 - [Pipeline Tiers](concepts/pipeline-tiers.md) — Per-tier component reference
 - [Memory Lifecycle](concepts/memory-lifecycle.md) — Confidence, tiers, decay, supersession
+- [Query Memory](guides/query-memory.md) — Episodic memory, context synthesis, and MCP integration
 - [Crystallize](concepts/crystallize.md) — Captured notes → synthesized wiki pages
 - [Compilation Guide](guides/compilation.md) — Compilers, VLM, relations, memory, hooks
 - [Linting Guide](guides/lint.md) — Structural + LLM-powered rules

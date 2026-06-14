@@ -24,18 +24,15 @@ knox compile . --flavor gfm
 knox compile . --flavor mkdocs --frontmatter language=en
 ```
 
-## Config file (`knox config.yaml`)
+## Config file (`.knox/config.toml`)
 
 The `output` section configures flavor, frontmatter defaults, and rumdl behavior:
 
-```yaml
-output:
-  flavor: obsidian         # auto-detect if omitted
-  frontmatter:
-    defaults:
-      language: en
-      domain: general
-  rumdl_config: .rumdl.toml   # custom rumdl config (optional)
+```toml
+[compile.output]
+flavor = "obsidian"        # auto-detect if omitted
+frontmatter_defaults = { language = "en", domain = "general" }
+rumdl_config = ".rumdl.toml"   # custom rumdl config (optional)
 ```
 
 ### Flavor auto-detection

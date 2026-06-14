@@ -119,7 +119,7 @@ project/
 ├── sources/                 # Raw + captured + crystallized sources
 │   ├── _captured/           # capture/learn output
 │   └── _crystallized/       # crystallize output
-├── wiki/                    # Compiled wiki (--output-dir, default: wiki)
+├── wiki/                    # Compiled wiki (default: wiki/, resolved from --wiki-dir)
 │   ├── index.md             # TOC + stats (regenerated each compile)
 │   ├── log.md               # Activity journal (appended, never overwritten)
 │   ├── overview.md          # LLM summary (if --synthesize)

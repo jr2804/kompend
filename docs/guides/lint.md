@@ -34,14 +34,14 @@ knox lint [OPTIONS]
 Lint a compiled wiki for quality issues.
 
 Options:
-  --output-dir, -o   Compiled wiki directory (default: wiki)
-  --sources-dir, -s  Sources directory (default: sources)
   --fix              Auto-fix structural issues where possible
   --llm              Enable LLM-powered lint rules (slow, expensive)
   --rule TEXT        Run only specific rule(s) (repeatable)
   --threshold INT    Exit with error if health score below this value (0-100)
   --json             Output in JSON format for machine readability
 ```
+
+Wiki paths are resolved from `--wiki-dir` (or `KNOX_WIKI_DIR`). See [Configuration](./configuration.md).
 
 ### `knox compile --lint`
 
@@ -189,4 +189,4 @@ Any lint result with `outcome: "fail"` reduces the health score. The score is th
 
 ### Why are some rules skipped?
 
-Rules that require a sources directory (`stale-page`, `source-not-found`) will skip if no `--sources-dir` is provided or the directory doesn't exist. LLM rules skip when no LLM client is configured.
+Rules that require a sources directory (`stale-page`, `source-not-found`) will skip if the sources directory doesn't exist or is empty. LLM rules skip when no LLM client is configured.

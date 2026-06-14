@@ -20,7 +20,16 @@ uv tool install knox
 uv add knox
 ```
 
-### 1. Check that a document parses correctly
+### 1. Initialize a project
+
+```bash
+knox init ./my-wiki
+cd ./my-wiki
+```
+
+This creates a standard project structure with `sources/`, `wiki/`, `.knox/config.toml`, `NOTES.md`, and `README.md`. Add `--bare` for minimal scaffolding, or `--git` to initialize a git repo.
+
+### 2. Check that a document parses correctly
 
 Before compiling a full corpus, verify a single file extracts cleanly:
 
@@ -37,15 +46,15 @@ knox parse ./research/ --recursive
 
 If the output looks wrong, the full pipeline will produce poor results too — fix parsing issues first.
 
-### 2. Compile a document corpus into a wiki
+### 3. Compile a document corpus into a wiki
 
-Drop your source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into a directory and run:
+Drop your source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into `sources/` and run:
 
 ```bash
-knox compile ./sources
+knox compile
 ```
 
-This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, compile into an interlinked wiki, and write Markdown files to `./wiki` (the default output directory).
+This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, compile into an interlinked wiki, and write Markdown files to `wiki/`.
 
 You can also pass specific files or globs directly — they'll be copied into the sources directory automatically:
 
@@ -54,25 +63,56 @@ knox compile paper.pdf notes.docx data/*.xlsx
 knox compile ./papers/ --recursive
 ```
 
-### 3. Extend with online sources and different output formats
+### 4. Extend with online sources and different output formats
 
 ```bash
 # Pull in remote PDFs before compiling
-knox compile ./sources --url https://arxiv.org/pdf/2605.07068v1
+knox compile --url https://arxiv.org/pdf/2605.07068v1
 
-# Custom source and output directories
-knox compile ./my_docs --sources-dir ./my_docs --output-dir ./output
+# Override the project root (sources/ and wiki/ resolved from this)
+knox --wiki-dir ./custom-root compile
 
 # Output as JSON graph instead of Markdown
-knox compile ./sources --format json
+knox compile --format json
 
 # Build a vector index for semantic search (requires zvec)
-knox compile ./sources --format json --index --embed-model all-MiniLM-L6-v2
+knox compile --format json --index --embed-model all-MiniLM-L6-v2
 ```
 
-Full option reference: `knox compile --help`, `knox parse --help`
+Full option reference: `knox compile --help`, `knox init --help`, `knox config --help`
 
 ## CLI Reference
+
+### `knox init`
+
+```text
+knox init [OPTIONS] [DIR]
+
+Scaffold a new wiki project.
+
+Arguments:
+  DIR                   Target directory (default: current directory)
+
+Options:
+  --bare                Skip authored templates (NOTES.md, README.md)
+  --force               Overwrite existing project config
+  --git                 Initialize a git repo with an initial commit
+  --help                Show this message and exit
+```
+
+### `knox config`
+
+```text
+knox config [OPTIONS] COMMAND
+
+Inspect and manage configuration files.
+
+Commands:
+  get <key>             Print resolved value for a config key
+  set <key> <value>     Write a key to project or global config
+  list                  Print all resolved config with provenance
+  path                  Print the config file path
+```
 
 ### `knox compile`
 
@@ -81,19 +121,10 @@ knox compile [OPTIONS] FILES...
 
 Compile documents into a knowledge wiki.
 
-Source files are gathered from the given paths (files, globs, directories)
-and consolidated into the sources directory. Files not already there are
-copied in. URLs are downloaded as well.
-
 Arguments:
-  FILES...              Files, glob patterns, or directories  [required]
+  FILES...              Files, glob patterns, or directories
 
 Options:
-  --sources-dir, -s    Input sources directory  [default: sources]
-  --output-dir, -o     Output directory for compiled wiki  [default: wiki]
-  --url TEXT            URLs to download before processing (repeatable)
-  --recursive / --no-recursive   Search source directories recursively
-                                  [env var: KNOX_RECURSIVE]  [default: no-recursive]
   --format, -f TEXT     Output format: markdown, json, typst  [default: markdown]
   --chunk-size INT      Chunk size in tokens  [default: 512]
   --image-mode TEXT     Image handling: file, base64  [default: file]
@@ -125,8 +156,9 @@ Options:
 ### Global Options
 
 ```text
-knox --version, -v   Show version and exit
-knox --help          Show help and exit
+knox --version, -v        Show version and exit
+knox --wiki-dir, -w DIR   Set project root (sources/, wiki/, .knox/ resolved from here)
+knox --help               Show help and exit
 ```
 
 ## Architecture

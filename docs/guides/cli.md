@@ -4,18 +4,90 @@ KNOX provides a Typer-based CLI with the following commands:
 
 | Command | Description |
 |---------|-------------|
+| `knox init` | Scaffold a new wiki project |
+| `knox config` | Inspect and manage configuration |
 | `knox parse` | Parse documents and show their structure |
 | `knox compile` | Compile documents into a knowledge wiki |
+| `knox query` | Query the compiled wiki with natural language |
 | `knox doctor` | Validate configuration and connectivity |
 | `knox status` | Show per-wiki statistics |
 | `knox list-parsers` | List all registered parsers |
+| `knox lint` | Run quality linters on the compiled wiki |
+| `knox review` | Manage the review queue |
+| `knox provenance` | Show provenance for a wiki page |
+| `knox capture` | Extract knowledge items from free text |
+| `knox learn` | Store a fact verbatim as a source |
+| `knox crystallize` | Synthesize captured notes into wiki pages |
+| `knox write` | Write or overwrite a wiki page from source |
+| `knox pack-list` | List available content packs |
+| `knox pack-install` | Install a content pack |
+| `knox mcp` | Run the MCP server |
+| `knox serve` | Serve the web UI |
 
 ## Global Options
 
 | Flag | Description |
 |------|-------------|
 | `--version`, `-v` | Show version and exit |
+| `--wiki-dir`, `-w` | Set project root — `sources/`, `wiki/`, `.knox/` resolved from here |
 | `--help` | Show help message and exit |
+
+`--wiki-dir` can also be set via the `KNOX_WIKI_DIR` environment variable.
+
+## `knox init`
+
+Scaffold a new wiki project with the standard directory structure.
+
+```text
+knox init [OPTIONS] [DIR]
+```
+
+**Arguments:**
+
+| Name | Description |
+|------|-------------|
+| `DIR` | Target directory (default: current directory) |
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--bare` | Skip authored templates (`NOTES.md`, `README.md`) |
+| `--force` | Overwrite existing project config |
+| `--git` | Initialize a git repo with an initial commit |
+
+Creates the following structure:
+
+```text
+<dir>/
+├── sources/           # Source documents (PDF, DOCX, ...)
+├── wiki/              # Compiled wiki output
+├── .knox/
+│   ├── config.toml    # Project configuration
+│   └── cache/         # Runtime cache
+├── NOTES.md           # Free-form notes (injected into LLM templates)
+├── README.md          # Project readme
+└── .gitignore         # Ignores wiki/, .knox/cache/, state files
+```
+
+## `knox config`
+
+Inspect and manage configuration files.
+
+```text
+knox config COMMAND [OPTIONS]
+```
+
+**Subcommands:**
+
+| Command | Description |
+|------|-------------|
+| `get <key>` | Print resolved value for a dotted config key (e.g. `compile.format`) |
+| `set <key> <value>` | Write a key to project config (or `--global` for global config) |
+| `list` | Print all resolved config keys with provenance |
+| `path` | Print the config file path (or `--global`) |
+
+`set` validates keys against the schema, coerces types, writes atomically, and creates a `.bak` backup.
 
 ## `knox parse`
 
@@ -50,16 +122,12 @@ knox compile [OPTIONS] FILES...
 
 | Name | Description |
 |------|-------------|
-| `FILES...` | Files, glob patterns, or directories to compile (required) |
+| `FILES...` | Files, glob patterns, or directories to compile |
 
 **Options:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sources-dir`, `-s` | `sources` | Input sources directory |
-| `--output-dir`, `-o` | `wiki` | Output directory for compiled wiki |
-| `--url` | — | URL to download before processing (repeatable) |
-| `--recursive/--no-recursive` | no-recursive | Search directories recursively |
 | `--format`, `-f` | `markdown` | Output format: markdown, json, typst |
 | `--chunk-size` | `512` | Chunk size in tokens |
 | `--image-mode` | `file` | Image handling: file, base64 |
@@ -72,6 +140,8 @@ knox compile [OPTIONS] FILES...
 | `--ignore` | — | Ignore pattern (glob-style, repeatable) |
 | `--progress/--no-progress` | auto | Show rich progress bars (auto-detected for TTY) |
 
+Source and output directories are resolved from `--wiki-dir` (or `KNOX_WIKI_DIR`), defaulting to the current directory. See [Configuration](./configuration.md) for details.
+
 ### Ignore patterns
 
 Files matching ignore patterns are excluded from compilation. Patterns use
@@ -81,13 +151,11 @@ Files matching ignore patterns are excluded from compilation. Patterns use
 knox compile *.pdf --ignore "*.bak" --ignore "drafts/**"
 ```
 
-Ignore patterns can also be configured in `.knox/config.yaml`:
+Ignore patterns can also be configured in `.knox/config.toml`:
 
-```yaml
-ignore:
-  - "*.tmp"
-  - "drafts/*"
-  - "**/private/*.pdf"
+```toml
+[compile]
+ignore = ["*.tmp", "drafts/*", "**/private/*.pdf"]
 ```
 
 By default, `.gitignore` in the source directory is respected. Set
@@ -180,7 +248,6 @@ knox query [OPTIONS] QUESTION
 |------|---------|-------------|
 | `--top-k` | `5` | Number of context chunks to retrieve |
 | `--scope` | `hybrid` | Search scope: `wiki`, `raw`, or `hybrid` |
-| `--sources-dir`, `-s` | `sources` | Sources directory for raw/hybrid search |
 | `--format` | `text` | Output format: `text` or `json` |
 | `--raw` | — | Return raw context chunks without LLM synthesis |
 | `--no-classify` | — | Skip intent classification |
@@ -211,16 +278,19 @@ knox compile
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `KNOX_SOURCES_DIR` | Default sources directory |
-| `KNOX_OUTPUT_DIR` | Default output directory |
-| `KNOX_RECURSIVE` | Default recursive mode (true/false) |
-| `KNOX_LLM_MODEL` | Default LLM model |
-| `KNOX_LLM_PROVIDER` | Default LLM provider |
-| `KNOX_VLM_MODEL` | Vision model for image captioning |
-| `KNOX_RESOLVE_RELATIONS` | Enable typed relation extraction (true/false) |
-| `KNOX_RELATION_CONFIDENCE_THRESHOLD` | Minimum confidence for typed relations |
+All environment variables use the `KNOX_` prefix and map to dotted config keys.
+
+| Variable | Config Key | Description |
+|----------|------------|-------------|
+| `KNOX_WIKI_DIR` | `paths.wiki_dir` | Project root directory |
+| `KNOX_SOURCES_DIR` | `paths.sources_dir` | Sources directory (relative to wiki_dir) |
+| `KNOX_OUTPUT_DIR` | `paths.output_dir` | Output directory (relative to wiki_dir) |
+| `KNOX_RECURSIVE` | `compile.recursive` | Default recursive mode (true/false) |
+| `KNOX_LLM_MODEL` | `compile.llm.default_model` | Default LLM model |
+| `KNOX_VLM_MODEL` | `compile.llm.vlm_model` | Vision model for image captioning |
+| `KNOX_NOTES_FILE` | `notes.file` | User notes filename |
+| `KNOX_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |
+| `KNOX_RELATION_CONFIDENCE_THRESHOLD` | `compile.relation_confidence_threshold` | Minimum confidence for relations |
 
 ## Event Hooks
 
