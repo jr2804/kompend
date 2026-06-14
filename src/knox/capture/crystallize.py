@@ -66,15 +66,9 @@ def crystallize(
     written: list[Path] = []
 
     for tag, group_notes in groups.items():
-        page = (
-            _synthesize_with_llm(tag, group_notes, llm_client)
-            if llm_client is not None
-            else _synthesize_fallback(tag, group_notes)
-        )
+        page = _synthesize_with_llm(tag, group_notes, llm_client) if llm_client is not None else _synthesize_fallback(tag, group_notes)
         slug = _make_slug(page["title"])
-        source_files = [
-            n.source_file.name if n.source_file else "" for n in group_notes
-        ]
+        source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
         filepath = output_dir / f"crystallized-{timestamp}-{slug}.md"
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Crystallized %d notes -> %s", len(group_notes), filepath)

@@ -91,13 +91,6 @@ class TestNotesFileResolution:
 class TestTemplateLoaderGlobalContext:
     """Verify ``set_global_context`` and ``clear_global_context``."""
 
-    @pytest.fixture(autouse=True)
-    def _cleanup_loader(self) -> None:
-        loader = TemplateLoader()
-        loader.clear_global_context()
-        yield
-        loader.clear_global_context()
-
     def test_set_and_clear(self) -> None:
         loader = TemplateLoader()
         loader.set_global_context(user_notes="hello")
@@ -127,23 +120,19 @@ class TestTemplateLoaderGlobalContext:
         result = loader.render("override.md.j2", user_notes="explicit value")
         assert "explicit value" in result
 
+    @pytest.fixture(autouse=True)
+    def _cleanup_loader(self) -> None:
+        loader = TemplateLoader()
+        loader.clear_global_context()
+        yield
+        loader.clear_global_context()
+
 
 # ── Pipeline integration ────────────────────────────────────────────────
 
 
 class TestPipelineNotesInjection:
     """Verify notes are loaded and cleared by WikiPipeline.run()."""
-
-    def _make_config(self, tmp_path: Path, notes_file: Path | None) -> PipelineConfig:
-        return PipelineConfig(
-            source_dir=tmp_path / "sources",
-            output_dir=tmp_path / "wiki",
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
-            notes_file=notes_file,
-            start_at_tier=Tier.INDEX,
-            stop_at_tier=Tier.INDEX,
-        )
 
     def test_pipeline_loads_notes_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """When notes_file exists, its content is set in template global context during run."""
@@ -173,3 +162,14 @@ class TestPipelineNotesInjection:
 
         loader = TemplateLoader()
         assert "user_notes" not in loader._global_context
+
+    def _make_config(self, tmp_path: Path, notes_file: Path | None) -> PipelineConfig:
+        return PipelineConfig(
+            source_dir=tmp_path / "sources",
+            output_dir=tmp_path / "wiki",
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
+            notes_file=notes_file,
+            start_at_tier=Tier.INDEX,
+            stop_at_tier=Tier.INDEX,
+        )

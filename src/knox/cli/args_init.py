@@ -6,7 +6,6 @@ from typing import Annotated
 
 import typer
 
-
 InitTarget = Annotated[
     str,
     typer.Argument(

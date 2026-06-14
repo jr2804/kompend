@@ -414,6 +414,43 @@ class HybridRetriever:
         fused.sort(key=lambda x: x.score, reverse=True)
         return fused[:top_k]
 
+    def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
+        """Expand search results by following typed relations in the wiki graph."""
+        if not initial_results or not self._wiki.edges:
+            return initial_results
+
+        expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
+        decay_factor = 0.5
+
+        for result in initial_results:
+            for edge in self._wiki.edges:
+                source_id = edge.get("source")
+                target_id = edge.get("target")
+                if isinstance(source_id, str) and isinstance(target_id, str):
+                    if source_id == result.article_id and target_id not in expanded:
+                        node = self._node_by_id.get(target_id)
+                        if node:
+                            expanded[target_id] = SearchResult(
+                                article_id=target_id,
+                                title=node.title,
+                                snippet=node.content[:300] + "..." if node.content else "",
+                                score=result.score * decay_factor,
+                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                            )
+                    elif target_id == result.article_id and source_id not in expanded:
+                        node = self._node_by_id.get(source_id)
+                        if node:
+                            expanded[source_id] = SearchResult(
+                                article_id=source_id,
+                                title=node.title,
+                                snippet=node.content[:300] + "..." if node.content else "",
+                                score=result.score * decay_factor,
+                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                            )
+
+        sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
+        return sorted_results[:top_k]
+
     @staticmethod
     def _raw_bm25_results(query: str, sources_dir: Path, top_k: int) -> list[SearchResult]:
         """Retrieve from raw source files using BM25."""
@@ -462,43 +499,6 @@ class HybridRetriever:
                 )
             )
         return results
-
-    def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
-        """Expand search results by following typed relations in the wiki graph."""
-        if not initial_results or not self._wiki.edges:
-            return initial_results
-
-        expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
-        decay_factor = 0.5
-
-        for result in initial_results:
-            for edge in self._wiki.edges:
-                source_id = edge.get("source")
-                target_id = edge.get("target")
-                if isinstance(source_id, str) and isinstance(target_id, str):
-                    if source_id == result.article_id and target_id not in expanded:
-                        node = self._node_by_id.get(target_id)
-                        if node:
-                            expanded[target_id] = SearchResult(
-                                article_id=target_id,
-                                title=node.title,
-                                snippet=node.content[:300] + "..." if node.content else "",
-                                score=result.score * decay_factor,
-                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
-                            )
-                    elif target_id == result.article_id and source_id not in expanded:
-                        node = self._node_by_id.get(source_id)
-                        if node:
-                            expanded[source_id] = SearchResult(
-                                article_id=source_id,
-                                title=node.title,
-                                snippet=node.content[:300] + "..." if node.content else "",
-                                score=result.score * decay_factor,
-                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
-                            )
-
-        sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
-        return sorted_results[:top_k]
 
 
 def _tokenize(text: str) -> list[str]:

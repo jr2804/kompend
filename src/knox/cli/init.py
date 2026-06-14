@@ -8,8 +8,8 @@ from pathlib import Path
 
 import typer
 
-from knox.cli.args_init import InitBare, InitForce, InitGit, InitTarget
 from knox.cli.app import app
+from knox.cli.args_init import InitBare, InitForce, InitGit, InitTarget
 from knox.scaffolding import ScaffoldError, scaffold_project
 
 logger = logging.getLogger(__name__)
@@ -19,11 +19,7 @@ _NEXT_STEPS_RESOURCE: str = "next_steps.txt"
 
 
 def _load_next_steps() -> str:
-    return (
-        resources.files("knox.scaffolding.templates")
-        .joinpath(_NEXT_STEPS_RESOURCE)
-        .read_text(encoding="utf-8")
-    )
+    return resources.files("knox.scaffolding.templates").joinpath(_NEXT_STEPS_RESOURCE).read_text(encoding="utf-8")
 
 
 @app.command(name="init", help="Scaffold a new KNOX wiki project.")

@@ -103,11 +103,11 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
         # (Supported natively by models like OpenAI's text-embedding-3 series)
         if self._dim is not None:
             kwargs["dimensions"] = self._dim
-        
+
         response = litellm.embedding(**kwargs)
         vector = response.data[0]["embedding"]
         actual_dim = len(vector)
-        
+
         # Auto-detect dimension on first call if not explicitly provided
         if self._dim is None:
             self._dim = actual_dim
@@ -118,7 +118,7 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
                 f"'{self._model}' returned a vector of size {actual_dim}. The model "
                 f"may not support the requested dimension, or it may ignore the parameter."
             )
-            
+
         return vector
 
 
@@ -221,7 +221,7 @@ class ZvecWikiStore:
                 },
             )
             docs_batch.append(doc)
-            
+
             if len(docs_batch) >= batch_size:
                 self._collection.insert(docs_batch)
                 indexed_count += len(docs_batch)
@@ -232,7 +232,7 @@ class ZvecWikiStore:
         if docs_batch:
             self._collection.insert(docs_batch)
             indexed_count += len(docs_batch)
-            
+
         logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_path)
         return indexed_count
 

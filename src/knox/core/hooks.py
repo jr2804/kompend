@@ -145,7 +145,8 @@ def _import_callable(path: str) -> HookCallback | None:
     """Import a callable from a ``module:attribute`` string."""
     if ":" not in path:
         logger.warning(
-            "Hook path '%s' must use 'module:attribute' syntax — skipping", path,
+            "Hook path '%s' must use 'module:attribute' syntax — skipping",
+            path,
         )
         return None
 

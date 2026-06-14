@@ -15,15 +15,7 @@ from knox.capture.crystallize import (
 
 class TestParseFrontmatter:
     def test_with_frontmatter(self) -> None:
-        text = (
-            "---\n"
-            "title: My Note\n"
-            "tags:\n"
-            "  - python\n"
-            "  - testing\n"
-            "---\n\n"
-            "Some content here."
-        )
+        text = "---\ntitle: My Note\ntags:\n  - python\n  - testing\n---\n\nSome content here."
         meta, body = _parse_frontmatter(text)
         assert meta["title"] == "My Note"
         assert meta["tags"] == ["python", "testing"]

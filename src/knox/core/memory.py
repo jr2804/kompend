@@ -151,29 +151,6 @@ class MemoryStore:
 
     states: dict[str, NodeState] = field(default_factory=dict)
 
-    # ── Persistence ───────────────────────────────────────────────────
-
-    @classmethod
-    def load(cls, path: Path) -> MemoryStore:
-        """Load a memory store from a JSON file.
-
-        Returns an empty store if the file does not exist or is corrupt.
-        """
-        if not path.exists():
-            return cls()
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to load memory store from %s: %s", path, exc)
-            return cls()
-        raw_states = data.get("states", []) if isinstance(data, dict) else []
-        states: dict[str, NodeState] = {}
-        for raw in raw_states:
-            if isinstance(raw, dict) and "node_id" in raw:
-                state = NodeState.from_dict(raw)
-                states[state.node_id] = state
-        return cls(states=states)
-
     def save(self, path: Path) -> None:
         """Persist the memory store to *path* as JSON."""
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -193,11 +170,7 @@ class MemoryStore:
         now: datetime | None = None,
     ) -> list[NodeState]:
         """Return states whose retention has decayed below *threshold*."""
-        return [
-            s
-            for s in self.states.values()
-            if not s.is_superseded() and s.is_stale(threshold=threshold, half_life_days=half_life_days, now=now)
-        ]
+        return [s for s in self.states.values() if not s.is_superseded() and s.is_stale(threshold=threshold, half_life_days=half_life_days, now=now)]
 
     def all_superseded(self) -> list[NodeState]:
         """Return all superseded states."""
@@ -284,6 +257,29 @@ class MemoryStore:
 
         return report
 
+    # ── Persistence ───────────────────────────────────────────────────
+
+    @classmethod
+    def load(cls, path: Path) -> MemoryStore:
+        """Load a memory store from a JSON file.
+
+        Returns an empty store if the file does not exist or is corrupt.
+        """
+        if not path.exists():
+            return cls()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to load memory store from %s: %s", path, exc)
+            return cls()
+        raw_states = data.get("states", []) if isinstance(data, dict) else []
+        states: dict[str, NodeState] = {}
+        for raw in raw_states:
+            if isinstance(raw, dict) and "node_id" in raw:
+                state = NodeState.from_dict(raw)
+                states[state.node_id] = state
+        return cls(states=states)
+
 
 def update_memory_for_compile(
     wiki: Any,
@@ -318,8 +314,6 @@ def update_memory_for_compile(
     wiki.metadata["memory"]["new"] = report.new
     wiki.metadata["memory"]["updated"] = report.updated
     wiki.metadata["memory"]["superseded"] = report.superseded
-    wiki.metadata["memory"]["stale"] = [
-        s.node_id for s in store.all_stale(threshold=decay_threshold, half_life_days=half_life_days)
-    ]
+    wiki.metadata["memory"]["stale"] = [s.node_id for s in store.all_stale(threshold=decay_threshold, half_life_days=half_life_days)]
 
     return report
