@@ -126,7 +126,7 @@ DEFAULTS: dict[str, Any] = {
             "max_related_links": 15,
         },
         "embedding": {
-            "model": "hash",
+            "model": None,
             "dim": 384,
             "batch_size": 10,
         },

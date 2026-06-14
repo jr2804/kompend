@@ -69,10 +69,13 @@ def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
     if not db_path.exists():
         return None
 
-    embed_model = wiki.metadata.get("embedding_model", "hash")
+    embed_model = wiki.metadata.get("embedding_model")
     embed_dim = wiki.metadata.get("embedding_dim", 384)
+    if not embed_model:
+        logger.debug("No embedding model recorded in wiki metadata; skipping vector store")
+        return None
     try:
-        return ZvecWikiStore.open(db_path, embedding_model=embed_model or "hash", embedding_dim=embed_dim)
+        return ZvecWikiStore.open(db_path, embedding_model=embed_model, embedding_dim=embed_dim)
     except Exception as exc:
         logger.warning("Could not open vector store at %s: %s", db_path, exc)
         return None
@@ -150,10 +153,10 @@ def _execute_query_search(
     return results, raw
 
 
-def _save_query_memory(state_dir: Path, query: str, answer: str) -> None:
+def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None) -> None:
     """Persist a query/answer pair to the memory store."""
     try:
-        mem_store = MemoryStore(base_dir=state_dir)
+        mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
         mem_store.add_entry(query=query, answer=answer)
         mem_store.close()
         typer.echo("\n✓ Query and answer saved to memory.", err=True)
@@ -246,4 +249,4 @@ def query_cmd(
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
     if remember:
-        _save_query_memory(state_dir, query, synthesis.answer)
+        _save_query_memory(state_dir, query, synthesis.answer, cfg.get("compile.embedding.model"))

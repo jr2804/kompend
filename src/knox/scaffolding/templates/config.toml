@@ -115,7 +115,11 @@ domain = "general"
 # ── Embedding settings ────────────────────────────────────────────────────
 
 [compile.embedding]
-model = "hash"
+# Embedding model for semantic search / RAG.
+# "litellm:<model>" → LiteLLM (OpenAI, Azure, Ollama, etc.)
+# "<model>" (no prefix) → sentence-transformers from HuggingFace
+# Leave as null to disable vector indexing.
+model = null
 dim = 384
 batch_size = 10
 

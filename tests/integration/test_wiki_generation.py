@@ -484,7 +484,7 @@ class TestVectorStore:
             embedding_dim=EMBED_DIM,
         )
 
-        store.build_index(graph_wiki, embedding_model="hash")
+        store.build_index(graph_wiki)
 
         # Search for a term present in the domain
         results = store.search("speech intelligibility hearing", top_k=3)
@@ -502,7 +502,7 @@ class TestVectorStore:
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         )
-        store.build_index(graph_wiki, embedding_model="hash")
+        store.build_index(graph_wiki)
 
         queries = [
             "noise reduction algorithm",
@@ -862,7 +862,7 @@ class TestGenerateExampleWiki:
             db_path=out_dir / ".knox" / "vectors",
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
-        ).build_index(wiki, embedding_model="hash")
+        ).build_index(wiki)
         logger.info("Vector index built")
 
         # Final assertions

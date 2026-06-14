@@ -8,7 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import HashEmbeddingProvider, LiteLLMEmbeddingProvider, ZvecWikiStore
+from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
+from tests.conftest import DeterministicTestEmbeddingProvider
+
+_TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 
 
 @pytest.fixture
@@ -50,8 +53,8 @@ class TestZvecWikiStore:
 
     def test_empty_wiki_returns_zero_indexed(self) -> None:
         empty = CompiledWiki(nodes=[], edges=[], toc=[])
-        store = ZvecWikiStore()
-        assert store.build_index(empty, embedding_model="hash") == 0
+        store = ZvecWikiStore(embedding_provider=_TEST_PROVIDER)
+        assert store.build_index(empty) == 0
 
     def test_build_index_works(self, zvec_db: Path) -> None:
         wiki = CompiledWiki(
@@ -59,14 +62,14 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db))
-        assert store.build_index(wiki, embedding_model="hash") == 1
+        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        assert store.build_index(wiki) == 1
         store.close()
 
     def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
         """Integration test: build index and search."""
         try:
-            store = ZvecWikiStore(db_path=str(zvec_db), embedding_dim=384)
+            store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Testing", content="test content here", node_type="section"),
@@ -75,7 +78,7 @@ class TestZvecWikiStore:
                 edges=[],
                 toc=[],
             )
-            count = store.build_index(wiki, embedding_model="hash")
+            count = store.build_index(wiki)
             assert count == 2, "Should index 2 nodes"
             results = store.search("test")
             assert len(results) >= 1
@@ -87,7 +90,7 @@ class TestZvecWikiStore:
     def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
         db = zvec_db / "nested" / "deep" / "store"
         try:
-            store = ZvecWikiStore(db_path=str(db))
+            store = ZvecWikiStore(db_path=str(db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Test", content="...", node_type="section"),
@@ -95,7 +98,7 @@ class TestZvecWikiStore:
                 edges=[],
                 toc=[],
             )
-            count = store.build_index(wiki, embedding_model="hash")
+            count = store.build_index(wiki)
             assert count == 1
             assert db.parent.exists()
             store.close()
@@ -108,16 +111,16 @@ class TestZvecWikiStore:
         store.close()
         assert store.search("anything") == []
 
-    def test_hash_embedding_deterministic(self) -> None:
-        provider = HashEmbeddingProvider(dim=10)
+    def test_deterministic_embedding_deterministic(self) -> None:
+        provider = DeterministicTestEmbeddingProvider(dim=10)
         v1 = provider.embed("hello world")
         v2 = provider.embed("hello world")
         v3 = provider.embed("different text")
         assert v1 == v2
         assert v1 != v3
 
-    def test_hash_embedding_normalized(self) -> None:
-        provider = HashEmbeddingProvider(dim=20)
+    def test_deterministic_embedding_normalized(self) -> None:
+        provider = DeterministicTestEmbeddingProvider(dim=20)
         vec = provider.embed("test")
         norm = sum(v * v for v in vec) ** 0.5
         assert abs(norm - 1.0) < 0.001
@@ -139,12 +142,12 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db))
-        store.build_index(wiki, embedding_model="hash")
+        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store.build_index(wiki)
         store.close()
 
         try:
-            reopened = ZvecWikiStore.open(str(zvec_db), embedding_model="hash", embedding_dim=384)
+            reopened = ZvecWikiStore.open(str(zvec_db), embedding_provider=_TEST_PROVIDER)
             assert reopened.available
             results = reopened.search("test")
             assert any(r["id"] == "n1" for r in results)
@@ -168,8 +171,8 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db))
-        store.build_index(wiki, embedding_model="hash")
+        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store.build_index(wiki)
         try:
             results = store.search("methods")
             assert results

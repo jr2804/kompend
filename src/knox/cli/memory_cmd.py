@@ -26,7 +26,8 @@ def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path]:
     paths = cfg.get("paths")
     output_dir_path = Path(paths["output_dir"])
     base_dir = output_dir_path.parent
-    return MemoryStore(base_dir=base_dir), base_dir
+    embed_model = cfg.get("compile.embedding.model")
+    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir
 
 
 @memory_app.command("add", help="Add a query/answer pair to the memory log.")

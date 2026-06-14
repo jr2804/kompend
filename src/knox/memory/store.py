@@ -10,7 +10,7 @@ from typing import Any
 
 import zvec as _zvec
 
-from knox.rag.zvec_store import EmbeddingProvider, HashEmbeddingProvider, _make_provider
+from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +26,17 @@ class MemoryStore:
     def __init__(
         self,
         base_dir: str | Path,
-        embedding_model: str = "hash",
+        embedding_model: str | None = None,
         embedding_dim: int = 384,
+        *,
+        embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
         self.base_dir = Path(base_dir)
         self.db_path = self.base_dir / ".knox" / "memory.db"
         self.log_path = self.base_dir / ".knox" / "memory.jsonl"
         self._embedding_model = embedding_model
         self._embedding_dim = embedding_dim
-        self._provider: EmbeddingProvider = HashEmbeddingProvider(dim=embedding_dim)
+        self._provider: EmbeddingProvider | None = embedding_provider
         self._collection: _zvec.Collection | None = None
 
     def add_entry(
@@ -134,7 +136,9 @@ class MemoryStore:
         if self._collection is not None:
             return
 
-        if self._embedding_model != "hash" and isinstance(self._provider, HashEmbeddingProvider):
+        if self._provider is None:
+            if not self._embedding_model:
+                raise RuntimeError("No embedding model configured for memory store")
             self._provider = _make_provider(self._embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 

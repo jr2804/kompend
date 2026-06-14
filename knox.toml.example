@@ -138,8 +138,12 @@ timeout = 120.0
 # ── Embedding settings ──────────────────────────────────────────────────
 
 [compile.embedding]
-# model = "granite-embedding:278m"
-# provider = "auto"
+# Embedding model for semantic search / RAG.
+# Two options:
+#   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
+#   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
+# Leave commented to disable vector indexing.
+# model = "litellm:granite-embedding:278m"
 # dim = 384
 
 # ── Output settings ─────────────────────────────────────────────────────

@@ -2,12 +2,36 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
+from knox.rag.zvec_store import EmbeddingProvider
+
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
+
+
+class DeterministicTestEmbeddingProvider(EmbeddingProvider):
+    """Deterministic hash-based embedding for tests only.
+
+    NOT semantically meaningful — same text always produces the same vector.
+    Lives in test code, never in production. Replaces the old HashEmbeddingProvider.
+    """
+
+    def __init__(self, dim: int = 384) -> None:
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, text: str) -> list[float]:
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        vec = [(digest[i % 32] - 128) / 128.0 for i in range(self._dim)]
+        norm = sum(v * v for v in vec) ** 0.5
+        return [v / norm for v in vec] if norm > 0 else vec
 
 
 @pytest.fixture(scope="session")

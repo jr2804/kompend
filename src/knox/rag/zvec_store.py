@@ -4,15 +4,16 @@ zvec is an embedded vector database (Alibaba, Apache 2.0) — in-process,
 no server required. This module wraps it as a sidecar for KNOX's compiled
 knowledge base.
 
-Embedding providers are pluggable via ``EmbeddingProvider``. The default
-uses sentence-transformers (all-MiniLM-L6-v2, 384-dim). A hash-based
-fallback exists for environments without ML libraries (tests, CI).
+Embedding providers are pluggable via ``EmbeddingProvider``. Two backends
+are supported via ``_make_provider``:
+
+- ``litellm:<model>`` — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
+- ``<model>`` (no prefix) — loads a sentence-transformers model from HuggingFace
 """
 
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -43,28 +44,6 @@ class EmbeddingProvider(ABC):
     def dim(self) -> int:
         """Vector dimensionality."""
         ...
-
-
-class HashEmbeddingProvider(EmbeddingProvider):
-    """Deterministic hash-based embedding for testing/dev only.
-
-    NOT semantically meaningful — same text always produces the same vector,
-    but unrelated texts get unrelated vectors. Use only for unit tests or
-    environments without sentence-transformers.
-    """
-
-    def __init__(self, dim: int = 384) -> None:
-        self._dim = dim
-
-    @property
-    def dim(self) -> int:
-        return self._dim
-
-    def embed(self, text: str) -> list[float]:
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        vec = [(digest[i % 32] - 128) / 128.0 for i in range(self._dim)]
-        norm = sum(v * v for v in vec) ** 0.5
-        return [v / norm for v in vec] if norm > 0 else vec
 
 
 class SentenceTransformerProvider(EmbeddingProvider):
@@ -128,13 +107,10 @@ def _make_provider(
 ) -> EmbeddingProvider:
     """Select an embedding provider based on model name.
 
-    - "hash" → HashEmbeddingProvider (tests/dev)
-    - "all-MiniLM-L6-v2" or other ST model names → SentenceTransformerProvider
-    - "text-embedding-*" or explicit litellm prefix → LiteLLMEmbeddingProvider
+    - ``litellm:<model>`` prefix → LiteLLMEmbeddingProvider (OpenAI, Ollama, etc.)
+    - No prefix → SentenceTransformerProvider (HuggingFace model name)
     """
-    if embedding_model == "hash":
-        return HashEmbeddingProvider(dim=dim or 384)
-    if embedding_model.startswith("text-embedding") or embedding_model.startswith("litellm:"):
+    if embedding_model.startswith("litellm:"):
         model = embedding_model.removeprefix("litellm:")
         return LiteLLMEmbeddingProvider(model=model, dim=dim)
     return SentenceTransformerProvider(model_name=embedding_model)
@@ -155,8 +131,8 @@ class ZvecWikiStore:
         embedding_dim: int = 384,
     ) -> None:
         self.db_path = Path(db_path)
-        self._provider = embedding_provider or HashEmbeddingProvider(dim=embedding_dim)
-        self._embedding_dim = self._provider.dim
+        self._provider = embedding_provider
+        self._embedding_dim = embedding_dim
         self._collection: Any = None
 
     @property
@@ -166,19 +142,21 @@ class ZvecWikiStore:
     def build_index(
         self,
         wiki: CompiledWiki,
-        embedding_model: str,
+        embedding_model: str | None = None,
         *,
         batch_size: int = 10,
     ) -> int:
         """Index compiled wiki nodes into the zvec store.
 
-        If ``embedding_model`` is provided and no provider was set at
-        construction, a new provider is created via :func:`_make_provider`.
+        If no provider was set at construction, ``embedding_model`` must be
+        given to create one via :func:`_make_provider`.
         """
         if not wiki.nodes:
             return 0
 
-        if isinstance(self._provider, HashEmbeddingProvider):
+        if self._provider is None:
+            if not embedding_model:
+                raise ValueError("embedding_model is required when no provider was injected")
             self._provider = _make_provider(embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 
@@ -263,16 +241,18 @@ class ZvecWikiStore:
     def open(
         cls,
         db_path: str | Path,
-        embedding_model: str,
+        embedding_model: str | None = None,
         embedding_dim: int | None = None,
+        *,
+        embedding_provider: EmbeddingProvider | None = None,
     ) -> ZvecWikiStore:
         """Open an existing zvec collection for querying.
 
         The collection must have been created previously with
-        :meth:`build_index`. The embedding model/dimension are used to
-        reconstruct the correct provider.
+        :meth:`build_index`. Either pass ``embedding_provider`` directly,
+        or pass ``embedding_model`` to create one via :func:`_make_provider`.
         """
-        provider = _make_provider(embedding_model, dim=embedding_dim or 384)
+        provider = embedding_provider or _make_provider(embedding_model or "", dim=embedding_dim or 384)
         store = cls(db_path=db_path, embedding_provider=provider, embedding_dim=provider.dim)
         store._collection = _zvec.open(path=str(store.db_path))
         return store

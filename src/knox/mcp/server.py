@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 server = FastMCP("KNOX")
 
 
+def _make_memory_store(wiki_dir: str) -> MemoryStore:
+    """Create a MemoryStore with embedding model from resolved config."""
+    cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir})
+    embed_model = cfg.get("compile.embedding.model")
+    return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model)
+
+
 @server.tool(name="parse_document")
 def parse_document(file_path: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
@@ -206,7 +213,7 @@ def memory_add(
 ) -> dict[str, Any]:
     """Add a query/answer pair to the memory store for long-term context."""
     try:
-        store = MemoryStore(base_dir=Path(wiki_dir))
+        store = _make_memory_store(wiki_dir)
         store.add_entry(query=query, answer=answer, feedback=feedback)
         store.close()
         return {"status": "ok", "message": "Memory entry added successfully."}
@@ -222,7 +229,7 @@ def memory_search(
 ) -> dict[str, Any]:
     """Search past memory entries semantically by query."""
     try:
-        store = MemoryStore(base_dir=Path(wiki_dir))
+        store = _make_memory_store(wiki_dir)
         results = store.search(query=query, top_k=top_k)
         store.close()
         return {"status": "ok", "results": results}
@@ -237,7 +244,7 @@ def memory_synthesize(
 ) -> dict[str, Any]:
     """Synthesize recent memory entries into a system context file."""
     try:
-        store = MemoryStore(base_dir=Path(wiki_dir))
+        store = _make_memory_store(wiki_dir)
         entries = store.get_recent_entries(limit=limit)
         if not entries:
             store.close()
