@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -53,8 +54,14 @@ class HTTPDownloader(BaseDownloader):
             )
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 content = response.read()
-        except Exception:
-            logger.exception("Failed to download %s", url)
+        except urllib.error.HTTPError as e:
+            logger.warning("Failed to download %s: HTTP %s %s", url, e.code, e.reason)
+            return None
+        except urllib.error.URLError as e:
+            logger.warning("Failed to download %s: %s", url, e.reason)
+            return None
+        except Exception as e:
+            logger.warning("Failed to download %s: %s", url, e)
             return None
 
         # Content-based dedup: skip if identical content already exists in target_dir
@@ -91,8 +98,8 @@ class HTTPDownloader(BaseDownloader):
                 path = self.download(url, target_dir)
                 if path:
                     results.append(path)
-            except Exception:
-                logger.exception("Failed to download %s", url)
+            except Exception as e:
+                logger.warning("Failed to download %s: %s", url, e)
         return results
 
     @staticmethod
