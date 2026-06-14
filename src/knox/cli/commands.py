@@ -13,11 +13,6 @@ from typing import Annotated, Any
 
 import typer
 
-# Silence noisy third-party loggers that corrupt the rich progress bar
-logging.getLogger("docling").setLevel(logging.WARNING)
-logging.getLogger("pdfminer").setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.WARNING)
-
 from knox.capture.capture import capture
 from knox.capture.crystallize import crystallize
 from knox.capture.learn import learn
@@ -29,9 +24,7 @@ from knox.cli.args import (
     DEFAULT_COMPILER,
     DEFAULT_IMAGE_MODE,
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
-    DEFAULT_OUTPUT_DIR,
     DEFAULT_PROMPT_BUDGET,
-    DEFAULT_SOURCES_DIR,
     DEFAULT_START_AT_TIER,
     BudgetConcepts,
     BudgetGenSegment,
@@ -56,9 +49,7 @@ from knox.cli.args import (
     LearnText,
     LintFix,
     LintLlm,
-    LintOutputDir,
     LintRule,
-    LintSourcesDir,
     LintThreshold,
     ListTiers,
     LlmContextBudget,
@@ -73,7 +64,6 @@ from knox.cli.args import (
     NoCacheFlag,
     NoPrivacy,
     OnlineUrls,
-    OutputDir,
     OutputFlavor,
     ParseFiles,
     PrintElements,
@@ -85,7 +75,6 @@ from knox.cli.args import (
     QueryNoClassify,
     QueryRaw,
     QuerySearchMode,
-    QuerySourcesDir,
     QueryText,
     QueryTopK,
     Recursive,
@@ -95,7 +84,6 @@ from knox.cli.args import (
     ServeHost,
     ServeOpen,
     ServePort,
-    SourcesDir,
     StartAtTier,
     SynthesizeFlag,
     TargetFormat,
@@ -114,6 +102,7 @@ from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.mcp.server import main as mcp_main
+from knox.memory import MemoryStore
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 from knox.output.wiki_index import write_index_and_log, write_overview
@@ -134,6 +123,11 @@ from knox.web.server import serve
 from ._sources import download_urls, ensure_in_sources, resolve_files
 from .doctor import print_doctor_results, run_doctor
 from .status import collect_stats, print_status
+
+# Silence noisy third-party loggers that corrupt the rich progress bar
+logging.getLogger("docling").setLevel(logging.WARNING)
+logging.getLogger("pdfminer").setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -265,9 +259,8 @@ def parse_cmd(
 
 @app.command(name="compile")
 def compile_cmd(
+    ctx: typer.Context,
     files: CompileFiles,
-    sources_dir: SourcesDir = None,
-    output_dir: OutputDir = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -325,22 +318,10 @@ def compile_cmd(
     """
     if online_urls is None:
         online_urls = []
-    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
-    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
-    all_input_files = _resolve_compile_inputs(
-        files, online_urls, url_file, sources_dir_path, recursive, ignore,
-    )
-    if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
-        raise typer.Exit(1)
-
-    typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
-
-    # 6. Resolve config: CLI > env > project config > global config > defaults
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cli_overrides = _build_cli_overrides(
-        sources_dir=sources_dir,
-        output_dir=output_dir,
+        wiki_dir=wiki_dir_override,
         target_format=target_format,
         chunk_size=chunk_size,
         image_mode=image_mode,
@@ -378,6 +359,17 @@ def compile_cmd(
         llm_timeout=llm_timeout,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
+
+    all_input_files = _resolve_compile_inputs(
+        files, online_urls, url_file, sources_dir_path, recursive, ignore,
+    )
+    if not all_input_files:
+        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
+
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
         source_dir=sources_dir_path,
@@ -439,6 +431,7 @@ def compile_cmd(
 
 @app.command(name="doctor")
 def doctor_cmd(
+    ctx: typer.Context,
     verbose: Verbose = False,
     json_output: JsonOutput = False,
 ) -> None:
@@ -447,11 +440,12 @@ def doctor_cmd(
     Runs health checks for source/output directories, parser availability,
     environment variables, and optionally LLM connectivity.
     """
-    sources_dir = Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).exists() else None
-    output_dir = Path(DEFAULT_OUTPUT_DIR) if Path(DEFAULT_OUTPUT_DIR).exists() else None
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
     results = run_doctor(
-        sources_dir=sources_dir,
-        output_dir=output_dir,
+        sources_dir=sources_dir_path if sources_dir_path.exists() else None,
+        output_dir=output_dir_path if output_dir_path.exists() else None,
         verbose=verbose,
     )
     exit_code = print_doctor_results(results, json_output=json_output)
@@ -464,6 +458,7 @@ def doctor_cmd(
 
 @app.command(name="status")
 def status_cmd(
+    ctx: typer.Context,
     json_output: JsonOutput = False,
 ) -> None:
     """Show per-wiki statistics.
@@ -471,9 +466,13 @@ def status_cmd(
     Displays source count, article count, word count, last compile time,
     and config path.
     """
-    sources_dir = Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).exists() else None
-    output_dir = Path(DEFAULT_OUTPUT_DIR) if Path(DEFAULT_OUTPUT_DIR).exists() else None
-    stats = collect_stats(sources_dir=sources_dir, output_dir=output_dir)
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
+    stats = collect_stats(
+        sources_dir=sources_dir_path if sources_dir_path.exists() else None,
+        output_dir=output_dir_path if output_dir_path.exists() else None,
+    )
     print_status(stats, json_output=json_output)
 
 
@@ -511,6 +510,7 @@ def list_parsers_cmd(
 
 @app.command(name="write")
 def write_cmd(
+    ctx: typer.Context,
     page_title: str = typer.Argument(..., help="Title of the page to create."),
     source: list[str] = typer.Option([], "--source", "-s", help="Source file(s) to include (repeatable)."),  # noqa: B008
     frontmatter: Frontmatter = None,
@@ -520,6 +520,10 @@ def write_cmd(
     Example:
         knox write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
     """
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    _sources_dir, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
+
     # Parse frontmatter from key=value pairs
     fm: dict[str, str] = {}
     if frontmatter:
@@ -541,14 +545,11 @@ def write_cmd(
 
     body = "\n\n".join(body_parts) if body_parts else "_(Content pending)_"
 
-    # Render via flvor-aware MarkdownWriter
-
     writer = MarkdownWriter()
-
     doc = Document(title=page_title, body=body, frontmatter=fm)
     rendered = writer.renderer.render(doc)
 
-    output_path = Path.cwd() / "wiki" / f"{page_title.lower().replace(' ', '-')}.md"
+    output_path = output_dir_path / f"{page_title.lower().replace(' ', '-')}.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
     typer.echo(f"Written: {output_path}")
@@ -559,6 +560,7 @@ def write_cmd(
 
 @app.command(name="provenance")
 def provenance_cmd(
+    ctx: typer.Context,
     page_slug: str = typer.Argument(..., help="Page slug or title to show provenance for."),
     with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
     json_output: JsonOutput = False,
@@ -570,9 +572,11 @@ def provenance_cmd(
         knox provenance self-attention --with-content
     """
     # Read the compiled wiki
-    output_dir = Path(DEFAULT_OUTPUT_DIR)
-    base_dir = output_dir.parent
-    wiki_file = output_dir / "wiki.md"
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    _sources_dir, output_dir_path, _cache_dir, state_dir = _resolve_project_paths(cfg)
+    base_dir = output_dir_path.parent
+    wiki_file = output_dir_path / "wiki.md"
     if not wiki_file.exists():
         typer.echo(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
@@ -611,6 +615,7 @@ def provenance_cmd(
 
 @app.command(name="review")
 def review_cmd(
+    ctx: typer.Context,
     action: Annotated[
         str,
         typer.Argument(help="Action: list | approve | reject | lock | unlock"),
@@ -627,13 +632,13 @@ def review_cmd(
         bool,
         typer.Option("--all", help="Approve every pending page."),
     ] = False,
-    output_dir: OutputDir = None,
     json_output: JsonOutput = False,
 ) -> None:
     """Manage the review queue for compiled pages."""
-    out = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
-    base_dir = out.parent
-    queue = ReviewQueue(review_dir=base_dir / ".knox" / "review")
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    _sources_dir, output_dir_path, _cache_dir, state_dir = _resolve_project_paths(cfg)
+    queue = ReviewQueue(review_dir=state_dir / "review")
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 
@@ -721,8 +726,7 @@ def _dispatch_review_action(
 
 @app.command(name="lint")
 def lint_cmd(
-    output_dir: LintOutputDir = None,
-    sources_dir: LintSourcesDir = None,
+    ctx: typer.Context,
     fix: LintFix = False,
     llm: LintLlm = False,
     rule: LintRule = None,
@@ -744,13 +748,14 @@ def lint_cmd(
         knox lint --rule broken-wikilinks --rule orphan-page
         knox lint --threshold 80        # exit 1 if score < 80
     """
-    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
-    base_dir = output_dir_path.parent
-    sources_dir_str = sources_dir if sources_dir else (DEFAULT_SOURCES_DIR if Path(DEFAULT_SOURCES_DIR).exists() else None)
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
+    sources_dir_str = str(sources_dir_path) if sources_dir_path.exists() else None
 
-    wiki = load_cached_wiki(base_dir)
+    wiki = load_cached_wiki(output_dir_path)
     if wiki is None:
-        typer.echo(f"No compiled wiki found in {base_dir}. Run 'knox compile' first.", err=True)
+        typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
 
     llm_client = None
@@ -963,17 +968,28 @@ def _execute_query_search(
     return results, raw
 
 
+def _save_query_memory(state_dir: Path, query: str, answer: str) -> None:
+    """Persist a query/answer pair to the memory store."""
+    try:
+        mem_store = MemoryStore(base_dir=state_dir)
+        mem_store.add_entry(query=query, answer=answer)
+        mem_store.close()
+        typer.echo("\n✓ Query and answer saved to memory.", err=True)
+    except Exception as exc:
+        typer.echo(f"\nWarning: Failed to save to memory: {exc}", err=True)
+
+
 @app.command(name="query")
 def query_cmd(
+    ctx: typer.Context,
     query: QueryText,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
     format: QueryFormat = "text",
-    output_dir: OutputDir = None,
     config: ConfigPath = None,
     no_classify: QueryNoClassify = False,
     search_mode: QuerySearchMode = "hybrid",
-    sources_dir: QuerySourcesDir = None,
+    remember: bool = typer.Option(False, "--remember", help="Save this query and synthesized answer to the memory store."),
 ) -> None:
     """Ask a natural language question against the compiled wiki.
 
@@ -981,28 +997,28 @@ def query_cmd(
     synthesizes an answer using the configured LLM. Use --raw to skip LLM
     synthesis and see the source context directly.
     """
-    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
-    base_dir = output_dir_path.parent
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cli_overrides = _build_cli_overrides(wiki_dir=wiki_dir_override)
+    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    sources_dir_path, output_dir_path, _cache_dir, state_dir = _resolve_project_paths(cfg)
     _load_hooks()
 
     if _classify_intent(query, no_classify, format):
         return
 
-    wiki = load_cached_wiki(base_dir)
+    wiki = load_cached_wiki(output_dir_path)
     if wiki is None:
         typer.echo(
-            f"No compiled wiki found in {base_dir}. Run 'knox compile' first.",
+            f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.",
             err=True,
         )
         raise typer.Exit(1)
 
-    sources_dir_path: Path | None = Path(sources_dir) if sources_dir else (Path(DEFAULT_SOURCES_DIR) if Path(DEFAULT_SOURCES_DIR).is_dir() else None)
-
-    vector_store = _open_vector_store(base_dir, wiki)
+    vector_store = _open_vector_store(state_dir, wiki)
     try:
         retriever = HybridRetriever(
             wiki,
-            index_path=base_dir / ".knox" / "search.db",
+            index_path=state_dir / "search.db",
             vector_store=vector_store,
             sources_dir=sources_dir_path,
         )
@@ -1047,14 +1063,17 @@ def query_cmd(
             source_str: str = c.get("source") or "wiki"
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
+    if remember:
+        _save_query_memory(state_dir, query, synthesis.answer)
+
 
 # ── capture ──────────────────────────────────────────────────────────────
 
 
 @app.command(name="capture")
 def capture_cmd(
+    ctx: typer.Context,
     text: CaptureText,
-    sources_dir: SourcesDir = None,
 ) -> None:
     """Extract knowledge items from text and save as source files.
 
@@ -1064,10 +1083,11 @@ def capture_cmd(
     Examples:
         knox capture "We decided to use QKV projections with RoPE"
     """
-    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, _output_dir, _cache_dir, _state_dir = _resolve_project_paths(cfg)
 
     try:
-        cfg = resolve_config()
         default_model = cfg.get("compile.llm.default_model")
         llm_client = LLMClient(default_model=default_model)
     except Exception:
@@ -1084,9 +1104,9 @@ def capture_cmd(
 
 @app.command(name="learn")
 def learn_cmd(
+    ctx: typer.Context,
     text: LearnText,
     tag: LearnTags = None,
-    sources_dir: SourcesDir = None,
 ) -> None:
     """Store a single fact directly as a source file.
 
@@ -1097,7 +1117,9 @@ def learn_cmd(
         knox learn "The transformer uses d_model=512 and h=8"
         knox learn "QKV with RoPE" --tag attention --tag architecture
     """
-    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, _output_dir, _cache_dir, _state_dir = _resolve_project_paths(cfg)
 
     path = learn(text, sources_dir=sources_dir_path, tags=tag)
     typer.echo(f"Learned fact -> {path.name}")
@@ -1108,7 +1130,7 @@ def learn_cmd(
 
 @app.command(name="crystallize")
 def crystallize_cmd(
-    sources_dir: SourcesDir = None,
+    ctx: typer.Context,
 ) -> None:
     """Synthesize captured notes into coherent wiki pages.
 
@@ -1120,10 +1142,11 @@ def crystallize_cmd(
     Examples:
         knox crystallize
     """
-    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=_build_cli_overrides(wiki_dir=wiki_dir_override))
+    sources_dir_path, _output_dir, _cache_dir, _state_dir = _resolve_project_paths(cfg)
 
     try:
-        cfg = resolve_config()
         default_model = cfg.get("compile.llm.default_model")
         llm_client = LLMClient(default_model=default_model)
     except Exception:
@@ -1143,9 +1166,8 @@ def crystallize_cmd(
 
 @app.command(name="ingest")
 def ingest_cmd(
+    ctx: typer.Context,
     files: CompileFiles,
-    sources_dir: SourcesDir = None,
-    output_dir: OutputDir = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -1175,21 +1197,10 @@ def ingest_cmd(
     """
     if online_urls is None:
         online_urls = []
-    sources_dir_path = Path(sources_dir) if sources_dir else Path(DEFAULT_SOURCES_DIR)
-    output_dir_path = Path(output_dir) if output_dir else Path(DEFAULT_OUTPUT_DIR)
 
-    all_input_files = _resolve_compile_inputs(
-        files, online_urls, url_file, sources_dir_path, recursive, ignore,
-    )
-    if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
-        raise typer.Exit(1)
-
-    typer.echo(f"Ingesting {len(all_input_files)} document(s) -> {sources_dir_path}")
-
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cli_overrides = _build_cli_overrides(
-        sources_dir=sources_dir,
-        output_dir=output_dir,
+        wiki_dir=wiki_dir_override,
         chunk_size=chunk_size,
         image_mode=image_mode,
         no_cache=no_cache,
@@ -1200,6 +1211,17 @@ def ingest_cmd(
         vlm_model=vlm_model,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
+
+    all_input_files = _resolve_compile_inputs(
+        files, online_urls, url_file, sources_dir_path, recursive, ignore,
+    )
+    if not all_input_files:
+        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Ingesting {len(all_input_files)} document(s) -> {sources_dir_path}")
+
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
         source_dir=sources_dir_path,
@@ -1368,10 +1390,21 @@ def _post_compile_actions(
     _write_wiki_cache(wiki, base_dir)
 
 
+def _resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:
+    """Return resolved source, output, cache, and state directories.
+
+    Values come from the resolved config ``paths`` section.
+    """
+    sources_dir = Path(cfg.get("paths.sources_dir"))
+    output_dir = Path(cfg.get("paths.output_dir"))
+    cache_dir = Path(cfg.get("paths.cache_dir"))
+    state_dir = Path(cfg.get("paths.state_dir"))
+    return sources_dir, output_dir, cache_dir, state_dir
+
+
 def _build_cli_overrides(
     *,
-    sources_dir: str | None = None,
-    output_dir: str | None = None,
+    wiki_dir: str | None = None,
     target_format: str | None = None,
     chunk_size: int | None = None,
     image_mode: str | None = None,
@@ -1413,8 +1446,7 @@ def _build_cli_overrides(
     overrides: dict[str, Any] = {}
 
     _simple: list[tuple[str, Any]] = [
-        ("compile.sources_dir", sources_dir),
-        ("compile.output_dir", output_dir),
+        ("paths.wiki_dir", wiki_dir),
         ("compile.format", target_format),
         ("compile.chunk_size", chunk_size),
         ("compile.image_mode", image_mode),

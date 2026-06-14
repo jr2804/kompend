@@ -28,6 +28,7 @@ from knox.core.pipeline import (
     PipelineConfig,
     WikiPipeline,
 )
+from knox.core.pipeline_defs import Tier
 from knox.core.tier_state import (
     SourceState,
     TierState,
@@ -88,12 +89,10 @@ class TestTierLevelRanges:
             embedding=EmbeddingConfig("model"),
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
-        from knox.core.pipeline_defs import Tier
         for tier in Tier:
             assert pipeline._should_run(tier)
 
     def test_should_run_output_only(self) -> None:
-        from knox.core.pipeline_defs import Tier
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
@@ -235,7 +234,6 @@ class TestWikiPipelineTiered:
         assert pipeline.stop_level() == 4
 
     def test_start_level_output_only(self) -> None:
-        from knox.core.pipeline_defs import Tier
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
@@ -248,7 +246,6 @@ class TestWikiPipelineTiered:
         assert pipeline.stop_level() == 4
 
     def test_validate_prerequisites_empty_state_raises(self) -> None:
-        from knox.core.pipeline_defs import Tier
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),

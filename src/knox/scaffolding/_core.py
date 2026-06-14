@@ -34,7 +34,7 @@ PROJECT_MARKERS: Final[tuple[str, ...]] = ("knox.toml", ".knox/config.toml")
 class ScaffoldResult:
     """Summary of a scaffolding run.
 
-    Attributes
+    Attributes:
     ----------
     target_dir:
         The resolved absolute path of the project directory.
@@ -90,20 +90,24 @@ def _copy_template(template_name: str, target: Path, relative: str) -> None:
 
 def _initialise_git(target: Path) -> None:
     """Run ``git init`` in *target* and stage an initial commit."""
+    git_path = shutil.which("git")
+    if not git_path:
+        raise FileNotFoundError("git executable not found in PATH")
+
     subprocess.run(
-        ["git", "init", "--initial-branch=main"],
+        [git_path, "init", "--initial-branch=main"],
         cwd=target,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "add", "."],
+        [git_path, "add", "."],
         cwd=target,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
+        [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
         cwd=target,
         check=True,
         capture_output=True,
@@ -134,12 +138,12 @@ def scaffold_project(
         When ``True``, run ``git init`` in the project directory and
         create an initial commit.
 
-    Returns
+    Returns:
     -------
     ScaffoldResult
         A summary of what was created.
 
-    Raises
+    Raises:
     ------
     ScaffoldError
         If the target directory contains an existing project marker and

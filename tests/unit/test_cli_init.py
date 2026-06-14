@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import subprocess
+import shutil
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
-
 
 runner = CliRunner()
 
@@ -81,12 +80,4 @@ class TestInitCommand:
 
 
 def _git_available() -> bool:
-    try:
-        subprocess.run(
-            ["git", "--version"],
-            check=True,
-            capture_output=True,
-        )
-        return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
+    return shutil.which("git") is not None
