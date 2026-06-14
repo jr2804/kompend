@@ -22,8 +22,6 @@ APP_NAME_UPPERCASE = "KNOX"
 
 # ── Defaults ────────────────────────────────────────────────────────────
 
-DEFAULT_SOURCES_DIR: str = "sources"
-DEFAULT_OUTPUT_DIR: str = "wiki"
 DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
 DEFAULT_CHUNK_SIZE: int = 512
 DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
@@ -33,6 +31,16 @@ DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
 
 # ── Shared options (used by multiple commands) ──────────────────────────
 
+WikiDir = Annotated[
+    str | None,
+    typer.Option(
+        "--wiki-dir",
+        "-w",
+        help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
+        envvar=f"{APP_NAME_UPPERCASE}_WIKI_DIR",
+    ),
+]
+
 Recursive = Annotated[
     bool,
     typer.Option(
@@ -40,26 +48,6 @@ Recursive = Annotated[
         "-r/-R",
         help="Search source directories recursively.",
         envvar=f"{APP_NAME_UPPERCASE}_RECURSIVE",
-    ),
-]
-
-SourcesDir = Annotated[
-    str | None,
-    typer.Option(
-        "--sources-dir",
-        "-s",
-        help="Input sources directory. Files not already here are copied in. "
-        f"Default: '{DEFAULT_SOURCES_DIR}' in the current working directory. "
-        f"Env: {APP_NAME_UPPERCASE}_SOURCES_DIR.",
-    ),
-]
-
-OutputDir = Annotated[
-    str | None,
-    typer.Option(
-        "--output-dir",
-        "-o",
-        help=f"Output directory for compiled wiki. Default: '{DEFAULT_OUTPUT_DIR}' in the current working directory. Env: {APP_NAME_UPPERCASE}_OUTPUT_DIR.",
     ),
 ]
 
@@ -476,10 +464,7 @@ MemoryDecayThreshold = Annotated[
     float,
     typer.Option(
         "--memory-decay-threshold",
-        help=(
-            "Retention value (0.0-1.0) below which a node is considered stale. "
-            f"Env: {APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD."
-        ),
+        help=(f"Retention value (0.0-1.0) below which a node is considered stale. Env: {APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD."),
         min=0.0,
         max=1.0,
         envvar=f"{APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD",
@@ -607,24 +592,6 @@ LintThreshold = Annotated[
     ),
 ]
 
-LintOutputDir = Annotated[
-    str | None,
-    typer.Option(
-        "--output-dir",
-        "-o",
-        help="Compiled wiki directory to lint. Default: 'wiki' in CWD.",
-    ),
-]
-
-LintSourcesDir = Annotated[
-    str | None,
-    typer.Option(
-        "--sources-dir",
-        "-s",
-        help="Sources directory (for file-based checks). Default: 'sources' in CWD.",
-    ),
-]
-
 # ── N1 compile --lint integration ───────────────────────────────────────
 
 CompileLint = Annotated[
@@ -698,15 +665,6 @@ QuerySearchMode = Annotated[
         "--search-mode",
         "--scope",
         help="Search mode: wiki (compiled pages), raw (source files), hybrid (both), or graph (hybrid + graph traversal expansion).",
-    ),
-]
-
-QuerySourcesDir = Annotated[
-    str | None,
-    typer.Option(
-        "--sources-dir",
-        "-s",
-        help=f"Sources directory for raw/hybrid search. Default: '{DEFAULT_SOURCES_DIR}' in CWD.",
     ),
 ]
 

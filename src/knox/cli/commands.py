@@ -362,7 +362,12 @@ def compile_cmd(
     sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
 
     all_input_files = _resolve_compile_inputs(
-        files, online_urls, url_file, sources_dir_path, recursive, ignore,
+        files,
+        online_urls,
+        url_file,
+        sources_dir_path,
+        recursive,
+        ignore,
     )
     if not all_input_files:
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
@@ -1214,7 +1219,12 @@ def ingest_cmd(
     sources_dir_path, output_dir_path, _cache_dir, _state_dir = _resolve_project_paths(cfg)
 
     all_input_files = _resolve_compile_inputs(
-        files, online_urls, url_file, sources_dir_path, recursive, ignore,
+        files,
+        online_urls,
+        url_file,
+        sources_dir_path,
+        recursive,
+        ignore,
     )
     if not all_input_files:
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)

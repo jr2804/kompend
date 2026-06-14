@@ -113,18 +113,14 @@ def test_provenance_no_wiki() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["provenance", "test-page"])
     assert result.exit_code != 0
-    # typer.echo goes to stdout unless it's an error path;
-    # SystemExit(1) may suppress output in CliRunner
     assert result.exit_code == 1
 
 
-def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.Monkeypatch) -> None:
+def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Knox write creates a file (or errors gracefully)."""
-    # Change to tmp dir so output lands there
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
     result = runner.invoke(app, ["write", "Test Article", "--frontmatter", "lang=en"])
-    # Should either succeed or error — but not crash
     assert result.exit_code in (0, 1)
     if result.exit_code == 0:
         assert "Written" in result.stdout

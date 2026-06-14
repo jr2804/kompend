@@ -1,14 +1,20 @@
 # KNOX configuration reference
-# Copy to knox.toml and adjust for your project.
+# Copy to .knox/config.toml or knox.toml and adjust for your project.
 # Full docs: https://knox.readthedocs.io/guides/config.html
+
+# ── Paths ────────────────────────────────────────────────────────────────
+# All paths are relative to the wiki root (the directory containing
+# `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
+
+[paths]
+sources_dir = "sources"
+output_dir = "wiki"
+cache_dir = ".knox/cache"
+state_dir = ".knox"
 
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]
-# Input/output directories (relative to cwd)
-sources_dir = "sources"
-output_dir = "wiki"
-
 # Output format: markdown | json | typst
 format = "markdown"
 

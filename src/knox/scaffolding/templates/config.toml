@@ -7,9 +7,10 @@
 # `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
 
 [paths]
-sources = "sources"
-output = "wiki"
-cache = ".knox/cache"
+sources_dir = "sources"
+output_dir = "wiki"
+cache_dir = ".knox/cache"
+state_dir = ".knox"
 
 # ── Compile settings ────────────────────────────────────────────────────
 

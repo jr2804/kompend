@@ -48,6 +48,7 @@ Config files use TOML. Example ``knox.toml``::
 from __future__ import annotations
 
 import contextlib
+import copy
 import logging
 import os
 import re
@@ -145,6 +146,13 @@ DEFAULTS: dict[str, Any] = {
         "patterns": [],
     },
     "hooks": {},
+    "paths": {
+        "wiki_dir": None,
+        "sources_dir": "sources",
+        "output_dir": "wiki",
+        "cache_dir": ".knox/cache",
+        "state_dir": ".knox",
+    },
 }
 
 # ── Env var mapping ──────────────────────────────────────────────────────
@@ -152,8 +160,11 @@ DEFAULTS: dict[str, Any] = {
 # Only keys that make sense as env overrides are listed.
 
 _ENV_MAP: dict[str, str] = {
-    "compile.sources_dir": "KNOX_SOURCES_DIR",
-    "compile.output_dir": "KNOX_OUTPUT_DIR",
+    "paths.wiki_dir": "KNOX_WIKI_DIR",
+    "paths.sources_dir": "KNOX_SOURCES_DIR",
+    "paths.output_dir": "KNOX_OUTPUT_DIR",
+    "paths.cache_dir": "KNOX_CACHE_DIR",
+    "paths.state_dir": "KNOX_STATE_DIR",
     "compile.format": "KNOX_FORMAT",
     "compile.chunk_size": "KNOX_CHUNK_SIZE",
     "compile.image_mode": "KNOX_IMAGE_MODE",
@@ -203,14 +214,15 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     """Recursively merge *override* into *base*, returning a new dict.
 
     Dict values are merged recursively. Non-dict values from *override*
-    replace those in *base*.
+    replace those in *base*. All values are deep-copied so the returned
+    dict never shares references with the inputs.
     """
-    result = dict(base)
+    result = copy.deepcopy(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
         else:
-            result[key] = value
+            result[key] = copy.deepcopy(value) if isinstance(value, dict) else value
     return result
 
 
@@ -454,6 +466,50 @@ def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
     return keys
 
 
+def _resolve_paths(
+    result: dict[str, Any],
+    provenance: dict[str, ConfigSource],
+) -> None:
+    """Normalize path values under ``paths``.
+
+    - Migrates deprecated ``compile.sources_dir`` / ``compile.output_dir``
+      values to ``paths.sources_dir`` / ``paths.output_dir`` when the new
+      keys were not explicitly set.
+    - Resolves relative paths against ``paths.wiki_dir`` (or cwd).
+    """
+    paths = result.setdefault("paths", {})
+
+    # Backwards compatibility: old [compile] path keys migrate to [paths]
+    for old_key, new_key in (
+        ("compile.sources_dir", "paths.sources_dir"),
+        ("compile.output_dir", "paths.output_dir"),
+    ):
+        old_val = _get_dot(result, old_key)
+        new_val = _get_dot(result, new_key)
+        old_default = _get_dot(DEFAULTS, old_key)
+        new_default = _get_dot(DEFAULTS, new_key)
+        if old_val is not None and old_val != old_default and new_val == new_default:
+            _set_dot(result, new_key, old_val)
+            provenance[new_key] = ConfigSource(
+                provenance.get(old_key, ConfigSource("project")).path,
+                f"deprecated {old_key}",
+            )
+
+    wiki_dir_raw = paths.get("wiki_dir")
+    base = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
+    paths["wiki_dir"] = base
+
+    for key in ("sources_dir", "output_dir", "cache_dir", "state_dir"):
+        dotted = f"paths.{key}"
+        value = paths.get(key)
+        if value is None:
+            value = _get_dot(DEFAULTS, dotted)
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = base / path
+        paths[key] = path.resolve()
+
+
 def resolve_config(
     *,
     cli_overrides: dict[str, Any] | None = None,
@@ -536,6 +592,8 @@ def resolve_config(
             if cli[key] is not None:
                 provenance[key] = ConfigSource("cli")
         result = cli_result
+
+    _resolve_paths(result, provenance)
 
     return ResolvedConfig(
         raw=result,

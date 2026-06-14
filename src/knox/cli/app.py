@@ -26,6 +26,7 @@ app = typer.Typer(
 
 @app.callback(invoke_without_command=True)
 def _callback(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -33,11 +34,19 @@ def _callback(
         help="Show version and exit",
         is_eager=True,
     ),
+    wiki_dir: str | None = typer.Option(
+        None,
+        "--wiki-dir",
+        "-w",
+        help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
+        envvar="KNOX_WIKI_DIR",
+    ),
 ) -> None:
     """Knowledge Organizer for eXtended documents"""
     if version:
         typer.echo(_get_version())
         raise typer.Exit()
+    ctx.obj = {"wiki_dir": wiki_dir}
 
 
 def main() -> None:

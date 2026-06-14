@@ -36,8 +36,6 @@ $LLMModel   = "ollama/deepseek-v4-flash:cloud"
 $EmbedModel = "litellm:ollama/granite-embedding:278m"
 $EmbedDim   = 768
 
-$SourcesDir = Join-Path $BaseDir "sources"
-$OutputDir  = Join-Path $BaseDir "wiki"
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
 $UrlFile    = Join-Path $ProjectRoot "tests/data/urls.txt"
 
@@ -55,8 +53,7 @@ Write-Host "=== Stage 1: Ingest (parse + chunk) ===" -ForegroundColor Cyan
 $IngestArgs = @(
     "uv", "run", "knox", "ingest",
     $InputFiles,
-    "--sources-dir", $SourcesDir,
-    "--output-dir",  $OutputDir,
+    "--wiki-dir",    $BaseDir,
     "--url-file",    $UrlFile,
     "--workers",     "1",
     "--progress"
@@ -85,8 +82,7 @@ Write-Host "=== Stage 2: Compile (resolve + compile + output) ===" -ForegroundCo
 $CompileArgs = @(
     "uv", "run", "knox", "compile",
     $InputFiles,
-    "--sources-dir",      $SourcesDir,
-    "--output-dir",       $OutputDir,
+    "--wiki-dir",         $BaseDir,
     "--start-at-tier",    "resolve",
     "--llm-default-model", $LLMModel,
     "--embed-model",      $EmbedModel,
@@ -116,8 +112,7 @@ Write-Host ""
 Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
     "uv", "run", "knox", "lint",
-    "--output-dir", (Join-Path $BaseDir "wiki"),
-    "--sources-dir", (Join-Path $BaseDir "sources"),
+    "--wiki-dir", $BaseDir,
     "--llm",
     "--llm-default-model", $LLMModel,
     "--fix",
