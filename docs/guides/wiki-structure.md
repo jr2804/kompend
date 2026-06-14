@@ -132,4 +132,5 @@ project/
     ├── memory.json          # Memory lifecycle state
     └── zvec/                # Vector store sidecar (if --index-store)
 ```
-```
+
+```text

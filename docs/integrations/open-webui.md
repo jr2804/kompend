@@ -80,6 +80,7 @@ for r in results:
     print(f"[{r['score']:.2f}] {r['title']}: {r.get('content_preview')[:100]}")
 ```
 
-When no embedding model is configured, a deterministic hash-based vector is used
-(suitable for testing). For production, set `--embed-model` to a sentence-transformer
-model name.
+When no embedding model is configured, vector indexing is disabled and the
+retriever falls back to token-overlap search. To enable semantic search, set
+`compile.embedding.model` in your config to either a `litellm:` prefixed model
+or a sentence-transformers model name (e.g. `all-MiniLM-L6-v2`).

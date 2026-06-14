@@ -295,6 +295,7 @@ No custom GUI. KNOX exposes a queryable JSON graph / SQLite database. Open-WebUI
 Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.knox/vectors/`; an FTS index is stored in `.knox/search.db`.
 
 The `query` command supports a `--search-mode` (or `--scope`) option:
+
 - `wiki` — Search only compiled wiki pages (FTS + vector + token).
 - `raw` — Search only raw source files using BM25.
 - `hybrid` — Combine wiki and raw results via RRF (default).

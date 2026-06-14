@@ -4,7 +4,7 @@ KNOX uses a layered configuration system. Values are resolved from multiple sour
 
 ## 5-Layer Precedence
 
-```
+```text
 1. CLI flags (--wiki-dir, --format, ...)         ← highest
 2. Environment variables (KNOX_*)
 3. Project config (.knox/config.toml + knox.toml)
@@ -40,7 +40,7 @@ If multiple files exist in the hierarchy, they are merged with **closest-to-CWD 
 
 Example hierarchy:
 
-```
+```text
 /home/user/projects/monorepo/
 ├── .knox/config.toml          ← parent config (shared defaults)
 └── packages/
@@ -107,7 +107,7 @@ The main configuration sections:
 | `[compile]` | Compile settings: format, chunk size, image mode, workers |
 | `[compile.budget]` | Token budget settings |
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
-| `[compile.embedding]` | Embedding model for vector index |
+| `[compile.embedding]` | Embedding model for vector index (`litellm:` prefix or sentence-transformers name; `null` disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
 | `[notes]` | User notes file configuration |
 | `[hooks]` | Event hook callbacks |

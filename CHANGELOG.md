@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Breaking:** Per-command `--sources-dir`/`-s` and `--output-dir`/`-o` flags removed from all commands. Use `--wiki-dir` (global) or `[paths]` config section instead.
 - **Breaking:** `KNOX_SOURCES_DIR` and `KNOX_OUTPUT_DIR` env vars now map to `paths.sources_dir`/`paths.output_dir` (were `compile.sources_dir`/`compile.output_dir`). Deprecated `compile.sources_dir`/`compile.output_dir` keys are auto-migrated.
+- **Breaking:** `HashEmbeddingProvider` removed from production code. Two embedding providers remain: `litellm:<model>` prefix (LiteLLM) and bare model name (sentence-transformers). Config default for `compile.embedding.model` is now `null` (vector indexing disabled until configured).
 
 ### Migration
 

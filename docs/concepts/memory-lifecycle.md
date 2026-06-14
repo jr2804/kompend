@@ -24,7 +24,7 @@ graph LR
 
 Each page starts at confidence 0.5 and asymptotically approaches 1.0:
 
-```
+```text
 confidence(n+1) = (confidence(n) + 1) / 2
 ```
 
@@ -32,7 +32,7 @@ confidence(n+1) = (confidence(n) + 1) / 2
 
 If a page is not recompiled, its retention decays exponentially:
 
-```
+```text
 retention = confidence * exp(-days_since_review / half_life)
 ```
 

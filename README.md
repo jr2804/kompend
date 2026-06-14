@@ -27,137 +27,112 @@ knox init ./my-wiki
 cd ./my-wiki
 ```
 
-This creates a standard project structure with `sources/`, `wiki/`, `.knox/config.toml`, `NOTES.md`, and `README.md`. Add `--bare` for minimal scaffolding, or `--git` to initialize a git repo.
+Creates a standard project structure with `sources/`, `wiki/`, `.knox/config.toml`, `NOTES.md`, and `README.md`. Use `--bare` for minimal scaffolding, or `--git` to initialize a git repository alongside.
 
-### 2. Check that a document parses correctly
+### 2. Verify a document parses correctly
 
-Before compiling a full corpus, verify a single file extracts cleanly:
+Before compiling a full corpus, check that a single file extracts cleanly:
 
 ```bash
-knox parse paper.pdf
+knox parse paper.pdf --elements
 ```
 
-This prints element counts, types (heading, table, image, formula, …), and the document title. Add `--elements` to see a preview of each extracted element, or pass multiple files and globs:
+This prints element counts, types (heading, table, image, formula, …), and the document title. Pass globs or directories with `--recursive`:
 
 ```bash
 knox parse *.pdf ./more_docs/ --elements
 knox parse ./research/ --recursive
 ```
 
-If the output looks wrong, the full pipeline will produce poor results too — fix parsing issues first.
+If parsing looks wrong, the full pipeline will produce poor results too — fix parsing issues first.
 
 ### 3. Compile a document corpus into a wiki
 
-Drop your source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into `sources/` and run:
+Drop source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into `sources/` and run:
 
 ```bash
 knox compile
 ```
 
-This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, compile into an interlinked wiki, and write Markdown files to `wiki/`.
+This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, resolve entities and relations via LLM, compile into an interlinked wiki, and write Markdown to `wiki/`.
 
-You can also pass specific files or globs directly — they'll be copied into the sources directory automatically:
+You can also pass files, globs, or URLs directly — they are copied/downloaded into `sources/` automatically:
 
 ```bash
 knox compile paper.pdf notes.docx data/*.xlsx
 knox compile ./papers/ --recursive
+knox compile --url https://arxiv.org/pdf/2605.07068v1
 ```
 
-### 4. Extend with online sources and different output formats
+### 4. Query the compiled wiki
 
 ```bash
-# Pull in remote PDFs before compiling
-knox compile --url https://arxiv.org/pdf/2605.07068v1
-
-# Override the project root (sources/ and wiki/ resolved from this)
-knox --wiki-dir ./custom-root compile
-
-# Output as JSON graph instead of Markdown
-knox compile --format json
-
-# Build a vector index for semantic search (requires zvec)
-knox compile --format json --index --embed-model all-MiniLM-L6-v2
+knox query "How does attention scale with sequence length?"
 ```
 
-Full option reference: `knox compile --help`, `knox init --help`, `knox config --help`
+Retrieves relevant context from the compiled wiki using hybrid search (FTS + vector + token-overlap via reciprocal rank fusion) and synthesizes an answer using the configured LLM. Use `--raw` to see source context without synthesis, or `--search-mode graph` to expand results via relation traversal:
 
-## CLI Reference
-
-### `knox init`
-
-```text
-knox init [OPTIONS] [DIR]
-
-Scaffold a new wiki project.
-
-Arguments:
-  DIR                   Target directory (default: current directory)
-
-Options:
-  --bare                Skip authored templates (NOTES.md, README.md)
-  --force               Overwrite existing project config
-  --git                 Initialize a git repo with an initial commit
-  --help                Show this message and exit
+```bash
+knox query "transformer architecture" --raw --top-k 10
+knox query "compare BERT and GPT" --search-mode graph --remember
 ```
 
-### `knox config`
+### 5. Extend and integrate
 
-```text
-knox config [OPTIONS] COMMAND
+```bash
+# Set the LLM model for resolution and synthesis
+knox config set compile.llm.default_model "openai/gpt-4o"
 
-Inspect and manage configuration files.
+# Build a vector index for semantic search (requires an embedding model)
+knox compile --index --embed-model all-MiniLM-L6-v2
 
-Commands:
-  get <key>             Print resolved value for a config key
-  set <key> <value>     Write a key to project or global config
-  list                  Print all resolved config with provenance
-  path                  Print the config file path
+# Start the web UI for browsing and searching
+knox serve --open
+
+# Start the MCP server for Claude Code / Cursor integration
+knox mcp
 ```
 
-### `knox compile`
+Full option reference: `knox <command> --help`
 
-```text
-knox compile [OPTIONS] FILES...
+## Commands
 
-Compile documents into a knowledge wiki.
+| Command | Purpose |
+|---|---|
+| **Project** | |
+| `knox init [DIR]` | Scaffold a new wiki project (`--bare`, `--force`, `--git`) |
+| `knox config get/set/list/path` | Inspect and edit configuration (5-layer precedence) |
+| `knox doctor` | Validate directories, parsers, and LLM connectivity |
+| `knox status` | Show source/article/word counts and last compile time |
+| `knox list-parsers` | List all registered parsers and their extensions |
+| **Pipeline** | |
+| `knox parse FILES...` | Parse documents and show structure (`--elements`, `--recursive`) |
+| `knox ingest FILES...` | Stage + parse + chunk only (Tier 0–1); cached for later compile |
+| `knox compile FILES...` | Full pipeline → interlinked wiki (see `--help` for 40+ options) |
+| **Query & Search** | |
+| `knox query "..."` | Ask a natural-language question against the wiki |
+| `knox provenance SLUG` | Show source-to-article provenance for a page |
+| `knox memory add/search/synthesize` | Manage query memory and context synthesis |
+| **Quality** | |
+| `knox lint` | Lint compiled wiki for quality issues (`--fix`, `--llm`, `--rule`, `--threshold`) |
+| `knox review list/approve/reject/lock/unlock` | Manage the review queue for compiled pages |
+| **Capture** | |
+| `knox capture "..."` | LLM-extract decisions, discoveries, corrections from text |
+| `knox learn "..."` | Store a single fact directly as a source file |
+| `knox crystallize` | Merge captured notes into coherent wiki pages via LLM |
+| `knox write "TITLE"` | Create a one-shot wiki page from a title and optional sources |
+| **Packs & Servers** | |
+| `knox pack-list` | List installed contribution packs |
+| `knox pack-install NAME` | Install a built-in pack (`academic`, `technical`) |
+| `knox serve` | Start the web UI server (`--host`, `--port`, `--open`) |
+| `knox mcp` | Start the MCP server (stdio transport, for AI clients) |
 
-Arguments:
-  FILES...              Files, glob patterns, or directories
+### Global options
 
-Options:
-  --format, -f TEXT     Output format: markdown, json, typst  [default: markdown]
-  --chunk-size INT      Chunk size in tokens  [default: 512]
-  --image-mode TEXT     Image handling: file, base64  [default: file]
-  --index               Index compiled wiki in zvec for semantic search
-  --embed-model TEXT    Embedding model for zvec indexing
-  --help                Show this message and exit
 ```
-
-### `knox parse`
-
-```text
-knox parse [OPTIONS] FILES...
-
-Parse documents and show their structure.
-
-Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
-Use --recursive to descend into subdirectories.
-
-Arguments:
-  FILES...              Files, glob patterns, or directories to parse  [required]
-
-Options:
-  --recursive / --no-recursive   Search source directories recursively
-                                  [env var: KNOX_RECURSIVE]  [default: no-recursive]
-  --elements, -e                 Print extracted elements
-  --help                         Show this message and exit
-```
-
-### Global Options
-
-```text
 knox --version, -v        Show version and exit
-knox --wiki-dir, -w DIR   Set project root (sources/, wiki/, .knox/ resolved from here)
+knox --wiki-dir, -w DIR   Project root (sources/, wiki/, .knox/ resolved from here)
+                          Env: KNOX_WIKI_DIR
 knox --help               Show help and exit
 ```
 
@@ -165,34 +140,76 @@ knox --help               Show help and exit
 
 KNOX runs a 5-tier pipeline — each tier independently replaceable:
 
-```text
+```
 Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: Compilation → T5: Output
 ```
 
-**T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai.
+- **T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai.
+- **T2 Chunking** — Split documents into `Chunk` objects. Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with markdown awareness.
+- **T3 Resolution** — Extract entities and resolve cross-references using an LLM (via litellm). Optional VLM enricher for image captioning. Typed relation extraction (`uses`, `depends_on`, `contradicts`, …) via `--resolve-relations`.
+- **T4 Compilation** — Build an interlinked `CompiledWiki` graph from resolved chunks. Two backends: `GraphCompiler` (default, two-phase extract-then-generate) and `WiCERCompiler` (iterative compile-evaluate-refine loop).
+- **T5 Output** — Write the compiled wiki as Markdown (with Obsidian/GFM/MkDocs/… flavors), JSON, or Typst. Optionally index for semantic search and generate an LLM-synthesized overview.
 
-**T2 Chunking** — Split documents into `Chunk` objects. Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with markdown awareness.
+### Key subsystems
 
-**T3 Resolution** — Extract entities and resolve cross-references using an LLM (via litellm). Falls back to passthrough when no LLM is available.
-
-**T4 Compilation** — Build an interlinked `CompiledWiki` graph from resolved chunks. Optionally runs the WiCER loop: compile → generate probes → evaluate → diagnose → refine.
-
-**T5 Output** — Write the compiled wiki as Markdown, JSON, or Typst. Optionally index for semantic search via zvec.
+| Subsystem | Description |
+|---|---|
+| **RAG / Search** | `HybridRetriever` fuses FTS + vector (zvec) + token-overlap + raw sources via reciprocal rank fusion. Two embedding providers: `litellm:` prefix → LiteLLM, no prefix → sentence-transformers. |
+| **Memory Lifecycle** | Confidence decay, tier promotion (working → episodic → semantic → procedural), supersession detection, and stale-page lint integration. Configurable half-life and decay threshold. |
+| **Event Hooks** | `PRE_COMPILE`, `POST_COMPILE`, `ON_CAPTURE`, `ON_QUERY`, `ON_LINT` hooks — configurable via `[hooks]` in `knox.toml`. |
+| **Review Queue** | Route compiled pages through approve/reject/lock workflow before publishing. |
+| **MCP Server** | Stdio server exposing `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` tools to Claude Code, Cursor, and other MCP-compatible clients. |
+| **Configuration** | 5-layer precedence: CLI args > env (`KNOX_*`) > project hierarchy (`.knox/config.toml` + `knox.toml`, walks up) > global (`~/.config/knox/config.toml`) > defaults. |
 
 For the full architecture, see [`docs/architecture/index.md`](./docs/architecture/index.md).
+
+## Configuration
+
+KNOX resolves configuration through a 5-layer precedence system (highest → lowest):
+
+1. **CLI flags** — e.g. `--wiki-dir`, `--chunk-size`, `--llm-default-model`
+2. **Environment variables** — prefixed with `KNOX_` (e.g. `KNOX_WIKI_DIR`, `KNOX_LLM_DEFAULT_MODEL`)
+3. **Project config** — `.knox/config.toml` or `knox.toml`, discovered by walking up from CWD (closest wins)
+4. **Global config** — `~/.config/knox/config.toml` (XDG-aware)
+5. **Built-in defaults** — in `knox.core.config.DEFAULTS`
+
+Inspect and edit configuration with the `knox config` subcommand:
+
+```bash
+knox config list                          # show all resolved keys with provenance
+knox config get compile.llm.default_model # show one resolved value
+knox config set compile.llm.default_model "openai/gpt-4o"
+knox config path                          # show which config file is used
+```
+
+See [`docs/guides/configuration.md`](./docs/guides/configuration.md) for the full reference.
 
 ## Documentation
 
 > **Read the full docs at [knox.anomalyco.dev](https://knox.anomalyco.dev)** — architecture deep-dives, pipeline tier references, WiCER loop explainer, CLI guides, and integration docs.
 
-For a quick reference:
+Quick reference:
 
 | Topic | Location |
 |---|---|
-| Architecture & data models | [`docs/architecture/index.md`](./docs/architecture/index.md) |
-| Implementation status | [`docs/about/status.md`](./docs/about/status.md) |
-| Roadmap & milestones | [`docs/about/roadmap.md`](./docs/about/roadmap.md) |
+| CLI guide | [`docs/guides/cli.md`](./docs/guides/cli.md) |
+| Initialization | [`docs/guides/initialization.md`](./docs/guides/initialization.md) |
+| Configuration | [`docs/guides/configuration.md`](./docs/guides/configuration.md) |
+| Compilation | [`docs/guides/compilation.md`](./docs/guides/compilation.md) |
+| LLM configuration | [`docs/guides/llm-config.md`](./docs/guides/llm-config.md) |
+| Lint | [`docs/guides/lint.md`](./docs/guides/lint.md) |
+| Review queue | [`docs/guides/review.md`](./docs/guides/review.md) |
+| Provenance | [`docs/guides/provenance.md`](./docs/guides/provenance.md) |
+| Query & memory | [`docs/guides/query-memory.md`](./docs/guides/query-memory.md) |
+| Output formats | [`docs/guides/output.md`](./docs/guides/output.md) |
+| Wiki structure | [`docs/guides/wiki-structure.md`](./docs/guides/wiki-structure.md) |
+| Pipeline tiers | [`docs/concepts/pipeline-tiers.md`](./docs/concepts/pipeline-tiers.md) |
+| WiCER loop | [`docs/concepts/wicer-loop.md`](./docs/concepts/wicer-loop.md) |
+| Memory lifecycle | [`docs/concepts/memory-lifecycle.md`](./docs/concepts/memory-lifecycle.md) |
+| Architecture | [`docs/architecture/index.md`](./docs/architecture/index.md) |
 | Decision log | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) |
+| Implementation status | [`docs/about/status.md`](./docs/about/status.md) |
+| Roadmap | [`docs/about/roadmap.md`](./docs/about/roadmap.md) |
 | Ecosystem survey | [`docs/reference/ecosystem.md`](./docs/reference/ecosystem.md) |
 | Open-WebUI integration | [`docs/integrations/open-webui.md`](./docs/integrations/open-webui.md) |
 
@@ -208,7 +225,7 @@ mise test                  # run all quality checks
 
 ## License
 
-AGPL-3.0. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
 
 ## Acknowledgments
 
