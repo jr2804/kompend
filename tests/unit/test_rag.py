@@ -216,10 +216,12 @@ class TestLiteLLMEmbeddingProvider:
         mock_response = MagicMock()
         mock_response.data = [{"embedding": [0.1] * 768}]
 
-        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response), pytest.raises(ValueError) as exc_info:
+        with (
+            patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response),
+            pytest.raises(ValueError, match="Embedding dimension mismatch") as exc_info,
+        ):
             provider.embed("test text")
 
-        assert "Embedding dimension mismatch" in str(exc_info.value)
         assert "Requested 1024" in str(exc_info.value)
         assert "returned a vector of size 768" in str(exc_info.value)
 
@@ -230,10 +232,12 @@ class TestLiteLLMEmbeddingProvider:
         mock_response = MagicMock()
         mock_response.data = [{"embedding": [0.1] * 768}]
 
-        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response), pytest.raises(ValueError) as exc_info:
+        with (
+            patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response),
+            pytest.raises(ValueError, match="Embedding dimension mismatch") as exc_info,
+        ):
             provider.embed("test text")
 
-        assert "Embedding dimension mismatch" in str(exc_info.value)
         assert "Requested 128" in str(exc_info.value)
         assert "returned a vector of size 768" in str(exc_info.value)
 

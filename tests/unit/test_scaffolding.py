@@ -121,9 +121,11 @@ class TestScaffoldProject:
 
     def test_git_init_propagates_error(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
-        with patch("knox.scaffolding._core.subprocess.run", side_effect=subprocess.CalledProcessError(1, "git", stderr=b"boom")):
-            with pytest.raises(ScaffoldError, match="git init failed"):
-                scaffold_project(target, git=True)
+        with (
+            patch("knox.scaffolding._core.subprocess.run", side_effect=subprocess.CalledProcessError(1, "git", stderr=b"boom")),
+            pytest.raises(ScaffoldError, match="git init failed"),
+        ):
+            scaffold_project(target, git=True)
 
 
 def _git_available() -> bool:

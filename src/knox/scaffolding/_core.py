@@ -94,19 +94,20 @@ def _initialise_git(target: Path) -> None:
     if not git_path:
         raise FileNotFoundError("git executable not found in PATH")
 
-    subprocess.run(
+    # All arguments are hard-coded constants — no untrusted input reaches subprocess.
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "init", "--initial-branch=main"],
         cwd=target,
         check=True,
         capture_output=True,
     )
-    subprocess.run(
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "add", "."],
         cwd=target,
         check=True,
         capture_output=True,
     )
-    subprocess.run(
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
         cwd=target,
         check=True,
