@@ -290,9 +290,15 @@ No custom GUI. KNOX exposes a queryable JSON graph / SQLite database. Open-WebUI
 - **FTS5** over compiled wiki pages
 - **zvec vector search** over chunk embeddings
 - **Token overlap** fallback
-- **Raw-source token overlap** for hybrid scope
+- **BM25** over raw-source files for hybrid scope
 
-Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.knox/zvec/`; an FTS index is stored in `.knox/search.db`.
+Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.knox/vectors/`; an FTS index is stored in `.knox/search.db`.
+
+The `query` command supports a `--search-mode` (or `--scope`) option:
+- `wiki` — Search only compiled wiki pages (FTS + vector + token).
+- `raw` — Search only raw source files using BM25.
+- `hybrid` — Combine wiki and raw results via RRF (default).
+- `graph` — Hybrid search plus graph-traversal expansion, which follows typed relations (e.g., `depends_on`, `related_to`) to surface connected nodes with a decayed score.
 
 Optional extras:
 

@@ -675,11 +675,12 @@ QueryNoClassify = Annotated[
     ),
 ]
 
-QueryScope = Annotated[
+QuerySearchMode = Annotated[
     str,
     typer.Option(
+        "--search-mode",
         "--scope",
-        help="Search scope: wiki (compiled pages), raw (source files), or hybrid (both).",
+        help="Search mode: wiki (compiled pages), raw (source files), hybrid (both), or graph (hybrid + graph traversal expansion).",
     ),
 ]
 

@@ -13,6 +13,11 @@ from typing import Annotated, Any
 
 import typer
 
+# Silence noisy third-party loggers that corrupt the rich progress bar
+logging.getLogger("docling").setLevel(logging.WARNING)
+logging.getLogger("pdfminer").setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.WARNING)
+
 from knox.capture.capture import capture
 from knox.capture.crystallize import crystallize
 from knox.capture.ingest import ingest
@@ -81,7 +86,7 @@ from knox.cli.args import (
     QueryFormat,
     QueryNoClassify,
     QueryRaw,
-    QueryScope,
+    QuerySearchMode,
     QuerySourcesDir,
     QueryText,
     QueryTopK,
@@ -935,20 +940,23 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
 def _execute_query_search(
     retriever: HybridRetriever,
     query: str,
-    scope: str,
+    search_mode: str,
     sources_dir_path: Path | None,
     top_k: int,
 ) -> tuple[list[Any], bool]:
-    """Dispatch to the requested search scope and return results + raw flag."""
+    """Dispatch to the requested search mode and return results + raw flag."""
     raw = False
-    if scope == "raw":
+    expand_graph = search_mode == "graph"
+    mode = "hybrid" if search_mode == "graph" else search_mode
+
+    if mode == "raw":
         if sources_dir_path is None:
             typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
             raise typer.Exit(1)
         results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
         raw = True
-    elif scope == "hybrid":
-        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k)
+    elif mode == "hybrid":
+        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k, expand_graph=expand_graph)
     else:
         results = retriever.search_wiki(query, top_k=top_k)
     return results, raw
@@ -963,7 +971,7 @@ def query_cmd(
     output_dir: OutputDir = None,
     config: ConfigPath = None,
     no_classify: QueryNoClassify = False,
-    scope: QueryScope = "hybrid",
+    search_mode: QuerySearchMode = "hybrid",
     sources_dir: QuerySourcesDir = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki.
@@ -997,12 +1005,12 @@ def query_cmd(
             vector_store=vector_store,
             sources_dir=sources_dir_path,
         )
-        results, raw = _execute_query_search(retriever, query, scope, sources_dir_path, top_k)
+        results, raw = _execute_query_search(retriever, query, search_mode, sources_dir_path, top_k)
     finally:
         if vector_store is not None:
             vector_store.close()
 
-    fire_hook(HookEvent.ON_QUERY, query=query, results=results, scope=scope)
+    fire_hook(HookEvent.ON_QUERY, query=query, results=results, search_mode=search_mode)
 
     if not results:
         typer.echo("No relevant content found.")

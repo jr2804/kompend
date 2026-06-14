@@ -450,14 +450,18 @@ class WikiPipeline:
 
         all_chunks: list[Any] = []
         if workers > 1 and len(source_files) > 1:
+            completed = 0
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {executor.submit(_process_one, sf): sf for sf in source_files}
                 for future in as_completed(futures):
+                    sf = futures[future]
                     try:
                         all_chunks.extend(future.result())
                     except Exception:
-                        sf = futures[future]
                         logger.exception("Worker failed for %s", sf)
+                    finally:
+                        completed += 1
+                        self._emit("parse", completed, len(source_files), sf.name)
         else:
             for idx, sf in enumerate(source_files):
                 all_chunks.extend(_process_one(sf))

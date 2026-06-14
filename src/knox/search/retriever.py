@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rank_bm25 import BM25Okapi
+
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
@@ -273,23 +275,31 @@ class HybridRetriever:
         return self._fuse_results(fts_results, vector_results, token_results, top_k=top_k)
 
     def search_raw(self, query: str, sources_dir: Path, top_k: int = 5) -> list[SearchResult]:
-        return self._raw_results(query, sources_dir, top_k)
+        return self._raw_bm25_results(query, sources_dir, top_k)
 
     def search_hybrid(
         self,
         query: str,
         sources_dir: Path | None = None,
         top_k: int = 5,
+        expand_graph: bool = False,
     ) -> list[SearchResult]:
         wiki_results = self.search_wiki(query, top_k=top_k)
         raw_results: list[SearchResult] = []
-        if sources_dir is not None and sources_dir.is_dir():
-            raw_results = self.search_raw(query, sources_dir, top_k=top_k)
+        effective_sources_dir = sources_dir or self._sources_dir
+        if effective_sources_dir is not None and effective_sources_dir.is_dir():
+            raw_results = self._raw_bm25_results(query, effective_sources_dir, top_k=top_k)
         if not raw_results:
-            return wiki_results
-        if not wiki_results:
-            return raw_results[:top_k]
-        return self._fuse_results(wiki_results, raw_results, top_k=top_k)
+            results = wiki_results
+        elif not wiki_results:
+            results = raw_results[:top_k]
+        else:
+            results = self._fuse_results(wiki_results, raw_results, top_k=top_k)
+
+        if expand_graph and results:
+            results = self._graph_expansion_results(results, top_k=top_k)
+
+        return results
 
     def _wiki_fts_results(self, query: str, top_k: int) -> list[SearchResult]:
         if self._index_path is None or not self._index_path.exists():
@@ -405,28 +415,43 @@ class HybridRetriever:
         return fused[:top_k]
 
     @staticmethod
-    def _raw_results(query: str, sources_dir: Path, top_k: int) -> list[SearchResult]:
-        query_tokens = set(_tokenize(query))
+    def _raw_bm25_results(query: str, sources_dir: Path, top_k: int) -> list[SearchResult]:
+        """Retrieve from raw source files using BM25."""
+        query_tokens = _tokenize(query)
         if not query_tokens or not sources_dir.is_dir():
             return []
-        scored: list[tuple[float, Path, str]] = []
+
+        docs: list[tuple[Path, str, list[str]]] = []
         for md_file in sources_dir.rglob("*.md"):
             try:
                 content = md_file.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
                 logger.warning("Skipping unreadable source %s: %s", md_file, exc)
                 continue
-            file_tokens = set(_tokenize(content))
-            if not file_tokens:
-                continue
-            overlap = len(query_tokens & file_tokens)
-            score = overlap / len(query_tokens)
-            if score > 0:
-                scored.append((score, md_file, content))
+            tokens = _tokenize(content)
+            if tokens:
+                docs.append((md_file, content, tokens))
+
+        if not docs:
+            return []
+
+        corpus = [doc[2] for doc in docs]
+        bm25 = BM25Okapi(corpus)
+        scores = bm25.get_scores(query_tokens)
+
+        scored: list[tuple[float, Path, str]] = []
+        for i, score in enumerate(scores):
+            # BM25 can return negative scores for non-matching docs in small corpora.
+            # We only care about documents that actually contain at least one query token.
+            if any(token in docs[i][2] for token in query_tokens):
+                scored.append((float(score), docs[i][0], docs[i][1]))
+
         scored.sort(key=lambda pair: pair[0], reverse=True)
+
+        query_set = set(query_tokens)
         results: list[SearchResult] = []
         for score, path, content in scored[:top_k]:
-            snippet = _extract_snippet(content, query_tokens) if content else path.name
+            snippet = _extract_snippet(content, query_set) if content else path.name
             results.append(
                 SearchResult(
                     article_id=path.stem,
@@ -437,6 +462,43 @@ class HybridRetriever:
                 )
             )
         return results
+
+    def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
+        """Expand search results by following typed relations in the wiki graph."""
+        if not initial_results or not self._wiki.edges:
+            return initial_results
+
+        expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
+        decay_factor = 0.5
+
+        for result in initial_results:
+            for edge in self._wiki.edges:
+                source_id = edge.get("source")
+                target_id = edge.get("target")
+                if isinstance(source_id, str) and isinstance(target_id, str):
+                    if source_id == result.article_id and target_id not in expanded:
+                        node = self._node_by_id.get(target_id)
+                        if node:
+                            expanded[target_id] = SearchResult(
+                                article_id=target_id,
+                                title=node.title,
+                                snippet=node.content[:300] + "..." if node.content else "",
+                                score=result.score * decay_factor,
+                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                            )
+                    elif target_id == result.article_id and source_id not in expanded:
+                        node = self._node_by_id.get(source_id)
+                        if node:
+                            expanded[source_id] = SearchResult(
+                                article_id=source_id,
+                                title=node.title,
+                                snippet=node.content[:300] + "..." if node.content else "",
+                                score=result.score * decay_factor,
+                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                            )
+
+        sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
+        return sorted_results[:top_k]
 
 
 def _tokenize(text: str) -> list[str]:

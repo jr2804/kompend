@@ -91,7 +91,8 @@ class TestHybridRetriever:
 
         wiki = self._make_wiki()
         retriever = HybridRetriever(wiki, sources_dir=sources_dir)
-        results = retriever.search("banana tropical", top_k=5)
+        # Use "bananas" to match the tokenized form of "Bananas"
+        results = retriever.search("bananas tropical", top_k=5)
 
         raw = next((r for r in results if r.article_id == "banana"), None)
         assert raw is not None
@@ -102,6 +103,49 @@ class TestHybridRetriever:
         retriever = HybridRetriever(wiki)
         assert retriever.search_wiki("a", top_k=5) == []
 
+    def test_search_hybrid_returns_results_from_each_subsystem(self, tmp_path: Path) -> None:
+        """Verify hybrid search fuses results from FTS, vector, token, and BM25 raw."""
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "apple.md").write_text("This file is about apples and orchards.")
+        (sources_dir / "banana.md").write_text("Bananas are yellow tropical fruit.")
+
+        wiki = self._make_wiki_with_edges()
+        fake_vector = _FakeVectorStore(hits=[{"id": "beta", "score": 0.95, "source_file": "beta.pdf"}])
+        retriever = HybridRetriever(wiki, vector_store=fake_vector, sources_dir=sources_dir)
+
+        # Search for something that matches raw BM25 ("bananas") and wiki token/vector ("beta")
+        results = retriever.search_hybrid("beta bananas", top_k=5)
+
+        # Debug: print results
+        print("RESULTS:", [(r.article_id, r.score) for r in results])
+
+        # Should contain wiki result (beta)
+        assert any(r.article_id == "beta" for r in results)
+        # Should contain raw BM25 result (banana)
+        assert any(r.article_id == "banana" for r in results)
+
+    def test_graph_expansion_adds_related_nodes(self, tmp_path: Path) -> None:
+        """Verify graph expansion follows edges and adds related nodes with decayed score."""
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+
+        wiki = self._make_wiki_with_edges()
+        retriever = HybridRetriever(wiki, sources_dir=sources_dir)
+
+        # Search for "alpha" which should match the alpha node
+        results = retriever.search_hybrid("alpha", top_k=5, expand_graph=True)
+
+        # Should contain the original result
+        assert any(r.article_id == "alpha" for r in results)
+        # Should contain the expanded result (gamma) via the edge alpha -> gamma
+        assert any(r.article_id == "gamma" for r in results)
+
+        # Verify decayed score
+        alpha_result = next(r for r in results if r.article_id == "alpha")
+        gamma_result = next(r for r in results if r.article_id == "gamma")
+        assert gamma_result.score <= alpha_result.score * 0.5
+
     def _make_wiki(self) -> CompiledWiki:
         return CompiledWiki(
             nodes=[
@@ -109,5 +153,19 @@ class TestHybridRetriever:
                 WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
             ],
             edges=[],
+            toc=[],
+        )
+
+    def _make_wiki_with_edges(self) -> CompiledWiki:
+        return CompiledWiki(
+            nodes=[
+                WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
+                WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
+                WikiNode(id="gamma", title="Gamma Page", content="gamma related content", node_type="section"),
+            ],
+            edges=[
+                {"source": "alpha", "target": "gamma", "type": "related_to"},
+                {"source": "beta", "target": "alpha", "type": "depends_on"},
+            ],
             toc=[],
         )
