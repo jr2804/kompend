@@ -14,7 +14,8 @@
 #   .\build-wiki.ps1 -Force                     # clear caches and recompile from scratch
 #   .\build-wiki.ps1 -WhatIf                    # show commands without executing
 #
-# Two-stage flow:
+# Three-stage flow:
+#   Stage 0 (init):    knox init    — scaffold project structure (sources/, wiki/, .knox/)
 #   Stage 1 (ingest):  knox ingest  — T0+T1: parse + chunk (free, no LLM)
 #   Stage 2 (compile): knox compile --start-at-tier resolve — T2+T3+T4: resolve + compile + output
 
@@ -44,6 +45,28 @@ if ($Force) {
     if (Test-Path $BaseDir) {
         Write-Host "Removing $BaseDir" -ForegroundColor Yellow
         if (-not $WhatIf) { Remove-Item -Recurse -Force $BaseDir }
+    }
+}
+
+# ── Stage 0: Init (scaffold project structure) ─────────────────────────
+Write-Host ""
+Write-Host "=== Stage 0: Initialize project ===" -ForegroundColor Cyan
+$InitArgs = @(
+    "uv", "run", "knox", "init",
+    $BaseDir,
+    "--bare",
+    "--force"
+)
+
+Write-Host ""
+Write-Host ($InitArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $InitArgs[0] $InitArgs[1..($InitArgs.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "knox init failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
     }
 }
 
