@@ -684,24 +684,32 @@ def build_pipeline(
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc)
 
-    llm_client = build_llm_client(config)
-    resolver = _build_resolver_chain(config, llm_client)
+    # T0 (index) and T1 (chunk) run without an LLM. Only build the
+    # LLM-dependent components when the [start, stop] tier range reaches
+    # T2 (resolve) or beyond. This lets `knox ingest` (stop_at_tier=CHUNK)
+    # run without a configured default model.
+    needs_llm = TIER_LEVEL[config.stop_at_tier] >= TIER_LEVEL[Tier.RESOLVE]
 
-    base_compiler: BaseCompiler
-    if config.compiler == Compiler.WICER:
-        base_compiler = WiCERCompiler(
-            config=config,
-            base_compiler=GraphCompiler(model=config.llm.default_model),
-            llm_client=llm_client,
-        )
-    elif config.compiler == Compiler.GRAPH:
-        base_compiler = TwoPhaseCompiler(
-            config=config,
-            base=GraphCompiler(model=config.llm.default_model),
-        )
-    else:
-        msg = f"Unknown compiler: {config.compiler!r}"
-        raise ValueError(msg)
+    resolver: BaseResolver | None = None
+    base_compiler: BaseCompiler | None = None
+    if needs_llm:
+        llm_client = build_llm_client(config)
+        resolver = _build_resolver_chain(config, llm_client)
+
+        if config.compiler == Compiler.WICER:
+            base_compiler = WiCERCompiler(
+                config=config,
+                base_compiler=GraphCompiler(model=config.llm.default_model),
+                llm_client=llm_client,
+            )
+        elif config.compiler == Compiler.GRAPH:
+            base_compiler = TwoPhaseCompiler(
+                config=config,
+                base=GraphCompiler(model=config.llm.default_model),
+            )
+        else:
+            msg = f"Unknown compiler: {config.compiler!r}"
+            raise ValueError(msg)
 
     return WikiPipeline(
         config=config,
