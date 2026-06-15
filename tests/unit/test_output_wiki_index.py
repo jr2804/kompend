@@ -6,9 +6,9 @@ from pathlib import Path
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.wiki_index import (
-    append_log,
     generate_index,
     generate_log_entry,
+    prepend_log,
     write_index_and_log,
 )
 
@@ -52,7 +52,7 @@ class TestGenerateLogEntry:
         entry = generate_log_entry(wiki)
         assert "[20" in entry  # ISO date
         assert "2 page(s)" in entry
-        assert "[[Attention]]" in entry or "Attention" in entry
+        assert "concept" in entry  # node_type breakdown
 
     def test_source_names(self) -> None:
         wiki = _make_wiki()
@@ -61,20 +61,22 @@ class TestGenerateLogEntry:
         assert "b.pdf" in entry
 
 
-class TestAppendLog:
+class TestPrependLog:
     def test_creates_file(self, tmp_path: Path) -> None:
         log_path = tmp_path / "log.md"
-        append_log(log_path, "## [2026-01-01] test\n")
+        prepend_log(log_path, "## [2026-01-01] test\n")
         assert log_path.exists()
         assert "test" in log_path.read_text(encoding="utf-8")
 
-    def test_appends_to_existing(self, tmp_path: Path) -> None:
+    def test_newest_on_top(self, tmp_path: Path) -> None:
         log_path = tmp_path / "log.md"
-        log_path.write_text("## [2026-01-01] first\n", encoding="utf-8")
-        append_log(log_path, "## [2026-01-02] second\n")
+        prepend_log(log_path, "## [2026-01-01] first\n")
+        prepend_log(log_path, "## [2026-01-02] second\n")
         text = log_path.read_text(encoding="utf-8")
         assert "first" in text
         assert "second" in text
+        # newest entry must appear BEFORE the older entry
+        assert text.index("second") < text.index("first")
 
 
 class TestWriteIndexAndLog:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -85,6 +86,7 @@ class WikiPipeline:
         compiler: BaseCompiler | None = None,
         output_writer: BaseOutputWriter | None = None,
         state_store: TierStateStore | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self.config = config
         self.downloader = downloader
@@ -93,9 +95,12 @@ class WikiPipeline:
         self.resolver = resolver
         self.compiler = compiler
         self.output_writer = output_writer
+        self.llm_client = llm_client
         self.state_store = state_store or TierStateStore(self._default_state_path())
         self._progress_callback: ProgressCallback | None = None
         self._cache_store = CacheStore(self._cache_dir())
+        self._tier_timings: dict[str, float] = {}
+        self.last_chunk_count: int = 0
 
     @property
     def state(self) -> TierState:
@@ -161,13 +166,19 @@ class WikiPipeline:
         all_chunks: list[Any] = []
         resolved: list[Any] = []
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
+        self._tier_timings.clear()
 
         if self._should_run(Tier.INDEX):
             self._emit("index", 0, 1, "starting")
+            _t0 = time.monotonic()
             self.run_tier(TIER_INDEX)
+            self._tier_timings["index"] = time.monotonic() - _t0
             self._emit("index", 1, 1, "done")
         if self._should_run(Tier.CHUNK):
+            _t0 = time.monotonic()
             all_chunks = self._parse_and_chunk()
+            self.last_chunk_count = len(all_chunks)
+            self._tier_timings["chunk"] = time.monotonic() - _t0
             self._record_tier_state(1)
         if self._should_run(Tier.RESOLVE):
             # When T1 was skipped (start_at_tier >= resolve), warm-load
@@ -175,7 +186,9 @@ class WikiPipeline:
             if not all_chunks:
                 all_chunks = self._parse_and_chunk()
             self._emit("resolve", 0, len(all_chunks), "starting")
+            _t0 = time.monotonic()
             resolved = self._resolve_chunks(all_chunks)
+            self._tier_timings["resolve"] = time.monotonic() - _t0
             self._record_tier_state(2)
             self._emit("resolve", len(resolved), len(resolved), "done")
         if self._should_run(Tier.COMPILE):
@@ -185,10 +198,12 @@ class WikiPipeline:
                 all_chunks = self._parse_and_chunk()
                 resolved = self._resolve_chunks(all_chunks)
             self._emit("compile", 0, 1, "starting")
+            _t0 = time.monotonic()
             if self.compiler:
                 wiki = self.compiler.compile(resolved)
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
+            self._tier_timings["compile"] = time.monotonic() - _t0
             self._record_tier_state(3)
             self._emit("compile", 1, 1, "done")
         else:
@@ -197,9 +212,16 @@ class WikiPipeline:
             self._emit("output", 0, 1, "starting")
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
+            _t0 = time.monotonic()
             self.output_writer.write(wiki, self.config.output_dir)
+            self._tier_timings["output"] = time.monotonic() - _t0
             self._record_tier_state(4)
             self._emit("output", 1, 1, "done")
+
+        wiki.metadata["tier_timings"] = {k: round(v, 2) for k, v in self._tier_timings.items()}
+        if self.llm_client is not None:
+            wiki.metadata["llm_usage"] = self.llm_client.usage.to_dict()
+            wiki.metadata["llm_model"] = self.config.llm.default_model
 
         self.save_state()
         self._progress_callback = None
@@ -738,6 +760,7 @@ def build_pipeline(
             rumdl_config=config.output.rumdl_config,
             max_related_links=config.output.max_related_links,
         ),
+        llm_client=llm_client if needs_llm else None,
     )
 
 
@@ -778,6 +801,7 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 _num_ctx_min=config.llm.num_ctx_min,
                 _num_ctx_max=config.llm.num_ctx_max,
             )
+            vlm_client.usage = llm_client.usage
             resolvers.append(VLMEnricher(client=vlm_client))
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
         except Exception as exc:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 from typing import Annotated
 
@@ -32,6 +34,7 @@ from knox.core.models import load_cached_wiki
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
+from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 from knox.review import ReviewQueue
 
@@ -377,13 +380,35 @@ def lint_cmd(
         fix=fix,
         sources_dir=sources_dir_str,
     )
+    lint_start = time.monotonic()
     report = runner.run(wiki)
+    lint_elapsed = time.monotonic() - lint_start
     load_hooks()
     fire_hook(HookEvent.ON_LINT, report=report, wiki=wiki)
 
+    fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
-        count = _persist_lint_fixes(wiki, output_dir_path, state_dir.parent)
-        typer.echo(f"Persisted fixes to {count} file(s).")
+        fixes_applied = _persist_lint_fixes(wiki, output_dir_path, state_dir.parent)
+        typer.echo(f"Persisted fixes to {fixes_applied} file(s).")
+
+    # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
+    outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
+    rule_summary = " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
+
+    log_path = state_dir.parent / "log.md"
+    prepend_log(
+        log_path,
+        generate_stage_log_entry(
+            stage="lint",
+            duration=lint_elapsed,
+            source_count=len(wiki.nodes),
+            health_score=report.health_score,
+            rule_summary=rule_summary,
+            fixes_applied=fixes_applied or None,
+            llm_model=llm_default_model,
+            llm_usage=llm_client.usage.to_dict() if llm_client else None,
+        ),
+    )
 
     if json_output:
         typer.echo(report_to_json(report))

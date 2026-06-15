@@ -76,7 +76,7 @@ from knox.core.models import CompiledWiki
 from knox.core.pipeline import PipelineConfig, build_pipeline
 from knox.core.pipeline_defs import Tier
 from knox.lint.runner import LintRunner, report_to_text
-from knox.output.wiki_index import write_index_and_log, write_overview
+from knox.output.wiki_index import generate_stage_log_entry, prepend_log, write_index_and_log, write_overview
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
@@ -600,10 +600,25 @@ def ingest_cmd(
     progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
 
     try:
+        ingest_start = time.monotonic()
         pipeline.run(progress_callback=progress_cb)
+        ingest_elapsed = time.monotonic() - ingest_start
         tracker.finish()
         typer.echo(f"Ingested {len(all_input_files)} document(s) -> {sources_dir_path}")
         typer.echo("Run 'knox compile' to resolve, compile, and render the wiki.")
+
+        base_dir = pipeline_config.resolved_base_dir()
+        log_path = base_dir / "log.md"
+        log_entry = generate_stage_log_entry(
+            stage="ingest",
+            duration=round(ingest_elapsed, 2),
+            source_count=len(all_input_files),
+            source_names=[Path(f).name for f in all_input_files],
+            chunk_count=pipeline.last_chunk_count,
+            llm_model=pipeline_config.llm.default_model or None,
+            llm_usage=pipeline.llm_client.usage.to_dict() if pipeline.llm_client else None,
+        )
+        prepend_log(log_path, log_entry)
     except Exception as exc:
         tracker.finish()
         typer.echo(f"Ingest failed: {exc}", err=True)
