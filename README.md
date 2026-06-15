@@ -129,7 +129,7 @@ Full option reference: `knox <command> --help`
 
 ### Global options
 
-```
+```text
 knox --version, -v        Show version and exit
 knox --wiki-dir, -w DIR   Project root (sources/, wiki/, .knox/ resolved from here)
                           Env: KNOX_WIKI_DIR
@@ -140,7 +140,7 @@ knox --help               Show help and exit
 
 KNOX runs a 5-tier pipeline — each tier independently replaceable:
 
-```
+```text
 Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: Compilation → T5: Output
 ```
 
