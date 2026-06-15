@@ -28,6 +28,7 @@
 param(
     [string]$OutputPath = "demo-wiki",
     [string]$Compiler = "wicer",
+    [string]$LLMModel = "ollama/deepseek-v4-flash:cloud",
     [switch]$Force,
     [switch]$WhatIf
 )
@@ -38,7 +39,6 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $BaseDir     = Join-Path $ProjectRoot $OutputPath
 
-$LLMModel   = "ollama/deepseek-v4-flash:cloud"
 $EmbedModel = "litellm:ollama/granite-embedding:278m"
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
