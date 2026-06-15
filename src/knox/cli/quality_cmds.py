@@ -92,17 +92,27 @@ def doctor_cmd(
     verbose: Verbose = False,
     json_output: JsonOutput = False,
 ) -> None:
-    """Validate configuration and connectivity.
+    """Validate configuration and connectivity for a wiki.
 
-    Runs health checks for source/output directories, parser availability,
-    environment variables, and optionally LLM connectivity.
+    Requires a wiki context: either ``--wiki-dir`` must be set explicitly,
+    or the current directory must contain a compiled wiki (i.e. the
+    resolved output directory must exist).
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
     sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+
+    if not wiki_dir_override and not output_dir_path.exists():
+        typer.echo(
+            f"No wiki found at {output_dir_path}. "
+            "Use --wiki-dir or run from a wiki directory.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     results = run_doctor(
-        sources_dir=sources_dir_path if sources_dir_path.exists() else None,
-        output_dir=output_dir_path if output_dir_path.exists() else None,
+        sources_dir=sources_dir_path,
+        output_dir=output_dir_path,
         default_model=cfg.get("compile.llm.default_model"),
     )
     exit_code = print_doctor_results(results, json_output=json_output)

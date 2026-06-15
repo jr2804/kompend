@@ -85,6 +85,28 @@ class TestRunDoctor:
         assert "skipped" in llm_check.message
 
 
+class TestDoctorWikiContext:
+    """CLI-level tests for wiki-context enforcement."""
+
+    def test_fails_without_wiki_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Doctor exits 1 when no --wiki-dir and no output dir exists."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(app, ["doctor"])
+        assert result.exit_code == 1
+        assert "No wiki found" in result.output
+
+    def test_works_with_explicit_wiki_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Doctor runs (bypasses wiki-context gate) when --wiki-dir is set."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(app, ["--wiki-dir", str(tmp_path), "doctor"])
+        assert "No wiki found" not in result.output
+        assert "checks passed" in result.output
+
+
 class TestCollectStats:
     def test_no_dirs(self) -> None:
         stats = collect_stats()
