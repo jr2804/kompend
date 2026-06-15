@@ -14,6 +14,11 @@
 #   .\build-wiki.ps1 -Force                     # clear caches and recompile from scratch
 #   .\build-wiki.ps1 -WhatIf                    # show commands without executing
 #
+# A/B Testing:
+#   To compare LLM variants, simply change $LLMModel (e.g., "openai/gpt-4o" vs "ollama/llama3.1:8b").
+#   KNOX will auto-detect the context window and adapt chunk sizes accordingly.
+#   Embedding dimension is auto-detected to prevent mismatches.
+#
 # Three-stage flow:
 #   Stage 0 (init):    knox init    — scaffold project structure (sources/, wiki/, .knox/)
 #   Stage 1 (ingest):  knox ingest  — T0+T1: parse + chunk (free, no LLM)
@@ -35,7 +40,6 @@ $BaseDir     = Join-Path $ProjectRoot $OutputPath
 
 $LLMModel   = "ollama/deepseek-v4-flash:cloud"
 $EmbedModel = "litellm:ollama/granite-embedding:278m"
-$EmbedDim   = 768
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
 $UrlFile    = Join-Path $ProjectRoot "tests/data/urls.txt"
@@ -111,7 +115,6 @@ $CompileArgs = @(
     "--start-at-tier",    "resolve",
     "--llm-default-model", $LLMModel,
     "--embed-model",      $EmbedModel,
-    "--embed-dim",        $EmbedDim,
     "--resolve-relations",
     "--flavor",           "obsidian",
     "--compiler",         $Compiler,
