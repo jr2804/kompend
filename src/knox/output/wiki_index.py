@@ -327,7 +327,7 @@ def write_index_and_log(
     return {"index": index_path, "log": log_path}
 
 
-def generate_overview(source_texts: list[str], model: str, overview_budget: int = 4000, timeout: float | None = None) -> str | None:
+def generate_overview(source_texts: list[str], model: str, *, overview_budget: int, timeout: float | None = None) -> str | None:
     """Generate an overview of the wiki from node content.
 
     All *source_texts* are processed — no content is dropped.  If the total
@@ -397,7 +397,8 @@ def write_overview(
     wiki: CompiledWiki,
     base_dir: Path,
     model: str,
-    overview_budget: int = 4000,
+    *,
+    overview_budget: int,
     timeout: float | None = None,
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""

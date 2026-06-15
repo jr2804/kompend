@@ -105,9 +105,6 @@ class UsageTracker:
         }
 
 
-_MAX_CONTEXT_WINDOW = ContextWindow(max_input=2_097_152, max_output=2_097_152, source="hardcoded")
-
-
 def _discover_context_window(
     model: str,
     *,
@@ -122,9 +119,12 @@ def _discover_context_window(
     1. Try ``litellm.get_model_info()`` for static max_input/max_output.
     2. For Ollama models, query ``GET /api/show`` for the runtime
        ``num_ctx`` parameter.
-    3. Fall back to *fallback_max_input* / *fallback_max_output*.
+    3. Fall back to *fallback_max_input* / *fallback_max_output*,
+       clamped to ``[num_ctx_min, num_ctx_max]``.
 
-    The result is clamped to ``[num_ctx_min, num_ctx_max]``.
+    Discovered values from litellm or Ollama are used **as-is** — they
+    are never clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max``
+    rails apply only to the **fallback** path, never to discovered values.
     """
     max_input: int | None = None
     max_output: int | None = None
@@ -151,16 +151,18 @@ def _discover_context_window(
                 source = "ollama"
             if max_output is None or ollama_ctx < max_output:
                 max_output = ollama_ctx
+                source = "ollama"
 
-    # 3. Fallback
+    # 3. Fallback only — clamp the fallback, never the discovered value.
     if max_input is None:
-        max_input = fallback_max_input
+        max_input = max(num_ctx_min, min(fallback_max_input, num_ctx_max))
+        source = "fallback"
     if max_output is None:
-        max_output = fallback_max_output
-
-    # Clamp to safety rails.
-    max_input = max(num_ctx_min, min(max_input, num_ctx_max))
-    max_output = max(num_ctx_min, min(max_output, num_ctx_max))
+        max_output = max(num_ctx_min, min(fallback_max_output, num_ctx_max))
+        if source == "fallback":
+            pass  # already fallback
+        elif source != "fallback":
+            source = "fallback"
 
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)
 
@@ -286,7 +288,7 @@ class LLMClient:
         failure — never a raw provider exception and never silently.
         """
         chain = self.chain_for(role)
-        cw = self.context_window or _MAX_CONTEXT_WINDOW
+        cw = self.context_window
         call_start = time.monotonic()
 
         def _call(model: str) -> Any:

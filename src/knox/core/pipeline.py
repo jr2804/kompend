@@ -738,6 +738,7 @@ def build_pipeline(
             base_compiler = TwoPhaseCompiler(
                 config=config,
                 base=GraphCompiler(model=config.llm.default_model),
+                llm_client=llm_client,
             )
         else:
             msg = f"Unknown compiler: {config.compiler!r}"

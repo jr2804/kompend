@@ -162,20 +162,21 @@ class TestHybridChunker:
         cw = ContextWindow(max_input=8192, max_output=4096, source="test")
         chunker = HybridChunker(max_tokens=1024, context_window=cw, reserve_ratio=0.2)
         available = int(8192 * 0.8)
-        expected = max(2048, min(available, 131072))
-        assert chunker._effective_max == expected
+        assert chunker._effective_max == available
 
-    def test_context_window_clamped_to_min(self) -> None:
-        """Tiny context window is clamped to chunk_size_min."""
+    def test_context_window_tiny_model(self) -> None:
+        """Tiny context window produces small chunks proportional to capacity."""
         cw = ContextWindow(max_input=512, max_output=256, source="test")
         chunker = HybridChunker(context_window=cw, chunk_size_min=2048)
-        assert chunker._effective_max == 2048
+        # No clamping: effective_max is proportional to the actual context window.
+        assert chunker._effective_max == int(512 * 0.8)
 
-    def test_context_window_clamped_to_max(self) -> None:
-        """Huge context window is clamped to chunk_size_max."""
+    def test_context_window_huge_model(self) -> None:
+        """Huge context window is used as-is (no artificial cap)."""
         cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source="test")
         chunker = HybridChunker(context_window=cw, chunk_size_max=131072)
-        assert chunker._effective_max == 131072
+        # No clamping to chunk_size_max: the full context window is respected.
+        assert chunker._effective_max == int(2_000_000 * 0.8)
 
     def test_no_context_window_uses_max_tokens(self) -> None:
         """Without context_window, falls back to max_tokens path."""

@@ -60,8 +60,24 @@ class WiCERCompiler(BaseCompiler):
         self._compiler = base_compiler or GraphCompiler(model=config.llm.default_model)
         self.max_iterations = config.budget.wicer_max_iterations
         self._client = llm_client  # None is OK — caller handles graceful degradation
-        self._probe_char_budget = _tokens_to_chars(config.budget.wicer_probe_output_max)
-        self._eval_char_budget = _tokens_to_chars(config.budget.wicer_eval_output_max)
+
+        # Output budgets (how many tokens the LLM may emit).
+        self._probe_output_budget = config.budget.wicer_probe_output_max
+        self._eval_output_budget = config.budget.wicer_eval_output_max
+
+        # Input batch sizes adapt to the model's discovered context window.
+        # When no client is available, fall back to a conservative size.
+        cw = llm_client.context_window if llm_client else None
+        if cw is not None:
+            self._probe_input_chars = _tokens_to_chars(
+                max(1, cw.max_input - 1024 - self._probe_output_budget),
+            )
+            self._eval_input_chars = _tokens_to_chars(
+                max(1, cw.max_input - 1024 - self._eval_output_budget),
+            )
+        else:
+            self._probe_input_chars = _tokens_to_chars(self._probe_output_budget)
+            self._eval_input_chars = _tokens_to_chars(self._eval_output_budget)
 
     # ------------------------------------------------------------------
     # Public API
@@ -136,7 +152,7 @@ class WiCERCompiler(BaseCompiler):
     def _generate_probes(self, wiki: CompiledWiki, chunks: list[ResolvedChunk]) -> list[dict]:
         """Step B: generate probe Q&A pairs from source chunks.
 
-        All chunks are processed in batches of ``self._probe_char_budget`` chars
+        All chunks are processed in batches of ``self._probe_input_chars`` chars
         so no source content is dropped.
         """
         all_probes: list[dict] = []
@@ -149,7 +165,7 @@ class WiCERCompiler(BaseCompiler):
         for rc in chunks:
             if not rc.chunk.text:
                 continue
-            if batch_len + len(rc.chunk.text) > self._probe_char_budget and batch_parts:
+            if batch_len + len(rc.chunk.text) > self._probe_input_chars and batch_parts:
                 probes = self._probe_batch("\n\n".join(batch_parts))
                 for p in probes:
                     q = p.get("question", "")
@@ -198,7 +214,7 @@ class WiCERCompiler(BaseCompiler):
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
         """Step B: evaluate wiki against probes using LLM-as-judge.
 
-        Wiki content is processed in segments of ``self._eval_char_budget`` chars
+        Wiki content is processed in segments of ``self._eval_input_chars`` chars
         so the full wiki is checked, not just the first few kilobytes.
         A probe is marked correct if it passes in ANY segment.
         """
@@ -214,8 +230,8 @@ class WiCERCompiler(BaseCompiler):
         # segment is considered passed.
         probe_results: dict[int, dict] = {}
 
-        for seg_start in range(0, len(wiki_text), self._eval_char_budget):
-            segment = wiki_text[seg_start : seg_start + self._eval_char_budget]
+        for seg_start in range(0, len(wiki_text), self._eval_input_chars):
+            segment = wiki_text[seg_start : seg_start + self._eval_input_chars]
 
             result = self._client.try_complete(
                 messages=[

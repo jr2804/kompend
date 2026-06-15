@@ -32,7 +32,7 @@ from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import _discover_context_window
+from knox.llm.client import LLMClient, _discover_context_window
 
 logger = logging.getLogger(__name__)
 
@@ -444,12 +444,18 @@ class TwoPhaseCompiler(BaseCompiler):
         Pipeline configuration including budget and context window settings.
     base:
         Compiler used as a fallback when the LLM is unavailable.
+    llm_client:
+        LLM client whose ``context_window`` is reused when available. When
+        ``None``, the context window is discovered independently from litellm
+        or Ollama as a fallback.
     """
 
     def __init__(
         self,
         config: PipelineConfig,
         base: BaseCompiler | None = None,
+        *,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self._base = base or GraphCompiler(model=config.llm.default_model)
         self._budget = config.budget
@@ -458,14 +464,18 @@ class TwoPhaseCompiler(BaseCompiler):
         self._timeout = config.llm.timeout
         self._cache_store = CacheStore(config.knox_dir() / "cache")
 
-        # Discover context window for adaptive sizing.
-        cw = _discover_context_window(
-            self._model,
-            fallback_max_input=config.llm.fallback_max_input,
-            fallback_max_output=config.llm.fallback_max_output,
-            num_ctx_min=config.llm.num_ctx_min,
-            num_ctx_max=config.llm.num_ctx_max,
-        )
+        # Reuse the client's discovered context window when available; only
+        # discover independently as a fallback (e.g. no LLM client provided).
+        if llm_client is not None and llm_client.context_window is not None:
+            cw = llm_client.context_window
+        else:
+            cw = _discover_context_window(
+                self._model,
+                fallback_max_input=config.llm.fallback_max_input,
+                fallback_max_output=config.llm.fallback_max_output,
+                num_ctx_min=config.llm.num_ctx_min,
+                num_ctx_max=config.llm.num_ctx_max,
+            )
         self._context_window = cw
 
         # Estimate system prompt token overhead (rough: 4 chars/token).
@@ -535,13 +545,12 @@ class TwoPhaseCompiler(BaseCompiler):
         num_sources = len(by_source)
         logger.info("TwoPhase: extracting %d source(s)", num_sources)
 
-        # Adaptive extract batch size: fill context window, clamped to safety rails.
+        # Adaptive extract batch size: fill context window (no clamping).
         cw = self._context_window
         budget = self._budget
         extract_char_budget = _tokens_to_chars(
             max(1, cw.max_input - self._extract_system_tokens - budget.extract_output_max),
         )
-        extract_char_budget = max(_tokens_to_chars(budget.chunk_size_min), min(extract_char_budget, _tokens_to_chars(budget.chunk_size_max)))
 
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
@@ -595,13 +604,12 @@ class TwoPhaseCompiler(BaseCompiler):
                 by_source[label] += rc.chunk.text + "\n\n"
         sources: list[tuple[str, str]] = list(by_source.items())
 
-        # Adaptive segment size: fill context window, clamped to safety rails.
+        # Adaptive segment size: fill context window (no clamping).
         cw = self._context_window
         budget = self._budget
         segment_char_size = _tokens_to_chars(
             max(1, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
         )
-        segment_char_size = max(_tokens_to_chars(budget.chunk_size_min), min(segment_char_size, _tokens_to_chars(budget.chunk_size_max)))
 
         source_segments = _segment_sources(sources, segment_char_size)
 
