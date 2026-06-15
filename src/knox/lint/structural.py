@@ -157,16 +157,29 @@ class MissingFrontmatterRule:
 
 
 class OrphanPageRule(BaseLintRule):
-    """Detect pages with no incoming wikilinks from other pages."""
+    """Detect pages with no incoming links from other pages.
+
+    A page is considered linked if it has incoming ``[[wikilinks]]`` in other
+    pages' content OR incoming edges in ``wiki.edges`` (structured
+    cross-references created by the compiler).
+    """
 
     name = "orphan-page"
-    description = "Pages with no incoming wikilinks"
+    description = "Pages with no incoming links"
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        incoming = _incoming_link_counts(wiki)
+        incoming_content = _incoming_link_counts(wiki)
+        incoming_edges: set[str] = set()
+        for edge in wiki.edges:
+            target = edge.get("target")
+            if target:
+                incoming_edges.add(target)
+
         results: list[LintResult] = []
         for node in wiki.nodes:
-            if incoming.get(node.id, 0) == 0:
+            has_content_links = incoming_content.get(node.id, 0) > 0
+            has_edge_links = node.id in incoming_edges
+            if not has_content_links and not has_edge_links:
                 # Skip single-page wikis — orphans are meaningless there
                 if len(wiki.nodes) <= 1:
                     continue
