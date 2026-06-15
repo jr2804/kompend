@@ -5,6 +5,7 @@ from pathlib import Path
 from knox.chunking.hybrid import HybridChunker
 from knox.core.config._core import DEFAULTS
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.llm.client import ContextWindow
 
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
@@ -155,3 +156,28 @@ class TestHybridChunker:
     def test_default_chunk_size_is_1024(self) -> None:
         """DEFAULTS chunk_size must be 1024 (not the old 512)."""
         assert DEFAULTS["compile"]["chunk_size"] == 1024
+
+    def test_context_window_adapts_effective_max(self) -> None:
+        """When context_window is provided, _effective_max adapts to model capacity."""
+        cw = ContextWindow(max_input=8192, max_output=4096, source="test")
+        chunker = HybridChunker(max_tokens=1024, context_window=cw, reserve_ratio=0.2)
+        available = int(8192 * 0.8)
+        expected = max(2048, min(available, 131072))
+        assert chunker._effective_max == expected
+
+    def test_context_window_clamped_to_min(self) -> None:
+        """Tiny context window is clamped to chunk_size_min."""
+        cw = ContextWindow(max_input=512, max_output=256, source="test")
+        chunker = HybridChunker(context_window=cw, chunk_size_min=2048)
+        assert chunker._effective_max == 2048
+
+    def test_context_window_clamped_to_max(self) -> None:
+        """Huge context window is clamped to chunk_size_max."""
+        cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source="test")
+        chunker = HybridChunker(context_window=cw, chunk_size_max=131072)
+        assert chunker._effective_max == 131072
+
+    def test_no_context_window_uses_max_tokens(self) -> None:
+        """Without context_window, falls back to max_tokens path."""
+        chunker = HybridChunker(max_tokens=2048, reserve_ratio=0.25)
+        assert chunker._effective_max == int(2048 * 0.75)

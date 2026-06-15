@@ -700,8 +700,10 @@ def build_pipeline(
 
     resolver: BaseResolver | None = None
     base_compiler: BaseCompiler | None = None
+    chunker_context_window = None
     if needs_llm:
         llm_client = build_llm_client(config)
+        chunker_context_window = llm_client.context_window
         resolver = _build_resolver_chain(config, llm_client)
 
         if config.compiler == Compiler.WICER:
@@ -722,7 +724,12 @@ def build_pipeline(
     return WikiPipeline(
         config=config,
         parser=parser,
-        chunker=HybridChunker(max_tokens=config.chunk_size),
+        chunker=HybridChunker(
+            max_tokens=config.chunk_size,
+            context_window=chunker_context_window,
+            chunk_size_min=config.budget.chunk_size_min,
+            chunk_size_max=config.budget.chunk_size_max,
+        ),
         resolver=resolver,
         compiler=base_compiler,
         output_writer=writer_cls(

@@ -18,6 +18,7 @@ from chonkie import RecursiveChunker
 
 from knox.chunking.base import BaseChunker
 from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ParsedDocument
+from knox.llm.client import ContextWindow
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,18 @@ class HybridChunker(BaseChunker):
         max_tokens: int = 4096,
         reserve_ratio: float = 0.2,
         tokenizer_name: str = "cl100k_base",
+        context_window: ContextWindow | None = None,
+        chunk_size_min: int = 2048,
+        chunk_size_max: int = 131072,
         **kwargs: Any,
     ) -> None:
-        super().__init__(max_tokens=max_tokens, reserve_ratio=reserve_ratio)
+        super().__init__(
+            max_tokens=max_tokens,
+            reserve_ratio=reserve_ratio,
+            context_window=context_window,
+            chunk_size_min=chunk_size_min,
+            chunk_size_max=chunk_size_max,
+        )
         self.tokenizer_name = tokenizer_name
 
     def chunk(self, document: ParsedDocument) -> list[Chunk]:

@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from knox.core.models import Chunk, ParsedDocument
+from knox.llm.client import ContextWindow
 
 
 class BaseChunker(ABC):
@@ -15,10 +16,24 @@ class BaseChunker(ABC):
     preserving structure (tables, figures, code blocks remain atomic).
     """
 
-    def __init__(self, max_tokens: int = 4096, reserve_ratio: float = 0.2, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        max_tokens: int = 4096,
+        reserve_ratio: float = 0.2,
+        context_window: ContextWindow | None = None,
+        chunk_size_min: int = 2048,
+        chunk_size_max: int = 131072,
+        **kwargs: Any,
+    ) -> None:
         self.max_tokens = max_tokens
         self.reserve_ratio = reserve_ratio
-        self._effective_max = int(max_tokens * (1 - reserve_ratio))
+        self._chunk_size_min = chunk_size_min
+        self._chunk_size_max = chunk_size_max
+        if context_window is not None:
+            available = int(context_window.max_input * (1 - reserve_ratio))
+            self._effective_max = max(chunk_size_min, min(available, chunk_size_max))
+        else:
+            self._effective_max = int(max_tokens * (1 - reserve_ratio))
 
     @abstractmethod
     def chunk(self, document: ParsedDocument) -> list[Chunk]:
