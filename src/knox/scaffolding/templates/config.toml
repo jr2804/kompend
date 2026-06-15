@@ -107,6 +107,10 @@ fallback_max_output = 4096
 # Context window safety bounds (only apply to fallback path, never to discovered values)
 num_ctx_min = 2048
 num_ctx_max = 131072
+# User-configured cap on discovered context window (tokens). When set, max_input
+# and max_output are capped to this value regardless of what litellm/Ollama report.
+# Set to a lower value to limit context usage for slower/local models.
+# context_window_cap = 65536
 
 # ── Output settings ───────────────────────────────────────────────────────
 

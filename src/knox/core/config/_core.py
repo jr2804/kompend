@@ -123,6 +123,7 @@ DEFAULTS: dict[str, Any] = {
             "fallback_max_output": 4096,
             "num_ctx_min": 2048,
             "num_ctx_max": 131072,
+            "context_window_cap": None,
         },
         "output": {
             "flavor": None,
@@ -207,6 +208,7 @@ _ENV_MAP: dict[str, str] = {
     "compile.llm.fallback_max_output": "KNOX_LLM_FALLBACK_MAX_OUTPUT",
     "compile.llm.num_ctx_min": "KNOX_LLM_NUM_CTX_MIN",
     "compile.llm.num_ctx_max": "KNOX_LLM_NUM_CTX_MAX",
+    "compile.llm.context_window_cap": "KNOX_LLM_CONTEXT_WINDOW_CAP",
     "compile.output.flavor": "KNOX_OUTPUT_FLAVOR",
     "compile.output.rumdl_config": "KNOX_RUMDL_CONFIG",
     "compile.output.max_related_links": "KNOX_OUTPUT_MAX_RELATED_LINKS",

@@ -45,6 +45,7 @@ class LLMConfig:
     fallback_max_output: int = 4096
     num_ctx_min: int = 2048
     num_ctx_max: int = 131072
+    context_window_cap: int | None = None
     role_models: dict[str, str] = field(default_factory=dict)
 
 

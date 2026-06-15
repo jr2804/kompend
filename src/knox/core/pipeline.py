@@ -681,6 +681,7 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
         _fallback_max_output=config.llm.fallback_max_output,
         _num_ctx_min=config.llm.num_ctx_min,
         _num_ctx_max=config.llm.num_ctx_max,
+        _context_window_cap=config.llm.context_window_cap,
     )
 
 
@@ -801,6 +802,7 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 _fallback_max_output=config.llm.fallback_max_output,
                 _num_ctx_min=config.llm.num_ctx_min,
                 _num_ctx_max=config.llm.num_ctx_max,
+                _context_window_cap=config.llm.context_window_cap,
             )
             vlm_client.usage = llm_client.usage
             resolvers.append(VLMEnricher(client=vlm_client))

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -112,19 +113,24 @@ def _discover_context_window(
     fallback_max_output: int = 4096,
     num_ctx_min: int = 2048,
     num_ctx_max: int = 131072,
+    context_window_cap: int | None = None,
 ) -> ContextWindow:
     """Discover the context window for *model*.
 
     Strategy:
     1. Try ``litellm.get_model_info()`` for static max_input/max_output.
     2. For Ollama models, query ``GET /api/show`` for the runtime
-       ``num_ctx`` parameter.
+       ``num_ctx`` parameter (also checks ``OLLAMA_NUM_CTX`` env var).
     3. Fall back to *fallback_max_input* / *fallback_max_output*,
        clamped to ``[num_ctx_min, num_ctx_max]``.
 
     Discovered values from litellm or Ollama are used **as-is** — they
     are never clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max``
     rails apply only to the **fallback** path, never to discovered values.
+
+    If *context_window_cap* is set (non-``None``), it overrides discovered
+    values by capping ``max_input`` and ``max_output`` to the cap.  This is
+    a user-configured limit, not a hardcoded assumption.
     """
     max_input: int | None = None
     max_output: int | None = None
@@ -164,14 +170,37 @@ def _discover_context_window(
         elif source != "fallback":
             source = "fallback"
 
+    # 4. User-configured cap overrides discovered values.
+    if context_window_cap is not None:
+        max_input = min(max_input, context_window_cap)
+        max_output = min(max_output, context_window_cap)
+
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)
 
 
 def _query_ollama_num_ctx(model_name: str) -> int | None:
-    """Query Ollama ``GET /api/show`` for the model's runtime ``num_ctx``.
+    """Query Ollama for the model's runtime ``num_ctx``.
 
-    Returns ``None`` if Ollama is not running or the model is not found.
+    Checks in priority order:
+    1. ``OLLAMA_NUM_CTX`` environment variable (global Ollama limit).
+    2. ``parameters.num_ctx`` from ``GET /api/show`` (per-model Modelfile setting).
+
+    When both are set, the **more restrictive** (smaller) value wins.
+    Returns ``None`` if neither is set or Ollama is unreachable.
     """
+    # 1. Global env var.
+    env_ctx: int | None = None
+    env_val = os.environ.get("OLLAMA_NUM_CTX")
+    if env_val:
+        try:
+            env_ctx = int(env_val)
+            if env_ctx <= 0:
+                env_ctx = None
+        except ValueError:
+            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val)
+
+    # 2. Per-model from /api/show.
+    per_model: int | None = None
     try:
         url = "http://localhost:11434/api/show"
         payload = json.dumps({"name": model_name}).encode()
@@ -181,10 +210,13 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         params = data.get("parameters", {})
         num_ctx_str = params.get("num_ctx")
         if num_ctx_str is not None:
-            return int(num_ctx_str)
+            per_model = int(num_ctx_str)
     except Exception:  # noqa: BLE001
         logger.debug("Ollama /api/show query failed for %s", model_name, exc_info=True)
-    return None
+
+    # Most restrictive wins when both are set.
+    candidates = [c for c in (env_ctx, per_model) if c is not None]
+    return min(candidates) if candidates else None
 
 
 @dataclass
@@ -239,6 +271,7 @@ class LLMClient:
     _fallback_max_output: int = field(default=4096, repr=False)
     _num_ctx_min: int = field(default=2048, repr=False)
     _num_ctx_max: int = field(default=131072, repr=False)
+    _context_window_cap: int | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not self.default_model:
@@ -250,6 +283,7 @@ class LLMClient:
                 fallback_max_output=self._fallback_max_output,
                 num_ctx_min=self._num_ctx_min,
                 num_ctx_max=self._num_ctx_max,
+                context_window_cap=self._context_window_cap,
             )
             logger.info(
                 "Context window: model=%s max_input=%d max_output=%d source=%s",

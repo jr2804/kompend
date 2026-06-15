@@ -171,6 +171,7 @@ class PipelineConfig:
             fallback_max_output=cfg.get("compile.llm.fallback_max_output", 4096),
             num_ctx_min=cfg.get("compile.llm.num_ctx_min", 2048),
             num_ctx_max=cfg.get("compile.llm.num_ctx_max", 131072),
+            context_window_cap=cfg.get("compile.llm.context_window_cap"),
             role_models=role_models,
         )
 

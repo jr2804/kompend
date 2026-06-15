@@ -475,6 +475,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 fallback_max_output=config.llm.fallback_max_output,
                 num_ctx_min=config.llm.num_ctx_min,
                 num_ctx_max=config.llm.num_ctx_max,
+                context_window_cap=config.llm.context_window_cap,
             )
         self._context_window = cw
 

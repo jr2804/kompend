@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.llm.client import LLMClient
+from knox.llm.client import LLMClient, _discover_context_window, _query_ollama_num_ctx
 from knox.llm.errors import ConfigurationError, PermanentError, TransientError
 
 
@@ -175,3 +175,132 @@ class TestRoleRouting:
         )
         chain = client.chain_for("anything")
         assert chain.models == ["default/model", "fallback/model"]
+
+
+class TestQueryOllamaNumCtx:
+    """Tests for _query_ollama_num_ctx — OLLAMA_NUM_CTX env + /api/show."""
+
+    def test_env_var_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OLLAMA_NUM_CTX env var is returned when /api/show has no num_ctx."""
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "65536")
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> MagicMock:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"parameters": {}}).encode()
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            return resp
+
+        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _query_ollama_num_ctx("some-model")
+        assert result == 65536
+
+    def test_per_model_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """parameters.num_ctx from /api/show is returned when env var not set."""
+        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> MagicMock:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"parameters": {"num_ctx": "32768"}}).encode()
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            return resp
+
+        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _query_ollama_num_ctx("some-model")
+        assert result == 32768
+
+    def test_both_set_returns_min(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When both env var and per-model are set, the smaller wins."""
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "65536")
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> MagicMock:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"parameters": {"num_ctx": "32768"}}).encode()
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            return resp
+
+        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _query_ollama_num_ctx("some-model")
+        assert result == 32768
+
+    def test_neither_set_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Returns None when neither env var nor per-model num_ctx is set."""
+        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> MagicMock:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"parameters": {}}).encode()
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            return resp
+
+        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _query_ollama_num_ctx("some-model")
+        assert result is None
+
+    def test_invalid_env_var_warns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Invalid OLLAMA_NUM_CTX value is logged and ignored."""
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "not-a-number")
+
+        def fake_urlopen(*_args: object, **_kwargs: object) -> MagicMock:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"parameters": {"num_ctx": "32768"}}).encode()
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            return resp
+
+        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _query_ollama_num_ctx("some-model")
+        assert result == 32768
+
+
+class TestContextWindowCap:
+    """Tests for context_window_cap in _discover_context_window."""
+
+    def test_cap_overrides_discovered(self) -> None:
+        """Cap limits discovered max_input/max_output."""
+        with patch("litellm.get_model_info", return_value={"max_input_tokens": 1048576, "max_output_tokens": 1048576}):
+            cw = _discover_context_window("openai/gpt-4", context_window_cap=65536)
+        assert cw.max_input == 65536
+        assert cw.max_output == 65536
+        assert cw.source == "litellm"
+
+    def test_no_cap_uses_full_discovered(self) -> None:
+        """Without cap, discovered values pass through unchanged."""
+        with patch("litellm.get_model_info", return_value={"max_input_tokens": 200000, "max_output_tokens": 200000}):
+            cw = _discover_context_window("openai/gpt-4")
+        assert cw.max_input == 200000
+        assert cw.max_output == 200000
+
+    def test_cap_larger_than_discovered_no_effect(self) -> None:
+        """Cap larger than discovered value has no effect."""
+        with patch("litellm.get_model_info", return_value={"max_input_tokens": 8192, "max_output_tokens": 4096}):
+            cw = _discover_context_window("openai/gpt-4", context_window_cap=65536)
+        assert cw.max_input == 8192
+        assert cw.max_output == 4096
+
+    def test_cap_applies_to_fallback_too(self) -> None:
+        """Cap also applies on the fallback path."""
+        with patch("litellm.get_model_info", return_value=None):
+            cw = _discover_context_window(
+                "unknown/model",
+                fallback_max_input=8192,
+                fallback_max_output=4096,
+                context_window_cap=2048,
+            )
+        assert cw.max_input == 2048
+        assert cw.max_output == 2048
+
+    def test_cap_via_llm_client(self) -> None:
+        """LLMClient passes _context_window_cap through to discovery."""
+        with patch("litellm.get_model_info", return_value={"max_input_tokens": 1048576, "max_output_tokens": 1048576}):
+            client = LLMClient(
+                default_model="openai/gpt-4",
+                max_retries_per_model=0,
+                _context_window_cap=65536,
+            )
+        assert client.context_window is not None
+        assert client.context_window.max_input == 65536
+        assert client.context_window.max_output == 65536
