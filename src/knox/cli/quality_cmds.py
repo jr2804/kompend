@@ -103,7 +103,7 @@ def doctor_cmd(
     results = run_doctor(
         sources_dir=sources_dir_path if sources_dir_path.exists() else None,
         output_dir=output_dir_path if output_dir_path.exists() else None,
-        verbose=verbose,
+        default_model=cfg.get("compile.llm.default_model"),
     )
     exit_code = print_doctor_results(results, json_output=json_output)
     if exit_code:

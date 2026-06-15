@@ -62,7 +62,7 @@ class TestRunDoctor:
         """Doctor runs without crashing, returns CheckResult list."""
         results = run_doctor()
         assert isinstance(results, list)
-        assert len(results) >= 6
+        assert len(results) >= 5
         assert all(isinstance(r, CheckResult) for r in results)
 
     def test_with_paths(self, tmp_path: Path) -> None:
@@ -76,6 +76,13 @@ class TestRunDoctor:
         out_check = next(r for r in results if r.name == "output-directory")
         assert src_check.passed is True
         assert out_check.passed is True
+
+    def test_no_model_skips_llm(self) -> None:
+        """Without a model, LLM connectivity check is skipped (passed)."""
+        results = run_doctor()
+        llm_check = next(r for r in results if r.name == "llm-connectivity")
+        assert llm_check.passed is True
+        assert "skipped" in llm_check.message
 
 
 class TestCollectStats:

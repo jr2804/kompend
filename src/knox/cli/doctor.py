@@ -12,29 +12,10 @@ from pathlib import Path
 
 import typer
 
-from knox.preprocessing.parsers.base import ParserRouter
+from knox.llm.client import LLMClient
+from knox.preprocessing.parsers._registry import build_default_router
 
 logger = logging.getLogger(__name__)
-
-try:
-    from knox.preprocessing.parsers.docling_parser import DoclingParser
-except ImportError:
-    DoclingParser = None
-
-try:
-    from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
-except ImportError:
-    PdfPlumberParser = None
-
-try:
-    from knox.preprocessing.parsers.pandoc_parser import PandocParser
-except ImportError:
-    PandocParser = None
-
-try:
-    from knox.llm.client import LLMClient
-except ImportError:
-    LLMClient = None
 
 # ── Check results ───────────────────────────────────────────────────────
 
@@ -77,47 +58,20 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 
 
 def _check_parsers() -> CheckResult:
+    """Check parser availability via the shared registry factory."""
     name = "parsers"
-    router = ParserRouter()
-    if DoclingParser is not None:
-        try:
-            router.register(DoclingParser())
-        except Exception as exc:
-            return CheckResult(name, False, f"DoclingParser init failed: {exc}")
-
-    if PdfPlumberParser is not None:
-        try:
-            router.register(PdfPlumberParser())
-        except Exception as exc:
-            logger.debug("PdfPlumberParser not available: %s", exc)
-
-    if PandocParser is not None:
-        try:
-            router.register(PandocParser())
-        except Exception as exc:
-            logger.debug("PandocParser not available: %s", exc)
-
+    router = build_default_router()
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
 
-def _check_env_vars(*vars_to_check: str) -> list[CheckResult]:
-    results: list[CheckResult] = []
-    for var_name in vars_to_check:
-        if os.environ.get(var_name):
-            results.append(CheckResult(f"env:{var_name}", True, f"{var_name} is set"))
-        else:
-            results.append(CheckResult(f"env:{var_name}", False, f"{var_name} is not set"))
-    return results
-
-
-def _check_llm_connectivity(verbose: bool = False) -> CheckResult:
+def _check_llm_connectivity(default_model: str | None = None) -> CheckResult:
     """Quick connectivity check — pings the configured LLM provider."""
     name = "llm-connectivity"
-    if LLMClient is None:
-        return CheckResult(name, False, "knox.llm not available")
+    if not default_model:
+        return CheckResult(name, True, "No LLM model configured — skipped")
 
     try:
-        client = LLMClient()
+        client = LLMClient(default_model=default_model)
         result = client.try_complete(
             [{"role": "user", "content": "ping"}],
             role="doctor",
@@ -154,13 +108,12 @@ def _check_git_repo() -> CheckResult:
 
 
 def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
-    """Check available disk space — warn if < 500MB."""
+    """Check available disk space — warn if < 500 MB."""
     name = "disk-space"
     check_path = sources_dir if sources_dir and sources_dir.exists() else Path.cwd()
     try:
-        stat = os.statvfs(str(check_path))
-        free_bytes = stat.f_frsize * stat.f_bavail
-        free_mb = free_bytes / (1024 * 1024)
+        usage = shutil.disk_usage(str(check_path))
+        free_mb = usage.free / (1024 * 1024)
         if free_mb < 500:
             return CheckResult(name, False, f"Low disk space: {free_mb:.0f} MB free (< 500 MB)")
         return CheckResult(name, True, f"{free_mb:.0f} MB free")
@@ -174,9 +127,21 @@ def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
 def run_doctor(
     sources_dir: Path | None = None,
     output_dir: Path | None = None,
-    verbose: bool = False,
+    *,
+    default_model: str | None = None,
 ) -> list[CheckResult]:
-    """Run all doctor checks and return results."""
+    """Run all doctor checks and return results.
+
+    Parameters
+    ----------
+    sources_dir:
+        Sources directory to validate, or ``None`` to skip.
+    output_dir:
+        Output directory to validate, or ``None`` to skip.
+    default_model:
+        LLM model name (litellm format) for the connectivity ping.
+        When ``None`` or empty, the LLM check is skipped.
+    """
     results: list[CheckResult] = []
 
     results.append(_check_sources_dir(sources_dir))
@@ -184,12 +149,7 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
-    results.extend(_check_env_vars("KNOX_LLM_MODEL", "KNOX_LLM_PROVIDER", "OPENAI_API_KEY"))
-
-    if verbose:
-        results.append(_check_llm_connectivity(verbose=True))
-    else:
-        results.append(_check_llm_connectivity())
+    results.append(_check_llm_connectivity(default_model=default_model))
 
     return results
 
