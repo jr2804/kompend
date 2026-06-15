@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
@@ -22,6 +24,7 @@ from knox.cli.args import (
     Verbose,
 )
 from knox.cli.doctor import print_doctor_results, run_doctor
+from knox.cli.pipeline_cmds import _write_wiki_cache
 from knox.cli.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
@@ -40,6 +43,41 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
     if not rule:
         return False
     return any(r in LLM_RULE_BY_NAME for r in rule)
+
+
+def _persist_lint_fixes(
+    wiki: object,
+    output_dir: Path,
+    base_dir: Path,
+) -> int:
+    """Write lint-fixed frontmatter to markdown files and update the wiki cache.
+
+    Returns the number of files updated.
+    """
+    updated = 0
+    for node in wiki.nodes:
+        fm = node.metadata.get("frontmatter", {})
+        if not isinstance(fm, dict) or "title" not in fm:
+            continue
+        md_path = output_dir / f"node_{node.id}.md"
+        if not md_path.exists():
+            continue
+        text = md_path.read_text(encoding="utf-8")
+        normalized = text.replace("\r\n", "\n")
+        if normalized.startswith("---\n"):
+            end_idx = normalized.find("\n---\n", 4)
+            if end_idx < 0:
+                continue
+            old_fm_text = normalized[4:end_idx]
+            body = normalized[end_idx + 5 :]
+            old_fm = yaml.safe_load(old_fm_text) or {}
+            old_fm.update(fm)
+            new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            md_path.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
+            updated += 1
+
+    _write_wiki_cache(wiki, base_dir)
+    return updated
 
 
 # ── doctor ──────────────────────────────────────────────────────────────
@@ -312,10 +350,10 @@ def lint_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
     sources_dir_str = str(sources_dir_path) if sources_dir_path.exists() else None
 
-    wiki = load_cached_wiki(output_dir_path)
+    wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
         typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
@@ -342,6 +380,10 @@ def lint_cmd(
     report = runner.run(wiki)
     load_hooks()
     fire_hook(HookEvent.ON_LINT, report=report, wiki=wiki)
+
+    if fix and any(r.fix_applied for r in report.results):
+        count = _persist_lint_fixes(wiki, output_dir_path, state_dir.parent)
+        typer.echo(f"Persisted fixes to {count} file(s).")
 
     if json_output:
         typer.echo(report_to_json(report))

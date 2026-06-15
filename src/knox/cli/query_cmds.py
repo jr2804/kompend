@@ -191,7 +191,7 @@ def query_cmd(
     if _classify_intent(query, no_classify, format):
         return
 
-    wiki = load_cached_wiki(output_dir_path)
+    wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
         typer.echo(
             f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.",
