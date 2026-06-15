@@ -111,7 +111,7 @@ class PipelineConfig:
     embedding: EmbeddingConfig
     base_dir: Path | None = None  # None → output_dir.parent; .knox lives here
     image_mode: ImageMode = ImageMode.FILE
-    chunk_size: int = 512
+    chunk_size: int = 1024
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = base_dir/.knox/cache
@@ -219,7 +219,7 @@ class PipelineConfig:
             source_dir=source_dir,
             output_dir=output_dir,
             image_mode=ImageMode(cfg.get("compile.image_mode", ImageMode.FILE)),
-            chunk_size=cfg.get("compile.chunk_size", 512),
+            chunk_size=cfg.get("compile.chunk_size", 1024),
             online_sources=[],
             input_files=input_files,
             cache_dir=cfg.get("compile.cache_dir"),

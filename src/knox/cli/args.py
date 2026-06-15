@@ -23,7 +23,7 @@ APP_NAME_UPPERCASE = "KNOX"
 # ── Defaults ────────────────────────────────────────────────────────────
 
 DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
-DEFAULT_CHUNK_SIZE: int = 512
+DEFAULT_CHUNK_SIZE: int = 1024
 DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
 DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2

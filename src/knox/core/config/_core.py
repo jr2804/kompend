@@ -15,7 +15,7 @@ Config files use TOML. Example ``knox.toml``::
     sources_dir = "sources"
     output_dir = "wiki"
     format = "markdown"
-    chunk_size = 512
+    chunk_size = 1024
     image_mode = "file"
     mode = "full"
     workers = 1
@@ -74,7 +74,7 @@ DEFAULTS: dict[str, Any] = {
         "sources_dir": "sources",
         "output_dir": "wiki",
         "format": "markdown",
-        "chunk_size": 512,
+        "chunk_size": 1024,
         "image_mode": "file",
         "mode": "full",
         "workers": 1,

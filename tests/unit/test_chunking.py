@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from knox.chunking.hybrid import HybridChunker
+from knox.core.config._core import DEFAULTS
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 
 
@@ -145,3 +146,12 @@ class TestHybridChunker:
         for c in result:
             assert "key" not in c.heading_context or "Config" in c.heading_context
         assert any("Config [key] = value" in c.heading_context for c in result if c.heading_context)
+
+    def test_config_chunk_size_flows_to_effective_max(self) -> None:
+        """The config chunk_size (passed as max_tokens) must reach _effective_max."""
+        chunker = HybridChunker(max_tokens=1024, reserve_ratio=0.2)
+        assert chunker._effective_max == 819
+
+    def test_default_chunk_size_is_1024(self) -> None:
+        """DEFAULTS chunk_size must be 1024 (not the old 512)."""
+        assert DEFAULTS["compile"]["chunk_size"] == 1024

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - CLI refactored: monolithic `commands.py` split into domain submodules (`pipeline_cmds`, `quality_cmds`, `query_cmds`, `capture_cmds`, `pack_cmds`, `serve_cmds`)
 - Config precedence now supports hierarchical project config (multiple `.knox/config.toml` files merged)
+- **Breaking:** `compile.chunk_size` default changed from `512` to `1024`. Previous default was silently ignored due to a parameter name mismatch (`chunk_size=` was passed to `**kwargs` instead of `max_tokens=`). Now that the config is actually wired, 1024 tokens produces better embedding quality for 768-dim models.
 
 ### Removed
 

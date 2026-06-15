@@ -195,7 +195,7 @@ class TestResolveConfig:
     def test_defaults_only(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 512
+        assert cfg.get("compile.chunk_size") == 1024
         assert cfg.get("compile.format") == "markdown"
         assert cfg.get("compile.llm.fallback_max_retries") == 2
         assert cfg.get("compile.llm.vlm_model") is None

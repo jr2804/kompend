@@ -722,7 +722,7 @@ def build_pipeline(
     return WikiPipeline(
         config=config,
         parser=parser,
-        chunker=HybridChunker(chunk_size=config.chunk_size),
+        chunker=HybridChunker(max_tokens=config.chunk_size),
         resolver=resolver,
         compiler=base_compiler,
         output_writer=writer_cls(

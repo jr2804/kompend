@@ -17,7 +17,7 @@ class TestConfigGet:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "get", "compile.chunk_size"])
         assert result.exit_code == 0
-        assert result.stdout.strip() == "512"
+        assert result.stdout.strip() == "1024"
 
     def test_get_unknown_key(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -88,7 +88,7 @@ class TestConfigList:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "list"])
         assert result.exit_code == 0
-        assert "compile.chunk_size = 512" in result.stdout
+        assert "compile.chunk_size = 1024" in result.stdout
         assert "# default" in result.stdout
 
     def test_list_shows_project_source(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

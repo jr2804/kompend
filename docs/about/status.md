@@ -63,7 +63,7 @@ Current state of the KNOX codebase as of the latest `main` branch.
 | `compile.sources_dir` | `"sources"` | Pipeline |
 | `compile.output_dir` | `"wiki"` | Pipeline |
 | `compile.image_mode` | `"file"` | DoclingParser |
-| `compile.chunk_size` | `512` | HybridChunker |
+| `compile.chunk_size` | `1024` | HybridChunker |
 | `compile.format` | `"markdown"` | Output writer selection |
 | `compile.llm.default_model` | set via env / knox.toml | LLMResolver, LLMClient |
 | `compile.llm.vlm_model` | `None` (disabled) | VLMEnricher (`--vlm-model`) |
