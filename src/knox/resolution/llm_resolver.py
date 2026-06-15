@@ -56,7 +56,7 @@ class LLMResolver(BaseResolver):
         self,
         client: LLMClient,
         *,
-        confidence_threshold: float = 0.0,
+        confidence_threshold: float = 0.5,
         relation_types: frozenset[str] | None = None,
     ) -> None:
         self._client = client

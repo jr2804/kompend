@@ -236,8 +236,8 @@ class TestResolveConfig:
     def test_relation_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("compile.resolve_relations") is False
-        assert cfg.get("compile.relation_confidence_threshold") == 0.0
+        assert cfg.get("compile.resolve_relations") is True
+        assert cfg.get("compile.relation_confidence_threshold") == 0.5
 
         config_file = tmp_path / "knox.toml"
         config_file.write_text("[compile]\nresolve_relations = true\nrelation_confidence_threshold = 0.5\n")

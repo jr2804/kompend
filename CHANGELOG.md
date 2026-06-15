@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - CLI refactored: monolithic `commands.py` split into domain submodules (`pipeline_cmds`, `quality_cmds`, `query_cmds`, `capture_cmds`, `pack_cmds`, `serve_cmds`)
 - Config precedence now supports hierarchical project config (multiple `.knox/config.toml` files merged)
 - **Breaking:** `compile.chunk_size` default changed from `512` to `1024`. Previous default was silently ignored due to a parameter name mismatch (`chunk_size=` was passed to `**kwargs` instead of `max_tokens=`). Now that the config is actually wired, 1024 tokens produces better embedding quality for 768-dim models.
+- **Breaking:** `compile.resolve_relations` default changed from `False` to `True`. Relation extraction is required for cross-reference edges, "## Related" sections, and meaningful orphan-page detection. Users who don't want LLM relation extraction should set `resolve_relations = false` or use `--no-resolve-relations`.
+- **Breaking:** `compile.relation_confidence_threshold` default changed from `0.0` to `0.5`. Filters out low-confidence relations that dilute the cross-reference graph. Users who want all relations regardless of confidence should set `relation_confidence_threshold = 0.0`.
 
 ### Removed
 

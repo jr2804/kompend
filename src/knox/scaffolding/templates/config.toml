@@ -40,10 +40,10 @@ workers = 1
 # Typed relation extraction during Tier 2 (uses the default LLM model).
 # When enabled, the resolver extracts typed relations such as uses/depends_on
 # between entities and the compiler emits them as graph edges.
-# resolve_relations = false
+# resolve_relations = true
 
 # Minimum confidence (0.0-1.0) for typed relations to be kept.
-# relation_confidence_threshold = 0.0
+# relation_confidence_threshold = 0.5
 
 # ── Memory lifecycle ──────────────────────────────────────────────────────
 #

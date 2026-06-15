@@ -67,8 +67,8 @@ Current state of the KNOX codebase as of the latest `main` branch.
 | `compile.format` | `"markdown"` | Output writer selection |
 | `compile.llm.default_model` | set via env / knox.toml | LLMResolver, LLMClient |
 | `compile.llm.vlm_model` | `None` (disabled) | VLMEnricher (`--vlm-model`) |
-| `compile.resolve_relations` | `False` | LLMResolver typed relation extraction |
-| `compile.relation_confidence_threshold` | `0.0` | Relation filtering |
+| `compile.resolve_relations` | `True` | LLMResolver typed relation extraction |
+| `compile.relation_confidence_threshold` | `0.5` | Relation filtering |
 | `compile.memory_enabled` | `True` | Memory lifecycle (`--memory`/`--no-memory`) |
 | `compile.memory_half_life_days` | `90.0` | Confidence decay rate |
 | `compile.memory_decay_threshold` | `0.3` | Stale-page detection |
