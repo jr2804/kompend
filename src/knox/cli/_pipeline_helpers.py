@@ -26,10 +26,10 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.runner import LintRunner, report_to_text
 from knox.output.wiki_index import write_index_and_log, write_overview
 from knox.provenance import annotate_wiki_with_provenance
-from knox.trust import mark_wiki_private
 from knox.rag import build_vector_index
-from knox.search.index import build_chunk_index
 from knox.review import ReviewQueue
+from knox.search.index import build_chunk_index
+from knox.trust import mark_wiki_private
 from knox.verification import verify_wiki
 
 logger = logging.getLogger(__name__)

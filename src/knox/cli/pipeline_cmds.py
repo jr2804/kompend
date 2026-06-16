@@ -69,8 +69,12 @@ from knox.cli.args import (
     VlmModel,
     Workers,
 )
+from knox.core.config import resolve_config
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
+from knox.memory.store import MemoryStore
+from knox.preprocessing.parsers._registry import build_default_router
+from knox.preprocessing.parsers.base import ParserRouter
 
 
 @app.command(name="parse")
@@ -83,8 +87,6 @@ def parse_cmd(
 
     Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
     """
-    from knox.preprocessing.parsers._registry import get_parser
-
     resolved = _resolve_compile_inputs(
         files=files,
         online_urls=[],
@@ -93,8 +95,9 @@ def parse_cmd(
         recursive=recursive,
         ignore=None,
     )
+    router: ParserRouter = build_default_router()
     for path in resolved:
-        parser = get_parser(path)
+        parser = router.route(path)
         if parser is None:
             typer.echo(f"No parser for {path}", err=True)
             continue
@@ -338,8 +341,6 @@ def ingest_cmd(
         raise typer.Exit(1)
 
     typer.echo(f"Ingesting {len(all_input_files)} document(s) into memory")
-
-    from knox.memory.store import MemoryStore
 
     pipeline_config = PipelineConfig.from_resolved(
         cfg,

@@ -13,6 +13,7 @@ from typing import Annotated
 import typer
 import yaml
 
+from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
@@ -26,7 +27,6 @@ from knox.cli.args import (
     Verbose,
 )
 from knox.cli.doctor import print_doctor_results, run_doctor
-from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
