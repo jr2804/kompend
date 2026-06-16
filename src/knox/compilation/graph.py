@@ -1,7 +1,9 @@
 """Knowledge graph compiler.
 
-Groups resolved chunks by heading_context into WikiNodes and builds
-cross-document entity edges.
+Groups resolved chunks by ``heading_context`` **and** ``source_file`` into
+WikiNodes and builds cross-document entity edges. Keeping different source
+documents separate prevents generic sections (e.g., ``Introduction``) from
+different papers from being mixed on a single wiki page.
 """
 
 from __future__ import annotations
@@ -89,13 +91,13 @@ class GraphCompiler(BaseCompiler):
 
     def _build_nodes(
         self,
-        groups: dict[str, list[ResolvedChunk]],
-    ) -> tuple[list[WikiNode], dict[str, int]]:
-        """Create one WikiNode per heading group and a lookup index."""
+        groups: dict[tuple[str, str | None], list[ResolvedChunk]],
+    ) -> tuple[list[WikiNode], dict[tuple[str, str | None], int]]:
+        """Create one WikiNode per heading/source group and a lookup index."""
         nodes: list[WikiNode] = []
-        node_index: dict[str, int] = {}
+        node_index: dict[tuple[str, str | None], int] = {}
 
-        for idx, (heading, group_chunks) in enumerate(groups.items()):
+        for idx, ((heading, source), group_chunks) in enumerate(groups.items()):
             title = heading if heading != "_root" else "Overview"
             merged_text = BaseCompiler.deduplicate_group_text(group_chunks)
             source_ids = list({rc.chunk.id for rc in group_chunks if rc.chunk.id})
@@ -111,12 +113,13 @@ class GraphCompiler(BaseCompiler):
                 source_chunks=source_ids,
                 metadata={
                     "heading_context": heading,
+                    "source_file": source,
                     "chunk_count": len(group_chunks),
                     "frontmatter": {"kind": kind},
                 },
             )
             nodes.append(node)
-            node_index[heading] = idx
+            node_index[(heading, source)] = idx
 
         return nodes, node_index
 
@@ -158,28 +161,39 @@ class GraphCompiler(BaseCompiler):
         return len(names), names
 
     @staticmethod
+    def _group_key(rc: ResolvedChunk) -> tuple[str, str | None]:
+        """Return the grouping key for a resolved chunk.
+
+        Chunks are grouped by ``heading_context`` and by ``source_file`` so
+        that generic sections (e.g., ``Introduction``) from different
+        source documents do not end up mixed on the same wiki page.
+        """
+        heading = rc.chunk.heading_context or "_root"
+        source = str(rc.chunk.source_file) if rc.chunk.source_file else None
+        return (heading, source)
+
+    @staticmethod
     def _group_chunks(
         chunks: list[ResolvedChunk],
-    ) -> dict[str, list[ResolvedChunk]]:
-        """Group chunks by heading_context."""
-        groups: dict[str, list[ResolvedChunk]] = defaultdict(list)
+    ) -> dict[tuple[str, str | None], list[ResolvedChunk]]:
+        """Group chunks by heading_context and source_file."""
+        groups: dict[tuple[str, str | None], list[ResolvedChunk]] = defaultdict(list)
         for rc in chunks:
-            key = rc.chunk.heading_context or "_root"
-            groups[key].append(rc)
+            groups[GraphCompiler._group_key(rc)].append(rc)
         return groups
 
     @staticmethod
     def _build_entity_edges(
         chunks: list[ResolvedChunk],
         nodes: list[WikiNode],
-        node_index: dict[str, int],
+        node_index: dict[tuple[str, str | None], int],
     ) -> tuple[list[dict[str, Any]], dict[str, set[int]]]:
         """Build entity cross-reference edges and the entity-location index."""
         edges: list[dict[str, Any]] = []
         entity_location: dict[str, set[int]] = defaultdict(set)
 
         for rc in chunks:
-            key = rc.chunk.heading_context or "_root"
+            key = GraphCompiler._group_key(rc)
             node_idx = node_index.get(key)
             if node_idx is None:
                 continue

@@ -310,6 +310,89 @@ class TestGraphCompiler:
         assert toc_titles == node_titles
 
 
+class TestCrossDocumentSeparation:
+    """Ensure generic headings from different sources don't mix."""
+
+    def test_same_heading_different_sources_creates_separate_nodes(self) -> None:
+        """Two papers with 'Introduction' headings produce two nodes."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Introduction from paper A.",
+                    heading="Introduction",
+                    chunk_id="c1",
+                    source_file=Path("paper-a.pdf"),
+                ),
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Introduction from paper B.",
+                    heading="Introduction",
+                    chunk_id="c2",
+                    source_file=Path("paper-b.pdf"),
+                ),
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert len(wiki.nodes) == 2
+        contents = {n.content for n in wiki.nodes}
+        assert "Introduction from paper A." in contents
+        assert "Introduction from paper B." in contents
+
+    def test_same_heading_same_source_keeps_single_node(self) -> None:
+        """Two chunks from the same source and heading merge into one node."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Part one.",
+                    heading="Methods",
+                    chunk_id="c1",
+                    source_file=Path("paper-a.pdf"),
+                ),
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Part two.",
+                    heading="Methods",
+                    chunk_id="c2",
+                    source_file=Path("paper-a.pdf"),
+                ),
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert len(wiki.nodes) == 1
+        assert "Part one." in wiki.nodes[0].content
+        assert "Part two." in wiki.nodes[0].content
+
+    def test_node_metadata_stores_source_file(self) -> None:
+        """Each node records which source file it came from."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Content.",
+                    heading="Results",
+                    chunk_id="c1",
+                    source_file=Path("paper-x.pdf"),
+                ),
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert wiki.nodes[0].metadata["source_file"] == str(Path("paper-x.pdf"))
+
+    def test_no_source_file_chunks_group_together(self) -> None:
+        """Chunks without source_file still group by heading alone."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(text="Text A.", heading="Abstract", chunk_id="c1"),
+            ),
+            ResolvedChunk(
+                chunk=_chunk(text="Text B.", heading="Abstract", chunk_id="c2"),
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert len(wiki.nodes) == 1
+
+
 # ===========================================================================
 #  WiCERCompiler
 # ===========================================================================
