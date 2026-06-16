@@ -53,6 +53,7 @@ import logging
 import os
 import re
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -639,6 +640,42 @@ def validate_config_key(key: str) -> bool:
     return key in _flat_schema()
 
 
+_TRUE_VALUES = {"true", "1", "yes", "on"}
+_FALSE_VALUES = {"false", "0", "no", "off"}
+
+
+def _coerce_boolean(value: str, key: str) -> bool:
+    """Coerce *value* to a boolean, raising ValueError on ambiguity."""
+    lowered = value.lower()
+    if lowered in _TRUE_VALUES:
+        return True
+    if lowered in _FALSE_VALUES:
+        return False
+    raise ValueError(f"expected boolean for {key}")
+
+
+def _coerce_list(value: str) -> list[str]:
+    """Coerce *value* to a comma-separated list."""
+    return [] if value == "" else [v.strip() for v in value.split(",") if v.strip()]
+
+
+def _coerce_generic(value: str) -> int | float | str:
+    """Coerce *value* to int or float if possible, otherwise return as-is."""
+    with contextlib.suppress(ValueError):
+        return int(value)
+    with contextlib.suppress(ValueError):
+        return float(value)
+    return value
+
+
+_COERCE_HANDLERS: dict[type, Callable[[str, str], Any]] = {
+    bool: _coerce_boolean,
+    int: lambda v, _k: int(v),
+    float: lambda v, _k: float(v),
+    list: lambda v, _k: _coerce_list(v),
+}
+
+
 def coerce_config_value(value: str, key: str) -> Any:
     """Coerce a CLI string to the type expected by ``DEFAULTS`` for *key*.
 
@@ -646,37 +683,16 @@ def coerce_config_value(value: str, key: str) -> Any:
         ValueError: when *value* cannot be coerced to the expected type.
     """
     current = _get_dot(DEFAULTS, key)
+    handler = _COERCE_HANDLERS.get(type(current))
+    if handler is not None:
+        return handler(value, key)
+
     lowered = value.lower()
-    true_values = {"true", "1", "yes", "on"}
-    false_values = {"false", "0", "no", "off"}
-    coerced: Any
-
-    if isinstance(current, bool):
-        if lowered in true_values:
-            coerced = True
-        elif lowered in false_values:
-            coerced = False
-        else:
-            raise ValueError(f"expected boolean for {key}")
-    elif isinstance(current, int):
-        coerced = int(value)
-    elif isinstance(current, float):
-        coerced = float(value)
-    elif isinstance(current, list):
-        coerced = [] if value == "" else [v.strip() for v in value.split(",") if v.strip()]
-    elif lowered in true_values:
-        coerced = True
-    elif lowered in false_values:
-        coerced = False
-    else:
-        coerced = value
-        with contextlib.suppress(ValueError):
-            coerced = int(value)
-        if coerced == value:
-            with contextlib.suppress(ValueError):
-                coerced = float(value)
-
-    return coerced
+    if lowered in _TRUE_VALUES:
+        return True
+    if lowered in _FALSE_VALUES:
+        return False
+    return _coerce_generic(value)
 
 
 def get_project_config_path(start_dir: Path | None = None, *, create: bool = False) -> Path:
