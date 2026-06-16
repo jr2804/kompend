@@ -155,9 +155,9 @@ class PipelineConfig:
         role_models = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()} if isinstance(role_models_raw, dict) else {}
 
         frontmatter_defaults = dict(cfg.get("compile.output.frontmatter", {}))
-        rumdl_config = cfg.get("compile.output.rumdl_config")
-        if isinstance(rumdl_config, str):
-            rumdl_config = Path(rumdl_config)
+        rumdl_config_file = cfg.get("compile.output.rumdl_config")
+        if isinstance(rumdl_config_file, str):
+            rumdl_config_file = Path(rumdl_config_file)
 
         # Read sub-configs
         llm_config = LLMConfig(
@@ -202,7 +202,7 @@ class PipelineConfig:
             format=cfg.get("compile.format", OutputConfig().format),
             flavor=cfg.get("compile.output.flavor", OutputConfig().flavor),
             frontmatter=frontmatter_defaults,
-            rumdl_config=rumdl_config,
+            rumdl_config=rumdl_config_file,
         )
 
         embedding_config = EmbeddingConfig(
@@ -215,8 +215,8 @@ class PipelineConfig:
         wiki_dir = cfg.get("paths.wiki_dir")
         notes_file: Path | None = None
         if notes_file_name:
-            base = Path(wiki_dir) if wiki_dir else output_dir.parent
-            notes_file = base / notes_file_name
+            base_dir = Path(wiki_dir) if wiki_dir else output_dir.parent
+            notes_file = base_dir / notes_file_name
 
         return cls(
             source_dir=source_dir,

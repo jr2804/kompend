@@ -55,8 +55,8 @@ def _make_memory_store(wiki_dir: str) -> MemoryStore:
 @server.tool(name="parse_document")
 def parse_document(file_path: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
-    path = Path(file_path)
-    if not path.exists():
+    doc_file = Path(file_path)
+    if not doc_file.exists():
         return {"status": "error", "message": f"File not found: {file_path}"}
 
     router = ParserRouter()
@@ -66,10 +66,10 @@ def parse_document(file_path: str) -> dict[str, Any]:
         logger.warning("DoclingParser not available: %s", exc)
 
     try:
-        doc = router.parse(path)
+        doc = router.parse(doc_file)
         return {
             "status": "ok",
-            "title": doc.title or path.name,
+            "title": doc.title or doc_file.name,
             "page_count": doc.page_count,
             "elements": [
                 {
@@ -213,10 +213,10 @@ def wiki_learn(
     source_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        path = learn(text, sources_dir=source_path, tags=tags)
+        learned_file = learn(text, sources_dir=source_path, tags=tags)
         return {
             "status": "ok",
-            "file": str(path),
+            "file": str(learned_file),
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
@@ -458,12 +458,12 @@ def config_set(
     except ValueError as exc:
         return {"status": "error", "message": str(exc)}
 
-    path = get_global_config_path(create=True) if global_ else get_project_config_path(create=True)
+    config_file = get_global_config_path(create=True) if global_ else get_project_config_path(create=True)
     try:
-        set_config_file_value(path, key, coerced)
-        return {"status": "ok", "key": key, "value": coerced, "file": str(path)}
+        set_config_file_value(config_file, key, coerced)
+        return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}
     except (OSError, ValueError) as exc:
-        return {"status": "error", "message": f"Failed to write {path}: {exc}"}
+        return {"status": "error", "message": f"Failed to write {config_file}: {exc}"}
 
 
 def main() -> None:

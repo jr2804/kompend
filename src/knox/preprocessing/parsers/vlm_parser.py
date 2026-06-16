@@ -122,19 +122,19 @@ class VLMParser(BaseParser):
         if self._client is None:
             return self._fallback_caption(source_path)
 
-        path = Path(source_path)
-        if not path.is_file():
-            logger.warning("Image file not found for caption: %s", path)
+        image_file = Path(source_path)
+        if not image_file.is_file():
+            logger.warning("Image file not found for caption: %s", image_file)
             return None
 
         try:
-            raw_bytes = path.read_bytes()
+            raw_bytes = image_file.read_bytes()
             b64 = base64.b64encode(raw_bytes).decode("utf-8")
         except OSError as exc:
-            logger.warning("Failed to read %s for VLM caption: %s", path, exc)
+            logger.warning("Failed to read %s for VLM caption: %s", image_file, exc)
             return None
 
-        mime = _MIME_BY_EXT.get(path.suffix.lower(), "image/png")
+        mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
 
         try:
             result = self._client.try_complete(
@@ -151,7 +151,7 @@ class VLMParser(BaseParser):
                 max_tokens=128,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("VLM caption generation failed for %s: %s", path, exc)
+            logger.warning("VLM caption generation failed for %s: %s", image_file, exc)
             return None
 
         if result is None:

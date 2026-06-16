@@ -355,29 +355,29 @@ class TemplateLoader:
         if cached is not None:
             label, identifier = cached
             if label in ("project", "user"):
-                candidate = Path(identifier)
-                if candidate.is_file():
-                    return (candidate.read_text(encoding="utf-8"), TemplateSource(label, candidate))
+                candidate_file = Path(identifier)
+                if candidate_file.is_file():
+                    return (candidate_file.read_text(encoding="utf-8"), TemplateSource(label, candidate_file))
                 # Stale cache entry — clear and re-search
                 del self._search_cache[normalized]
 
         # 1. Project templates
         project_tpl_dir = _project_templates_dir(self.project_dir)
         if project_tpl_dir is not None:
-            candidate = project_tpl_dir / normalized
-            if candidate.is_file():
-                text = candidate.read_text(encoding="utf-8")
-                self._search_cache[normalized] = ("project", str(candidate))
-                return (text, TemplateSource("project", candidate))
+            candidate_file = project_tpl_dir / normalized
+            if candidate_file.is_file():
+                text = candidate_file.read_text(encoding="utf-8")
+                self._search_cache[normalized] = ("project", str(candidate_file))
+                return (text, TemplateSource("project", candidate_file))
 
         # 2. User global templates
         user_tpl_dir = _user_templates_dir()
         if user_tpl_dir is not None:
-            candidate = user_tpl_dir / normalized
-            if candidate.is_file():
-                text = candidate.read_text(encoding="utf-8")
-                self._search_cache[normalized] = ("user", str(candidate))
-                return (text, TemplateSource("user", candidate))
+            candidate_file = user_tpl_dir / normalized
+            if candidate_file.is_file():
+                text = candidate_file.read_text(encoding="utf-8")
+                self._search_cache[normalized] = ("user", str(candidate_file))
+                return (text, TemplateSource("user", candidate_file))
 
         # 3. Built-in templates
         if _builtin_exists(normalized):

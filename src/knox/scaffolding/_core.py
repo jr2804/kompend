@@ -150,46 +150,46 @@ def scaffold_project(
         If the target directory contains an existing project marker and
         ``force`` is not set, or if a filesystem operation fails.
     """
-    target = Path(target_dir).expanduser().resolve()
+    resolved_target_dir = Path(target_dir).expanduser().resolve()
 
-    if not target.exists():
-        target.mkdir(parents=True, exist_ok=True)
-    elif not target.is_dir():
-        msg = f"Target path exists and is not a directory: {target}"
+    if not resolved_target_dir.exists():
+        resolved_target_dir.mkdir(parents=True, exist_ok=True)
+    elif not resolved_target_dir.is_dir():
+        msg = f"Target path exists and is not a directory: {resolved_target_dir}"
         raise ScaffoldError(msg)
 
-    existing = _existing_project_marker(target)
+    existing = _existing_project_marker(resolved_target_dir)
     if existing is not None and not force:
         msg = f"Existing project detected ({existing}). Use --force to overwrite."
         raise ScaffoldError(msg)
 
-    result = ScaffoldResult(target_dir=target)
+    result = ScaffoldResult(target_dir=resolved_target_dir)
 
     for relative in ("sources", "wiki", ".knox", ".knox/cache"):
-        result.created_dirs.append(_create_directory(target, relative))
+        result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
-    config_relative = ".knox/config.toml"
-    _copy_template(TEMPLATE_CONFIG, target, config_relative)
-    result.copied_files.append(target / config_relative)
+    config_relative_file = ".knox/config.toml"
+    _copy_template(TEMPLATE_CONFIG, resolved_target_dir, config_relative_file)
+    result.copied_files.append(resolved_target_dir / config_relative_file)
 
-    _copy_template(TEMPLATE_GITIGNORE, target, ".gitignore")
-    result.copied_files.append(target / ".gitignore")
+    _copy_template(TEMPLATE_GITIGNORE, resolved_target_dir, ".gitignore")
+    result.copied_files.append(resolved_target_dir / ".gitignore")
 
     if bare:
         result.skipped_files.extend(AUTHORED_TEMPLATES)
     else:
         for template_name in AUTHORED_TEMPLATES:
-            _copy_template(template_name, target, template_name)
-            result.copied_files.append(target / template_name)
+            _copy_template(template_name, resolved_target_dir, template_name)
+            result.copied_files.append(resolved_target_dir / template_name)
 
     if git:
         try:
-            _initialise_git(target)
+            _initialise_git(resolved_target_dir)
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.decode("utf-8", errors="replace").strip()
             msg = f"git init failed: {stderr or exc}"
             raise ScaffoldError(msg) from exc
         result.git_initialised = True
 
-    logger.info("Scaffolded knox wiki at %s", target)
+    logger.info("Scaffolded knox wiki at %s", resolved_target_dir)
     return result

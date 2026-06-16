@@ -119,14 +119,14 @@ class VLMEnricher(BaseResolver):
             logger.debug("VLMEnricher has no LLM client — skipping caption for %s", image_path)
             return None
 
-        path = Path(image_path)
-        if not path.is_file():
-            msg = f"Image not found: {path}"
+        image_file = Path(image_path)
+        if not image_file.is_file():
+            msg = f"Image not found: {image_file}"
             raise FileNotFoundError(msg)
 
-        raw_bytes = path.read_bytes()
+        raw_bytes = image_file.read_bytes()
         b64 = base64.b64encode(raw_bytes).decode("utf-8")
-        mime = _MIME_BY_EXT.get(path.suffix.lower(), "image/png")
+        mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
 
         result = self._client.try_complete(
             messages=[

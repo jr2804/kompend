@@ -519,18 +519,18 @@ def _resolve_paths(
             )
 
     wiki_dir_raw = paths.get("wiki_dir")
-    base = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
-    paths["wiki_dir"] = base
+    base_dir = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
+    paths["wiki_dir"] = base_dir
 
     for key in ("sources_dir", "output_dir", "cache_dir", "state_dir"):
         dotted = f"paths.{key}"
         value = paths.get(key)
         if value is None:
             value = _get_dot(DEFAULTS, dotted)
-        path = Path(value).expanduser()
-        if not path.is_absolute():
-            path = base / path
-        paths[key] = path.resolve()
+        resolved_dir = Path(value).expanduser()
+        if not resolved_dir.is_absolute():
+            resolved_dir = base_dir / resolved_dir
+        paths[key] = resolved_dir.resolve()
 
 
 def resolve_config(

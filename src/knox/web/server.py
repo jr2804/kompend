@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="KNOX Web UI")
 
-_CWD: Path = Path.cwd()
+_PROJECT_DIR: Path = Path.cwd()
 
 
 def _load_wiki() -> dict[str, Any]:
-    cache = _CWD / "wiki" / ".knox" / "last_wiki.json"
+    cache = _PROJECT_DIR / "wiki" / ".knox" / "last_wiki.json"
     if not cache.exists():
         return {"nodes": [], "edges": [], "toc": [], "quality_score": 0.0, "node_count": 0}
     try:
@@ -409,7 +409,7 @@ async def lint_page() -> str:
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page() -> str:
-    config_path = _CWD / "knox.toml"
+    config_path = _PROJECT_DIR / "knox.toml"
     config_content = ""
     if config_path.exists():
         config_content = config_path.read_text(encoding="utf-8")
@@ -451,7 +451,7 @@ async def settings_page() -> str:
 
 @app.post("/api/ingest-url")
 async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
-    result = ingest(url, sources_dir=_CWD / "sources")
+    result = ingest(url, sources_dir=_PROJECT_DIR / "sources")
     if result:
         return JSONResponse({"status": "ok", "file": str(result)})
     return JSONResponse({"status": "error", "message": f"Failed to ingest {url}"}, status_code=400)
@@ -459,13 +459,13 @@ async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
 
 @app.post("/api/learn")
 async def api_learn(text: str = Query(...)) -> JSONResponse:
-    path = learn(text, sources_dir=_CWD / "sources")
+    path = learn(text, sources_dir=_PROJECT_DIR / "sources")
     return JSONResponse({"status": "ok", "file": str(path)})
 
 
 @app.post("/api/compile")
 async def api_compile() -> JSONResponse:
-    result = subprocess.run([sys.executable, "-m", "knox.cli.app", "compile"], capture_output=True, text=True, cwd=str(_CWD), check=False)  # noqa: S603
+    result = subprocess.run([sys.executable, "-m", "knox.cli.app", "compile"], capture_output=True, text=True, cwd=str(_PROJECT_DIR), check=False)  # noqa: S603
     if result.returncode == 0:
         return JSONResponse({"status": "ok", "output": result.stdout})
     return JSONResponse({"status": "error", "message": result.stderr or result.stdout}, status_code=400)

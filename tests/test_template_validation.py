@@ -2,17 +2,17 @@
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT_DIR = Path(__file__).parent.parent
 
 
 def test_copier_answers_exists() -> None:
-    answers = PROJECT_ROOT / ".copier-answers.yml"
+    answers = PROJECT_ROOT_DIR / ".copier-answers.yml"
     assert answers.exists(), "copier answers file missing"
 
 
 def test_mise_config_structure() -> None:
     """Verify mise config in .config/mise/ (template style), not root mise.toml."""
-    config_dir = PROJECT_ROOT / ".config" / "mise"
+    config_dir = PROJECT_ROOT_DIR / ".config" / "mise"
     assert config_dir.exists(), f"mise config dir missing at {config_dir}"
 
     config_toml = config_dir / "config.toml"
@@ -28,10 +28,10 @@ def test_mise_config_structure() -> None:
 
 
 def test_ruff_config_exists() -> None:
-    ruff = PROJECT_ROOT / "ruff.toml"
+    ruff = PROJECT_ROOT_DIR / "ruff.toml"
     assert ruff.exists(), "ruff.toml missing"
 
 
 def test_ty_config_exists() -> None:
-    ty = PROJECT_ROOT / "ty.toml"
+    ty = PROJECT_ROOT_DIR / "ty.toml"
     assert ty.exists(), "ty.toml missing"

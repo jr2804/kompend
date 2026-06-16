@@ -96,8 +96,8 @@ _skip_no_parser = pytest.mark.skipif(not _PARSER_OK, reason="DoclingParser not a
 
 
 def _has_pdfs() -> bool:
-    sources = Path(__file__).parent.parent / "data" / "sources"
-    return sources.exists() and bool(list(sources.glob("*.pdf")))
+    sources_dir = Path(__file__).parent.parent / "data" / "sources"
+    return sources_dir.exists() and bool(list(sources_dir.glob("*.pdf")))
 
 
 _skip_no_pdfs = pytest.mark.skipif(not _has_pdfs(), reason="No PDFs in tests/data/sources/")

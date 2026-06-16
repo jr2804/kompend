@@ -31,8 +31,8 @@ class HTTPDownloader(BaseDownloader):
         if parsed.scheme not in self._ALLOWED_SCHEMES:
             logger.warning("Blocked URL with disallowed scheme: %s", url)
             return None
-        filename = Path(parsed.path).name or self._hash_url(url)
-        target_path = target_dir / filename
+        file_name = Path(parsed.path).name or self._hash_url(url)
+        target_path = target_dir / file_name
 
         # Check duplicate detector: skip download if URL already known
         if self._detector and self._detector.is_duplicate(url):
