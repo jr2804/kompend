@@ -179,10 +179,13 @@ class DocumentRenderer:
             return markdown
 
         cmd = [
-            "rumdl", "fmt",
-            "--flavor", self.flavor,
+            "rumdl",
+            "fmt",
+            "--flavor",
+            self.flavor,
             "--stdin",
-            "--stdin-filename", "page.md",
+            "--stdin-filename",
+            "page.md",
             "--silent",
         ]
         if self.rumdl_config:

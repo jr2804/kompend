@@ -96,9 +96,7 @@ class TestDoctorWikiContext:
         assert result.exit_code == 1
         assert "No wiki found" in result.output
 
-    def test_works_with_explicit_wiki_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_works_with_explicit_wiki_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Doctor runs (bypasses wiki-context gate) when --wiki-dir is set."""
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()

@@ -10,6 +10,7 @@ They are skipped if the required resources are not present.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,8 @@ from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
 
+logger = logging.getLogger(__name__)
+
 
 def _check_parser() -> bool:
     """Return True if a parser can be instantiated."""
@@ -29,12 +32,12 @@ def _check_parser() -> bool:
         DoclingParser(extract_images=False)
         return True
     except Exception:
-        pass
+        logger.debug("DoclingParser not available", exc_info=True)
     try:
         PdfPlumberParser()
         return True
     except Exception:
-        pass
+        logger.debug("PdfPlumberParser not available", exc_info=True)
     return False
 
 
@@ -43,11 +46,11 @@ def _get_parser() -> BaseParser:
     try:
         return DoclingParser(extract_images=False)
     except Exception:
-        pass
+        logger.debug("DoclingParser not available", exc_info=True)
     try:
         return PdfPlumberParser()
     except Exception:
-        pass
+        logger.debug("PdfPlumberParser not available", exc_info=True)
     pytest.skip("No PDF parser available (DoclingParser or PdfPlumberParser)")
 
 

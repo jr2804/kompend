@@ -104,8 +104,7 @@ def doctor_cmd(
 
     if not wiki_dir_override and not output_dir_path.exists():
         typer.echo(
-            f"No wiki found at {output_dir_path}. "
-            "Use --wiki-dir or run from a wiki directory.",
+            f"No wiki found at {output_dir_path}. Use --wiki-dir or run from a wiki directory.",
             err=True,
         )
         raise typer.Exit(1)

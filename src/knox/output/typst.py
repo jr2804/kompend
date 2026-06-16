@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import ClassVar
+
 from knox.core.models import CompiledWiki
 from knox.output.base import BaseOutputWriter
 
@@ -20,13 +21,13 @@ class TypstWriter(BaseOutputWriter):
 
         # Document setup
         lines.append('#set page("a4")')
-        lines.append('#set text(size: 11pt)')
-        lines.append('')
+        lines.append("#set text(size: 11pt)")
+        lines.append("")
 
         # Title page
         title = wiki.metadata.get("title", "Compiled Wiki")
         lines.append("#align(center + top)")
-        lines.append(f"#text(size: 24pt, weight: \"bold\")[{title}]")
+        lines.append(f'#text(size: 24pt, weight: "bold")[{title}]')
         lines.append("#v(2cm)")
 
         if wiki.metadata.get("description"):
@@ -45,7 +46,7 @@ class TypstWriter(BaseOutputWriter):
             lines.append("")
 
             # Also write explicit TOC entries as cross-references
-            for i, entry in enumerate(wiki.toc):
+            for _i, entry in enumerate(wiki.toc):
                 title = entry.get("title", "")
                 entry_id = entry.get("id", "")
                 if entry_id:
@@ -79,7 +80,7 @@ class TypstWriter(BaseOutputWriter):
             # Cross-reference back to TOC
             lines.append("#v(0.5cm)")
             lines.append("#text(size: 9pt, fill: gray)[")
-            lines.append(f"  #link(<toc>)[Back to Table of Contents]")
+            lines.append("  #link(<toc>)[Back to Table of Contents]")
             lines.append("]")
             lines.append("")
             lines.append("#pagebreak()")
