@@ -29,8 +29,6 @@ DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
 
 
-# ── Shared options (used by multiple commands) ──────────────────────────
-
 WikiDir = Annotated[
     str | None,
     typer.Option(
@@ -123,8 +121,6 @@ ImageMode = Annotated[
     ),
 ]
 
-
-# ── Shared flags (used by multiple commands) ────────────────────────────
 
 Verbose = Annotated[
     bool,

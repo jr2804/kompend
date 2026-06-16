@@ -9,7 +9,6 @@ This module is the single source of truth for:
 - :data:`PipelineConfig` — dataclass holding the full pipeline configuration
 
 Both the CLI (``knox.cli.commands``) and the orchestrator (``knox.core.pipeline``)
-import these definitions from here. Keep the surface small and stable: this
 file is part of the public configuration contract.
 """
 
