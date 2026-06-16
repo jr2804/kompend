@@ -121,7 +121,7 @@ class ExternalParser(BaseParser):
             result = subprocess.run(  # noqa: S603
                 [self._command, str(source_path)],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
                 timeout=60,
                 check=False,
             )

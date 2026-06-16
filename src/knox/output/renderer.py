@@ -193,7 +193,7 @@ class DocumentRenderer:
                 cmd,
                 input=markdown,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
                 timeout=30,
             )
             # rumdl exits 0 on success, may emit formatted content on stdout
