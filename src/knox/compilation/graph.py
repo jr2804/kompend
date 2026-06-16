@@ -33,9 +33,18 @@ class GraphCompiler(BaseCompiler):
         Model name (reserved for future LLM-guided compilation).
     """
 
-    def __init__(self, model: str, *, min_content_length: int = 0) -> None:
+    def __init__(
+        self,
+        model: str,
+        *,
+        min_content_length: int = 0,
+        min_concept_sources: int = 0,
+        max_concept_pages: int = 0,
+    ) -> None:
         self.model = model
         self._min_content_length = min_content_length
+        self._min_concept_sources = min_concept_sources
+        self._max_concept_pages = max_concept_pages
 
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Blind compilation of resolved chunks into a knowledge graph.
@@ -67,6 +76,17 @@ class GraphCompiler(BaseCompiler):
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)
         edges.extend(self._build_typed_edges(chunks, nodes, entity_location))
         edges.extend(self._build_source_sibling_edges(nodes, edges))
+
+        if self._min_concept_sources > 0:
+            concept_nodes, concept_edges = self._build_concept_pages(
+                nodes,
+                entity_location,
+                min_sources=self._min_concept_sources,
+                max_pages=self._max_concept_pages,
+            )
+            nodes.extend(concept_nodes)
+            edges.extend(concept_edges)
+
         toc = self._build_toc(nodes)
 
         source_count, source_names = self._source_stats(chunks)
@@ -293,6 +313,89 @@ class GraphCompiler(BaseCompiler):
                         seen.add((a, b))
                         new_edges.append({"source": a, "target": b, "type": "sibling"})
         return new_edges
+
+    @staticmethod
+    def _build_concept_pages(
+        nodes: list[WikiNode],
+        entity_location: dict[str, set[int]],
+        *,
+        min_sources: int,
+        max_pages: int,
+    ) -> tuple[list[WikiNode], list[dict[str, Any]]]:
+        """Create concept pages for entities spanning multiple source documents.
+
+        Each entity appearing in nodes from at least *min_sources* distinct
+        ``source_file`` values gets a synthesised page that aggregates
+        relevant excerpts from every mentioning section.  Bidirectional
+        edges connect the concept page to each source section.
+        """
+        node_sources: dict[str, str | None] = {
+            n.id: n.metadata.get("source_file") for n in nodes
+        }
+
+        candidates: list[tuple[str, set[int], set[str]]] = []
+        for entity_name, node_indices in entity_location.items():
+            if not entity_name or not entity_name.strip():
+                continue
+            sources: set[str] = set()
+            for idx in node_indices:
+                src = node_sources.get(nodes[idx].id)
+                if src is not None:
+                    sources.add(src)
+            if len(sources) >= min_sources:
+                candidates.append((entity_name, node_indices, sources))
+
+        candidates.sort(key=lambda c: len(c[2]), reverse=True)
+        if max_pages > 0:
+            candidates = candidates[:max_pages]
+
+        concept_nodes: list[WikiNode] = []
+        concept_edges: list[dict[str, Any]] = []
+        entity_lower = ""
+
+        for entity_name, node_indices, sources in candidates:
+            concept_id = f"concept_{len(concept_nodes)}"
+            entity_lower = entity_name.lower()
+            excerpts: list[str] = []
+            for idx in sorted(node_indices):
+                node = nodes[idx]
+                excerpt = ""
+                for para in (node.content or "").split("\n\n"):
+                    if entity_lower in para.lower():
+                        excerpt = para.strip()[:300]
+                        break
+                if not excerpt:
+                    excerpt = (node.content or "")[:200].strip()
+                if excerpt:
+                    excerpts.append(f"**{node.title}**\n\n{excerpt}")
+
+            content = "\n\n---\n\n".join(excerpts) if excerpts else f"*{entity_name}*"
+
+            concept_node = WikiNode(
+                id=concept_id,
+                title=entity_name,
+                content=content,
+                node_type="concept",
+                source_chunks=[],
+                metadata={
+                    "cross_cutting": True,
+                    "source_count": len(sources),
+                    "referenced_nodes": [nodes[idx].id for idx in sorted(node_indices)],
+                    "frontmatter": {"kind": "concept"},
+                },
+            )
+            concept_nodes.append(concept_node)
+
+            for idx in sorted(node_indices):
+                target_id = nodes[idx].id
+                concept_edges.append(
+                    {"source": concept_id, "target": target_id, "type": "concept_reference"}
+                )
+                concept_edges.append(
+                    {"source": target_id, "target": concept_id, "type": "concept_reference"}
+                )
+
+        return concept_nodes, concept_edges
 
     @staticmethod
     def _build_toc(nodes: list[WikiNode]) -> list[dict[str, Any]]:

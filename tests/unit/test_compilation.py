@@ -476,6 +476,155 @@ class TestSiblingEdges:
         assert len(pair_edges) <= 3
 
 
+class TestConceptPages:
+    """Cross-cutting concept page generation (knox-wgt.7)."""
+
+    @staticmethod
+    def _generated_concepts(wiki: CompiledWiki) -> list[WikiNode]:
+        return [n for n in wiki.nodes if n.metadata.get("cross_cutting")]
+
+    def test_concept_page_created_for_cross_source_entity(self) -> None:
+        """Entity in 2+ source documents gets a concept page."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="The MTD metric is widely used for evaluation.",
+                    heading="Methods",
+                    chunk_id="c1",
+                    source_file=Path("paper-a.pdf"),
+                ),
+                entities=[{"name": "MTD", "type": "METRIC"}],
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="We employed MTD as our primary measure.",
+                    heading="Results",
+                    chunk_id="c2",
+                    source_file=Path("paper-b.pdf"),
+                ),
+                entities=[{"name": "MTD", "type": "METRIC"}],
+            ),
+        ]
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
+        wiki = compiler.compile(chunks)
+        concepts = self._generated_concepts(wiki)
+        assert len(concepts) == 1
+        assert concepts[0].title == "MTD"
+        assert concepts[0].metadata.get("source_count") == 2
+
+    def test_no_concept_page_for_single_source_entity(self) -> None:
+        """Entity in only 1 source does not get a concept page."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="The MTD metric.",
+                    heading="Methods",
+                    chunk_id="c1",
+                    source_file=Path("paper-a.pdf"),
+                ),
+                entities=[{"name": "MTD", "type": "METRIC"}],
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Also MTD.",
+                    heading="Results",
+                    chunk_id="c2",
+                    source_file=Path("paper-a.pdf"),
+                ),
+                entities=[{"name": "MTD", "type": "METRIC"}],
+            ),
+        ]
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
+        wiki = compiler.compile(chunks)
+        assert len(self._generated_concepts(wiki)) == 0
+
+    def test_concept_page_has_bidirectional_edges(self) -> None:
+        """Concept page links to and from source sections."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="STOI is a standard metric.",
+                    heading="Intro",
+                    chunk_id="c1",
+                    source_file=Path("paper-a.pdf"),
+                ),
+                entities=[{"name": "STOI", "type": "METRIC"}],
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="We compare against STOI.",
+                    heading="Methods",
+                    chunk_id="c2",
+                    source_file=Path("paper-b.pdf"),
+                ),
+                entities=[{"name": "STOI", "type": "METRIC"}],
+            ),
+        ]
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
+        wiki = compiler.compile(chunks)
+        concept = next(n for n in wiki.nodes if n.metadata.get("cross_cutting"))
+        concept_edges = [e for e in wiki.edges if e.get("type") == "concept_reference"]
+        outgoing = [e for e in concept_edges if e["source"] == concept.id]
+        incoming = [e for e in concept_edges if e["target"] == concept.id]
+        assert len(outgoing) == 2
+        assert len(incoming) == 2
+
+    def test_concept_pages_disabled_by_default(self) -> None:
+        """Without min_concept_sources config, no concept pages."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Entity A.",
+                    heading="S1",
+                    chunk_id="c1",
+                    source_file=Path("a.pdf"),
+                ),
+                entities=[{"name": "EntityA", "type": "X"}],
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Entity A again.",
+                    heading="S2",
+                    chunk_id="c2",
+                    source_file=Path("b.pdf"),
+                ),
+                entities=[{"name": "EntityA", "type": "X"}],
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert not any(n.metadata.get("cross_cutting") for n in wiki.nodes)
+
+    def test_max_concept_pages_caps_count(self) -> None:
+        """No more than max_concept_pages concept nodes are created."""
+        chunks: list[ResolvedChunk] = []
+        for i in range(5):
+            chunks.append(
+                ResolvedChunk(
+                    chunk=_chunk(
+                        text=f"Concept {i} is discussed here.",
+                        heading=f"Section {i}",
+                        chunk_id=f"c{i}a",
+                        source_file=Path(f"paper-{i}.pdf"),
+                    ),
+                    entities=[{"name": f"Concept{i}", "type": "X"}],
+                ),
+            )
+            chunks.append(
+                ResolvedChunk(
+                    chunk=_chunk(
+                        text=f"Concept {i} appears again.",
+                        heading="Other",
+                        chunk_id=f"c{i}b",
+                        source_file=Path("shared.pdf"),
+                    ),
+                    entities=[{"name": f"Concept{i}", "type": "X"}],
+                ),
+            )
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=2)
+        wiki = compiler.compile(chunks)
+        assert len(self._generated_concepts(wiki)) == 2
+
+
 # ===========================================================================
 #  WiCERCompiler
 # ===========================================================================

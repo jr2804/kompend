@@ -738,6 +738,8 @@ def build_pipeline(
                 base_compiler=GraphCompiler(
                     model=config.llm.default_model,
                     min_content_length=config.budget.min_content_length,
+                    min_concept_sources=config.budget.min_concept_sources,
+                    max_concept_pages=config.budget.max_concept_pages,
                 ),
                 llm_client=llm_client,
             )
@@ -747,6 +749,8 @@ def build_pipeline(
                 base=GraphCompiler(
                     model=config.llm.default_model,
                     min_content_length=config.budget.min_content_length,
+                    min_concept_sources=config.budget.min_concept_sources,
+                    max_concept_pages=config.budget.max_concept_pages,
                 ),
                 llm_client=llm_client,
             )

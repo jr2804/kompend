@@ -180,6 +180,8 @@ class PipelineConfig:
             verify_min_ngram=cfg.get("compile.budget.verify_min_ngram", BudgetConfig().verify_min_ngram),
             wicer_max_iterations=cfg.get("compile.budget.wicer_max_iterations", BudgetConfig().wicer_max_iterations),
             min_content_length=cfg.get("compile.budget.min_content_length", BudgetConfig().min_content_length),
+            min_concept_sources=cfg.get("compile.budget.min_concept_sources", BudgetConfig().min_concept_sources),
+            max_concept_pages=cfg.get("compile.budget.max_concept_pages", BudgetConfig().max_concept_pages),
             chunk_size_min=cfg.get("compile.budget.chunk_size_min", BudgetConfig().chunk_size_min),
             chunk_size_max=cfg.get("compile.budget.chunk_size_max", BudgetConfig().chunk_size_max),
             extract_output_ratio=cfg.get("compile.budget.extract_output_ratio", BudgetConfig().extract_output_ratio),
