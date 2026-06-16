@@ -8,6 +8,7 @@ bun = "latest"
 # Linter/formatter/type checker tools
 "ruff" = "latest"
 "ty" = "latest"
+"rumdl" = "latest"
 "pipx:mdformat" = {version = "latest", uvx = "true", uvx_args = "--with mdformat-frontmatter"}
 "pipx:undersort" = "latest"
 "pipx:codespell" = "latest"
