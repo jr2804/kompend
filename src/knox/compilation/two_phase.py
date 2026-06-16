@@ -17,19 +17,28 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import time
 from collections import defaultdict
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import litellm
-from slugify import slugify as _slugify_impl
-
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
+from knox.compilation._two_phase_core import (
+    Extraction,
+    ExtractionSet,
+    _chars_to_tokens,
+    _compute_quality_score,
+    _extract_images_from_chunks,
+    _fallback_extraction,
+    _merge_extractions,
+    _segment_sources,
+    _slugify,
+    _tokens_to_chars,
+    _try_litellm_json,
+    _upsert_node,
+)
 from knox.core.cache_store import CacheStore
-from knox.core.models import CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
@@ -38,401 +47,14 @@ logger = logging.getLogger(__name__)
 
 _loader = get_template_loader()
 
-_CHARS_PER_TOKEN = 4  # Approximate for English text.
-
-
-def _tokens_to_chars(tokens: int) -> int:
-    """Convert token count to approximate character count."""
-    return tokens * _CHARS_PER_TOKEN
-
-
-def _chars_to_tokens(chars: int) -> int:
-    """Convert character count to approximate token count."""
-    return max(1, chars // _CHARS_PER_TOKEN)
-
-
-def _slugify(text: str) -> str:
-    """Convert a title to a lowercase hyphenated slug."""
-    return _slugify_impl(text) or "concept"
-
-
-def _dedup_id(node_id: str, seen: set[str]) -> str:
-    """Append a numeric suffix if node_id already exists in *seen*, then add."""
-    candidate = node_id
-    counter = 2
-    while candidate in seen:
-        candidate = f"{node_id}-{counter}"
-        counter += 1
-    seen.add(candidate)
-    return candidate
-
-
-def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
-    """Extract image metadata from IMAGE chunks.
-
-    Returns a list of dicts with keys: path, caption, element_type.
-    Images are collected from:
-    - chunk.metadata["image_path"] (file mode)
-    - chunk.metadata["image_base64"] (base64 mode)
-    - VLM captions from resolved.entities with type="image_description"
-    """
-    images: list[dict[str, Any]] = []
-
-    for rc in chunks:
-        if ElementType.IMAGE not in rc.chunk.element_types:
-            continue
-
-        # Get image path or base64 data
-        img_path = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
-        if not img_path:
-            # Try resolved metadata
-            img_path = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
-
-        if not img_path:
-            continue
-
-        # Get VLM caption if available
-        caption = ""
-        for entity in rc.entities:
-            if entity.get("type") == "image_description" and entity.get("context"):
-                caption = entity["context"]
-                break
-
-        images.append(
-            {
-                "path": img_path,
-                "caption": caption,
-                "element_type": "image",
-            }
-        )
-
-    return images
-
-
-def _split_sections(text: str) -> dict[str, str]:
-    """Split markdown text into sections keyed by heading.
-
-    Content before the first heading is stored under the empty-string key.
-    """
-    sections: dict[str, str] = {}
-    current_heading = ""
-    current_lines: list[str] = []
-
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("## "):
-            if current_lines:
-                sections[current_heading] = "\n".join(current_lines).strip()
-            current_heading = stripped[3:].strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-
-    if current_lines:
-        sections[current_heading] = "\n".join(current_lines).strip()
-
-    return sections
-
-
-def _merge_sections(existing: dict[str, str], incoming: dict[str, str]) -> str:
-    """Merge two section dicts, keeping the richer version per heading."""
-    merged: dict[str, str] = {}
-    for heading in dict.fromkeys(list(existing) + list(incoming)):
-        ex = existing.get(heading, "")
-        inc = incoming.get(heading, "")
-        merged[heading] = ex if len(ex) >= len(inc) else inc
-
-    result = ""
-    for heading, body in merged.items():
-        if heading:
-            result += f"## {heading}\n{body}\n\n"
-        elif body:
-            result += f"{body}\n\n"
-    return result.strip()
-
-
-def _compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
-    """Compute a 0–100 quality score for a compiled wiki.
-
-    Weighted average of three sub-scores:
-    - **Completeness** (40 %): fraction of nodes with non-trivial content (>50 chars)
-    - **Connectivity** (30 %): edge density relative to a target of ~3 edges/node
-    - **Richness** (30 %): average content length normalised against a 500-char target
-    """
-    n = len(nodes)
-    if n == 0:
-        return 0.0
-
-    non_empty = sum(1 for node in nodes if len((node.content or "").strip()) > 50)
-    completeness = non_empty / n
-
-    target_edges = n * 3
-    connectivity = min(len(edges) / target_edges, 1.0) if target_edges > 0 else 0.0
-
-    avg_len = sum(len(node.content or "") for node in nodes) / n
-    richness = min(avg_len / 500.0, 1.0)
-
-    return round((completeness * 0.4 + connectivity * 0.3 + richness * 0.3) * 100, 1)
-
-
-def _merge_node(
-    existing: WikiNode,
-    incoming: WikiNode,
-) -> WikiNode:
-    """Merge *incoming* node into *existing* using section-aware dedup.
-
-    Sections with the same heading are de-duplicated, keeping the longer
-    (richer) version.  Sections unique to either source are appended.
-    Provenance lists are unioned.
-    """
-    existing_text = existing.content or ""
-    incoming_text = incoming.content or ""
-
-    if not existing_text.strip():
-        merged_content = incoming_text
-    elif not incoming_text.strip():
-        merged_content = existing_text
-    else:
-        ex_sections = _split_sections(existing_text)
-        inc_sections = _split_sections(incoming_text)
-        merged_content = _merge_sections(ex_sections, inc_sections)
-
-    merged_title = existing.title or incoming.title
-
-    # Merge provenance
-    existing_prov = set(existing.metadata.get("provenance", []) or [])
-    incoming_prov = set(incoming.metadata.get("provenance", []) or [])
-    merged_prov = sorted(existing_prov | incoming_prov)
-
-    # Merge related
-    existing_rel = set(existing.metadata.get("related", []) or [])
-    incoming_rel = set(incoming.metadata.get("related", []) or [])
-    merged_rel = sorted(existing_rel | incoming_rel)
-
-    return WikiNode(
-        id=existing.id,
-        title=merged_title,
-        content=merged_content,
-        node_type=existing.node_type,
-        source_chunks=list(dict.fromkeys(existing.source_chunks + incoming.source_chunks)),
-        metadata={
-            **existing.metadata,
-            "provenance": merged_prov,
-            "related": merged_rel,
-        },
-    )
-
-
-@dataclass
-class Extraction:
-    """Phase-1 extraction result for a single source."""
-
-    source: str
-    summary: str = ""
-    entities: list[dict[str, str]] = field(default_factory=list)
-    concepts: list[dict[str, str]] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "source": self.source,
-            "summary": self.summary,
-            "entities": list(self.entities),
-            "concepts": list(self.concepts),
-            "tags": list(self.tags),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Extraction:
-        return cls(
-            source=data.get("source", ""),
-            summary=data.get("summary", ""),
-            entities=list(data.get("entities", [])),
-            concepts=list(data.get("concepts", [])),
-            tags=list(data.get("tags", [])),
-        )
-
-
-@dataclass
-class ExtractionSet:
-    """All extractions across the corpus."""
-
-    extractions: list[Extraction] = field(default_factory=list)
-
-    def add(self, extraction: Extraction) -> None:
-        self.extractions.append(extraction)
-
-    def concept_pages(self) -> list[dict[str, Any]]:
-        """Return merged concept dicts with provenance per source.
-
-        Output schema: ``{name, definition, sources: [str], definitions: [str]}``
-        """
-        merged: dict[str, dict[str, Any]] = {}
-        for ext in self.extractions:
-            for concept in ext.concepts:
-                name = concept.get("name", "").strip()
-                if not name:
-                    continue
-                bucket = merged.setdefault(name, {"name": name, "sources": [], "definitions": []})
-                bucket["sources"].append(ext.source)
-                if concept.get("definition"):
-                    bucket["definitions"].append(concept["definition"])
-        return list(merged.values())
-
-    def entity_index(self) -> dict[str, list[str]]:
-        """Return ``entity_name -> [source, ...]``."""
-        out: dict[str, list[str]] = defaultdict(list)
-        for ext in self.extractions:
-            for ent in ext.entities:
-                name = ent.get("name", "").strip()
-                if name:
-                    out[name].append(ext.source)
-        return dict(out)
-
-
-def _try_litellm_json(
-    prompt: str,
-    model: str,
-    system: str | None = None,
-    timeout: float | None = None,
-) -> Any | None:
-    """Call litellm completion and return parsed JSON, or None on failure."""
-    start = time.monotonic()
-    try:
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
-        }
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        response = litellm.completion(**kwargs)
-        elapsed = time.monotonic() - start
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            try:
-                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                pt = 0
-            try:
-                ct = int(getattr(usage, "completion_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                ct = 0
-            tt = pt + ct
-            tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
-            logger.info(
-                "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
-                model,
-                elapsed,
-                pt,
-                ct,
-                tt,
-                tps,
-            )
-        else:
-            logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
-        content = response.choices[0].message.content
-        if not content:
-            return None
-        return json.loads(content)
-    except Exception:
-        elapsed = time.monotonic() - start
-        logger.error("LLM fail model=%s in=%.1fs", model, elapsed, exc_info=True)
-        return None
-
-
-def _fallback_extraction(source: str, text: str) -> Extraction:
-    """Heuristic extraction when the LLM is unavailable."""
-    sentences = [s.strip() for s in text.replace("\n", " ").split(".") if len(s.strip()) > 10]
-    summary = sentences[0] if sentences else ""
-    return Extraction(
-        source=source,
-        summary=summary,
-        entities=[],
-        concepts=[{"name": "auto_concept", "definition": summary}] if summary else [],
-        tags=[],
-    )
-
-
-def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
-    """Merge multiple batch extractions for the same source into one."""
-    if not parts:
-        return Extraction(source=source)
-    if len(parts) == 1:
-        return parts[0]
-
-    summary = " ".join(p.summary for p in parts if p.summary)
-    entities: list[dict[str, str]] = []
-    concepts: list[dict[str, str]] = []
-    tags: list[str] = []
-    seen_entities: set[str] = set()
-    seen_concepts: set[str] = set()
-    seen_tags: set[str] = set()
-    for p in parts:
-        for e in p.entities:
-            key = e.get("name", "").strip().lower()
-            if key and key not in seen_entities:
-                entities.append(e)
-                seen_entities.add(key)
-        for c in p.concepts:
-            key = c.get("name", "").strip().lower()
-            if key and key not in seen_concepts:
-                concepts.append(c)
-                seen_concepts.add(key)
-        for t in p.tags:
-            if t not in seen_tags:
-                tags.append(t)
-                seen_tags.add(t)
-    return Extraction(source=source, summary=summary, entities=entities, concepts=concepts, tags=tags)
-
-
-def _segment_sources(
-    sources: list[tuple[str, str]],
-    segment_size: int,
-) -> list[list[tuple[str, str]]]:
-    """Split source content into segments of at most *segment_size* chars.
-
-    Returns a list of segments, where each segment is a list of
-    ``(label, content)`` pairs.  No data is dropped — sources that
-    exceed *segment_size* are split across multiple segments.
-    """
-    if not sources:
-        return []
-
-    segments: list[list[tuple[str, str]]] = []
-    current: list[tuple[str, str]] = []
-    current_len = 0
-
-    for label, content in sources:
-        remaining = content
-        while remaining:
-            space = segment_size - current_len
-            if space <= 0:
-                segments.append(current)
-                current = []
-                current_len = 0
-                space = segment_size
-            if len(remaining) <= space:
-                current.append((label, remaining))
-                current_len += len(remaining)
-                remaining = ""
-            else:
-                # Split at the last newline within budget, or hard-cut.
-                cut = remaining.rfind("\n", 0, space)
-                if cut <= 0:
-                    cut = space
-                current.append((label, remaining[:cut]))
-                current_len += cut
-                remaining = remaining[cut:]
-
-    if current:
-        segments.append(current)
-    return segments
+# Re-export internal helpers for backward compatibility.
+__all__ = [
+    "TwoPhaseCompiler",
+    "Extraction",
+    "ExtractionSet",
+    "_tokens_to_chars",
+    "_chars_to_tokens",
+]
 
 
 class TwoPhaseCompiler(BaseCompiler):
@@ -492,10 +114,6 @@ class TwoPhaseCompiler(BaseCompiler):
             cw.source,
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Run the two-phase compile with generation cache (Tier 3 Phase 2)."""
         if not chunks:
@@ -534,7 +152,6 @@ class TwoPhaseCompiler(BaseCompiler):
         dropped.  Results from each batch are merged into a single
         :class:`Extraction` per source.
         """
-        _ = self  # noqa: PLR6301 — instance method for future per-compiler config
         extractions = ExtractionSet()
         # Group chunks by source file so each source is extracted once.
         by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
@@ -615,31 +232,78 @@ class TwoPhaseCompiler(BaseCompiler):
         source_segments = _segment_sources(sources, segment_char_size)
 
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
-        nodes: list[WikiNode] = []
-        edges: list[dict[str, Any]] = []
-        slug_to_idx: dict[str, int] = {}  # slug → index in nodes (for merging)
+        nodes, slug_to_idx = self._generate_all_pages(
+            concepts,
+            source_segments,
+            generation_system,
+            all_images,
+        )
 
-        def _upsert_node(new_node: WikiNode) -> None:
-            """Insert a new node, or merge with existing if slug matches."""
-            slug = new_node.id
-            if slug in slug_to_idx:
-                idx = slug_to_idx[slug]
-                nodes[idx] = _merge_node(nodes[idx], new_node)
-            else:
-                slug_to_idx[slug] = len(nodes)
-                nodes.append(new_node)
+        if not nodes:
+            return self._fallback_compile(chunks)
+
+        self.disambiguate_duplicate_titles(nodes, chunks)
+        nodes = self.filter_empty_nodes(
+            nodes,
+            min_content_length=self._config.budget.min_content_length,
+        )
+
+        if not nodes:
+            return self._fallback_compile(chunks)
+
+        edges = self._build_edges(nodes, extractions)
+        quality = _compute_quality_score(nodes, edges)
+
+        toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
+        return CompiledWiki(
+            nodes=nodes,
+            edges=edges,
+            toc=toc,
+            quality_score=quality,
+            metadata={
+                "chunk_count": len(chunks),
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "two_phase": True,
+                "concepts_merged": len(concepts),
+                "context_window": cw.max_input,
+            },
+        )
+
+    def _generate_all_pages(
+        self,
+        concepts: list[dict[str, Any]],
+        source_segments: list[list[tuple[str, str]]],
+        generation_system: str,
+        all_images: list[dict[str, Any]],
+    ) -> tuple[list[WikiNode], dict[str, int]]:
+        """Generate (or fallback-generate) one node per concept/segment pair."""
+        nodes: list[WikiNode] = []
+        slug_to_idx: dict[str, int] = {}
 
         num_concepts = len(concepts)
         num_segments = len(source_segments)
-        batch_size = budget.concepts_per_batch
-        logger.info("TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d)", num_concepts, num_segments, batch_size)
+        batch_size = self._budget.concepts_per_batch
+        logger.info(
+            "TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d)",
+            num_concepts,
+            num_segments,
+            batch_size,
+        )
         for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
 
             # Iterate through ALL source segments for this concept batch,
             # generating pages from each segment and merging.
             for seg_idx, segment in enumerate(source_segments):
-                logger.info("TwoPhase: gen batch %d-%d/%d segment %d/%d", batch_start, len(batch), num_concepts, seg_idx + 1, num_segments)
+                logger.info(
+                    "TwoPhase: gen batch %d-%d/%d segment %d/%d",
+                    batch_start,
+                    len(batch),
+                    num_concepts,
+                    seg_idx + 1,
+                    num_segments,
+                )
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
                 prompt = _loader.render(
@@ -647,7 +311,12 @@ class TwoPhaseCompiler(BaseCompiler):
                     concepts_json=json.dumps(batch),
                     content=content_block,
                 )
-                data = _try_litellm_json(prompt, system=generation_system, model=self._model, timeout=self._timeout)
+                data = _try_litellm_json(
+                    prompt,
+                    system=generation_system,
+                    model=self._model,
+                    timeout=self._timeout,
+                )
 
                 if not isinstance(data, dict):
                     logger.warning(
@@ -673,7 +342,9 @@ class TwoPhaseCompiler(BaseCompiler):
                                         "two_phase": True,
                                         "images": all_images,
                                     },
-                                )
+                                ),
+                                nodes,
+                                slug_to_idx,
                             )
                     continue
 
@@ -698,25 +369,20 @@ class TwoPhaseCompiler(BaseCompiler):
                                     "title": str(page.get("title", f"Concept {batch_start + idx}")),
                                 },
                             },
-                        )
+                        ),
+                        nodes,
+                        slug_to_idx,
                     )
 
-        if not nodes:
-            return self._fallback_compile(chunks)
+        return nodes, slug_to_idx
 
-        self.disambiguate_duplicate_titles(nodes, chunks)
-        nodes = self.filter_empty_nodes(
-            nodes,
-            min_content_length=self._config.budget.min_content_length,
-        )
-
-        if not nodes:
-            return self._fallback_compile(chunks)
-
-        # Cross-source edges: pair-wise connect pages that share an entity.
-        # Only match entities against title + summary (first 200 chars), not
-        # the entire page content — full-content matching creates near-complete
-        # graphs in narrow domains.
+    def _build_edges(
+        self,
+        nodes: list[WikiNode],
+        extractions: ExtractionSet,
+    ) -> list[dict[str, Any]]:
+        """Build cross-source entity and explicit related edges."""
+        edges: list[dict[str, Any]] = []
         entity_index = extractions.entity_index()
         entity_to_node: dict[str, set[str]] = defaultdict(set)
         for ent_name in entity_index:
@@ -755,25 +421,11 @@ class TwoPhaseCompiler(BaseCompiler):
                     if pair in seen_edges:
                         continue
                     seen_edges.add(pair)
-                    edges.append({"source": node.id, "target": target_id, "type": "related", "entity": related_title})
+                    edges.append(
+                        {"source": node.id, "target": target_id, "type": "related", "entity": related_title},
+                    )
 
-        quality = _compute_quality_score(nodes, edges)
-
-        toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
-        return CompiledWiki(
-            nodes=nodes,
-            edges=edges,
-            toc=toc,
-            quality_score=quality,
-            metadata={
-                "chunk_count": len(chunks),
-                "node_count": len(nodes),
-                "edge_count": len(edges),
-                "two_phase": True,
-                "concepts_merged": len(concepts),
-                "context_window": cw.max_input,
-            },
-        )
+        return edges
 
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
         """Run a single extraction LLM call with cache (Tier 3 Phase 1)."""
@@ -790,7 +442,12 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(prompt, system=extraction_system, model=self._model, timeout=self._timeout)
+        data = _try_litellm_json(
+            prompt,
+            system=extraction_system,
+            model=self._model,
+            timeout=self._timeout,
+        )
         if isinstance(data, dict):
             result = Extraction(
                 source=source,
@@ -803,10 +460,6 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._cache_store.set("extract", extract_deps, result)
             return result
         return _fallback_extraction(source, combined)
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _gen_cache_deps(self, extractions: ExtractionSet) -> dict[str, str]:
         """Compute dependency hashes for generation cache."""
