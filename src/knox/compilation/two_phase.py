@@ -21,8 +21,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from knox.compilation.base import BaseCompiler
-from knox.compilation.graph import GraphCompiler
 from knox.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
@@ -37,6 +35,8 @@ from knox.compilation._two_phase_core import (
     _try_litellm_json,
     _upsert_node,
 )
+from knox.compilation.base import BaseCompiler
+from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
@@ -49,11 +49,11 @@ _loader = get_template_loader()
 
 # Re-export internal helpers for backward compatibility.
 __all__ = [
-    "TwoPhaseCompiler",
     "Extraction",
     "ExtractionSet",
-    "_tokens_to_chars",
+    "TwoPhaseCompiler",
     "_chars_to_tokens",
+    "_tokens_to_chars",
 ]
 
 

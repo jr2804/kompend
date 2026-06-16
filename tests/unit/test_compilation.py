@@ -476,10 +476,6 @@ class TestSiblingEdges:
 class TestConceptPages:
     """Cross-cutting concept page generation (knox-wgt.7)."""
 
-    @staticmethod
-    def _generated_concepts(wiki: CompiledWiki) -> list[WikiNode]:
-        return [n for n in wiki.nodes if n.metadata.get("cross_cutting")]
-
     def test_concept_page_created_for_cross_source_entity(self) -> None:
         """Entity in 2+ source documents gets a concept page."""
         chunks = [
@@ -620,6 +616,10 @@ class TestConceptPages:
         compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=2)
         wiki = compiler.compile(chunks)
         assert len(self._generated_concepts(wiki)) == 2
+
+    @staticmethod
+    def _generated_concepts(wiki: CompiledWiki) -> list[WikiNode]:
+        return [n for n in wiki.nodes if n.metadata.get("cross_cutting")]
 
 
 # ===========================================================================
