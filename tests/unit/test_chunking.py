@@ -175,18 +175,16 @@ class TestHybridChunker:
         assert chunker._effective_max == available
 
     def test_context_window_tiny_model(self) -> None:
-        """Tiny context window produces small chunks proportional to capacity."""
+        """Tiny context window is clamped up to chunk_size_min (safety floor)."""
         cw = ContextWindow(max_input=512, max_output=256, source="test")
         chunker = HybridChunker(context_window=cw, chunk_size_min=2048)
-        # No clamping: effective_max is proportional to the actual context window.
-        assert chunker._effective_max == int(512 * 0.8)
+        assert chunker._effective_max == 2048
 
     def test_context_window_huge_model(self) -> None:
-        """Huge context window is used as-is (no artificial cap)."""
+        """Huge context window is clamped to chunk_size_max (safety ceiling)."""
         cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source="test")
         chunker = HybridChunker(context_window=cw, chunk_size_max=131072)
-        # No clamping to chunk_size_max: the full context window is respected.
-        assert chunker._effective_max == int(2_000_000 * 0.8)
+        assert chunker._effective_max == 131072
 
     def test_no_context_window_uses_max_tokens(self) -> None:
         """Without context_window, falls back to max_tokens path."""
@@ -225,3 +223,30 @@ class TestHybridChunker:
         result = HybridChunker(max_tokens=16, reserve_ratio=0.0).chunk(doc)
         for c in result:
             assert _sentence_ends(c.text)
+
+
+class TestContextWindowClamp:
+    """Chunk size must be clamped to [chunk_size_min, chunk_size_max] (knox-7sp)."""
+
+    def test_large_context_clamped_to_max(self) -> None:
+        """A 1M-token model must not produce 800K-token chunks."""
+        cw = ContextWindow(max_input=1_000_000, max_output=8192, source="litellm")
+        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        assert chunker._effective_max == 131072
+
+    def test_small_context_respects_min(self) -> None:
+        """An 8K model gets 80% minus reserve, above chunk_size_min."""
+        cw = ContextWindow(max_input=8192, max_output=4096, source="litellm")
+        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        assert chunker._effective_max == 6553
+
+    def test_mid_range_context_unclamped(self) -> None:
+        """A 128K model is below chunk_size_max, so no upper clamp."""
+        cw = ContextWindow(max_input=131072, max_output=8192, source="litellm")
+        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        assert chunker._effective_max == 104857
+
+    def test_fallback_uses_max_tokens_unclamped(self) -> None:
+        """Without context_window, legacy max_tokens is used directly."""
+        chunker = HybridChunker(max_tokens=1024, reserve_ratio=0.2)
+        assert chunker._effective_max == 819

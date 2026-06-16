@@ -30,8 +30,9 @@ class BaseChunker(ABC):
         self._chunk_size_min = chunk_size_min
         self._chunk_size_max = chunk_size_max
         if context_window is not None:
-            # Use the discovered context window as-is — no clamping.
-            self._effective_max = int(context_window.max_input * (1 - reserve_ratio))
+            # Use the discovered context window, clamped to [min, max] safety rails.
+            raw = int(context_window.max_input * (1 - reserve_ratio))
+            self._effective_max = max(self._chunk_size_min, min(raw, self._chunk_size_max))
         else:
             # Fallback when no context window was discovered.
             self._effective_max = int(max_tokens * (1 - reserve_ratio))
