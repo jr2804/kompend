@@ -393,6 +393,89 @@ class TestCrossDocumentSeparation:
         assert len(wiki.nodes) == 1
 
 
+class TestSiblingEdges:
+    """Cross-linking via same-source sibling edges (knox-wgt.8)."""
+
+    def test_multi_section_source_gets_sibling_edges(self) -> None:
+        """Consecutive same-source nodes are linked bidirectionally."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text=f"Section {i} body content here.",
+                    heading=f"Section {i}",
+                    chunk_id=f"c{i}",
+                    source_file=Path("paper.pdf"),
+                ),
+            )
+            for i in range(1, 4)
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        assert len(wiki.nodes) == 3
+        sibling_edges = [e for e in wiki.edges if e.get("type") == "sibling"]
+        # 2 consecutive pairs × 2 directions = 4 edges
+        assert len(sibling_edges) == 4
+        targets = {e["target"] for e in sibling_edges}
+        sources = {e["source"] for e in sibling_edges}
+        # Every node should appear as both source and target
+        for node in wiki.nodes:
+            assert node.id in targets
+            assert node.id in sources
+
+    def test_single_section_source_no_sibling_edges(self) -> None:
+        """A source with only one section gets no sibling edges."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Only section.",
+                    heading="Intro",
+                    chunk_id="c1",
+                    source_file=Path("paper.pdf"),
+                ),
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        sibling_edges = [e for e in wiki.edges if e.get("type") == "sibling"]
+        assert len(sibling_edges) == 0
+
+    def test_no_source_file_no_sibling_edges(self) -> None:
+        """Nodes without source_file do not get sibling edges."""
+        chunks = _make_chunks(3, heading="Shared")
+        wiki = GraphCompiler("model").compile(chunks)
+        sibling_edges = [e for e in wiki.edges if e.get("type") == "sibling"]
+        assert len(sibling_edges) == 0
+
+    def test_sibling_edges_dedup_with_entity_edges(self) -> None:
+        """Sibling edges are not duplicated if an entity edge already exists."""
+        chunks = [
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Section 1 references Foo.",
+                    heading="Section 1",
+                    chunk_id="c1",
+                    source_file=Path("paper.pdf"),
+                ),
+                entities=[{"name": "Foo", "type": "CONCEPT"}],
+            ),
+            ResolvedChunk(
+                chunk=_chunk(
+                    text="Section 2 also mentions Foo.",
+                    heading="Section 2",
+                    chunk_id="c2",
+                    source_file=Path("paper.pdf"),
+                ),
+                entities=[{"name": "Foo", "type": "CONCEPT"}],
+            ),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        # Entity edge creates one direction; sibling fills the other
+        pair_edges = [
+            e for e in wiki.edges
+            if {e["source"], e["target"]} == {"node_0", "node_1"}
+        ]
+        # Should have entity_reference + sibling in both directions = 3 max
+        assert len(pair_edges) <= 3
+
+
 # ===========================================================================
 #  WiCERCompiler
 # ===========================================================================

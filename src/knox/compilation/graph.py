@@ -66,6 +66,7 @@ class GraphCompiler(BaseCompiler):
         self.disambiguate_duplicate_titles(nodes, chunks)
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)
         edges.extend(self._build_typed_edges(chunks, nodes, entity_location))
+        edges.extend(self._build_source_sibling_edges(nodes, edges))
         toc = self._build_toc(nodes)
 
         source_count, source_names = self._source_stats(chunks)
@@ -258,6 +259,40 @@ class GraphCompiler(BaseCompiler):
                         edges.append(edge)
 
         return edges
+
+    @staticmethod
+    def _build_source_sibling_edges(
+        nodes: list[WikiNode],
+        existing_edges: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Create bidirectional edges between consecutive same-source nodes.
+
+        Pages from a multi-section source document are linked in reading
+        order so every page has at least one incoming link. Nodes without
+        a ``source_file`` (provenance unknown) are skipped.
+        """
+        seen: set[tuple[str, str]] = {
+            (e["source"], e["target"]) for e in existing_edges
+        }
+
+        by_source: dict[str, list[int]] = defaultdict(list)
+        for idx, node in enumerate(nodes):
+            source = node.metadata.get("source_file")
+            if source is not None:
+                by_source[source].append(idx)
+
+        new_edges: list[dict[str, Any]] = []
+        for indices in by_source.values():
+            if len(indices) < 2:
+                continue
+            for i in range(len(indices) - 1):
+                src_id = nodes[indices[i]].id
+                tgt_id = nodes[indices[i + 1]].id
+                for a, b in [(src_id, tgt_id), (tgt_id, src_id)]:
+                    if (a, b) not in seen:
+                        seen.add((a, b))
+                        new_edges.append({"source": a, "target": b, "type": "sibling"})
+        return new_edges
 
     @staticmethod
     def _build_toc(nodes: list[WikiNode]) -> list[dict[str, Any]]:
