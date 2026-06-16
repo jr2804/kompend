@@ -92,19 +92,22 @@ logger = logging.getLogger(__name__)
 
 
 def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:
-    """Build a progress callback that translates pipeline events into Rich updates."""
+    """Build a progress callback that translates pipeline events into Rich updates.
+
+    The overall bar is reset per phase:
+    - **parse**: bar tracks files (0 → N)
+    - **resolve**: bar resets to track chunks (0 → M)
+    - **compile** / **output**: bar becomes indeterminate
+    """
 
     def _cb(phase: str, current: int, total: int, detail: str) -> None:
         if phase == "parse":
             if current == 0:
                 tracker.start()
             elif detail == "done":
-                tracker.message(f"Parsed {total} file(s)")
+                tracker.update_progress(total, f"Parsed {total} file(s)")
             else:
-                tracker.start_file(detail)
-                tracker.step("Parse")
-                tracker.step("Chunk")
-                tracker.finish_file(detail, "OK")
+                tracker.update_progress(current, f"[{current}/{total}] {detail}")
         elif phase == "index":
             if current == 0:
                 tracker.start()
@@ -113,17 +116,19 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
                 tracker.message("Download complete")
         elif phase == "resolve":
             if current == 0:
-                tracker.message("Resolving chunks…")
+                tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
+            elif detail == "done":
+                tracker.update_progress(total, "Resolve complete")
             else:
-                tracker.message("Resolve complete")
+                tracker.update_progress(current, f"Resolving [{current}/{total}]")
         elif phase == "compile":
             if current == 0:
-                tracker.message("Compiling wiki…")
+                tracker.reset_for_phase(None, "Compiling wiki…")
             else:
                 tracker.message("Compile complete")
         elif phase == "output":
             if current == 0:
-                tracker.message("Writing output…")
+                tracker.reset_for_phase(None, "Writing output…")
             else:
                 tracker.message("Output complete")
 

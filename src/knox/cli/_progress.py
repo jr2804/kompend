@@ -1,8 +1,8 @@
 """Rich progress bars for KNOX CLI operations.
 
-Provides two levels of progress display:
-1. **Across-file progress** — outer bar showing file X of N with per-file status
-2. **Within-file progress** — inner pipeline steps for the current file
+Provides a single overall bar that is reset per pipeline phase (parse →
+resolve → compile → output).  No per-file sub-tasks are created, keeping
+the display clean and avoiding accumulation of stale tasks.
 
 Auto-suppresses in non-TTY mode and respects ``--quiet`` / ``--no-progress``.
 """
@@ -60,13 +60,13 @@ class NullProgressTracker:
     def complete(self) -> None:
         pass
 
-    def step(self, name: str, status: str = "") -> None:
+    def update_progress(self, current: int, description: str) -> None:
         pass
 
-    def finish_file(self, file_name: str, status: str, duration: float = 0) -> None:
+    def reset_for_phase(self, total: int | None, description: str) -> None:
         pass
 
-    def error(self, file_name: str, message: str) -> None:
+    def message(self, msg: str) -> None:
         pass
 
     def stop(self) -> None:
@@ -137,118 +137,53 @@ class FileProgressTracker:
             self._progress = None
 
 
-# ── Step tracker (within-file) ──────────────────────────────────────────
-
-
-PIPELINE_STEPS = ["Download", "Parse", "Chunk", "Resolve", "Compile", "Write"]
-
-
-@dataclass
-class StepTracker:
-    """Tracks within-file pipeline steps.
-
-    Usage::
-
-        steps = StepTracker()
-        steps.start("paper.pdf")
-        steps.step("Parse", "OK")
-        steps.step("Chunk", "OK")
-        steps.step("Resolve", "running...")
-        steps.finish("paper.pdf", "OK")
-    """
-
-    parent_progress: Progress | None = None
-    _task: TaskID | None = None
-    _current_step: int = 0
-    _total_steps: int = 6
-    _step_statuses: list[str] = field(default_factory=list)
-
-    def start(self, file_name: str) -> None:
-        """Create a sub-task for the current file's progress."""
-        self._current_step = 0
-        self._step_statuses = []
-        if self.parent_progress:
-            self._task = self.parent_progress.add_task(
-                f"  {file_name}",
-                total=self._total_steps,
-            )
-
-    def step(self, name: str, status: str = "") -> None:
-        """Advance to the next pipeline step."""
-        self._current_step += 1
-        self._step_statuses.append(f"✓ {name}")
-        if self.parent_progress and self._task is not None:
-            self.parent_progress.update(
-                self._task,
-                advance=1,
-                description=f"  {name}",
-            )
-
-    def finish(self, file_name: str, status: str) -> None:
-        """Mark the current file's sub-task as complete."""
-        if self.parent_progress and self._task is not None:
-            self.parent_progress.update(
-                self._task,
-                completed=self._total_steps,
-                description=f"  ✓ {file_name} ({status})",
-            )
-
-
 # ── Combined tracker ────────────────────────────────────────────────────
 
 
 @dataclass
 class PipelineProgress:
-    """Combined across-file and within-file progress display.
+    """Single-bar progress display that resets per pipeline phase.
 
-    This is the main entry point for progress tracking in the pipeline.
+    The overall bar tracks file count during *parse*, chunk count during
+    *resolve*, and switches to indeterminate mode for *compile* / *output*.
     """
 
     enabled: bool = True
     _file_tracker: FileProgressTracker | None = None
-    _step_tracker: StepTracker | None = None
-    _file_index: int = 0
 
     def start(self) -> None:
         """Start the overall progress display."""
         if self._file_tracker:
             self._file_tracker.start()
-        # Connect step tracker to the now-created Rich Progress instance.
-        if self._step_tracker and self._file_tracker:
-            self._step_tracker.parent_progress = self._file_tracker._progress
 
-    def start_file(self, file_name: str) -> None:
-        """Start tracking progress for a new file."""
-        self._file_index += 1
-        if self._step_tracker:
-            self._step_tracker.start(file_name)
+    def update_progress(self, current: int, description: str) -> None:
+        """Set the bar's completed count and description."""
+        ft = self._file_tracker
+        if ft and ft._progress and ft._overall_task is not None:
+            ft._progress.update(ft._overall_task, completed=current, description=description)
 
-    def step(self, name: str, status: str = "") -> None:
-        """Advance one pipeline step for the current file."""
-        if self._step_tracker:
-            self._step_tracker.step(name, status)
+    def reset_for_phase(self, total: int | None, description: str) -> None:
+        """Reset the bar for a new pipeline phase.
 
-    def finish_file(self, file_name: str, status: str = "OK") -> None:
-        """Mark the current file as complete."""
-        if self._step_tracker:
-            self._step_tracker.finish(file_name, status)
-        if self._file_tracker:
-            self._file_tracker.advance()
-
-    def message(self, msg: str) -> None:
-        """Update the overall task description with a coarse status message.
-
-        Used for non-file phases (resolve, compile, output) where
-        per-file tracking doesn't apply.
+        *total* sets the new bar total; ``None`` makes it indeterminate.
         """
-        if self._file_tracker and self._file_tracker._progress and self._file_tracker._overall_task is not None:
-            self._file_tracker._progress.update(
-                self._file_tracker._overall_task,
-                description=msg,
+        ft = self._file_tracker
+        if ft and ft._progress and ft._overall_task is not None:
+            ft._progress.update(
+                ft._overall_task,
+                total=total,
+                completed=0,
+                description=description,
             )
 
+    def message(self, msg: str) -> None:
+        """Update the bar description without changing progress."""
+        ft = self._file_tracker
+        if ft and ft._progress and ft._overall_task is not None:
+            ft._progress.update(ft._overall_task, description=msg)
+
     def finish(self) -> None:
-        """Mark overall progress as complete."""
+        """Mark progress complete and stop the display."""
         if self._file_tracker:
             self._file_tracker.complete()
             self._file_tracker.stop()
@@ -257,10 +192,6 @@ class PipelineProgress:
         """Stop the progress display."""
         if self._file_tracker:
             self._file_tracker.stop()
-
-    def error(self, file_name: str, message: str) -> None:
-        """Log an error for a file (shown in task list)."""
-        pass  # errors are logged via finish_file
 
     @classmethod
     def create(
@@ -274,10 +205,7 @@ class PipelineProgress:
             return cls(enabled=False)
 
         file_tracker = FileProgressTracker(total=total_files)
-        # StepTracker parent_progress is set lazily in start() after
-        # FileProgressTracker creates the Rich Progress widget.
-        step_tracker = StepTracker(parent_progress=None)
-        return cls(enabled=True, _file_tracker=file_tracker, _step_tracker=step_tracker)
+        return cls(enabled=True, _file_tracker=file_tracker)
 
 
 @contextmanager

@@ -24,9 +24,9 @@ class TestNullProgressTracker:
         tracker.start()
         tracker.advance()
         tracker.complete()
-        tracker.step("Parse")
-        tracker.finish_file("test.pdf", "OK")
-        tracker.error("test.pdf", "message")
+        tracker.update_progress(1, "parsing")
+        tracker.reset_for_phase(10, "resolving")
+        tracker.message("working")
         tracker.stop()
 
 
@@ -40,16 +40,16 @@ class TestPipelineProgress:
         assert pp.enabled is True
 
     def test_lifecycle(self) -> None:
+        """Parse phase: start → update_progress → finish."""
         pp = PipelineProgress.create(total_files=2, force_progress=True)
         assert pp.enabled is True
         pp.start()
-        pp.start_file("doc1.pdf")
-        pp.step("Parse", "OK")
-        pp.step("Chunk", "OK")
-        pp.finish_file("doc1.pdf")
-        pp.start_file("doc2.pdf")
-        pp.step("Parse", "OK")
-        pp.finish_file("doc2.pdf")
-        pp.complete = lambda: None  # avoid actual stop
+        pp.update_progress(1, "[1/2] doc1.pdf")
+        pp.update_progress(2, "[2/2] doc2.pdf")
+        pp.reset_for_phase(120, "Resolving chunks (120 total)…")
+        pp.update_progress(60, "Resolving [60/120]")
+        pp.update_progress(120, "Resolve complete")
+        pp.reset_for_phase(None, "Compiling wiki…")
+        pp.message("Compile complete")
         pp.finish()
         pp.stop()

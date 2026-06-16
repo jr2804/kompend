@@ -622,8 +622,9 @@ class WikiPipeline:
         resolved: list[Any] = []
         vlm_model = self.config.llm.vlm_model or "none"
         use_cache = not self.config.no_cache
+        total = len(chunks)
 
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             if use_cache and chunk.text:
                 deps = {
                     "chunk_text": hashlib.sha256(chunk.text.encode()).hexdigest(),
@@ -632,6 +633,7 @@ class WikiPipeline:
                 cached = self._cache_store.get("resolve", deps)
                 if cached is not None:
                     resolved.append(cached)
+                    self._emit("resolve", idx + 1, total, "")
                     continue
 
             rc = self.resolver.resolve(chunk)
@@ -643,6 +645,7 @@ class WikiPipeline:
                 }
                 self._cache_store.set("resolve", deps, rc)
             resolved.append(rc)
+            self._emit("resolve", idx + 1, total, "")
 
         return resolved
 
