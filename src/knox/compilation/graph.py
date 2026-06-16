@@ -291,9 +291,7 @@ class GraphCompiler(BaseCompiler):
         order so every page has at least one incoming link. Nodes without
         a ``source_file`` (provenance unknown) are skipped.
         """
-        seen: set[tuple[str, str]] = {
-            (e["source"], e["target"]) for e in existing_edges
-        }
+        seen: set[tuple[str, str]] = {(e["source"], e["target"]) for e in existing_edges}
 
         by_source: dict[str, list[int]] = defaultdict(list)
         for idx, node in enumerate(nodes):
@@ -329,9 +327,7 @@ class GraphCompiler(BaseCompiler):
         relevant excerpts from every mentioning section.  Bidirectional
         edges connect the concept page to each source section.
         """
-        node_sources: dict[str, str | None] = {
-            n.id: n.metadata.get("source_file") for n in nodes
-        }
+        node_sources: dict[str, str | None] = {n.id: n.metadata.get("source_file") for n in nodes}
 
         candidates: list[tuple[str, set[int], set[str]]] = []
         for entity_name, node_indices in entity_location.items():
@@ -388,12 +384,8 @@ class GraphCompiler(BaseCompiler):
 
             for idx in sorted(node_indices):
                 target_id = nodes[idx].id
-                concept_edges.append(
-                    {"source": concept_id, "target": target_id, "type": "concept_reference"}
-                )
-                concept_edges.append(
-                    {"source": target_id, "target": concept_id, "type": "concept_reference"}
-                )
+                concept_edges.append({"source": concept_id, "target": target_id, "type": "concept_reference"})
+                concept_edges.append({"source": target_id, "target": concept_id, "type": "concept_reference"})
 
         return concept_nodes, concept_edges
 

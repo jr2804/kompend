@@ -197,8 +197,7 @@ class TestHybridChunker:
         """Paragraph boundaries are preferred over mid-sentence cuts."""
         paragraphs = [
             "First paragraph has two clear sentences. Here is the second one.",
-            "Second paragraph is longer and should stay together if possible. "
-            "It has more words that we can count.",
+            "Second paragraph is longer and should stay together if possible. It has more words that we can count.",
         ]
         doc = _make_doc(_text_elements(paragraphs))
         # Force split by using a small budget.

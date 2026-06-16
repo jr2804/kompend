@@ -241,6 +241,8 @@ class TestFrontmatterEmission:
         content = (temp_output / "n1.md").read_text(encoding="utf-8")
         assert "title: Custom Title" in content
         assert "kind: overview" in content
+
+
 # ---------------------------------------------------------------------------
 
 

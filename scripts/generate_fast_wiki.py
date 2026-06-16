@@ -35,7 +35,6 @@ def main() -> None:
     from knox.compilation.graph import GraphCompiler
     from knox.compilation.two_phase import TwoPhaseCompiler
     from knox.core.models import ParsedDocument, ResolvedChunk
-    from knox.llm.client import LLMClient
     from knox.output.json_writer import JsonWriter
     from knox.output.markdown import MarkdownWriter
     from knox.output.typst import TypstWriter
@@ -63,7 +62,9 @@ def main() -> None:
     wiki = compiler.compile(resolved)
     logger.info(
         "Compiled: %d nodes, %d edges, quality=%.2f",
-        len(wiki.nodes), len(wiki.edges), wiki.quality_score,
+        len(wiki.nodes),
+        len(wiki.edges),
+        wiki.quality_score,
     )
 
     md_vault = out_dir / "vault"

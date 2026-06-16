@@ -26,11 +26,7 @@ class BaseCompiler(ABC):
     @staticmethod
     def effective_content_length(text: str) -> int:
         """Return character count of body text, excluding headings and whitespace."""
-        body_lines = [
-            line
-            for line in (text or "").splitlines()
-            if line.strip() and not _HEADING_RE.match(line)
-        ]
+        body_lines = [line for line in (text or "").splitlines() if line.strip() and not _HEADING_RE.match(line)]
         return len("\n".join(body_lines).strip())
 
     @staticmethod
@@ -57,9 +53,7 @@ class BaseCompiler(ABC):
             if body_len >= min_content_length:
                 kept[heading] = group_chunks
             else:
-                logger.debug(
-                    "Filtered empty group '%s' (%d chars body)", heading, body_len
-                )
+                logger.debug("Filtered empty group '%s' (%d chars body)", heading, body_len)
         return kept
 
     @staticmethod
@@ -158,11 +152,7 @@ class BaseCompiler(ABC):
             used_suffixes: set[str] = set()
             for node_idx in indices:
                 node = nodes[node_idx]
-                source_stems = sorted({
-                    chunk_sources[cid]
-                    for cid in (node.source_chunks or [])
-                    if cid in chunk_sources
-                })
+                source_stems = sorted({chunk_sources[cid] for cid in (node.source_chunks or []) if cid in chunk_sources})
                 suffix = source_stems[0] if source_stems else str(node_idx + 1)
                 base = suffix
                 counter = 2

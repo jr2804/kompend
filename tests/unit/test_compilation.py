@@ -468,10 +468,7 @@ class TestSiblingEdges:
         ]
         wiki = GraphCompiler("model").compile(chunks)
         # Entity edge creates one direction; sibling fills the other
-        pair_edges = [
-            e for e in wiki.edges
-            if {e["source"], e["target"]} == {"node_0", "node_1"}
-        ]
+        pair_edges = [e for e in wiki.edges if {e["source"], e["target"]} == {"node_0", "node_1"}]
         # Should have entity_reference + sibling in both directions = 3 max
         assert len(pair_edges) <= 3
 

@@ -41,7 +41,9 @@ def run_benchmarks(
     print("## Chunk Quality Benchmarks\n")
     chunk_result = subprocess.run(
         [
-            "uv", "run", "pytest",
+            "uv",
+            "run",
+            "pytest",
             "tests/benchmarks/test_chunk_quality.py",
             "-v",
             "--tb=short",
@@ -63,7 +65,9 @@ def run_benchmarks(
     print("\n## Parser Quality Benchmarks\n")
     parser_result = subprocess.run(
         [
-            "uv", "run", "pytest",
+            "uv",
+            "run",
+            "pytest",
             "tests/benchmarks/test_parse_quality.py",
             "-v",
             "--tb=short",
@@ -171,12 +175,14 @@ def _save_report(output: str, chunk_result, parser_result) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run KNOX quality benchmarks")
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Save report to file (markdown)",
         default=None,
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show full pytest output",
     )
