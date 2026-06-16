@@ -264,6 +264,7 @@ def _post_compile_actions(
     index_store: bool | None,
     compile_lint: bool | None,
     embed_model: str | None,
+    show_progress: bool | None = None,
 ) -> None:
     """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
     base_dir = pipeline_config.resolved_base_dir()
@@ -291,13 +292,25 @@ def _post_compile_actions(
 
     if synthesize:
         resolved_model = pipeline_config.llm.default_model
+
+        synthesize_tracker = PipelineProgress.create(total_files=1, force_progress=show_progress)
+        synthesize_tracker.start()
+
+        def _synth_cb(current: int, total: int) -> None:
+            if current == 0:
+                synthesize_tracker.reset_for_phase(total, "Synthesizing overview…")
+            else:
+                synthesize_tracker.update_progress(current, f"[{current}/{total}] Synthesizing overview…")
+
         overview_path = write_overview(
             wiki,
             base_dir,
             model=resolved_model,
             overview_budget=pipeline_config.budget.overview_output_max * 4,
             timeout=pipeline_config.llm.timeout,
+            progress_callback=_synth_cb if synthesize_tracker.enabled else None,
         )
+        synthesize_tracker.finish()
         if overview_path:
             typer.echo(f"Overview: {overview_path}")
         else:
@@ -516,6 +529,7 @@ def compile_cmd(
             index_store=index_store,
             compile_lint=compile_lint,
             embed_model=embed_model,
+            show_progress=show_progress,
         )
 
     except Exception as exc:

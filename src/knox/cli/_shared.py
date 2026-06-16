@@ -18,6 +18,9 @@ from knox.core.hooks import clear_hooks, load_hooks_from_config
 logging.getLogger("docling").setLevel(logging.WARNING)
 logging.getLogger("pdfminer").setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.WARNING)
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
+logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 

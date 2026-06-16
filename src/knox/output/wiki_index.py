@@ -10,6 +10,7 @@ N11 generates three complementary pages after every compile:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -327,7 +328,14 @@ def write_index_and_log(
     return {"index": index_path, "log": log_path}
 
 
-def generate_overview(source_texts: list[str], model: str, *, overview_budget: int, timeout: float | None = None) -> str | None:
+def generate_overview(
+    source_texts: list[str],
+    model: str,
+    *,
+    overview_budget: int,
+    timeout: float | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> str | None:
     """Generate an overview of the wiki from node content.
 
     All *source_texts* are processed — no content is dropped.  If the total
@@ -359,9 +367,13 @@ def generate_overview(source_texts: list[str], model: str, *, overview_budget: i
     if current_parts:
         batches.append("\n---\n".join(current_parts))
 
+    total_steps = len(batches) + (1 if len(batches) > 1 else 0)
+    if progress_callback:
+        progress_callback(0, total_steps)
+
     # Generate a partial overview from each batch.
     partials: list[str] = []
-    for batch_text in batches:
+    for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
         try:
             result = client.complete(
@@ -370,8 +382,10 @@ def generate_overview(source_texts: list[str], model: str, *, overview_budget: i
             )
             if result.content:
                 partials.append(result.content)
-        except Exception:  # noqa: BLE001, S112
-            continue
+        except Exception:  # noqa: BLE001, S110
+            pass
+        if progress_callback:
+            progress_callback(idx + 1, total_steps)
 
     if not partials:
         return None
@@ -387,9 +401,13 @@ def generate_overview(source_texts: list[str], model: str, *, overview_budget: i
             role="synthesize",
             messages=[{"role": "user", "content": prompt}],
         )
+        if progress_callback:
+            progress_callback(total_steps, total_steps)
         return result.content
     except Exception:  # noqa: BLE001
         # Return concatenated partials if the merge call fails.
+        if progress_callback:
+            progress_callback(total_steps, total_steps)
         return combined
 
 
@@ -400,6 +418,7 @@ def write_overview(
     *,
     overview_budget: int,
     timeout: float | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
     source_texts = [n.content for n in wiki.nodes if n.content]
@@ -418,7 +437,7 @@ def write_overview(
         overview_path.write_text(cached, encoding="utf-8")
         return overview_path
 
-    content = generate_overview(source_texts, model=model, overview_budget=overview_budget, timeout=timeout)
+    content = generate_overview(source_texts, model=model, overview_budget=overview_budget, timeout=timeout, progress_callback=progress_callback)
     if not content:
         return None
 

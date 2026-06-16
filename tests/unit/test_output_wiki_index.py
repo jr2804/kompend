@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.wiki_index import (
     generate_index,
     generate_log_entry,
+    generate_overview,
     prepend_log,
     write_index_and_log,
 )
@@ -96,3 +98,58 @@ class TestWriteIndexAndLog:
         assert "**Articles:**" in index_text
         assert "5" in index_text
         assert "2" in index_text
+
+
+class TestGenerateOverviewProgress:
+    """Tests for progress_callback in generate_overview."""
+
+    def test_single_batch(self) -> None:
+        """Single batch: callback fires (0,1) then (1,1)."""
+        calls: list[tuple[int, int]] = []
+
+        mock_result = MagicMock()
+        mock_result.content = "Overview text"
+
+        with patch("knox.output.wiki_index.LLMClient") as MockClient:
+            MockClient.return_value.complete.return_value = mock_result
+            generate_overview(
+                ["short text"],
+                model="test-model",
+                overview_budget=10000,
+                progress_callback=lambda c, t: calls.append((c, t)),
+            )
+
+        assert calls[0] == (0, 1)
+        assert calls[-1] == (1, 1)
+
+    def test_multi_batch_with_merge(self) -> None:
+        """Multiple batches: total includes merge step."""
+        calls: list[tuple[int, int]] = []
+
+        mock_result = MagicMock()
+        mock_result.content = "Partial overview"
+
+        with patch("knox.output.wiki_index.LLMClient") as MockClient:
+            MockClient.return_value.complete.return_value = mock_result
+            generate_overview(
+                ["aaa", "bbb", "ccc"],
+                model="test-model",
+                overview_budget=5,
+                progress_callback=lambda c, t: calls.append((c, t)),
+            )
+
+        total = calls[0][1]
+        assert total > 1
+        assert calls[0] == (0, total)
+        assert calls[-1] == (total, total)
+
+    def test_no_callback(self) -> None:
+        """Works fine without callback."""
+        mock_result = MagicMock()
+        mock_result.content = "Overview text"
+
+        with patch("knox.output.wiki_index.LLMClient") as MockClient:
+            MockClient.return_value.complete.return_value = mock_result
+            result = generate_overview(["short text"], model="test-model", overview_budget=10000)
+
+        assert result is not None
