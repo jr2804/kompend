@@ -198,6 +198,7 @@ class DocumentRenderer:
                 capture_output=True,
                 encoding="utf-8",
                 timeout=30,
+                check=False,
             )
             # rumdl exits 0 on success, may emit formatted content on stdout
             if result.stdout and result.stderr == "":

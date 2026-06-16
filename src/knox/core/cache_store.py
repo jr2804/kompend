@@ -55,10 +55,6 @@ class CacheStore:
     def __init__(self, cache_dir: Path) -> None:
         self._cache_dir = cache_dir
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def get(self, layer: str, deps: dict[str, str]) -> Any | None:
         """Look up a cached value.
 
@@ -85,7 +81,7 @@ class CacheStore:
             with open(path, "rb") as f:
                 entry: dict[str, Any] = pickle.load(f)  # noqa: S301 — cache dir is not an untrusted source
         except Exception:
-            logger.debug("Cache read error for %s — treating as miss", path)
+            logger.debug("Cache read error for %s — treating as miss", path, exc_info=True)
             return None
 
         # Validate every stored dependency against the caller's current deps.
@@ -163,10 +159,6 @@ class CacheStore:
         elif self._cache_dir.is_dir():
             shutil.rmtree(self._cache_dir, ignore_errors=True)
             logger.debug("Entire cache invalidated")
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _resolve(self, layer: str, key: str) -> Path:
         """Resolve the on-disk path for a cache entry."""
