@@ -9,6 +9,7 @@
 "pipx:sloppylint" = "latest"
 "pipx:ai-slop-detector" = { version = "latest", extras = ["all"] }
 "npm:@yuvrajangadsingh/vibecheck" = "latest"
+"npm:aislop" = "latest"
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 "pipx:beads-mcp" = "latest"
@@ -20,11 +21,14 @@ depends = ["dev"]
 usage = '''
 arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see https://github.com/neondatabase/add-mcp)"
 '''
+shell = "pwsh -NoProfile -Command"
 run = [
+	"cls",
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai --args mcp-serve grepai',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp --args mcp-server cytoscnpy',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n graphify --args graphify-out/graph.json graphify-mcp',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun --args mcp fartrun',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck --args --mcp vibecheck',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n aislop --args -y --args aislop-mcp npx',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads beads-mcp',
 ]
