@@ -50,8 +50,8 @@ In Open-WebUI, configure an MCP connection:
 ### 4. Query via the CLI (no GUI needed)
 
 ```bash
-# Search compiled wiki with zvec vector store
-knox parse ./wiki/*.md --elements
+# Search compiled wiki with vector store
+knox query "performance"
 
 # Or search directly the JSON graph
 cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'

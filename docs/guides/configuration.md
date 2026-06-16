@@ -105,7 +105,7 @@ The main configuration sections:
 |---------|---------|
 | `[paths]` | Wiki directory, source/output/cache/state paths |
 | `[compile]` | Compile settings: format, chunk size, image mode, workers |
-| `[compile.budget]` | Token budget settings |
+| `[compile.budget]` | Token budget settings (see [Model Context Adaptation](/guides/model-context) for full reference) |
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
 | `[compile.embedding]` | Embedding model for vector index (`litellm:` prefix or sentence-transformers name; `null` disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |

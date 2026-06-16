@@ -145,7 +145,7 @@ Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: C
 ```
 
 - **T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai.
-- **T2 Chunking** — Split documents into `Chunk` objects. Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with markdown awareness.
+- **T2 Chunking** — Split documents into `Chunk` objects sized to the model's context window (auto-detected via litellm/Ollama, clamped to configurable `[chunk_size_min, chunk_size_max]` rails, 20% reserve for system prompts). Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with paragraph → line → sentence → token boundary preferences. See [Model Context Adaptation](./docs/guides/model-context.md).
 - **T3 Resolution** — Extract entities and resolve cross-references using an LLM (via litellm). Optional VLM enricher for image captioning. Typed relation extraction (`uses`, `depends_on`, `contradicts`, …) via `--resolve-relations`.
 - **T4 Compilation** — Build an interlinked `CompiledWiki` graph from resolved chunks. Two backends: `GraphCompiler` (default, two-phase extract-then-generate) and `WiCERCompiler` (iterative compile-evaluate-refine loop).
 - **T5 Output** — Write the compiled wiki as Markdown (with Obsidian/GFM/MkDocs/… flavors), JSON, or Typst. Optionally index for semantic search and generate an LLM-synthesized overview.
@@ -154,7 +154,7 @@ Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: C
 
 | Subsystem | Description |
 |---|---|
-| **RAG / Search** | `HybridRetriever` fuses FTS + vector (zvec) + token-overlap + raw sources via reciprocal rank fusion. Two embedding providers: `litellm:` prefix → LiteLLM, no prefix → sentence-transformers. |
+| **RAG / Search** | `HybridRetriever` fuses FTS + vector + token-overlap + raw sources via reciprocal rank fusion. Two embedding providers: `litellm:` prefix → LiteLLM, no prefix → sentence-transformers. |
 | **Memory Lifecycle** | Confidence decay, tier promotion (working → episodic → semantic → procedural), supersession detection, and stale-page lint integration. Configurable half-life and decay threshold. |
 | **Event Hooks** | `PRE_COMPILE`, `POST_COMPILE`, `ON_CAPTURE`, `ON_QUERY`, `ON_LINT` hooks — configurable via `[hooks]` in `knox.toml`. |
 | **Review Queue** | Route compiled pages through approve/reject/lock workflow before publishing. |
@@ -197,6 +197,7 @@ Quick reference:
 | Configuration | [`docs/guides/configuration.md`](./docs/guides/configuration.md) |
 | Compilation | [`docs/guides/compilation.md`](./docs/guides/compilation.md) |
 | LLM configuration | [`docs/guides/llm-config.md`](./docs/guides/llm-config.md) |
+| Model context adaptation | [`docs/guides/model-context.md`](./docs/guides/model-context.md) |
 | Lint | [`docs/guides/lint.md`](./docs/guides/lint.md) |
 | Review queue | [`docs/guides/review.md`](./docs/guides/review.md) |
 | Provenance | [`docs/guides/provenance.md`](./docs/guides/provenance.md) |

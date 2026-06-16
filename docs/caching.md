@@ -47,7 +47,7 @@ if nothing changed, everything is skipped.
 - **Key**: `sha256(source_file_bytes)` + `chunk_size`
 - **Deps**: `{"source": <sha256>, "chunk_size": "<n>"}`
 - **Value**: `list[Chunk]`
-- **Hooks**: `WikiPipeline._process_one()` in `pipeline.py`
+- **Hooks**: `Pipeline._process_one()` in `pipeline.py`
 - **On hit**: skips `chunker.chunk()` entirely
 
 ### Layer 3: Resolution Cache (Tier 2, *new*)
@@ -56,7 +56,7 @@ if nothing changed, everything is skipped.
 - **Key**: `sha256(chunk.text)` + `vlm_model`
 - **Deps**: `{"chunk_text": <sha256>, "vlm_model": "<model>"}`
 - **Value**: `ResolvedChunk`
-- **Hooks**: `WikiPipeline._resolve_chunks()` in `pipeline.py`
+- **Hooks**: `Pipeline._resolve_chunks()` in `pipeline.py`
 - **On hit**: skips VLM enrichment for that chunk
 
 ### Layer 4: Extraction Cache (Tier 3 Phase 1, *new*)

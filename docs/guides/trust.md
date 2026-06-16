@@ -114,9 +114,9 @@ substring fallback is conservative — it marks many claims as
 unsupported.
 
 **Q: Can I use a different LLM for verification?**
-A: Yes — set `LITELLM_MODEL` in the environment. The verifier uses
+A: Yes — set `KNOX_LLM_MODEL` in the environment. The verifier uses
 `litellm.completion` with whatever model you configure.
 
-**Q: What happens to private pages in the zvec index?**
+**Q: What happens to private pages in the vector index?**
 A: Private pages are indexed but tagged with `private: true` in
 metadata. The `knox query` command filters them out by default.

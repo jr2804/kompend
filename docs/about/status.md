@@ -26,7 +26,7 @@ Current state of the KNOX codebase as of the latest `main` branch.
 ## Known Gaps
 
 - **MCP protocol**: Server reads newline-delimited JSON instead of JSON-RPC 2.0. Needs proper protocol implementation.
-- **HybridChunker budget**: Measures budget in characters, not tokens (M3).
+- **HybridChunker budget**: Token-based via `cl100k_base` tokenizer with context-window detection and `[chunk_size_min, chunk_size_max]` clamping (M3 resolved). See [Model Context Adaptation](/guides/model-context).
 - **DoclingParser**: Requires update for Docling 2.x API — `doc.pages` yields ints, not page objects (C2).
 - **Eval harness**: Health score, citation coverage, CI thresholds not yet implemented (N2).
 

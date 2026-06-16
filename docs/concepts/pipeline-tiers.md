@@ -11,21 +11,20 @@ testable, and has a clear `Base` interface.
 
 **Input:** Raw source files (PDF, DOCX, XLSX, PPTX, EPUB, MD, TXT, URLs)  
 **Output:** `ParsedDocument` with structured JSON sidecar  
-**Interface:** `BaseParser` in `src/knox/preprocessing/parsers/_base.py`
+**Interface:** `BaseParser` in `src/knox/preprocessing/parsers/base.py`
 
 ``` mermaid
 flowchart LR
     PDF[PDF] --> Docling[DoclingParser]
     DOCX[DOCX] --> Docling
-    XLSX[XLSX] --> Pandas[PandasParser]
-    PPTX[PPTX] --> Pandoc[PandocParser]
+    DOCX2[DOCX] --> Pandoc[PandocParser]
+    PPTX[PPTX] --> Pandoc
     EPUB[EPUB] --> Pandoc
     MD[Markdown] --> Pandoc
     URL[URL] --> HTTP[HTTPDownloader]
     URL2[Web URL] --> Crawler[WebCrawler]
 
     Docling --> PD[ParsedDocument]
-    Pandas --> PD
     Pandoc --> PD
     HTTP --> PD
     Crawler --> PD
@@ -35,11 +34,10 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseParser` | `parsers/_base.py` | Abstract interface: `parse(path) → ParsedDocument` |
-| `DoclingParser` | `parsers/docling_parser.py` | Primary PDF parser (IBM Docling, MIT) |
+| `BaseParser` | `parsers/base.py` | Abstract interface: `parse(path) → ParsedDocument` |
+| `DoclingParser` | `parsers/docling_parser.py` | Primary PDF/DOCX parser (IBM Docling, MIT) |
 | `PdfPlumberParser` | `parsers/pdfplumber_parser.py` | Fallback PDF parser |
-| `PandocParser` | `parsers/pandoc_parser.py` | DOCX/PPTX/EPUB/MD/HTML |
-| `PandasParser` | `parsers/pandas_parser.py` | XLSX spreadsheets |
+| `PandocParser` | `parsers/pandoc_parser.py` | DOCX/PPTX/EPUB/MD/HTML/ODT/RST/RTX/TEX |
 | `HTTPDownloader` | `downloaders/http.py` | Direct file URLs |
 | `WebCrawler` | `downloaders/crawler.py` | Web pages via crawl4ai |
 | `ParserRouter` | `parsers/_registry.py` | Extension-based dispatch |
@@ -48,7 +46,7 @@ flowchart LR
 
 **Input:** `ParsedDocument`  
 **Output:** `list[Chunk]`  
-**Interface:** `BaseChunker` in `src/knox/chunking/_base.py`
+**Interface:** `BaseChunker` in `src/knox/chunking/base.py`
 
 ``` mermaid
 flowchart LR
@@ -64,7 +62,7 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseChunker` | `chunking/_base.py` | Abstract interface: `chunk(doc) → list[Chunk]` |
+| `BaseChunker` | `chunking/base.py` | Abstract interface: `chunk(doc) → list[Chunk]` |
 | `HybridChunker` | `chunking/hybrid.py` | Structure-aware + Chonkie fallback |
 | `DevChunker` | `chunking/dev_chunker.py` | Development/test chunker |
 | `ChonkieChunker` | `chunking/chonkie_chunker.py` | Standalone Chonkie adapter |
@@ -73,7 +71,7 @@ flowchart LR
 
 **Input:** `list[Chunk]`  
 **Output:** `list[ResolvedChunk]`  
-**Interface:** `BaseResolver` in `src/knox/resolution/_base.py`
+**Interface:** `BaseResolver` in `src/knox/resolution/base.py`
 
 ``` mermaid
 flowchart LR
@@ -88,7 +86,7 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseResolver` | `resolution/_base.py` | Abstract interface: `resolve(chunks) → list[ResolvedChunk]` |
+| `BaseResolver` | `resolution/base.py` | Abstract interface: `resolve(chunks) → list[ResolvedChunk]` |
 | `LLMResolver` | `resolution/llm_resolver.py` | Typed relation extraction with confidence (`uses`, `depends_on`, `contradicts`, …) |
 | `VLMEnricher` | `resolution/vlm_enricher.py` | Figure captioning via vision LLM |
 | `ResolverChain` | `resolution/chain.py` | Sequential resolver application |
@@ -97,7 +95,7 @@ flowchart LR
 
 **Input:** `list[ResolvedChunk]`  
 **Output:** `CompiledWiki`  
-**Interface:** `BaseCompiler` in `src/knox/compilation/_base.py`
+**Interface:** `BaseCompiler` in `src/knox/compilation/base.py`
 
 ``` mermaid
 flowchart LR
@@ -113,7 +111,7 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseCompiler` | `compilation/_base.py` | Abstract interface: `compile(chunks) → CompiledWiki` |
+| `BaseCompiler` | `compilation/base.py` | Abstract interface: `compile(chunks) → CompiledWiki` |
 | `GraphCompiler` | `compilation/graph.py` | Heading-based grouping, page-kind inference, typed edges |
 | `TwoPhaseCompiler` | `compilation/two_phase.py` | Two-phase extract-then-generate |
 | `WiCERCompiler` | `compilation/wicer.py` | Iterative compile-evaluate-refine loop |
@@ -124,7 +122,7 @@ See [WiCER Loop](wicer-loop.md) for a detailed walkthrough.
 
 **Input:** `CompiledWiki`  
 **Output:** Files on disk (markdown, JSON, Typst)  
-**Interface:** `BaseOutputWriter` in `src/knox/output/_base.py`
+**Interface:** `BaseOutputWriter` in `src/knox/output/base.py`
 
 ``` mermaid
 flowchart LR
@@ -140,7 +138,7 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseOutputWriter` | `output/_base.py` | Abstract interface: `write(wiki, path)` |
+| `BaseOutputWriter` | `output/base.py` | Abstract interface: `write(wiki, path)` |
 | `MarkdownWriter` | `output/markdown.py` | Obsidian vault (one `.md` per node + `index.md`) |
 | `JSONWriter` | `output/json_writer.py` | Machine-readable JSON graph |
 | `TypstWriter` | `output/typst.py` | Academic PDF via Typst |

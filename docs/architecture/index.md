@@ -104,7 +104,7 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
 │  │  +──────────────────────────────+                          │      │
 │  │  │  Step A: BLIND COMPILATION   │                          │      │
 │  │  │  ├─ litellm for provider abstraction                      │      │
-│  │  │  ├─ Model selection: cheap local (Ollama) first         │      │
+│  │  │  ├─ Model selection: config-driven, fallback chain     │      │
 │  │  │  ├─ Fallback to remote (deepseek, openrouter, etc.)     │      │
 │  │  │  ├─ Multimodal: feed figures to vision LLM              │      │
 │  │  │  └─ Output: compiled wiki W₀                            │      │

@@ -130,7 +130,7 @@ project/
     ├── last_wiki.json       # Cached CompiledWiki for query/lint/status
     ├── search.db            # FTS5 index (if --index-store)
     ├── memory.json          # Memory lifecycle state
-    └── zvec/                # Vector store sidecar (if --index-store)
+    └── vectors/             # Vector store sidecar (if --index-store)
 ```
 
 ```text

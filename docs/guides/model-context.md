@@ -1,0 +1,359 @@
+# Model Context Adaptation
+
+KNOX is designed to work with any LLM — from a 4K-token local model running
+on a laptop to a 1M-token frontier model behind an API. This guide explains
+how KNOX detects model capabilities, adapts its chunking and processing
+strategy accordingly, and what tradeoffs you should expect when choosing
+between small/local and large/remote models.
+
+> **Honest summary:** KNOX enables any model to participate in the pipeline,
+> but it does **not** equalize quality. A 7B local model will produce
+> noticeably lower-quality wiki pages than a frontier model. The adaptive
+> machinery ensures the *input* always fits — the *output quality* is yours
+> to control through model selection.
+
+## How KNOX Discovers the Context Window
+
+At startup, the `LLMClient`
+([`knox.llm.client`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/client.py))
+queries a three-tier discovery chain to determine the model's real input
+and output token capacity:
+
+```mermaid
+flowchart TD
+    A[Model name] --> B{litellm metadata?}
+    B -- yes --> C[max_input_tokens / max_output_tokens]
+    B -- no --> D{Ollama model?}
+    D -- yes --> E["GET /api/show<br/>or OLLAMA_NUM_CTX env"]
+    E --> F{num_ctx < litellm value?}
+    F -- yes --> G[Override with num_ctx]
+    F -- no --> C
+    D -- no --> H["Fallback: max(2048, min(8192, 131072))<br/>= 8192 tokens"]
+    C --> I[ContextWindow]
+    G --> I
+    H --> I
+    I --> J{context_window_cap set?}
+    J -- yes --> K["min(discovered, cap)"]
+    J -- no --> L[Use as-is]
+    K --> M[Final ContextWindow]
+    L --> M
+```
+
+| Tier | Source | Typical models |
+|------|--------|----------------|
+| 1 — litellm | `litellm.get_model_info()` database | All major hosted models (OpenAI, Anthropic, Google, etc.) |
+| 2 — Ollama | `OLLAMA_NUM_CTX` env var or Modelfile `parameters.num_ctx` | Local Ollama models |
+| 3 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **8192** | Custom or unknown providers |
+
+The most restrictive value wins for Ollama: if litellm reports 128K but the
+Ollama Modelfile sets `num_ctx 8192`, KNOX uses 8192.
+
+You can enforce a hard ceiling with `context_window_cap`:
+
+```toml
+[compile.llm]
+default_model = "ollama/llama3.1"
+context_window_cap = 32768   # never exceed 32K even if model reports more
+```
+
+## Adaptive Chunking
+
+### The Sizing Formula
+
+Once the context window is known, the chunker
+([`knox.chunking.hybrid.HybridChunker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/chunking/hybrid.py))
+computes the target chunk size:
+
+```text
+raw        = int(max_input × (1 − reserve_ratio))
+effective  = max(chunk_size_min, min(raw, chunk_size_max))
+```
+
+| Parameter | Default | Env var | Meaning |
+|-----------|---------|---------|---------|
+| `reserve_ratio` | `0.2` (20%) | — | Reserved for system prompt, instructions, and output |
+| `chunk_size_min` | `2048` tokens | `KNOX_BUDGET_CHUNK_SIZE_MIN` | Safety floor — never produce smaller chunks |
+| `chunk_size_max` | `131072` tokens | `KNOX_BUDGET_CHUNK_SIZE_MAX` | Safety ceiling — never produce larger chunks |
+
+### Concrete Sizing by Model Class
+
+| Model context | Available (80%) | Effective after clamp | Clamped? |
+|---------------|-----------------|-----------------------|----------|
+| 4K (e.g. Phi-3-mini) | 3 276 | **3 276** | No (above min) |
+| 8K (e.g. Llama 3.1 8B) | 6 553 | **6 553** | No |
+| 32K (e.g. Mistral 7B) | 26 214 | **26 214** | No |
+| 128K (e.g. GPT-4o) | 104 857 | **104 857** | No |
+| 200K (e.g. Claude 3.5) | 163 840 | **131 072** | Yes — capped at max |
+| 1M (e.g. Gemini 1.5) | 819 200 | **131 072** | Yes — capped at max |
+
+Without the clamp, a 1M-token model would produce 800K-token chunks —
+far too large for retrieval quality. The `chunk_size_max` rail prevents this.
+
+> **Configuring the rails:** Lower `chunk_size_max` for finer-grained
+> retrieval chunks. Raise `chunk_size_min` to avoid tiny fragments from
+> very small models. Both are in tokens, measured with the `cl100k_base`
+> tokenizer.
+
+### Splitting Strategy
+
+KNOX never blindly cuts text at a token boundary. The `HybridChunker` uses
+a custom `RecursiveRules` stack that respects document structure:
+
+```mermaid
+flowchart LR
+    A[Text run] --> B{Contains \n\n ?}
+    B -- yes --> C[Split at paragraph boundary]
+    B -- no --> D{Contains \n ?}
+    D -- yes --> E[Split at line boundary]
+    D -- no --> F{Contains sentence end?}
+    F -- yes --> G[Split at . ! ?]
+    F -- no --> H[Split at token boundary]
+    C --> I[Chunk]
+    E --> I
+    G --> I
+    H --> I
+```
+
+**Atomic elements** — tables, images, formulas, and code blocks — are
+**never split** regardless of size. Each gets its own dedicated chunk.
+This preserves structural integrity for downstream processing.
+
+```mermaid
+flowchart TD
+    subgraph Document
+        H[Heading]
+        T1[Text paragraph]
+        TBL[Table — atomic]
+        T2[Text paragraph]
+        IMG[Image — atomic]
+        T3[Text paragraph]
+    end
+
+    H --> RUN1[Text run: H + T1]
+    T1 --> RUN1
+    TBL --> AC1[Atomic chunk: TBL]
+    T2 --> RUN2[Text run: T2]
+    IMG --> AC2[Atomic chunk: IMG]
+    T3 --> RUN2
+
+    RUN1 -->|Chonkie RecursiveChunker| C1[Chunk 1]
+    RUN2 -->|Chonkie RecursiveChunker| C2[Chunk 2]
+    AC1 --> C3[Chunk 3 — whole table]
+    AC2 --> C4[Chunk 4 — whole image]
+```
+
+## Small/Local vs Large/Remote: The Quality Tradeoff
+
+KNOX's adaptive sizing guarantees that **inputs always fit** the model's
+context window. But input fitting is only half the story — the other half
+is **output quality**, which is entirely model-dependent.
+
+### What KNOX Adapts Automatically
+
+| Aspect | How KNOX adapts |
+|--------|-----------------|
+| Chunk size | Proportional to model context (clamped to rails) |
+| Number of chunks | Inversely proportional to chunk size |
+| Output token budget | Per-phase `ratio × input`, clamped to `[min, max]` |
+| System-prompt reserve | 20% of context reserved automatically |
+
+### What KNOX Does NOT Equalize
+
+| Aspect | Small/local model | Large/remote model |
+|--------|-------------------|--------------------|
+| Extraction quality | More entity misses, noisier results | Fewer misses, cleaner entities |
+| Concept synthesis | Shallower summaries, simpler prose | Richer synthesis, better cross-referencing |
+| Verification accuracy | Lower precision/recall on WiCER checks | More reliable verification |
+| Latency | Fast (local), but many more round-trips | Slper API, but fewer round-trips |
+| Cost | Free (local) or low | Per-token API cost |
+| Privacy | Fully local — data never leaves the machine | Data sent to provider API |
+| Round-trips | Many (smaller chunks = more LLM calls) | Fewer (larger chunks = fewer calls) |
+
+### Why More Chunks ≠ Better
+
+With a small model (e.g. 8K context), a 50-page document might produce
+15 chunks → 15 extraction calls → 15 synthesis calls. Each call has
+independent error surface. A large model (128K+) might handle the same
+document in 2 chunks → 2 calls, with the model seeing more context per
+call for better cross-referencing.
+
+The cost/quality curve is **not linear** — the jump from 8K to 32K is
+more impactful than from 128K to 1M, because below ~16K the chunker is
+forced to split semantic units that belong together.
+
+## Output Budget Reference
+
+KNOX uses ratio-based output budgets per pipeline phase. Each ratio is
+multiplied by the input token count, then clamped:
+
+```text
+output_tokens = clamp(input_tokens × ratio, output_min, output_max)
+```
+
+| Phase | Ratio | Min | Max | Env var prefix |
+|-------|-------|-----|-----|----------------|
+| Extraction | `0.3` | 512 | 8 192 | `KNOX_BUDGET_EXTRACT_OUTPUT_*` |
+| Generation | — | — | 16 384 | `KNOX_BUDGET_GEN_OUTPUT_MAX` |
+| Overview | `0.1` | 256 | 4 096 | `KNOX_BUDGET_OVERVIEW_OUTPUT_*` |
+| Verification | `0.2` | 256 | 4 096 | — (config only) |
+| Lint | — | — | 8 192 | — (config only) |
+| WiCER probe | — | — | 4 096 | — (config only) |
+| WiCER eval | — | — | 4 096 | — (config only) |
+
+All values are in tokens.
+
+## Structural Controls
+
+Beyond token budgets, `BudgetConfig` provides content-quality controls:
+
+| Field | Default | Env var | Purpose |
+|-------|---------|---------|---------|
+| `min_content_length` | `50` | `KNOX_BUDGET_MIN_CONTENT_LENGTH` | Min body characters for a wiki page (filters heading-only fragments) |
+| `min_concept_sources` | `2` | `KNOX_BUDGET_MIN_CONCEPT_SOURCES` | Min distinct sources for a cross-cutting concept page |
+| `max_concept_pages` | `50` | `KNOX_BUDGET_MAX_CONCEPT_PAGES` | Upper limit on generated concept pages |
+| `concepts_per_batch` | `8` | `KNOX_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
+| `verify_min_ngram` | `3` | — (config only) | Min n-gram overlap for verification |
+| `wicer_max_iterations` | `3` | `KNOX_BUDGET_WICER_MAX_ITERATIONS` | Max compile-evaluate-refine loop iterations |
+
+## Example Configurations
+
+### Local-Only Setup (Ollama, 8K–32K)
+
+```toml
+[compile.llm]
+default_model = "ollama/llama3.1"
+# Ollama auto-detected via /api/show or OLLAMA_NUM_CTX.
+# For models without metadata, set explicitly:
+# context_window_cap = 32768
+
+[compile.budget]
+# Smaller chunks for finer retrieval granularity.
+chunk_size_min = 2048
+chunk_size_max = 26214      # 32K context × 80% reserve
+# Lower concept-page generation to reduce LLM calls.
+max_concept_pages = 20
+# Tighter output budgets — small models work better with focused prompts.
+extract_output_max = 4096
+overview_output_max = 2048
+```
+
+**When to use:** Privacy-sensitive documents, air-gapped environments,
+cost-sensitive projects, rapid prototyping.
+
+### Balanced Setup (32K–128K hosted)
+
+```toml
+[compile.llm]
+default_model = "openai/gpt-4o"
+# litellm auto-detects 128K context.
+fallback_chain = ["anthropic/claude-3.5-sonnet"]
+
+[compile.budget]
+# Defaults are well-tuned for mid-range models.
+# chunk_size_min = 2048    # default
+# chunk_size_max = 131072  # default
+```
+
+**When to use:** Production wikis, collaborative knowledge bases, best
+quality-to-cost ratio.
+
+### Enterprise Setup (128K–1M)
+
+```toml
+[compile.llm]
+default_model = "gemini/gemini-1.5-pro"
+# litellm reports 1M; KNOX clamps chunks to chunk_size_max=131072.
+fallback_chain = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
+
+[compile.budget]
+# Larger chunks leverage the model's long-context reasoning.
+chunk_size_max = 131072     # default — already optimal
+# Richer concept pages for deep knowledge bases.
+max_concept_pages = 100
+# Higher output ceilings for detailed synthesis.
+extract_output_max = 8192
+gen_output_max = 16384
+overview_output_max = 4096
+```
+
+**When to use:** Large document corpora (500+ pages), research compendia,
+enterprise documentation projects where quality is the priority.
+
+## Tier-Based Model Strategy
+
+KNOX's 5-tier pipeline has different model requirements per tier:
+
+```mermaid
+flowchart TD
+    subgraph "Tier 1–2: Preprocessing + Chunking"
+        P1[Parser] --> P2[Chunker]
+    end
+    P2 --> R{Needs LLM?}
+
+    subgraph "Tier 3: Resolution"
+        R -- yes --> RES[Entity extraction<br/>+ cross-reference resolution]
+    end
+
+    subgraph "Tier 4: Compilation"
+        RES --> COMPILE[Concept synthesis<br/>+ overview generation<br/>+ page assembly]
+    end
+
+    subgraph "Tier 5: Output + Lint"
+        COMPILE --> OUT[Markdown rendering<br/>+ rumdl lint<br/>+ WiCER verification]
+    end
+
+    style P1 fill:#4a9,stroke:#333
+    style P2 fill:#4a9,stroke:#333
+    style RES fill:#fa3,stroke:#333
+    style COMPILE fill:#f63,stroke:#333
+    style OUT fill:#c3f,stroke:#333
+```
+
+| Tier | LLM needed? | Model preference | Why |
+|------|-------------|------------------|-----|
+| 1 — Preprocessing | No | — | Pure parsing, no model involvement |
+| 2 — Chunking | No | — | Token-based splitting, no model involvement |
+| 3 — Resolution | Yes | **Capable model** | Entity extraction and cross-referencing require reasoning |
+| 4 — Compilation | Yes | **Strongest model** | Concept synthesis and overview generation are quality-critical |
+| 5 — Output + Lint | Yes (lint/WiCER) | **Capable model** | Verification and quality checks need judgment |
+
+> **Practical tip:** The compilation tier (Tier 4) benefits most from model
+> quality. If budget is limited, use a cheaper model for Tier 3 (resolution)
+> and reserve the strongest model for Tier 4 (compilation) via the fallback
+> chain.
+
+## Configuring the Fallback Chain for Model Tiers
+
+The fallback chain lets you define a quality cascade:
+
+```bash
+knox compile sources/ \
+  --llm-default-model anthropic/claude-3.5-sonnet \
+  --llm-fallback-chain openai/gpt-4o \
+  --llm-fallback-chain ollama/llama3.1
+```
+
+The primary model is tried first. If it fails with transient errors
+(rate limits, timeouts), the chain advances. This gives you:
+
+1. **Quality first** — the best model handles the majority of work.
+2. **Resilience** — if the primary is unavailable, a cheaper model steps in.
+3. **Privacy escape hatch** — a local Ollama model at the end of the chain
+   ensures the pipeline can complete even without network access.
+
+## Summary
+
+| Concern | KNOX handles it? | How |
+|---------|------------------|-----|
+| Input always fits context | Yes | Auto-detect + clamp + 20% reserve |
+| Chunk boundaries are natural | Yes | Paragraph → line → sentence → token rules |
+| Atomic elements preserved | Yes | Tables/images/formulas/code never split |
+| Output quality | **No — model-dependent** | Choose models by tier importance |
+| Privacy | **User's choice** | Local Ollama vs remote API |
+| Cost optimization | **User's choice** | Fallback chain + budget config |
+
+KNOX ensures every model can *participate* in the pipeline. It does not
+promise every model will produce the *same output*. The adaptive machinery
+removes the mechanical barriers (context overflow, truncation, structural
+breakage); the intellectual quality of the resulting wiki is bounded by
+the model you select.
