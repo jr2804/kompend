@@ -97,7 +97,7 @@ class GraphCompiler(BaseCompiler):
 
         for idx, (heading, group_chunks) in enumerate(groups.items()):
             title = heading if heading != "_root" else "Overview"
-            merged_text = "\n\n".join(rc.chunk.text for rc in group_chunks if rc.chunk.text)
+            merged_text = BaseCompiler.deduplicate_group_text(group_chunks)
             source_ids = list({rc.chunk.id for rc in group_chunks if rc.chunk.id})
 
             entity_names = {str(ent.get("name", "")).lower() for rc in group_chunks for ent in rc.entities if isinstance(ent, dict) and ent.get("name")}

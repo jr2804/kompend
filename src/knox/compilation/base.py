@@ -94,6 +94,44 @@ class BaseCompiler(ABC):
         return kept
 
     @staticmethod
+    def deduplicate_group_text(group_chunks: list[ResolvedChunk]) -> str:
+        """Merge chunks for one heading group, removing repeated paragraphs.
+
+        The chunker prefixes each text chunk with ``[heading]`` and headings
+        may be repeated across overlapping chunks. This method strips the
+        prefix, tracks already-seen paragraphs (case/whitespace-normalised),
+        and returns the deduplicated body text.
+        """
+        seen: set[str] = set()
+        out_paragraphs: list[str] = []
+        for rc in group_chunks:
+            text = (rc.chunk.text or "").strip()
+            if not text:
+                continue
+            # Strip leading ``[heading_context] `` prefix added by the chunker.
+            if text.startswith("["):
+                close = text.find("] ")
+                if close != -1:
+                    text = text[close + 2 :]
+            for para in text.split("\n\n"):
+                para = para.strip()
+                if not para:
+                    continue
+                # Strip another bracket prefix if it appears inside a paragraph.
+                if para.startswith("["):
+                    close = para.find("] ")
+                    if close != -1:
+                        para = para[close + 2 :].strip()
+                        if not para:
+                            continue
+                normalized = " ".join(para.split()).lower()
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                out_paragraphs.append(para)
+        return "\n\n".join(out_paragraphs)
+
+    @staticmethod
     def disambiguate_duplicate_titles(
         nodes: list[WikiNode],
         chunks: list[ResolvedChunk],

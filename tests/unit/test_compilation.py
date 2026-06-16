@@ -624,3 +624,66 @@ class TestEmptyNodeFiltering:
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].title == "Real Section"
+
+
+class TestDeduplication:
+    def test_repeated_heading_prefix_collapsed(self) -> None:
+        c1 = _chunk(
+            text="[2. Methods] First paragraph about methods.",
+            heading="2. Methods",
+            chunk_id="c1",
+        )
+        c2 = _chunk(
+            text="[2. Methods] Second paragraph with more detail.",
+            heading="2. Methods",
+            chunk_id="c2",
+        )
+        rc1 = ResolvedChunk(chunk=c1)
+        rc2 = ResolvedChunk(chunk=c2)
+        wiki = GraphCompiler("model").compile([rc1, rc2])
+        assert len(wiki.nodes) == 1
+        content = wiki.nodes[0].content
+        assert "[2. Methods]" not in content
+        assert "First paragraph" in content
+        assert "Second paragraph" in content
+
+    def test_duplicate_paragraph_removed(self) -> None:
+        para = "Posteriorgrams are used in the M-Measure."
+        c1 = _chunk(text=para, heading="Methods", chunk_id="c1")
+        c2 = _chunk(text=para, heading="Methods", chunk_id="c2")
+        rc1 = ResolvedChunk(chunk=c1)
+        rc2 = ResolvedChunk(chunk=c2)
+        wiki = GraphCompiler("model").compile([rc1, rc2])
+        assert wiki.nodes[0].content.count(para) == 1
+
+    def test_reference_prefix_stripped(self) -> None:
+        c1 = _chunk(
+            text="[7. References] Smith, J. (2020). Important paper.",
+            heading="7. References",
+            chunk_id="c1",
+        )
+        c2 = _chunk(
+            text="[7. References] Doe, A. (2021). Another study.",
+            heading="7. References",
+            chunk_id="c2",
+        )
+        rc1 = ResolvedChunk(chunk=c1)
+        rc2 = ResolvedChunk(chunk=c2)
+        wiki = GraphCompiler("model").compile([rc1, rc2])
+        content = wiki.nodes[0].content
+        assert "[7. References]" not in content
+        assert "Smith, J. (2020)" in content
+        assert "Doe, A. (2021)" in content
+
+    def test_similar_but_different_paragraphs_kept(self) -> None:
+        c1 = _chunk(text="The model was trained on data A.", heading="Training", chunk_id="c1")
+        c2 = _chunk(text="The model was tested on data B.", heading="Training", chunk_id="c2")
+        rc1 = ResolvedChunk(chunk=c1)
+        rc2 = ResolvedChunk(chunk=c2)
+        wiki = GraphCompiler("model").compile([rc1, rc2])
+        content = wiki.nodes[0].content
+        assert "trained on data A" in content
+        assert "tested on data B" in content
+
+    def test_deduplicate_group_text_empty(self) -> None:
+        assert BaseCompiler.deduplicate_group_text([]) == ""
