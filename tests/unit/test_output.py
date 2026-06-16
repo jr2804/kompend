@@ -183,8 +183,64 @@ class TestMarkdownWriter:
         assert "## Related" not in content
 
 
-# ---------------------------------------------------------------------------
-# JsonWriter Tests
+class TestFrontmatterEmission:
+    """knox-wgt.1: Every compiled page must have YAML frontmatter with title."""
+
+    def test_vault_pages_have_title_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        """Each .md file in vault mode starts with frontmatter containing title."""
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, temp_output)
+
+        for node in sample_wiki.nodes:
+            slug = node.id
+            content = (temp_output / f"{slug}.md").read_text(encoding="utf-8")
+            assert content.startswith("---\n"), f"{slug}.md missing frontmatter"
+            assert "title:" in content.split("---\n")[1]
+
+    def test_index_has_title_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        """index.md also has frontmatter with the wiki title."""
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, temp_output)
+
+        index = (temp_output / "index.md").read_text(encoding="utf-8")
+        assert index.startswith("---\n")
+        assert "title: Test Wiki" in index
+
+    def test_frontmatter_defaults_preserved(self, temp_output: Path) -> None:
+        """frontmatter_defaults from config are included alongside title."""
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="n1", title="Page", content="Body.", node_type="section")],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True, frontmatter_defaults={"lang": "en"})
+        writer.write(wiki, temp_output)
+
+        content = (temp_output / "n1.md").read_text(encoding="utf-8")
+        assert "title: Page" in content
+        assert "lang: en" in content
+
+    def test_node_metadata_frontmatter_respected(self, temp_output: Path) -> None:
+        """node.metadata['frontmatter'] values override defaults."""
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="n1",
+                    title="Original",
+                    content="Body.",
+                    node_type="section",
+                    metadata={"frontmatter": {"title": "Custom Title", "kind": "overview"}},
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(wiki, temp_output)
+
+        content = (temp_output / "n1.md").read_text(encoding="utf-8")
+        assert "title: Custom Title" in content
+        assert "kind: overview" in content
 # ---------------------------------------------------------------------------
 
 

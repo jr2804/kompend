@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from knox.core.models import CompiledWiki
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document
-from knox.output.renderer import DocumentRenderer
+from knox.output.renderer import DocumentRenderer, render_frontmatter
 
 
 class MarkdownWriter(BaseOutputWriter):
@@ -56,6 +56,7 @@ class MarkdownWriter(BaseOutputWriter):
         for node in wiki.nodes:
             frontmatter = dict(self.frontmatter_defaults)
             frontmatter.update(node.metadata.get("frontmatter", {}))
+            frontmatter.setdefault("title", node.title or "Untitled")
 
             # Build body with embedded images
             body = node.content or ""
@@ -174,6 +175,7 @@ class MarkdownWriter(BaseOutputWriter):
     def _write_index(docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None:
         """Generate ``index.md`` with a table of contents."""
         title = wiki.metadata.get("title", "Wiki Index")
+        fm = render_frontmatter({"title": title})
         lines: list[str] = [f"# {title}\n"]
 
         for doc in docs:
@@ -181,5 +183,5 @@ class MarkdownWriter(BaseOutputWriter):
             link = f"[[{doc.title}]]" if not slug or slug == doc.title else f"[[{doc.title}|{slug}]]"
             lines.append(f"- {link}\n")
 
-        index_content = "".join(lines)
+        index_content = fm + "".join(lines)
         (output_dir / "index.md").write_text(index_content, encoding="utf-8")
