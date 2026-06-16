@@ -704,6 +704,8 @@ class TwoPhaseCompiler(BaseCompiler):
         if not nodes:
             return self._fallback_compile(chunks)
 
+        self.disambiguate_duplicate_titles(nodes, chunks)
+
         # Cross-source edges: pair-wise connect pages that share an entity.
         # Only match entities against title + summary (first 200 chars), not
         # the entire page content — full-content matching creates near-complete

@@ -264,6 +264,51 @@ class TestGraphCompiler:
         wiki = GraphCompiler("model").compile(chunks)
         assert wiki.metadata["kinds"] == {"overview": 1, "comparison": 1}
 
+    def test_duplicate_titles_disambiguated(self) -> None:
+        """knox-wgt.5: headings differing only in case get disambiguated."""
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="Refs A.", heading="References", chunk_id="c1", source_file=Path("paper-a.pdf"))),
+            ResolvedChunk(chunk=_chunk(text="Refs B.", heading="REFERENCES", chunk_id="c2", source_file=Path("paper-b.pdf"))),
+        ]
+        compiler = GraphCompiler("model")
+        wiki = compiler.compile(chunks)
+        titles = {n.title for n in wiki.nodes}
+        assert len(titles) == 2, f"Expected 2 unique titles, got {titles}"
+        # Both should have source context in the title
+        assert any("paper-a" in t for t in titles)
+        assert any("paper-b" in t for t in titles)
+
+    def test_duplicate_titles_same_source_get_counter(self) -> None:
+        """Duplicates from the same source get a numeric counter."""
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="Refs.", heading="References", chunk_id="c1", source_file=Path("paper.pdf"))),
+            ResolvedChunk(chunk=_chunk(text="More refs.", heading="REFERENCES", chunk_id="c2", source_file=Path("paper.pdf"))),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        titles = {n.title for n in wiki.nodes}
+        assert len(titles) == 2
+
+    def test_unique_titles_not_modified(self) -> None:
+        """Nodes with unique titles are not renamed."""
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="Intro.", heading="Introduction", chunk_id="c1")),
+            ResolvedChunk(chunk=_chunk(text="Methods.", heading="Methods", chunk_id="c2")),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        titles = {n.title for n in wiki.nodes}
+        assert titles == {"Introduction", "Methods"}
+
+    def test_disambiguated_titles_in_toc(self) -> None:
+        """TOC entries reflect the disambiguated titles."""
+        chunks = [
+            ResolvedChunk(chunk=_chunk(text="Refs A.", heading="References", chunk_id="c1", source_file=Path("paper-a.pdf"))),
+            ResolvedChunk(chunk=_chunk(text="Refs B.", heading="REFERENCES", chunk_id="c2", source_file=Path("paper-b.pdf"))),
+        ]
+        wiki = GraphCompiler("model").compile(chunks)
+        toc_titles = {entry["title"] for entry in wiki.toc}
+        node_titles = {n.title for n in wiki.nodes}
+        assert toc_titles == node_titles
+
 
 # ===========================================================================
 #  WiCERCompiler

@@ -55,6 +55,7 @@ class GraphCompiler(BaseCompiler):
 
         groups = self._group_chunks(chunks)
         nodes, node_index = self._build_nodes(groups)
+        self.disambiguate_duplicate_titles(nodes, chunks)
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)
         edges.extend(self._build_typed_edges(chunks, nodes, entity_location))
         toc = self._build_toc(nodes)
