@@ -705,6 +705,13 @@ class TwoPhaseCompiler(BaseCompiler):
             return self._fallback_compile(chunks)
 
         self.disambiguate_duplicate_titles(nodes, chunks)
+        nodes = self.filter_empty_nodes(
+            nodes,
+            min_content_length=self._config.budget.min_content_length,
+        )
+
+        if not nodes:
+            return self._fallback_compile(chunks)
 
         # Cross-source edges: pair-wise connect pages that share an entity.
         # Only match entities against title + summary (first 200 chars), not

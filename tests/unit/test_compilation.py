@@ -382,6 +382,7 @@ class TestWiCERCompilerUnavailable:
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 0
+        config.budget.min_content_length = 0
         compiler = WiCERCompiler(config=config)
         wiki = compiler._blind_compile(chunks)
         wiki = compiler._refine(wiki, ["Fact one."])
@@ -470,6 +471,7 @@ class TestWiCERCompilerWithMock:
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 1
+        config.budget.min_content_length = 0
         compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_refinements"] == 1
@@ -575,3 +577,50 @@ class TestWiCERWithGraphCompiler:
     def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
             yield
+
+
+# ===========================================================================
+#  Empty-node filtering (knox-wgt.4)
+# ===========================================================================
+
+
+class TestEmptyNodeFiltering:
+    """Title-only / heading-only pages are filtered by min_content_length."""
+
+    def test_effective_content_length_strips_headings(self) -> None:
+        assert BaseCompiler.effective_content_length("# Title\nBody text here.") == len("Body text here.")
+        assert BaseCompiler.effective_content_length("# Title") == 0
+
+    def test_filter_empty_groups_keeps_root_and_nonempty(self) -> None:
+        groups = {
+            "_root": [ResolvedChunk(chunk=_chunk("Overview text.", heading="", chunk_id="r"))],
+            "Title Only": [ResolvedChunk(chunk=_chunk("# Title Only", heading="Title Only", chunk_id="t"))],
+            "Has Body": [ResolvedChunk(chunk=_chunk("# Has Body\nSome useful content here.", heading="Has Body", chunk_id="b"))],
+        }
+        filtered = BaseCompiler.filter_empty_groups(groups, min_content_length=10)
+        assert "_root" in filtered
+        assert "Has Body" in filtered
+        assert "Title Only" not in filtered
+
+    def test_filter_empty_groups_disabled_when_zero(self) -> None:
+        groups = {"Title Only": [ResolvedChunk(chunk=_chunk("# Title Only", heading="Title Only", chunk_id="t"))]}
+        assert BaseCompiler.filter_empty_groups(groups, min_content_length=0) == groups
+
+    def test_filter_empty_nodes_keeps_overview(self) -> None:
+        nodes = [
+            WikiNode(id="n1", title="Overview", content="Brief.", node_type="overview"),
+            WikiNode(id="n2", title="Stub", content="# Stub", node_type="concept"),
+        ]
+        filtered = BaseCompiler.filter_empty_nodes(nodes, min_content_length=10)
+        assert len(filtered) == 1
+        assert filtered[0].id == "n1"
+
+    def test_graph_compiler_filters_heading_only_nodes(self) -> None:
+        chunks = [
+            ResolvedChunk(chunk=_chunk("# Title Only", heading="Title Only", chunk_id="c1")),
+            ResolvedChunk(chunk=_chunk("This section has enough body text to remain." * 3, heading="Real Section", chunk_id="c2")),
+        ]
+        compiler = GraphCompiler("model", min_content_length=20)
+        wiki = compiler.compile(chunks)
+        assert len(wiki.nodes) == 1
+        assert wiki.nodes[0].title == "Real Section"

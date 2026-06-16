@@ -735,13 +735,19 @@ def build_pipeline(
         if config.compiler == Compiler.WICER:
             base_compiler = WiCERCompiler(
                 config=config,
-                base_compiler=GraphCompiler(model=config.llm.default_model),
+                base_compiler=GraphCompiler(
+                    model=config.llm.default_model,
+                    min_content_length=config.budget.min_content_length,
+                ),
                 llm_client=llm_client,
             )
         elif config.compiler == Compiler.GRAPH:
             base_compiler = TwoPhaseCompiler(
                 config=config,
-                base=GraphCompiler(model=config.llm.default_model),
+                base=GraphCompiler(
+                    model=config.llm.default_model,
+                    min_content_length=config.budget.min_content_length,
+                ),
                 llm_client=llm_client,
             )
         else:

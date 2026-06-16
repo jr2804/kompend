@@ -57,7 +57,10 @@ class WiCERCompiler(BaseCompiler):
         base_compiler: BaseCompiler | None = None,
     ) -> None:
         self._config = config
-        self._compiler = base_compiler or GraphCompiler(model=config.llm.default_model)
+        self._compiler = base_compiler or GraphCompiler(
+            model=config.llm.default_model,
+            min_content_length=config.budget.min_content_length,
+        )
         self.max_iterations = config.budget.wicer_max_iterations
         self._client = llm_client  # None is OK — caller handles graceful degradation
 

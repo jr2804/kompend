@@ -31,8 +31,9 @@ class GraphCompiler(BaseCompiler):
         Model name (reserved for future LLM-guided compilation).
     """
 
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, *, min_content_length: int = 0) -> None:
         self.model = model
+        self._min_content_length = min_content_length
 
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Blind compilation of resolved chunks into a knowledge graph.
@@ -54,6 +55,11 @@ class GraphCompiler(BaseCompiler):
             )
 
         groups = self._group_chunks(chunks)
+        if self._min_content_length > 0:
+            groups = self.filter_empty_groups(
+                groups,
+                min_content_length=self._min_content_length,
+            )
         nodes, node_index = self._build_nodes(groups)
         self.disambiguate_duplicate_titles(nodes, chunks)
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)

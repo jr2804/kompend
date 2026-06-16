@@ -179,6 +179,7 @@ class PipelineConfig:
             concepts_per_batch=cfg.get("compile.budget.concepts_per_batch", BudgetConfig().concepts_per_batch),
             verify_min_ngram=cfg.get("compile.budget.verify_min_ngram", BudgetConfig().verify_min_ngram),
             wicer_max_iterations=cfg.get("compile.budget.wicer_max_iterations", BudgetConfig().wicer_max_iterations),
+            min_content_length=cfg.get("compile.budget.min_content_length", BudgetConfig().min_content_length),
             chunk_size_min=cfg.get("compile.budget.chunk_size_min", BudgetConfig().chunk_size_min),
             chunk_size_max=cfg.get("compile.budget.chunk_size_max", BudgetConfig().chunk_size_max),
             extract_output_ratio=cfg.get("compile.budget.extract_output_ratio", BudgetConfig().extract_output_ratio),

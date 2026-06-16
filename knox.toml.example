@@ -75,6 +75,7 @@ workers = 1
 concepts_per_batch = 8         # concepts per generation batch
 verify_min_ngram = 3           # minimum n-gram for substring verification
 wicer_max_iterations = 3       # max WiCER compile-evaluate-refine iterations
+min_content_length = 50        # minimum body chars (after stripping headings) to keep a page
 
 # Chunk sizing safety rails (tokens)
 chunk_size_min = 2048          # floor: prevents useless tiny chunks

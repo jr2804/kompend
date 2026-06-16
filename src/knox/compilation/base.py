@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
@@ -10,6 +11,8 @@ from pathlib import Path
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 
 logger = logging.getLogger(__name__)
+
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
 
 
 class BaseCompiler(ABC):
@@ -19,6 +22,76 @@ class BaseCompiler(ABC):
     def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
         """Compile resolved chunks into a knowledge graph wiki."""
         ...
+
+    @staticmethod
+    def effective_content_length(text: str) -> int:
+        """Return character count of body text, excluding headings and whitespace."""
+        body_lines = [
+            line
+            for line in (text or "").splitlines()
+            if line.strip() and not _HEADING_RE.match(line)
+        ]
+        return len("\n".join(body_lines).strip())
+
+    @staticmethod
+    def filter_empty_groups(
+        groups: dict[str, list[ResolvedChunk]],
+        *,
+        min_content_length: int,
+    ) -> dict[str, list[ResolvedChunk]]:
+        """Remove groups whose merged content falls below *min_content_length*.
+
+        Content is measured after stripping markdown headings and
+        whitespace. Groups with title-only or heading-only chunks are
+        removed. The ``_root`` group is always retained.
+        """
+        if min_content_length <= 0:
+            return groups
+        kept: dict[str, list[ResolvedChunk]] = {}
+        for heading, group_chunks in groups.items():
+            if heading == "_root":
+                kept[heading] = group_chunks
+                continue
+            merged = "\n\n".join(rc.chunk.text for rc in group_chunks if rc.chunk.text)
+            body_len = BaseCompiler.effective_content_length(merged)
+            if body_len >= min_content_length:
+                kept[heading] = group_chunks
+            else:
+                logger.debug(
+                    "Filtered empty group '%s' (%d chars body)", heading, body_len
+                )
+        return kept
+
+    @staticmethod
+    def filter_empty_nodes(
+        nodes: list[WikiNode],
+        *,
+        min_content_length: int,
+    ) -> list[WikiNode]:
+        """Remove nodes whose content falls below *min_content_length*.
+
+        Content is measured after stripping markdown headings and
+        whitespace. Overview nodes (``node_type == 'overview'``) are
+        always retained.
+        """
+        if min_content_length <= 0:
+            return nodes
+        kept: list[WikiNode] = []
+        for node in nodes:
+            if node.node_type == "overview":
+                kept.append(node)
+                continue
+            body_len = BaseCompiler.effective_content_length(node.content)
+            if body_len >= min_content_length:
+                kept.append(node)
+            else:
+                logger.debug(
+                    "Filtered empty node %s '%s' (%d chars body)",
+                    node.id,
+                    node.title,
+                    body_len,
+                )
+        return kept
 
     @staticmethod
     def disambiguate_duplicate_titles(

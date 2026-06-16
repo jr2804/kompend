@@ -63,6 +63,7 @@ class BudgetConfig:
     concepts_per_batch: int = 8
     verify_min_ngram: int = 3
     wicer_max_iterations: int = 3
+    min_content_length: int = 50
 
     # Chunk sizing safety rails (tokens)
     chunk_size_min: int = 2048
