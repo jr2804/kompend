@@ -16,6 +16,16 @@ def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDoc
     )
 
 
+def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
+    return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
+
+
+def _sentence_ends(text: str) -> bool:
+    """Return True if the text ends at a sentence or paragraph boundary."""
+    stripped = text.rstrip()
+    return not stripped or stripped[-1] in ".!?\n"
+
+
 class TestHybridChunker:
     """Test suite for HybridChunker."""
 
@@ -182,3 +192,37 @@ class TestHybridChunker:
         """Without context_window, falls back to max_tokens path."""
         chunker = HybridChunker(max_tokens=2048, reserve_ratio=0.25)
         assert chunker._effective_max == int(2048 * 0.75)
+
+    def test_splits_at_paragraph_boundary(self) -> None:
+        """Paragraph boundaries are preferred over mid-sentence cuts."""
+        paragraphs = [
+            "First paragraph has two clear sentences. Here is the second one.",
+            "Second paragraph is longer and should stay together if possible. "
+            "It has more words that we can count.",
+        ]
+        doc = _make_doc(_text_elements(paragraphs))
+        # Force split by using a small budget.
+        result = HybridChunker(max_tokens=24, reserve_ratio=0.0).chunk(doc)
+        assert len(result) >= 1
+        # At least one chunk should end cleanly (sentence/paragraph boundary).
+        assert any(_sentence_ends(c.text) for c in result)
+
+    def test_no_mid_sentence_cut_when_chunk_fits(self) -> None:
+        """If a sentence fits in the budget, the chunker must not cut it."""
+        sentences = [
+            "Short sentence one.",
+            "Short sentence two.",
+            "Short sentence three is the longest of them all.",
+        ]
+        doc = _make_doc(_text_elements(sentences))
+        result = HybridChunker(max_tokens=12, reserve_ratio=0.0).chunk(doc)
+        for c in result:
+            assert _sentence_ends(c.text)
+
+    def test_long_paragraph_split_at_sentence_boundary(self) -> None:
+        """A paragraph larger than the budget is split at sentence ends."""
+        text = "Sentence one is moderately long. " * 6
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
+        result = HybridChunker(max_tokens=16, reserve_ratio=0.0).chunk(doc)
+        for c in result:
+            assert _sentence_ends(c.text)

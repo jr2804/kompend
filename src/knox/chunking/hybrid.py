@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from chonkie import RecursiveChunker
+from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules
 
 from knox.chunking.base import BaseChunker
 from knox.core.models import ATOMIC_TYPES, Chunk, ElementType, ParsedDocument
@@ -49,6 +49,27 @@ class HybridChunker(BaseChunker):
             chunk_size_max=chunk_size_max,
         )
         self.tokenizer_name = tokenizer_name
+
+    @staticmethod
+    def _boundary_rules() -> RecursiveRules:
+        """Return paragraph-first, then line, then sentence, then whitespace rules.
+
+        The default Chonkie markdown recipe can split paragraphs mid-sentence
+        when they exceed the token budget. This custom rule stack prefers
+        paragraph boundaries, then line breaks, then sentence terminators, and
+        finally falls back to whitespace / character splits for pathological
+        cases. Delimiters stay with the previous chunk to preserve continuity.
+        """
+        return RecursiveRules(
+            levels=[
+                RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
+                RecursiveLevel(delimiters=["\n"], include_delim="prev"),
+                RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
+                # Final fallback lets Chonkie split the remaining text by tokens/characters.
+                # Paragraph and sentence boundaries are attempted first.
+                RecursiveLevel(include_delim="prev"),
+            ],
+        )
 
     def chunk(self, document: ParsedDocument) -> list[Chunk]:
         if not document.elements:
@@ -104,10 +125,10 @@ class HybridChunker(BaseChunker):
         full_text = "\n\n".join(text_parts)
 
         try:
-            rc = RecursiveChunker.from_recipe(
-                "markdown",
+            rc = RecursiveChunker(
                 chunk_size=self._effective_max,
                 tokenizer=self.tokenizer_name,
+                rules=self._boundary_rules(),
             )
             chonkie_result = rc.chunk(full_text)
         except Exception:
