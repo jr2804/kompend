@@ -27,6 +27,63 @@ from knox.core.config import (
     OutputFormat,
     ResolvedConfig,
 )
+from knox.core.config.keys import (
+    COMPILE_BUDGET_CHUNK_SIZE_MAX,
+    COMPILE_BUDGET_CHUNK_SIZE_MIN,
+    COMPILE_BUDGET_CONCEPTS_PER_BATCH,
+    COMPILE_BUDGET_EXTRACT_OUTPUT_MAX,
+    COMPILE_BUDGET_EXTRACT_OUTPUT_MIN,
+    COMPILE_BUDGET_EXTRACT_OUTPUT_RATIO,
+    COMPILE_BUDGET_GEN_OUTPUT_MAX,
+    COMPILE_BUDGET_LINT_OUTPUT_MAX,
+    COMPILE_BUDGET_MAX_CONCEPT_PAGES,
+    COMPILE_BUDGET_MIN_CONCEPT_SOURCES,
+    COMPILE_BUDGET_MIN_CONTENT_LENGTH,
+    COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX,
+    COMPILE_BUDGET_OVERVIEW_OUTPUT_MIN,
+    COMPILE_BUDGET_OVERVIEW_OUTPUT_RATIO,
+    COMPILE_BUDGET_VERIFY_MIN_NGRAM,
+    COMPILE_BUDGET_VERIFY_OUTPUT_MAX,
+    COMPILE_BUDGET_VERIFY_OUTPUT_MIN,
+    COMPILE_BUDGET_VERIFY_OUTPUT_RATIO,
+    COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX,
+    COMPILE_BUDGET_WICER_MAX_ITERATIONS,
+    COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX,
+    COMPILE_CACHE_DIR,
+    COMPILE_COMPILER,
+    COMPILE_EMBEDDING_MODEL,
+    COMPILE_FORCE,
+    COMPILE_FORMAT,
+    COMPILE_IMAGE_MODE,
+    COMPILE_LLM_CONTEXT_WINDOW_CAP,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_FALLBACK_CHAIN,
+    COMPILE_LLM_FALLBACK_MAX_INPUT,
+    COMPILE_LLM_FALLBACK_MAX_OUTPUT,
+    COMPILE_LLM_FALLBACK_MAX_RETRIES,
+    COMPILE_LLM_NUM_CTX_MAX,
+    COMPILE_LLM_NUM_CTX_MIN,
+    COMPILE_LLM_ROLE_MODELS,
+    COMPILE_LLM_TIMEOUT,
+    COMPILE_LLM_VLM_MODEL,
+    COMPILE_MEMORY_DECAY_THRESHOLD,
+    COMPILE_MEMORY_ENABLED,
+    COMPILE_MEMORY_HALF_LIFE_DAYS,
+    COMPILE_NO_CACHE,
+    COMPILE_OUTPUT_FLAVOR,
+    COMPILE_OUTPUT_FRONTMATTER,
+    COMPILE_OUTPUT_RUMDL_CONFIG,
+    COMPILE_PAGE_KIND,
+    COMPILE_RELATION_CONFIDENCE_THRESHOLD,
+    COMPILE_RESOLVE_RELATIONS,
+    COMPILE_RESPECT_GITIGNORE,
+    COMPILE_START_AT_TIER,
+    COMPILE_STOP_AT_TIER,
+    COMPILE_TIER_STATE_PATH,
+    COMPILE_WORKERS,
+    PATHS_WIKI_DIR,
+    TRUST_PRIVACY_FILTER,
+)
 from knox.core.paths import KNOX_DIR
 
 
@@ -147,69 +204,69 @@ class PipelineConfig:
     @classmethod
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
-        llm_fallback_chain = cfg.get("compile.llm.fallback_chain", [])
-        llm_fallback_max_retries = cfg.get("compile.llm.fallback_max_retries", 2)
-        cfg.get("compile.llm.default_model")
-        role_models_raw = cfg.get("compile.llm.role_models", {})
+        llm_fallback_chain = cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])
+        llm_fallback_max_retries = cfg.get(COMPILE_LLM_FALLBACK_MAX_RETRIES, 2)
+        cfg.get(COMPILE_LLM_DEFAULT_MODEL)
+        role_models_raw = cfg.get(COMPILE_LLM_ROLE_MODELS, {})
         role_models = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()} if isinstance(role_models_raw, dict) else {}
 
-        frontmatter_defaults = dict(cfg.get("compile.output.frontmatter", {}))
-        rumdl_config_file = cfg.get("compile.output.rumdl_config")
+        frontmatter_defaults = dict(cfg.get(COMPILE_OUTPUT_FRONTMATTER, {}))
+        rumdl_config_file = cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG)
         if isinstance(rumdl_config_file, str):
             rumdl_config_file = Path(rumdl_config_file)
 
         llm_config = LLMConfig(
-            default_model=cfg.get("compile.llm.default_model"),
-            vlm_model=cfg.get("compile.llm.vlm_model"),
+            default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
+            vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
             fallback_chain=llm_fallback_chain,
             fallback_max_retries=llm_fallback_max_retries,
-            timeout=cfg.get("compile.llm.timeout", 120.0),
-            fallback_max_input=cfg.get("compile.llm.fallback_max_input", 8192),
-            fallback_max_output=cfg.get("compile.llm.fallback_max_output", 4096),
-            num_ctx_min=cfg.get("compile.llm.num_ctx_min", 2048),
-            num_ctx_max=cfg.get("compile.llm.num_ctx_max", 131072),
-            context_window_cap=cfg.get("compile.llm.context_window_cap"),
+            timeout=cfg.get(COMPILE_LLM_TIMEOUT, 120.0),
+            fallback_max_input=cfg.get(COMPILE_LLM_FALLBACK_MAX_INPUT, 8192),
+            fallback_max_output=cfg.get(COMPILE_LLM_FALLBACK_MAX_OUTPUT, 4096),
+            num_ctx_min=cfg.get(COMPILE_LLM_NUM_CTX_MIN, 2048),
+            num_ctx_max=cfg.get(COMPILE_LLM_NUM_CTX_MAX, 131072),
+            context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP),
             role_models=role_models,
         )
 
         budget_config = BudgetConfig(
-            concepts_per_batch=cfg.get("compile.budget.concepts_per_batch", BudgetConfig().concepts_per_batch),
-            verify_min_ngram=cfg.get("compile.budget.verify_min_ngram", BudgetConfig().verify_min_ngram),
-            wicer_max_iterations=cfg.get("compile.budget.wicer_max_iterations", BudgetConfig().wicer_max_iterations),
-            min_content_length=cfg.get("compile.budget.min_content_length", BudgetConfig().min_content_length),
-            min_concept_sources=cfg.get("compile.budget.min_concept_sources", BudgetConfig().min_concept_sources),
-            max_concept_pages=cfg.get("compile.budget.max_concept_pages", BudgetConfig().max_concept_pages),
-            chunk_size_min=cfg.get("compile.budget.chunk_size_min", BudgetConfig().chunk_size_min),
-            chunk_size_max=cfg.get("compile.budget.chunk_size_max", BudgetConfig().chunk_size_max),
-            extract_output_ratio=cfg.get("compile.budget.extract_output_ratio", BudgetConfig().extract_output_ratio),
-            extract_output_min=cfg.get("compile.budget.extract_output_min", BudgetConfig().extract_output_min),
-            extract_output_max=cfg.get("compile.budget.extract_output_max", BudgetConfig().extract_output_max),
-            gen_output_max=cfg.get("compile.budget.gen_output_max", BudgetConfig().gen_output_max),
-            overview_output_ratio=cfg.get("compile.budget.overview_output_ratio", BudgetConfig().overview_output_ratio),
-            overview_output_min=cfg.get("compile.budget.overview_output_min", BudgetConfig().overview_output_min),
-            overview_output_max=cfg.get("compile.budget.overview_output_max", BudgetConfig().overview_output_max),
-            verify_output_ratio=cfg.get("compile.budget.verify_output_ratio", BudgetConfig().verify_output_ratio),
-            verify_output_min=cfg.get("compile.budget.verify_output_min", BudgetConfig().verify_output_min),
-            verify_output_max=cfg.get("compile.budget.verify_output_max", BudgetConfig().verify_output_max),
-            lint_output_max=cfg.get("compile.budget.lint_output_max", BudgetConfig().lint_output_max),
-            wicer_probe_output_max=cfg.get("compile.budget.wicer_probe_output_max", BudgetConfig().wicer_probe_output_max),
-            wicer_eval_output_max=cfg.get("compile.budget.wicer_eval_output_max", BudgetConfig().wicer_eval_output_max),
+            concepts_per_batch=cfg.get(COMPILE_BUDGET_CONCEPTS_PER_BATCH, BudgetConfig().concepts_per_batch),
+            verify_min_ngram=cfg.get(COMPILE_BUDGET_VERIFY_MIN_NGRAM, BudgetConfig().verify_min_ngram),
+            wicer_max_iterations=cfg.get(COMPILE_BUDGET_WICER_MAX_ITERATIONS, BudgetConfig().wicer_max_iterations),
+            min_content_length=cfg.get(COMPILE_BUDGET_MIN_CONTENT_LENGTH, BudgetConfig().min_content_length),
+            min_concept_sources=cfg.get(COMPILE_BUDGET_MIN_CONCEPT_SOURCES, BudgetConfig().min_concept_sources),
+            max_concept_pages=cfg.get(COMPILE_BUDGET_MAX_CONCEPT_PAGES, BudgetConfig().max_concept_pages),
+            chunk_size_min=cfg.get(COMPILE_BUDGET_CHUNK_SIZE_MIN, BudgetConfig().chunk_size_min),
+            chunk_size_max=cfg.get(COMPILE_BUDGET_CHUNK_SIZE_MAX, BudgetConfig().chunk_size_max),
+            extract_output_ratio=cfg.get(COMPILE_BUDGET_EXTRACT_OUTPUT_RATIO, BudgetConfig().extract_output_ratio),
+            extract_output_min=cfg.get(COMPILE_BUDGET_EXTRACT_OUTPUT_MIN, BudgetConfig().extract_output_min),
+            extract_output_max=cfg.get(COMPILE_BUDGET_EXTRACT_OUTPUT_MAX, BudgetConfig().extract_output_max),
+            gen_output_max=cfg.get(COMPILE_BUDGET_GEN_OUTPUT_MAX, BudgetConfig().gen_output_max),
+            overview_output_ratio=cfg.get(COMPILE_BUDGET_OVERVIEW_OUTPUT_RATIO, BudgetConfig().overview_output_ratio),
+            overview_output_min=cfg.get(COMPILE_BUDGET_OVERVIEW_OUTPUT_MIN, BudgetConfig().overview_output_min),
+            overview_output_max=cfg.get(COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX, BudgetConfig().overview_output_max),
+            verify_output_ratio=cfg.get(COMPILE_BUDGET_VERIFY_OUTPUT_RATIO, BudgetConfig().verify_output_ratio),
+            verify_output_min=cfg.get(COMPILE_BUDGET_VERIFY_OUTPUT_MIN, BudgetConfig().verify_output_min),
+            verify_output_max=cfg.get(COMPILE_BUDGET_VERIFY_OUTPUT_MAX, BudgetConfig().verify_output_max),
+            lint_output_max=cfg.get(COMPILE_BUDGET_LINT_OUTPUT_MAX, BudgetConfig().lint_output_max),
+            wicer_probe_output_max=cfg.get(COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX, BudgetConfig().wicer_probe_output_max),
+            wicer_eval_output_max=cfg.get(COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX, BudgetConfig().wicer_eval_output_max),
         )
 
         output_config = OutputConfig(
-            format=cfg.get("compile.format", OutputConfig().format),
-            flavor=cfg.get("compile.output.flavor", OutputConfig().flavor),
+            format=cfg.get(COMPILE_FORMAT, OutputConfig().format),
+            flavor=cfg.get(COMPILE_OUTPUT_FLAVOR, OutputConfig().flavor),
             frontmatter=frontmatter_defaults,
             rumdl_config=rumdl_config_file,
         )
 
         embedding_config = EmbeddingConfig(
-            model=cfg.get("compile.embedding.model"),
+            model=cfg.get(COMPILE_EMBEDDING_MODEL),
         )
 
         # Resolve notes file path relative to wiki_dir
         notes_file_name = cfg.get("notes.file", "NOTES.md")
-        wiki_dir = cfg.get("paths.wiki_dir")
+        wiki_dir = cfg.get(PATHS_WIKI_DIR)
         notes_file: Path | None = None
         if notes_file_name:
             base_dir = Path(wiki_dir) if wiki_dir else output_dir.parent
@@ -218,26 +275,26 @@ class PipelineConfig:
         return cls(
             source_dir=source_dir,
             output_dir=output_dir,
-            image_mode=ImageMode(cfg.get("compile.image_mode", ImageMode.FILE)),
+            image_mode=ImageMode(cfg.get(COMPILE_IMAGE_MODE, ImageMode.FILE)),
             online_sources=[],
             input_files=input_files,
-            cache_dir=cfg.get("compile.cache_dir"),
-            no_cache=cfg.get("compile.no_cache", False),
-            workers=cfg.get("compile.workers", 1),
-            start_at_tier=Tier(cfg.get("compile.start_at_tier", Tier.INDEX)),
-            stop_at_tier=Tier(cfg.get("compile.stop_at_tier", Tier.OUTPUT)),
-            force=cfg.get("compile.force", False),
-            tier_state_path=cfg.get("compile.tier_state_path"),
+            cache_dir=cfg.get(COMPILE_CACHE_DIR),
+            no_cache=cfg.get(COMPILE_NO_CACHE, False),
+            workers=cfg.get(COMPILE_WORKERS, 1),
+            start_at_tier=Tier(cfg.get(COMPILE_START_AT_TIER, Tier.INDEX)),
+            stop_at_tier=Tier(cfg.get(COMPILE_STOP_AT_TIER, Tier.OUTPUT)),
+            force=cfg.get(COMPILE_FORCE, False),
+            tier_state_path=cfg.get(COMPILE_TIER_STATE_PATH),
             ignore_patterns=list(cfg.get("ignore.patterns", [])),
-            respect_gitignore=cfg.get("compile.respect_gitignore", True),
-            page_kind=cfg.get("compile.page_kind"),
-            compiler=cfg.get("compile.compiler", Compiler.GRAPH),
-            privacy_filter=cfg.get("trust.privacy_filter", True),
-            resolve_relations=cfg.get("compile.resolve_relations", True),
-            relation_confidence_threshold=cfg.get("compile.relation_confidence_threshold", 0.5),
-            memory_enabled=cfg.get("compile.memory_enabled", True),
-            memory_half_life_days=cfg.get("compile.memory_half_life_days", 90.0),
-            memory_decay_threshold=cfg.get("compile.memory_decay_threshold", 0.3),
+            respect_gitignore=cfg.get(COMPILE_RESPECT_GITIGNORE, True),
+            page_kind=cfg.get(COMPILE_PAGE_KIND),
+            compiler=cfg.get(COMPILE_COMPILER, Compiler.GRAPH),
+            privacy_filter=cfg.get(TRUST_PRIVACY_FILTER, True),
+            resolve_relations=cfg.get(COMPILE_RESOLVE_RELATIONS, True),
+            relation_confidence_threshold=cfg.get(COMPILE_RELATION_CONFIDENCE_THRESHOLD, 0.5),
+            memory_enabled=cfg.get(COMPILE_MEMORY_ENABLED, True),
+            memory_half_life_days=cfg.get(COMPILE_MEMORY_HALF_LIFE_DAYS, 90.0),
+            memory_decay_threshold=cfg.get(COMPILE_MEMORY_DECAY_THRESHOLD, 0.3),
             notes_file=notes_file,
             llm=llm_config,
             budget=budget_config,

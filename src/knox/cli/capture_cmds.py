@@ -12,6 +12,7 @@ from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnTags, LearnText
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_LLM_DEFAULT_MODEL
 from knox.llm.client import LLMClient
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
@@ -35,7 +36,7 @@ def capture_cmd(
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
-        default_model = cfg.get("compile.llm.default_model")
+        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         llm_client = LLMClient(default_model=default_model)
     except Exception:
         llm_client = None
@@ -88,7 +89,7 @@ def crystallize_cmd(
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
-        default_model = cfg.get("compile.llm.default_model")
+        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         llm_client = LLMClient(default_model=default_model)
     except Exception:
         llm_client = None

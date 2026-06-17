@@ -9,6 +9,7 @@ import typer
 from knox.cli.app import app
 from knox.cli.args_memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
 from knox.core.template_loader import get_template_loader
 from knox.memory.store import MemoryStore
 
@@ -23,11 +24,11 @@ app.add_typer(memory_app)
 def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path]:
     """Resolve the memory store and project base directory from context."""
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
-    cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir_override} if wiki_dir_override else {})
+    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir_override} if wiki_dir_override else {})
     paths = cfg.get("paths")
     output_dir_path = Path(paths["output_dir"])
     base_dir = output_dir_path.parent
-    embed_model = cfg.get("compile.embedding.model")
+    embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
     return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir
 
 

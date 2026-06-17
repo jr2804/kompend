@@ -28,6 +28,7 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline import build_pipeline
@@ -48,8 +49,8 @@ server = FastMCP("KNOX")
 
 def _make_memory_store(wiki_dir: str) -> MemoryStore:
     """Create a MemoryStore with embedding model from resolved config."""
-    cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir})
-    embed_model = cfg.get("compile.embedding.model")
+    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
+    embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
     return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model)
 
 
@@ -181,7 +182,7 @@ def wiki_capture(
 
     try:
         cfg = resolve_config()
-        default_model = cfg.get("compile.llm.default_model")
+        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         llm_client = LLMClient(default_model=default_model)
     except Exception:
         llm_client = None
@@ -316,7 +317,7 @@ def query_wiki(
     search_mode: str = "hybrid",
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki."""
-    cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir})
+    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
     sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
 
     wiki = load_cached_wiki(output_dir_path)
@@ -326,7 +327,7 @@ def query_wiki(
     vector_store: ZvecWikiStore | None = None
     if state_dir and (state_dir / VECTORS_DIR).exists():
         try:
-            embed_model = cfg.get("compile.embedding.model")
+            embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
             vector_store = ZvecWikiStore.open(state_dir / VECTORS_DIR, embedding_model=embed_model or "hash")
         except Exception:
             vector_store = None
@@ -358,7 +359,7 @@ def query_wiki(
         result_dicts = [dataclasses.asdict(r) for r in results] if results else []
         return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
-    llm_model = cfg.get("compile.llm.default_model")
+    llm_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
     try:
         llm_client = LLMClient(default_model=llm_model) if llm_model else None
     except Exception:
@@ -391,7 +392,7 @@ def wiki_status(
 ) -> dict[str, Any]:
     """Show per-wiki statistics."""
     try:
-        cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir})
+        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
         sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
         stats = collect_stats(
             sources_dir=sources_dir_path if sources_dir_path.exists() else None,
@@ -408,10 +409,10 @@ def wiki_crystallize(
 ) -> dict[str, Any]:
     """Synthesize captured notes into coherent wiki pages."""
     try:
-        cfg = resolve_config(cli_overrides={"paths.wiki_dir": wiki_dir})
+        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
         sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-        llm_model = cfg.get("compile.llm.default_model")
+        llm_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         try:
             llm_client = LLMClient(default_model=llm_model) if llm_model else None
         except Exception:

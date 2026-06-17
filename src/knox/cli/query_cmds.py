@@ -21,6 +21,7 @@ from knox.cli.args import (
     QueryTopK,
 )
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, COMPILE_LLM_FALLBACK_CHAIN, COMPILE_LLM_ROLE_MODELS
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, VECTORS_DIR
@@ -53,14 +54,14 @@ def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN4
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     """Build an LLMClient from config if a default model is set."""
     cfg = resolve_config(config_path=config)
-    default_model: str | None = cfg.get("compile.llm.default_model")
+    default_model: str | None = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
     if not default_model:
         return None
 
     return LLMClient(
         default_model=default_model,
-        fallback_chain=list(cfg.get("compile.llm.fallback_chain", [])),
-        role_models=dict(cfg.get("compile.llm.role_models", {})),
+        fallback_chain=list(cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])),
+        role_models=dict(cfg.get(COMPILE_LLM_ROLE_MODELS, {})),
     )
 
 
@@ -249,4 +250,4 @@ def query_cmd(
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
     if remember:
-        _save_query_memory(state_dir, query, synthesis.answer, cfg.get("compile.embedding.model"))
+        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL))
