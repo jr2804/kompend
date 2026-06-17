@@ -175,11 +175,72 @@ class TestHTTPDownloader:
         assert len(results) == 2
         assert all("fail" not in str(p) for p in results)
 
+    def test_download_aspx_saved_as_html_from_content_type(self, tmp_path: Path) -> None:
+        """A URL ending in .aspx with text/html Content-Type is saved as .html."""
+        downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen(data=b"<html>hi</html>", content_type="text/html")
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            path = downloader.download("https://example.com/page.aspx", tmp_path)
+
+        assert path is not None
+        assert path.suffix == ".html"
+        assert path.stem == "page"
+        assert path.read_bytes() == b"<html>hi</html>"
+
+    def test_download_no_extension_saved_as_html(self, tmp_path: Path) -> None:
+        """A URL with no file extension and text/html Content-Type is saved as .html."""
+        downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen(data=b"<html>hi</html>", content_type="text/html")
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            path = downloader.download("https://example.com/20q-listening-effort-29239", tmp_path)
+
+        assert path is not None
+        assert path.suffix == ".html"
+        assert path.stem == "20q-listening-effort-29239"
+        assert path.read_bytes() == b"<html>hi</html>"
+
+    def test_download_pdf_extension_kept_for_text_html(self, tmp_path: Path) -> None:
+        """A URL with a known extension (.pdf) keeps it regardless of Content-Type."""
+        downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen(data=b"fake", content_type="text/html")
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            path = downloader.download("https://example.com/doc.pdf", tmp_path)
+
+        assert path is not None
+        assert path.suffix == ".pdf"
+
+    def test_download_unknown_content_type_keeps_original_ext(self, tmp_path: Path) -> None:
+        """An unrecognized Content-Type keeps the original extension."""
+        downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen(data=b"foo", content_type="application/octet-stream")
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            path = downloader.download("https://example.com/data.xyz", tmp_path)
+
+        assert path is not None
+        assert path.suffix == ".xyz"
+
+    def test_download_missing_content_type_keeps_original_ext(self, tmp_path: Path) -> None:
+        """A missing Content-Type header keeps the original extension."""
+        downloader = HTTPDownloader(timeout=5)
+        mock_response = self._mock_urlopen(data=b"foo", content_type="")
+        mock_response.headers = {}
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            path = downloader.download("https://example.com/page.aspx", tmp_path)
+
+        assert path is not None
+        assert path.suffix == ".aspx"
+
     @staticmethod
-    def _mock_urlopen(data: bytes = b"pdf-content") -> MagicMock:
+    def _mock_urlopen(data: bytes = b"pdf-content", content_type: str = "application/pdf") -> MagicMock:
         """Create a mock context manager for urllib.request.urlopen."""
         response = MagicMock()
         response.read.return_value = data
+        response.headers = {"Content-Type": content_type}
         response.__enter__ = lambda s: response
         response.__exit__ = MagicMock(return_value=False)
         return response
