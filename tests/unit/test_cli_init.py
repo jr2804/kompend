@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
+from knox.core.paths import KNOX_DIR
 
 runner = CliRunner()
 
@@ -19,7 +20,7 @@ class TestInitCommand:
         result = runner.invoke(app, ["init", str(target)])
         assert result.exit_code == 0, result.stdout
         assert (target / "sources").is_dir()
-        assert (target / ".knox" / "config.toml").is_file()
+        assert (target / KNOX_DIR / "config.toml").is_file()
         assert "Created wiki project" in result.stdout
 
     def test_creates_in_cwd_when_no_target(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,7 +28,7 @@ class TestInitCommand:
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
         assert (tmp_path / "sources").is_dir()
-        assert (tmp_path / ".knox" / "config.toml").is_file()
+        assert (tmp_path / KNOX_DIR / "config.toml").is_file()
 
     def test_bare_flag_skips_authored_files(self, tmp_path: Path) -> None:
         target = tmp_path / "bare-wiki"
@@ -50,11 +51,11 @@ class TestInitCommand:
     def test_force_flag_overwrites(self, tmp_path: Path) -> None:
         target = tmp_path / "force-wiki"
         target.mkdir()
-        (target / ".knox").mkdir()
-        (target / ".knox" / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
         result = runner.invoke(app, ["init", "--force", str(target)])
         assert result.exit_code == 0, result.stdout
-        assert (target / ".knox" / "config.toml").read_text(encoding="utf-8") != "# old"
+        assert (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8") != "# old"
 
     def test_target_path_is_file_fails(self, tmp_path: Path) -> None:
         file_path = tmp_path / "not-a-dir"

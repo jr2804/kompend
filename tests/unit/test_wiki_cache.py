@@ -7,6 +7,7 @@ from typing import Any
 
 from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
+from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
 
 
 def _make_wiki() -> CompiledWiki:
@@ -33,7 +34,7 @@ class TestWriteWikiCache:
         wiki = _make_wiki()
         _write_wiki_cache(wiki, tmp_path)
 
-        cache_file = tmp_path / ".knox" / "last_wiki.json"
+        cache_file = tmp_path / KNOX_DIR / WIKI_CACHE_FILE
         assert cache_file.exists()
 
         data = json.loads(cache_file.read_text(encoding="utf-8"))
@@ -44,9 +45,9 @@ class TestWriteWikiCache:
 
     def test_creates_knox_dir(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
-        assert not (tmp_path / ".knox").exists()
+        assert not (tmp_path / KNOX_DIR).exists()
         _write_wiki_cache(wiki, tmp_path)
-        assert (tmp_path / ".knox").exists()
+        assert (tmp_path / KNOX_DIR).exists()
 
     def test_overwrites_existing(self, tmp_path: Any) -> None:
         wiki1 = _make_wiki()
@@ -80,8 +81,8 @@ class TestLoadCachedWiki:
         assert loaded.iteration == 2
 
     def test_returns_none_on_corrupt_json(self, tmp_path: Any) -> None:
-        cache_dir = tmp_path / ".knox"
+        cache_dir = tmp_path / KNOX_DIR
         cache_dir.mkdir(parents=True)
-        (cache_dir / "last_wiki.json").write_text("{invalid json", encoding="utf-8")
+        (cache_dir / WIKI_CACHE_FILE).write_text("{invalid json", encoding="utf-8")
         result = load_cached_wiki(tmp_path)
         assert result is None

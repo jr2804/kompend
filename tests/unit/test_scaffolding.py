@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
 from knox.scaffolding import (
     AUTHORED_TEMPLATES,
     PROJECT_MARKERS,
@@ -23,15 +24,15 @@ class TestScaffoldProject:
         result = scaffold_project(target)
         assert (target / "sources").is_dir()
         assert (target / "wiki").is_dir()
-        assert (target / ".knox").is_dir()
-        assert (target / ".knox" / "cache").is_dir()
+        assert (target / KNOX_DIR).is_dir()
+        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
         assert len(result.created_dirs) == 4
 
     def test_creates_config_file(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         scaffold_project(target)
-        assert (target / ".knox" / "config.toml").is_file()
-        content = (target / ".knox" / "config.toml").read_text(encoding="utf-8")
+        assert (target / KNOX_DIR / "config.toml").is_file()
+        content = (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
         assert "[compile]" in content
         assert "compile.chunk_size" not in content  # dotted-form not used
 
@@ -57,7 +58,7 @@ class TestScaffoldProject:
         result = scaffold_project(target, bare=True)
         assert not (target / "NOTES.md").exists()
         assert not (target / "README.md").exists()
-        assert (target / ".knox" / "config.toml").is_file()
+        assert (target / KNOX_DIR / "config.toml").is_file()
         assert (target / ".gitignore").is_file()
         assert set(result.skipped_files) == set(AUTHORED_TEMPLATES)
         assert len(result.copied_files) == 2  # config + gitignore
@@ -79,16 +80,16 @@ class TestScaffoldProject:
     def test_existing_project_config_toml_rejected_without_force(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / ".knox").mkdir()
-        (target / ".knox" / "config.toml").write_text("# existing", encoding="utf-8")
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# existing", encoding="utf-8")
         with pytest.raises(ScaffoldError, match="Existing project"):
             scaffold_project(target)
 
     def test_force_overwrites(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / ".knox").mkdir()
-        old_config = target / ".knox" / "config.toml"
+        (target / KNOX_DIR).mkdir()
+        old_config = target / KNOX_DIR / "config.toml"
         old_config.write_text("# old", encoding="utf-8")
         scaffold_project(target, force=True)
         assert old_config.read_text(encoding="utf-8") != "# old"

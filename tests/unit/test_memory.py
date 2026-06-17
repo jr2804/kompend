@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from knox.core.paths import KNOX_DIR, MEMORY_LOG_FILE
 from knox.memory.store import MemoryStore
 from tests.conftest import DeterministicTestEmbeddingProvider
 
@@ -31,7 +32,7 @@ class TestMemoryStore:
             store.add_entry(query="What is the capital of France?", answer="Paris", feedback="Correct and concise.")
 
             # Check JSONL
-            log_path = temp_wiki_dir / ".knox" / "memory.jsonl"
+            log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
             assert log_path.exists()
             with open(log_path, encoding="utf-8") as f:
                 line = f.readline()

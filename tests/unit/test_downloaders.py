@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from knox.core.paths import DOWNLOADED_FILE, KNOX_DIR
 from knox.preprocessing.downloaders.crawler import WebCrawler
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
@@ -40,7 +41,7 @@ class TestHTTPDownloader:
 
     def test_download_same_url_twice_skips_second(self, tmp_path: Path) -> None:
         """When same URL is downloaded twice with detector, second is skipped."""
-        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
         downloader = HTTPDownloader(timeout=5, detector=detector)
 
         with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
@@ -55,7 +56,7 @@ class TestHTTPDownloader:
 
     def test_download_same_url_file_deleted_redownloads(self, tmp_path: Path) -> None:
         """When file was deleted but URL is known, re-download occurs."""
-        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
         downloader = HTTPDownloader(timeout=5, detector=detector)
 
         with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
@@ -226,7 +227,7 @@ class TestWebCrawler:
         """When same URL is crawled twice with detector, second is skipped."""
         pytest.importorskip("crawl4ai")
 
-        detector = DuplicateDetector(tmp_path / ".knox" / "downloaded.json")
+        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
         mock_result = MagicMock()
         mock_result.markdown = "# Hello\n\nThis is markdown."
 

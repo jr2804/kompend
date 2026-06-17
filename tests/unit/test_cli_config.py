@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
+from knox.core.paths import KNOX_DIR
 
 runner = CliRunner()
 
@@ -27,8 +28,8 @@ class TestConfigGet:
 
     def test_get_respects_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".knox").mkdir()
-        (tmp_path / ".knox" / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
+        (tmp_path / KNOX_DIR).mkdir()
+        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
         result = runner.invoke(app, ["config", "get", "compile.chunk_size"])
         assert result.exit_code == 0
         assert result.stdout.strip() == "1024"
@@ -40,20 +41,20 @@ class TestConfigSet:
         result = runner.invoke(app, ["config", "set", "compile.chunk_size", "1024"])
         assert result.exit_code == 0, result.stdout
         assert "set compile.chunk_size = 1024" in result.stdout
-        assert (tmp_path / ".knox" / "config.toml").read_text(encoding="utf-8") == "[compile]\nchunk_size = 1024\n"
+        assert (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8") == "[compile]\nchunk_size = 1024\n"
 
     def test_set_boolean(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "set", "compile.no_cache", "true"])
         assert result.exit_code == 0
-        text = (tmp_path / ".knox" / "config.toml").read_text(encoding="utf-8")
+        text = (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
         assert "no_cache = true" in text
 
     def test_set_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "set", "compile.llm.fallback_chain", "a, b, c"])
         assert result.exit_code == 0
-        text = (tmp_path / ".knox" / "config.toml").read_text(encoding="utf-8")
+        text = (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
         assert "fallback_chain = [" in text
         assert '"a"' in text
         assert '"b"' in text
@@ -73,7 +74,7 @@ class TestConfigSet:
 
     def test_set_creates_backup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        config = tmp_path / ".knox" / "config.toml"
+        config = tmp_path / KNOX_DIR / "config.toml"
         config.parent.mkdir()
         config.write_text("[compile]\nchunk_size = 512\n")
         result = runner.invoke(app, ["config", "set", "compile.chunk_size", "256"])
@@ -93,8 +94,8 @@ class TestConfigList:
 
     def test_list_shows_project_source(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".knox").mkdir()
-        (tmp_path / ".knox" / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
+        (tmp_path / KNOX_DIR).mkdir()
+        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
         result = runner.invoke(app, ["config", "list"])
         assert result.exit_code == 0
         assert "compile.chunk_size = 1024" in result.stdout
@@ -106,7 +107,7 @@ class TestConfigPath:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "path"])
         assert result.exit_code == 0
-        assert result.stdout.strip() == str(tmp_path / ".knox" / "config.toml")
+        assert result.stdout.strip() == str(tmp_path / KNOX_DIR / "config.toml")
 
     def test_path_global(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))

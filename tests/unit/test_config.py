@@ -25,6 +25,7 @@ from knox.core.config._core import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.paths import KNOX_DIR
 
 # ── Deep merge ──────────────────────────────────────────────────────────
 
@@ -392,7 +393,7 @@ class TestHierarchicalConfig:
         assert result == [child_file, parent_file]
 
     def test_find_all_project_configs_prefers_dot_knox(self, tmp_path: Any) -> None:
-        dot_knox = tmp_path / ".knox"
+        dot_knox = tmp_path / KNOX_DIR
         dot_knox.mkdir()
         dot_knox_file = dot_knox / "config.toml"
         dot_knox_file.write_text("[compile]\nchunk_size = 64\n")
@@ -449,7 +450,7 @@ class TestHierarchicalConfig:
         assert str(child_file) in str(cfg.source_of("compile.chunk_size"))
 
     def test_hierarchy_dot_knox_overrides_knox_toml(self, tmp_path: Any, monkeypatch: Any) -> None:
-        dot_knox = tmp_path / ".knox"
+        dot_knox = tmp_path / KNOX_DIR
         dot_knox.mkdir()
         (dot_knox / "config.toml").write_text("[compile]\nchunk_size = 64\n")
         (tmp_path / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
@@ -506,7 +507,7 @@ class TestGetProjectConfigPath:
         assert get_project_config_path(start_dir=tmp_path) == config_file
 
     def test_prefers_dot_knox_config(self, tmp_path: Any) -> None:
-        dot_knox = tmp_path / ".knox"
+        dot_knox = tmp_path / KNOX_DIR
         dot_knox.mkdir()
         dot_knox_file = dot_knox / "config.toml"
         dot_knox_file.write_text("")
@@ -515,7 +516,7 @@ class TestGetProjectConfigPath:
 
     def test_creates_dot_knox_when_missing(self, tmp_path: Any) -> None:
         path = get_project_config_path(start_dir=tmp_path, create=True)
-        assert path == tmp_path / ".knox" / "config.toml"
+        assert path == tmp_path / KNOX_DIR / "config.toml"
         assert path.parent.is_dir()
 
 

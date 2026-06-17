@@ -43,6 +43,7 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
+from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, STATE_FILE, VECTORS_DIR
 from knox.core.pipeline_defs import Compiler, PipelineConfig
 from knox.core.tier_state import TierStateStore
 from knox.llm.client import LLMClient
@@ -438,7 +439,7 @@ class TestSearchFTS:
 
     def test_build_and_search_fts_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """FTS index must be queryable and return relevant results."""
-        index_path = tmp_path / "search.db"
+        index_path = tmp_path / SEARCH_DB_FILE
         build_chunk_index(graph_wiki, index_path)
         assert index_path.exists(), "FTS index file not created"
 
@@ -479,7 +480,7 @@ class TestVectorStore:
         """Vector index must be buildable and return semantic search results."""
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         store = ZvecWikiStore(
-            db_path=tmp_path / "vectors",
+            db_path=tmp_path / VECTORS_DIR,
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         )
@@ -587,7 +588,7 @@ class TestFullPipelineE2E:
     def test_tier_state_is_persisted(self, small_corpus: list[Path], tmp_path: Path) -> None:
         """TierStateStore must persist after a parse+chunk pass."""
         out_dir = tmp_path / "e2e_state"
-        state_path = out_dir / ".knox" / "state.json"
+        state_path = out_dir / KNOX_DIR / STATE_FILE
         state_path.parent.mkdir(parents=True, exist_ok=True)
 
         store = TierStateStore(state_path)
@@ -853,13 +854,13 @@ class TestGenerateExampleWiki:
         TypstWriter().write(wiki, out_dir / "typst")
 
         # FTS
-        build_chunk_index(wiki, out_dir / ".knox" / "search.db")
+        build_chunk_index(wiki, out_dir / KNOX_DIR / SEARCH_DB_FILE)
         logger.info("FTS index built")
 
         # Vector index
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         ZvecWikiStore(
-            db_path=out_dir / ".knox" / "vectors",
+            db_path=out_dir / KNOX_DIR / VECTORS_DIR,
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         ).build_index(wiki)

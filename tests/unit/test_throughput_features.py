@@ -18,6 +18,7 @@ from knox.compilation.two_phase import (
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.core.paths import KNOX_DIR, PRIVATE_FILE, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE, VERIFICATION_FILE
 from knox.core.pipeline import (
     ALL_TIERS,
     TIER_CHUNK,
@@ -117,7 +118,7 @@ class TestTierStateStore:
         assert state.entries == {}
 
     def test_round_trip(self, tmp_path: Path) -> None:
-        path = tmp_path / "state.json"
+        path = tmp_path / STATE_FILE
         store = TierStateStore(path)
         state = TierState(entries={"a": SourceState(stem="a", source_path="a", content_hash="x")})
         store.save(state)
@@ -126,7 +127,7 @@ class TestTierStateStore:
         assert loaded.entries["a"].content_hash == "x"
 
     def test_record_creates_entry(self, tmp_path: Path) -> None:
-        store = TierStateStore(tmp_path / "state.json")
+        store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         entry = store.record(state, "doc1", Path("doc1.pdf"), "abc123", tier=1)
         assert entry.current_tier == 1
@@ -134,7 +135,7 @@ class TestTierStateStore:
         assert state.entries["doc1"].last_compile
 
     def test_record_updates_existing_entry(self, tmp_path: Path) -> None:
-        store = TierStateStore(tmp_path / "state.json")
+        store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1)
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=3)
@@ -142,7 +143,7 @@ class TestTierStateStore:
         assert state.entries["doc1"].search_hits == 0
 
     def test_record_hit_increments(self, tmp_path: Path) -> None:
-        store = TierStateStore(tmp_path / "state.json")
+        store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("d.pdf"), "h", tier=1)
         store.record_hit(state, "doc1")
@@ -150,7 +151,7 @@ class TestTierStateStore:
         assert state.entries["doc1"].search_hits == 2
 
     def test_corrupt_file_returns_empty(self, tmp_path: Path) -> None:
-        path = tmp_path / "state.json"
+        path = tmp_path / STATE_FILE
         path.write_text("not json", encoding="utf-8")
         store = TierStateStore(path)
         assert store.load().entries == {}
@@ -267,7 +268,7 @@ class TestWikiPipelineTiered:
         config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path, llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         pipeline = WikiPipeline(
             config=config,
-            state_store=TierStateStore(tmp_path / "state.json"),
+            state_store=TierStateStore(tmp_path / STATE_FILE),
         )
         tiers = pipeline.list_tiers()
         tier_names = {t["tier"] for t in tiers}
@@ -406,45 +407,45 @@ class TestReviewQueue:
     """ReviewQueue behaviour."""
 
     def test_enqueue_creates_pending_file(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         node = WikiNode(id="n1", title="Hello World", content="body", node_type="section")
         queue.enqueue(node)
-        assert (tmp_path / "review" / "hello-world.md").exists()
-        assert (tmp_path / "review" / "_state.json").exists()
+        assert (tmp_path / REVIEW_DIR / "hello-world.md").exists()
+        assert (tmp_path / REVIEW_DIR / "_state.json").exists()
 
     def test_approve_moves_file(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         node = WikiNode(id="n1", title="My Page", content="b", node_type="section")
         queue.enqueue(node)
         approved = queue.approve("my-page")
         assert approved
         assert approved[0].status == "approved"
-        assert (tmp_path / "review" / "my-page.approved.md").exists()
-        assert not (tmp_path / "review" / "my-page.md").exists()
+        assert (tmp_path / REVIEW_DIR / "my-page.approved.md").exists()
+        assert not (tmp_path / REVIEW_DIR / "my-page.md").exists()
 
     def test_approve_all(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         for i in range(3):
             queue.enqueue(WikiNode(id=f"n{i}", title=f"Page {i}", content="x", node_type="section"))
         approved = queue.approve("", approve_all=True)
         assert len(approved) == 3
 
     def test_reject_with_reason(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         queue.enqueue(WikiNode(id="n1", title="Bad", content="x", node_type="section"))
         rejected = queue.reject("bad", reason="too long")
         assert rejected[0].reason == "too long"
-        assert (tmp_path / "review" / "bad.rejected.md").exists()
+        assert (tmp_path / REVIEW_DIR / "bad.rejected.md").exists()
 
     def test_lock_and_unlock(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         queue.enqueue(WikiNode(id="n1", title="L", content="x", node_type="section"))
         queue.approve("l")
         assert queue.lock("l") is True
         assert queue.is_locked("l") is True
 
     def test_list_entries(self, tmp_path: Path) -> None:
-        queue = ReviewQueue(review_dir=tmp_path / "review")
+        queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         queue.enqueue(WikiNode(id="n1", title="A", content="x", node_type="section"))
         entries = queue.list_entries()
         assert len(entries) == 1
@@ -514,7 +515,7 @@ class TestAnnotateWikiWithProvenance:
         )
         out = annotate_wiki_with_provenance(wiki, tmp_path)
         assert out.metadata["provenance_annotated"] is True
-        record_path = tmp_path / ".knox" / "provenance" / "n1.json"
+        record_path = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
         assert record_path.exists()
         record = json.loads(record_path.read_text(encoding="utf-8"))
         assert record["citations"] == ["^[a.pdf:1-3]"]
@@ -558,7 +559,7 @@ class TestMarkWikiPrivate:
     def test_creates_private_index(self, tmp_path: Path) -> None:
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
         mark_wiki_private(wiki, tmp_path)
-        path = tmp_path / ".knox" / "private.json"
+        path = tmp_path / KNOX_DIR / PRIVATE_FILE
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))
         assert any(p["id"] == "n1" for p in data["pages"])
@@ -651,7 +652,7 @@ class TestVerificationFallback:
         )
         result = verify_wiki(wiki, tmp_path, client=self._fake_client(), model="test/model")
         assert result.total >= 1
-        report = tmp_path / ".knox" / "verification.json"
+        report = tmp_path / KNOX_DIR / VERIFICATION_FILE
         assert report.exists()
 
     @staticmethod
