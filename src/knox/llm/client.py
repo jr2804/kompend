@@ -267,6 +267,8 @@ class LLMClient:
     timeout: float | None = None
     context_window: ContextWindow | None = None
     usage: UsageTracker = field(default_factory=UsageTracker, repr=False)
+    failure_count: int = field(default=0, repr=False)
+    degraded_calls: list[dict[str, Any]] = field(default_factory=list, repr=False)
     _fallback_max_input: int = field(default=8192, repr=False)
     _fallback_max_output: int = field(default=4096, repr=False)
     _num_ctx_min: int = field(default=2048, repr=False)
@@ -481,6 +483,13 @@ class LLMClient:
                 max_tokens=max_tokens,
             )
         except LLMError as err:
+            self.failure_count += 1
+            self.degraded_calls.append({
+                "role": role,
+                "model": err.model,
+                "error": type(err).__name__,
+                "message": str(err)[:200],
+            })
             logger.warning(
                 "LLM call failed role=%s model=%s attempts=%d: %s",
                 role,
@@ -489,3 +498,14 @@ class LLMClient:
                 err,
             )
             return None
+
+    def degradation_report(self) -> dict[str, Any]:
+        """Return a summary of LLM call successes vs failures."""
+        total = self.usage.call_count + self.failure_count
+        return {
+            "successful_calls": self.usage.call_count,
+            "failed_calls": self.failure_count,
+            "total_calls": total,
+            "degradation_rate": round(self.failure_count / total, 3) if total > 0 else 0.0,
+            "recent_failures": self.degraded_calls[-20:],
+        }

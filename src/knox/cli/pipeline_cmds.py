@@ -273,6 +273,7 @@ def compile_cmd(
             compile_lint=compile_lint,
             embed_model=embed_model,
             show_progress=show_progress,
+            llm_client=pipeline.llm_client,
         )
 
     except Exception as exc:

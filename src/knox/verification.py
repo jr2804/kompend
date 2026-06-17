@@ -17,10 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import litellm
-
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import get_template_loader
+from knox.llm.client import LLMClient
 from knox.provenance import Citation, extract_citations
 
 logger = logging.getLogger(__name__)
@@ -80,27 +79,22 @@ def _split_claims(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_RE.findall(text) if len(s.strip()) >= 12]
 
 
-def _try_litellm_json(prompt: str, model: str, system: str | None = None) -> dict[str, Any] | None:
-    """Call litellm completion and return parsed JSON, or None on failure."""
-    try:
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        response = litellm.completion(
-            model=model,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.0,
-        )
-        content = response.choices[0].message.content
-        if not content:
-            return None
-        data = json.loads(content)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        logger.exception("litellm call failed in verification")
-        return None
+def _verify_via_client(
+    client: LLMClient,
+    prompt: str,
+    system: str | None = None,
+) -> dict[str, Any] | None:
+    """Call LLM via the client (with retry + failure tracking) and return parsed JSON."""
+    messages: list[dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    result = client.try_complete(
+        messages=messages,
+        role="verify",
+        response_format={"type": "json_object"},
+    )
+    return result.json_data if result else None
 
 
 def _load_excerpt(source: str, sources_dir: Path) -> str:
@@ -169,6 +163,8 @@ def _verify_claim_with_excerpt(
     excerpt: str,
     citation: Citation,
     node_id: str,
+    *,
+    client: LLMClient,
     model: str,
     verify_budget: int = 3000,
     min_ngram: int = 3,
@@ -186,7 +182,7 @@ def _verify_claim_with_excerpt(
             end=citation.end,
             excerpt=excerpt,
         )
-        data = _try_litellm_json(prompt, system=verify_system, model=model)
+        data = _verify_via_client(client, prompt, system=verify_system)
         if isinstance(data, dict):
             return ClaimVerification(
                 node_id=node_id,
@@ -214,7 +210,7 @@ def _verify_claim_with_excerpt(
             end=citation.end,
             excerpt=segment,
         )
-        data = _try_litellm_json(prompt, system=verify_system, model=model)
+        data = _verify_via_client(client, prompt, system=verify_system)
         if isinstance(data, dict):
             confidence = float(data.get("confidence", 0.0))
             verdict = str(data.get("verdict", "unsupported"))
@@ -243,8 +239,9 @@ def _verify_claim_with_excerpt(
 def verify_node(
     node: WikiNode,
     sources_dir: Path,
-    model: str,
     *,
+    client: LLMClient,
+    model: str,
     min_confidence: float = 0.4,
     verify_budget: int = 3000,
     min_ngram: int = 3,
@@ -274,11 +271,11 @@ def verify_node(
             )
             continue
 
-        out.append(_verify_claim_with_excerpt(claim, excerpt, citation, node.id, model, verify_budget=verify_budget, min_ngram=min_ngram))
+        out.append(_verify_claim_with_excerpt(claim, excerpt, citation, node.id, client=client, model=model, verify_budget=verify_budget, min_ngram=min_ngram))
     return out
 
 
-def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str, verify_budget: int = 3000, min_ngram: int = 3) -> VerificationResult:
+def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, client: LLMClient, model: str, verify_budget: int = 3000, min_ngram: int = 3) -> VerificationResult:
     """Verify every node in a compiled wiki.
 
     The ``output_dir`` is expected to be a sibling of the ``sources/``
@@ -291,7 +288,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, model: str, verify_budg
 
     result = VerificationResult()
     for node in wiki.nodes:
-        claims = verify_node(node, sources_dir, model=model, verify_budget=verify_budget, min_ngram=min_ngram)
+        claims = verify_node(node, sources_dir, client=client, model=model, verify_budget=verify_budget, min_ngram=min_ngram)
         result.claims.extend(claims)
 
     result.total = len(result.claims)

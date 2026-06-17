@@ -222,6 +222,16 @@ class WikiPipeline:
         if self.llm_client is not None:
             wiki.metadata["llm_usage"] = self.llm_client.usage.to_dict()
             wiki.metadata["llm_model"] = self.config.llm.default_model
+            report = self.llm_client.degradation_report()
+            wiki.metadata["llm_degradation"] = report
+            if report["failed_calls"] > 0:
+                rate_pct = report["degradation_rate"] * 100
+                logger.warning(
+                    "LLM degradation: %d/%d calls failed (%.1f%%) — output quality may be reduced",
+                    report["failed_calls"],
+                    report["total_calls"],
+                    rate_pct,
+                )
 
         self.save_state()
         self._progress_callback = None

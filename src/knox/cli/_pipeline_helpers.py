@@ -165,11 +165,12 @@ def _verify_claims(
     wiki: CompiledWiki,
     output_dir_path: Path,
     *,
+    client: object,
     model: str,
     verify_budget: int = 3000,
 ) -> None:
     """Run grounding verification over wiki claims."""
-    result = verify_wiki(wiki, output_dir_path, model=model, verify_budget=verify_budget)
+    result = verify_wiki(wiki, output_dir_path, client=client, model=model, verify_budget=verify_budget)
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
@@ -220,6 +221,7 @@ def _post_compile_actions(
     compile_lint: bool | None,
     embed_model: str | None,
     show_progress: bool | None = None,
+    llm_client: object | None = None,
 ) -> None:
     """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
     base_dir = pipeline_config.resolved_base_dir()
@@ -239,7 +241,10 @@ def _post_compile_actions(
 
     if verify:
         resolved_model = pipeline_config.llm.default_model
-        _verify_claims(wiki, output_dir_path, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
+        if llm_client is None:
+            typer.echo("Warning: --verify requires an LLM client — skipping verification", err=True)
+        else:
+            _verify_claims(wiki, output_dir_path, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
     generated = write_index_and_log(wiki, output_dir_path, base_dir=base_dir)
     typer.echo(f"Index: {generated['index']}")

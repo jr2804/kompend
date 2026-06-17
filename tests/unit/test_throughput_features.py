@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -605,6 +605,13 @@ class TestLifecycleStore:
 class TestVerificationFallback:
     """verify_node / verify_wiki fallback behaviour."""
 
+    @staticmethod
+    def _fake_client() -> Mock:
+        """Client whose try_complete always returns None (forces fallback)."""
+        c = Mock()
+        c.try_complete.return_value = None
+        return c
+
     def test_claim_without_citation_unsupported(self, tmp_path: Path) -> None:
         node = WikiNode(
             id="n1",
@@ -612,7 +619,7 @@ class TestVerificationFallback:
             content="This claim has no citation.",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, model="test/model")
+        result = verify_node(node, tmp_path, client=self._fake_client(), model="test/model")
         assert result[0].verdict == "unsupported"
         assert result[0].confidence < 0.5
 
@@ -623,7 +630,7 @@ class TestVerificationFallback:
             content="A claim with a missing source citation. ^[missing.pdf:1-3]",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, model="test/model")
+        result = verify_node(node, tmp_path, client=self._fake_client(), model="test/model")
         assert result[0].verdict == "unsupported"
 
     def test_substring_fallback_match(self, tmp_path: Path) -> None:
@@ -639,7 +646,7 @@ class TestVerificationFallback:
             content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
             node_type="section",
         )
-        result = verify_node(node, sources, model="test/model")
+        result = verify_node(node, sources, client=self._fake_client(), model="test/model")
         assert result[0].verdict == "supported"
         assert result[0].confidence > 0.5
 
@@ -649,7 +656,7 @@ class TestVerificationFallback:
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, tmp_path, model="test/model")
+        result = verify_wiki(wiki, tmp_path, client=self._fake_client(), model="test/model")
         assert result.total >= 1
         report = tmp_path / ".knox" / "verification.json"
         assert report.exists()
