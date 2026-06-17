@@ -99,6 +99,3 @@ def _extract_with_llm(text: str, llm_client: LLMClient) -> list[CapturedItem]:
         items.append(CapturedItem(kind=kind, title=title, content=content, tags=tags))
 
     return items if items else [CapturedItem(kind="note", title=make_title(text), content=text)]
-
-
-
