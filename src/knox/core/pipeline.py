@@ -771,6 +771,7 @@ def build_pipeline(
         parser=parser,
         chunker=HybridChunker(
             context_window=chunker_context_window,
+            max_tokens=config.budget.chunk_size_max if chunker_context_window is None else None,
             chunk_size_min=config.budget.chunk_size_min,
             chunk_size_max=config.budget.chunk_size_max,
         ),
