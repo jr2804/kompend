@@ -727,10 +727,10 @@ def build_pipeline(
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 
-    # T0 (index) and T1 (chunk) run without an LLM. Only build the
-    # LLM-dependent components when the [start, stop] tier range reaches
-    # T2 (resolve) or beyond. This lets `knox ingest` (stop_at_tier=CHUNK)
-    needs_llm = TIER_LEVEL[config.stop_at_tier] >= TIER_LEVEL[Tier.RESOLVE]
+    # T0 (index) and T1 (parse) run without an LLM — `knox ingest`
+    # stops here. T2 (chunk) and beyond need the LLM for context-window
+    # discovery and adaptive chunk sizing.
+    needs_llm = TIER_LEVEL[config.stop_at_tier] >= TIER_LEVEL[Tier.CHUNK]
 
     resolver: BaseResolver | None = None
     base_compiler: BaseCompiler | None = None
@@ -771,7 +771,6 @@ def build_pipeline(
         parser=parser,
         chunker=HybridChunker(
             context_window=chunker_context_window,
-            max_tokens=config.budget.chunk_size_max if chunker_context_window is None else None,
             chunk_size_min=config.budget.chunk_size_min,
             chunk_size_max=config.budget.chunk_size_max,
         ),

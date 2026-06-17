@@ -21,8 +21,8 @@
 #
 # Three-stage flow:
 #   Stage 0 (init):    knox init    — scaffold project structure (sources/, wiki/, .knox/)
-#   Stage 1 (ingest):  knox ingest  — T0+T1: parse + chunk (free, no LLM)
-#   Stage 2 (compile): knox compile --start-at-tier resolve — T2+T3+T4: resolve + compile + output
+#   Stage 1 (ingest):  knox ingest  — T0+T1: download + parse (no LLM, deterministic)
+#   Stage 2 (compile): knox compile --start-at-tier chunk — T2+T3+T4+T5: chunk + resolve + compile + output (needs LLM)
 
 [CmdletBinding()]
 param(
@@ -77,9 +77,9 @@ if (-not $WhatIf) {
     }
 }
 
-# ── Stage 1: Ingest (T0+T1: parse + chunk) ─────────────────────────────
+# ── Stage 1: Ingest (T0+T1: download + parse) ────────────────────────
 Write-Host ""
-Write-Host "=== Stage 1: Ingest (parse + chunk) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 1: Ingest (download + parse) ===" -ForegroundColor Cyan
 $IngestArgs = @(
     "uv", "run", "knox",
     "--wiki-dir",    $BaseDir,
@@ -106,15 +106,15 @@ if (-not $WhatIf) {
     }
 }
 
-# ── Stage 2: Compile (T2+T3+T4: resolve + compile + output) ────────────
+# ── Stage 2: Compile (T2+T3+T4+T5: chunk + resolve + compile + output) ─
 Write-Host ""
-Write-Host "=== Stage 2: Compile (resolve + compile + output) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 2: Compile (chunk + resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
     "uv", "run", "knox",
     "--wiki-dir",         $BaseDir,
     "compile",
     $InputFiles,
-    "--start-at-tier",    "resolve",
+    "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
     "--embed-model",      $EmbedModel,
     "--resolve-relations",

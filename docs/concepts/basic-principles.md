@@ -25,6 +25,74 @@ flowchart LR
     F --> G[Compiled Wiki]
 ```
 
+## CLI Commands vs. Pipeline Tiers
+
+KNOX exposes the pipeline through discrete CLI commands. Each command runs a
+specific subset of tiers:
+
+``` mermaid
+flowchart TB
+    subgraph Init["knox init"]
+        I1[Scaffold project<br>sources/ wiki/ .knox/]
+    end
+
+    subgraph Ingest["knox ingest (no LLM)"]
+        IG1[Tier 0: Download URLs]
+        IG2[Tier 1: Parse all sources]
+        IG1 --> IG2
+    end
+
+    subgraph Compile["knox compile (needs LLM)"]
+        C1[Tier 2: Chunk<br>adaptive sizing from<br>LLM context window]
+        C2[Tier 3: Resolve<br>relations + VLM]
+        C3[Tier 4: Compile<br>extract + generate]
+        C4[Tier 5: Output<br>markdown / json / typst]
+        C1 --> C2 --> C3 --> C4
+    end
+
+    subgraph Post["Post-compile"]
+        L1["knox lint<br>structural + LLM rules"]
+        Q1["knox query<br>semantic search"]
+    end
+
+    Init --> Ingest
+    Ingest --> Compile
+    Compile --> Post
+```
+
+| Command | Tiers | Needs LLM? | What it produces |
+|---------|-------|------------|------------------|
+| `knox init` | — | No | Empty project scaffold |
+| `knox parse` | 1 only | No | Structured JSON per file (debugging) |
+| `knox ingest` | 0–1 | **No** | Parsed documents in memory store; deterministic, no API costs |
+| `knox compile` | 2–5 | **Yes** | Compiled wiki pages on disk; chunking uses LLM context window for adaptive sizing |
+| `knox lint` | — | Optional | Quality report + auto-fixes |
+| `knox query` | — | Optional | Semantic search over indexed wiki |
+
+**The key boundary is between Tier 1 (parse) and Tier 2 (chunk).**
+Tiers 0–1 (download + parse) are deterministic — no LLM calls, no API
+costs. Tier 2 and above (chunk, resolve, compile, output) require a
+configured LLM. Chunking needs the model's context window for adaptive
+sizing; resolution and compilation need the model for inference.
+
+`knox ingest` stops after Tier 1. It downloads URLs and parses every
+source into structured documents, then stores them in a local memory
+database. This is fast, free, and idempotent — you can re-run it
+anytime without LLM costs or API keys.
+
+`knox compile` picks up where ingest left off (or starts from scratch
+if you skip ingest). It runs Tiers 2–5: chunking (with adaptive sizing
+from the LLM's discovered context window), resolving relations,
+compiling pages, and writing output files. This is where the LLM work
+happens.
+
+Splitting ingest from compile lets you:
+
+- **Iterate on parsing/chunking** without burning LLM tokens.
+- **Swap LLM models** between runs without re-parsing everything.
+- **Debug pipeline issues** at the exact tier where they occur.
+- **Run ingest in CI** (no API keys needed) and compile only when sources change.
+
 ## How Documents Flow Through the Pipeline
 
 ``` mermaid

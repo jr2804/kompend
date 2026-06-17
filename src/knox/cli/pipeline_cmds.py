@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import time
+from dataclasses import asdict
 
 import typer
 
@@ -67,12 +71,13 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-from knox.core.paths import KNOX_DIR, MEMORY_DB_FILE
+from knox.core.paths import KNOX_DIR
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
-from knox.memory.store import MemoryStore
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
+
+logger = logging.getLogger(__name__)
 
 
 @app.command(name="parse")
@@ -288,34 +293,23 @@ def ingest_cmd(
     ignore: Ignore = None,
     no_cache: NoCacheFlag = False,
     workers: Workers = 1,
-    llm_default_model: LlmDefaultModel = None,
-    vlm_model: VlmModel = None,
-    llm_fallback_chain: LlmFallbackChain = None,
-    llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
-    llm_role_model: LlmRoleModel = None,
-    budget_concepts: BudgetConcepts = None,
-    llm_timeout: LlmTimeout = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
-    This is a lighter-weight alternative to ``compile`` when you only want
-    parsed/chunked content in the long-term memory store.
+    Parses every source and stores the structured documents in
+    ``.knox/parsed/``. No chunking, no LLM — this is a fast,
+    deterministic extraction pass that you can re-run anytime.
+
+    Run ``knox compile`` afterwards to chunk, resolve, and compile
+    the ingested documents into wiki pages.
     """
     if online_urls is None:
         online_urls = []
 
     cli_overrides = build_cli_overrides(
-        stop_at_tier="chunk",
         image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
-        llm_default_model=llm_default_model,
-        vlm_model=vlm_model,
-        llm_fallback_chain=llm_fallback_chain,
-        llm_fallback_max_retries=llm_fallback_max_retries,
-        llm_role_model=llm_role_model,
-        budget_concepts=budget_concepts,
-        llm_timeout=llm_timeout,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
@@ -332,19 +326,32 @@ def ingest_cmd(
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
         raise typer.Exit(1)
 
-    typer.echo(f"Ingesting {len(all_input_files)} document(s) into memory")
+    typer.echo(f"Ingesting {len(all_input_files)} document(s)")
 
-    pipeline_config = PipelineConfig.from_resolved(
-        cfg,
-        source_dir=sources_dir_path,
-        output_dir=sources_dir_path,
-        input_files=all_input_files,
-    )
-    pipeline = build_pipeline(pipeline_config)
-    wiki = pipeline.run()
+    router: ParserRouter = build_default_router()
+    parsed_dir = sources_dir_path / KNOX_DIR / "parsed"
+    parsed_dir.mkdir(parents=True, exist_ok=True)
 
-    store = MemoryStore(sources_dir_path / KNOX_DIR / MEMORY_DB_FILE)
-    for node in wiki.nodes:
-        store.add(node)
+    count = 0
+    for path in all_input_files:
+        parser = router.route(path)
+        if parser is None:
+            typer.echo(f"  Skipping {path.name} — no parser available", err=True)
+            continue
+        try:
+            doc = parser.parse(path)
+        except Exception:
+            logger.exception("Failed to parse %s", path)
+            typer.echo(f"  Failed to parse {path.name}", err=True)
+            continue
 
-    typer.echo(f"Ingested {len(wiki.nodes)} node(s) into memory")
+        # Store parsed document as JSON alongside a content-hash key.
+        content_hash = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        out_path = parsed_dir / f"{path.stem}_{content_hash}.json"
+        out_path.write_text(
+            json.dumps(asdict(doc), indent=2, default=str),
+            encoding="utf-8",
+        )
+        count += 1
+
+    typer.echo(f"Ingested {count} document(s) into {parsed_dir}")
