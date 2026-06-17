@@ -39,6 +39,7 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.paths import CACHE_SUBDIR
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
@@ -84,7 +85,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._model = config.llm.default_model
         self._config = config
         self._timeout = config.llm.timeout
-        self._cache_store = CacheStore(config.knox_dir() / "cache")
+        self._cache_store = CacheStore(config.knox_dir() / CACHE_SUBDIR)
 
         # Reuse the client's discovered context window when available; only
         # discover independently as a fallback (e.g. no LLM client provided).

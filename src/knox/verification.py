@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from knox.core.config._core import DEFAULTS
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.paths import KNOX_DIR, VERIFICATION_FILE
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 from knox.provenance import Citation, extract_citations
@@ -282,7 +284,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, client: LLMClient, mode
     directory; the function uses the conventional ``sources/`` lookup
     to resolve cited filenames.
     """
-    sources_dir = output_dir.parent / "sources"
+    sources_dir = output_dir.parent / DEFAULTS["paths"]["sources_dir"]
     if not sources_dir.exists():
         sources_dir = output_dir
 
@@ -298,7 +300,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, client: LLMClient, mode
         result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
 
     # Persist report next to the wiki output.
-    report_path = output_dir / ".knox" / "verification.json"
+    report_path = output_dir / KNOX_DIR / VERIFICATION_FILE
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8")
     return result

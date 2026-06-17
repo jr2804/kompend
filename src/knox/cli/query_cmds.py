@@ -23,6 +23,7 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
+from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, VECTORS_DIR
 from knox.llm.client import LLMClient
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
@@ -65,7 +66,7 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
 
 def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
-    db_path = base_dir / ".knox" / "vectors"
+    db_path = base_dir / KNOX_DIR / VECTORS_DIR
     if not db_path.exists():
         return None
 
@@ -202,7 +203,7 @@ def query_cmd(
     try:
         retriever = HybridRetriever(
             wiki,
-            index_path=state_dir / "search.db",
+            index_path=state_dir / SEARCH_DB_FILE,
             vector_store=vector_store,
             sources_dir=sources_dir_path,
         )

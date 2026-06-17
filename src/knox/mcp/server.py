@@ -29,6 +29,7 @@ from knox.core.config import (
     validate_config_key,
 )
 from knox.core.models import load_cached_wiki
+from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import Compiler, ImageMode, OutputFormat, PipelineConfig
 from knox.core.template_loader import get_template_loader
@@ -323,17 +324,17 @@ def query_wiki(
         return {"status": "error", "message": f"No compiled wiki found in {output_dir_path}. Run 'compile_wiki' first."}
 
     vector_store: ZvecWikiStore | None = None
-    if state_dir and (state_dir / "vectors").exists():
+    if state_dir and (state_dir / VECTORS_DIR).exists():
         try:
             embed_model = cfg.get("compile.embedding.model")
-            vector_store = ZvecWikiStore.open(state_dir / "vectors", embedding_model=embed_model or "hash")
+            vector_store = ZvecWikiStore.open(state_dir / VECTORS_DIR, embedding_model=embed_model or "hash")
         except Exception:
             vector_store = None
 
     try:
         retriever = HybridRetriever(
             wiki,
-            index_path=state_dir / "search.db",
+            index_path=state_dir / SEARCH_DB_FILE,
             vector_store=vector_store,
             sources_dir=sources_dir_path if sources_dir_path.exists() else None,
         )

@@ -27,6 +27,7 @@ from knox.core.config import (
     OutputFormat,
     ResolvedConfig,
 )
+from knox.core.paths import KNOX_DIR
 
 
 class Tier(StrEnum):
@@ -137,7 +138,7 @@ class PipelineConfig:
 
     def knox_dir(self) -> Path:
         """Return the ``.knox`` directory (always inside base_dir)."""
-        return self.resolved_base_dir() / ".knox"
+        return self.resolved_base_dir() / KNOX_DIR
 
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)

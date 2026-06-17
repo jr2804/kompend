@@ -32,6 +32,7 @@ from knox.cli.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import load_cached_wiki
+from knox.core.paths import REVIEW_DIR
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
@@ -251,7 +252,7 @@ def review_cmd(
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
     _sources_dir, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
-    queue = ReviewQueue(review_dir=state_dir / "review")
+    queue = ReviewQueue(review_dir=state_dir / REVIEW_DIR)
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 

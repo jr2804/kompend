@@ -24,6 +24,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from knox.core.paths import KNOX_DIR, MEMORY_STORE_FILE
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_HALF_LIFE_DAYS = 90.0
@@ -290,9 +292,9 @@ def update_memory_for_compile(
 ) -> CompileReport:
     """Load, update, and persist the memory store for *wiki*.
 
-    The store is saved to ``output_dir / ".knox" / "memory.json"``.
+    The store is saved to ``output_dir / KNOX_DIR / MEMORY_STORE_FILE``.
     """
-    store_path = output_dir / ".knox" / "memory.json"
+    store_path = output_dir / KNOX_DIR / MEMORY_STORE_FILE
     store = MemoryStore.load(store_path)
     report = store.update_for_compile(
         wiki.nodes,

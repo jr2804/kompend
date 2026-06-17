@@ -67,6 +67,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
+from knox.core.paths import KNOX_DIR, MEMORY_DB_FILE
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.memory.store import MemoryStore
@@ -342,7 +343,7 @@ def ingest_cmd(
     pipeline = build_pipeline(pipeline_config)
     wiki = pipeline.run()
 
-    store = MemoryStore(sources_dir_path / ".knox" / "memory.db")
+    store = MemoryStore(sources_dir_path / KNOX_DIR / MEMORY_DB_FILE)
     for node in wiki.nodes:
         store.add(node)
 

@@ -15,19 +15,22 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
+from knox.core.config._core import DEFAULTS
+from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR
+
 logger = logging.getLogger(__name__)
 
 
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"
 
-TEMPLATE_CONFIG: Final[str] = "config.toml"
+TEMPLATE_CONFIG: Final[str] = CONFIG_FILE
 TEMPLATE_NOTES: Final[str] = "NOTES.md"
 TEMPLATE_README: Final[str] = "README.md"
 TEMPLATE_GITIGNORE: Final[str] = "gitignore"
 
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = (TEMPLATE_NOTES, TEMPLATE_README)
 
-PROJECT_MARKERS: Final[tuple[str, ...]] = ("knox.toml", ".knox/config.toml")
+PROJECT_MARKERS: Final[tuple[str, ...]] = ("knox.toml", KNOX_CONFIG_FILE)
 
 
 @dataclass
@@ -165,10 +168,17 @@ def scaffold_project(
 
     result = ScaffoldResult(target_dir=resolved_target_dir)
 
-    for relative in ("sources", "wiki", ".knox", ".knox/cache"):
+    sources_dir_name = DEFAULTS["paths"]["sources_dir"]
+    output_dir_name = DEFAULTS["paths"]["output_dir"]
+    for relative in (
+        sources_dir_name,
+        output_dir_name,
+        KNOX_DIR,
+        CACHE_DIR,
+    ):
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
-    config_relative_file = ".knox/config.toml"
+    config_relative_file = KNOX_CONFIG_FILE
     _copy_template(TEMPLATE_CONFIG, resolved_target_dir, config_relative_file)
     result.copied_files.append(resolved_target_dir / config_relative_file)
 

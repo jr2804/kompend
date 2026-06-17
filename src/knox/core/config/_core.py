@@ -60,13 +60,15 @@ from typing import Any
 
 import tomli_w
 
+from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR
+
 logger = logging.getLogger(__name__)
 
 # ── File paths ───────────────────────────────────────────────────────────
 
-_PROJECT_CONFIG_NAMES: tuple[str, ...] = (".knox/config.toml", "knox.toml")
+_PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, "knox.toml")
 _GLOBAL_CONFIG_DIR: str = "knox"
-_GLOBAL_CONFIG_NAME: str = "config.toml"
+_GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 
 # ── Built-in defaults ───────────────────────────────────────────────────
 
@@ -160,8 +162,8 @@ DEFAULTS: dict[str, Any] = {
         "wiki_dir": None,
         "sources_dir": "sources",
         "output_dir": "wiki",
-        "cache_dir": ".knox/cache",
-        "state_dir": ".knox",
+        "cache_dir": CACHE_DIR,
+        "state_dir": KNOX_DIR,
     },
     "notes": {
         "file": "NOTES.md",
@@ -706,7 +708,7 @@ def get_project_config_path(start_dir: Path | None = None, *, create: bool = Fal
     found = find_project_config(current)
     if found is not None:
         return found
-    target = current / ".knox" / "config.toml"
+    target = current / KNOX_DIR / CONFIG_FILE
     if create:
         target.parent.mkdir(parents=True, exist_ok=True)
     return target

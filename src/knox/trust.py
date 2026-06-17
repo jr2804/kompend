@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.paths import KNOX_DIR, PRIVATE_FILE
 from knox.provenance import (
     LIFECYCLE_ARCHIVED,
     LIFECYCLE_DRAFT,
@@ -97,7 +98,7 @@ def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
     caller passes ``--include-private``.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    private_index = output_dir / ".knox" / "private.json"
+    private_index = output_dir / KNOX_DIR / PRIVATE_FILE
     private_index.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),

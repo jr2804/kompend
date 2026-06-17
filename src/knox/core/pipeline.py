@@ -29,6 +29,7 @@ from knox.core.cache_store import CacheStore
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
+from knox.core.paths import CACHE_SUBDIR, COMPILE_STATE_FILE
 from knox.core.pipeline_defs import (
     ALL_TIERS,
     TIER_DESCRIPTIONS,
@@ -364,7 +365,7 @@ class WikiPipeline:
         """Resolve the persistent state file path."""
         if self.config.tier_state_path is not None:
             return self.config.tier_state_path
-        return self.config.knox_dir() / "compile_state.json"
+        return self.config.knox_dir() / COMPILE_STATE_FILE
 
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
@@ -560,7 +561,7 @@ class WikiPipeline:
         """Resolve the cache directory."""
         if self.config.cache_dir:
             return self.config.cache_dir
-        return self.config.knox_dir() / "cache"
+        return self.config.knox_dir() / CACHE_SUBDIR
 
     def _load_cache(self, source_file: Path) -> ParsedDocument | None:
         """Load a cached ParsedDocument if available."""

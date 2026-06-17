@@ -12,7 +12,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from knox.capture.ingest import ingest
 from knox.capture.learn import learn
+from knox.core.config._core import DEFAULTS
 from knox.core.models import CompiledWiki
+from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
 from knox.search.classifier import classify
 from knox.search.retriever import TokenOverlapRetriever
 
@@ -30,7 +32,7 @@ def _source_of(node: dict[str, Any]) -> str:
 
 
 def _load_wiki() -> dict[str, Any]:
-    cache = _PROJECT_DIR / "wiki" / ".knox" / "last_wiki.json"
+    cache = _PROJECT_DIR / DEFAULTS["paths"]["output_dir"] / KNOX_DIR / WIKI_CACHE_FILE
     if not cache.exists():
         return {"nodes": [], "edges": [], "toc": [], "quality_score": 0.0, "node_count": 0}
     try:
@@ -457,7 +459,7 @@ async def settings_page() -> str:
 
 @app.post("/api/ingest-url")
 async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
-    result = ingest(url, sources_dir=_PROJECT_DIR / "sources")
+    result = ingest(url, sources_dir=_PROJECT_DIR / DEFAULTS["paths"]["sources_dir"])
     if result:
         return JSONResponse({"status": "ok", "file": str(result)})
     return JSONResponse({"status": "error", "message": f"Failed to ingest {url}"}, status_code=400)
@@ -465,7 +467,7 @@ async def api_ingest_url(url: str = Query(...)) -> JSONResponse:
 
 @app.post("/api/learn")
 async def api_learn(text: str = Query(...)) -> JSONResponse:
-    path = learn(text, sources_dir=_PROJECT_DIR / "sources")
+    path = learn(text, sources_dir=_PROJECT_DIR / DEFAULTS["paths"]["sources_dir"])
     return JSONResponse({"status": "ok", "file": str(path)})
 
 

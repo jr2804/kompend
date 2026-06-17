@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.paths import KNOX_DIR, PROVENANCE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, output_dir: Path) -> Compi
     is returned with updated metadata so callers can chain output steps.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    prov_dir = output_dir / ".knox" / "provenance"
+    prov_dir = output_dir / KNOX_DIR / PROVENANCE_DIR
     prov_dir.mkdir(parents=True, exist_ok=True)
 
     new_nodes: list[WikiNode] = []

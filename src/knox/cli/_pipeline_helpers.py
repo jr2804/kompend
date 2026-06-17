@@ -22,6 +22,7 @@ from knox.cli.args import (
     UrlFile,
 )
 from knox.core.models import CompiledWiki
+from knox.core.paths import KNOX_DIR, REVIEW_DIR, SEARCH_DB_FILE, WIKI_CACHE_FILE
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.runner import LintRunner, report_to_text
 from knox.output.wiki_index import write_index_and_log, write_overview
@@ -98,7 +99,7 @@ def _resolve_compile_inputs(
 
     sources_dir_path.mkdir(parents=True, exist_ok=True)
     local_files = ensure_in_sources(resolved, sources_dir_path)
-    downloaded = download_urls(online_urls, sources_dir_path)
+    downloaded = download_urls(online_urls, sources_dir_path, base_dir=sources_dir_path.parent)
 
     all_input_files = list(dict.fromkeys(local_files + downloaded))
     if not all_input_files:
@@ -119,9 +120,9 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     This lets standalone ``knox lint`` load the wiki without requiring
     a fresh compile. The cache is overwritten on every successful compile.
     """
-    cache_dir = base_dir / ".knox"
+    cache_dir = base_dir / KNOX_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / "last_wiki.json"
+    cache_file = cache_dir / WIKI_CACHE_FILE
 
     data = {
         "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
@@ -145,7 +146,7 @@ def _print_tier_listing(pipeline: object) -> None:
 
 def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
-    queue = ReviewQueue(review_dir=base_dir / ".knox" / "review")
+    queue = ReviewQueue(review_dir=base_dir / KNOX_DIR / REVIEW_DIR)
     for node in wiki.nodes:
         queue.enqueue(node)
 
@@ -277,7 +278,7 @@ def _post_compile_actions(
             typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
 
     if index_store:
-        search_db_path = base_dir / ".knox" / "search.db"
+        search_db_path = base_dir / KNOX_DIR / SEARCH_DB_FILE
         build_chunk_index(wiki, search_db_path)
         wiki.metadata["embedding_model"] = embed_model
         _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model, base_dir=base_dir)

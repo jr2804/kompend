@@ -9,6 +9,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
+
 
 class ElementType(StrEnum):
     """Document element types for structure-preserving extraction.
@@ -116,7 +118,7 @@ def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
     logger = logging.getLogger(__name__)
-    cache_file = output_dir / ".knox" / "last_wiki.json"
+    cache_file = output_dir / KNOX_DIR / WIKI_CACHE_FILE
     if not cache_file.exists():
         return None
     try:

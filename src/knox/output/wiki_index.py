@@ -16,6 +16,7 @@ from pathlib import Path
 
 from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki
+from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -421,7 +422,7 @@ def write_overview(
     source_texts = [n.content for n in wiki.nodes if n.content]
 
     # Overview cache (inside .knox)
-    cache_store = CacheStore(base_dir / ".knox" / "cache")
+    cache_store = CacheStore(base_dir / KNOX_DIR / CACHE_SUBDIR)
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),

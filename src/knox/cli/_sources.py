@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 from knox.cli._ignore import filter_files
+from knox.core.paths import DOWNLOADED_FILE, KNOX_DIR
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers._registry import get_all_extensions
@@ -134,6 +135,8 @@ def ensure_in_sources(
 def download_urls(
     urls: list[str],
     sources_dir: Path,
+    *,
+    base_dir: Path | None = None,
 ) -> list[Path]:
     """Download URLs into *sources_dir*, return paths of successful downloads.
 
@@ -144,7 +147,8 @@ def download_urls(
         return []
     sources_dir = sources_dir.resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
-    detector = DuplicateDetector(sources_dir.parent / ".knox" / "downloaded.json")
+    resolved_base_dir = base_dir if base_dir is not None else sources_dir.parent
+    detector = DuplicateDetector(resolved_base_dir / KNOX_DIR / DOWNLOADED_FILE)
     downloader = HTTPDownloader(detector=detector)
     results: list[Path] = []
     for url in urls:
