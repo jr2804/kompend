@@ -119,28 +119,51 @@ sequenceDiagram
 
 ## KNOX vs. Flatten-and-RAG
 
+Most document pipelines treat PDFs and DOCX as text blobs: flatten to
+plain text, split at an arbitrary character count, embed, and vector-search.
+This works for prose but destroys structured content — tables lose their
+rows and columns, figures lose captions, equations become unreadable glyphs,
+and cross-references vanish.
+
+KNOX takes a different approach: structure-preserving parsing keeps tables
+as `list[list[str]]`, figures as captioned images, equations as LaTeX source.
+Hybrid chunking never splits atomic elements. Multi-turn resolution expands
+abbreviations and resolves cross-references before compilation turns everything
+into an interlinked wiki. Querying this wiki retrieves *relevant context*, not
+isolated text snippets.
+
 ``` mermaid
-flowchart TD
+flowchart TB
     subgraph Traditional[RAG Pipeline]
-        T1[PDF] --> T2[Flatten to text]
-        T2 --> T3[Chunk by char count]
-        T3 --> T4[Embed + Store]
-        T4 --> T5[Vector Search]
-        T5 --> T6[LLM Answer]
+        direction TB
+        T1["PDF"] --> T2["Flatten to text<br/><i>loses tables, figures, equations, structure</i>"]
+        T2 --> T3["Chunk by char count<br/><i>splits tables mid-row, breaks code blocks</i>"]
+        T3 --> T4["Embed + Store<br/><i>no provenance, no cross-refs</i>"]
+        T4 --> T5["Vector Search<br/><i>retrieves isolated text snippets</i>"]
+        T5 --> T6["LLM Answer<br/><i>flat text, hallucinations, no citations</i>"]
     end
 
     subgraph KNOX[KNOX Pipeline]
-        K1[PDF] --> K2[Structure-preserving parse]
-        K2 --> K3[Hybrid chunking]
-        K3 --> K4[Resolution + VLM]
-        K4 --> K5[WiCER Compilation]
-        K5 --> K6[Compiled Wiki]
-        K6 --> K7[Query + Synthesis]
+        direction TB
+        K1["PDF"] --> K2["Structure-preserving parse<br/><i>tables, figures, equations as first-class objects</i>"]
+        K2 --> K3["Hybrid chunking<br/><i>atomic elements never split; headings group content</i>"]
+        K3 --> K4["Resolution + VLM<br/><i>expand abbrevs, resolve cross-refs, caption images</i>"]
+        K4 --> K5["WiCER Compilation<br/><i>extract -> evaluate -> diagnose -> refine</i>"]
+        K5 --> K6["Compiled Wiki<br/><i>interlinked pages with provenance</i>"]
+        K6 --> K7["Query + Synthesis<br/><i>semantic search over structured knowledge</i>"]
     end
-
-    Traditional -->|Loses tables, figures, equations| F1[Flat text answer]
-    KNOX -->|Preserves structure, cross-refs| F2[Cited wiki answer]
 ```
+
+### What changes in practice
+
+| Aspect | Flatten-and-RAG | KNOX |
+|--------|-----------------|------|
+| **Table query** | Flat text — LLM guesses cell values. | `knox query "compare latency figures"` returns the structured table with cell annotations. |
+| **Figure access** | Blurry captionless gap in the text. | Captioned wiki nodes with VLM-enriched descriptions. Searchable. |
+| **Cross-refs** | "As shown in section 3.1" — meaningless after chunking. | Resolver expands every cross-ref into the target page slug. |
+| **Equations** | LaTeX becomes unreadable escape sequences. | Equations keep LaTeX source + rendered image. Query by concept or formula. |
+| **Answer quality** | Hallucinated, no provenance, no citations. | Every answer cites source pages with provenance back to the original document. |
+| **Cost profile** | Cheap to build, expensive to query (bad context). | One-time compile cost, cheap queries against structured wiki. |
 
 ## The 8 Core Principles
 
