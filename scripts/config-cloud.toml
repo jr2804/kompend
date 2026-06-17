@@ -16,6 +16,7 @@ output_name = "demo-wiki-cloud"
 default_model = "ollama/deepseek-v4-flash:cloud"
 vlm_model = "ollama/glm-ocr"
 timeout = 300.0
+context_window_cap = 131072
 
 fallback_max_retries = 3
 

@@ -71,9 +71,10 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
+from knox.core.paths import CACHE_SUBDIR, COMPILE_STATE_FILE, KNOX_DIR
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
+from knox.core.tier_state import TierStateStore
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -333,6 +334,8 @@ def ingest_cmd(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     count = 0
+    state_store = TierStateStore(sources_dir_path / KNOX_DIR / COMPILE_STATE_FILE)
+    state = state_store.load()
     for path in all_input_files:
         parser = router.route(path)
         if parser is None:
@@ -356,4 +359,9 @@ def ingest_cmd(
         )
         count += 1
 
+        # Record tier 1 (parsed) so compile --start-at-tier chunk can
+        # validate that prerequisites have been met.
+        state_store.record(state, path.stem, path, digest, tier=1)
+
+    state_store.save(state)
     typer.echo(f"Ingested {count} document(s) into {cache_dir}")
