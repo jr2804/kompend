@@ -12,7 +12,7 @@ from typing import Any
 
 from knox.core.models import Chunk, ResolvedChunk
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import LLMClient
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.resolution.base import BaseResolver
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class LLMResolver(BaseResolver):
         result = self._client.try_complete(
             [{"role": "user", "content": prompt}],
             role="resolve.relations",
-            response_format={"type": "json_object"},
+            response_format=JSON_RESPONSE_FORMAT,
         )
         if result is None or result.json_data is None:
             return resolved

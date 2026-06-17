@@ -16,7 +16,7 @@ from pathlib import Path
 
 from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki
-from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
+from knox.core.paths import CACHE_SUBDIR, INDEX_FILE, KNOX_DIR
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -316,7 +316,7 @@ def write_index_and_log(
     resolved_base.mkdir(parents=True, exist_ok=True)
 
     # index.md — entry point at base_dir level
-    index_path = resolved_base / "index.md"
+    index_path = resolved_base / INDEX_FILE
     index_content = generate_index(wiki)
     index_path.write_text(index_content, encoding="utf-8")
 

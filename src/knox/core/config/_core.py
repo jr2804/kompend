@@ -115,13 +115,13 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
 )
-from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR
+from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
 # ── File paths ───────────────────────────────────────────────────────────
 
-_PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, "knox.toml")
+_PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE)
 _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 

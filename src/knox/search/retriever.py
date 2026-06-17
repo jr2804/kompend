@@ -4,19 +4,20 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from rank_bm25 import BM25Okapi
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import TemplateLoader, get_template_loader
-from knox.llm.client import LLMClient
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
 
-_TOKEN_SPLIT_RE: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_]+")
+TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
+_TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
 
 
 @dataclass
@@ -104,7 +105,7 @@ class TokenOverlapRetriever:
                     {"role": "user", "content": query},
                 ],
                 role="search.expand",
-                response_format={"type": "json_object"},
+                response_format=JSON_RESPONSE_FORMAT,
                 temperature=0.0,
             )
             if result.json_data is None:

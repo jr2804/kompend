@@ -21,7 +21,7 @@ from knox.core.config._core import DEFAULTS
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import KNOX_DIR, VERIFICATION_FILE
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import LLMClient
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.provenance import Citation, extract_citations
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ def _verify_via_client(
     result = client.try_complete(
         messages=messages,
         role="verify",
-        response_format={"type": "json_object"},
+        response_format=JSON_RESPONSE_FORMAT,
     )
     return result.json_data if result else None
 

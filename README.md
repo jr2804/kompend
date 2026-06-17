@@ -29,39 +29,46 @@ cd ./my-wiki
 
 Creates a standard project structure with `sources/`, `wiki/`, `.knox/config.toml`, `NOTES.md`, and `README.md`. Use `--bare` for minimal scaffolding, or `--git` to initialize a git repository alongside.
 
-### 2. Verify a document parses correctly
+### 2. Add and parse sources
 
-Before compiling a full corpus, check that a single file extracts cleanly:
-
-```bash
-knox parse paper.pdf --elements
-```
-
-This prints element counts, types (heading, table, image, formula, …), and the document title. Pass globs or directories with `--recursive`:
+Drop source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into `sources/`
+and run ingest to parse them all:
 
 ```bash
-knox parse *.pdf ./more_docs/ --elements
-knox parse ./research/ --recursive
+knox ingest
 ```
 
-If parsing looks wrong, the full pipeline will produce poor results too — fix parsing issues first.
+This parses every source into structured JSON in `.knox/parsed/` — no
+chunking, no LLM, no API costs. You can also pass files, globs, or URLs
+directly:
 
-### 3. Compile a document corpus into a wiki
+```bash
+knox ingest paper.pdf notes.docx data/*.xlsx
+knox ingest ./papers/ --recursive
+knox ingest --url https://arxiv.org/pdf/2605.07068v1
+knox ingest --url-file urls.txt
+```
 
-Drop source files (PDF, DOCX, PPTX, EPUB, Markdown, HTML) into `sources/` and run:
+> **Debugging tip:** Use `knox parse paper.pdf --elements` to inspect a
+> single file's extracted structure before ingesting the full corpus.
+> If parsing looks wrong, fix it first — the pipeline won't recover from
+> bad extraction.
+
+### 3. Compile the wiki
+
+Once sources are ingested, compile them into an interlinked knowledge wiki:
 
 ```bash
 knox compile
 ```
 
-This runs the full pipeline — parse every document, chunk while preserving tables/figures/equations as atomic units, resolve entities and relations via LLM, compile into an interlinked wiki, and write Markdown to `wiki/`.
-
-You can also pass files, globs, or URLs directly — they are copied/downloaded into `sources/` automatically:
+This runs Tiers 2–5: chunking (with adaptive sizing from the LLM's context
+window), resolving entities and relations, compiling into wiki pages, and
+writing Markdown to `wiki/`. You need a configured LLM for this step.
 
 ```bash
-knox compile paper.pdf notes.docx data/*.xlsx
-knox compile ./papers/ --recursive
-knox compile --url https://arxiv.org/pdf/2605.07068v1
+knox compile --llm-default-model ollama/llama3.1:8b
+knox compile --compiler wicer --verify --synthesize
 ```
 
 ### 4. Query the compiled wiki
@@ -106,9 +113,9 @@ Full option reference: `knox <command> --help`
 | `knox status` | Show source/article/word counts and last compile time |
 | `knox list-parsers` | List all registered parsers and their extensions |
 | **Pipeline** | |
-| `knox parse FILES...` | Parse documents and show structure (`--elements`, `--recursive`) |
-| `knox ingest FILES...` | Stage + parse + chunk only (Tier 0–1); cached for later compile |
-| `knox compile FILES...` | Full pipeline → interlinked wiki (see `--help` for 40+ options) |
+| `knox parse FILES...` | Debug: parse documents and print structure (`--elements`, `--recursive`) |
+| `knox ingest FILES...` | Parse all sources into `.knox/parsed/` (Tier 0–1, no LLM) |
+| `knox compile FILES...` | Full pipeline → interlinked wiki (Tier 2–5, needs LLM; see `--help` for 40+ options) |
 | **Query & Search** | |
 | `knox query "..."` | Ask a natural-language question against the wiki |
 | `knox provenance SLUG` | Show source-to-article provenance for a page |
@@ -144,8 +151,8 @@ KNOX runs a 5-tier pipeline — each tier independently replaceable:
 Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: Compilation → T5: Output
 ```
 
-- **T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai.
-- **T2 Chunking** — Split documents into `Chunk` objects sized to the model's context window (auto-detected via litellm/Ollama, clamped to configurable `[chunk_size_min, chunk_size_max]` rails, 20% reserve for system prompts). Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with paragraph → line → sentence → token boundary preferences. See [Model Context Adaptation](./docs/guides/model-context.md).
+- **T1 Pre-Processing** — Parse PDF, DOCX, PPTX, EPUB, Markdown, HTML into a uniform `ParsedDocument` with structure (headings, tables, figures, equations, code). Download URLs via HTTP or crawl4ai. This tier is LLM-free — `knox ingest` stops here.
+- **T2 Chunking** — Split documents into `Chunk` objects sized to the model's context window (auto-detected via litellm/Ollama, clamped to configurable `[chunk_size_min, chunk_size_max]` rails, 20% reserve for system prompts). Atomic elements (tables, figures, formulas, code blocks) are never split; text runs are chunked via Chonkie's RecursiveChunker with paragraph → line → sentence → token boundary preferences. This is the first LLM-dependent tier — chunking needs the model for context window discovery. See [Model Context Adaptation](./docs/guides/model-context.md).
 - **T3 Resolution** — Extract entities and resolve cross-references using an LLM (via litellm). Optional VLM enricher for image captioning. Typed relation extraction (`uses`, `depends_on`, `contradicts`, …) via `--resolve-relations`.
 - **T4 Compilation** — Build an interlinked `CompiledWiki` graph from resolved chunks. Two backends: `GraphCompiler` (default, two-phase extract-then-generate) and `WiCERCompiler` (iterative compile-evaluate-refine loop).
 - **T5 Output** — Write the compiled wiki as Markdown (with Obsidian/GFM/MkDocs/… flavors), JSON, or Typst. Optionally index for semantic search and generate an LLM-synthesized overview.

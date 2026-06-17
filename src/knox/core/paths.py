@@ -30,6 +30,7 @@ KNOX_DIR: Final[str] = ".knox"
 # ── Config ──────────────────────────────────────────────────────────────
 CONFIG_FILE: Final[str] = "config.toml"
 KNOX_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/{CONFIG_FILE}"
+PROJECT_CONFIG_FILE: Final[str] = "knox.toml"
 
 # ── Cache ───────────────────────────────────────────────────────────────
 CACHE_SUBDIR: Final[str] = "cache"
@@ -37,6 +38,7 @@ CACHE_DIR: Final[str] = f"{KNOX_DIR}/{CACHE_SUBDIR}"
 
 # ── Wiki cache (serialised CompiledWiki) ────────────────────────────────
 WIKI_CACHE_FILE: Final[str] = "last_wiki.json"
+INDEX_FILE: Final[str] = "index.md"
 
 # ── Review queue ────────────────────────────────────────────────────────
 REVIEW_DIR: Final[str] = "review"

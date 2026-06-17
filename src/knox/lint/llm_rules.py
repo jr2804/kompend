@@ -12,6 +12,7 @@ from typing import Any
 
 from knox.core.template_loader import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from knox.llm.client import JSON_RESPONSE_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class FactualConsistencyRule(BaseLintRule):
                     llm_result = self.llm_client.try_complete(
                         [{"role": "user", "content": prompt}],
                         role="lint.factual-consistency",
-                        response_format={"type": "json_object"},
+                        response_format=JSON_RESPONSE_FORMAT,
                     )
                 except Exception as exc:
                     logger.warning("factual-consistency LLM call failed: %s", exc, exc_info=True)
@@ -130,7 +131,7 @@ class ClarityScoreRule(BaseLintRule):
                     llm_result = self.llm_client.try_complete(
                         [{"role": "user", "content": prompt}],
                         role="lint.clarity-score",
-                        response_format={"type": "json_object"},
+                        response_format=JSON_RESPONSE_FORMAT,
                     )
                 except Exception as exc:
                     logger.warning("clarity-score LLM call failed: %s", exc, exc_info=True)
@@ -218,7 +219,7 @@ class CoverageGapRule(BaseLintRule):
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
                     role="lint.coverage-gap",
-                    response_format={"type": "json_object"},
+                    response_format=JSON_RESPONSE_FORMAT,
                 )
             except Exception as exc:
                 logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
@@ -292,7 +293,7 @@ class ContradictionDetectionRule(BaseLintRule):
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
                     role="lint.contradiction-detection",
-                    response_format={"type": "json_object"},
+                    response_format=JSON_RESPONSE_FORMAT,
                 )
             except Exception as exc:
                 logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)

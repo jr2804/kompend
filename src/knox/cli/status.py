@@ -11,6 +11,7 @@ import typer
 
 from knox.cli._sources import get_supported_extensions
 from knox.core.config import find_project_config
+from knox.core.paths import INDEX_FILE
 
 
 def collect_stats(
@@ -51,7 +52,7 @@ def collect_stats(
             stats["last_compile"] = datetime.fromtimestamp(mtime).isoformat()
 
         # Check for index.md / log.md (N11)
-        index_file = output_dir / "index.md"
+        index_file = output_dir / INDEX_FILE
         if index_file.exists():
             stats["articles"]["count"] = max(stats["articles"]["count"], 1)
 

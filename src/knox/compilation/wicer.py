@@ -23,7 +23,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import LLMClient
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ class WiCERCompiler(BaseCompiler):
                 {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined)},
             ],
             role="wicer.probe",
-            response_format={"type": "json_object"},
+            response_format=JSON_RESPONSE_FORMAT,
         )
 
         probes = self._extract_probe_list(result)
@@ -249,7 +249,7 @@ class WiCERCompiler(BaseCompiler):
                     },
                 ],
                 role="wicer.judge",
-                response_format={"type": "json_object"},
+                response_format=JSON_RESPONSE_FORMAT,
             )
 
             if result is not None and result.json_data is not None:
@@ -281,7 +281,7 @@ class WiCERCompiler(BaseCompiler):
                 {"role": "user", "content": _loader.render("compilation/wicer_diagnose.md.j2", failures_json=json.dumps(failures))},
             ],
             role="wicer.refine",
-            response_format={"type": "json_object"},
+            response_format=JSON_RESPONSE_FORMAT,
         )
 
         if result is not None and result.json_data is not None:

@@ -17,7 +17,7 @@ import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 import litellm
 
@@ -25,6 +25,8 @@ from knox.llm.errors import LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 
 logger = logging.getLogger(__name__)
+
+JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
 
 
 @dataclass(frozen=True)

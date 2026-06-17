@@ -14,10 +14,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from slugify import slugify as _slugify_impl
 
+from knox.capture import TIMESTAMP_FORMAT
+from knox.capture._utils import make_slug, make_title
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import LLMClient
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,12 @@ def crystallize(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     groups = _group_by_tag(notes)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
     written: list[Path] = []
 
     for tag, group_notes in groups.items():
         page = _synthesize_with_llm(tag, group_notes, llm_client) if llm_client is not None else _synthesize_fallback(tag, group_notes)
-        slug = _make_slug(page["title"])
+        slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
         filepath = output_dir / f"crystallized-{timestamp}-{slug}.md"
         _write_page(filepath, page, source_files, timestamp)
@@ -86,7 +87,7 @@ def _load_captured_notes(captured_dir: Path) -> list[CapturedNote]:
     for filepath in sorted(captured_dir.glob("*.md")):
         text = filepath.read_text(encoding="utf-8")
         meta, body = _parse_frontmatter(text)
-        title = meta.get("title") or _make_title(body)
+        title = meta.get("title") or make_title(body)
         tags_raw = meta.get("tags") or []
         tags = [str(t) for t in tags_raw] if isinstance(tags_raw, list) else []
         captured_at = str(meta.get("captured_at") or "")
@@ -160,7 +161,7 @@ def _synthesize_with_llm(
             {"role": "user", "content": user_prompt},
         ],
         role="capture.crystallize",
-        response_format={"type": "json_object"},
+        response_format=JSON_RESPONSE_FORMAT,
         temperature=0.2,
     )
 
@@ -213,12 +214,3 @@ def _write_page(
         f"{page['content'].strip()}\n"
     )
     filepath.write_text(frontmatter, encoding="utf-8")
-
-
-def _make_title(text: str, max_len: int = 60) -> str:
-    words = text.strip().split()[:8]
-    return " ".join(words)[:max_len].rstrip("-")
-
-
-def _make_slug(text: str, max_len: int = 40) -> str:
-    return _slugify_impl(text, max_length=max_len)[:max_len].strip("-")

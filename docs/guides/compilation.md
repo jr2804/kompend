@@ -36,15 +36,17 @@ knox compile *.pdf --force                        # invalidate all caches, full 
 
 ### Ingest (T0+T1 only)
 
-`knox ingest` runs parse + chunk and stops. Use it to pre-stage large corpora cheaply before an LLM compile:
+`knox ingest` downloads URLs and parses every source into structured
+JSON — no chunking, no LLM. Use it to pre-stage large corpora cheaply
+before an LLM compile:
 
 ```bash
-knox ingest *.pdf              # stage + parse + chunk only
-knox compile --start-at-tier resolve   # later: T2→T4 using cached chunks
+knox ingest *.pdf              # download + parse only (no LLM)
+knox compile --start-at-tier chunk   # later: T2→T5 using parsed sources
 ```
 
-The pipeline loads its tier checkpoint from `.knox/compile_state.json`
-inside the output directory. On restart, unchanged sources are skipped.
+Parsed documents are stored in `.knox/parsed/`. The compile step picks
+up from there, chunking with adaptive sizing from the LLM's context window.
 
 ## Two-phase compiler (`--compiler two-phase`)
 

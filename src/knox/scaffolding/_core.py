@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 from knox.core.config._core import DEFAULTS
-from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR
+from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ TEMPLATE_GITIGNORE: Final[str] = "gitignore"
 
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = (TEMPLATE_NOTES, TEMPLATE_README)
 
-PROJECT_MARKERS: Final[tuple[str, ...]] = ("knox.toml", KNOX_CONFIG_FILE)
+PROJECT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KNOX_CONFIG_FILE)
 
 
 @dataclass

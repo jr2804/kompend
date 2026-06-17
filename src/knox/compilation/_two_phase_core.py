@@ -18,6 +18,7 @@ from slugify import slugify as _slugify_impl
 
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
+from knox.llm.client import JSON_RESPONSE_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +290,7 @@ def _try_litellm_json(
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "response_format": {"type": "json_object"},
+            "response_format": JSON_RESPONSE_FORMAT,
             "temperature": 0.0,
         }
         if timeout is not None:

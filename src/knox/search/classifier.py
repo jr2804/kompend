@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from knox.search.retriever import TOKEN_SPLIT_RE
+
 
 class QueryIntent(StrEnum):
     GREETING = "greeting"
@@ -107,7 +109,7 @@ _STOP: frozenset[str] = frozenset(
 
 
 def _has_substance(query: str) -> bool:
-    tokens: list[str] = re.split(r"[^a-zA-Z0-9_]+", query.strip().lower())
+    tokens: list[str] = TOKEN_SPLIT_RE.split(query.strip().lower())
     content_tokens: list[str] = [t for t in tokens if len(t) > 2 and t not in _STOP]
     return len(content_tokens) >= 2
 

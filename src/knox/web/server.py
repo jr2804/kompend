@@ -14,7 +14,7 @@ from knox.capture.ingest import ingest
 from knox.capture.learn import learn
 from knox.core.config._core import DEFAULTS
 from knox.core.models import CompiledWiki
-from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
+from knox.core.paths import KNOX_DIR, PROJECT_CONFIG_FILE, WIKI_CACHE_FILE
 from knox.search.classifier import classify
 from knox.search.retriever import TokenOverlapRetriever
 
@@ -417,7 +417,7 @@ async def lint_page() -> str:
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page() -> str:
-    config_path = _PROJECT_DIR / "knox.toml"
+    config_path = _PROJECT_DIR / PROJECT_CONFIG_FILE
     config_content = ""
     if config_path.exists():
         config_content = config_path.read_text(encoding="utf-8")

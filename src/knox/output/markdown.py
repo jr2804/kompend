@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from knox.core.models import CompiledWiki
+from knox.core.paths import INDEX_FILE
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document
 from knox.output.renderer import DocumentRenderer, render_frontmatter
@@ -99,7 +100,7 @@ class MarkdownWriter(BaseOutputWriter):
             (output_dir / filename).write_text(rendered, encoding="utf-8")
 
         self._write_index(docs, output_dir, wiki)
-        return output_dir / "index.md"
+        return output_dir / INDEX_FILE
 
     @staticmethod
     def _embed_images(body: str, images: list[dict[str, Any]]) -> str:
@@ -182,4 +183,4 @@ class MarkdownWriter(BaseOutputWriter):
             lines.append(f"- {link}\n")
 
         index_content = fm + "".join(lines)
-        (output_dir / "index.md").write_text(index_content, encoding="utf-8")
+        (output_dir / INDEX_FILE).write_text(index_content, encoding="utf-8")
