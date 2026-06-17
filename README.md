@@ -38,7 +38,7 @@ and run ingest to parse them all:
 knox ingest
 ```
 
-This parses every source into structured JSON in `.knox/parsed/` — no
+This parses every source into structured JSON in `.knox/cache/` — no
 chunking, no LLM, no API costs. You can also pass files, globs, or URLs
 directly:
 
@@ -114,7 +114,7 @@ Full option reference: `knox <command> --help`
 | `knox list-parsers` | List all registered parsers and their extensions |
 | **Pipeline** | |
 | `knox parse FILES...` | Debug: parse documents and print structure (`--elements`, `--recursive`) |
-| `knox ingest FILES...` | Parse all sources into `.knox/parsed/` (Tier 0–1, no LLM) |
+| `knox ingest FILES...` | Parse all sources into `.knox/cache/` (Tier 0–1, no LLM) |
 | `knox compile FILES...` | Full pipeline → interlinked wiki (Tier 2–5, needs LLM; see `--help` for 40+ options) |
 | **Query & Search** | |
 | `knox query "..."` | Ask a natural-language question against the wiki |

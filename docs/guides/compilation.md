@@ -45,8 +45,8 @@ knox ingest *.pdf              # download + parse only (no LLM)
 knox compile --start-at-tier chunk   # later: T2→T5 using parsed sources
 ```
 
-Parsed documents are stored in `.knox/parsed/`. The compile step picks
-up from there, chunking with adaptive sizing from the LLM's context window.
+Parsed documents are cached in `.knox/cache/` using the same key format
+as the pipeline, so compile picks them up transparently.
 
 ## Two-phase compiler (`--compiler two-phase`)
 

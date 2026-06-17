@@ -64,7 +64,7 @@ flowchart TB
 |---------|-------|------------|------------------|
 | `knox init` | — | No | Empty project scaffold |
 | `knox parse` | 1 only | No | Structured JSON per file (debugging) |
-| `knox ingest` | 0–1 | **No** | Parsed documents in memory store; deterministic, no API costs |
+| `knox ingest` | 0–1 | **No** | Parsed documents cached in `.knox/cache/`; deterministic, no API costs |
 | `knox compile` | 2–5 | **Yes** | Compiled wiki pages on disk; chunking uses LLM context window for adaptive sizing |
 | `knox lint` | — | Optional | Quality report + auto-fixes |
 | `knox query` | — | Optional | Semantic search over indexed wiki |
@@ -76,9 +76,9 @@ configured LLM. Chunking needs the model's context window for adaptive
 sizing; resolution and compilation need the model for inference.
 
 `knox ingest` stops after Tier 1. It downloads URLs and parses every
-source into structured documents, then stores them in a local memory
-database. This is fast, free, and idempotent — you can re-run it
-anytime without LLM costs or API keys.
+source into structured JSON cached in `.knox/cache/`. This is fast,
+free, and idempotent — you can re-run it anytime without LLM costs or
+API keys.
 
 `knox compile` picks up where ingest left off (or starts from scratch
 if you skip ingest). It runs Tiers 2–5: chunking (with adaptive sizing

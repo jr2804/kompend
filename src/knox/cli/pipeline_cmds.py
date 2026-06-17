@@ -71,7 +71,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-from knox.core.paths import KNOX_DIR
+from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.preprocessing.parsers._registry import build_default_router
@@ -296,9 +296,9 @@ def ingest_cmd(
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
-    Parses every source and stores the structured documents in
-    ``.knox/parsed/``. No chunking, no LLM — this is a fast,
-    deterministic extraction pass that you can re-run anytime.
+    Parses every source and caches the structured documents in
+    ``.knox/cache/`` so ``knox compile`` can pick them up. No chunking,
+    no LLM — this is a fast, deterministic extraction pass.
 
     Run ``knox compile`` afterwards to chunk, resolve, and compile
     the ingested documents into wiki pages.
@@ -329,8 +329,8 @@ def ingest_cmd(
     typer.echo(f"Ingesting {len(all_input_files)} document(s)")
 
     router: ParserRouter = build_default_router()
-    parsed_dir = sources_dir_path / KNOX_DIR / "parsed"
-    parsed_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = sources_dir_path / KNOX_DIR / CACHE_SUBDIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     count = 0
     for path in all_input_files:
@@ -345,13 +345,15 @@ def ingest_cmd(
             typer.echo(f"  Failed to parse {path.name}", err=True)
             continue
 
-        # Store parsed document as JSON alongside a content-hash key.
-        content_hash = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
-        out_path = parsed_dir / f"{path.stem}_{content_hash}.json"
+        # Cache key matches WikiPipeline._cache_key format so compile
+        # can reuse these parsed documents.
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        cache_key = f"{path.stem}_{digest[:12]}"
+        out_path = cache_dir / f"{cache_key}.json"
         out_path.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
         )
         count += 1
 
-    typer.echo(f"Ingested {count} document(s) into {parsed_dir}")
+    typer.echo(f"Ingested {count} document(s) into {cache_dir}")
