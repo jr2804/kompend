@@ -86,8 +86,8 @@ $IngestArgs = @(
     "ingest",
     $InputFiles,
     "--url-file",    $UrlFile,
-    "--workers",     "1",
-    "--progress"
+    "--llm-default-model", $LLMModel,
+    "--workers",     "1"
 )
 
 if ($Force) {
