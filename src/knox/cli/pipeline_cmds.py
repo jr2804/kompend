@@ -16,7 +16,6 @@ from knox.cli._progress import PipelineProgress
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
-    DEFAULT_CHUNK_SIZE,
     DEFAULT_COMPILE_FORMAT,
     DEFAULT_COMPILER,
     DEFAULT_IMAGE_MODE,
@@ -26,13 +25,11 @@ from knox.cli.args import (
     BudgetConcepts,
     BudgetGenSegment,
     BypassReview,
-    ChunkSize,
     CompileFiles,
     CompileLint,
     CompilerChoice,
     ConfigPath,
     EmbedBatchSize,
-    EmbedDim,
     EmbedModel,
     ForceTier,
     Frontmatter,
@@ -117,7 +114,6 @@ def compile_cmd(
     url_file: UrlFile = None,
     recursive: bool = False,
     target_format: TargetFormat = DEFAULT_COMPILE_FORMAT,
-    chunk_size: ChunkSize = DEFAULT_CHUNK_SIZE,
     image_mode: ImageMode = DEFAULT_IMAGE_MODE,
     index_store: IndexStore = False,
     embed_model: EmbedModel = None,
@@ -153,7 +149,6 @@ def compile_cmd(
     compile_lint: CompileLint = False,
     budget_gen_segment: BudgetGenSegment = None,
     budget_concepts: BudgetConcepts = None,
-    embed_dim: EmbedDim = None,
     embed_batch_size: EmbedBatchSize = None,
     llm_timeout: LlmTimeout = None,
 ) -> None:
@@ -174,7 +169,6 @@ def compile_cmd(
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
         target_format=target_format,
-        chunk_size=chunk_size,
         image_mode=image_mode,
         start_at_tier=start_at_tier,
         no_cache=no_cache,
@@ -205,7 +199,6 @@ def compile_cmd(
         compiler=compiler,
         budget_gen_segment=budget_gen_segment,
         budget_concepts=budget_concepts,
-        embed_dim=embed_dim,
         embed_model=embed_model,
         llm_timeout=llm_timeout,
     )
@@ -290,7 +283,6 @@ def ingest_cmd(
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     recursive: bool = False,
-    chunk_size: ChunkSize = DEFAULT_CHUNK_SIZE,
     image_mode: ImageMode = DEFAULT_IMAGE_MODE,
     ignore: Ignore = None,
     no_cache: NoCacheFlag = False,
@@ -301,7 +293,6 @@ def ingest_cmd(
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_role_model: LlmRoleModel = None,
     budget_concepts: BudgetConcepts = None,
-    embed_dim: EmbedDim = None,
     llm_timeout: LlmTimeout = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
@@ -314,7 +305,6 @@ def ingest_cmd(
 
     cli_overrides = build_cli_overrides(
         stop_at_tier="chunk",
-        chunk_size=chunk_size,
         image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
@@ -324,7 +314,6 @@ def ingest_cmd(
         llm_fallback_max_retries=llm_fallback_max_retries,
         llm_role_model=llm_role_model,
         budget_concepts=budget_concepts,
-        embed_dim=embed_dim,
         llm_timeout=llm_timeout,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)

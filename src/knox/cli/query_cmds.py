@@ -70,12 +70,11 @@ def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
         return None
 
     embed_model = wiki.metadata.get("embedding_model")
-    embed_dim = wiki.metadata.get("embedding_dim", 384)
     if not embed_model:
         logger.debug("No embedding model recorded in wiki metadata; skipping vector store")
         return None
     try:
-        return ZvecWikiStore.open(db_path, embedding_model=embed_model, embedding_dim=embed_dim)
+        return ZvecWikiStore.open(db_path, embedding_model=embed_model)
     except Exception as exc:
         logger.warning("Could not open vector store at %s: %s", db_path, exc, exc_info=True)
         return None

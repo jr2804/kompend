@@ -75,7 +75,7 @@ DEFAULTS: dict[str, Any] = {
         "sources_dir": "sources",
         "output_dir": "wiki",
         "format": "markdown",
-        "chunk_size": 1024,
+        "chunk_size": 1024,  # legacy fallback only — chunk target derived from context window
         "image_mode": "file",
         "mode": "full",
         "workers": 1,
@@ -137,7 +137,7 @@ DEFAULTS: dict[str, Any] = {
         },
         "embedding": {
             "model": None,
-            "dim": 384,
+            "dim": 384,  # deprecated — auto-detected from model at runtime
             "batch_size": 10,
         },
     },
@@ -179,7 +179,7 @@ _ENV_MAP: dict[str, str] = {
     "paths.cache_dir": "KNOX_CACHE_DIR",
     "paths.state_dir": "KNOX_STATE_DIR",
     "compile.format": "KNOX_FORMAT",
-    "compile.chunk_size": "KNOX_CHUNK_SIZE",
+    "compile.chunk_size": "KNOX_CHUNK_SIZE",  # deprecated — derived from context window
     "compile.image_mode": "KNOX_IMAGE_MODE",
     "compile.start_at_tier": "KNOX_START_AT_TIER",
     "compile.workers": "KNOX_WORKERS",
@@ -221,7 +221,7 @@ _ENV_MAP: dict[str, str] = {
     "compile.output.max_related_links": "KNOX_OUTPUT_MAX_RELATED_LINKS",
     "compile.embedding.model": "KNOX_EMBEDDING_MODEL",
     "compile.embedding.provider": "KNOX_EMBEDDING_PROVIDER",
-    "compile.embedding.dim": "KNOX_EMBEDDING_DIM",
+    "compile.embedding.dim": "KNOX_EMBEDDING_DIM",  # deprecated — auto-detected from model
     "compile.embedding.batch_size": "KNOX_EMBEDDING_BATCH_SIZE",
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     "trust.privacy_filter": "KNOX_PRIVACY_FILTER",

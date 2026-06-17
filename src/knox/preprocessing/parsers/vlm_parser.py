@@ -148,7 +148,6 @@ class VLMParser(BaseParser):
                     },
                 ],
                 role="vlm",
-                max_tokens=128,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("VLM caption generation failed for %s: %s", image_file, exc, exc_info=True)

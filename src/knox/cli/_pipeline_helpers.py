@@ -280,7 +280,6 @@ def _post_compile_actions(
         search_db_path = base_dir / ".knox" / "search.db"
         build_chunk_index(wiki, search_db_path)
         wiki.metadata["embedding_model"] = embed_model
-        wiki.metadata["embedding_dim"] = pipeline_config.embedding.dim
         _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model, base_dir=base_dir)
 
     if compile_lint:

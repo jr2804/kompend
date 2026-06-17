@@ -18,7 +18,7 @@ class BaseChunker(ABC):
 
     def __init__(
         self,
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
         reserve_ratio: float = 0.2,
         context_window: ContextWindow | None = None,
         chunk_size_min: int = 2048,
@@ -30,12 +30,15 @@ class BaseChunker(ABC):
         self._chunk_size_min = chunk_size_min
         self._chunk_size_max = chunk_size_max
         if context_window is not None:
-            # Use the discovered context window, clamped to [min, max] safety rails.
+            # Derive chunk target from the discovered context window, clamped to safety rails.
             raw = int(context_window.max_input * (1 - reserve_ratio))
             self._effective_max = max(self._chunk_size_min, min(raw, self._chunk_size_max))
-        else:
-            # Fallback when no context window was discovered.
+        elif max_tokens is not None:
+            # Test-only fallback: caller provides an explicit token budget.
             self._effective_max = int(max_tokens * (1 - reserve_ratio))
+        else:
+            msg = "Either context_window or max_tokens must be provided"
+            raise ValueError(msg)
 
     @abstractmethod
     def chunk(self, document: ParsedDocument) -> list[Chunk]:

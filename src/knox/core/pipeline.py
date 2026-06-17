@@ -516,7 +516,7 @@ class WikiPipeline:
             if use_cache and content_hash:
                 chunk_deps = {
                     "source": content_hash,
-                    "chunk_size": str(self.config.chunk_size),
+                    "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
                 }
                 cached = self._cache_store.get("chunk", chunk_deps)
                 if cached is not None:
@@ -531,7 +531,7 @@ class WikiPipeline:
                 self.state_store.record(state, stem, source_file, content_hash, tier=1)
                 chunk_deps = {
                     "source": content_hash,
-                    "chunk_size": str(self.config.chunk_size),
+                    "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
                 }
                 self._cache_store.set("chunk", chunk_deps, chunks)
             return chunks
@@ -772,7 +772,6 @@ def build_pipeline(
         config=config,
         parser=parser,
         chunker=HybridChunker(
-            max_tokens=config.chunk_size,
             context_window=chunker_context_window,
             chunk_size_min=config.budget.chunk_size_min,
             chunk_size_max=config.budget.chunk_size_max,

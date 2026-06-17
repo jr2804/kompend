@@ -110,8 +110,10 @@ class OutputConfig:
 
 @dataclass
 class EmbeddingConfig:
-    """Configuration for embedding models and dimensions."""
+    """Configuration for embedding models.
+
+    Dimensions are auto-detected from the model at runtime — never hardcoded.
+    """
 
     model: str
-    dim: int = 384
     batch_size: int = 10

@@ -23,7 +23,6 @@ APP_NAME_UPPERCASE = "KNOX"
 # ── Defaults ────────────────────────────────────────────────────────────
 
 DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
-DEFAULT_CHUNK_SIZE: int = 1024
 DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
 DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
@@ -104,15 +103,6 @@ TargetFormat = Annotated[
     ),
 ]
 
-ChunkSize = Annotated[
-    int,
-    typer.Option(
-        "--chunk-size",
-        help="Chunk size in tokens.",
-        min=1,
-    ),
-]
-
 ImageMode = Annotated[
     ImageModeEnum,
     typer.Option(
@@ -167,15 +157,6 @@ EmbedModel = Annotated[
     typer.Option(
         "--embed-model",
         help="Embedding model for zvec indexing.",
-    ),
-]
-
-EmbedDim = Annotated[
-    int | None,
-    typer.Option(
-        "--embed-dim",
-        help="Embedding dimension.",
-        rich_help_panel="Advanced",
     ),
 ]
 

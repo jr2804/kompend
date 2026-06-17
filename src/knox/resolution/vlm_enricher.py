@@ -139,7 +139,6 @@ class VLMEnricher(BaseResolver):
                 },
             ],
             role=self._role,
-            max_tokens=128,
         )
         if result is None:
             return None

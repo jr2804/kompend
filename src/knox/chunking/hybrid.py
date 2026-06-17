@@ -33,7 +33,7 @@ class HybridChunker(BaseChunker):
 
     def __init__(
         self,
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
         reserve_ratio: float = 0.2,
         tokenizer_name: str = "cl100k_base",
         context_window: ContextWindow | None = None,

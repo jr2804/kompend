@@ -91,7 +91,6 @@ def compile_wiki(
     sources_dir: str,
     output: str = "./output",
     output_format: str = "markdown",
-    chunk_size: int = 512,
     image_mode: str = "file",
     urls: list[str] | None = None,
     compiler: str = "graph",
@@ -137,7 +136,6 @@ def compile_wiki(
         embedding=EmbeddingConfig(model=""),
         online_sources=urls or [],
         output=OutputConfig(format=format_enum),
-        chunk_size=chunk_size,
         image_mode=image_mode_enum,
         compiler=compiler_enum,
     )

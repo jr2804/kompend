@@ -51,7 +51,6 @@ def build_cli_overrides(
     *,
     wiki_dir: str | None = None,
     target_format: str | None = None,
-    chunk_size: int | None = None,
     image_mode: str | None = None,
     start_at_tier: str | None = None,
     stop_at_tier: str | None = None,
@@ -84,7 +83,6 @@ def build_cli_overrides(
     budget_concepts: int | None = None,
     budget_gen_segment: int | None = None,
     embed_model: str | None = None,
-    embed_dim: int | None = None,
     embed_batch_size: int | None = None,
     llm_timeout: float | None = None,
 ) -> dict[str, Any]:
@@ -94,7 +92,6 @@ def build_cli_overrides(
     _simple: list[tuple[str, Any]] = [
         ("paths.wiki_dir", wiki_dir),
         ("compile.format", target_format),
-        ("compile.chunk_size", chunk_size),
         ("compile.image_mode", image_mode),
         ("compile.start_at_tier", start_at_tier),
         ("compile.stop_at_tier", stop_at_tier),
@@ -110,7 +107,6 @@ def build_cli_overrides(
         ("compile.budget.concepts_per_batch", budget_concepts),
         ("compile.budget.gen_output_max", budget_gen_segment),
         ("compile.embedding.model", embed_model),
-        ("compile.embedding.dim", embed_dim),
         ("compile.embedding.batch_size", embed_batch_size),
         ("compile.llm.timeout", llm_timeout),
     ]
