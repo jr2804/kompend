@@ -86,7 +86,6 @@ $IngestArgs = @(
     "ingest",
     $InputFiles,
     "--url-file",    $UrlFile,
-    "--llm-default-model", $LLMModel,
     "--workers",     "1"
 )
 
