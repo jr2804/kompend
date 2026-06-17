@@ -484,12 +484,14 @@ class LLMClient:
             )
         except LLMError as err:
             self.failure_count += 1
-            self.degraded_calls.append({
-                "role": role,
-                "model": err.model,
-                "error": type(err).__name__,
-                "message": str(err)[:200],
-            })
+            self.degraded_calls.append(
+                {
+                    "role": role,
+                    "model": err.model,
+                    "error": type(err).__name__,
+                    "message": str(err)[:200],
+                }
+            )
             logger.warning(
                 "LLM call failed role=%s model=%s attempts=%d: %s",
                 role,

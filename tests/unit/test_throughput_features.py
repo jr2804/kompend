@@ -605,13 +605,6 @@ class TestLifecycleStore:
 class TestVerificationFallback:
     """verify_node / verify_wiki fallback behaviour."""
 
-    @staticmethod
-    def _fake_client() -> Mock:
-        """Client whose try_complete always returns None (forces fallback)."""
-        c = Mock()
-        c.try_complete.return_value = None
-        return c
-
     def test_claim_without_citation_unsupported(self, tmp_path: Path) -> None:
         node = WikiNode(
             id="n1",
@@ -660,3 +653,10 @@ class TestVerificationFallback:
         assert result.total >= 1
         report = tmp_path / ".knox" / "verification.json"
         assert report.exists()
+
+    @staticmethod
+    def _fake_client() -> Mock:
+        """Client whose try_complete always returns None (forces fallback)."""
+        c = Mock()
+        c.try_complete.return_value = None
+        return c
