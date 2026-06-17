@@ -313,6 +313,7 @@ def ingest_cmd(
         online_urls = []
 
     cli_overrides = build_cli_overrides(
+        stop_at_tier="chunk",
         chunk_size=chunk_size,
         image_mode=image_mode,
         no_cache=no_cache,
