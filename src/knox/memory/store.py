@@ -123,7 +123,6 @@ class MemoryStore:
                 if line.strip():
                     entries.append(json.loads(line))
 
-        # Return the last 'limit' entries, newest first
         return list(reversed(entries[-limit:]))
 
     def close(self) -> None:

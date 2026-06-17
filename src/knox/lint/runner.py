@@ -124,7 +124,6 @@ class LintRunner:
             rules.extend(STRUCTURAL_RULES)
 
         if self.enable_llm or (self.requested_rules and any(n in LLM_RULE_BY_NAME for n in self.requested_rules)):
-            # Add LLM rules that haven't already been added
             existing_names = {r.name for r in rules}
             for name, cls in LLM_RULE_BY_NAME.items():
                 if name not in existing_names:

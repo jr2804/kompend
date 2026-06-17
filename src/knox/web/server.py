@@ -23,6 +23,12 @@ app = FastAPI(title="KNOX Web UI")
 _PROJECT_DIR: Path = Path.cwd()
 
 
+def _source_of(node: dict[str, Any]) -> str:
+    """Extract source file from a wiki node's metadata, or '' if absent."""
+    meta = node.get("metadata") or {}
+    return meta.get("source", "")
+
+
 def _load_wiki() -> dict[str, Any]:
     cache = _PROJECT_DIR / "wiki" / ".knox" / "last_wiki.json"
     if not cache.exists():
@@ -42,7 +48,7 @@ async def dashboard() -> str:
     nodes = wiki.get("nodes", [])
     edges = wiki.get("edges", [])
     toc = wiki.get("toc", [])
-    source_count = len({n.get("metadata", {}).get("source") for n in nodes if n.get("metadata")})
+    source_count = len({_source_of(n) for n in nodes if _source_of(n)})
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -96,7 +102,7 @@ async def dashboard() -> str:
         "".join(
             f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
             f"<td>{n.get('node_type', '')}</td>"
-            f"<td>{n.get('metadata', {}).get('source', '')}</td></tr>"
+            f"<td>{_source_of(n)}</td></tr>"
             for n in nodes[:10]
         )
     }
@@ -114,7 +120,7 @@ async def wiki_list() -> str:
     rows = "".join(
         f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
         f"<td>{n.get('node_type', '')}</td>"
-        f"<td>{n.get('metadata', {}).get('source', '')}</td></tr>"
+        f"<td>{_source_of(n)}</td></tr>"
         for n in nodes
     )
     return f"""<!DOCTYPE html>
@@ -181,7 +187,7 @@ async def wiki_page(node_id: str) -> str:
 <div class="container">
   <div class="content">
     <h1>{node.get("title", "")}</h1>
-    <div class="meta">Type: {node.get("node_type", "")} | Source: {node.get("metadata", {}).get("source", "")}</div>
+    <div class="meta">Type: {node.get("node_type", "")} | Source: {_source_of(node)}</div>
     <pre style="white-space:pre-wrap;font-family:inherit">{content}</pre>
   </div>
 </div>

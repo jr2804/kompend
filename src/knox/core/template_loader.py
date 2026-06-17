@@ -252,13 +252,11 @@ class TemplateLoader:
         for key in used & self._global_context.keys():
             kwargs.setdefault(key, self._global_context[key])
 
-        # Validate: required declared variables
         required = meta.required_variable_names()
         missing = required - kwargs.keys()
         if missing:
             raise ValueError(f"Template '{template_path}' requires missing variables: {', '.join(sorted(missing))}")
 
-        # Validate: undeclared (but used) variables via AST introspection
         extra = kwargs.keys() - used - set()
         if extra:
             logger.warning(
@@ -350,7 +348,6 @@ class TemplateLoader:
         """Search project → user → builtin, return (source_text, source_info)."""
         normalized = template_path.replace("\\", "/")
 
-        # Check cache (skip stale entries)
         cached = self._search_cache.get(normalized)
         if cached is not None:
             label, identifier = cached

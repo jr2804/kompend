@@ -83,7 +83,6 @@ def resolve_files(
         # Neither file nor dir nor glob — skip silently.
         # (Could be a typo or an unsupported file that was passed explicitly.)
 
-    # Apply ignore patterns
     if ignore_patterns or respect_gitignore:
         results = filter_files(
             results,

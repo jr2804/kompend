@@ -65,7 +65,6 @@ def detect_flavor(output_dir: Path | None = None, configured: str | None = None)
         # Quarto project
         if (output_dir / "_quarto.yml").is_file():
             return "quarto"
-        # Check for .qmd files
         if list(output_dir.rglob("*.qmd")):
             return "quarto"
 

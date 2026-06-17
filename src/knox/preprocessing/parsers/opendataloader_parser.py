@@ -64,7 +64,6 @@ class OpenDataLoaderParser(BaseParser):
                 format="json",
             )
 
-            # Find the generated JSON file
             json_files = list(Path(tmp_dir).glob("*.json"))
             if not json_files:
                 msg = f"OpenDataLoader produced no JSON output for {source_path}"

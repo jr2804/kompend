@@ -7,6 +7,7 @@ import logging
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -287,6 +288,27 @@ def _review_unlock(queue: object, slug: str | None) -> None:
     raise typer.Exit(1)
 
 
+def _review_approve(queue: object, slug: str | None, approve_all: bool) -> None:
+    approved = queue.approve(slug or "", approve_all=approve_all)
+    if not approved:
+        typer.echo("No matching pages to approve.", err=True)
+        raise typer.Exit(1)
+    for e in approved:
+        typer.echo(f"Approved: {e.slug}")
+
+
+def _review_reject(queue: object, slug: str | None, reason: str | None) -> None:
+    if not slug:
+        typer.echo("Reject requires a slug.", err=True)
+        raise typer.Exit(1)
+    rejected = queue.reject(slug, reason=reason or "")
+    if not rejected:
+        typer.echo(f"No pending page with slug {slug!r}.", err=True)
+        raise typer.Exit(1)
+    for e in rejected:
+        typer.echo(f"Rejected: {e.slug}")
+
+
 def _dispatch_review_action(
     queue: object,
     action: str,
@@ -295,42 +317,19 @@ def _dispatch_review_action(
     approve_all: bool,
     json_output: bool,
 ) -> None:
-    """Dispatch a review command action. Extracted to keep ruff PLR0911 happy."""
-    if action == "list":
-        _review_list(queue, json_output)
-        return
-
-    if action == "approve":
-        approved = queue.approve(slug or "", approve_all=approve_all)
-        if not approved:
-            typer.echo("No matching pages to approve.", err=True)
-            raise typer.Exit(1)
-        for e in approved:
-            typer.echo(f"Approved: {e.slug}")
-        return
-
-    if action == "reject":
-        if not slug:
-            typer.echo("Reject requires a slug.", err=True)
-            raise typer.Exit(1)
-        rejected = queue.reject(slug, reason=reason or "")
-        if not rejected:
-            typer.echo(f"No pending page with slug {slug!r}.", err=True)
-            raise typer.Exit(1)
-        for e in rejected:
-            typer.echo(f"Rejected: {e.slug}")
-        return
-
-    if action == "lock":
-        _review_lock(queue, slug)
-        return
-
-    if action == "unlock":
-        _review_unlock(queue, slug)
-        return
-
-    typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
-    raise typer.Exit(1)
+    """Dispatch a review command action via a handler map."""
+    handlers: dict[str, Callable[[], None]] = {
+        "list": lambda: _review_list(queue, json_output),
+        "approve": lambda: _review_approve(queue, slug, approve_all),
+        "reject": lambda: _review_reject(queue, slug, reason),
+        "lock": lambda: _review_lock(queue, slug),
+        "unlock": lambda: _review_unlock(queue, slug),
+    }
+    handler = handlers.get(action)
+    if handler is None:
+        typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
+        raise typer.Exit(1)
+    handler()
 
 
 # ── lint ────────────────────────────────────────────────────────────────

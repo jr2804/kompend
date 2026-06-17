@@ -67,7 +67,6 @@ def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, A
         if ElementType.IMAGE not in rc.chunk.element_types:
             continue
 
-        # Get image path or base64 data
         img_path = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
         if not img_path:
             # Try resolved metadata
@@ -76,7 +75,6 @@ def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, A
         if not img_path:
             continue
 
-        # Get VLM caption if available
         caption = ""
         for entity in rc.entities:
             if entity.get("type") == "image_description" and entity.get("context"):

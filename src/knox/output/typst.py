@@ -62,7 +62,6 @@ class TypstWriter(BaseOutputWriter):
             level = node.metadata.get("heading_level", 1)
             heading = "=" * min(level + 1, 6)
 
-            # Add a label for cross-referencing
             node_id = node.id
             lines.append(f"#label(<{node_id}>)")
             lines.append(f"{heading} {node.title}")

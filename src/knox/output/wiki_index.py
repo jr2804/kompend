@@ -171,7 +171,6 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:
     tier_timings = wiki.metadata.get("tier_timings", {})
     llm_usage = wiki.metadata.get("llm_usage", {})
 
-    # Build header
     header_parts: list[str] = []
     if stage == "compile":
         header_parts.append(f"{source_count} source(s) → {article_count} page(s)")
@@ -353,7 +352,6 @@ def generate_overview(
     except Exception:  # noqa: BLE001
         return None
 
-    # Build budget-sized batches of source text.
     batches: list[str] = []
     current_parts: list[str] = []
     current_len = 0
@@ -371,7 +369,6 @@ def generate_overview(
     if progress_callback:
         progress_callback(0, total_steps)
 
-    # Generate a partial overview from each batch.
     partials: list[str] = []
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)

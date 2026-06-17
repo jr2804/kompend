@@ -155,7 +155,6 @@ class WikiPipeline:
             stop_at_tier=self.config.stop_at_tier.value,
         )
 
-        # Validate prerequisites when starting at a later tier.
         self._validate_prerequisites()
 
         # --force: invalidate all caches before starting.
@@ -488,7 +487,6 @@ class WikiPipeline:
             parsed = self._load_cache(source_file) if use_cache else None
             if parsed is None:
                 if use_cache and not self.config.force:
-                    # Check tier state for a cache hit.
                     cached_entry = state.entries.get(stem)
                     if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
                         parsed = self._load_cache(source_file)
@@ -731,7 +729,6 @@ def build_pipeline(
     # T0 (index) and T1 (chunk) run without an LLM. Only build the
     # LLM-dependent components when the [start, stop] tier range reaches
     # T2 (resolve) or beyond. This lets `knox ingest` (stop_at_tier=CHUNK)
-    # run without a configured default model.
     needs_llm = TIER_LEVEL[config.stop_at_tier] >= TIER_LEVEL[Tier.RESOLVE]
 
     resolver: BaseResolver | None = None

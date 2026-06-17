@@ -107,7 +107,6 @@ def compile_wiki(
     if not source_path.exists():
         return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
 
-    # Validate and convert string params to enums
     try:
         compiler_enum = Compiler(compiler)
     except ValueError:

@@ -394,7 +394,6 @@ class LLMClient:
                 attempts=diagnostics.attempts,
             )
 
-        # Parse JSON when requested.
         json_data: dict[str, Any] | None = None
         if response_format is not None and response_format.get("type") == "json_object":
             try:
@@ -416,7 +415,6 @@ class LLMClient:
                 )
             json_data = parsed
 
-        # Log split TPS metrics.
         pt = sr.prompt_tokens
         ct = sr.completion_tokens
         ttft_s = sr.ttft_s

@@ -146,7 +146,6 @@ class PipelineConfig:
     @classmethod
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
-        # Read old flat keys to populate flat fields
         llm_fallback_chain = cfg.get("compile.llm.fallback_chain", [])
         llm_fallback_max_retries = cfg.get("compile.llm.fallback_max_retries", 2)
         cfg.get("compile.llm.default_model")
@@ -158,7 +157,6 @@ class PipelineConfig:
         if isinstance(rumdl_config_file, str):
             rumdl_config_file = Path(rumdl_config_file)
 
-        # Read sub-configs
         llm_config = LLMConfig(
             default_model=cfg.get("compile.llm.default_model"),
             vlm_model=cfg.get("compile.llm.vlm_model"),

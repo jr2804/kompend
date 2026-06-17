@@ -58,7 +58,6 @@ class MarkdownWriter(BaseOutputWriter):
             frontmatter.update(node.metadata.get("frontmatter", {}))
             frontmatter.setdefault("title", node.title or "Untitled")
 
-            # Build body with embedded images
             body = node.content or ""
             images = node.metadata.get("images", [])
             if images:
@@ -122,7 +121,6 @@ class MarkdownWriter(BaseOutputWriter):
             if not img_path:
                 continue
 
-            # Build Markdown image syntax: ![alt](path)
             alt_text = caption or "image"
             lines.append(f"![{alt_text}]({img_path})")
             if caption:
