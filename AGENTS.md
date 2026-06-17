@@ -137,6 +137,49 @@ For review, debugging, or analysis outputs, use: findings with references, concl
 - Online sources (URLs) go through `downloaders/` before `parsers/`
 - MCP server is a thin wrapper — no business logic duplication
 
+## Path Constants — Single Source of Truth
+
+All on-disk artifact names (directory and file names under the project root)
+are defined as `Final[str]` constants in **`src/knox/core/paths.py`**. No other
+module may hard-code these strings.
+
+**Rule:** The string `".knox"`, `"cache"`, `"config.toml"`, `"vectors"`,
+`"memory.db"`, `"last_wiki.json"`, `"search.db"`, etc. must **never** appear as
+a literal in any `.py` file outside `paths.py`. Always import from
+`knox.core.paths`.
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| `KNOX_DIR` | `".knox"` | Root metadata directory |
+| `CACHE_SUBDIR` | `"cache"` | Cache component within `KNOX_DIR` |
+| `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
+| `CONFIG_FILE` | `"config.toml"` | Scaffolding config filename |
+| `KNOX_CONFIG_FILE` | `".knox/config.toml"` | Project-level config relative path |
+| `WIKI_CACHE_FILE` | `"last_wiki.json"` | Compiled wiki cache |
+| `REVIEW_DIR` | `"review"` | Review queue directory |
+| `VECTORS_DIR` | `"vectors"` | Embedding vector store |
+| `SEARCH_DB_FILE` | `"search.db"` | SQLite search index |
+| `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest |
+| `MEMORY_DB_FILE` | `"memory.db"` | SQLite memory store |
+| `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log |
+| `MEMORY_STORE_FILE` | `"memory.json"` | Memory JSON export |
+| `PROVENANCE_DIR` | `"provenance"` | Provenance trace directory |
+| `VERIFICATION_FILE` | `"verification.json"` | Verification results |
+| `PRIVATE_FILE` | `"private.json"` | Private page manifest |
+| `COMPILE_STATE_FILE` | `"compile_state.json"` | Tier state checkpoint |
+| `STATE_FILE` | `"state.json"` | General state file |
+
+**Configurable directory names** (`"sources"`, `"wiki"`) live in `DEFAULTS`
+under `["paths"]["sources_dir"]` and `["paths"]["output_dir"]` — not in
+`paths.py`, because users can override them.
+
+**Project root naming:** The project root directory is always called
+`base_dir`. Never use `target_dir`, `resolved_base`, `project_root`, or
+`sources_dir.parent` to refer to the project root.
+
+**Tests** must also import from `knox.core.paths` — never hard-code path
+strings in test assertions.
+
 ## Text in Code
 
 Human-readable text must never be embedded in Python code. See `src/knox/AGENTS.md` for the full convention (what goes where, template loading, acceptable exceptions). See `src/knox/core/config/AGENTS.md` for configuration-specific rules. If these files are not in context, read them before writing any text-bearing Python files.
