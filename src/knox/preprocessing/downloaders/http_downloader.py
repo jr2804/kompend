@@ -55,13 +55,16 @@ class HTTPDownloader(BaseDownloader):
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
                 content = response.read()
         except urllib.error.HTTPError as e:
-            logger.warning("Failed to download %s: HTTP %s %s", url, e.code, e.reason, exc_info=True)
+            logger.debug("HTTP error downloading %s: %s %s", url, e.code, e.reason)
+            logger.warning("Skipping %s — HTTP %s", url, e.code)
             return None
         except urllib.error.URLError as e:
-            logger.warning("Failed to download %s: %s", url, e.reason, exc_info=True)
+            logger.debug("URL error downloading %s: %s", url, e.reason)
+            logger.warning("Skipping %s — connection failed", url)
             return None
         except Exception as e:
-            logger.warning("Failed to download %s: %s", url, e, exc_info=True)
+            logger.debug("Failed to download %s: %s", url, e, exc_info=True)
+            logger.warning("Skipping %s — download failed", url)
             return None
 
         # Content-based dedup: skip if identical content already exists in target_dir

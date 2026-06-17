@@ -92,7 +92,7 @@ class FileProgressTracker:
     """
 
     total: int
-    console: Console = field(default_factory=lambda: Console(stderr=True))
+    console: Console = field(default_factory=lambda: Console(stderr=True, force_terminal=True))
     _progress: Progress | None = None
     _overall_task: TaskID | None = None
     _start_time: float = 0.0

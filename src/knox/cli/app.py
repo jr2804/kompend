@@ -21,6 +21,8 @@ app = typer.Typer(
     help="Knowledge Organizer for eXtended documents",
     add_completion=True,
     no_args_is_help=True,
+    pretty_exceptions_enable=False,
+    pretty_exceptions_show_locals=False,
 )
 
 
