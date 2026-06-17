@@ -1,0 +1,42 @@
+# config-local.toml — Local LLM with 128K context window
+#
+# Uses ollama/lfm2.5 running locally. Context window is discovered
+# automatically at ~128K tokens. Embedding from local granite-embedding.
+#
+# Usage:
+#   .\scripts\build-wiki.ps1 scripts\config-local.toml
+
+# ── Build metadata (used by build-wiki.ps1) ─────────────────────────────
+[build]
+output_name = "demo-wiki-local"
+
+# ── LLM settings ────────────────────────────────────────────────────────
+[compile.llm]
+default_model = "ollama/lfm2.5"
+timeout = 600.0
+
+fallback_max_retries = 2
+
+# ── Embedding ───────────────────────────────────────────────────────────
+[compile.embedding]
+model = "litellm:ollama/granite-embedding:278m"
+dim = 768
+
+# ── Output ──────────────────────────────────────────────────────────────
+[compile.output]
+flavor = "obsidian"
+max_related_links = 15
+
+# ── Paths ───────────────────────────────────────────────────────────────
+[paths]
+sources_dir = "sources"
+output_dir = "wiki"
+cache_dir = ".knox/cache"
+state_dir = ".knox"
+
+# ── Budget (128K ctx — stricter ceilings) ───────────────────────────────
+[compile.budget]
+chunk_size_max = 131072          # full 128K ctx
+extract_output_max = 8192
+gen_output_max = 16384
+lint_output_max = 8192

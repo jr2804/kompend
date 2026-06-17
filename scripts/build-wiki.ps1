@@ -1,57 +1,88 @@
-# build-wiki.ps1 — Build the demo wiki
+# build-wiki.ps1 — Build the demo wiki for A/B model comparison
 #
 # Prerequisites:
-#   - Ollama running with models pulled:
-#       ollama pull deepseek-v4-flash:cloud
-#       ollama pull glm-ocr
-#       ollama pull granite-embedding:278m
+#   - Ollama running with models pulled (see config files for model list)
 #   - uv installed (https://docs.astral.sh/uv/)
 #
 # Usage:
-#   .\build-wiki.ps1                            # full build (defaults to wicer compiler, obsidian flavor)
-#   .\build-wiki.ps1 -OutputPath "custom-wiki"  # build to a specific directory
-#   .\build-wiki.ps1 -Compiler "graph"          # use the heading-based graph compiler instead of wicer
-#   .\build-wiki.ps1 -Force                     # clear caches and recompile from scratch
-#   .\build-wiki.ps1 -WhatIf                    # show commands without executing
+#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml     # enterprise LLM (~1M ctx)
+#   .\scripts\build-wiki.ps1 scripts\config-local.toml      # local LLM (128K ctx)
+#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -Force
+#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -WhatIf
 #
-# A/B Testing:
-#   To compare LLM variants, simply change $LLMModel (e.g., "openai/gpt-4o" vs "ollama/llama3.1:8b").
-#   KNOX will auto-detect the context window and adapt chunk sizes accordingly.
-#   Embedding dimension is auto-detected to prevent mismatches.
-#
-# Three-stage flow:
-#   Stage 0 (init):    knox init    — scaffold project structure (sources/, wiki/, .knox/)
-#   Stage 1 (ingest):  knox ingest  — T0+T1: download + parse (no LLM, deterministic)
-#   Stage 2 (compile): knox compile --start-at-tier chunk — T2+T3+T4+T5: chunk + resolve + compile + output (needs LLM)
+# A/B testing:
+#   Compare wiki structure, article count, and processing time between
+#   the two configs. Quality differences due to model selection are out
+#   of scope — we are testing the pipeline under different conditions.
 
 [CmdletBinding()]
 param(
-    [string]$OutputPath = "demo-wiki",
-    [string]$Compiler = "wicer",
-    [string]$LLMModel = "ollama/deepseek-v4-flash:cloud",
+    [Parameter(Mandatory = $true, Position = 0)]
+    [string]$ConfigFile,
+
     [switch]$Force,
     [switch]$WhatIf
 )
 
 $ErrorActionPreference = "Stop"
 
-# ── Environment (LLM timeout for cloud-proxied models) ─────────────────
-$env:KNOX_LLM_TIMEOUT = "300"
+# ── Validate config ─────────────────────────────────────────────────────
+$ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
+Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
-# ── Configuration ──────────────────────────────────────────────────────
-$ProjectRoot = $PSScriptRoot
-$BaseDir     = Join-Path $ProjectRoot $OutputPath
+# ── Read build settings from config ─────────────────────────────────────
+# We parse the TOML to extract [build] section values. Since PowerShell
+# doesn't have native TOML support, we use a simple regex approach for
+# the specific keys we need.
 
-$EmbedModel = "litellm:ollama/granite-embedding:278m"
+function Get-ConfigValue($Key) {
+    $lines = Get-Content $ConfigPath
+    $inSection = $false
+    $section = ""
+    foreach ($line in $lines) {
+        if ($line -match '^\[(.+)\]') {
+            $section = $matches[1]
+            $inSection = $false
+        }
+        elseif ($line -match "^\s*$Key\s*=\s*""(.+)""") {
+            return $matches[1]
+        }
+        elseif ($line -match "^\s*$Key\s*=\s*(.+)") {
+            return $matches[1].Trim()
+        }
+    }
+    return $null
+}
+
+$LLMModel    = Get-ConfigValue "default_model"
+$VlmModel    = Get-ConfigValue "vlm_model"
+$EmbedModel  = Get-ConfigValue "embed_model"
+$OutputName  = Get-ConfigValue "output_name"
+$ProjectRoot = $PSScriptRoot | Split-Path -Parent
+$OutputPath  = Join-Path $ProjectRoot $OutputName
+
+if (-not $LLMModel) {
+    Write-Error "Config missing [compile.llm] default_model"
+    exit 1
+}
+if (-not $OutputName) {
+    Write-Error "Config missing [build] output_name"
+    exit 1
+}
+
+Write-Host "  Model:  $LLMModel" -ForegroundColor DarkGray
+if ($VlmModel)  { Write-Host "  VLM:    $VlmModel" -ForegroundColor DarkGray }
+Write-Host "  Embed:  $EmbedModel" -ForegroundColor DarkGray
+Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
 $UrlFile    = Join-Path $ProjectRoot "tests/data/urls.txt"
 
 # ── Clean (if -Force) ──────────────────────────────────────────────────
 if ($Force) {
-    if (Test-Path $BaseDir) {
-        Write-Host "Removing $BaseDir" -ForegroundColor Yellow
-        if (-not $WhatIf) { Remove-Item -Recurse -Force $BaseDir }
+    if (Test-Path $OutputPath) {
+        Write-Host "Removing $OutputPath" -ForegroundColor Yellow
+        if (-not $WhatIf) { Remove-Item -Recurse -Force $OutputPath }
     }
 }
 
@@ -60,7 +91,7 @@ Write-Host ""
 Write-Host "=== Stage 0: Initialize project ===" -ForegroundColor Cyan
 $InitArgs = @(
     "uv", "run", "knox", "init",
-    $BaseDir,
+    $OutputPath,
     "--bare",
     "--force"
 )
@@ -82,11 +113,12 @@ Write-Host ""
 Write-Host "=== Stage 1: Ingest (download + parse) ===" -ForegroundColor Cyan
 $IngestArgs = @(
     "uv", "run", "knox",
-    "--wiki-dir",    $BaseDir,
+    "--wiki-dir",    $OutputPath,
     "ingest",
     $InputFiles,
     "--url-file",    $UrlFile,
-    "--workers",     "1"
+    "--workers",     "1",
+    "--config",      $ConfigPath
 )
 
 if ($Force) {
@@ -111,7 +143,7 @@ Write-Host ""
 Write-Host "=== Stage 2: Compile (chunk + resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
     "uv", "run", "knox",
-    "--wiki-dir",         $BaseDir,
+    "--wiki-dir",         $OutputPath,
     "compile",
     $InputFiles,
     "--start-at-tier",    "chunk",
@@ -119,11 +151,16 @@ $CompileArgs = @(
     "--embed-model",      $EmbedModel,
     "--resolve-relations",
     "--flavor",           "obsidian",
-    "--compiler",         $Compiler,
+    "--compiler",         "wicer",
     "--workers",          "1",
     "--verify",
-    "--index", "--synthesize", "--progress"
+    "--index", "--synthesize", "--progress",
+    "--config",           $ConfigPath
 )
+
+if ($VlmModel) {
+    $CompileArgs += @("--vlm-model", $VlmModel)
+}
 
 Write-Host ""
 Write-Host ($CompileArgs -join " ") -ForegroundColor DarkGray
@@ -142,12 +179,13 @@ Write-Host ""
 Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
     "uv", "run", "knox",
-    "--wiki-dir", $BaseDir,
+    "--wiki-dir", $OutputPath,
     "lint",
     "--llm",
     "--llm-default-model", $LLMModel,
     "--fix",
-    "--threshold", "80"
+    "--threshold", "80",
+    "--config", $ConfigPath
 )
 
 Write-Host ($LintArgs -join " ") -ForegroundColor DarkGray
@@ -163,10 +201,10 @@ if (-not $WhatIf) {
 # ── Done ───────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green
-if (-not $WhatIf -and (Test-Path $BaseDir)) {
-    $MdFiles = Get-ChildItem -Path $BaseDir -Filter "*.md" -Recurse
-    Write-Host "  Output: $BaseDir ($($MdFiles.Count) markdown file(s))"
-    $Index = Join-Path $BaseDir "index.md"
+if (-not $WhatIf -and (Test-Path $OutputPath)) {
+    $MdFiles = Get-ChildItem -Path $OutputPath -Filter "*.md" -Recurse
+    Write-Host "  Output: $OutputPath ($($MdFiles.Count) markdown file(s))"
+    $Index = Join-Path $OutputPath "index.md"
     if (Test-Path $Index) {
         Write-Host "  Entry:  $Index" -ForegroundColor Cyan
     }

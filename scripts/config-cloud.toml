@@ -1,0 +1,44 @@
+# config-cloud.toml — Enterprise LLM with ~1M context window
+#
+# Uses ollama-cloud/deepseek-v4-flash:cloud via local Ollama proxy.
+# Context window is discovered automatically at ~1M tokens.
+# Embedding from local granite-embedding model.
+#
+# Usage:
+#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml
+
+# ── Build metadata (used by build-wiki.ps1) ─────────────────────────────
+[build]
+output_name = "demo-wiki-cloud"
+
+# ── LLM settings ────────────────────────────────────────────────────────
+[compile.llm]
+default_model = "ollama/deepseek-v4-flash:cloud"
+vlm_model = "ollama/glm-ocr"
+timeout = 300.0
+
+fallback_max_retries = 3
+
+# ── Embedding ───────────────────────────────────────────────────────────
+[compile.embedding]
+model = "litellm:ollama/granite-embedding:278m"
+dim = 768
+
+# ── Output ──────────────────────────────────────────────────────────────
+[compile.output]
+flavor = "obsidian"
+max_related_links = 15
+
+# ── Paths ───────────────────────────────────────────────────────────────
+[paths]
+sources_dir = "sources"
+output_dir = "wiki"
+cache_dir = ".knox/cache"
+state_dir = ".knox"
+
+# ── Budget (cloud model has huge context, relax safety rails) ────────────
+[compile.budget]
+chunk_size_max = 524288          # up to 512K chunks for ~1M ctx model
+extract_output_max = 16384
+gen_output_max = 32768
+lint_output_max = 16384
