@@ -63,7 +63,7 @@ def parse_document(file_path: str) -> dict[str, Any]:
     try:
         router.register(DoclingParser())
     except Exception as exc:
-        logger.warning("DoclingParser not available: %s", exc)
+        logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 
     try:
         doc = router.parse(doc_file)

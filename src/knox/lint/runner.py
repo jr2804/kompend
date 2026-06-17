@@ -85,7 +85,7 @@ class LintRunner:
             try:
                 results = rule.check(wiki, sources_dir=self.sources_dir)
             except Exception as exc:
-                logger.warning("Lint rule '%s' raised: %s", rule.name, exc)
+                logger.warning("Lint rule '%s' raised: %s", rule.name, exc, exc_info=True)
                 results = [
                     LintResult(
                         rule=rule.name,
@@ -100,7 +100,7 @@ class LintRunner:
                     try:
                         results = rule.fix(wiki, fixable)
                     except Exception as exc:
-                        logger.warning("Fix for '%s' raised: %s", rule.name, exc)
+                        logger.warning("Fix for '%s' raised: %s", rule.name, exc, exc_info=True)
 
             all_results.extend(results)
 

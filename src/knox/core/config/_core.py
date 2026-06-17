@@ -377,7 +377,7 @@ def _load_toml(path: Path) -> dict[str, Any]:
         logger.debug("Loaded config from %s", path)
         return _expand_env_vars_recursive(data)
     except Exception as exc:
-        logger.warning("Failed to load config %s: %s", path, exc)
+        logger.warning("Failed to load config %s: %s", path, exc, exc_info=True)
         return {}
 
 

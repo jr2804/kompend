@@ -56,7 +56,7 @@ class FactualConsistencyRule(BaseLintRule):
                         response_format={"type": "json_object"},
                     )
                 except Exception as exc:
-                    logger.warning("factual-consistency LLM call failed: %s", exc)
+                    logger.warning("factual-consistency LLM call failed: %s", exc, exc_info=True)
                     results.append(
                         LintResult(
                             rule=self.name,
@@ -133,7 +133,7 @@ class ClarityScoreRule(BaseLintRule):
                         response_format={"type": "json_object"},
                     )
                 except Exception as exc:
-                    logger.warning("clarity-score LLM call failed: %s", exc)
+                    logger.warning("clarity-score LLM call failed: %s", exc, exc_info=True)
                     results.append(
                         LintResult(
                             rule=self.name,
@@ -221,7 +221,7 @@ class CoverageGapRule(BaseLintRule):
                     response_format={"type": "json_object"},
                 )
             except Exception as exc:
-                logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc)
+                logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
                 continue
 
             if llm_result is None or llm_result.json_data is None:
@@ -295,7 +295,7 @@ class ContradictionDetectionRule(BaseLintRule):
                     response_format={"type": "json_object"},
                 )
             except Exception as exc:
-                logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc)
+                logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
                 results.append(
                     LintResult(
                         rule=self.name,

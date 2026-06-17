@@ -95,7 +95,7 @@ def build_default_router() -> ParserRouter:
             router.register(docling)
             register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
         except Exception as exc:
-            logger.debug("DoclingParser not available: %s", exc)
+            logger.debug("DoclingParser not available: %s", exc, exc_info=True)
 
     if PdfPlumberParser is not None:
         try:
@@ -103,7 +103,7 @@ def build_default_router() -> ParserRouter:
             router.register(pdfplumber)
             register_parser("PdfPlumberParser", "built-in", list(pdfplumber.supported_extensions))
         except Exception as exc:
-            logger.debug("PdfPlumberParser not available: %s", exc)
+            logger.debug("PdfPlumberParser not available: %s", exc, exc_info=True)
 
     if PandocParser is not None:
         try:
@@ -111,6 +111,6 @@ def build_default_router() -> ParserRouter:
             router.register(pandoc)
             register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
         except Exception as exc:
-            logger.debug("PandocParser not available: %s", exc)
+            logger.debug("PandocParser not available: %s", exc, exc_info=True)
 
     return router

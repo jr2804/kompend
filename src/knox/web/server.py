@@ -32,7 +32,7 @@ def _load_wiki() -> dict[str, Any]:
         data["node_count"] = len(data.get("nodes", []))
         return data
     except Exception as exc:
-        logger.warning("Failed to load wiki cache: %s", exc)
+        logger.warning("Failed to load wiki cache: %s", exc, exc_info=True)
         return {"nodes": [], "edges": [], "toc": [], "quality_score": 0.0, "node_count": 0}
 
 

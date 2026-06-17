@@ -121,7 +121,7 @@ def load_hooks_from_config(config: dict[str, Any]) -> int:
         try:
             event = HookEvent(event_str)
         except ValueError:
-            logger.warning("Unknown hook event '%s' — skipping", event_str)
+            logger.warning("Unknown hook event '%s' — skipping", event_str, exc_info=True)
             continue
 
         if isinstance(paths, str):

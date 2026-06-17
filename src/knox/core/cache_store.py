@@ -1,7 +1,7 @@
 """Content-addressed cache store with dependency tracking.
 
-Each cached output is stored as a pickle file in
-``<cache_dir>/<layer>/<sha256-key>.pkl``.  The key is derived from the
+Each cached output is stored as a JSON file in
+``<cache_dir>/<layer>/<sha256-key>.json``.  The key is derived from the
 dependency hashes, so identical inputs always map to the same file.
 
 On lookup the store verifies that *every* stored dependency hash still
@@ -22,14 +22,92 @@ import hashlib
 import json
 import logging
 import os
-import pickle
 import shutil
 import tempfile
+from base64 import b64decode, b64encode
+from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from knox.core.models import (
+    Chunk,
+    CompiledWiki,
+    DocumentElement,
+    ElementType,
+    ParsedDocument,
+    ResolvedChunk,
+    WikiNode,
+)
+
 logger = logging.getLogger(__name__)
+
+
+_CACHE_DATACLASSES: dict[str, type] = {
+    "DocumentElement": DocumentElement,
+    "ParsedDocument": ParsedDocument,
+    "Chunk": Chunk,
+    "ResolvedChunk": ResolvedChunk,
+    "WikiNode": WikiNode,
+    "CompiledWiki": CompiledWiki,
+}
+
+_CACHE_ENUMS: dict[str, type[StrEnum]] = {
+    "ElementType": ElementType,
+}
+
+
+def _encode_json(obj: Any) -> Any:  # noqa: PLR0911
+    """Recursively encode cache values for JSON serialization.
+
+    Dataclasses, ``Path``, ``StrEnum``, ``bytes`` and tuples are tagged so
+    they can be reconstructed safely without ``pickle``.
+    """
+    if is_dataclass(obj) and not isinstance(obj, type):
+        data = {f.name: _encode_json(getattr(obj, f.name)) for f in fields(obj)}
+        data["__dataclass__"] = type(obj).__name__
+        return data
+    if isinstance(obj, Path):
+        return {"__path__": str(obj)}
+    if isinstance(obj, StrEnum):
+        return {"__enum__": type(obj).__name__, "value": str(obj)}
+    if isinstance(obj, bytes):
+        return {"__bytes__": b64encode(obj).decode("ascii")}
+    if isinstance(obj, tuple):
+        return {"__tuple__": [_encode_json(v) for v in obj]}
+    if isinstance(obj, dict):
+        return {k: _encode_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_encode_json(v) for v in obj]
+    return obj
+
+
+def _decode_json(obj: Any) -> Any:  # noqa: PLR0911
+    """Recursively decode JSON values produced by ``_encode_json``."""
+    if isinstance(obj, dict):
+        if "__dataclass__" in obj:
+            cls_name = obj.pop("__dataclass__")
+            cls = _CACHE_DATACLASSES.get(cls_name)
+            if cls is None:
+                raise ValueError(f"Unknown dataclass tag: {cls_name}")
+            decoded = {k: _decode_json(v) for k, v in obj.items()}
+            return cls(**decoded)
+        if "__path__" in obj:
+            return Path(obj["__path__"])
+        if "__enum__" in obj:
+            enum_cls = _CACHE_ENUMS.get(obj["__enum__"])
+            if enum_cls is None:
+                raise ValueError(f"Unknown enum tag: {obj['__enum__']}")
+            return enum_cls(obj["value"])
+        if "__bytes__" in obj:
+            return b64decode(obj["__bytes__"])
+        if "__tuple__" in obj:
+            return tuple(_decode_json(v) for v in obj["__tuple__"])
+        return {k: _decode_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_decode_json(v) for v in obj]
+    return obj
 
 
 def make_cache_key(deps: dict[str, str]) -> str:
@@ -44,6 +122,10 @@ def make_cache_key(deps: dict[str, str]) -> str:
 
 class CacheStore:
     """Content-addressed cache with dependency validation.
+
+    Cached values are serialized to JSON with explicit type tags for
+    dataclasses, ``Path``, ``StrEnum``, ``bytes`` and ``tuple``.  This
+    avoids ``pickle`` entirely while preserving the KNOX model graph.
 
     Parameters
     ----------
@@ -78,10 +160,9 @@ class CacheStore:
             return None
 
         try:
-            with open(path, "rb") as f:
-                entry: dict[str, Any] = pickle.load(f)  # noqa: S301 — cache dir is not an untrusted source
+            entry: dict[str, Any] = _decode_json(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
-            logger.debug("Cache read error for %s — treating as miss", path, exc_info=True)
+            logger.debug("Cache read error for %s - treating as miss", path, exc_info=True)
             return None
 
         # Validate every stored dependency against the caller's current deps.
@@ -107,7 +188,7 @@ class CacheStore:
             Every input hash that the value depends on.  Must be the
             same dict that will be passed to :meth:`get` for lookup.
         value:
-            Arbitrary Python object (pickle-serialised).
+            Arbitrary Python object (JSON-serialised).
         """
         key = make_cache_key(deps)
         path = self._resolve(layer, key)
@@ -123,9 +204,9 @@ class CacheStore:
 
         # Atomic write to avoid partial reads from concurrent workers.
         try:
-            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-            with os.fdopen(fd, "wb") as f:
-                pickle.dump(entry, f)
+            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(_encode_json(entry), f)
             os.replace(tmp, path)
             logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, path.stat().st_size)
         except Exception:
@@ -162,4 +243,4 @@ class CacheStore:
 
     def _resolve(self, layer: str, key: str) -> Path:
         """Resolve the on-disk path for a cache entry."""
-        return self._cache_dir / layer / f"{key}.pkl"
+        return self._cache_dir / layer / f"{key}.json"

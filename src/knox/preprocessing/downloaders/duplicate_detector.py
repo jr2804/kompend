@@ -83,7 +83,7 @@ class DuplicateDetector:
                 raw = self.db_path.read_text(encoding="utf-8")
                 self._db = json.loads(raw)
             except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_path)
+                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_path, exc_info=True)
                 self._db = {}
         else:
             self._db = {}

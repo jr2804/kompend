@@ -154,7 +154,7 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     try:
         fm: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
     except Exception as exc:
-        logger.debug("Failed to parse template frontmatter: %s", exc)
+        logger.debug("Failed to parse template frontmatter: %s", exc, exc_info=True)
         fm = {}
 
     return fm, body
@@ -411,7 +411,7 @@ class TemplateLoader:
         try:
             loaders.append(PackageLoader(_BUILTIN_TEMPLATE_PACKAGE, _BUILTIN_TEMPLATE_DIR))
         except (ValueError, ModuleNotFoundError) as exc:
-            logger.debug("No built-in templates directory: %s", exc)
+            logger.debug("No built-in templates directory: %s", exc, exc_info=True)
 
         self._jinja_env = Environment(
             loader=ChoiceLoader(loaders),
@@ -436,7 +436,7 @@ class TemplateLoader:
         try:
             loaders.append(PackageLoader(_BUILTIN_TEMPLATE_PACKAGE, _BUILTIN_TEMPLATE_DIR))
         except (ValueError, ModuleNotFoundError) as exc:
-            logger.debug("No built-in templates directory: %s", exc)
+            logger.debug("No built-in templates directory: %s", exc, exc_info=True)
 
         return ChoiceLoader(loaders)
 
@@ -460,7 +460,7 @@ class TemplateLoader:
             for f in _list_builtin_templates():
                 layers["builtin"].append(f)
         except Exception as exc:
-            logger.debug("Failed to list built-in templates: %s", exc)
+            logger.debug("Failed to list built-in templates: %s", exc, exc_info=True)
 
         return layers
 

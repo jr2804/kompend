@@ -210,14 +210,14 @@ class DocumentRenderer:
                 logger.debug("rumdl stderr: %s", result.stderr.strip())
             return markdown
         except FileNotFoundError:
-            logger.warning("rumdl not found — disabling flavor formatting")
+            logger.warning("rumdl not found — disabling flavor formatting", exc_info=True)
             self._rumdl_available = False
             return markdown
         except subprocess.TimeoutExpired:
-            logger.warning("rumdl timed out — falling back to raw markdown")
+            logger.warning("rumdl timed out — falling back to raw markdown", exc_info=True)
             return markdown
         except OSError as exc:
-            logger.warning("rumdl error: %s — falling back to raw markdown", exc)
+            logger.warning("rumdl error: %s — falling back to raw markdown", exc, exc_info=True)
             return markdown
 
 

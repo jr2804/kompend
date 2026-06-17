@@ -32,7 +32,7 @@ def get_supported_extensions() -> set[str]:
     try:
         extensions.update(get_all_extensions())
     except Exception as exc:
-        logger.debug("Could not load external parser extensions: %s", exc)
+        logger.debug("Could not load external parser extensions: %s", exc, exc_info=True)
     return extensions
 
 

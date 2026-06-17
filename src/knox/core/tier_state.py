@@ -92,7 +92,7 @@ class TierStateStore:
         try:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            logger.debug("Tier state file unreadable — starting fresh")
+            logger.debug("Tier state file unreadable — starting fresh", exc_info=True)
             return TierState()
         if not isinstance(data, dict):
             return TierState()

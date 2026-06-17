@@ -131,7 +131,7 @@ class VLMParser(BaseParser):
             raw_bytes = image_file.read_bytes()
             b64 = base64.b64encode(raw_bytes).decode("utf-8")
         except OSError as exc:
-            logger.warning("Failed to read %s for VLM caption: %s", image_file, exc)
+            logger.warning("Failed to read %s for VLM caption: %s", image_file, exc, exc_info=True)
             return None
 
         mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
@@ -151,7 +151,7 @@ class VLMParser(BaseParser):
                 max_tokens=128,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("VLM caption generation failed for %s: %s", image_file, exc)
+            logger.warning("VLM caption generation failed for %s: %s", image_file, exc, exc_info=True)
             return None
 
         if result is None:
@@ -182,7 +182,7 @@ class VLMParser(BaseParser):
                 img.format or "unknown",
             )
         except Exception as exc:
-            logger.warning("Failed to read image metadata for %s: %s", source_path, exc)
+            logger.warning("Failed to read image metadata for %s: %s", source_path, exc, exc_info=True)
             return (
                 [f"Image: {source_path.name}", f"Error: {exc}"],
                 0,
@@ -198,5 +198,5 @@ class VLMParser(BaseParser):
             img.load()
             return f"[VLM caption unavailable — image: {img.size[0]}x{img.size[1]}, {img.mode}]"
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Fallback caption failed for %s: %s", source_path, exc)
+            logger.warning("Fallback caption failed for %s: %s", source_path, exc, exc_info=True)
             return None

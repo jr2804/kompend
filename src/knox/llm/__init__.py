@@ -42,7 +42,7 @@ except ImportError:
 
         _custom_logger_module.AgenticLoopPlan = AgenticLoopPlan
     except Exception as _exc:  # pragma: no cover - best-effort compat
-        logger.debug("Failed to install litellm AgenticLoopPlan compat: %s", _exc)
+        logger.debug("Failed to install litellm AgenticLoopPlan compat: %s", _exc, exc_info=True)
 
 __all__ = [
     "AmbiguousError",

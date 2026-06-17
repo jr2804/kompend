@@ -90,7 +90,7 @@ def load_gitignore(source_dir: Path) -> list[str]:
                         patterns.append(stripped)
                 logger.debug("Loaded %d patterns from %s", len(patterns), gitignore)
             except Exception as exc:
-                logger.debug("Failed to read %s: %s", gitignore, exc)
+                logger.debug("Failed to read %s: %s", gitignore, exc, exc_info=True)
             break
         parent = current.parent
         if parent == current:

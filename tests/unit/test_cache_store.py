@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knox.core.cache_store import CacheStore, make_cache_key
+from knox.core.models import Chunk, ElementType, ResolvedChunk
 
 # ---------------------------------------------------------------------------
 # make_cache_key
@@ -80,8 +81,30 @@ class TestCacheStoreTypes:
         store.set("test", {"d": "1"}, None)
         assert store.get("test", {"d": "1"}) is None
 
+    def test_dataclass_round_trip(self, tmp_path: Path) -> None:
+        """JSON codec preserves dataclasses, Path, StrEnum, bytes and tuple."""
+        store = CacheStore(tmp_path)
+        chunk = Chunk(
+            id="c1",
+            text="hello",
+            element_types=[ElementType.TEXT],
+            source_elements=[0],
+            source_file=Path("x.pdf"),
+            reading_order=(1, 2),
+            metadata={"image_path": Path("img.png"), "raw": b"deadbeef"},
+        )
+        obj = ResolvedChunk(chunk=chunk)
+        store.set("test", {"d": "1"}, obj)
+        result = store.get("test", {"d": "1"})
+        assert isinstance(result, ResolvedChunk)
+        assert result == obj
+        assert result.chunk.source_file == Path("x.pdf")
+        assert result.chunk.reading_order == (1, 2)
+        assert result.chunk.metadata["image_path"] == Path("img.png")
+        assert result.chunk.metadata["raw"] == b"deadbeef"
+
     def test_custom_object(self, tmp_path: Path) -> None:
-        """Pickle should handle simple dataclass-like dicts."""
+        """JSON codec handles plain nested dicts."""
         store = CacheStore(tmp_path)
         obj = {"name": "hello", "nested": {"a": [1, 2, 3]}}
         store.set("test", {"d": "1"}, obj)
@@ -134,9 +157,9 @@ class TestCacheStoreErrors:
         store = CacheStore(tmp_path)
         deps = {"src": "abc"}
         store.set("test", deps, "data")
-        # Corrupt the file
+        # Corrupt the JSON cache file
         path = store._resolve("test", make_cache_key(deps))
-        path.write_bytes(b"not pickle data")
+        path.write_bytes(b"not valid json")
         assert store.get("test", deps) is None
 
     def test_non_existent_layer(self, tmp_path: Path) -> None:

@@ -74,7 +74,7 @@ class VLMEnricher(BaseResolver):
         try:
             caption = self._generate_caption(image_path)
         except FileNotFoundError as exc:
-            logger.warning("VLM image not found for chunk %s: %s", resolved.chunk.id, exc)
+            logger.warning("VLM image not found for chunk %s: %s", resolved.chunk.id, exc, exc_info=True)
             resolved.entities.append(
                 {
                     "name": "vlm_error",

@@ -197,7 +197,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
             if env_ctx <= 0:
                 env_ctx = None
         except ValueError:
-            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val)
+            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
 
     # 2. Per-model from /api/show.
     per_model: int | None = None

@@ -35,6 +35,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ── Environment (LLM timeout for cloud-proxied models) ─────────────────
+$env:KNOX_LLM_TIMEOUT = "300"
+
 # ── Configuration ──────────────────────────────────────────────────────
 $ProjectRoot = $PSScriptRoot
 $BaseDir     = Join-Path $ProjectRoot $OutputPath

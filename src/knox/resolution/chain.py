@@ -40,5 +40,5 @@ class ResolverChain(BaseResolver):
                 if enriched is not None:
                     result = enriched
             except Exception:
-                logger.warning("Resolver %s failed, keeping previous result", resolver.__class__.__name__)
+                logger.warning("Resolver %s failed, keeping previous result", resolver.__class__.__name__, exc_info=True)
         return result

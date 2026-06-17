@@ -117,7 +117,7 @@ class TokenOverlapRetriever:
                     expansions.extend(str(e) for e in items if isinstance(e, str))
             return expansions[:7]
         except Exception as exc:
-            logger.warning("Query expansion failed: %s", exc)
+            logger.warning("Query expansion failed: %s", exc, exc_info=True)
             return [query]
 
     def synthesize(
@@ -185,7 +185,7 @@ class TokenOverlapRetriever:
             try:
                 content: str = md_file.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
-                logger.warning("Skipping unreadable source %s: %s", md_file, exc)
+                logger.warning("Skipping unreadable source %s: %s", md_file, exc, exc_info=True)
                 continue
             file_tokens: set[str] = set(_tokenize(content))
             if not file_tokens:
@@ -307,7 +307,7 @@ class HybridRetriever:
         try:
             rows = search_fts(query, self._index_path, top_k=top_k)
         except Exception as exc:
-            logger.warning("FTS search failed: %s", exc)
+            logger.warning("FTS search failed: %s", exc, exc_info=True)
             return []
         query_tokens = set(_tokenize(query))
         results: list[SearchResult] = []
@@ -331,7 +331,7 @@ class HybridRetriever:
         try:
             hits = self._vector_store.search(query, top_k=top_k)
         except Exception as exc:
-            logger.warning("Vector search failed: %s", exc)
+            logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
         query_tokens = set(_tokenize(query))
         results: list[SearchResult] = []
@@ -463,7 +463,7 @@ class HybridRetriever:
             try:
                 content = md_file.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
-                logger.warning("Skipping unreadable source %s: %s", md_file, exc)
+                logger.warning("Skipping unreadable source %s: %s", md_file, exc, exc_info=True)
                 continue
             tokens = _tokenize(content)
             if tokens:

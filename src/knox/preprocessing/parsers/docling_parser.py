@@ -220,7 +220,7 @@ class DoclingParser(BaseParser):
                     out_path.write_bytes(raw)
                     return str(out_path.resolve())
                 except Exception:  # noqa: BLE001
-                    logger.warning("Failed to save image from data URI for %s", out_path.name)
+                    logger.warning("Failed to save image from data URI for %s", out_path.name, exc_info=True)
 
             # No pixel data available — return descriptive placeholder
             caption_text = str(captions[0]) if captions else ""

@@ -436,7 +436,7 @@ class WikiPipeline:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            logger.debug("Compiled wiki snapshot unreadable — treating as missing")
+            logger.debug("Compiled wiki snapshot unreadable — treating as missing", exc_info=True)
             return None
         nodes = [WikiNode(**n) for n in data.get("nodes", [])]
         return CompiledWiki(
@@ -582,7 +582,7 @@ class WikiPipeline:
                 metadata=data.get("metadata", {}),
             )
         except Exception:
-            logger.debug("Cache read failed for %s — ignoring", cache_path)
+            logger.debug("Cache read failed for %s — ignoring", cache_path, exc_info=True)
             return None
 
     def _save_cache(self, source_file: Path, doc: ParsedDocument) -> None:
@@ -612,7 +612,7 @@ class WikiPipeline:
             }
             cache_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         except Exception:
-            logger.debug("Cache write failed for %s — ignoring", cache_path)
+            logger.debug("Cache write failed for %s — ignoring", cache_path, exc_info=True)
 
     def _resolve_chunks(self, chunks: list[Any]) -> list[Any]:
         """Resolve chunks with per-chunk cache (Tier 2)."""
@@ -716,7 +716,7 @@ def build_pipeline(
     try:
         parser = DoclingParser(image_mode=config.image_mode)
     except Exception as exc:
-        logger.warning("DoclingParser not available: %s", exc)
+        logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 
     # T0 (index) and T1 (chunk) run without an LLM. Only build the
     # LLM-dependent components when the [start, stop] tier range reaches
@@ -821,7 +821,7 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
             resolvers.append(VLMEnricher(client=vlm_client))
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
         except Exception as exc:
-            logger.debug("VLMEnricher not available: %s", exc)
+            logger.debug("VLMEnricher not available: %s", exc, exc_info=True)
 
     if not resolvers:
         logger.info("No resolvers configured — chunks will pass through without resolution")

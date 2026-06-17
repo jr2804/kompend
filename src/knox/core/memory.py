@@ -270,7 +270,7 @@ class MemoryStore:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to load memory store from %s: %s", path, exc)
+            logger.warning("Failed to load memory store from %s: %s", path, exc, exc_info=True)
             return cls()
         raw_states = data.get("states", []) if isinstance(data, dict) else []
         states: dict[str, NodeState] = {}

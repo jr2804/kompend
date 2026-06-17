@@ -77,7 +77,7 @@ def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
     try:
         return ZvecWikiStore.open(db_path, embedding_model=embed_model, embedding_dim=embed_dim)
     except Exception as exc:
-        logger.warning("Could not open vector store at %s: %s", db_path, exc)
+        logger.warning("Could not open vector store at %s: %s", db_path, exc, exc_info=True)
         return None
 
 

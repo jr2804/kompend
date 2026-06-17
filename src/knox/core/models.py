@@ -133,5 +133,5 @@ def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
             metadata=data.get("metadata", {}),
         )
     except Exception as exc:
-        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc)
+        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc, exc_info=True)
         return None
