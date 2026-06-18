@@ -4,8 +4,69 @@ KNOX routes every LLM call through a shared client
 ([`knox.llm.LLMClient`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/client.py)) so every tier
 gets the same retry, failover and observability semantics.
 
-This guide covers the **Q12** features: typed errors and a
-configurable failover chain.
+This guide covers:
+
+- Custom API endpoints and authentication
+- The Ollama Cloud provider
+- Typed errors and a configurable failover chain
+
+## Custom API base and API key
+
+When the LLM provider is behind a proxy, gateway, or custom endpoint,
+set `api_base` in the `[compile.llm]` section:
+
+```toml
+[compile.llm]
+default_model = "ollama-cloud/qwen3-coder"
+api_base = "https://my-gateway.example.com"
+api_key = "$MY_API_KEY"
+```
+
+The `api_key` field supports **env-var indirection**: if the value
+starts with `$`, the remainder is treated as an environment variable
+name. This keeps secrets out of the config file.
+
+```bash
+# Resolved from the environment at call time
+api_key = "$OPENAI_API_KEY"
+```
+
+Both fields can also be set via environment variables:
+
+```bash
+export KNOX_LLM_API_BASE="https://my-gateway.example.com"
+export KNOX_LLM_API_KEY="sk-..."
+```
+
+When `api_base` or `api_key` are `None` (the default), litellm's
+built-in provider routing and key discovery apply unchanged.
+
+## Ollama Cloud
+
+KNOX ships a custom litellm provider for
+[Ollama Cloud](https://ollama.com). Use the `ollama-cloud/` prefix in
+the model string:
+
+```toml
+[compile.llm]
+default_model = "ollama-cloud/qwen3-coder"
+```
+
+Authentication uses the `OLLAMA_API_KEY` environment variable:
+
+```bash
+export OLLAMA_API_KEY="oll-..."
+```
+
+The cloud API does not expose the local `/api/show` endpoint, so
+context-window discovery falls back to `fallback_max_input` (8192).
+Set `context_window_cap` explicitly to use the full window:
+
+```toml
+[compile.llm]
+default_model = "ollama-cloud/qwen3-coder"
+context_window_cap = 1048576   # 1M tokens
+```
 
 ## Typed errors
 

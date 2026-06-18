@@ -138,6 +138,14 @@ default_model = "ollama/llama3.2"
 # on slower/local models. None = no cap (use full discovered window).
 # context_window_cap = 65536
 
+# Custom API endpoint (e.g. for proxies, Ollama Cloud, or self-hosted gateways).
+# When set, passed as api_base to litellm for every completion call.
+# api_base = "https://ollama.com"
+
+# API key for the primary provider. Supports $VARNAME env-var indirection
+# to avoid embedding secrets in the config file.
+# api_key = "$OPENAI_API_KEY"
+
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 2
 

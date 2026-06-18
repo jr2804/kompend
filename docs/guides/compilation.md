@@ -250,3 +250,35 @@ A: Yes: `knox compile *.pdf --start-at-tier resolve` skips re-parsing and chunki
 
 **Q: How do I get a JSON status report?**
 A: `knox compile *.pdf --list-tiers` outputs JSON.
+
+**Q: Ingest hangs or crashes on large scanned PDFs**
+
+Large scanned PDFs (50+ pages) can exhaust memory during OCR
+processing — Docling's RapidOCR backend loads ONNX models that
+allocate gigabytes of RAM for batch inference. Symptoms include
+unresponsive process, `std::bad_alloc` errors, or extremely slow
+ingest.
+
+Mitigations (in order of effectiveness):
+
+1. **Chunk by page range** — process the PDF in segments of 20–30
+   pages using `page_range`, then merge results. This bounds peak
+   memory per conversion call.
+
+2. **Reduce batch sizes** — Docling's pipeline options accept
+   `ocr_batch_size`, `layout_batch_size`, and `table_batch_size`.
+   Lower values (e.g. 2) trade throughput for memory.
+
+3. **Disable enrichment** — set `generate_parsed_pages=False`,
+   `do_formula_enrichment=False`, `do_code_enrichment=False` in the
+   Docling pipeline options to skip optional heavy passes.
+
+4. **Subprocess isolation** — run each large PDF in a separate OS
+   process so the kernel reclaims all memory on exit. This is the
+   most reliable fix for ONNX OOM.
+
+5. **Lighter backend** — use `PyPdfiumDocumentBackend` instead of the
+   default Docling backend when full OCR is not needed.
+
+For configuration details and implementation tracking, see beads
+issue `knox-oc2n`.
