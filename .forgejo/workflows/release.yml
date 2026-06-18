@@ -1,0 +1,148 @@
+# Auto-tag and release every push to main.
+#
+# Creates a calendar version tag (YYYY.M.D / YYYY.M.D.N) and publishes
+# a Forgejo release with the built wheel + sdist.
+#
+# Prerequisites:
+#   1. Repo Settings → Units → enable "Actions"
+#   2. Select a runner label (codeberg-small is recommended)
+#
+# https://forgejo.codeberg.page/docs/next/user/actions/
+
+name: Tag and Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: codeberg-small
+    timeout-minutes: 10
+
+    steps:
+      # ── Checkout with full history so we can inspect tags ──
+      - name: Checkout
+        uses: https://data.forgejo.org/actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Compute next calver version ──
+      #   First push today  →  YYYY.M.D
+      #   Subsequent pushes →  YYYY.M.D.N  (N = 1, 2, 3…)
+      - name: Compute next version
+        id: version
+        run: |
+          today=$(date +%Y.%-m.%-d)
+
+          # Find the highest micro suffix among today's tags
+          max_suffix=$(
+            git tag -l "${today}.*" \
+              | sed "s/^${today}\.//" \
+              | sort -n \
+              | tail -1
+          )
+
+          if [ -z "$max_suffix" ]; then
+            # No suffixed tags — does the bare daily tag already exist?
+            if git tag -l "${today}" | grep -q .; then
+              echo "version=${today}.1" >> "$GITHUB_OUTPUT"
+            else
+              echo "version=${today}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "version=${today}.$((max_suffix + 1))" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Computed: $(grep ^version= "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+      # ── Install system tooling ──
+      - name: Install system deps
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            curl ca-certificates jq
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # ── Create and push the tag ──
+      #   Uses the auto-injected $FORGEJO_TOKEN for authentication.
+      #   (Available as an environment variable in every step.)
+      - name: Create and push tag
+        run: |
+          git config user.name  "knox-release-bot"
+          git config user.email "bot@knox.local"
+
+          owner="${{ github.repository_owner }}"
+          repo="${{ github.repository }}"
+          ver="${{ steps.version.outputs.version }}"
+
+          # Authenticate with the CI runner's built-in token
+          git remote set-url origin \
+            "https://${owner}:${FORGEJO_TOKEN}@codeberg.org/${repo}.git"
+
+          git tag -a "$ver" -m "Release $ver"
+          git push origin "$ver"
+
+      # ── Build wheel + sdist ──
+      - name: Build
+        run: |
+          "$HOME/.local/bin/uv" build
+
+      # ── Create Forgejo release and attach build artifacts ──
+      - name: Create release
+        run: |
+          owner="${{ github.repository_owner }}"
+          repo="${{ github.repository }}"
+          ver="${{ steps.version.outputs.version }}"
+
+          # Build body from recent commits for context
+          last_tag=$(git tag -l --sort=-version:refname | head -2 | tail -1 || echo "")
+          if [ -n "$last_tag" ]; then
+            log=$(git log --oneline --no-decorate "${last_tag}..HEAD" 2>/dev/null || echo "")
+          else
+            log=$(git log --oneline --no-decorate -10 2>/dev/null || echo "")
+          fi
+          body="## KNOX ${ver}\n\n### Changes since previous release\n\n\`\`\`\n${log}\n\`\`\`"
+
+          # Create the release via Forgejo API
+          response=$(curl -s -X POST \
+            "https://codeberg.org/api/v1/repos/${repo}/releases" \
+            -H "Authorization: Bearer ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg tag "$ver" \
+              --arg name "$ver" \
+              --arg body "$body" \
+              '{tag_name: $tag, name: $name, body: $body, prerelease: false}'
+            )")
+
+          release_id=$(echo "$response" | jq -r '.id // empty')
+          if [ -z "$release_id" ]; then
+            echo "ERROR: Release creation failed:"
+            echo "$response" | jq .
+            exit 1
+          fi
+          echo "Release created: id=${release_id}"
+
+          # Upload wheel
+          for artifact in dist/knox-*.whl; do
+            [ -f "$artifact" ] || continue
+            echo "Uploading ${artifact} …"
+            curl -s -X POST \
+              "https://codeberg.org/api/v1/repos/${repo}/releases/${release_id}/assets" \
+              -H "Authorization: Bearer ${FORGEJO_TOKEN}" \
+              -F "attachment=@${artifact}" > /dev/null
+          done
+
+          # Upload sdist
+          for artifact in dist/knox-*.tar.gz; do
+            [ -f "$artifact" ] || continue
+            echo "Uploading ${artifact} …"
+            curl -s -X POST \
+              "https://codeberg.org/api/v1/repos/${repo}/releases/${release_id}/assets" \
+              -H "Authorization: Bearer ${FORGEJO_TOKEN}" \
+              -F "attachment=@${artifact}" > /dev/null
+          done
+
+          echo "Release published: https://codeberg.org/${repo}/releases/tag/${ver}"
