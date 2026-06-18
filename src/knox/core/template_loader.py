@@ -508,4 +508,4 @@ def _list_builtin_templates() -> list[str]:
     tpl_dir = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR
     if not tpl_dir.is_dir():
         return []
-    return sorted(str(p.relative_to(tpl_dir).as_posix()) for p in tpl_dir.rglob("*") if p.is_file())
+    return sorted(str(p.relative_to(tpl_dir).as_posix()) for p in tpl_dir.rglob("*") if p.is_file())  # ty: ignore

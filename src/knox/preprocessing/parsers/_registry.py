@@ -13,17 +13,17 @@ from knox.preprocessing.parsers.base import ParserRouter
 try:
     from knox.preprocessing.parsers.docling_parser import DoclingParser
 except ImportError:
-    DoclingParser = None
+    DoclingParser = None  # ty: ignore
 
 try:
     from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
 except ImportError:
-    PdfPlumberParser = None
+    PdfPlumberParser = None  # ty: ignore
 
 try:
     from knox.preprocessing.parsers.pandoc_parser import PandocParser
 except ImportError:
-    PandocParser = None
+    PandocParser = None  # ty: ignore
 
 logger = logging.getLogger(__name__)
 

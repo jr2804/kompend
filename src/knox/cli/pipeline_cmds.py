@@ -91,7 +91,7 @@ def parse_cmd(
         files=files,
         online_urls=[],
         url_file=None,
-        sources_dir_path=None,  # type: ignore[arg-type]
+        sources_dir_path=None,  # ty: ignore
         recursive=recursive,
         ignore=None,
     )
@@ -104,8 +104,8 @@ def parse_cmd(
         doc = parser.parse(path)
         typer.echo(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
-            for el in doc.elements:
-                typer.echo(f"  - {el.get('type')}: {str(el.get('text', ''))[:80]}")
+            for el in doc.elements:  # ty: ignore
+                typer.echo(f"  - {el.get('type')}: {str(el.get('text', ''))[:80]}")  # ty: ignore
 
 
 @app.command(name="compile")
@@ -328,7 +328,8 @@ def ingest_cmd(
 
     router: ParserRouter = build_default_router()
     tracker = PipelineProgress.create(
-        total_files=len(all_input_files), force_progress=show_progress,
+        total_files=len(all_input_files),
+        force_progress=show_progress,
     )
     tracker.start()
 

@@ -8,18 +8,18 @@ from pathlib import Path
 from typing import Any, override
 
 import pandoc as _pandoc_module
-from pandoc.types import (
-    Block,
-    BulletList,
-    CodeBlock,
-    Header,
-    LineBlock,
-    Math,
-    OrderedList,
-    Pandoc,
-    Para,
-    Plain,
-    Table,
+from pandoc.types import (  # ty: ignore
+    Block,  # ty:ignore[unresolved-import]
+    BulletList,  # ty:ignore[unresolved-import]
+    CodeBlock,  # ty:ignore[unresolved-import]
+    Header,  # ty:ignore[unresolved-import]
+    LineBlock,  # ty:ignore[unresolved-import]
+    Math,  # ty:ignore[unresolved-import]
+    OrderedList,  # ty:ignore[unresolved-import]
+    Pandoc,  # ty:ignore[unresolved-import]
+    Para,  # ty:ignore[unresolved-import]
+    Plain,  # ty:ignore[unresolved-import]
+    Table,  # ty:ignore[unresolved-import]
 )
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
@@ -116,7 +116,7 @@ def _block_to_element(
 def _render_block(block: Block) -> str:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Pandoc version.*not supported")
-        text = _pandoc_module.write(Pandoc(_pandoc_module.types.Meta({}), [block]))
+        text = _pandoc_module.write(Pandoc(_pandoc_module.types.Meta({}), [block]))  # ty: ignore
     return text.strip()
 
 

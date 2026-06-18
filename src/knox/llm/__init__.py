@@ -35,12 +35,12 @@ except ImportError:
     try:
         from pydantic import BaseModel
 
-        class AgenticLoopPlan(BaseModel):  # type: ignore[no-redef]
+        class AgenticLoopPlan(BaseModel):  # ty: ignore
             pass
 
         from litellm.types.integrations import custom_logger as _custom_logger_module
 
-        _custom_logger_module.AgenticLoopPlan = AgenticLoopPlan
+        _custom_logger_module.AgenticLoopPlan = AgenticLoopPlan  # ty: ignore
     except Exception as _exc:  # pragma: no cover - best-effort compat
         logger.debug("Failed to install litellm AgenticLoopPlan compat: %s", _exc, exc_info=True)
 

@@ -32,7 +32,7 @@ from knox.cli.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_LLM_DEFAULT_MODEL
 from knox.core.hooks import HookEvent, fire_hook
-from knox.core.models import load_cached_wiki
+from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import REVIEW_DIR
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
@@ -52,7 +52,7 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
 
 
 def _persist_lint_fixes(
-    wiki: object,
+    wiki: CompiledWiki,  # ty: ignore
     output_dir: Path,
     base_dir: Path,
 ) -> int:
@@ -61,7 +61,7 @@ def _persist_lint_fixes(
     Returns the number of files updated.
     """
     updated = 0
-    for node in wiki.nodes:
+    for node in wiki.nodes:  # ty: ignore
         fm = node.metadata.get("frontmatter", {})
         if not isinstance(fm, dict) or "title" not in fm:
             continue
@@ -82,7 +82,7 @@ def _persist_lint_fixes(
             md_path.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
             updated += 1
 
-    _write_wiki_cache(wiki, base_dir)
+    _write_wiki_cache(wiki, base_dir)  # ty: ignore
     return updated
 
 
@@ -257,8 +257,8 @@ def review_cmd(
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 
-def _review_list(queue: object, json_output: bool) -> None:
-    entries = queue.list_entries()
+def _review_list(queue: ReviewQueue, json_output: bool) -> None:  # ty: ignore
+    entries = queue.list_entries()  # ty: ignore
     if json_output:
         typer.echo(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
         return
@@ -269,19 +269,19 @@ def _review_list(queue: object, json_output: bool) -> None:
         typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
 
 
-def _review_lock(queue: object, slug: str | None) -> None:
+def _review_lock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
     if not slug:
         typer.echo("Lock requires a slug.", err=True)
         raise typer.Exit(1)
-    if queue.lock(slug):
+    if queue.lock(slug):  # ty: ignore
         typer.echo(f"Locked: {slug}")
         return
     typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
     raise typer.Exit(1)
 
 
-def _review_unlock(queue: object, slug: str | None) -> None:
-    lock_path = queue.review_dir / f"{slug}.locked" if slug else None
+def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
+    lock_path = queue.review_dir / f"{slug}.locked" if slug else None  # ty: ignore
     if lock_path and lock_path.exists():
         lock_path.unlink()
         typer.echo(f"Unlocked: {slug}")
@@ -290,8 +290,8 @@ def _review_unlock(queue: object, slug: str | None) -> None:
     raise typer.Exit(1)
 
 
-def _review_approve(queue: object, slug: str | None, approve_all: bool) -> None:
-    approved = queue.approve(slug or "", approve_all=approve_all)
+def _review_approve(queue: ReviewQueue, slug: str | None, approve_all: bool) -> None:  # ty: ignore
+    approved = queue.approve(slug or "", approve_all=approve_all)  # ty: ignore
     if not approved:
         typer.echo("No matching pages to approve.", err=True)
         raise typer.Exit(1)
@@ -299,11 +299,11 @@ def _review_approve(queue: object, slug: str | None, approve_all: bool) -> None:
         typer.echo(f"Approved: {e.slug}")
 
 
-def _review_reject(queue: object, slug: str | None, reason: str | None) -> None:
+def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> None:  # ty: ignore
     if not slug:
         typer.echo("Reject requires a slug.", err=True)
         raise typer.Exit(1)
-    rejected = queue.reject(slug, reason=reason or "")
+    rejected = queue.reject(slug, reason=reason or "")  # ty: ignore
     if not rejected:
         typer.echo(f"No pending page with slug {slug!r}.", err=True)
         raise typer.Exit(1)
@@ -312,7 +312,7 @@ def _review_reject(queue: object, slug: str | None, reason: str | None) -> None:
 
 
 def _dispatch_review_action(
-    queue: object,
+    queue: ReviewQueue,  # ty: ignore
     action: str,
     slug: str | None,
     reason: str | None,

@@ -34,7 +34,7 @@ class WebCrawler(BaseDownloader):
         try:
             if loop and loop.is_running():
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    return pool.submit(asyncio.run, self._download_async(url, target_dir)).result()
+                    return pool.submit(asyncio.run, self._download_async(url, target_dir)).result()  # ty: ignore
             return asyncio.run(self._download_async(url, target_dir))
         except Exception:
             logger.exception("Failed to crawl %s", url)

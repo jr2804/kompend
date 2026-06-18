@@ -53,7 +53,7 @@ class MemoryStore:
         timestamp = datetime.now(UTC).isoformat()
 
         # Trigger embedding to ensure dim is resolved if using LiteLLM
-        embedding = self._provider.embed(query)
+        embedding = self._provider.embed(query)  # ty: ignore
 
         doc = _zvec.Doc(
             id=f"mem_{timestamp.replace(':', '').replace('.', '')}",
@@ -93,7 +93,7 @@ class MemoryStore:
         if self._collection is None:
             raise RuntimeError("Memory collection is not initialized")
 
-        embedding = self._provider.embed(query)
+        embedding = self._provider.embed(query)  # ty: ignore
         results = self._collection.query(
             _zvec.VectorQuery("query_embedding", vector=embedding),
             topk=top_k,

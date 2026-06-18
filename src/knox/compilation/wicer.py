@@ -258,8 +258,8 @@ class WiCERCompiler(BaseCompiler):
                     for i, r in enumerate(results):
                         if i >= len(probes):
                             break
-                        if r.get("correct", False) or i not in probe_results:
-                            probe_results[i] = r
+                        if r.get("correct", False) or i not in probe_results:  # ty: ignore
+                            probe_results[i] = r  # ty: ignore
 
         if probe_results:
             return [probe_results.get(i, {"question": p.get("question", ""), "correct": False}) for i, p in enumerate(probes)]

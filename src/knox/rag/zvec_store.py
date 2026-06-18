@@ -219,7 +219,7 @@ class ZvecWikiStore:
         if not self.available:
             return []
         results = self._collection.query(
-            _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),
+            _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),  # ty: ignore
             topk=top_k,
         )
         return [

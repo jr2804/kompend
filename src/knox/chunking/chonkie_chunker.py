@@ -29,11 +29,11 @@ class ChonkieChunker(BaseChunker):
         self.kwargs = kwargs
 
         if chunker_type == "recursive":
-            self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)
+            self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)  # ty: ignore
         elif chunker_type == "semantic":
-            self._chunker = SemanticChunker(chunk_size=chunk_size, overlap=chunk_overlap)
+            self._chunker = SemanticChunker(chunk_size=chunk_size, overlap=chunk_overlap)  # ty: ignore
         else:
-            self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)
+            self._chunker = RecursiveChunker(chunk_size=chunk_size, overlap=chunk_overlap)  # ty: ignore
 
     def chunk(self, document: ParsedDocument) -> list[Chunk]:
         text = self._collect_text(document)
