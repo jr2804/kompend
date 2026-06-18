@@ -366,6 +366,24 @@ class WikiPipeline:
             return self.config.tier_state_path
         return self.config.knox_dir() / COMPILE_STATE_FILE
 
+    @staticmethod
+    def _extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
+        """Extract directory names as tags from a source file's path within source_dir.
+
+        ``sources/2024/conferences/iclr/paper.pdf`` → ``['2024', 'conferences', 'iclr']``
+
+        Returns an empty list when the file is not inside source_dir or sits
+        at the top level (no parent directories).
+        """
+        try:
+            relative = source_file.relative_to(source_dir)
+        except ValueError:
+            return []
+        parts = list(relative.parts)
+        if len(parts) <= 1:
+            return []
+        return parts[:-1]
+
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
         state = self.state
@@ -520,10 +538,20 @@ class WikiPipeline:
                 if cached is not None:
                     if content_hash:
                         self.state_store.record(state, stem, source_file, content_hash, tier=1)
+                    tags = self._extract_source_tags(source_file, self.config.source_dir)
+                    if tags:
+                        for chunk in cached:
+                            chunk.metadata["tags"] = tags
                     return cached
 
             # 2b. Chunk and cache.
             chunks = self.chunker.chunk(parsed)
+
+            # Attach directory-based tags to each chunk.
+            tags = self._extract_source_tags(source_file, self.config.source_dir)
+            if tags:
+                for chunk in chunks:
+                    chunk.metadata["tags"] = tags
 
             if content_hash:
                 self.state_store.record(state, stem, source_file, content_hash, tier=1)

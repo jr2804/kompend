@@ -4,7 +4,7 @@
 # a Forgejo release with the built wheel + sdist.
 #
 # Prerequisites:
-#   1. Repo Settings → Units → enable "Actions"
+#   1. Repo Settings -> Units -> enable "Actions"
 #   2. Select a runner label (codeberg-small is recommended)
 #
 # https://forgejo.codeberg.page/docs/next/user/actions/
@@ -21,21 +21,20 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      # ── Checkout with full history so we can inspect tags ──
+      # --- Checkout with full history so we can inspect tags ---
       - name: Checkout
         uses: https://data.forgejo.org/actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Compute next calver version ──
-      #   First push today  →  YYYY.M.D
-      #   Subsequent pushes →  YYYY.M.D.N  (N = 1, 2, 3…)
+      # --- Compute next calver version ---
+      #   First push today  ->  YYYY.M.D
+      #   Subsequent pushes ->  YYYY.M.D.N  (N = 1, 2, 3...)
       - name: Compute next version
         id: version
         run: |
           today=$(date +%Y.%-m.%-d)
 
-          # Find the highest micro suffix among today's tags
           max_suffix=$(
             git tag -l "${today}.*" \
               | sed "s/^${today}\.//" \
@@ -44,7 +43,6 @@ jobs:
           )
 
           if [ -z "$max_suffix" ]; then
-            # No suffixed tags — does the bare daily tag already exist?
             if git tag -l "${today}" | grep -q .; then
               echo "version=${today}.1" >> "$GITHUB_OUTPUT"
             else
@@ -56,7 +54,7 @@ jobs:
 
           echo "Computed: $(grep ^version= "$GITHUB_OUTPUT" | cut -d= -f2)"
 
-      # ── Install system tooling ──
+      # --- Install system tooling ---
       - name: Install system deps
         run: |
           apt-get update -qq
@@ -65,9 +63,7 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # ── Create and push the tag ──
-      #   Uses the auto-injected $FORGEJO_TOKEN for authentication.
-      #   (Available as an environment variable in every step.)
+      # --- Create and push the tag ---
       - name: Create and push tag
         run: |
           git config user.name  "knox-release-bot"
@@ -77,19 +73,18 @@ jobs:
           repo="${{ github.repository }}"
           ver="${{ steps.version.outputs.version }}"
 
-          # Authenticate with the CI runner's built-in token
           git remote set-url origin \
             "https://${owner}:${FORGEJO_TOKEN}@codeberg.org/${repo}.git"
 
           git tag -a "$ver" -m "Release $ver"
           git push origin "$ver"
 
-      # ── Build wheel + sdist ──
+      # --- Build wheel + sdist ---
       - name: Build
         run: |
           "$HOME/.local/bin/uv" build
 
-      # ── Create Forgejo release and attach build artifacts ──
+      # --- Create Forgejo release and attach build artifacts ---
       - name: Create release
         run: |
           owner="${{ github.repository_owner }}"
@@ -103,7 +98,9 @@ jobs:
           else
             log=$(git log --oneline --no-decorate -10 2>/dev/null || echo "")
           fi
-          body="## KNOX ${ver}\n\n### Changes since previous release\n\n\`\`\`\n${log}\n\`\`\`"
+
+          # Use printf to get real newlines into the body string
+          body=$(printf '## KNOX %s\n\n### Changes since previous release\n\n```\n%s\n```' "$ver" "$log")
 
           # Create the release via Forgejo API
           response=$(curl -s -X POST \
@@ -128,7 +125,7 @@ jobs:
           # Upload wheel
           for artifact in dist/knox-*.whl; do
             [ -f "$artifact" ] || continue
-            echo "Uploading ${artifact} …"
+            echo "Uploading ${artifact} ..."
             curl -s -X POST \
               "https://codeberg.org/api/v1/repos/${repo}/releases/${release_id}/assets" \
               -H "Authorization: Bearer ${FORGEJO_TOKEN}" \
@@ -138,7 +135,7 @@ jobs:
           # Upload sdist
           for artifact in dist/knox-*.tar.gz; do
             [ -f "$artifact" ] || continue
-            echo "Uploading ${artifact} …"
+            echo "Uploading ${artifact} ..."
             curl -s -X POST \
               "https://codeberg.org/api/v1/repos/${repo}/releases/${release_id}/assets" \
               -H "Authorization: Bearer ${FORGEJO_TOKEN}" \
