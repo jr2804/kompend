@@ -40,6 +40,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "tomli-w>=1.2.0",
     "binaryornot>=0.6.0",
+    "pypdfium2>=5.10.1",
 ]
 
 [project.scripts]
@@ -65,6 +66,7 @@ source = "uv-dynamic-versioning"
 
 [tool.uv-dynamic-versioning]
 fallback-version = "0.0.0"
+pattern = "default-unprefixed"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

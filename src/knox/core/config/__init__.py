@@ -12,7 +12,7 @@
 See ``knox.core.config.AGENTS.md`` for coding conventions.
 """
 
-from knox.core.config._configs import BudgetConfig, EmbeddingConfig, ImageMode, LLMConfig, OutputConfig, OutputFormat
+from knox.core.config._configs import BudgetConfig, EmbeddingConfig, ImageMode, LLMConfig, OutputConfig, OutputFormat, PdfConfig
 from knox.core.config._core import (
     DEFAULTS,
     ConfigSource,
@@ -37,6 +37,7 @@ __all__ = [
     "LLMConfig",
     "OutputConfig",
     "OutputFormat",
+    "PdfConfig",
     "ResolvedConfig",
     "coerce_config_value",
     "find_all_project_configs",

@@ -25,6 +25,7 @@ from knox.core.config import (
     LLMConfig,
     OutputConfig,
     OutputFormat,
+    PdfConfig,
     ResolvedConfig,
 )
 from knox.core.config.keys import (
@@ -74,6 +75,9 @@ from knox.core.config.keys import (
     COMPILE_OUTPUT_FRONTMATTER,
     COMPILE_OUTPUT_RUMDL_CONFIG,
     COMPILE_PAGE_KIND,
+    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
+    COMPILE_PDF_PAGE_CHUNK_OVERLAP,
+    COMPILE_PDF_PAGE_CHUNK_SIZE,
     COMPILE_RELATION_CONFIDENCE_THRESHOLD,
     COMPILE_RESOLVE_RELATIONS,
     COMPILE_RESPECT_GITIGNORE,
@@ -200,6 +204,7 @@ class PipelineConfig:
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    pdf: PdfConfig = field(default_factory=PdfConfig)
 
     @classmethod
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
@@ -264,6 +269,12 @@ class PipelineConfig:
             model=cfg.get(COMPILE_EMBEDDING_MODEL),
         )
 
+        pdf_config = PdfConfig(
+            max_pages_before_chunking=cfg.get(COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING, PdfConfig().max_pages_before_chunking),
+            page_chunk_size=cfg.get(COMPILE_PDF_PAGE_CHUNK_SIZE, PdfConfig().page_chunk_size),
+            page_chunk_overlap=cfg.get(COMPILE_PDF_PAGE_CHUNK_OVERLAP, PdfConfig().page_chunk_overlap),
+        )
+
         # Resolve notes file path relative to wiki_dir
         notes_file_name = cfg.get("notes.file", "NOTES.md")
         wiki_dir = cfg.get(PATHS_WIKI_DIR)
@@ -300,6 +311,7 @@ class PipelineConfig:
             budget=budget_config,
             output=output_config,
             embedding=embedding_config,
+            pdf=pdf_config,
         )
 
 

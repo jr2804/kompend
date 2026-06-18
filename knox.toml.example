@@ -178,6 +178,17 @@ timeout = 120.0
 # language = "en"
 # domain = "ml"
 
+# ── PDF processing settings ─────────────────────────────────────────────
+# Large scanned PDFs can exhaust memory during OCR. When a PDF exceeds
+# max_pages_before_chunking, Docling processes it in page-range segments
+# and unloads the backend between segments to reclaim ONNX/OCR memory.
+
+[compile.pdf]
+# Disable chunking by setting to 0
+# max_pages_before_chunking = 50
+# page_chunk_size = 30
+# page_chunk_overlap = 5
+
 # ── Lint settings ───────────────────────────────────────────────────────
 
 [lint]

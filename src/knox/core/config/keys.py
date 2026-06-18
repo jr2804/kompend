@@ -59,6 +59,11 @@ COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
 COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
 
+# ── compile.pdf sub-section ──
+COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_before_chunking"
+COMPILE_PDF_PAGE_CHUNK_SIZE: Final[str] = "compile.pdf.page_chunk_size"
+COMPILE_PDF_PAGE_CHUNK_OVERLAP: Final[str] = "compile.pdf.page_chunk_overlap"
+
 # ── compile.embedding sub-section ──
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"
 COMPILE_EMBEDDING_PROVIDER: Final[str] = "compile.embedding.provider"

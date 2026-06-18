@@ -119,3 +119,16 @@ class EmbeddingConfig:
 
     model: str
     batch_size: int = 10
+
+
+@dataclass
+class PdfConfig:
+    """Configuration for PDF parsing to prevent OOM on large scanned PDFs.
+
+    When a PDF exceeds *max_pages_before_chunking*, Docling processes it in
+    overlapping page-range segments to keep ONNX/OCR memory bounded.
+    """
+
+    max_pages_before_chunking: int = 50
+    page_chunk_size: int = 30
+    page_chunk_overlap: int = 5

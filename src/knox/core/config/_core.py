@@ -103,6 +103,9 @@ from knox.core.config.keys import (
     COMPILE_OUTPUT_MAX_RELATED_LINKS,
     COMPILE_OUTPUT_RUMDL_CONFIG,
     COMPILE_PAGE_KIND,
+    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
+    COMPILE_PDF_PAGE_CHUNK_OVERLAP,
+    COMPILE_PDF_PAGE_CHUNK_SIZE,
     COMPILE_RELATION_CONFIDENCE_THRESHOLD,
     COMPILE_RESOLVE_RELATIONS,
     COMPILE_SOURCES_DIR,
@@ -194,6 +197,11 @@ DEFAULTS: dict[str, Any] = {
             "rumdl_config": None,
             "max_related_links": 15,
         },
+        "pdf": {
+            "max_pages_before_chunking": 50,
+            "page_chunk_size": 30,
+            "page_chunk_overlap": 5,
+        },
         "embedding": {
             "model": None,
             "dim": 384,  # deprecated — auto-detected from model at runtime
@@ -278,6 +286,9 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_OUTPUT_FLAVOR: "KNOX_OUTPUT_FLAVOR",
     COMPILE_OUTPUT_RUMDL_CONFIG: "KNOX_RUMDL_CONFIG",
     COMPILE_OUTPUT_MAX_RELATED_LINKS: "KNOX_OUTPUT_MAX_RELATED_LINKS",
+    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
+    COMPILE_PDF_PAGE_CHUNK_SIZE: "KNOX_PDF_PAGE_CHUNK_SIZE",
+    COMPILE_PDF_PAGE_CHUNK_OVERLAP: "KNOX_PDF_PAGE_CHUNK_OVERLAP",
     COMPILE_EMBEDDING_MODEL: "KNOX_EMBEDDING_MODEL",
     COMPILE_EMBEDDING_PROVIDER: "KNOX_EMBEDDING_PROVIDER",
     COMPILE_EMBEDDING_DIM: "KNOX_EMBEDDING_DIM",  # deprecated — auto-detected from model

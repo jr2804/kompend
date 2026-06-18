@@ -724,7 +724,7 @@ def build_pipeline(
 
     parser = None
     try:
-        parser = DoclingParser(image_mode=config.image_mode)
+        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf)
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 
