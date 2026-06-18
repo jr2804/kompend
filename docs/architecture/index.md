@@ -15,29 +15,26 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TIER 1: PRE-PROCESSING (Parser-Agnostic Router)                      │
-│  ┌─────────────────┐  ┌────────────┐  ┌──────────┐  ┌──────────┐     │
-│  │ Docling (PDF)   │  │ Pandoc     │  │ pandas   │  │ HTTP     │     │
-│  │ │ IBM 60.7k★   │  │ │ (DOCX)   │  │ │(XLSX)  │  │ │ Down-  │     │
-│  │ │ Extracts:     │  │ │ Fallback  │  │ │ tabulate│  │ │ loader │     │
-│  │ │ tables, figs, │  │ │ for all  │  │ │ for     │  │ │ for    │     │
-│  │ │ equations,    │  │ │ formats  │  │ │ spreadsheets│ │ remote │     │
-│  │ │ LaTeX,        │  │ │          │  │ │         │  │ │ files  │     │
-│  │ │ reading order │  │ │          │  │ │         │  │ │       │     │
-│  │ └─────────────────┘  └────────────┘  └──────────┘  └──────────┘     │
-│  ┌─────────────────┐  ┌─────────────────┐                              │
-│  │ Oxide Office    │  │ Web Crawler     │                              │
-│  │ │ (legacy .doc) │  │ │ crawl4ai       │                              │
-│  │ │ pre-2007 fmt  │  │ │ for web docs  │                              │
-│  │ └─────────────────┘  └─────────────────┘  ┌──────────────┐           │
-│  │                                           │  Convert-    │           │
-│  │  Strategy per format:                     │  anything-   │           │
-│  │  ├─ PDF → Docling (primary)               │  to-PDF-     │           │
-│  │  ├─ DOCX → Docling or pandoc              │  first?      │           │
-│  │  ├─ XLSX → pandas → structured JSON       │  (Open)      │           │
-│  │  ├─ PPTX → pandoc                         │              │           │
-│  │  ├─ EPUB → pandoc                         │              │           │
-│  │  ├─ images → GLM-OCR / VLM                │              │           │
-│  │  └─ URLs → HTTPDownloader OR WebCrawler   │              │           │
+│  ┌─────────────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ DoclingParser       │  │ PandocParser │  │ Web Crawler          │  │
+│  │ │ 14 formats:       │  │ │ Legacy:     │  │ │ crawl4ai            │  │
+│  │ │ PDF, DOCX, PPTX,  │  │ │ .doc, .odt,│  │ │ for web docs        │  │
+│  │ │ HTML, MD, EPUB,   │  │ │ .rst, .rtf │  │ │ (markdown output)   │  │
+│  │ │ TEX, CSV, XLSX,   │  │ │ plus .txt  │  │ │                    │  │
+│  │ │ ADOC, EML, MSG    │  │ │ (text fall-│  │ │                    │  │
+│  │ │ Extracts: tables, │  │ │ back via   │  │ │                    │  │
+│  │ │ figures, formulas,│  │ │ binaryornot)│  │ │                    │  │
+│  │ │ LaTeX, headings,  │  │ │            │  │ │                    │  │
+│  │ │ reading order     │  │ │            │  │ │                    │  │
+│  │ └─────────────────────┘  └──────────────┘  └──────────────────────┘  │
+│  │                                                                      │
+│  │  Strategy per format:                                                │
+│  │  ├─ PDF, DOCX, PPTX, HTML, MD, EPUB, TEX, CSV, XLSX → DoclingParser │
+│  │  ├─ DOC, ODT, RST, RTF → PandocParser (legacy formats)              │
+│  │  ├─ TXT → PandocParser (treated as markdown)                        │
+│  │  ├─ unknown text → PandocParser via binaryornot detection           │
+│  │  ├─ images → resolution tier (VLMEnricher with --vlm-model)         │
+│  │  └─ URLs → HTTPDownloader OR WebCrawler                             │
 │  └──────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -158,10 +155,11 @@ The output of Tier 1 (pre-processing).
 class ParsedDocument:
     source_path: Path
     elements: list[DocumentElement]
-    metadata: DocumentMetadata
-    images_dir: Path | None
-    reading_order: list[int]  # indices into elements sorted by reading order
-    toc: list[TOCEntry]       # heading hierarchy
+    title: str = ""
+    author: str = ""
+    language: str = "en"
+    page_count: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
 ```
 
 ### `DocumentElement`
@@ -175,14 +173,17 @@ class ElementType(StrEnum):
     FORMULA = "formula"
     CODE = "code"
     LIST_ITEM = "list_item"
-    UNKNOWN = "unknown"
+    METADATA = "metadata"
 
 @dataclass
 class DocumentElement:
-    element_type: ElementType
-    content: str               # text / markdown / LaTeX
-    metadata: dict[str, Any]  # bounding box, caption, language, etc.
-    extracted_image: Path | None  # for IMAGE/FORMULA
+    type: ElementType
+    content: str | list[list[str]] | bytes
+    page: int | None = None
+    reading_order: int | None = None
+    heading_level: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    source_file: Path | None = None
 ```
 
 ### `Chunk`
@@ -190,12 +191,15 @@ class DocumentElement:
 ```python
 @dataclass
 class Chunk:
-    chunk_id: str
-    elements: list[DocumentElement]
-    heading_context: str       # e.g., "Section 3.2 > Subsection 3.2.1"
-    token_count: int
-    source_doc: Path
-    reading_order: tuple[int, int]  # (start, end) indices
+    id: str
+    text: str
+    element_types: list[ElementType]
+    source_elements: list[int]
+    source_file: Path | None = None
+    heading_context: str = ""
+    token_count: int = 0
+    reading_order: tuple[int, int] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 ```
 
 ### `ResolvedChunk`
@@ -310,7 +314,7 @@ Optional extras:
 
 ```text
 source.pdf
-    → Tier 1: DoclingParser.parse() → source.md + source.knox.json
+    → Tier 1: DoclingParser.parse() → ParsedDocument (structured JSON)
     → Tier 2: HybridChunker.chunk() → list[Chunk]
     → Tier 3: LLMResolver.resolve() → list[ResolvedChunk]
     → Tier 4: WikiCompiler.compile() → compiled_wiki.json
