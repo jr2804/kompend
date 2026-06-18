@@ -62,3 +62,4 @@ demo-wiki*/
 sources/
 .claude/
 /.commandcode
+*.log
