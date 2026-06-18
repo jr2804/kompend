@@ -141,7 +141,7 @@ def _print_tier_listing(pipeline: object) -> None:
         typer.echo("Pipeline does not support tier listing.", err=True)
         return
 
-    typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))
+    typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]  # ty:ignore[call-non-callable]
 
 
 def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
@@ -171,7 +171,7 @@ def _verify_claims(
     verify_budget: int = 3000,
 ) -> None:
     """Run grounding verification over wiki claims."""
-    result = verify_wiki(wiki, output_dir_path, client=client, model=model, verify_budget=verify_budget)
+    result = verify_wiki(wiki, output_dir_path, client=client, model=model, verify_budget=verify_budget)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 

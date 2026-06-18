@@ -102,9 +102,7 @@ async def dashboard() -> str:
       <tr><th>Title</th><th>Type</th><th>Source</th></tr>
       {
         "".join(
-            f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
-            f"<td>{n.get('node_type', '')}</td>"
-            f"<td>{_source_of(n)}</td></tr>"
+            f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td><td>{n.get("node_type", "")}</td><td>{_source_of(n)}</td></tr>'
             for n in nodes[:10]
         )
     }
@@ -120,10 +118,7 @@ async def wiki_list() -> str:
     wiki = _load_wiki()
     nodes = wiki.get("nodes", [])
     rows = "".join(
-        f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td>'
-        f"<td>{n.get('node_type', '')}</td>"
-        f"<td>{_source_of(n)}</td></tr>"
-        for n in nodes
+        f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td><td>{n.get("node_type", "")}</td><td>{_source_of(n)}</td></tr>' for n in nodes
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
