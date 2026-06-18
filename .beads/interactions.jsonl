@@ -200,3 +200,5 @@
 {"id":"int-2dd8c55c","kind":"field_change","created_at":"2026-06-18T00:11:51.9713754Z","actor":"Jan.Reimes","issue_id":"knox-2of0","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
 {"id":"int-bb50d507","kind":"field_change","created_at":"2026-06-18T00:16:47.4175495Z","actor":"Jan.Reimes","issue_id":"knox-f6l6","extra":{"field":"status","new_value":"closed","old_value":"in_progress"}}
 {"id":"int-167320a5","kind":"field_change","created_at":"2026-06-18T00:16:49.2783352Z","actor":"Jan.Reimes","issue_id":"knox-2of0","extra":{"field":"status","new_value":"closed","old_value":"in_progress"}}
+{"id":"int-2c0e0a07","kind":"field_change","created_at":"2026-06-18T20:42:23.0535003Z","actor":"Jan.Reimes","issue_id":"knox-049r","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Duplicate of knox-e5c0.1 (already closed). String constants centralised in commits 5db8f22, b541657."}}
+{"id":"int-8cdcf37a","kind":"field_change","created_at":"2026-06-18T20:43:49.0477673Z","actor":"Jan.Reimes","issue_id":"knox-itf8","extra":{"field":"priority","new_value":"3","old_value":"2"}}

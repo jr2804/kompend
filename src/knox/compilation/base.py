@@ -107,17 +107,18 @@ class BaseCompiler(ABC):
                 close = text.find("] ")
                 if close != -1:
                     text = text[close + 2 :]
-            for para in text.split("\n\n"):
-                para = para.strip()
+            for raw_para in text.split("\n\n"):
+                para = raw_para.strip()
                 if not para:
                     continue
                 # Strip another bracket prefix if it appears inside a paragraph.
                 if para.startswith("["):
                     close = para.find("] ")
                     if close != -1:
-                        para = para[close + 2 :].strip()
-                        if not para:
+                        stripped = para[close + 2 :].strip()
+                        if not stripped:
                             continue
+                        para = stripped
                 normalized = " ".join(para.split()).lower()
                 if normalized in seen:
                     continue

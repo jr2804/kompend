@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
 
+from binaryornot.check import is_binary
+
 from knox.core.models import ParsedDocument
 
 
@@ -23,8 +25,14 @@ class FileExtension(StrEnum):
     RST = ".rst"
     RTF = ".rtf"
     TEX = ".tex"
+    LTX = ".ltx"
     MD = ".md"
+    MARKDOWN = ".markdown"
     TXT = ".txt"
+    CSV = ".csv"
+    ADOC = ".adoc"
+    EML = ".eml"
+    MSG = ".msg"
     PNG = ".png"
     JPG = ".jpg"
     JPEG = ".jpeg"
@@ -48,18 +56,36 @@ class BaseParser(ABC):
 
 
 class ParserRouter:
-    """Auto-selects the right parser for each file type."""
+    """Auto-selects the right parser for each file type.
+
+    When no registered parser matches a file's extension, a last-resort
+    check using :func:`binaryornot.check.is_binary` determines whether
+    the file is plain text.  If it is, the *text_fallback* parser
+    (typically :class:`PandocParser`) is used.
+    """
 
     def __init__(self) -> None:
         self._parsers: list[BaseParser] = []
+        self._text_fallback: BaseParser | None = None
 
     def register(self, parser: BaseParser) -> None:
         self._parsers.append(parser)
+
+    def set_text_fallback(self, parser: BaseParser) -> None:
+        """Set a fallback parser for text files detected by binaryornot."""
+        self._text_fallback = parser
 
     def route(self, source_path: Path) -> BaseParser | None:
         for parser in self._parsers:
             if parser.can_parse(source_path):
                 return parser
+        # No registered parser matched — try binaryornot text fallback.
+        if self._text_fallback is not None:
+            try:
+                if not is_binary(str(source_path)):
+                    return self._text_fallback
+            except Exception:  # noqa: BLE001
+                pass
         return None
 
     def parse(self, source_path: Path) -> ParsedDocument:

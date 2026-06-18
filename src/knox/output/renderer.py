@@ -190,7 +190,7 @@ class DocumentRenderer:
             cmd.extend(["--config", str(self.rumdl_config)])
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 — internally constructed cmd list, no user input
                 cmd,
                 input=markdown,
                 capture_output=True,
