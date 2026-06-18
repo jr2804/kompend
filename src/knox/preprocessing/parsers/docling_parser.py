@@ -44,7 +44,22 @@ class DoclingParser(BaseParser):
     data is extracted from embedded PDF images, not just structure markers.
     """
 
-    supported_extensions = {FileExtension.PDF, FileExtension.DOCX}
+    supported_extensions: set[FileExtension] = {
+        FileExtension.PDF,
+        FileExtension.DOCX,
+        FileExtension.PPTX,
+        FileExtension.HTML,
+        FileExtension.MD,
+        FileExtension.MARKDOWN,
+        FileExtension.EPUB,
+        FileExtension.TEX,
+        FileExtension.LTX,
+        FileExtension.CSV,
+        FileExtension.XLSX,
+        FileExtension.ADOC,
+        FileExtension.EML,
+        FileExtension.MSG,
+    }
 
     def __init__(
         self,

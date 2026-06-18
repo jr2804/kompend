@@ -21,7 +21,6 @@ from knox.core.models import ParsedDocument, ResolvedChunk
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
-from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +32,6 @@ def _check_parser() -> bool:
         return True
     except Exception:
         logger.debug("DoclingParser not available", exc_info=True)
-    try:
-        PdfPlumberParser()
-        return True
-    except Exception:
-        logger.debug("PdfPlumberParser not available", exc_info=True)
     return False
 
 
@@ -47,11 +41,7 @@ def _get_parser() -> BaseParser:
         return DoclingParser(extract_images=False)
     except Exception:
         logger.debug("DoclingParser not available", exc_info=True)
-    try:
-        return PdfPlumberParser()
-    except Exception:
-        logger.debug("PdfPlumberParser not available", exc_info=True)
-    pytest.skip("No PDF parser available (DoclingParser or PdfPlumberParser)")
+    pytest.skip("No PDF parser available (DoclingParser)")
 
 
 _PARSER_OK = _check_parser()

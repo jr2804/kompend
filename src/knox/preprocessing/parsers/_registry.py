@@ -1,4 +1,4 @@
-"""Parser registry — tracks all registered parsers (built-in + external + HTTP).
+"""Parser registry — tracks all registered parsers.
 
 Used by ``knox list-parsers`` and ``ParserRouter`` for parser discovery.
 """
@@ -14,11 +14,6 @@ try:
     from knox.preprocessing.parsers.docling_parser import DoclingParser
 except ImportError:
     DoclingParser = None  # ty: ignore
-
-try:
-    from knox.preprocessing.parsers.pdfplumber_parser import PdfPlumberParser
-except ImportError:
-    PdfPlumberParser = None  # ty: ignore
 
 try:
     from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -97,19 +92,13 @@ def build_default_router() -> ParserRouter:
         except Exception as exc:
             logger.debug("DoclingParser not available: %s", exc, exc_info=True)
 
-    if PdfPlumberParser is not None:
-        try:
-            pdfplumber = PdfPlumberParser()
-            router.register(pdfplumber)
-            register_parser("PdfPlumberParser", "built-in", list(pdfplumber.supported_extensions))
-        except Exception as exc:
-            logger.debug("PdfPlumberParser not available: %s", exc, exc_info=True)
-
     if PandocParser is not None:
         try:
             pandoc = PandocParser()
             router.register(pandoc)
             register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
+            # PandocParser also serves as the binaryornot text fallback.
+            router.set_text_fallback(pandoc)
         except Exception as exc:
             logger.debug("PandocParser not available: %s", exc, exc_info=True)
 

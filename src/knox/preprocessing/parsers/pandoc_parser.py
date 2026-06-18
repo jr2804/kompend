@@ -48,16 +48,13 @@ class PandocParser(BaseParser):
     """
 
     supported_extensions: set[FileExtension] = {
-        FileExtension.DOCX,
+        # Legacy document formats not handled by DoclingParser.
         FileExtension.DOC,
-        FileExtension.EPUB,
-        FileExtension.HTML,
-        FileExtension.PPTX,
         FileExtension.ODT,
         FileExtension.RST,
         FileExtension.RTF,
-        FileExtension.TEX,
-        FileExtension.MD,
+        # Plain text (also used as binaryornot fallback).
+        FileExtension.TXT,
     }
 
     @override
