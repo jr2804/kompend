@@ -1,0 +1,150 @@
+# Document Extraction in KNOX
+
+KNOX ("eXtended documents") aims to parse a wide variety of document formats
+into a structured, LLM-aware representation.  This document explains which
+frameworks are used, why, and what was considered before settling on the
+current architecture.
+
+## Supported Formats
+
+| Format | Parser | Notes |
+|--------|--------|-------|
+| `.pdf` | DoclingParser | Structure-preserving, incl. tables, images, headings |
+| `.docx` | DoclingParser | Office format via docling |
+| `.pptx` | DoclingParser | PowerPoint via docling |
+| `.html` | DoclingParser | Web pages via docling |
+| `.md`, `.markdown` | DoclingParser | Markdown via docling |
+| `.epub` | DoclingParser | E-book format via docling |
+| `.tex`, `.ltx` | DoclingParser | LaTeX via docling |
+| `.csv` | DoclingParser | Tabular data via docling |
+| `.xlsx` | DoclingParser | Excel via docling |
+| `.adoc` | DoclingParser | AsciiDoc via docling |
+| `.eml`, `.msg` | DoclingParser | Email via docling |
+| `.doc` | PandocParser | Legacy Word (docling does not support this) |
+| `.odt` | PandocParser | OpenDocument text |
+| `.rst` | PandocParser | reStructuredText |
+| `.rtf` | PandocParser | Rich Text Format |
+| `.txt` | PandocParser | Plain text, treated as markdown |
+
+Unknown file extensions are checked with
+[`binaryornot`](https://github.com/binaryornot/binaryornot).  If the file
+is determined to be plain text, it is fed to `PandocParser` as a last
+resort.  Truly binary files with unknown extensions are skipped.
+
+## Primary Parser: Docling
+
+[Docling](https://github.com/DS4SD/docling) (MIT license) is KNOX's primary
+document parser.  It is a pure-Python library (with C++ acceleration) that
+requires no external runtimes or sidecar processes.
+
+**Strengths**
+- Supports 20+ input formats (PDF, DOCX, PPTX, HTML, MD, EPUB, LaTeX,
+  CSV, XLSX, AsciiDoc, email, and more).
+- Structure-preserving output with heading hierarchy, tables, lists,
+  formulas, and image references.
+- Handles scanned PDFs via built-in OCR (RapidOCR).
+- No GPU required.
+- Active development, MIT license.
+
+**Limitations**
+- Bounding-box / page-layout coordinates are not exposed (docling targets
+  content structure, not visual layout).
+- Does not produce Tagged PDF or PDF/UA output.
+- Table extraction accuracy is good but not best-in-class for complex
+  borderless tables.
+
+## PandocParser: Legacy Format Support
+
+[Pandoc](https://pandoc.org/) (the Python `pandoc` package) handles formats
+that docling does not support: legacy Word (`.doc`), OpenDocument (`.odt`),
+reStructuredText (`.rst`), and Rich Text Format (`.rtf`).  It also handles
+plain text files (`.txt`) and serves as the binaryornot text fallback.
+
+PandocParser is registered **after** DoclingParser in the parser router, so
+docling always wins for formats both support (e.g. `.docx` is handled by
+docling, not pandoc).
+
+## Investigated and Rejected: opendataloader-pdf[hybrid]
+
+### Why it looked promising
+
+[opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf)
+(Apache 2.0) ranks #1 in public benchmarks with an overall score of 0.907
+versus docling's 0.882.  Its "hybrid" mode routes complex pages (tables,
+scanned documents, formulas, charts) to an AI backend for significantly
+better accuracy than the purely local mode.
+
+### Why it was rejected
+
+Despite the accuracy advantage, operational concerns outweigh the benefit:
+
+**1. Java 11+ runtime requirement**
+
+The package is 85.9% Java.  Every KNOX user would need a JDK installed and
+`JAVA_HOME` configured — a serious friction point for a project that is
+otherwise pure Python.
+
+**2. Separate hybrid-mode server**
+
+Hybrid mode requires a background process:
+
+```bash
+opendataloader-pdf-hybrid --port 5002
+```
+
+KNOX would need to spawn, monitor, and shut down this server — error-prone
+on Windows, and a crash would cause silent parse failures.
+
+**3. JVM-per-call overhead**
+
+Each `convert()` invocation spawns a new JVM process.  When ingesting
+dozens of documents, this adds seconds of overhead per file.
+
+**4. PDF-only**
+
+opendataloader handles only PDF.  KNOX needs multi-format support
+(DOCX, PPTX, HTML, MD, EPUB, etc.) — all handled natively by docling.
+
+**5. Different data model**
+
+opendataloader's JSON output is page-oriented with bounding boxes.
+Docling's model is content-oriented (document tree).  Supporting both
+would require a second adapter layer, increasing maintenance surface.
+
+**6. Marginal real-world gain**
+
+The benchmark gap (0.907 vs 0.882) is 2.8%.  Docling actually beats
+opendataloader on heading accuracy (0.824 vs 0.821).  For KNOX's use
+case — extracting structured content for LLM consumption, not visual
+page layout — docling's accuracy is sufficient.
+
+### Future consideration
+
+If docling's PDF accuracy proves insufficient for specific document types,
+the parser infrastructure supports plugging in alternatives.  A future
+version could add opendataloader as an optional PDF backend — but the
+operational complexity (Java, sidecar server, JVM overhead) means this
+should only be done when there is clear evidence of content loss, not
+based on benchmarks alone.
+
+## Binaryornot Text Fallback
+
+When a file's extension is not recognised by any registered parser,
+[`binaryornot`](https://github.com/binaryornot/binaryornot) checks whether
+the file contains binary data.  If it is text, the file is routed to
+`PandocParser` as a last-resort parser.  This handles edge cases like
+extensionless files or files with unusual extensions that happen to be
+plain text.
+
+## Previously Removed Parsers
+
+- **PdfPlumberParser** (pdfplumber) — docling covers `.pdf` first in the
+  router, making this fallback unreachable in practice.  PdfPlumber was
+  not used for any other purpose (page counting, title extraction, etc.).
+- **VLMParser** — standalone image parser for `.png`/`.jpg`/etc.  Never
+  wired into any router.  Image content embedded in PDFs is handled by
+  docling's own image extraction; standalone images lack the VLM client
+  needed for captioning at Tier 1.
+- **ExternalParser / HTTPParser** — framework for delegating parsing to
+  CLI tools or HTTP endpoints.  Never wired into any config path and
+  lacked documentation.
