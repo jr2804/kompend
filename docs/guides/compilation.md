@@ -251,7 +251,7 @@ A: Yes: `knox compile *.pdf --start-at-tier resolve` skips re-parsing and chunki
 **Q: How do I get a JSON status report?**
 A: `knox compile *.pdf --list-tiers` outputs JSON.
 
-**Q: Ingest hangs or crashes on large scanned PDFs**
+## Q: Ingest hangs or crashes on large scanned PDFs
 
 Large scanned PDFs (50+ pages) can exhaust memory during OCR
 processing — Docling's RapidOCR backend loads ONNX models that
