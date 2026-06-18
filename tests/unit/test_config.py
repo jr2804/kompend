@@ -312,6 +312,65 @@ class TestResolveConfig:
         cfg = resolve_config()
         assert cfg.get("compile.chunk_size") == 128
 
+    def test_llm_config_inherits_from_global(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """LLM settings in global config must be inherited when project omits them."""
+        # Global: full LLM config
+        config_dir = tmp_path / "knox"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text(
+            "[compile.llm]\n"
+            'default_model = "claude-sonnet-4-5"\n'
+            'vlm_model = "gpt-4o"\n'
+            "timeout = 300.0\n"
+            'api_base = "https://custom.api.com/v1"\n'
+            'api_key = "sk-global-test"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        # Project: has [compile] but NO [compile.llm]
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "knox.toml").write_text("[compile]\nchunk_size = 256\n")
+        monkeypatch.chdir(project_dir)
+        cfg = resolve_config()
+
+        # LLM values must come from global
+        assert cfg.get("compile.llm.default_model") == "claude-sonnet-4-5"
+        assert cfg.get("compile.llm.vlm_model") == "gpt-4o"
+        assert cfg.get("compile.llm.timeout") == 300.0
+        assert cfg.get("compile.llm.api_base") == "https://custom.api.com/v1"
+        assert cfg.get("compile.llm.api_key") == "sk-global-test"
+
+        # Project-level setting still works
+        assert cfg.get("compile.chunk_size") == 256
+
+        # Provenance: LLM keys come from global config
+        assert "global" in str(cfg.source_of("compile.llm.default_model")).lower()
+        assert "global" in str(cfg.source_of("compile.llm.api_key")).lower()
+
+    def test_project_llm_overrides_global_llm(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Project-level LLM config overrides global LLM config."""
+        config_dir = tmp_path / "knox"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text(
+            "[compile.llm]\n"
+            'default_model = "claude-sonnet-4-5"\n'
+            "timeout = 300.0\n"
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "knox.toml").write_text(
+            "[compile.llm]\n"
+            'default_model = "local-model"\n'
+        )
+        monkeypatch.chdir(project_dir)
+        cfg = resolve_config()
+
+        # Project overrides model, global still provides timeout
+        assert cfg.get("compile.llm.default_model") == "local-model"
+        assert cfg.get("compile.llm.timeout") == 300.0
+
 
 # ── ResolvedConfig ──────────────────────────────────────────────────────
 
