@@ -104,6 +104,7 @@ class TestConfigList:
 
 class TestConfigPath:
     def test_path_project_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tmp_path = tmp_path.resolve()
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "path"])
         assert result.exit_code == 0
@@ -116,6 +117,7 @@ class TestConfigPath:
         assert result.stdout.strip() == str(tmp_path / "knox" / "config.toml")
 
     def test_path_prefers_existing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tmp_path = tmp_path.resolve()
         monkeypatch.chdir(tmp_path)
         (tmp_path / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
         result = runner.invoke(app, ["config", "path"])

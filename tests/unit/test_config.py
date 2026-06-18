@@ -436,6 +436,7 @@ class TestHierarchicalConfig:
         assert cfg.get("compile.chunk_size") == 32
 
     def test_hierarchy_provenance(self, tmp_path: Any, monkeypatch: Any) -> None:
+        tmp_path = tmp_path.resolve()
         parent = tmp_path / "parent"
         parent.mkdir()
         child = parent / "child"
