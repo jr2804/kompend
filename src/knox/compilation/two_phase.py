@@ -418,7 +418,7 @@ class TwoPhaseCompiler(BaseCompiler):
             for related_title in node.metadata.get("related", []):
                 target_id = title_to_id.get(related_title)
                 if target_id and target_id != node.id:
-                    pair = tuple(sorted([node.id, target_id]))
+                    pair = (min(node.id, target_id), max(node.id, target_id))
                     if pair in seen_edges:
                         continue
                     seen_edges.add(pair)
