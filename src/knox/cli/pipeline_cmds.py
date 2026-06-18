@@ -334,19 +334,22 @@ def ingest_cmd(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     count = 0
+    total = len(all_input_files)
     state_store = TierStateStore(sources_dir_path / KNOX_DIR / COMPILE_STATE_FILE)
     state = state_store.load()
-    for path in all_input_files:
+    for idx, path in enumerate(all_input_files, 1):
+        typer.echo(f"  [{idx}/{total}] {path.name} ...", nl=False)
         parser = router.route(path)
         if parser is None:
-            typer.echo(f"  Skipping {path.name} — no parser available", err=True)
+            typer.echo(" skipped (no parser)", err=True)
             continue
         try:
             doc = parser.parse(path)
         except Exception:
-            logger.exception("Failed to parse %s", path)
-            typer.echo(f"  Failed to parse {path.name}", err=True)
+            typer.echo(" failed", err=True)
+            logger.debug("Failed to parse %s", path, exc_info=True)
             continue
+        typer.echo(" ok")
 
         # Cache key matches WikiPipeline._cache_key format so compile
         # can reuse these parsed documents.

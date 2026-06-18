@@ -54,8 +54,15 @@ from knox.core.config.keys import (
 )
 from knox.core.hooks import clear_hooks, load_hooks_from_config
 
-# Silence noisy third-party loggers that corrupt the rich progress bar.
-logging.getLogger("docling").setLevel(logging.WARNING)
+# Silence noisy third-party loggers that flood CLI output with
+# model-loading chatter, empty-OCR warnings, and full ONNX/docling
+# traceback boxes.  CRITICAL suppresses everything below — these
+# errors are not actionable by the user; KNOX logs its own parse
+# failures at the appropriate level.
+logging.getLogger("docling").setLevel(logging.CRITICAL)
+logging.getLogger("RapidOCR").setLevel(logging.CRITICAL)
+logging.getLogger("rapidocr").setLevel(logging.CRITICAL)
+logging.getLogger("onnxruntime").setLevel(logging.CRITICAL)
 logging.getLogger("pdfminer").setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
