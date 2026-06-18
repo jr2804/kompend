@@ -210,7 +210,6 @@ class MemoryStore:
         report = CompileReport()
         now = _now_iso()
 
-        # Build a title → old_state index for supersession detection.
         title_to_old: dict[str, NodeState] = {}
         for old_state in self.states.values():
             if not old_state.is_superseded():

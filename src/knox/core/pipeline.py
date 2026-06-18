@@ -134,7 +134,6 @@ class WikiPipeline:
         """
         self._progress_callback = progress_callback
 
-        # Load user notes and inject into template global context
         if self.config.notes_file and self.config.notes_file.exists():
             notes_content = self.config.notes_file.read_text(encoding="utf-8")
             get_template_loader().set_global_context(user_notes=notes_content)

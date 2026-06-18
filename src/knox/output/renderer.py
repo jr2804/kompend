@@ -133,7 +133,6 @@ class DocumentRenderer:
         for i, doc in enumerate(docs):
             if i > 0:
                 lines.append("")  # spacing between sections
-            # Render the individual document
             rendered = self._assemble(doc)
             lines.append(rendered)
 
