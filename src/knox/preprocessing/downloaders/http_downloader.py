@@ -29,11 +29,28 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
 }
 
 # FileExtension values the pipeline already recognizes.
-_KNOWN_EXTENSIONS: frozenset[str] = frozenset({
-    ".pdf", ".docx", ".doc", ".epub", ".html", ".pptx",
-    ".xlsx", ".odt", ".rst", ".rtf", ".tex", ".md", ".txt",
-    ".png", ".jpg", ".jpeg", ".gif", ".webp",
-})
+_KNOWN_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".epub",
+        ".html",
+        ".pptx",
+        ".xlsx",
+        ".odt",
+        ".rst",
+        ".rtf",
+        ".tex",
+        ".md",
+        ".txt",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+    }
+)
 
 
 class HTTPDownloader(BaseDownloader):
@@ -42,39 +59,6 @@ class HTTPDownloader(BaseDownloader):
     def __init__(self, timeout: int = 30, detector: DuplicateDetector | None = None) -> None:
         self.timeout = timeout
         self._detector = detector
-
-    _ALLOWED_SCHEMES = {"http", "https"}
-
-    @staticmethod
-    def _pick_extension(file_name: str, content_type: str | None) -> str:
-        """Return the best file extension for a downloaded file.
-
-        If the existing suffix is already a known parser extension, keep it.
-        Otherwise try to map *content_type* to an extension and fall back
-        to preserving the original suffix.
-        """
-        orig_suffix = Path(file_name).suffix.lower()
-        if orig_suffix in _KNOWN_EXTENSIONS:
-            return orig_suffix
-        if content_type:
-            mapped = _CONTENT_TYPE_EXT.get(content_type.split(";")[0].strip())
-            if mapped:
-                return mapped
-        return orig_suffix
-
-    def _build_target_path(self, url: str, target_dir: Path) -> tuple[Path, str]:
-        """Return (target path, original file name) for a URL."""
-        parsed = urlparse(url)
-        file_name = Path(parsed.path).name or self._hash_url(url)
-        return target_dir / file_name, file_name
-
-    @staticmethod
-    def _normalize_content_type(response: Any) -> str | None:
-        """Extract Content-Type from an HTTP response, returning None on failure."""
-        raw = response.headers.get("Content-Type")
-        if raw:
-            return raw.split(";")[0].strip()
-        return None
 
     def download(self, url: str, target_dir: Path) -> Path | None:
         parsed = urlparse(url)
@@ -174,6 +158,39 @@ class HTTPDownloader(BaseDownloader):
                 logger.warning("Failed to download %s: %s", url, e, exc_info=True)
         return results
 
+    def _build_target_path(self, url: str, target_dir: Path) -> tuple[Path, str]:
+        """Return (target path, original file name) for a URL."""
+        parsed = urlparse(url)
+        file_name = Path(parsed.path).name or self._hash_url(url)
+        return target_dir / file_name, file_name
+
+    @staticmethod
+    def _pick_extension(file_name: str, content_type: str | None) -> str:
+        """Return the best file extension for a downloaded file.
+
+        If the existing suffix is already a known parser extension, keep it.
+        Otherwise try to map *content_type* to an extension and fall back
+        to preserving the original suffix.
+        """
+        orig_suffix = Path(file_name).suffix.lower()
+        if orig_suffix in _KNOWN_EXTENSIONS:
+            return orig_suffix
+        if content_type:
+            mapped = _CONTENT_TYPE_EXT.get(content_type.split(";")[0].strip())
+            if mapped:
+                return mapped
+        return orig_suffix
+
+    @staticmethod
+    def _normalize_content_type(response: Any) -> str | None:
+        """Extract Content-Type from an HTTP response, returning None on failure."""
+        raw = response.headers.get("Content-Type")
+        if raw:
+            return raw.split(";")[0].strip()
+        return None
+
     @staticmethod
     def _hash_url(url: str) -> str:
         return hashlib.sha256(url.encode()).hexdigest()[:16]
+
+    _ALLOWED_SCHEMES = {"http", "https"}
