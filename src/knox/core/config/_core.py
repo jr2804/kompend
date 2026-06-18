@@ -185,6 +185,8 @@ DEFAULTS: dict[str, Any] = {
             "num_ctx_min": 2048,
             "num_ctx_max": 131072,
             "context_window_cap": None,
+            "api_base": None,
+            "api_key": None,
         },
         "output": {
             "flavor": None,

@@ -56,6 +56,8 @@ COMPILE_LLM_FALLBACK_MAX_OUTPUT: Final[str] = "compile.llm.fallback_max_output"
 COMPILE_LLM_NUM_CTX_MIN: Final[str] = "compile.llm.num_ctx_min"
 COMPILE_LLM_NUM_CTX_MAX: Final[str] = "compile.llm.num_ctx_max"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
+COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
+COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
 
 # ── compile.embedding sub-section ──
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"

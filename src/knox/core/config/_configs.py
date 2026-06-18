@@ -47,6 +47,8 @@ class LLMConfig:
     num_ctx_max: int = 131072
     context_window_cap: int | None = None
     role_models: dict[str, str] = field(default_factory=dict)
+    api_base: str | None = None
+    api_key: str | None = None
 
 
 @dataclass

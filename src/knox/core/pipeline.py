@@ -694,6 +694,8 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
         _num_ctx_min=config.llm.num_ctx_min,
         _num_ctx_max=config.llm.num_ctx_max,
         _context_window_cap=config.llm.context_window_cap,
+        _api_base=config.llm.api_base,
+        _api_key=config.llm.api_key,
     )
 
 
@@ -823,6 +825,8 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 _num_ctx_min=config.llm.num_ctx_min,
                 _num_ctx_max=config.llm.num_ctx_max,
                 _context_window_cap=config.llm.context_window_cap,
+                _api_base=config.llm.api_base,
+                _api_key=config.llm.api_key,
             )
             vlm_client.usage = llm_client.usage
             resolvers.append(VLMEnricher(client=vlm_client))

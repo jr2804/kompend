@@ -21,6 +21,7 @@ from typing import Any, Final
 
 import litellm
 
+import knox.llm.providers  # noqa: F401 — registers custom providers on import
 from knox.llm.errors import LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 
@@ -108,6 +109,18 @@ class UsageTracker:
         }
 
 
+def _resolve_env_value(value: str) -> str:
+    """Resolve a config value that may be an env-var reference.
+
+    If *value* starts with ``$``, the remainder is treated as an
+    environment variable name. Returns the env-var value, or the
+    original string if the variable is not set.
+    """
+    if value.startswith("$"):
+        return os.environ.get(value[1:], value)
+    return value
+
+
 def _discover_context_window(
     model: str,
     *,
@@ -173,9 +186,15 @@ def _discover_context_window(
             source = "fallback"
 
     # 4. User-configured cap overrides discovered values.
+    # When the fallback was used and a cap is set, the cap replaces
+    # the fallback entirely (it can raise as well as lower).
     if context_window_cap is not None:
-        max_input = min(max_input, context_window_cap)
-        max_output = min(max_output, context_window_cap)
+        if source == "fallback":
+            max_input = context_window_cap
+            max_output = context_window_cap
+        else:
+            max_input = min(max_input, context_window_cap)
+            max_output = min(max_output, context_window_cap)
 
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)
 
@@ -276,6 +295,8 @@ class LLMClient:
     _num_ctx_min: int = field(default=2048, repr=False)
     _num_ctx_max: int = field(default=131072, repr=False)
     _context_window_cap: int | None = field(default=None, repr=False)
+    _api_base: str | None = field(default=None, repr=False)
+    _api_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not self.default_model:
@@ -327,6 +348,7 @@ class LLMClient:
         """
         chain = self.chain_for(role)
         cw = self.context_window
+        assert cw is not None, "context_window must be set before calling complete()"
         call_start = time.monotonic()
 
         def _call(model: str) -> Any:
@@ -341,6 +363,10 @@ class LLMClient:
                 kwargs["max_tokens"] = max_tokens
             if self.timeout is not None:
                 kwargs["timeout"] = self.timeout
+            if self._api_base is not None:
+                kwargs["api_base"] = self._api_base
+            if self._api_key is not None:
+                kwargs["api_key"] = _resolve_env_value(self._api_key)
             # Streaming enables TTFT measurement for split TPS metrics.
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
