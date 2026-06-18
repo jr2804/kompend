@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import time
-from dataclasses import asdict
 
 import typer
 
@@ -71,10 +68,9 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-from knox.core.paths import CACHE_SUBDIR, COMPILE_STATE_FILE, KNOX_DIR
+from knox.core.ingest import ingest_documents
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
-from knox.core.tier_state import TierStateStore
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -294,6 +290,7 @@ def ingest_cmd(
     ignore: Ignore = None,
     no_cache: NoCacheFlag = False,
     workers: Workers = 1,
+    show_progress: Progress = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
@@ -330,41 +327,30 @@ def ingest_cmd(
     typer.echo(f"Ingesting {len(all_input_files)} document(s)")
 
     router: ParserRouter = build_default_router()
-    cache_dir = sources_dir_path / KNOX_DIR / CACHE_SUBDIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    tracker = PipelineProgress.create(
+        total_files=len(all_input_files), force_progress=show_progress,
+    )
+    tracker.start()
 
-    count = 0
-    total = len(all_input_files)
-    state_store = TierStateStore(sources_dir_path / KNOX_DIR / COMPILE_STATE_FILE)
-    state = state_store.load()
-    for idx, path in enumerate(all_input_files, 1):
-        typer.echo(f"  [{idx}/{total}] {path.name} ...", nl=False)
-        parser = router.route(path)
-        if parser is None:
-            typer.echo(" skipped (no parser)", err=True)
-            continue
-        try:
-            doc = parser.parse(path)
-        except Exception:
-            typer.echo(" failed", err=True)
-            logger.debug("Failed to parse %s", path, exc_info=True)
-            continue
-        typer.echo(" ok")
+    def _progress(current: int, total: int, detail: str) -> None:
+        if detail == "done":
+            tracker.update_progress(total, "Ingest complete")
+        else:
+            tracker.update_progress(current, f"[{current + 1}/{total}] {detail}")
 
-        # Cache key matches WikiPipeline._cache_key format so compile
-        # can reuse these parsed documents.
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        cache_key = f"{path.stem}_{digest[:12]}"
-        out_path = cache_dir / f"{cache_key}.json"
-        out_path.write_text(
-            json.dumps(asdict(doc), indent=2, default=str),
-            encoding="utf-8",
+    try:
+        result = ingest_documents(
+            files=all_input_files,
+            sources_dir=sources_dir_path,
+            router=router,
+            progress_fn=_progress,
         )
-        count += 1
+    finally:
+        tracker.finish()
 
-        # Record tier 1 (parsed) so compile --start-at-tier chunk can
-        # validate that prerequisites have been met.
-        state_store.record(state, path.stem, path, digest, tier=1)
-
-    state_store.save(state)
-    typer.echo(f"Ingested {count} document(s) into {cache_dir}")
+    summary = f"Ingested {result.count} document(s) into {result.cache_dir}"
+    if result.skipped:
+        summary += f" ({result.skipped} skipped)"
+    if result.failed:
+        summary += f" ({result.failed} failed)"
+    typer.echo(summary)
