@@ -214,6 +214,14 @@ ForceTier = Annotated[
     ),
 ]
 
+InPlaceFlag = Annotated[
+    bool,
+    typer.Option(
+        "--in-place",
+        help="Keep source files at their original location instead of copying to sources/.",
+    ),
+]
+
 ListTiers = Annotated[
     bool,
     typer.Option(

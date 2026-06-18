@@ -164,6 +164,50 @@ class TestEnsureInSources:
         assert sources_dir.exists()
         assert result[0].exists()
 
+    def test_in_place_external_file_not_copied(self, tmp_path: Path) -> None:
+        """With in_place=True, external files stay at original location."""
+        external_dir = tmp_path / "external"
+        external_dir.mkdir()
+        source_file = external_dir / "paper.pdf"
+        source_file.write_text("paper")
+
+        sources_dir = tmp_path / "sources"
+        result = ensure_in_sources([source_file], sources_dir, in_place=True)
+
+        assert len(result) == 1
+        assert result[0] == source_file.resolve()
+        # sources_dir NOT created
+        assert not sources_dir.exists()
+        # No copy inside sources_dir
+        assert not (sources_dir / "paper.pdf").exists()
+
+    def test_in_place_file_already_in_sources(self, tmp_path: Path) -> None:
+        """With in_place=True, files already in sources/ are still returned as-is."""
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        pdf_file = sources_dir / "doc.pdf"
+        pdf_file.write_text("pdf")
+
+        result = ensure_in_sources([pdf_file], sources_dir, in_place=True)
+        assert result[0] == pdf_file.resolve()
+
+    def test_in_place_mixed_files(self, tmp_path: Path) -> None:
+        """Mix of in-sources and external files with in_place=True."""
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        internal = sources_dir / "inside.pdf"
+        internal.write_text("inside")
+
+        external_dir = tmp_path / "ext"
+        external_dir.mkdir()
+        external = external_dir / "outside.pdf"
+        external.write_text("outside")
+
+        result = ensure_in_sources([internal, external], sources_dir, in_place=True)
+        assert len(result) == 2
+        assert result[0] == internal.resolve()
+        assert result[1] == external.resolve()
+
 
 # ── _unique_path ────────────────────────────────────────────────────────
 

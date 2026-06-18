@@ -12,8 +12,15 @@ def ingest(
     target: str,
     *,
     sources_dir: Path,
+    in_place: bool = False,
 ) -> Path | None:
-    sources_dir.mkdir(parents=True, exist_ok=True)
+    """Ingest a file or URL into the sources directory.
+
+    When *in_place* is ``True``, local files are kept at their original
+    location instead of being copied into *sources_dir*.
+    """
+    if not in_place:
+        sources_dir.mkdir(parents=True, exist_ok=True)
 
     if _looks_like_url(target):
         downloaded = download_urls([target], sources_dir)
@@ -28,7 +35,7 @@ def ingest(
         logger.warning("No files found for: %s", target)
         return None
 
-    copied = ensure_in_sources(resolved, sources_dir)
+    copied = ensure_in_sources(resolved, sources_dir, in_place=in_place)
     if copied:
         logger.info("Ingested file -> %s", copied[0])
         return copied[0]

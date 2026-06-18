@@ -37,6 +37,7 @@ from knox.cli.args import (
     Ignore,
     ImageMode,
     IndexStore,
+    InPlaceFlag,
     KindOption,
     ListTiers,
     LlmDefaultModel,
@@ -68,6 +69,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES
 from knox.core.ingest import ingest_documents
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
@@ -126,6 +128,7 @@ def compile_cmd(
     no_cache: NoCacheFlag = False,
     workers: Workers = 1,
     force: ForceTier = False,
+    in_place: InPlaceFlag = False,
     list_tiers: ListTiers = False,
     prompt_budget: PromptBudget = DEFAULT_PROMPT_BUDGET,
     review: ReviewMode = False,
@@ -204,6 +207,7 @@ def compile_cmd(
         budget_concepts=budget_concepts,
         embed_model=embed_model,
         llm_timeout=llm_timeout,
+        in_place_sources=in_place,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
@@ -215,6 +219,7 @@ def compile_cmd(
         sources_dir_path,
         recursive,
         ignore,
+        in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
@@ -290,6 +295,7 @@ def ingest_cmd(
     ignore: Ignore = None,
     no_cache: NoCacheFlag = False,
     workers: Workers = 1,
+    in_place: InPlaceFlag = False,
     show_progress: Progress = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
@@ -308,6 +314,7 @@ def ingest_cmd(
         image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
+        in_place_sources=in_place,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
@@ -319,6 +326,7 @@ def ingest_cmd(
         sources_dir_path,
         recursive,
         ignore,
+        in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
         typer.echo(f"No supported files found in {sources_dir_path}.", err=True)

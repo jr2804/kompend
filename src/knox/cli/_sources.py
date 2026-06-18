@@ -98,16 +98,24 @@ def resolve_files(
 def ensure_in_sources(
     input_files: list[Path],
     sources_dir: Path,
+    *,
+    in_place: bool = False,
 ) -> list[Path]:
     """Copy files that are not already inside *sources_dir* into it.
 
     Files already residing under *sources_dir* are returned as-is.
     If a file with the same name and identical content already exists in
     *sources_dir*, the copy is skipped and the existing file is returned.
-    Returns a new list with paths relative to *sources_dir*.
+
+    When *in_place* is ``True``, files outside *sources_dir* are **not**
+    copied — their original paths are returned directly. This is useful for
+    large source trees where copying would be wasteful or dangerous.
+
+    Returns a new list of resolved paths.
     """
     sources_dir = sources_dir.resolve()
-    sources_dir.mkdir(parents=True, exist_ok=True)
+    if not in_place:
+        sources_dir.mkdir(parents=True, exist_ok=True)
 
     result: list[Path] = []
     for input_file in input_files:
@@ -117,6 +125,10 @@ def ensure_in_sources(
             # Already inside sources_dir
             result.append(resolved_input)
         except ValueError:
+            if in_place:
+                logger.debug("In-place mode: %s kept at original location", input_file)
+                result.append(resolved_input)
+                continue
             # Not inside sources_dir — copy it in
             target_file = sources_dir / input_file.name
             if target_file.exists():

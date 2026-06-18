@@ -37,6 +37,11 @@ image_mode = "file"
 # Parallel parse workers (1 = sequential)
 workers = 1
 
+# Keep source files at their original location instead of copying to sources/.
+# URLs/downloads are always copied. Files already inside sources/ are left as-is.
+# CLI: --in-place | Env: KNOX_IN_PLACE_SOURCES
+# in_place_sources = false
+
 # Typed relation extraction during Tier 2 (uses the default LLM model).
 # When enabled, the resolver extracts typed relations such as uses/depends_on
 # between entities and the compiler emits them as graph edges.

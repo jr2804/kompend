@@ -21,6 +21,7 @@ from knox.core.config.keys import (
     COMPILE_FORCE,
     COMPILE_FORMAT,
     COMPILE_IMAGE_MODE,
+    COMPILE_IN_PLACE_SOURCES,
     COMPILE_INDEX,
     COMPILE_LINT,
     COMPILE_LLM_DEFAULT_MODEL,
@@ -132,6 +133,7 @@ def build_cli_overrides(
     embed_model: str | None = None,
     embed_batch_size: int | None = None,
     llm_timeout: float | None = None,
+    in_place_sources: bool | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
@@ -164,6 +166,7 @@ def build_cli_overrides(
     _flags: list[tuple[str, bool | None]] = [
         (COMPILE_NO_CACHE, no_cache),
         (COMPILE_FORCE, force),
+        (COMPILE_IN_PLACE_SOURCES, in_place_sources),
         (COMPILE_REVIEW, review),
         (COMPILE_PROVENANCE, provenance),
         (COMPILE_PRIVATE, private),

@@ -87,8 +87,14 @@ def _resolve_compile_inputs(
     sources_dir_path: Path,
     recursive: Recursive,
     ignore: Ignore,
+    *,
+    in_place: bool = False,
 ) -> list[Path]:
-    """Resolve file arguments and URLs into a deduplicated input file list."""
+    """Resolve file arguments and URLs into a deduplicated input file list.
+
+    When *in_place* is ``True``, local files outside *sources_dir_path* are
+    kept at their original location instead of being copied.
+    """
     if url_file is not None:
         for raw_line in url_file.read_text(encoding="utf-8").splitlines():
             stripped = raw_line.strip()
@@ -98,7 +104,7 @@ def _resolve_compile_inputs(
     resolved = resolve_files(*files, recursive=recursive, ignore_patterns=ignore)
 
     sources_dir_path.mkdir(parents=True, exist_ok=True)
-    local_files = ensure_in_sources(resolved, sources_dir_path)
+    local_files = ensure_in_sources(resolved, sources_dir_path, in_place=in_place)
     downloaded = download_urls(online_urls, sources_dir_path, base_dir=sources_dir_path.parent)
 
     all_input_files = list(dict.fromkeys(local_files + downloaded))
