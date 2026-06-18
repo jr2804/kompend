@@ -198,7 +198,11 @@ def _merge_node(
         title=merged_title,
         content=merged_content,
         node_type=existing.node_type,
-        source_chunks=list(dict.fromkeys(existing.source_chunks + incoming.source_chunks)),
+        source_chunks=list(
+            dict.fromkeys(
+                (existing.source_chunks or []) + (incoming.source_chunks or []),
+            ),
+        ),
         metadata={
             **existing.metadata,
             "provenance": merged_prov,
