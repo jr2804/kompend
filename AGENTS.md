@@ -346,6 +346,37 @@ under `["paths"]["sources_dir"]` and `["paths"]["output_dir"]` — not in
 `base_dir`. Never use `target_dir`, `resolved_base`, `project_root`, or
 `sources_dir.parent` to refer to the project root.
 
+#### VaultPaths — resolved path resolution
+
+`VaultPaths` (in `paths.py`) is the canonical way to resolve concrete paths
+inside a vault. It takes a `base_dir` and optional dir-name overrides,
+exposing every artifact path as a `@property`:
+
+```python
+from knox.core.paths import VaultPaths
+
+paths = VaultPaths(base_dir)
+paths.cache_dir          # base_dir/.knox/cache
+paths.compile_state_path # base_dir/.knox/compile_state.json
+paths.wiki_cache_path    # base_dir/.knox/last_wiki.json
+paths.extract_dir        # base_dir/.knox/cache/extract
+paths.images_dir         # base_dir/.knox/cache/images
+```
+
+**Usage patterns:**
+
+| Context | Pattern |
+|---------|---------|
+| Module has `config: PipelineConfig` | `config.paths.cache_dir` (uses `PipelineConfig.paths` property) |
+| Module has `base_dir: Path` | `VaultPaths(base_dir).some_path` |
+| Module has `output_dir: Path` (= base_dir/wiki) | `VaultPaths(output_dir.parent).some_path` |
+| Module has `state_dir` (= base_dir/.knox) | Direct `state_dir / CONSTANT` (no VaultPaths needed) |
+
+**Rule:** Never construct `.knox/` paths by hand from `output_dir` (e.g.
+`output_dir / ".knox" / ...`). This was the source of multiple path bugs
+where artifacts landed in `wiki/.knox/` instead of `.knox/`. Always use
+`VaultPaths(base_dir)` or `VaultPaths(output_dir.parent)`.
+
 **Tests** must also import from `knox.core.paths` — never hard-code path
 strings in test assertions.
 

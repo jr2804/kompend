@@ -56,7 +56,7 @@ project root — **not** inside `wiki/`.
 
 **All KNOX caches are project-local and should stay that way.**
 
-A cache belongs in `.knox/` (inside the output directory) when:
+A cache belongs in `.knox/` (at the project root, alongside `sources/` and `wiki/`) when:
 
 - It contains **derived data** specific to a particular source corpus
 - It is **not reusable** across different projects
@@ -97,23 +97,25 @@ the KNOX project template).
 
 ```bash
 # Nuke all cached state
-rm -rf wiki/.knox/
+rm -rf .knox/
 
 # Re-parse everything from scratch
-knox compile ./sources --no-cache --force
+knox compile --no-cache --force
 ```
 
 ## Adding a new cache
 
 When adding a new subsystem that needs persistent state:
 
-1. **Place it under `<output_dir>/.knox/<subsystem>/`**
+1. **Place it under `<base_dir>/.knox/<subsystem>/`**
 2. **Document it in the table above** (this file)
 3. **Make it resilient to missing data** — if the cache directory is
    deleted, KNOX should rebuild from source files, not crash
 4. **Never store source files or user data** — only derived/compiled data
-5. **Use the PipelineConfig.cache_dir path** when available, or construct
-   the path as `output_dir / ".knox" / "<subsystem>"`
+5. **Use `PipelineConfig.paths`** (a `VaultPaths` instance) to resolve the
+   path — e.g. `config.paths.cache_dir / "<subsystem>"`. For modules that
+   only have `base_dir`, use `VaultPaths(base_dir).knox_dir / "<subsystem>"`.
+   Never construct `.knox/` paths by hand from `output_dir`.
 
 ## External caches (not managed by KNOX)
 

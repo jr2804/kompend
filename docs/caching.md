@@ -138,7 +138,7 @@ class CacheStore:
 
 - **Storage format**: Pickle files (`.pkl`) with atomic write-to-temp-then-rename
 - **Key derivation**: `sha256(json.dumps(deps, sort_keys=True))[:16]`
-- **Cache directory**: `<output_dir>/.knox/cache/<layer>/<key>.pkl`
+- **Cache directory**: `.knox/cache/<layer>/<key>.pkl` (resolved via `VaultPaths.cache_dir`)
 - **Thread safety**: Different keys → different files → no contention;
   atomic writes prevent partial reads
 

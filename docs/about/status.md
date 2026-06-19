@@ -60,8 +60,8 @@ Current state of the KNOX codebase as of the latest `main` branch.
 
 | Field | Default | Used by |
 |-------|---------|---------|
-| `compile.sources_dir` | `"sources"` | Pipeline |
-| `compile.output_dir` | `"wiki"` | Pipeline |
+| `paths.sources_dir` | `"sources"` | Pipeline |
+| `paths.output_dir` | `"wiki"` | Pipeline |
 | `compile.image_mode` | `"file"` | DoclingParser |
 | `compile.chunk_size` | `1024` | HybridChunker |
 | `compile.format` | `"markdown"` | Output writer selection |

@@ -93,7 +93,7 @@ knox provenance transformer
 from knox.core.models import CompiledWiki
 
 # Load the wiki
-wiki = CompiledWiki.load("wiki/.knox/last_wiki.json")
+wiki = CompiledWiki.load(".knox/last_wiki.json")
 
 # Find a node
 for node in wiki.nodes:

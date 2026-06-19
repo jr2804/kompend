@@ -29,7 +29,7 @@ or query results:
 knox compile *.pdf --private
 ```
 
-This writes a `<output>/.knox/private.json` index. To include private
+This writes a `.knox/private.json` index. To include private
 pages in a query:
 
 ```bash
@@ -39,7 +39,7 @@ knox query "topic" --include-private
 ## Grounding verification
 
 `--verify` runs an LLM-as-judge on every claim in the compiled wiki
-and writes a report to `<output>/.knox/verification.json`:
+and writes a report to `.knox/verification.json`:
 
 ```bash
 knox compile *.pdf --verify

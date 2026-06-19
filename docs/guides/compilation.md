@@ -221,8 +221,8 @@ KNOX persists a tier checkpoint for every source file:
 }
 ```
 
-The file lives at `<output>/.knox/compile_state.json`. Delete it (or
-pass `--force`) to force a full recompile.
+The file lives at `.knox/compile_state.json` (at the project root). Delete
+it (or pass `--force`) to force a full recompile.
 
 ## Tier listing
 

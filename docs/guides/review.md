@@ -4,7 +4,7 @@ Human-in-the-loop approval for compiled wiki pages.
 
 ## Storage layout
 
-Inside `<output>/.knox/review/`:
+Inside `.knox/review/`:
 
 | File | Meaning |
 |------|---------|
@@ -68,14 +68,14 @@ test "$(jq 'length' queue.json)" -eq 0  # fail if anything is pending
 ## FAQ
 
 **Q: Where are approved pages written?**
-A: They stay in `<output>/.knox/review/<slug>.approved.md`. The
+A: They stay in `.knox/review/<slug>.approved.md`. The
 `MarkdownWriter` reads from there when rendering the final wiki.
 
 **Q: How do I batch-approve a CI run?**
 A: `knox review approve --all` then `knox compile --bypass-review`.
 
 **Q: Can I edit a page before approving?**
-A: Yes — open `<output>/.knox/review/<slug>.md` in your editor, then
+A: Yes — open `.knox/review/<slug>.md` in your editor, then
 `knox review approve <slug>`.
 
 **Q: What happens when a locked page is re-compiled?**

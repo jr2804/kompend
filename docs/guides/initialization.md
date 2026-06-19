@@ -59,10 +59,32 @@ knox init --bare ./my-wiki
 
 ### `--force`
 
-Overwrite existing project configuration if `.knox/config.toml` or `knox.toml` already exists. Without this flag, `knox init` refuses to scaffold into an existing project.
+Overwrite existing project configuration if `.knox/config.toml` or `knox.toml`
+already exists. Without this flag, `knox init` prints a warning and exits
+gracefully (exit code 0) when a project is detected, rather than scaffolding.
 
 ```bash
 knox init --force ./existing-project
+```
+
+### `--keep-cache`
+
+Only meaningful with `--force`. Preserves `.knox/cache/` while clearing
+everything else in the target directory before re-scaffolding. Useful for
+fast re-runs where ingest should skip already-parsed documents.
+
+```bash
+knox init --force --keep-cache ./existing-project
+```
+
+### `--in-place`
+
+Keep source files at their original location instead of copying them into
+`sources/`. Use this when your sources already live in the target directory
+structure.
+
+```bash
+knox init --in-place ./existing-project
 ```
 
 ### `--git`
