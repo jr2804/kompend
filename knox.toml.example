@@ -194,6 +194,20 @@ timeout = 120.0
 # page_chunk_size = 30
 # page_chunk_overlap = 5
 
+# ── Dedup settings ────────────────────────────────────────────────────────
+# Content-level duplicate detection for ingested sources. When enabled, each
+# parsed document is compared against all previously ingested documents using
+# embedding similarity and/or MinHash signatures. Documents with >95%
+# similarity are flagged as "identical" and excluded from compilation.
+
+[dedup]
+# enabled = false
+# matchers = "embedding,minhash"
+# threshold_identical = 0.95
+# threshold_similar = 0.80
+# model = ""
+# minhash_lsh_threshold = 0.8
+
 # ── Organize settings ───────────────────────────────────────────────────
 # LLM-driven file categorization for `knox organize`. Requires a prior
 # `knox compile` run so extractions are available in `.knox/cache/extract/`.

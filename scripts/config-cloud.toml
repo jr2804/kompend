@@ -44,3 +44,12 @@ chunk_size_max     = 524288     # up to 512K chars for ~1M ctx cloud model
 extract_output_max = 16384
 gen_output_max     = 32768
 lint_output_max    = 16384
+
+# ── Dedup (content-level duplicate detection) ────────────────────────────
+[dedup]
+enabled = true
+matchers = "embedding,minhash"
+threshold_identical = 0.95
+threshold_similar = 0.80
+model = ""
+minhash_lsh_threshold = 0.8
