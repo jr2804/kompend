@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import litellm
@@ -103,7 +105,7 @@ class TestClaudinIOProvider:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock(message=MagicMock(content="test"))]
 
-        async def fake_acompletion(**kwargs):
+        async def fake_acompletion(**kwargs: Any) -> MagicMock:
             return mock_response
 
         with patch("litellm.acompletion", side_effect=fake_acompletion) as mock:
@@ -130,8 +132,8 @@ class TestClaudinIOProvider:
         """astreaming() should delegate to litellm.acompletion with stream=True."""
         handler = _ClaudinIOProvider()
 
-        async def fake_acompletion(**kwargs):
-            async def gen():
+        async def fake_acompletion(**kwargs: Any) -> AsyncGenerator[MagicMock]:
+            async def gen() -> AsyncGenerator[MagicMock]:
                 yield MagicMock()
 
             return gen()
@@ -177,7 +179,6 @@ class TestOpenCodeZenProvider:
 
     def test_delegate_kwargs_defaults_to_openai_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
         _OpenCodeZenProvider._model_cache = {"deepseek-v4-flash-free": "openai"}
         try:
@@ -190,13 +191,11 @@ class TestOpenCodeZenProvider:
 
     def test_api_key_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
         monkeypatch.setenv("OPENCODE_API_KEY", "generic-key")
         assert _OpenCodeZenProvider._api_key() == "generic-key"
 
     def test_specific_key_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
-
 
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-specific")
         monkeypatch.setenv("OPENCODE_API_KEY", "generic-key")
@@ -204,19 +203,16 @@ class TestOpenCodeZenProvider:
 
     def test_no_api_key_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
         monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
         assert _OpenCodeZenProvider._api_key() == ""
 
     def test_stream_kwarg_filtered(self) -> None:
 
-
         kwargs = _OpenCodeZenProvider._delegate_kwargs("model", {"stream": True, "temperature": 0.3})
         assert "stream" not in kwargs
 
     def test_completion_delegates(self) -> None:
-
 
         handler = _OpenCodeZenProvider()
         mock_response = MagicMock()
@@ -240,7 +236,6 @@ class TestOpenCodeZenProvider:
 
     def test_model_discovery_populates_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
         fake_resp = MagicMock()
         fake_resp.status_code = 200
@@ -255,14 +250,12 @@ class TestOpenCodeZenProvider:
 
     def test_model_discovery_raises_on_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
         monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
         with pytest.raises(ValueError, match="No API key"):
             _OpenCodeZenProvider._discover_models()
 
     def test_model_discovery_raises_on_network_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-
 
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
         with patch("httpx.get", side_effect=Exception("connection refused")), pytest.raises(ValueError, match="Failed to discover models"):
@@ -276,7 +269,6 @@ class TestOpenCodeGoProvider:
 
     def test_delegate_kwargs_uses_go_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.setenv("OPENCODE_GO_API_KEY", "test-key")
         _OpenCodeGoProvider._model_cache = {"deepseek-v4-flash": "openai"}
         try:
@@ -287,13 +279,11 @@ class TestOpenCodeGoProvider:
 
     def test_api_key_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-
         monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
         monkeypatch.setenv("OPENCODE_API_KEY", "generic-key")
         assert _OpenCodeGoProvider._api_key() == "generic-key"
 
     def test_specific_key_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
-
 
         monkeypatch.setenv("OPENCODE_GO_API_KEY", "go-specific")
         monkeypatch.setenv("OPENCODE_API_KEY", "generic-key")
@@ -306,7 +296,6 @@ class TestOpenCodeDummyProvider:
         assert len(providers) == 1
 
     def test_completion_raises(self) -> None:
-
 
         handler = _OpenCodeDummyProvider()
         with pytest.raises(ValueError, match="opencode-go.*opencode-zen"):
@@ -324,7 +313,6 @@ class TestOpenCodeDummyProvider:
             )
 
     def test_streaming_raises(self) -> None:
-
 
         handler = _OpenCodeDummyProvider()
         with pytest.raises(ValueError, match="opencode-go.*opencode-zen"):
