@@ -13,6 +13,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from knox.core.paths import VaultPaths
 from knox.core.tier_state import TierStateStore
@@ -31,16 +32,18 @@ class IngestResult:
     cached: int = 0
     skipped: int = 0
     failed: int = 0
+    dedup_skipped: int = 0
     cache_dir: Path = Path()
 
 
-def ingest_documents(
+def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest flow
     files: Sequence[Path],
     base_dir: Path,
     router: ParserRouter,
     progress_fn: ProgressFn | None = None,
     *,
     no_cache: bool = False,
+    config: dict[str, Any] | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -53,6 +56,11 @@ def ingest_documents(
     an existing cache entry are skipped — the cached JSON is reused and the
     file is not re-parsed.
 
+    When *config* contains ``dedup.enabled = True``, content-level duplicate
+    detection runs after parsing. Documents identified as ``identical`` are
+    counted in ``dedup_skipped`` (they are still cached, but flagged for
+    the compile pipeline to skip).
+
     Args:
         files: Source files to ingest (already resolved/copied).
         base_dir: Project root directory (the ``--wiki-dir``). Cache and
@@ -63,6 +71,8 @@ def ingest_documents(
             invoked before each file is processed.
         no_cache: When ``True``, re-parse every file even if a cache
             entry with a matching hash already exists.
+        config: Resolved config dict (or ``None`` to skip dedup). Used to
+            configure content-level duplicate detection.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory path.
@@ -76,6 +86,7 @@ def ingest_documents(
     state = state_store.load()
 
     count = cached = skipped = failed = 0
+    dedup_texts: dict[str, str] = {} if (config or {}).get("dedup.enabled") else {}  # type: ignore[union-attr]
 
     for idx, path in enumerate(files):
         if progress_fn is not None:
@@ -105,6 +116,15 @@ def ingest_documents(
             failed += 1
             continue
 
+        # Collect parsed text for dedup (if enabled)
+        if dedup_texts is not None:
+            slug = path.stem
+            text = ""
+            for element in doc.elements if hasattr(doc, "elements") else []:
+                if hasattr(element, "text") and element.text:
+                    text += element.text + "\n\n"
+            dedup_texts[slug] = text or path.read_text(errors="replace")
+
         out_path.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
@@ -112,8 +132,42 @@ def ingest_documents(
         count += 1
         state_store.record(state, path.stem, path, digest, tier=1)
 
+    # ── Content-level duplicate detection ───────────────────────────
+    dedup_skipped = 0
+    if dedup_texts:
+        try:
+            from knox.preprocessing.dedup import DedupOrchestrator  # noqa: PLC0415 — lazy import for optional dedup
+
+            orch = DedupOrchestrator(base_dir, config=config or {})
+
+            def _dedup_progress(completed: int, total: int) -> None:
+                if progress_fn is not None:
+                    progress_fn(completed, max(total, 1), f"dedup {completed}/{total}")
+
+            results = orch.process_batch(list(dedup_texts.items()), progress_fn=_dedup_progress)
+            for slug, result in results.items():
+                if result.verdict.value == "identical":
+                    dedup_skipped += 1
+                    logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile",
+                                slug, result.closest_match, result.closest_score)
+                elif result.verdict.value == "similar":
+                    logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning",
+                                slug, result.closest_match, result.closest_score)
+            if dedup_skipped:
+                logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile",
+                            dedup_skipped)
+        except Exception:
+            logger.exception("Dedup processing failed — continuing without dedup")
+
     if progress_fn is not None:
         progress_fn(total, total, "done")
 
     state_store.save(state)
-    return IngestResult(count=count, cached=cached, skipped=skipped, failed=failed, cache_dir=cache_dir)
+    return IngestResult(
+        count=count,
+        cached=cached,
+        skipped=skipped,
+        failed=failed,
+        dedup_skipped=dedup_skipped,
+        cache_dir=cache_dir,
+    )

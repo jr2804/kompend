@@ -84,6 +84,9 @@ STATE_FILE: Final[str] = "state.json"
 # ── Organize (LLM-based file categorisation) ─────────────────────────────
 ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
 
+# ── Dedup (content-level duplicate detection) ────────────────────────────
+DEDUP_DIR: Final[str] = "dedup"
+
 # ── Default configurable directory names ────────────────────────────────
 DEFAULT_SOURCES_DIR_NAME: Final[str] = "sources"
 DEFAULT_OUTPUT_DIR_NAME: Final[str] = "wiki"
@@ -108,6 +111,7 @@ class VaultPaths:
         │   ├── cache/              ← cache_dir
         │   │   ├── images/         ← images_dir
         │   │   └── extract/        ← extract_dir
+        │   ├── dedup/              ← dedup_dir
         │   ├── provenance/         ← provenance_dir
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir
@@ -117,7 +121,7 @@ class VaultPaths:
         │   ├── compiled_wiki.json  ← compiled_wiki_path
         │   ├── search.db           ← search_db_path
         │   ├── memory.db           ← memory_db_path
-        │   ├── memory.jsonl        ← memory_log_path
+        │   ├── memory.jsonl        ┆ memory_log_path
         │   ├── memory.json         ← memory_store_path
         │   ├── verification.json   ← verification_path
         │   ├── private.json        ← private_path
@@ -166,6 +170,11 @@ class VaultPaths:
     def extract_dir(self) -> Path:
         """LLM extraction cache directory (inside cache)."""
         return self.cache_dir / EXTRACT_SUBDIR
+
+    @property
+    def dedup_dir(self) -> Path:
+        """Content-level duplicate detection fingerprints directory."""
+        return self.knox_dir / DEDUP_DIR
 
     @property
     def provenance_dir(self) -> Path:
@@ -277,6 +286,7 @@ class VaultPaths:
             self.output_dir,
             self.knox_dir,
             self.cache_dir,
+            self.dedup_dir,
             self.images_dir,
             self.extract_dir,
             self.provenance_dir,

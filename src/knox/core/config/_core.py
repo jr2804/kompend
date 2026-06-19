@@ -112,6 +112,12 @@ from knox.core.config.keys import (
     COMPILE_SOURCES_DIR,
     COMPILE_START_AT_TIER,
     COMPILE_WORKERS,
+    DEDUP_ENABLED,
+    DEDUP_MATCHERS,
+    DEDUP_MINHASH_LSH_THRESHOLD,
+    DEDUP_MODEL,
+    DEDUP_THRESHOLD_IDENTICAL,
+    DEDUP_THRESHOLD_SIMILAR,
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,
@@ -222,6 +228,14 @@ DEFAULTS: dict[str, Any] = {
         "threshold": None,
         "history_size": 20,
     },
+    "dedup": {
+        "enabled": False,           # opt-in by default
+        "matchers": "embedding,minhash",
+        "threshold_identical": 0.95,
+        "threshold_similar": 0.80,
+        "model": "",                # empty = compile.embedding.model → all-MiniLM-L6-v2
+        "minhash_lsh_threshold": 0.8,
+    },
     "trust": {
         "privacy_filter": True,
     },
@@ -312,6 +326,12 @@ _ENV_MAP: dict[str, str] = {
     ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",
     ORGANIZE_MIN_SUBCATEGORIES: "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
     ORGANIZE_COLLAPSE_SINGLE_FILE: "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
+    DEDUP_ENABLED: "KNOX_DEDUP_ENABLED",
+    DEDUP_THRESHOLD_IDENTICAL: "KNOX_DEDUP_THRESHOLD_IDENTICAL",
+    DEDUP_THRESHOLD_SIMILAR: "KNOX_DEDUP_THRESHOLD_SIMILAR",
+    DEDUP_MODEL: "KNOX_DEDUP_MODEL",
+    DEDUP_MATCHERS: "KNOX_DEDUP_MATCHERS",
+    DEDUP_MINHASH_LSH_THRESHOLD: "KNOX_DEDUP_MINHASH_LSH_THRESHOLD",
 }
 
 

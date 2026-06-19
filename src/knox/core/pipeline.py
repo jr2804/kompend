@@ -365,6 +365,13 @@ class WikiPipeline:
             return self.config.tier_state_path
         return self.config.paths.compile_state_path
 
+    def _dedup_store_path(self) -> Path:
+        """Resolve the dedup fingerprint store path."""
+        from knox.core.paths import VaultPaths  # noqa: PLC0415 — circular-safe
+
+        base_dir = self.config.resolved_base_dir()
+        return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
+
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
         state = self.state
@@ -462,12 +469,43 @@ class WikiPipeline:
         When tier state is available, sources that already match the
         persisted hash and tier are skipped to keep the per-tier
         execution incremental.
+
+        When content-level duplicate detection has run during a prior ingest,
+        the DedupStore is checked. Sources flagged as ``identical`` are
+        silently skipped. Sources flagged as ``similar`` get a duplication
+        warning attached to their metadata.
         """
         source_files = list(self.iter_sources())
         if not source_files:
             return []
 
         self._emit("parse", 0, len(source_files), "starting")
+
+        # ── Load dedup store (best-effort) ───────────────────────────
+        dedup_skip: set[str] = set()
+        dedup_similar: dict[str, dict[str, Any]] = {}
+        try:
+            from knox.preprocessing.dedup import DedupStore  # noqa: PLC0415 — lazy for optional dedup
+
+            ds = DedupStore(self._dedup_store_path())
+            ds.load()
+            if ds.is_fresh():
+                for slug in ds.slugs:
+                    entry = ds.get(slug, {})
+                    if entry.get("verdict") == "identical":
+                        dedup_skip.add(slug)
+                    elif entry.get("verdict") == "similar":
+                        dedup_similar[slug] = entry
+                if dedup_skip:
+                    logger.info("Dedup: %d source(s) flagged as identical — will skip", len(dedup_skip))
+                    source_files = [f for f in source_files if f.stem not in dedup_skip]
+                    if not source_files:
+                        self._emit("parse", 0, 0, "all skipped by dedup")
+                        return []
+            else:
+                logger.debug("Dedup store stamp mismatch or missing — skipping dedup check")
+        except Exception:
+            logger.debug("Dedup store not available — skipping dedup check", exc_info=True)
 
         workers = max(1, self.config.workers)
         use_cache = not self.config.no_cache
@@ -508,6 +546,18 @@ class WikiPipeline:
 
             if not self.chunker:
                 return []
+
+            # ── Attach dedup similarity warning if applicable ────────
+            similar_entry = dedup_similar.get(stem)
+            if similar_entry:
+                warning = (
+                    f"> [!warning] Possible duplicate\n"
+                    f"> This document is similar to **{similar_entry.get('closest_match', 'unknown')}** "
+                    f"> (score={similar_entry.get('closest_score', 0):.2f}).\n"
+                )
+                if not parsed.metadata:
+                    parsed.metadata = {}
+                parsed.metadata["_dedup_warning"] = warning
 
             # 2a. Chunk cache lookup (Tier 1).
             if use_cache and content_hash:

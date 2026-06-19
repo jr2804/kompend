@@ -105,5 +105,13 @@ COMPILE_OUTPUT_FRONTMATTER: Final[str] = "compile.output.frontmatter"
 COMPILE_OUTPUT_MAX_RELATED_LINKS: Final[str] = "compile.output.max_related_links"
 COMPILE_OUTPUT_RUMDL_CONFIG: Final[str] = "compile.output.rumdl_config"
 
+# ── dedup section ──
+DEDUP_ENABLED: Final[str] = "dedup.enabled"
+DEDUP_MATCHERS: Final[str] = "dedup.matchers"
+DEDUP_THRESHOLD_IDENTICAL: Final[str] = "dedup.threshold_identical"
+DEDUP_THRESHOLD_SIMILAR: Final[str] = "dedup.threshold_similar"
+DEDUP_MODEL: Final[str] = "dedup.model"
+DEDUP_MINHASH_LSH_THRESHOLD: Final[str] = "dedup.minhash_lsh_threshold"
+
 # ── trust/privacy ──
 TRUST_PRIVACY_FILTER: Final[str] = "trust.privacy_filter"

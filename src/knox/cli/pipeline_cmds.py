@@ -360,6 +360,7 @@ def ingest_cmd(
             router=router,
             progress_fn=_progress,
             no_cache=no_cache,
+            config=dict(cfg.flat) if hasattr(cfg, "flat") else None,
         )
     finally:
         tracker.finish()
@@ -371,4 +372,6 @@ def ingest_cmd(
         summary += f" ({result.skipped} skipped)"
     if result.failed:
         summary += f" ({result.failed} failed)"
+    if result.dedup_skipped:
+        summary += f" ({result.dedup_skipped} duplicates identified)"
     typer.echo(summary)
