@@ -9,8 +9,8 @@ from pathlib import Path
 import typer
 
 from knox.cli.app import app
-from knox.cli.args_init import InitBare, InitForce, InitGit, InitTarget
-from knox.scaffolding import ScaffoldError, scaffold_project
+from knox.cli.args_init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
+from knox.scaffolding import ScaffoldError, find_existing_project, scaffold_project
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,22 @@ def init(
     bare: InitBare = False,
     force: InitForce = False,
     git: InitGit = False,
+    keep_cache: InitKeepCache = False,
 ) -> None:
     """Create a new wiki project in TARGET (default: current directory)."""
+    target_path = Path(target)
+
+    if not force:
+        existing = find_existing_project(target_path)
+        if existing is not None:
+            typer.echo(
+                f"warning: existing KNOX project detected at {existing}.\n  Use --force to overwrite (this wipes the current vault).",
+                err=True,
+            )
+            raise typer.Exit(code=0)
+
     try:
-        result = scaffold_project(Path(target), bare=bare, force=force, git=git)
+        result = scaffold_project(target_path, bare=bare, force=force, git=git, keep_cache=keep_cache)
     except ScaffoldError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

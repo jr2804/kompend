@@ -5,6 +5,7 @@ from knox.scaffolding._core import (
     PROJECT_MARKERS,
     ScaffoldError,
     ScaffoldResult,
+    find_existing_project,
     scaffold_project,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "PROJECT_MARKERS",
     "ScaffoldError",
     "ScaffoldResult",
+    "find_existing_project",
     "scaffold_project",
 ]

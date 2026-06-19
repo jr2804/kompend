@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
-from knox.core.paths import KNOX_DIR
+from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
 
 runner = CliRunner()
 
@@ -39,14 +39,15 @@ class TestInitCommand:
         assert "NOTES.md" in result.stdout
         assert "README.md" in result.stdout
 
-    def test_existing_project_fails(self, tmp_path: Path) -> None:
+    def test_existing_project_exits_gracefully(self, tmp_path: Path) -> None:
         target = tmp_path / "existing"
         target.mkdir()
         (target / "knox.toml").write_text("# existing", encoding="utf-8")
         result = runner.invoke(app, ["init", str(target)])
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         combined = result.stdout + (result.stderr or "")
-        assert "Existing project" in combined
+        assert "existing KNOX project" in combined
+        assert "--force" in combined
 
     def test_force_flag_overwrites(self, tmp_path: Path) -> None:
         target = tmp_path / "force-wiki"
@@ -78,6 +79,22 @@ class TestInitCommand:
         assert "--bare" in result.stdout
         assert "--force" in result.stdout
         assert "--git" in result.stdout
+        assert "--keep-cache" in result.stdout
+
+    def test_keep_cache_preserves_cache(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        cache_dir.mkdir()
+        (cache_dir / "doc.json").write_text("{}", encoding="utf-8")
+        (target / "stale.md").write_text("old", encoding="utf-8")
+
+        result = runner.invoke(app, ["init", "--force", "--keep-cache", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (cache_dir / "doc.json").is_file()
+        assert not (target / "stale.md").exists()
 
 
 def _git_available() -> bool:

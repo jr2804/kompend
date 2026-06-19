@@ -30,6 +30,18 @@ InitForce = Annotated[
     ),
 ]
 
+InitKeepCache = Annotated[
+    bool,
+    typer.Option(
+        "--keep-cache",
+        help=(
+            "With --force: remove all contents of the target directory "
+            "before scaffolding, then restore the previous .knox/cache/. "
+            "Enables fast re-runs where ingest skips already-parsed documents."
+        ),
+    ),
+]
+
 InitGit = Annotated[
     bool,
     typer.Option(

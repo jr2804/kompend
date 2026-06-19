@@ -7,35 +7,35 @@
 # `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
 
 [paths]
-sources_dir = "sources"
-output_dir = "wiki"
-cache_dir = ".knox/cache"
-state_dir = ".knox"
+sources_dir = "{{ defaults.paths.sources_dir }}"
+output_dir = "{{ defaults.paths.output_dir }}"
+cache_dir = "{{ defaults.paths.cache_dir }}"
+state_dir = "{{ defaults.paths.state_dir }}"
 
 # ── User notes ──────────────────────────────────────────────────────────
 # Free-form context injected into LLM templates as {{ user_notes }}.
 # Knox never modifies this file. Missing file = no error.
 
 [notes]
-file = "NOTES.md"
+file = "{{ defaults.notes.file }}"
 
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]
 # Output format: markdown | json | typst
-format = "markdown"
+format = "{{ defaults.compile.format }}"
 
 # Chunk size in tokens (atomic elements like tables are never split)
-chunk_size = 1024
+chunk_size = {{ defaults.compile.chunk_size }}
 
 # Image handling: file (extract to disk) | base64 (inline)
-image_mode = "file"
+image_mode = "{{ defaults.compile.image_mode }}"
 
 # Pipeline start tier: index | chunk | resolve | compile | output
 # start_at_tier = "index"
 
 # Parallel parse workers (1 = sequential)
-workers = 1
+workers = {{ defaults.compile.workers }}
 
 # Typed relation extraction during Tier 2 (uses the default LLM model).
 # When enabled, the resolver extracts typed relations such as uses/depends_on
@@ -71,27 +71,27 @@ workers = 1
 #   output_budget = clamp(input_tokens * ratio, output_min, output_max)
 
 [compile.budget]
-concepts_per_batch = 8
-verify_min_ngram = 3
-wicer_max_iterations = 3
-min_content_length = 50
-min_concept_sources = 2
-max_concept_pages = 50
-chunk_size_min = 2048
-chunk_size_max = 131072
-extract_output_ratio = 0.3
-extract_output_min = 512
-extract_output_max = 8192
-gen_output_max = 16384
-overview_output_ratio = 0.1
-overview_output_min = 256
-overview_output_max = 4096
-verify_output_ratio = 0.2
-verify_output_min = 256
-verify_output_max = 4096
-lint_output_max = 8192
-wicer_probe_output_max = 4096
-wicer_eval_output_max = 4096
+concepts_per_batch = {{ defaults.compile.budget.concepts_per_batch }}
+verify_min_ngram = {{ defaults.compile.budget.verify_min_ngram }}
+wicer_max_iterations = {{ defaults.compile.budget.wicer_max_iterations }}
+min_content_length = {{ defaults.compile.budget.min_content_length }}
+min_concept_sources = {{ defaults.compile.budget.min_concept_sources }}
+max_concept_pages = {{ defaults.compile.budget.max_concept_pages }}
+chunk_size_min = {{ defaults.compile.budget.chunk_size_min }}
+chunk_size_max = {{ defaults.compile.budget.chunk_size_max }}
+extract_output_ratio = {{ defaults.compile.budget.extract_output_ratio }}
+extract_output_min = {{ defaults.compile.budget.extract_output_min }}
+extract_output_max = {{ defaults.compile.budget.extract_output_max }}
+gen_output_max = {{ defaults.compile.budget.gen_output_max }}
+overview_output_ratio = {{ defaults.compile.budget.overview_output_ratio }}
+overview_output_min = {{ defaults.compile.budget.overview_output_min }}
+overview_output_max = {{ defaults.compile.budget.overview_output_max }}
+verify_output_ratio = {{ defaults.compile.budget.verify_output_ratio }}
+verify_output_min = {{ defaults.compile.budget.verify_output_min }}
+verify_output_max = {{ defaults.compile.budget.verify_output_max }}
+lint_output_max = {{ defaults.compile.budget.lint_output_max }}
+wicer_probe_output_max = {{ defaults.compile.budget.wicer_probe_output_max }}
+wicer_eval_output_max = {{ defaults.compile.budget.wicer_eval_output_max }}
 
 # ── LLM settings ──────────────────────────────────────────────────────────
 # KNOX uses litellm under the hood, so any model string supported by
@@ -99,17 +99,17 @@ wicer_eval_output_max = 4096
 # "anthropic/claude-3-5-sonnet", "bedrock/anthropic.claude-3-sonnet".
 
 [compile.llm]
-default_model = "ollama/llama3.2"
-vlm_model = ""
-fallback_chain = []
-fallback_max_retries = 2
-timeout = 120.0
+default_model = {% if defaults.compile.llm.default_model %}"{{ defaults.compile.llm.default_model }}"{% else %}""{% endif %}
+vlm_model = {% if defaults.compile.llm.vlm_model %}"{{ defaults.compile.llm.vlm_model }}"{% else %}""{% endif %}
+fallback_chain = {{ defaults.compile.llm.fallback_chain }}
+fallback_max_retries = {{ defaults.compile.llm.fallback_max_retries }}
+timeout = {{ defaults.compile.llm.timeout }}
 # Fallback context window (used only when auto-discovery via litellm/ollama fails)
-fallback_max_input = 8192
-fallback_max_output = 4096
+fallback_max_input = {{ defaults.compile.llm.fallback_max_input }}
+fallback_max_output = {{ defaults.compile.llm.fallback_max_output }}
 # Context window safety bounds (only apply to fallback path, never to discovered values)
-num_ctx_min = 2048
-num_ctx_max = 131072
+num_ctx_min = {{ defaults.compile.llm.num_ctx_min }}
+num_ctx_max = {{ defaults.compile.llm.num_ctx_max }}
 # User-configured cap on discovered context window (tokens). When set, max_input
 # and max_output are capped to this value regardless of what litellm/Ollama report.
 # Set to a lower value to limit context usage for slower/local models.
@@ -119,12 +119,13 @@ num_ctx_max = 131072
 
 [compile.output]
 # Output flavor: obsidian | mkdocs | zensical | generic
-flavor = "obsidian"
-max_related_links = 15
+flavor = {% if defaults.compile.output.flavor %}"{{ defaults.compile.output.flavor }}"{% else %}""{% endif %}
+max_related_links = {{ defaults.compile.output.max_related_links }}
 
 [compile.output.frontmatter]
-language = "en"
-domain = "general"
+{% for key, value in defaults.compile.output.frontmatter.items() %}
+{{ key }} = "{{ value }}"
+{% endfor %}
 
 # ── Embedding settings ────────────────────────────────────────────────────
 
@@ -132,40 +133,34 @@ domain = "general"
 # Embedding model for semantic search / RAG.
 # "litellm:<model>" → LiteLLM (OpenAI, Azure, Ollama, etc.)
 # "<model>" (no prefix) → sentence-transformers from HuggingFace
-# Leave as null to disable vector indexing.
-model = null
-dim = 384
-batch_size = 10
+# Leave as "" to disable vector indexing.
+model = {% if defaults.compile.embedding.model %}"{{ defaults.compile.embedding.model }}"{% else %}""{% endif %}
+dim = {{ defaults.compile.embedding.dim }}
+batch_size = {{ defaults.compile.embedding.batch_size }}
 
 # ── Lint settings ─────────────────────────────────────────────────────────
 # Run `knox lint` to check compiled wiki for structural issues.
 
 [lint]
 # None = all structural rules. Override to enable a subset.
-enabled = []
-threshold = 80
+enabled = {% if defaults.lint.enabled is not none %}{{ defaults.lint.enabled }}{% else %}[]{% endif %}
+threshold = {% if defaults.lint.threshold is not none %}{{ defaults.lint.threshold }}{% else %}80{% endif %}
 
 # ── Eval settings ─────────────────────────────────────────────────────────
 
 [eval]
-threshold = 80
-history_size = 20
+threshold = {% if defaults.eval.threshold is not none %}{{ defaults.eval.threshold }}{% else %}80{% endif %}
+history_size = {{ defaults.eval.history_size }}
 
 # ── Trust / privacy ───────────────────────────────────────────────────────
 
 [trust]
-privacy_filter = true
+privacy_filter = {{ defaults.trust.privacy_filter|lower }}
 
 # ── Ignore patterns ───────────────────────────────────────────────────────
 # Additional patterns to exclude from source scanning (gitignore syntax).
 
 [ignore]
-patterns = []
+patterns = {{ defaults.ignore.patterns }}
 
-# ── User notes ────────────────────────────────────────────────────────────
-# Path to a user-authored notes file (relative to wiki root). KNOX reads
-# this file and exposes its content to compilation templates as
-# {{ user_notes }}. KNOX never writes to this file.
 
-[notes]
-file = "NOTES.md"

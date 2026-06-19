@@ -14,6 +14,7 @@ from knox.scaffolding import (
     AUTHORED_TEMPLATES,
     PROJECT_MARKERS,
     ScaffoldError,
+    find_existing_project,
     scaffold_project,
 )
 
@@ -128,6 +129,68 @@ class TestScaffoldProject:
         ):
             scaffold_project(target, git=True)
 
+    def test_keep_cache_preserves_cache_contents(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        cache_dir.mkdir()
+        (cache_dir / "doc1.json").write_text("{}", encoding="utf-8")
+        (cache_dir / "doc2.json").write_text("{}", encoding="utf-8")
+
+        scaffold_project(target, force=True, keep_cache=True)
+
+        assert (cache_dir / "doc1.json").is_file()
+        assert (cache_dir / "doc2.json").is_file()
+
+    def test_keep_cache_removes_other_files(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / "stale_output.md").write_text("old wiki", encoding="utf-8")
+        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        cache_dir.mkdir()
+        (cache_dir / "doc1.json").write_text("{}", encoding="utf-8")
+
+        scaffold_project(target, force=True, keep_cache=True)
+
+        assert not (target / "stale_output.md").exists()
+        assert (cache_dir / "doc1.json").is_file()
+
+    def test_keep_cache_noop_without_force(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# existing", encoding="utf-8")
+
+        with pytest.raises(ScaffoldError, match="Existing project"):
+            scaffold_project(target, keep_cache=True)
+
+    def test_keep_cache_no_existing_cache(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+
+        scaffold_project(target, force=True, keep_cache=True)
+
+        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
+        assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
+
+    def test_keep_cache_empty_cache_dir(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir()
+        (target / KNOX_DIR).mkdir()
+        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KNOX_DIR / CACHE_SUBDIR).mkdir()
+
+        scaffold_project(target, force=True, keep_cache=True)
+
+        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
+        assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
+
 
 def _git_available() -> bool:
     return shutil.which("git") is not None
@@ -140,4 +203,18 @@ class TestPublicApi:
 
     def test_authored_templates_constant(self) -> None:
         assert "NOTES.md" in AUTHORED_TEMPLATES
+
+    def test_find_existing_project_returns_none_for_empty_dir(self, tmp_path: Path) -> None:
+        assert find_existing_project(tmp_path) is None
+
+    def test_find_existing_project_detects_knox_toml(self, tmp_path: Path) -> None:
+        marker = tmp_path / "knox.toml"
+        marker.write_text("# existing", encoding="utf-8")
+        assert find_existing_project(tmp_path) == marker
+
+    def test_find_existing_project_detects_config_toml(self, tmp_path: Path) -> None:
+        (tmp_path / KNOX_DIR).mkdir()
+        marker = tmp_path / KNOX_DIR / "config.toml"
+        marker.write_text("# existing", encoding="utf-8")
+        assert find_existing_project(tmp_path) == marker
         assert "README.md" in AUTHORED_TEMPLATES
