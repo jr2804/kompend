@@ -1,8 +1,20 @@
-# AGENTS.md — knox/src (Python codebase)
+# DOX — knox Python source tree
 
-Coding conventions for the KNOX Python source tree.
+## Purpose
 
-## No text in code
+Coding conventions and quality standards for the KNOX Python source tree at
+`src/knox/`. This doc governs how Python code is written, how LLM prompts and
+human-readable text are handled, and what patterns are forbidden.
+
+## Ownership
+
+- `src/knox/` — all KNOX Python source code
+- Templates, config data, and any human-readable text within the source tree
+- Packs (prompt bundles) in `src/knox/packs/`
+
+## Local Contracts
+
+### No text in code
 
 **LLM prompts, system instructions, template strings, configuration data, and
 any other human-readable text must NOT be embedded in Python source files.**
@@ -18,7 +30,7 @@ This rule exists because:
 - **Tooling** — Jinja2 templates can be syntax-checked, diffed, and previewed.
   TOML config can be validated with a schema. Python string constants cannot.
 
-### What goes where
+#### What goes where
 
 | Content | Format | Location |
 |---------|--------|----------|
@@ -28,48 +40,46 @@ This rule exists because:
 | Pack prompts and roles | TOML | `packs/<name>/pack.toml` |
 | Any other human-readable string | TOML / Jinja2 | appropriate config dir |
 
-### How templates are loaded
+#### How templates are loaded
 
-All templates go through ``knox.core.template_loader.TemplateLoader``,
-which searches three locations in order (project > user > built-in):
+All templates go through `knox.core.template_loader.TemplateLoader`, which
+searches three locations in order (project > user > built-in):
 
 | Priority | Location | Example path |
 |----------|----------|-------------|
-| 1 (highest) | Project overrides | ``./knox/templates/`` (next to ``knox.toml``) |
-| 2 | User global overrides | ``~/.config/knox/templates/`` |
-| 3 (lowest) | Built-in (package) | ``importlib.resources`` in ``knox/templates/`` |
+| 1 (highest) | Project overrides | `./knox/templates/` (next to `knox.toml`) |
+| 2 | User global overrides | `~/.config/knox/templates/` |
+| 3 (lowest) | Built-in (package) | `importlib.resources` in `knox/templates/` |
 
-Usage::
+Usage:
 
     from knox.core.template_loader import get_template_loader
-
     loader = get_template_loader()
     rendered = loader.render("lint/clarity-score.md.j2",
-                              title="My Page", content="...")
+                             title="My Page", content="...")
 
-### Template variable validation
+#### Template variable validation
 
 Every template is validated at render time:
 
-- **StrictUndefined** — Any ``{{ var }}`` referenced in the template *must* have
-  a matching kwarg. Missing variables raise ``jinja2.UndefinedError`` immediately.
-- **Required variable check** — If the template declares ``required: true`` in its
-  frontmatter, the loader raises ``ValueError`` before rendering if the variable
-  is missing.
-- **Unused variable warning** — Kwargs that are never referenced in the template
-  are logged at ``WARNING`` level. This catches typos like passing ``contnt``
-  when the template expects ``content``.
-- **AST introspection** — Uses ``jinja2.meta.find_undeclared_variables()`` to
+- **StrictUndefined** — Any `{{ var }}` referenced in the template must have
+  a matching kwarg. Missing variables raise `jinja2.UndefinedError` immediately.
+- **Required variable check** — If the template declares `required: true` in
+  its frontmatter, the loader raises `ValueError` before rendering if the
+  variable is missing.
+- **Unused variable warning** — Kwargs never referenced in the template are
+  logged at `WARNING` level. Catches typos like `contnt` vs `content`.
+- **AST introspection** — Uses `jinja2.meta.find_undeclared_variables()` to
   determine which variables the template actually uses, without rendering it.
 
-### Acceptable exceptions
+#### Acceptable exceptions
 
 - Short (≤5 words) status messages passed to `typer.echo()` or logger calls
 - Error messages that must reference code-level constructs (variable names, types)
 - Single words used as enum members, dict keys, or field names
 - Docstrings and type annotations
 
-## Known violations (T1–T10)
+#### Known violations (T1–T10)
 
 These are filed as beads issues and must be fixed before adding new text-in-code:
 
@@ -86,43 +96,65 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 | `knox-8gj` (T9) | `output/wiki_index.py` | 1 synthesis prompt string |
 | `knox-sga` (T10) | `resolution/llm.py` | 1 default entity extraction prompt |
 
-## Python Antipatterns
+### Python Antipatterns
 
-1. **Follow the `python-ultimate` skill.** When in doubt about Python coding style, structure, or conventions, load and follow the guidelines in the `python-ultimate` skill. It takes precedence over any conflicting habit or default.
+1. **Follow the `python-ultimate` skill.** When in doubt about Python coding
+   style, structure, or conventions, load and follow the guidelines in the
+   `python-ultimate` skill. It takes precedence over any conflicting habit
+   or default.
 
-2. **No inline imports — PLC0415 is a hard error.** All imports must live at module level (standard library → third-party → local, per PEP 8 grouping). Importing inside functions, methods, or class bodies is forbidden. Using `# noqa: PLC0415` to suppress the lint error is itself an antipattern — it hides a real problem rather than fixing it. Move the import to the top of the file. The only accepted exceptions are cases where the import would cause a circular dependency or an unconditional heavy side-effect at import time; both must be documented with a comment explaining why.
+2. **No inline imports — PLC0415 is a hard error.** All imports must live at
+   module level (standard library → third-party → local, per PEP 8 grouping).
+   Importing inside functions, methods, or class bodies is forbidden. Using
+   `# noqa: PLC0415` to suppress the lint error is itself an antipattern — it
+   hides a real problem rather than fixing it. Move the import to the top of
+   the file. The only accepted exceptions are cases where the import would
+   cause a circular dependency or an unconditional heavy side-effect at import
+   time; both must be documented with a comment explaining why.
 
-3. **No try/except ImportError guards for core dependencies.** Every package listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be installed. Wrapping `import mylib` in `try: ... except ImportError: mylib = None` is pointless boilerplate — it obscures the real dependency, adds dead branches, and masks actual install failures. Import at module level, unconditionally.
+3. **No try/except ImportError guards for core dependencies.** Every package
+   listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be
+   installed. Wrapping `import mylib` in `try: ... except ImportError: mylib =
+   None` is pointless boilerplate — it obscures the real dependency, adds dead
+   branches, and masks actual install failures. Import at module level,
+   unconditionally.
 
-4. **All packages are core dependencies unless explicitly marked optional.** Unless a package is declared under `[project.optional-dependencies]` in `pyproject.toml`, assume it is always available in the venv. Never write defensive import logic that treats a required package as optional — if the code needs it, it's a dependency.
+4. **All packages are core dependencies unless explicitly marked optional.**
+   Unless a package is declared under `[project.optional-dependencies]` in
+   `pyproject.toml`, assume it is always available in the venv. Never write
+   defensive import logic that treats a required package as optional — if the
+   code needs it, it's a dependency.
 
-5. **Install what you need.** When code requires a package that is not yet in `pyproject.toml`, add it immediately:
+5. **Install what you need.** When code requires a package that is not yet in
+   `pyproject.toml`, add it immediately:
    - `uv add <package>` to install and register the dependency.
-   - If `pyproject.toml` was patched manually (e.g. by another agent), run `uv sync -U` to bring the venv in sync before importing.
-   - Never `import` a package that isn't in the lockfile — the CI and other developers will fail.
+   - If `pyproject.toml` was patched manually (e.g. by another agent), run
+     `uv sync -U` to bring the venv in sync before importing.
+   - Never `import` a package that isn't in the lockfile — the CI and other
+     developers will fail.
 
-## Parameter and default-value antipatterns
+### Parameter and default-value antipatterns
 
 These three patterns are **forbidden in new code**. Existing occurrences are
 technical debt to be cleaned up incrementally.
 
-### Antipattern 1 — Hard-coded provider/model names
+#### Antipattern 1 — Hard-coded provider/model names
 
 **Never** hard-code an LLM model identifier as a function default or inline
 string literal. Model names are configuration, not code.
 
     # ❌ FORBIDDEN — model name baked into code
-    "ollama/llama3.2"
-        ) -> Any | None:
+    def _try_litellm_json(prompt, system, model="ollama/llama3.2"):
+        ...
 
     # ❌ FORBIDDEN — same antipattern in __init__, verify_wiki, etc.
-
-    def verify_wiki(wiki, output_dir, *, model="ollama/llama3.2") -> VerificationResult:
+    def verify_wiki(wiki, output_dir, *, model="ollama/llama3.2"):
+        ...
 
     # ✅ CORRECT — model comes from config, the only place the default lives
-
-    def _try_litellm_json(prompt, system, model, timeout) -> Any | None:
+    def _try_litellm_json(prompt, system, model, timeout):
         # model is always provided by the caller, who reads it from LLMConfig
+        ...
 
 **Rule:** The string `"ollama/"` (or any other provider prefix) must never
 appear outside of:
@@ -132,20 +164,18 @@ appear outside of:
 - `knox.toml` / `knox.toml.example`
 - Test fixtures with an explicit comment `# model name is the system under test`
 
-### Antipattern 2 — Hard-coded domain values as function defaults
+#### Antipattern 2 — Hard-coded domain values as function defaults
 
 When a parameter's default is a domain-specific value (budget, threshold,
 chunk size, iteration count), it **must** come from the config layer, not from
-the function signature. The function signature should either accept a
-grouped config object or require the caller to pass the value explicitly.
+the function signature. The function signature should either accept a grouped
+config object or require the caller to pass the value explicitly.
 
     # ❌ FORBIDDEN — domain defaults scattered across signatures
-
     def __init__(self, prompt_budget: int = 200_000, extract_budget: int = 6000,
                  concepts_per_batch: int = 8, timeout: float | None = None):
 
     # ✅ CORRECT — defaults live in one place (the config dataclass)
-
     @dataclass
     class BudgetConfig:
         prompt: int = 200_000
@@ -156,7 +186,7 @@ grouped config object or require the caller to pass the value explicitly.
         def __init__(self, config: PipelineConfig) -> None:
             self._budget = config.budget  # single source of truth
 
-### Antipattern 3 — `| None = None` with hidden default inside the body
+#### Antipattern 3 — `| None = None` with hidden default inside the body
 
 When a parameter is declared as `x: SomeType | None = None` and the function
 body resolves it to a real default via `x = x or REAL_VALUE` or
@@ -164,13 +194,11 @@ body resolves it to a real default via `x = x or REAL_VALUE` or
 site and untestable without reading the implementation.
 
     # ❌ FORBIDDEN — real default (100000) hidden inside the function
-
     def __init__(self, lint_page_budget: int | None = None) -> None:
         self.lint_page_budget = lint_page_budget or 100000
 
     # ✅ CORRECT — default is explicit in the type; None is only for
     #              "not provided" at the config layer (DI / testing)
-
     def __init__(self, budget: BudgetConfig) -> None:
         self.lint_page_budget = budget.lint_page  # default 100_000 in dataclass
 
@@ -178,7 +206,6 @@ If `None` is truly needed (e.g. "use whatever the parent provides"), document
 what the effective fallback is in the docstring:
 
     # Acceptable when None has a well-defined fallback chain
-
     def __init__(self, state_store: TierStateStore | None = None) -> None:
         """...
         Args:
@@ -186,7 +213,7 @@ what the effective fallback is in the docstring:
                 ``TierStateStore(output_dir / ".knox" / "compile_state.json")``.
         """
 
-### Summary
+#### Summary
 
 | Pattern | Forbidden | Correct approach |
 |---------|-----------|-----------------|
@@ -194,14 +221,15 @@ what the effective fallback is in the docstring:
 | `budget: int = 6000` | ❌ | Config object with grouped defaults |
 | `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
 
-## Jinja2 conventions
+### Jinja2 conventions
 
-- Template files use the ``.md.j2`` extension (markdown + Jinja2).
-- Variables use ``{{ snake_case_name }}`` syntax.
-- Control flow uses ``{% for %}`` / ``{% if %}`` blocks, never Python string concatenation.
-- Each template file **starts with a YAML frontmatter block** delimited by ``---``.
-  This frontmatter is parsed by ``TemplateLoader`` and does not appear in the
-  rendered output::
+- Template files use the `.md.j2` extension (markdown + Jinja2).
+- Variables use `{{ snake_case_name }}` syntax.
+- Control flow uses `{% for %}` / `{% if %}` blocks, never Python string
+  concatenation.
+- Each template file **starts with a YAML frontmatter block** delimited by
+  `---`. This frontmatter is parsed by `TemplateLoader` and does not appear in
+  the rendered output:
 
 ---
 
@@ -219,19 +247,18 @@ what the effective fallback is in the docstring:
 
     ---
 
-    Your prompt text using {{ title }} and {{ content }}.
+The frontmatter fields are:
 
-  The frontmatter fields are:
+- `variables` — list of expected variables with `name` and `required`.
+- `role` — pipeline role (e.g. `"lint.clarity-score"`).
+- `response_format` — LLM response format (`"json_object"` or `"text"`).
+- `temperature` — LLM temperature override for this specific template.
 
-- ``variables`` — list of expected variables with ``name`` and ``required``.
-- ``role`` — pipeline role (e.g. ``"lint.clarity-score"``).
-- ``response_format`` — LLM response format (``"json_object"`` or ``"text"``).
-- ``temperature`` — LLM temperature override for this specific template.
-- Required variables declared in frontmatter are checked by the loader. If a
-  required variable is missing, ``ValueError`` is raised before the template
-  is ever rendered.
+Required variables declared in frontmatter are checked by the loader. If a
+required variable is missing, `ValueError` is raised before the template is
+ever rendered.
 
-## Adding new text — checklist
+### Adding new text — checklist
 
 Before adding a string constant to a Python file, ask:
 
@@ -242,7 +269,7 @@ Before adding a string constant to a Python file, ask:
 5. **Is this an error message referencing code internals?** → Acceptable in Python.
 6. **Have I added a `templates/` directory if one doesn't exist?** → Do it.
 
-## Pack structure
+### Pack structure
 
 When moving prompts out of `packs/builtins/<name>.py`, use this layout:
 
@@ -271,3 +298,29 @@ The `pack.toml` manifest:
     template = "resolve.md.j2"
     response_format = "json_object"
     temperature = 0.0
+
+## Work Guidance
+
+- Python 3.11+ only. Use modern typing syntax (`X | None`, `list[str]`).
+- Every module in `src/knox/` must have an `__init__.py` (even if empty) that
+  defines the public API via re-exports.
+- `src/knox/core/paths.py` is the single source of truth for all on-disk
+  artifact path constants.
+- `src/knox/core/config/` governs all configuration — see its AGENTS.md for
+  config-specific rules.
+
+## Verification
+
+- `ruff check src/knox/` — must pass without errors
+- `uv run mypy src/knox/` — for type safety when annotations change
+- `uv run pytest tests/unit/ -x --timeout=30` — unit tests pass
+- `uv run pytest tests/integration/ -x --timeout=120` — integration tests pass
+
+---
+
+## Child DOX Index
+
+| Path | Scope |
+|------|-------|
+| `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
+| `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |

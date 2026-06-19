@@ -1,20 +1,34 @@
-# AGENTS.md — knox.core.config
+# DOX — knox.core.config
 
-Rules for AI coding assistants working on the KNOX configuration system.
+## Purpose
 
-## Architecture
+Configuration resolution engine for KNOX. Governs how config values are
+discovered, merged, overridden, and accessed. All project configuration flows
+through this package — no other module reads config files or env vars directly.
+
+## Ownership
+
+- `src/knox/core/config/` — config defaults, env var mapping, TOML loading,
+  precedence logic, public API (`resolve_config`, `ResolvedConfig`)
+- `knox.toml.example` (at project root) — reference config, the schema contract
+
+## Local Contracts
+
+### Architecture
 
 ```text
 src/knox/core/config/
-├── __init__.py        # Public API re-exports
-├── _core.py           # Config resolution engine (merge, precedence, discovery)
-└── AGENTS.md          # This file
+├── __init__.py    # Public API re-exports
+├── _core.py       # Config resolution engine (merge, precedence, discovery)
+├── keys.py        # Config key constants
+├── _configs.py    # Config dataclass definitions
+└── AGENTS.md      # This file
 ```
 
 Public API lives in `__init__.py`. Internal helpers in `_core.py` are prefixed
 with `_` and should not be imported outside this package or tests.
 
-## Precedence order (memorize this)
+### Precedence order (memorize this)
 
 ```text
 CLI args  >  env vars (KNOX_*)  >  project knox.toml  >  global config.toml  >  defaults
@@ -22,7 +36,7 @@ CLI args  >  env vars (KNOX_*)  >  project knox.toml  >  global config.toml  >  
 
 When adding a new config key, **all 5 layers must work**. Test each.
 
-## Adding a new config key — checklist
+### Adding a new config key — checklist
 
 1. **Add to `DEFAULTS` dict** in `_core.py` — every key must have a default.
 2. **Add to `_ENV_MAP`** if the key makes sense as an env var override. Use the
@@ -41,7 +55,7 @@ When adding a new config key, **all 5 layers must work**. Test each.
 6. **Write tests** — at minimum: default value, project config override, env var
    override, CLI override, full precedence chain.
 
-## Conventions
+### Conventions
 
 - **TOML only** — no YAML, no JSON config files. Python 3.11+ has `tomllib`.
 - **Dotted keys** — all config access uses dot-separated paths:
@@ -58,7 +72,7 @@ When adding a new config key, **all 5 layers must work**. Test each.
 - **`knox.toml.example` is the schema contract** — it must always reflect the
   current keys, defaults, and valid options. Treat it like a living spec.
 
-## File locations
+### File locations
 
 | File | Purpose | Tracked in git |
 |------|---------|----------------|
@@ -66,9 +80,18 @@ When adding a new config key, **all 5 layers must work**. Test each.
 | `knox.toml` | User's actual project config | No (gitignored) |
 | `~/.config/knox/config.toml` | User's global config | No |
 
-## Testing
+## Verification
 
 - Use `monkeypatch.chdir(tmp_path)` in tests that call `resolve_config()` —
   the real project root has a `knox.toml` that would leak into tests.
 - Test precedence by setting up multiple layers and asserting the winner.
 - Test provenance via `cfg.source_of("key")` — it must report the winning layer.
+- After changing `DEFAULTS` or `_ENV_MAP`, verify each layer override still
+  wins in the correct order.
+- `knox.toml.example` must stay in sync with `DEFAULTS` — run a diff check.
+
+---
+
+## Child DOX Index
+
+*This module has no child AGENTS.md files.*

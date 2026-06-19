@@ -1,12 +1,19 @@
-# AGENTS.md — knox.cli
+# DOX — knox.cli
 
-Rules for AI coding assistants working on the KNOX CLI layer.
+## Purpose
 
-## Design principle
+The CLI layer is a thin shell over the KNOX core library. It parses user input,
+calls the right core function, and formats the output. Nothing more.
 
-> **`knox` must be usable as a Python library without importing `knox.cli`.**
-> The CLI is a thin shell over the core library. It parses user input, calls
-> the right core function, and formats the output. Nothing more.
+`knox` must be usable as a Python library without importing `knox.cli`.
+
+## Ownership
+
+- `src/knox/cli/` — all CLI command definitions, argument declarations, output
+  formatting, and thin wrappers that delegate to core
+- CLI-specific orchestration (file resolution, URL downloads, source copies)
+
+## Local Contracts
 
 ### What belongs in `knox.cli`
 
@@ -30,10 +37,10 @@ Rules for AI coding assistants working on the KNOX CLI layer.
 
 ### The test
 
-If you can remove `src/knox/cli/` and `import knox` still works for programmatic
-use (pipeline, models, config, lint), then the boundary is clean.
+If you can remove `src/knox/cli/` and `import knox` still works for
+programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
-## File responsibilities
+### File responsibilities
 
 | File | Purpose |
 |---|---|
@@ -45,8 +52,6 @@ use (pipeline, models, config, lint), then the boundary is clean.
 | `_progress.py` | Rich progress bar wrappers. |
 | `doctor.py` | Health checks (dirs, parsers, LLM connectivity). |
 | `status.py` | Wiki statistics collection and display. |
-
-## Conventions
 
 ### Argument declarations (`args.py`)
 
@@ -93,7 +98,7 @@ touched, not extended:
 | `doctor.py` has its own parser registration logic | `doctor.py:58-74` | Should reuse `build_default_router()` from the parser registry |
 | `status.py` imports from `knox.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
 
-The following violations were fixed in Q24 (do not re-introduce):
+### Fixed violations (do not re-introduce)
 
 | Fixed | Was |
 |---|---|
@@ -103,3 +108,23 @@ The following violations were fixed in Q24 (do not re-introduce):
 | `doctor.py` now uses `LLMClient.try_complete()` | Direct `litellm.completion()` call |
 | `status.py` now uses `find_project_config()` | Hardcoded `.knox/config.yaml` path |
 | `SUPPORTED_EXTENSIONS` → `get_supported_extensions()` querying parser registry | Duplicated extension set |
+
+## Work Guidance
+
+- Never expand the CLI's role beyond input/output formatting and thin delegation.
+- When adding a new command: add `Annotated` types to `args.py`, add the
+  `@app.command` function to `commands.py`, add argument → config mapping in
+  `_build_cli_overrides()`.
+- Use `typer.echo()` consistently — not `print()`.
+
+## Verification
+
+- `uv run python -m knox.cli --help` — app starts and shows commands
+- `uv run pytest tests/unit/ -k "cli" -x --timeout=30` — CLI tests pass
+- `import knox` works without importing `knox.cli`
+
+---
+
+## Child DOX Index
+
+*This module has no child AGENTS.md files.*

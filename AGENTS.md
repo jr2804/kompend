@@ -1,15 +1,129 @@
-# AGENTS.md — Rules for AI Assistants
+# DOX framework
 
-You are working in the **knox** repository.
+- DOX is a highly performant AGENTS.md hierarchy installed here
+- Agent must follow DOX instructions across any edits
+- This document is the **root DOX rail** for the KNOX repository
 
-## Project
+## Core Contract
+
+- AGENTS.md files are binding work contracts for their subtrees
+- Work products, source materials, instructions, records, assets, and durable docs
+  must stay understandable from the nearest applicable AGENTS.md plus every parent
+  AGENTS.md above it
+
+## Read Before Editing
+
+1. Read this root AGENTS.md
+2. Identify every file or folder you expect to touch
+3. Walk from the repository root to each target path
+4. Read every AGENTS.md found along each route
+5. If a parent AGENTS.md lists a child AGENTS.md whose scope contains the path,
+   read that child and continue from there
+6. Use the nearest AGENTS.md as the local contract and parent docs for
+   repo-wide rules
+7. If docs conflict, the closer doc controls local work details, but no child
+   doc may weaken DOX
+
+Do not rely on memory. Re-read the applicable DOX chain in the current session
+before editing.
+
+## Update After Editing
+
+Every meaningful change requires a DOX pass before the task is done.
+
+Update the closest owning AGENTS.md when a change affects:
+
+- purpose, scope, ownership, or responsibilities
+- durable structure, contracts, workflows, or operating rules
+- required inputs, outputs, permissions, constraints, side effects, or artifacts
+- user preferences about behavior, communication, process, organization, or quality
+- AGENTS.md creation, deletion, move, rename, or index contents
+
+Update parent docs when parent-level structure, ownership, workflow, or child
+index changes. Update child docs when parent changes alter local rules.
+Remove stale or contradictory text immediately. Small edits that do not change
+behavior or contracts may leave docs unchanged, but the DOX pass still must
+happen.
+
+## Style
+
+All AGENTS.md files are loaded into the agent's context window on every
+applicable task. Every redundant word, duplicated rule, or overly verbose
+description wastes context and dilutes signal.
+
+- **No redundancy.** A rule must live in exactly one AGENTS.md. If a concept
+  applies to multiple scopes, put it in the nearest common parent doc, not in
+  every child. Cross-reference with a one-liner rather than copying text.
+- **Precise and brief.** Say what the agent must know in as few words as
+  possible. Favor bullet lists over prose paragraphs. Favor tables over
+  bullet lists when comparing multiple items.
+- **Delete over explain.** Remove stale or contradictory text immediately.
+  Do not preserve old rules with a deprecation note — delete them.
+- **Every line earns its place.** If a sentence could be removed without
+  changing the agent's behavior, remove it.
+- **Child docs are local only.** A child doc must not repeat rules from its
+  parent. If it needs to reference a parent rule, write "See root AGENTS.md:
+  [rule name]" — not the full text.
+
+## Hierarchy
+
+- Root AGENTS.md is the DOX rail: project-wide instructions, global preferences,
+  durable workflow rules, and the top-level Child DOX Index
+- Child AGENTS.md files own domain-specific instructions and their own Child
+  DOX Index
+- Each parent explains what its direct children cover and what stays owned by
+  the parent
+- The closer a doc is to the work, the more specific and practical it must be
+
+### When to create a child AGENTS.md
+
+Create a child AGENTS.md only when **all** of these hold:
+
+1. **Durable boundary** — The directory has a stable, recurring purpose, not a
+   one-off task or transient structure.
+2. **Distinct rules** — The work done here follows rules materially different
+   from the parent's rules.
+3. **Sufficient density** — Rules are numerous or nuanced enough to justify a
+   separate file rather than a bullet in the parent.
+4. **Code directories only** — Children are for code directories where agents
+   do substantial work and frequently repeat mistakes. Test code counts as
+   code — tests have distinct patterns and antipatterns that warrant a local
+   doc, especially to prevent file-creation errors.
+
+**Counterexamples** that do not warrant child docs:
+
+- `docs/` — documentation format rules fit in a paragraph in the parent
+- `.forgejo/` — CI workflow rules are self-documenting in YAML
+- `scripts/` — utility scripts with no distinct agent-facing rules
+- `.config/`, `.vscode/` — tool configuration, not agent work boundaries
+
+When in doubt, **keep rules in the parent**. A child doc is a commitment to
+maintain it. Delete or merge child docs when their rules become sparse or are
+absorbed by the parent.
+
+### KNOX hierarchy
+
+```text
+AGENTS.md (root)               ↤ project-wide rules
+├── src/knox/AGENTS.md         ↤ Python source: text-in-code, antipatterns
+│   ├── cli/AGENTS.md          ↤ CLI layer: thin shell over core
+│   └── core/config/AGENTS.md  ↤ Config: resolution, precedence, TOML
+└── tests/AGENTS.md            ↤ testing conventions, test antipatterns
+```
+
+---
+
+## KNOX Project Rules
+
+### Project
 
 **KNOX** = Knowledge Organizer for eXtended documents.
 
 A parser-agnostic, structure-preserving, LLM-aware knowledge base compiler.
-Follows a 5-tier pipeline: Preprocessing -> Chunking -> Resolution -> Compilation -> Output.
+Follows a 5-tier pipeline:
+Preprocessing → Chunking → Resolution → Compilation → Output.
 
-## Priorities
+### Priorities
 
 If rules conflict, lower-numbered priority wins:
 
@@ -20,40 +134,63 @@ If rules conflict, lower-numbered priority wins:
 5. Consistency
 6. Performance
 
-## Boundaries
+### Boundaries
 
-- NEVER fabricate paths, commits, APIs, config keys, env vars, test results, or capabilities. State gaps explicitly.
-- NEVER game verification by weakening assertions, narrowing scope, reducing coverage, or skipping checks just to get a pass.
-- NEVER expose secrets — do not log, export, embed, or quote credentials, tokens, or keys. If encountered mid-task: (1) do not include any part of the secret in your response; (2) immediately stop all work; (3) report the file path and line range (not the secret value) to the user; (4) discard any uncommitted changes that would expose the secret. Do not commit or push before reporting.
+- NEVER fabricate paths, commits, APIs, config keys, env vars, test results, or
+  capabilities. State gaps explicitly.
+- NEVER game verification by weakening assertions, narrowing scope, reducing
+  coverage, or skipping checks just to get a pass.
+- NEVER expose secrets — do not log, export, embed, or quote credentials,
+  tokens, or keys. If encountered mid-task: (1) do not include any part of the
+  secret in your response; (2) immediately stop all work; (3) report the file
+  path and line range (not the secret value) to the user; (4) discard any
+  uncommitted changes that would expose the secret. Do not commit or push
+  before reporting.
 - NEVER run or suggest destructive commands without explicit confirmation.
 - Be direct. Avoid flattery, filler, and agreeing with incorrect premises.
 
-## Uncertainty
+### Uncertainty
 
 - Ask before acting when intent is materially ambiguous.
-- Ask before choices that change behavior, API/UX, naming, auth, dependencies, or compatibility.
-- Prefer one targeted question. When bundling, ensure each question can be answered independently.
-- Proceed without asking only when ambiguity is low-risk and repo conventions make the choice clear. State the assumption briefly.
-- **Exception — Session Completion overrides the ask-before-persistence rule for end-of-session pushes.** The mandatory push workflow (see Session Completion) is autonomous and does not require confirmation. All other Uncertainty rules still apply.
+- Ask before choices that change behavior, API/UX, naming, auth, dependencies,
+  or compatibility.
+- Prefer one targeted question. When bundling, ensure each question can be
+  answered independently.
+- Proceed without asking only when ambiguity is low-risk and repo conventions
+  make the choice clear. State the assumption briefly.
+- **Exception — Session Completion overrides the ask-before-persistence rule
+  for end-of-session pushes.** The mandatory push workflow (see Completion) is
+  autonomous and does not require confirmation. All other Uncertainty rules
+  still apply.
 
-## Evidence
+### Evidence
 
 Gather evidence proportional to risk.
 
 - Trivial low-risk edit: inspect the target file and adjacent context.
-- Medium-risk change (logic, algorithm, or multi-file refactor with no API or dependency impact): trace the direct execution path and check existing tests for the affected area before editing.
-- Behavioral, API, dependency, or infrastructure change: trace execution path, call sites, constraints, and regression surface before editing.
-- Check local code, imports, config, types, tests, and patterns before assuming behavior.
-- If local dependency or generated code is unreadable, check matching upstream docs or source before guessing.
-- Prefer external verification over self-review. A fresh test beats re-reading your own code.
+- Medium-risk change (logic, algorithm, multi-file refactor with no API or
+  dependency impact): trace the direct execution path and check existing tests
+  for the affected area before editing.
+- Behavioral, API, dependency, or infrastructure change: trace execution path,
+  call sites, constraints, and regression surface before editing.
+- Check local code, imports, config, types, tests, and patterns before assuming
+  behavior.
+- If local dependency or generated code is unreadable, check matching upstream
+  docs or source before guessing.
+- Prefer external verification over self-review. A fresh test beats re-reading
+  your own code.
 - State uncertainty when something cannot be confirmed.
 
-Proceed once the execution path, constraints, and regression surface are clear enough for a minimal correct change. If not, ask or report the gap.
+Proceed once the execution path, constraints, and regression surface are clear
+enough for a minimal correct change. If not, ask or report the gap.
 
-## Workflow
+### Workflow
 
-1. Explore in the main agent first — read files, trace execution paths, search patterns — and build your own understanding. Do not delegate before you have seen the data.
-2. Scan available skills for direct and adjacent matches before choosing the execution path. When in doubt, load the skill and check.
+1. Explore in the main agent first — read files, trace execution paths, search
+   patterns — and build your own understanding. Do not delegate before you have
+   seen the data.
+2. Scan available skills for direct and adjacent matches before choosing the
+   execution path. When in doubt, load the skill and check.
 3. Choose one execution path after main-agent scoping:
    - Single-track or dependent steps: stay in the main agent.
    - Small reads or searches: use parallel tool calls in the main agent.
@@ -61,83 +198,115 @@ Proceed once the execution path, constraints, and regression surface are clear e
    - Use 2+ subagents or none. NEVER launch exactly 1 subagent.
 4. Synthesize findings and re-read target files if context is stale.
 5. Implement the smallest correct change.
-6. Discover validation commands from local tooling, then run the narrowest relevant check.
+6. Discover validation commands from local tooling, then run the narrowest
+   relevant check.
 
-Workflow compression means skipping steps 1–2 (explore and scan skills) and proceeding directly to step 5 (implement). This applies only to coupled, single-track work where the next step depends on the current finding.
+Workflow compression means skipping steps 1–2 (explore and scan skills) and
+proceeding directly to step 5 (implement). This applies only to coupled,
+single-track work where the next step depends on the current finding.
 
-For review, debugging, or analysis requests, do not make code changes unless the user explicitly asks for a fix after seeing your findings. Report findings first; wait for instruction before editing.
+For review, debugging, or analysis requests, do not make code changes unless
+the user explicitly asks for a fix after seeing your findings. Report findings
+first; wait for instruction before editing.
 
-## Subagents
+### Subagents
 
 Use 2+ subagents or none. NEVER launch exactly 1 subagent.
 
-The main agent is a builder, not a dispatcher. Work first, delegate second. Use subagents proactively, but only after scoping has split the work into tracks ready for parallel execution.
+The main agent is a builder, not a dispatcher. Work first, delegate second.
+Use subagents proactively, but only after scoping has split the work into
+tracks ready for parallel execution.
 
-A subagent call blocks the main agent, so main agent + 1 subagent is sequential work, not parallelism. This also means all subagents must be launched as a batch in the same response.
+A subagent call blocks the main agent, so main agent + 1 subagent is sequential
+work, not parallelism. This also means all subagents must be launched as a
+batch in the same response.
 
-Before launching subagents, confirm: (a) main-agent scoping is complete, (b) work splits into 2+ fully independent tracks, (c) each track has a concrete return format. If all three are true, launch all tracks in one response. Otherwise, stay in the main agent.
+Before launching subagents, confirm: (a) main-agent scoping is complete,
+(b) work splits into 2+ fully independent tracks, (c) each track has a concrete
+return format. If all three are true, launch all tracks in one response.
+Otherwise, stay in the main agent.
 
-- Identify tasks and draft one prompt per task — each covering a separate area, question, or set of files. Keep scoping in the main agent until you have 2+ prompts ready.
-- Each track must complete without the results of the others. If a track depends on another's findings, handle it in the main agent.
-- Each subagent prompt must specify a concrete return format — not "report findings" or "explore the codebase," but a specific answer, list, or summary.
-- Subagents are bound by the same Boundaries, Evidence, and Safety rules as the main agent. The concrete return format is in addition to, not instead of, these constraints.
-- Keep quick scoping, simple concurrent I/O, and work on data already in context in the main agent. Use parallel tool calls when helpful.
-- Do not hand off data already in main-agent context to a subagent for formatting, transformation, or generation.
-- After the batch returns, synthesize results and use the main agent only for narrow gap-filling before implementation.
+- Identify tasks and draft one prompt per task — each covering a separate area,
+  question, or set of files. Keep scoping in the main agent until you have 2+
+  prompts ready.
+- Each track must complete without the results of the others. If a track
+  depends on another's findings, handle it in the main agent.
+- Each subagent prompt must specify a concrete return format — not "report
+  findings" or "explore the codebase," but a specific answer, list, or summary.
+- Subagents are bound by the same Boundaries, Evidence, and Safety rules as the
+  main agent. The concrete return format is in addition to, not instead of,
+  these constraints.
+- Keep quick scoping, simple concurrent I/O, and work on data already in
+  context in the main agent. Use parallel tool calls when helpful.
+- Do not hand off data already in main-agent context to a subagent for
+  formatting, transformation, or generation.
+- After the batch returns, synthesize results and use the main agent only for
+  narrow gap-filling before implementation.
 
-## Testing
-
-- Preserve existing tests. Update tests when behavior changes. Do not silently change tested behavior.
-- Scope validation proportionally: docs/text readback; type/API targeted typecheck or test; runtime/UI targeted test, lint, or build.
-- If relevant checks already fail, state that and do not attribute them to your work.
-- If verification fails after your change, make one targeted fix when the cause is clear; otherwise stop and report the failure.
-- If full validation is impractical, run the narrowest relevant check and state what was not verified.
-
-## Change Constraints
+### Change Constraints
 
 - Do exactly what was asked. Do not expand scope without clear reason.
-- Reuse existing abstractions, helpers, dependencies, style, naming, structure, and error handling.
-- Prefer the smallest viable change. Do not modify working code without clear justification.
-- Note adjacent issues separately unless they are required to complete the requested change.
-- Add dependencies only when necessary. Prefer existing dependencies; if a new one is needed, choose the smallest viable option.
+- Reuse existing abstractions, helpers, dependencies, style, naming, structure,
+  and error handling.
+- Prefer the smallest viable change. Do not modify working code without clear
+  justification.
+- Note adjacent issues separately unless they are required to complete the
+  requested change.
+- Add dependencies only when necessary. Prefer existing dependencies; if a new
+  one is needed, choose the smallest viable option.
 
-## Safety & Infrastructure
+### Safety & Infrastructure
 
-- Propagate failures using existing error patterns; do not swallow errors silently.
-- Check injection, path traversal, unvalidated input, auth bypass, and secret leakage risks.
-- For infrastructure work, inspect environment, services, configs, and logs before changing anything.
+- Propagate failures using existing error patterns; do not swallow errors
+  silently.
+- Check injection, path traversal, unvalidated input, auth bypass, and secret
+  leakage risks.
+- For infrastructure work, inspect environment, services, configs, and logs
+  before changing anything.
 - Validate config before reload or restart; prefer reload when safe.
 
-## Git & PRs
+### Git & PRs
 
-- Commit only when explicitly requested, except during Session Completion (see below).
+- Commit only when explicitly requested, except during Session Completion
+  (see Completion section).
 - Write commit messages that state the change clearly and why it was needed.
 - Keep PRs small and scoped to one concern.
 - Do not force-push to main/master.
 - Do not use `--no-verify` or `--no-gpg-sign`.
 
-## Completion
+### Completion
 
-Before declaring completion, confirm the change solves the stated problem, relevant validation ran or gaps are stated, no known unintended side effects were introduced, and no secrets were added or exposed.
+Before declaring completion, confirm:
 
-## Response Format
+- The change solves the stated problem
+- Relevant validation ran or gaps are stated
+- No known unintended side effects were introduced
+- No secrets were added or exposed
+
+### Response Format
 
 Be concise and specific by default. No filler, intros, or restated requirements.
-
 Answer direct questions directly when possible.
 
-For review, debugging, or analysis outputs, use: findings with references, conclusion, approach. Mention caveats and unverified risks.
+For review, debugging, or analysis outputs, use:
+findings with references, conclusion, approach.
+Mention caveats and unverified risks.
 
-## Conventions
+### Conventions
 
 - English-only for all code, docs, and commits
-- Use `uv run` / `uv run -m` for all Python execution; never call `python`, `python3`, `python -m`, `python3 -m`, or `pip` directly!
+- Use `uv run` / `uv run -m` for all Python execution; never call `python`,
+  `python3`, `python -m`, `python3 -m`, or `pip` directly
 - Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`)
 - All parsers implement `BaseParser`; all chunkers implement `BaseChunker`
 - Online sources (URLs) go through `downloaders/` before `parsers/`
 - MCP server is a thin wrapper — no business logic duplication
+- Documentation uses standard Markdown. Internal links use relative paths
+  (`../architecture/index.md`). Diagrams use Mermaid in fenced code blocks.
+- Release versioning follows `YYYY.M.D` / `YYYY.M.D.N` calver format
+  (no zero-padding, no `v` prefix). See `.forgejo/workflows/release.yml`.
 
-## Path Constants — Single Source of Truth
+### Path Constants — Single Source of Truth
 
 All on-disk artifact names (directory and file names under the project root)
 are defined as `Final[str]` constants in **`src/knox/core/paths.py`**. No other
@@ -180,10 +349,53 @@ under `["paths"]["sources_dir"]` and `["paths"]["output_dir"]` — not in
 **Tests** must also import from `knox.core.paths` — never hard-code path
 strings in test assertions.
 
-## Text in Code
+- All tests use `pytest` and `tmp_path` for filesystem operations.
+- Unit tests must mock external dependencies (LLM, network, filesystem).
+- Integration tests that call LLM APIs must use `@pytest.mark.skipif`
+  checking for API key availability.
+- Test files follow `test_<module>.py` naming.
 
-Human-readable text must never be embedded in Python code. See `src/knox/AGENTS.md` for the full convention (what goes where, template loading, acceptable exceptions). See `src/knox/core/config/AGENTS.md` for configuration-specific rules. If these files are not in context, read them before writing any text-bearing Python files.
+### Issue Tracking
 
-## Issue Tracking
+This project uses **bd (beads)** for all task tracking. Load the `beads` skill
+for workflow details, commands, and session close protocol. Do NOT use
+TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
 
-This project uses **bd (beads)** for all task tracking. Load the `beads` skill for workflow details, commands, and session close protocol. Do NOT use TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
+---
+
+## Verification
+
+- Run `ruff check` on changed Python files before committing
+- Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
+- Run `uv run pytest tests/integration -x --timeout=120` for integration tests
+- Run `uv run -m mypy src/knox` for type checking when changing type annotations
+- Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
+- After changing `src/knox/core/paths.py`, verify no hard-coded path strings
+  exist in other `.py` files
+- Run `uv run zensical build --strict` when changing documentation files
+
+### Closeout
+
+1. Re-check changed paths against the DOX chain
+2. Update nearest owning docs and any affected parents or children
+3. Refresh every affected Child DOX Index
+4. Remove stale or contradictory text
+5. Run existing verification when relevant
+6. Report any docs intentionally left unchanged and why
+
+### User Preferences
+
+- The user prefers concise, direct answers with no filler or intros
+- Use `uv run` for all Python execution, never direct `python` calls
+- All task tracking via `bd` (beads) — no markdown TODO lists
+- English-only for code, docs, and commits
+- Conventional commits format (`feat:`, `fix:`, `chore:`, `docs:`, etc.)
+
+---
+
+### Child DOX Index
+
+| Path | Scope |
+|------|-------|
+| `src/knox/AGENTS.md` | Python source tree — text-in-code conventions, antipatterns, Jinja2 templates, pack structure |
+| `tests/AGENTS.md` | Testing — unit, integration, benchmarks, fixtures, helpers, test antipatterns |
