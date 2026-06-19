@@ -7,7 +7,6 @@
 # Usage:
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml     # enterprise LLM (~1M ctx)
 #   .\scripts\build-wiki.ps1 scripts\config-local.toml      # local LLM (128K ctx)
-#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -Force
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -WhatIf
 #
 # A/B testing:
@@ -20,11 +19,23 @@ param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$ConfigFile,
 
-    [switch]$Force,
+    [switch]$Force,  # deprecated — kept for backward compat, no longer forces re-parse
     [switch]$WhatIf
 )
 
 $ErrorActionPreference = "Stop"
+
+# ── Sync environment (ensure latest source is installed) ────────────────
+Write-Host "=== Syncing environment (uv sync) ===" -ForegroundColor Cyan
+$ProjectRoot = $PSScriptRoot | Split-Path -Parent
+
+if (-not $WhatIf) {
+    & uv sync -U --directory $ProjectRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "uv sync failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+}
 
 # ── Validate config ─────────────────────────────────────────────────────
 $ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
@@ -58,7 +69,6 @@ $LLMModel    = Get-ConfigValue "default_model"
 $VlmModel    = Get-ConfigValue "vlm_model"
 $EmbedModel  = Get-ConfigValue "embed_model"
 $OutputName  = Get-ConfigValue "output_name"
-$ProjectRoot = $PSScriptRoot | Split-Path -Parent
 $OutputPath  = Join-Path $ProjectRoot $OutputName
 
 if (-not $LLMModel) {
@@ -70,21 +80,22 @@ if (-not $OutputName) {
     exit 1
 }
 
-Write-Host "  Model:  $LLMModel" -ForegroundColor DarkGray
-if ($VlmModel)  { Write-Host "  VLM:    $VlmModel" -ForegroundColor DarkGray }
-Write-Host "  Embed:  $EmbedModel" -ForegroundColor DarkGray
+$model_msg   = if ($LLMModel)   { $LLMModel }   else { "(default from config)" }
+$vlm_msg     = if ($VlmModel)    { $VlmModel }    else { "(default from config)" }
+$embed_msg   = if ($EmbedModel)  { $EmbedModel }  else { "(default from config)" }
+
+Write-Host "  Model:  $model_msg" -ForegroundColor DarkGray
+if ($VlmModel) { Write-Host "  VLM:    $vlm_msg" -ForegroundColor DarkGray }
+Write-Host "  Embed:  $embed_msg" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
 $UrlFile    = Join-Path $ProjectRoot "tests/data/urls.txt"
 
-# ── Clean (if -Force) ──────────────────────────────────────────────────
-if ($Force) {
-    if (Test-Path $OutputPath) {
-        Write-Host "Removing $OutputPath" -ForegroundColor Yellow
-        if (-not $WhatIf) { Remove-Item -Recurse -Force $OutputPath }
-    }
-}
+# ── Clean ──────────────────────────────────────────────────────────────
+# --force --keep-cache on knox init handles directory reset + cache
+# preservation. The cache-skip logic in ingest already skips unchanged
+# files (hash-based). No manual cache clearing needed.
 
 # ── Stage 0: Init (scaffold project structure) ─────────────────────────
 Write-Host ""
@@ -93,7 +104,8 @@ $InitArgs = @(
     "uv", "run", "knox", "init",
     $OutputPath,
     "--bare",
-    "--force"
+    "--force",
+    "--keep-cache"
 )
 
 Write-Host ""
@@ -104,6 +116,31 @@ if (-not $WhatIf) {
     & $InitArgs[0] $InitArgs[1..($InitArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
         Write-Error "knox init failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+}
+
+# ── Stage 0b: Merge config overrides ──────────────────────────────────
+# Write the merged config (defaults + override file) into .knox/config.toml
+# so the wiki directory has a self-contained, inspectable config.
+Write-Host ""
+Write-Host "=== Stage 0b: Merge config overrides ===" -ForegroundColor Cyan
+$KnoxConfigPath = Join-Path $OutputPath ".knox/config.toml"
+$MergeScript = Join-Path $PSScriptRoot "merge_config.py"
+$MergeArgs = @(
+    "uv", "run", "python", $MergeScript,
+    $KnoxConfigPath,
+    $ConfigPath
+)
+
+Write-Host ""
+Write-Host ($MergeArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $MergeArgs[0] $MergeArgs[1..($MergeArgs.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Config merge failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -121,10 +158,9 @@ $IngestArgs = @(
     "--config",      $ConfigPath
 )
 
-if ($Force) {
-    $IngestArgs += "--force"
-    $IngestArgs += "--no-cache"
-}
+# $Force no longer forces re-parse. The cache-skip logic in ingest
+# already skips unchanged files (hash-based). To force a full re-parse,
+# run: knox ingest --no-cache --wiki-dir <dir> manually before this script.
 
 Write-Host ""
 Write-Host ($IngestArgs -join " ") -ForegroundColor DarkGray
@@ -148,7 +184,6 @@ $CompileArgs = @(
     $InputFiles,
     "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
-    "--embed-model",      $EmbedModel,
     "--resolve-relations",
     "--flavor",           "obsidian",
     "--compiler",         "wicer",
@@ -160,6 +195,9 @@ $CompileArgs = @(
 
 if ($VlmModel) {
     $CompileArgs += @("--vlm-model", $VlmModel)
+}
+if ($EmbedModel) {
+    $CompileArgs += @("--embed-model", $EmbedModel)
 }
 
 Write-Host ""

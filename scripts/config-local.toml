@@ -13,6 +13,8 @@ output_name = "demo-wiki-local"
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
 default_model = "ollama/lfm2.5"
+vlm_model     = "ollama/glm-ocr"
+# context_window_cap = # optional; if not set, build-wiki.ps1 will call /api/show
 timeout = 600.0
 
 fallback_max_retries = 2

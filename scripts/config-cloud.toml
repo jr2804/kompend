@@ -12,8 +12,9 @@ output_name = "demo-wiki-cloud"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-default_model      = "ollama-cloud/deepseek-v4-flash"
-vlm_model          = "ollama-cloud/glm-ocr"
+#default_model      = "ollama-cloud/deepseek-v4-flash"
+default_model      = "opencode/deepseek-v4-flash-free"
+vlm_model          = "ollama/glm-ocr"
 timeout            = 300.0
 context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show
 
