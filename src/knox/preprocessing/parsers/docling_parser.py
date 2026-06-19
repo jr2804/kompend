@@ -90,10 +90,7 @@ class DoclingParser(BaseParser):
     def parse(self, source_path: Path) -> ParsedDocument:
         converter = self._get_converter()
 
-        if (
-            source_path.suffix.lower() == ".pdf"
-            and self._pdf_config.max_pages_before_chunking > 0
-        ):
+        if source_path.suffix.lower() == ".pdf" and self._pdf_config.max_pages_before_chunking > 0:
             page_count = self._count_pdf_pages(source_path)
             if page_count > self._pdf_config.max_pages_before_chunking:
                 logger.info(

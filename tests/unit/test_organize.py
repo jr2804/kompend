@@ -443,9 +443,7 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["wiki_files"] == 2
-        assert page.read_text(encoding="utf-8") == (
-            "Some claim ^[new.md:1-2] here.\nAnother ^[new.md:5-7] ref."
-        )
+        assert page.read_text(encoding="utf-8") == ("Some claim ^[new.md:1-2] here.\nAnother ^[new.md:5-7] ref.")
 
     def test_updates_provenance(self, tmp_path: Path) -> None:
         prov_dir = tmp_path / KNOX_DIR / "provenance"

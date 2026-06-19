@@ -366,24 +366,6 @@ class WikiPipeline:
             return self.config.tier_state_path
         return self.config.knox_dir() / COMPILE_STATE_FILE
 
-    @staticmethod
-    def _extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
-        """Extract directory names as tags from a source file's path within source_dir.
-
-        ``sources/2024/conferences/iclr/paper.pdf`` → ``['2024', 'conferences', 'iclr']``
-
-        Returns an empty list when the file is not inside source_dir or sits
-        at the top level (no parent directories).
-        """
-        try:
-            relative = source_file.relative_to(source_dir)
-        except ValueError:
-            return []
-        parts = list(relative.parts)
-        if len(parts) <= 1:
-            return []
-        return parts[:-1]
-
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
         state = self.state
@@ -684,6 +666,24 @@ class WikiPipeline:
             self._emit("resolve", idx + 1, total, "")
 
         return resolved
+
+    @staticmethod
+    def _extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
+        """Extract directory names as tags from a source file's path within source_dir.
+
+        ``sources/2024/conferences/iclr/paper.pdf`` → ``['2024', 'conferences', 'iclr']``
+
+        Returns an empty list when the file is not inside source_dir or sits
+        at the top level (no parent directories).
+        """
+        try:
+            relative = source_file.relative_to(source_dir)
+        except ValueError:
+            return []
+        parts = list(relative.parts)
+        if len(parts) <= 1:
+            return []
+        return parts[:-1]
 
     @staticmethod
     def _apply_privacy_filter(elements: list[Any]) -> None:

@@ -60,32 +60,6 @@ class TestPdfConfigDefaults:
 class TestParseChunked:
     """Tests for the chunked parsing logic."""
 
-    @staticmethod
-    def _make_fake_doc(page_start: int, page_end: int) -> MagicMock:
-        """Create a fake Docling document that yields items for given pages."""
-        TextItem = type("TextItem", (), {})
-        items: list[tuple[TextItem, int]] = []
-        for page_no in range(page_start, page_end + 1):
-            item = TextItem()
-            item.text = f"Content from page {page_no}"
-            item.prov = [SimpleNamespace(page_no=page_no)]
-            items.append((item, 0))
-
-        doc = MagicMock()
-        doc.name = "test_doc"
-        doc.pages = list(range(page_start, page_end + 1))
-        doc.iterate_items = MagicMock(return_value=iter(items))
-        return doc
-
-    @staticmethod
-    def _make_fake_result(page_start: int, page_end: int) -> MagicMock:
-        """Create a fake Docling ConversionResult."""
-        result = MagicMock()
-        result.document = TestParseChunked._make_fake_doc(page_start, page_end)
-        result.input = MagicMock()
-        result.input._backend = MagicMock()
-        return result
-
     def test_small_pdf_no_chunking(self, tmp_path: Path) -> None:
         """A PDF below the threshold should not trigger chunked parsing."""
         pdf_path = tmp_path / "small.pdf"
@@ -94,8 +68,7 @@ class TestParseChunked:
         parser = DoclingParser(pdf_config=PdfConfig(max_pages_before_chunking=50))
 
         fake_result = self._make_fake_result(1, 3)
-        with patch.object(parser, "_get_converter") as mock_conv, \
-             patch.object(DoclingParser, "_unload_result") as mock_unload:
+        with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result") as mock_unload:
             mock_conv.return_value.convert = MagicMock(return_value=fake_result)
             doc = parser.parse(pdf_path)
             mock_conv.return_value.convert.assert_called_once_with(str(pdf_path))
@@ -122,8 +95,7 @@ class TestParseChunked:
             call_log.append((0, 0))
             return self._make_fake_result(1, 5)
 
-        with patch.object(parser, "_get_converter") as mock_conv, \
-             patch.object(DoclingParser, "_unload_result"):
+        with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = fake_convert
             doc = parser.parse(pdf_path)
 
@@ -146,8 +118,7 @@ class TestParseChunked:
                 return self._make_fake_result(page_range[0], page_range[1])
             return self._make_fake_result(1, 6)
 
-        with patch.object(parser, "_get_converter") as mock_conv, \
-             patch.object(DoclingParser, "_unload_result"):
+        with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = fake_convert
             doc = parser.parse(pdf_path)
 
@@ -163,13 +134,38 @@ class TestParseChunked:
         parser = DoclingParser(pdf_config=PdfConfig(max_pages_before_chunking=0))
 
         fake_result = self._make_fake_result(1, 100)
-        with patch.object(parser, "_get_converter") as mock_conv, \
-             patch.object(DoclingParser, "_unload_result"):
+        with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = MagicMock(return_value=fake_result)
             doc = parser.parse(pdf_path)
 
         assert mock_conv.return_value.convert.call_count == 1
         assert doc.metadata.get("chunked") is None
+
+    @staticmethod
+    def _make_fake_doc(page_start: int, page_end: int) -> MagicMock:
+        """Create a fake Docling document that yields items for given pages."""
+        TextItem = type("TextItem", (), {})
+        items: list[tuple[TextItem, int]] = []
+        for page_no in range(page_start, page_end + 1):
+            item = TextItem()
+            item.text = f"Content from page {page_no}"
+            item.prov = [SimpleNamespace(page_no=page_no)]
+            items.append((item, 0))
+
+        doc = MagicMock()
+        doc.name = "test_doc"
+        doc.pages = list(range(page_start, page_end + 1))
+        doc.iterate_items = MagicMock(return_value=iter(items))
+        return doc
+
+    @staticmethod
+    def _make_fake_result(page_start: int, page_end: int) -> MagicMock:
+        """Create a fake Docling ConversionResult."""
+        result = MagicMock()
+        result.document = TestParseChunked._make_fake_doc(page_start, page_end)
+        result.input = MagicMock()
+        result.input._backend = MagicMock()
+        return result
 
 
 class TestUnloadResult:

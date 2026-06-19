@@ -103,8 +103,5 @@ def _print_categories(categories: list, *, indent: int) -> None:
     pad = "  " * indent
     for cat in categories:
         n_sub = len(cat.subcategories)
-        typer.echo(
-            f"{pad}{cat.name}/ ({len(cat.files)} file(s), "
-            f"{n_sub} sub-categor{'y' if n_sub == 1 else 'ies'})"
-        )
+        typer.echo(f"{pad}{cat.name}/ ({len(cat.files)} file(s), {n_sub} sub-categor{'y' if n_sub == 1 else 'ies'})")
         _print_categories(cat.subcategories, indent=indent + 1)

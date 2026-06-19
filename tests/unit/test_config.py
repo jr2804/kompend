@@ -351,19 +351,12 @@ class TestResolveConfig:
         """Project-level LLM config overrides global LLM config."""
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text(
-            "[compile.llm]\n"
-            'default_model = "claude-sonnet-4-5"\n'
-            "timeout = 300.0\n"
-        )
+        (config_dir / "config.toml").write_text('[compile.llm]\ndefault_model = "claude-sonnet-4-5"\ntimeout = 300.0\n')
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text(
-            "[compile.llm]\n"
-            'default_model = "local-model"\n'
-        )
+        (project_dir / "knox.toml").write_text('[compile.llm]\ndefault_model = "local-model"\n')
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
 
