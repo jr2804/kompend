@@ -69,3 +69,6 @@ PRIVATE_FILE: Final[str] = "private.json"
 # ── Pipeline state ──────────────────────────────────────────────────────
 COMPILE_STATE_FILE: Final[str] = "compile_state.json"
 STATE_FILE: Final[str] = "state.json"
+
+# ── Organize (LLM-based file categorisation) ─────────────────────────────
+ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"

@@ -712,3 +712,41 @@ ServeOpen = Annotated[
         help="Open the web UI in the default browser automatically.",
     ),
 ]
+
+
+# ── `organize` command surface ──────────────────────────────────────────
+
+OrganizeMaxDepth = Annotated[
+    int | None,
+    typer.Option(
+        "--max-depth",
+        help="Maximum category tree depth (1-4). Env: KNOX_ORGANIZE_MAX_DEPTH.",
+        min=1,
+        max=4,
+    ),
+]
+
+OrganizeMinSubcategories = Annotated[
+    int | None,
+    typer.Option(
+        "--min-subcategories",
+        help="Minimum sub-categories required to justify a new level. Env: KNOX_ORGANIZE_MIN_SUBCATEGORIES.",
+        min=2,
+    ),
+]
+
+OrganizeDryRun = Annotated[
+    bool,
+    typer.Option(
+        "--dry-run",
+        help="Show the proposed category tree without moving files or rewriting wiki links.",
+    ),
+]
+
+OrganizeCollapseSingle = Annotated[
+    bool | None,
+    typer.Option(
+        "--collapse-single-file/--no-collapse-single-file",
+        help="Collapse single-file subcategories into the parent directory.",
+    ),
+]

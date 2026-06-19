@@ -132,3 +132,18 @@ class PdfConfig:
     max_pages_before_chunking: int = 50
     page_chunk_size: int = 30
     page_chunk_overlap: int = 5
+
+
+@dataclass
+class OrganizeConfig:
+    """Configuration for ``knox organize`` LLM-based file categorization.
+
+    The command reads existing extraction summaries from a prior compilation
+    and asks the LLM to propose a hierarchical directory tree for the
+    ``sources/`` folder. Files are then moved into the new structure and
+    wiki links are updated to match the new paths.
+    """
+
+    max_depth: int = 3
+    min_subcategories: int = 2
+    collapse_single_file: bool = True

@@ -65,6 +65,11 @@ COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_befor
 COMPILE_PDF_PAGE_CHUNK_SIZE: Final[str] = "compile.pdf.page_chunk_size"
 COMPILE_PDF_PAGE_CHUNK_OVERLAP: Final[str] = "compile.pdf.page_chunk_overlap"
 
+# ── organize section ──
+ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"
+ORGANIZE_MIN_SUBCATEGORIES: Final[str] = "organize.min_subcategories"
+ORGANIZE_COLLAPSE_SINGLE_FILE: Final[str] = "organize.collapse_single_file"
+
 # ── compile.embedding sub-section ──
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"
 COMPILE_EMBEDDING_PROVIDER: Final[str] = "compile.embedding.provider"

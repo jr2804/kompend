@@ -61,6 +61,7 @@ from knox.cli import (  # noqa: E402
     config_cmd,  # noqa: F401
     init,  # noqa: F401
     memory_cmd,  # noqa: F401
+    organize_cmds,  # noqa: F401
     pack_cmds,  # noqa: F401
     pipeline_cmds,  # noqa: F401
     quality_cmds,  # noqa: F401

@@ -112,6 +112,9 @@ from knox.core.config.keys import (
     COMPILE_SOURCES_DIR,
     COMPILE_START_AT_TIER,
     COMPILE_WORKERS,
+    ORGANIZE_COLLAPSE_SINGLE_FILE,
+    ORGANIZE_MAX_DEPTH,
+    ORGANIZE_MIN_SUBCATEGORIES,
     PATHS_CACHE_DIR,
     PATHS_OUTPUT_DIR,
     PATHS_SOURCES_DIR,
@@ -221,6 +224,11 @@ DEFAULTS: dict[str, Any] = {
     "trust": {
         "privacy_filter": True,
     },
+    "organize": {
+        "max_depth": 3,
+        "min_subcategories": 2,
+        "collapse_single_file": True,
+    },
     "ignore": {
         "patterns": [],
     },
@@ -300,6 +308,9 @@ _ENV_MAP: dict[str, str] = {
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
     "notes.file": "KNOX_NOTES_FILE",
+    ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",
+    ORGANIZE_MIN_SUBCATEGORIES: "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
+    ORGANIZE_COLLAPSE_SINGLE_FILE: "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
 }
 
 

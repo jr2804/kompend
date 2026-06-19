@@ -1,0 +1,18 @@
+---
+variables:
+  - name: files_json
+    required: true
+  - name: max_depth
+    required: true
+  - name: min_subcategories
+    required: true
+role: organize.categorize
+response_format: text
+---
+Categorise the source files below into a hierarchical directory
+structure. Each entry has a filename, a one-paragraph summary, and optional
+pre-existing tags.
+
+{{ files_json }}
+
+Return only the JSON object described in the system prompt.
