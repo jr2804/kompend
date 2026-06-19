@@ -6,6 +6,7 @@ Used by ``knox list-parsers`` and ``ParserRouter`` for parser discovery.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from knox.preprocessing.parsers.base import ParserRouter
@@ -75,18 +76,22 @@ def get_all_extensions() -> set[str]:
     return extensions
 
 
-def build_default_router() -> ParserRouter:
+def build_default_router(images_dir: Path | None = None) -> ParserRouter:
     """Construct a :class:`ParserRouter` with all built-in parsers registered.
 
     This is the single factory for creating a ready-to-use router.
     The CLI and any programmatic user should call this instead of
     manually constructing and registering parsers.
+
+    Args:
+        images_dir: When provided, extracted images go under this directory
+            instead of next to each source file. Typically ``<base>/.knox/cache/images``.
     """
     router = ParserRouter()
 
     if DoclingParser is not None:
         try:
-            docling = DoclingParser()
+            docling = DoclingParser(images_dir=images_dir)
             router.register(docling)
             register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
         except Exception as exc:

@@ -122,7 +122,7 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
 )
-from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
+from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE, VaultPaths
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +184,7 @@ DEFAULTS: dict[str, Any] = {
             "wicer_eval_output_max": 4096,
         },
         "llm": {
+            "default_model": None,
             "vlm_model": None,
             "fallback_chain": [],
             "fallback_max_retries": 2,
@@ -790,7 +791,7 @@ def get_project_config_path(start_dir: Path | None = None, *, create: bool = Fal
     found = find_project_config(current)
     if found is not None:
         return found
-    target = current / KNOX_DIR / CONFIG_FILE
+    target = VaultPaths(current).config_path
     if create:
         target.parent.mkdir(parents=True, exist_ok=True)
     return target

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 import typer
 
@@ -69,8 +70,9 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES
+from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, PATHS_WIKI_DIR
 from knox.core.ingest import ingest_documents
+from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.preprocessing.parsers._registry import build_default_router
@@ -310,7 +312,9 @@ def ingest_cmd(
     if online_urls is None:
         online_urls = []
 
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cli_overrides = build_cli_overrides(
+        wiki_dir=wiki_dir_override,
         image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
@@ -318,6 +322,7 @@ def ingest_cmd(
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    base_dir = Path(cfg.get(PATHS_WIKI_DIR))
 
     all_input_files = _resolve_compile_inputs(
         files,
@@ -334,7 +339,8 @@ def ingest_cmd(
 
     typer.echo(f"Ingesting {len(all_input_files)} document(s)")
 
-    router: ParserRouter = build_default_router()
+    images_dir = VaultPaths(base_dir).images_dir
+    router: ParserRouter = build_default_router(images_dir=images_dir)
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,
@@ -350,14 +356,17 @@ def ingest_cmd(
     try:
         result = ingest_documents(
             files=all_input_files,
-            sources_dir=sources_dir_path,
+            base_dir=base_dir,
             router=router,
             progress_fn=_progress,
+            no_cache=no_cache,
         )
     finally:
         tracker.finish()
 
     summary = f"Ingested {result.count} document(s) into {result.cache_dir}"
+    if result.cached:
+        summary += f" ({result.cached} cached)"
     if result.skipped:
         summary += f" ({result.skipped} skipped)"
     if result.failed:

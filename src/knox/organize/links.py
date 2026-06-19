@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from knox.core.paths import COMPILE_STATE_FILE, KNOX_DIR, PROVENANCE_DIR, WIKI_CACHE_FILE
+from knox.core.paths import VaultPaths
 
 logger = logging.getLogger(__name__)
 
@@ -83,18 +83,19 @@ def update_wiki_links(
         return counts
 
     wiki_root = output_dir
+    paths = VaultPaths(base_dir)
     if wiki_root.is_dir():
         for path in wiki_root.rglob("*.md"):
             counts["wiki_files"] += _rewrite_inline_citations(path, remap)
 
-    prov_dir = base_dir / KNOX_DIR / PROVENANCE_DIR
+    prov_dir = paths.provenance_dir
     if prov_dir.is_dir():
         for path in prov_dir.glob("*.json"):
             counts["provenance_files"] += _rewrite_provenance(path, remap)
 
     counts["wiki_node_metadata"] = _rewrite_wiki_node_paths(wiki_root, remap)
 
-    state_path = base_dir / KNOX_DIR / COMPILE_STATE_FILE
+    state_path = paths.compile_state_path
     if state_path.is_file():
         counts["tier_state"] = _rewrite_tier_state(state_path, remap)
 
@@ -153,7 +154,7 @@ def _rewrite_provenance(path: Path, remap: LinkRemap) -> int:
 
 
 def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
-    cache = wiki_root / KNOX_DIR / WIKI_CACHE_FILE
+    cache = VaultPaths(wiki_root.parent).wiki_cache_path
     if not cache.is_file():
         return 0
     try:

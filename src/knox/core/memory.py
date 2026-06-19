@@ -24,7 +24,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from knox.core.paths import KNOX_DIR, MEMORY_STORE_FILE
+from knox.core.paths import VaultPaths
 
 logger = logging.getLogger(__name__)
 
@@ -291,9 +291,9 @@ def update_memory_for_compile(
 ) -> CompileReport:
     """Load, update, and persist the memory store for *wiki*.
 
-    The store is saved to ``output_dir / KNOX_DIR / MEMORY_STORE_FILE``.
+    The store is saved alongside other KNOX metadata (``.knox/`` directory).
     """
-    store_path = output_dir / KNOX_DIR / MEMORY_STORE_FILE
+    store_path = VaultPaths(output_dir.parent).memory_store_path
     store = MemoryStore.load(store_path)
     report = store.update_for_compile(
         wiki.nodes,

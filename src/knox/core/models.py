@@ -9,7 +9,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
+from knox.core.paths import VaultPaths
 
 
 class ElementType(StrEnum):
@@ -111,14 +111,17 @@ class CompiledWiki:
 # ── Serialization helpers ────────────────────────────────────────────────
 
 
-def load_cached_wiki(output_dir: Path) -> CompiledWiki | None:
+def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
     """Load the last compiled wiki from the on-disk cache.
+
+    Args:
+        base_dir: Project root directory (parent of the wiki output directory).
 
     Returns ``None`` if no cache exists or the data is corrupt.
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
     logger = logging.getLogger(__name__)
-    cache_file = output_dir / KNOX_DIR / WIKI_CACHE_FILE
+    cache_file = VaultPaths(base_dir).wiki_cache_path
     if not cache_file.exists():
         return None
     try:

@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from knox.core.paths import CACHE_SUBDIR, COMPILE_STATE_FILE, KNOX_DIR
+from knox.core.paths import VaultPaths
 from knox.core.tier_state import TierStateStore
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -28,47 +28,69 @@ class IngestResult:
     """Outcome of an ingestion pass."""
 
     count: int
-    skipped: int
-    failed: int
-    cache_dir: Path
+    cached: int = 0
+    skipped: int = 0
+    failed: int = 0
+    cache_dir: Path = Path()
 
 
 def ingest_documents(
     files: Sequence[Path],
-    sources_dir: Path,
+    base_dir: Path,
     router: ParserRouter,
     progress_fn: ProgressFn | None = None,
+    *,
+    no_cache: bool = False,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
     Each file is routed to a parser, parsed into a :class:`Document`, and
-    serialised to ``sources_dir/.knox/cache/<stem>_<sha256[:12]>.json``.
+    serialised to ``base_dir/.knox/cache/<stem>_<sha256[:12]>.json``.
     Tier-1 state is recorded so ``knox compile --start-at-tier chunk`` can
     verify prerequisites.
 
+    When *no_cache* is ``False`` (default), files whose content hash matches
+    an existing cache entry are skipped — the cached JSON is reused and the
+    file is not re-parsed.
+
     Args:
         files: Source files to ingest (already resolved/copied).
-        sources_dir: Project sources directory (cache and state live
-            under ``sources_dir / .knox``).
+        base_dir: Project root directory (the ``--wiki-dir``). Cache and
+            state live under ``base_dir / .knox`` — the same location the
+            pipeline reads from.
         router: Parser router used to select a parser per file.
         progress_fn: Optional callback ``(current, total, detail)``
             invoked before each file is processed.
+        no_cache: When ``True``, re-parse every file even if a cache
+            entry with a matching hash already exists.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory path.
     """
     total = len(files)
-    cache_dir = sources_dir / KNOX_DIR / CACHE_SUBDIR
+    paths = VaultPaths(base_dir)
+    cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    state_store = TierStateStore(sources_dir / KNOX_DIR / COMPILE_STATE_FILE)
+    state_store = TierStateStore(paths.compile_state_path)
     state = state_store.load()
 
-    count = skipped = failed = 0
+    count = cached = skipped = failed = 0
 
     for idx, path in enumerate(files):
         if progress_fn is not None:
             progress_fn(idx, total, path.name)
+
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        cache_key = f"{path.stem}_{digest[:12]}"
+        out_path = cache_dir / f"{cache_key}.json"
+
+        if not no_cache and out_path.exists():
+            logger.info("Skipping %s — already cached", path.name)
+            cached += 1
+            count += 1
+            state_store.record(state, path.stem, path, digest, tier=1)
+            continue
 
         parser = router.route(path)
         if parser is None:
@@ -83,9 +105,6 @@ def ingest_documents(
             failed += 1
             continue
 
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        cache_key = f"{path.stem}_{digest[:12]}"
-        out_path = cache_dir / f"{cache_key}.json"
         out_path.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
@@ -97,4 +116,4 @@ def ingest_documents(
         progress_fn(total, total, "done")
 
     state_store.save(state)
-    return IngestResult(count=count, skipped=skipped, failed=failed, cache_dir=cache_dir)
+    return IngestResult(count=count, cached=cached, skipped=skipped, failed=failed, cache_dir=cache_dir)

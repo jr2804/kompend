@@ -29,7 +29,6 @@ from knox.core.cache_store import CacheStore
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
-from knox.core.paths import CACHE_SUBDIR, COMPILE_STATE_FILE
 from knox.core.pipeline_defs import (
     ALL_TIERS,
     TIER_DESCRIPTIONS,
@@ -364,7 +363,7 @@ class WikiPipeline:
         """Resolve the persistent state file path."""
         if self.config.tier_state_path is not None:
             return self.config.tier_state_path
-        return self.config.knox_dir() / COMPILE_STATE_FILE
+        return self.config.paths.compile_state_path
 
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
@@ -412,7 +411,7 @@ class WikiPipeline:
         self.output_writer.write(wiki, self.config.output_dir)
 
     def _compiled_wiki_path(self) -> Path:
-        return self.config.knox_dir() / "compiled_wiki.json"
+        return self.config.paths.compiled_wiki_path
 
     def _save_compiled_wiki(self, wiki: CompiledWiki) -> None:
 
@@ -570,7 +569,7 @@ class WikiPipeline:
         """Resolve the cache directory."""
         if self.config.cache_dir:
             return self.config.cache_dir
-        return self.config.knox_dir() / CACHE_SUBDIR
+        return self.config.paths.cache_dir
 
     def _load_cache(self, source_file: Path) -> ParsedDocument | None:
         """Load a cached ParsedDocument if available."""
@@ -752,7 +751,8 @@ def build_pipeline(
 
     parser = None
     try:
-        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf)
+        images_dir = config.paths.images_dir
+        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf, images_dir=images_dir)
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 

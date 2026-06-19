@@ -24,7 +24,7 @@ from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, COMPILE_LLM_FALLBACK_CHAIN, COMPILE_LLM_ROLE_MODELS
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, VECTORS_DIR
+from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.llm.client import LLMClient
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
@@ -65,9 +65,9 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     )
 
 
-def _open_vector_store(base_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
+def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
-    db_path = base_dir / KNOX_DIR / VECTORS_DIR
+    db_path = knox_dir / VECTORS_DIR
     if not db_path.exists():
         return None
 

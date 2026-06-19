@@ -19,7 +19,7 @@ from typing import Any
 
 from knox.core.config._core import DEFAULTS
 from knox.core.models import CompiledWiki, WikiNode
-from knox.core.paths import KNOX_DIR, VERIFICATION_FILE
+from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.provenance import Citation, extract_citations
@@ -300,7 +300,7 @@ def verify_wiki(wiki: CompiledWiki, output_dir: Path, *, client: LLMClient, mode
         result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
 
     # Persist report next to the wiki output.
-    report_path = output_dir / KNOX_DIR / VERIFICATION_FILE
+    report_path = VaultPaths(output_dir.parent).verification_path
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(result.to_dict(), indent=2, default=str), encoding="utf-8")
     return result

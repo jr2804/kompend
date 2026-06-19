@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 
 from knox.cli._ignore import filter_files
-from knox.core.paths import DOWNLOADED_FILE, KNOX_DIR
+from knox.core.paths import VaultPaths
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers._registry import get_all_extensions
@@ -160,7 +160,7 @@ def download_urls(
     sources_dir = sources_dir.resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
     resolved_base_dir = base_dir if base_dir is not None else sources_dir.parent
-    detector = DuplicateDetector(resolved_base_dir / KNOX_DIR / DOWNLOADED_FILE)
+    detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_path)
     downloader = HTTPDownloader(detector=detector)
     results: list[Path] = []
     for url in urls:

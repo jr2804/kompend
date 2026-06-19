@@ -19,7 +19,7 @@ from pathlib import Path
 
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig
-from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
+from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 
@@ -90,14 +90,15 @@ def load_all_extractions(
     are returned — stale extractions for moved or removed files are
     silently dropped.
     """
-    cache_dir = base_dir / KNOX_DIR / CACHE_SUBDIR
-    if not (cache_dir / "extract").is_dir():
-        logger.info("No extract cache at %s", cache_dir / "extract")
+    paths = VaultPaths(base_dir)
+    extract_dir = paths.extract_dir
+    if not extract_dir.is_dir():
+        logger.info("No extract cache at %s", extract_dir)
         return {}
 
     sources_root = sources_dir.resolve()
     known: dict[str, Extraction] = {}
-    for entry in sorted((cache_dir / "extract").glob("*.json")):
+    for entry in sorted(extract_dir.glob("*.json")):
         try:
             raw = json.loads(entry.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

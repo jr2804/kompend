@@ -473,7 +473,7 @@ class TestUpdateWikiLinks:
     def test_updates_wiki_node_metadata(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"
         wiki.mkdir()
-        cache_dir = wiki / KNOX_DIR
+        cache_dir = tmp_path / KNOX_DIR
         cache_dir.mkdir()
         cache = cache_dir / "last_wiki.json"
         cache.write_text(
@@ -620,7 +620,7 @@ class TestOrganizeSourcesApply:
         assert (sources / "papers" / "b.md").exists()
         assert len(result.moves) == 2
         # Report written
-        report = base / KNOX_DIR / "last_organize.json"
+        report = base / KNOX_DIR / ORGANIZE_REPORT_FILE
         assert report.is_file()
         data = json.loads(report.read_text(encoding="utf-8"))
         assert data["dry_run"] is False

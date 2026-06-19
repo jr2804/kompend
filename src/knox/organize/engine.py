@@ -20,7 +20,7 @@ from knox.core.config.keys import (
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
-from knox.core.paths import KNOX_DIR, ORGANIZE_REPORT_FILE
+from knox.core.paths import VaultPaths
 from knox.llm.client import LLMClient
 from knox.organize.categorize import (
     CategoryNode,
@@ -165,7 +165,7 @@ def _write_report(
     dry_run: bool,
 ) -> None:
     """Persist a JSON report next to the wiki metadata."""
-    report_path = base_dir / KNOX_DIR / ORGANIZE_REPORT_FILE
+    report_path = VaultPaths(base_dir).organize_report_path
     payload = {
         "dry_run": dry_run,
         "categories": _tree_to_json(tree),

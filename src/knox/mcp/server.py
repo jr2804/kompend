@@ -320,7 +320,7 @@ def query_wiki(
     cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
     sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
 
-    wiki = load_cached_wiki(output_dir_path)
+    wiki = load_cached_wiki(output_dir_path.parent)
     if wiki is None:
         return {"status": "error", "message": f"No compiled wiki found in {output_dir_path}. Run 'compile_wiki' first."}
 

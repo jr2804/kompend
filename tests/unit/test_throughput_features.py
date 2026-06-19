@@ -503,6 +503,8 @@ class TestAnnotateWikiWithProvenance:
     """annotate_wiki_with_provenance writes per-node files and updates metadata."""
 
     def test_annotates_and_persists(self, tmp_path: Path) -> None:
+        output_dir = tmp_path / "wiki"
+        output_dir.mkdir()
         wiki = _wiki(
             nodes=[
                 WikiNode(
@@ -513,7 +515,7 @@ class TestAnnotateWikiWithProvenance:
                 )
             ]
         )
-        out = annotate_wiki_with_provenance(wiki, tmp_path)
+        out = annotate_wiki_with_provenance(wiki, output_dir)
         assert out.metadata["provenance_annotated"] is True
         record_path = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
         assert record_path.exists()
@@ -557,8 +559,10 @@ class TestMarkWikiPrivate:
     """mark_wiki_private writes a private.json index."""
 
     def test_creates_private_index(self, tmp_path: Path) -> None:
+        output_dir = tmp_path / "wiki"
+        output_dir.mkdir()
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
-        mark_wiki_private(wiki, tmp_path)
+        mark_wiki_private(wiki, output_dir)
         path = tmp_path / KNOX_DIR / PRIVATE_FILE
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -645,12 +649,14 @@ class TestVerificationFallback:
         assert result[0].confidence > 0.5
 
     def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
+        output_dir = tmp_path / "wiki"
+        output_dir.mkdir()
         wiki = _wiki(
             nodes=[
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, tmp_path, client=self._fake_client(), model="test/model")
+        result = verify_wiki(wiki, output_dir, client=self._fake_client(), model="test/model")
         assert result.total >= 1
         report = tmp_path / KNOX_DIR / VERIFICATION_FILE
         assert report.exists()

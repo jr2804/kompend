@@ -88,7 +88,7 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
 )
-from knox.core.paths import KNOX_DIR
+from knox.core.paths import VaultPaths
 
 
 class Tier(StrEnum):
@@ -199,7 +199,16 @@ class PipelineConfig:
 
     def knox_dir(self) -> Path:
         """Return the ``.knox`` directory (always inside base_dir)."""
-        return self.resolved_base_dir() / KNOX_DIR
+        return self.paths.knox_dir
+
+    @property
+    def paths(self) -> VaultPaths:
+        """Return a :class:`VaultPaths` for this pipeline's base directory."""
+        return VaultPaths(
+            self.resolved_base_dir(),
+            sources_dir_name=self.source_dir.name,
+            output_dir_name=self.output_dir.name,
+        )
 
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)

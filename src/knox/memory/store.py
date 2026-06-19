@@ -10,7 +10,7 @@ from typing import Any
 
 import zvec as _zvec
 
-from knox.core.paths import KNOX_DIR, MEMORY_DB_FILE, MEMORY_LOG_FILE
+from knox.core.paths import VaultPaths
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,9 @@ class MemoryStore:
         embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
         self.base_dir = Path(base_dir)
-        self.db_path = self.base_dir / KNOX_DIR / MEMORY_DB_FILE
-        self.log_path = self.base_dir / KNOX_DIR / MEMORY_LOG_FILE
+        _paths = VaultPaths(self.base_dir)
+        self.db_path = _paths.memory_db_path
+        self.log_path = _paths.memory_log_path
         self._embedding_model = embedding_model
         self._embedding_dim = embedding_dim
         self._provider: EmbeddingProvider | None = embedding_provider
