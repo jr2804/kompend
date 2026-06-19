@@ -1,11 +1,13 @@
 # Auto-tag and release every push to main.
 #
 # Creates a calendar version tag (YYYY.M.D / YYYY.M.D.N) and publishes
-# a Forgejo release with the built wheel + sdist.
+# a Forgejo release with the built wheel + sdist + LLM-generated release notes.
 #
 # Prerequisites:
 #   1. Repo Settings -> Units -> enable "Actions"
 #   2. Select a runner label (codeberg-small is recommended)
+#   3. Set MISTRAL_API_KEY secret:
+#      fj actions secrets create MISTRAL_API_KEY "<your-key>"
 #
 # https://forgejo.codeberg.page/docs/next/user/actions/
 
@@ -84,23 +86,80 @@ jobs:
         run: |
           "$HOME/.local/bin/uv" build
 
+      # --- Generate release notes via LLM ---
+      # Uses Codestral (or Mistral) API. Falls back to raw git log if the
+      # API call fails or no secret is configured.
+      - name: Generate release notes
+        id: notes
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: |
+          ver="${{ steps.version.outputs.version }}"
+
+          # Collect git log since last tag (or last 10 commits if first release)
+          last_tag=$(git tag -l --sort=-version:refname | head -2 | tail -1 || echo "")
+          if [ -n "$last_tag" ]; then
+            log=$(git log --oneline --no-decorate "${last_tag}..HEAD")
+          else
+            log=$(git log --oneline --no-decorate -10)
+          fi
+
+          # Fallback: raw git log with markdown formatting
+          fallback=$(printf '## KNOX %s\n\n### Changes since previous release\n\n```\n%s\n```' "$ver" "$log")
+
+          # Try LLM if API key is available
+          notes=""
+          if [ -n "$MISTRAL_API_KEY" ]; then
+            echo "Generating release notes via Codestral ..."
+
+            prompt=$(printf 'You generate concise, well-structured release notes from git commit logs. Follow these rules:
+- Group changes under headings: Features, Fixes, Maintenance, Documentation
+- Use bullet points with the scope prefix in parentheses, e.g. (parsers), (cli)
+- Be factual and precise. Do not add fluff or praise.
+- Output pure markdown, starting with "## KNOX %s" as the main heading.
+
+Commits:
+%s' "$ver" "$log")
+
+            response=$(curl -s https://api.mistral.ai/v1/chat/completions \
+              -H "Authorization: Bearer ${MISTRAL_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg prompt "$prompt" \
+                '{
+                  model: "mistral-small-latest",
+                  messages: [
+                    {role: "system", content: "You are a release notes generator. Output pure markdown, no extra commentary."},
+                    {role: "user", content: $prompt}
+                  ],
+                  max_tokens: 800,
+                  temperature: 0.3
+                }'
+              )")
+
+            notes=$(echo "$response" | jq -r '.choices[0].message.content // empty')
+
+            if [ -z "$notes" ]; then
+              echo "LLM returned empty response, using fallback"
+              echo "$response" | jq -c '.error // .' 2>/dev/null || true
+            fi
+          else
+            echo "MISTRAL_API_KEY not set, using git log fallback"
+          fi
+
+          # Use LLM output or fallback
+          body="${notes:-$fallback}"
+
+          # Write to temp file for the next step (avoids YAML multiline issues)
+          echo "$body" > /tmp/release-body.md
+
       # --- Create Forgejo release and attach build artifacts ---
       - name: Create release
         run: |
           owner="${{ github.repository_owner }}"
           repo="${{ github.repository }}"
           ver="${{ steps.version.outputs.version }}"
-
-          # Build body from recent commits for context
-          last_tag=$(git tag -l --sort=-version:refname | head -2 | tail -1 || echo "")
-          if [ -n "$last_tag" ]; then
-            log=$(git log --oneline --no-decorate "${last_tag}..HEAD" 2>/dev/null || echo "")
-          else
-            log=$(git log --oneline --no-decorate -10 2>/dev/null || echo "")
-          fi
-
-          # Use printf to get real newlines into the body string
-          body=$(printf '## KNOX %s\n\n### Changes since previous release\n\n```\n%s\n```' "$ver" "$log")
+          body=$(cat /tmp/release-body.md)
 
           # Create the release via Forgejo API
           response=$(curl -s -X POST \
