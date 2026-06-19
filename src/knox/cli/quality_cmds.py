@@ -18,6 +18,7 @@ from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
+    ConfigPath,
     JsonOutput,
     LintFix,
     LintLlm,
@@ -94,6 +95,7 @@ def doctor_cmd(
     ctx: typer.Context,
     verbose: Verbose = False,
     json_output: JsonOutput = False,
+    config: ConfigPath = None,
 ) -> None:
     """Validate configuration and connectivity for a wiki.
 
@@ -102,7 +104,7 @@ def doctor_cmd(
     resolved output directory must exist).
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
     sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     if not wiki_dir_override and not output_dir_path.exists():

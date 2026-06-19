@@ -149,6 +149,28 @@ if (-not $WhatIf) {
     }
 }
 
+# ── Stage 1b: Validate LLM provider ──────────────────────────────────
+Write-Host ""
+Write-Host "=== Stage 1b: Validate LLM provider ===" -ForegroundColor Cyan
+$DoctorArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "doctor",
+    "--verbose",
+    "--config", $ConfigPath
+)
+
+Write-Host ($DoctorArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $DoctorArgs[0] $DoctorArgs[1..($DoctorArgs.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "knox doctor failed — fix the reported issues and retry"
+        exit $LASTEXITCODE
+    }
+}
+
 # ── Stage 2: Compile (T2+T3+T4+T5: chunk + resolve + compile + output) ─
 Write-Host ""
 Write-Host "=== Stage 2: Compile (chunk + resolve + compile + output) ===" -ForegroundColor Cyan

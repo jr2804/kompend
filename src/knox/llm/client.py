@@ -22,7 +22,7 @@ from typing import Any, Final
 import litellm
 
 import knox.llm.providers  # noqa: F401 — registers custom providers on import
-from knox.llm.errors import LLMError, PermanentError
+from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 
 logger = logging.getLogger(__name__)
@@ -508,6 +508,8 @@ class LLMClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        except ConfigurationError:
+            raise  # fatal — auth / bad config, let it burn
         except LLMError as err:
             self.failure_count += 1
             self.degraded_calls.append(
