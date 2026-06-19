@@ -15,6 +15,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
+from jinja2 import Template
+
 from knox.core.config._core import DEFAULTS
 from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 
@@ -115,8 +117,6 @@ def _render_config_template(target_dir: Path, relative: str) -> None:
     the result to *target_dir/relative*.  This keeps config values in
     sync with code — no more hard-coded duplicates.
     """
-    from jinja2 import Template
-
     source = _template_path(TEMPLATE_CONFIG)
     destination = target_dir / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
