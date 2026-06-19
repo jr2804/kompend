@@ -112,14 +112,7 @@ jobs:
           if [ -n "$MISTRAL_API_KEY" ]; then
             echo "Generating release notes via Codestral ..."
 
-            prompt=$(printf 'You generate concise, well-structured release notes from git commit logs. Follow these rules:
-- Group changes under headings: Features, Fixes, Maintenance, Documentation
-- Use bullet points with the scope prefix in parentheses, e.g. (parsers), (cli)
-- Be factual and precise. Do not add fluff or praise.
-- Output pure markdown, starting with "## KNOX %s" as the main heading.
-
-Commits:
-%s' "$ver" "$log")
+            prompt=$(printf 'You generate concise, well-structured release notes from git commit logs. Follow these rules:\n- Group changes under headings: Features, Fixes, Maintenance, Documentation\n- Use bullet points with the scope prefix in parentheses, e.g. (parsers), (cli)\n- Be factual and precise. Do not add fluff or praise.\n- Output pure markdown, starting with "## KNOX %s" as the main heading.\n\nCommits:\n%s' "$ver" "$log")
 
             response=$(curl -s https://api.mistral.ai/v1/chat/completions \
               -H "Authorization: Bearer ${MISTRAL_API_KEY}" \
