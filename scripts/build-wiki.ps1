@@ -120,31 +120,6 @@ if (-not $WhatIf) {
     }
 }
 
-# ── Stage 0b: Merge config overrides ──────────────────────────────────
-# Write the merged config (defaults + override file) into .knox/config.toml
-# so the wiki directory has a self-contained, inspectable config.
-Write-Host ""
-Write-Host "=== Stage 0b: Merge config overrides ===" -ForegroundColor Cyan
-$KnoxConfigPath = Join-Path $OutputPath ".knox/config.toml"
-$MergeScript = Join-Path $PSScriptRoot "merge_config.py"
-$MergeArgs = @(
-    "uv", "run", "python", $MergeScript,
-    $KnoxConfigPath,
-    $ConfigPath
-)
-
-Write-Host ""
-Write-Host ($MergeArgs -join " ") -ForegroundColor DarkGray
-Write-Host ""
-
-if (-not $WhatIf) {
-    & $MergeArgs[0] $MergeArgs[1..($MergeArgs.Length - 1)]
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Config merge failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
-}
-
 # ── Stage 1: Ingest (T0+T1: download + parse) ────────────────────────
 Write-Host ""
 Write-Host "=== Stage 1: Ingest (download + parse) ===" -ForegroundColor Cyan
