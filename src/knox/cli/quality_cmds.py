@@ -31,7 +31,11 @@ from knox.cli.args import (
 from knox.cli.doctor import print_doctor_results, run_doctor
 from knox.cli.status import collect_stats, print_status
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_LLM_DEFAULT_MODEL
+from knox.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_VLM_MODEL,
+)
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import REVIEW_DIR
@@ -118,6 +122,8 @@ def doctor_cmd(
         sources_dir=sources_dir_path,
         output_dir=output_dir_path,
         default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
+        vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
+        embed_model=cfg.get(COMPILE_EMBEDDING_MODEL),
     )
     exit_code = print_doctor_results(results, json_output=json_output)
     if exit_code:

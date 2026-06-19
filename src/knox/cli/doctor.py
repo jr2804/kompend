@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import litellm
 import typer
 
 from knox.llm.client import LLMClient
@@ -64,14 +65,14 @@ def _check_parsers() -> CheckResult:
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
 
-def _check_llm_connectivity(default_model: str | None = None) -> CheckResult:
-    """Quick connectivity check — pings the configured LLM provider."""
-    name = "llm-connectivity"
-    if not default_model:
-        return CheckResult(name, True, "No LLM model configured — skipped")
+def _ping_model(model: str | None, label: str) -> CheckResult:
+    """Ping a single completion-type model (LLM or VLM)."""
+    name = f"connectivity-{label}"
+    if not model:
+        return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        client = LLMClient(default_model=default_model)
+        client = LLMClient(default_model=model)
         result = client.try_complete(
             [{"role": "user", "content": "ping"}],
             role="doctor",
@@ -79,11 +80,24 @@ def _check_llm_connectivity(default_model: str | None = None) -> CheckResult:
         )
         if result is not None:
             model_used = result.diagnostics.model_used
-            return CheckResult(name, True, f"LLM OK ({model_used})")
-        return CheckResult(name, False, "LLM returned no response")
+            return CheckResult(name, True, f"{label} OK ({model_used})")
+        return CheckResult(name, False, f"{label} returned no response")
     except Exception as exc:
-        msg = f"LLM ping failed: {exc}"
-        return CheckResult(name, False, msg)
+        return CheckResult(name, False, f"{label} failed: {exc}")
+
+
+def _ping_embed_model(model: str | None) -> CheckResult:
+    """Ping an embedding model via ``litellm.embedding()``."""
+    name = "connectivity-embed"
+    if not model:
+        return CheckResult(name, True, "No embed model configured — skipped")
+
+    try:
+        response = litellm.embedding(model=model, input="ping")
+        dims = len(response.data[0]["embedding"]) if response.data else 0
+        return CheckResult(name, True, f"embed OK ({model}, {dims} dims)")
+    except Exception as exc:
+        return CheckResult(name, False, f"embed failed: {exc}")
 
 
 def _check_git_repo() -> CheckResult:
@@ -129,6 +143,8 @@ def run_doctor(
     output_dir: Path | None = None,
     *,
     default_model: str | None = None,
+    vlm_model: str | None = None,
+    embed_model: str | None = None,
 ) -> list[CheckResult]:
     """Run all doctor checks and return results.
 
@@ -140,7 +156,10 @@ def run_doctor(
         Output directory to validate, or ``None`` to skip.
     default_model:
         LLM model name (litellm format) for the connectivity ping.
-        When ``None`` or empty, the LLM check is skipped.
+    vlm_model:
+        VLM model name for the connectivity ping.
+    embed_model:
+        Embedding model name for the connectivity ping.
     """
     results: list[CheckResult] = []
 
@@ -149,7 +168,9 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
-    results.append(_check_llm_connectivity(default_model=default_model))
+    results.append(_ping_model(default_model, "llm"))
+    results.append(_ping_model(vlm_model, "vlm"))
+    results.append(_ping_embed_model(embed_model))
 
     return results
 
