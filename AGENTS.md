@@ -399,7 +399,7 @@ TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
 - Run `ruff check` on changed Python files before committing
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=120` for integration tests
-- Run `uv run ty check src/knox` for type checking (mypy is not used)
+- Run `ty check src/knox` for type checking (mypy is not used)
 - Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/knox/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files

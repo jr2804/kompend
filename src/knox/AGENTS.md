@@ -359,7 +359,7 @@ The `pack.toml` manifest:
 ## Verification
 
 - `ruff check src/knox/` — must pass without errors
-- `uv run ty check src/knox/` — type checking (mypy is not used)
+- `ty check src/knox/` — type checking (mypy is not used)
 - `uv run pytest tests/unit/ -x --timeout=30` — unit tests pass
 - `uv run pytest tests/integration/ -x --timeout=120` — integration tests pass
 
