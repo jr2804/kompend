@@ -63,3 +63,4 @@ sources/
 .claude/
 /.commandcode
 *.log
+mise.local.toml
