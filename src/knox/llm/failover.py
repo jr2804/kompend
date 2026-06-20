@@ -168,7 +168,7 @@ class FailoverChain:
                             )
                             last_error = err
                             break  # next model
-                        # resolved == TransientError: fall through to retry logic.
+                        # resolved == TransientError: retry or advance.
                         logger.info(
                             "LLM ambiguous-resolved-transient on %s (attempt %d): %s",
                             model,
@@ -176,20 +176,7 @@ class FailoverChain:
                             err,
                         )
                         last_error = err
-                        if retry < self.max_retries_per_model:
-                            delay = min(
-                                self.initial_backoff_s * (2**retry),
-                                self.max_backoff_s,
-                            )
-                            logger.info(
-                                "LLM retry %d/%d on %s after %.1fs: %s",
-                                retry + 1,
-                                self.max_retries_per_model,
-                                model,
-                                delay,
-                                err,
-                            )
-                            self._sleep(delay)
+                        if self._retry_or_advance(retry, model, attempts, err):
                             continue
                         break  # next model
 
@@ -206,26 +193,8 @@ class FailoverChain:
 
                     # Transient: retry with backoff, then advance.
                     last_error = err
-                    if retry < self.max_retries_per_model:
-                        delay = min(
-                            self.initial_backoff_s * (2**retry),
-                            self.max_backoff_s,
-                        )
-                        logger.info(
-                            "LLM transient error on %s (attempt %d), retrying in %.1fs: %s",
-                            model,
-                            attempts,
-                            delay,
-                            err,
-                        )
-                        self._sleep(delay)
+                    if self._retry_or_advance(retry, model, attempts, err):
                         continue
-                    logger.warning(
-                        "LLM transient retries exhausted on %s after %d attempts: %s",
-                        model,
-                        attempts,
-                        err,
-                    )
                     break  # next model
                 else:
                     diagnostics = CallDiagnostics(
@@ -241,6 +210,28 @@ class FailoverChain:
             raise TransientError(msg, attempts=attempts)
         last_error.attempts = attempts
         raise last_error
+
+    def _retry_or_advance(self, retry: int, model: str, attempts: int, err: LLMError) -> bool:
+        """Return True to retry (already slept), False to advance to next model."""
+        if retry >= self.max_retries_per_model:
+            logger.warning(
+                "LLM retries exhausted on %s after %d attempts: %s",
+                model,
+                attempts,
+                err,
+            )
+            return False
+        delay = min(self.initial_backoff_s * (2**retry), self.max_backoff_s)
+        logger.info(
+            "LLM retry %d/%d on %s after %.1fs: %s",
+            retry + 1,
+            self.max_retries_per_model,
+            model,
+            delay,
+            err,
+        )
+        self._sleep(delay)
+        return True
 
 
 def call_with_failover[T](
