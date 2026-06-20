@@ -229,11 +229,11 @@ DEFAULTS: dict[str, Any] = {
         "history_size": 20,
     },
     "dedup": {
-        "enabled": False,           # opt-in by default
+        "enabled": False,  # opt-in by default
         "matchers": "embedding,minhash",
         "threshold_identical": 0.95,
         "threshold_similar": 0.80,
-        "model": "",                # empty = compile.embedding.model → all-MiniLM-L6-v2
+        "model": "",  # empty = compile.embedding.model → all-MiniLM-L6-v2
         "minhash_lsh_threshold": 0.8,
     },
     "trust": {

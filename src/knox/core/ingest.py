@@ -148,14 +148,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             for slug, result in results.items():
                 if result.verdict.value == "identical":
                     dedup_skipped += 1
-                    logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile",
-                                slug, result.closest_match, result.closest_score)
+                    logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile", slug, result.closest_match, result.closest_score)
                 elif result.verdict.value == "similar":
-                    logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning",
-                                slug, result.closest_match, result.closest_score)
+                    logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning", slug, result.closest_match, result.closest_score)
             if dedup_skipped:
-                logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile",
-                            dedup_skipped)
+                logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
         except Exception:
             logger.exception("Dedup processing failed — continuing without dedup")
 

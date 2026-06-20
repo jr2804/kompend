@@ -116,6 +116,9 @@ class MinhashMatcher(ContentMatcher):
         m.hashvalues = [self._to_uint64(v) for v in data]
         return m
 
+    def __repr__(self) -> str:
+        return f"MinhashMatcher(num_perm={self._num_perm}, ngram={self._ngram})"
+
     # ── Helpers ──────────────────────────────────────────────────────────
 
     @staticmethod
@@ -143,6 +146,3 @@ class MinhashMatcher(ContentMatcher):
         if v < 0:
             v = v & 0xFFFFFFFFFFFFFFFF
         return v
-
-    def __repr__(self) -> str:
-        return f"MinhashMatcher(num_perm={self._num_perm}, ngram={self._ngram})"
