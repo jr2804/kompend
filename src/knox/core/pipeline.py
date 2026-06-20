@@ -29,6 +29,7 @@ from knox.core.cache_store import CacheStore
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
+from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import (
     ALL_TIERS,
     TIER_DESCRIPTIONS,
@@ -368,8 +369,6 @@ class WikiPipeline:
 
     def _dedup_store_path(self) -> Path:
         """Resolve the dedup fingerprint store path."""
-        from knox.core.paths import VaultPaths  # noqa: PLC0415 — circular-safe
-
         base_dir = self.config.resolved_base_dir()
         return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
 

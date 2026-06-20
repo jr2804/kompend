@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import shutil
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -733,8 +734,6 @@ class TestGenerateExampleWiki:
         Uses TwoPhaseCompiler directly (skips per-chunk LLMResolver for speed)
         and writes all output formats plus search indexes.
         """
-        import shutil  # noqa: PLC0415
-
         out_dir = example_wiki_cache
         out_dir.mkdir(parents=True, exist_ok=True)
 
