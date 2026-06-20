@@ -25,9 +25,6 @@ dependencies = [
     "litellm>=1.0.0",
     "zvec>=0.4.0",
     "sentence-transformers>=5.5.1",
-    "pillow>=12.2.0",
-    "docling-ibm-models>=3.13.3",
-    "opencv-python-headless>=4.13.0.92",
     "rumdl>=0.2.9",
     "mcp>=1.27.2",
     "pandoc>=2.4",
@@ -41,6 +38,7 @@ dependencies = [
     "datasketch>=1.10.0",
     "mail-parser>=4.4.0",
     "pylatexenc>=2.10",
+    "docling-ibm-models>=3.13.3",
 ]
 
 [project.scripts]
