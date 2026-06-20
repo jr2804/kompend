@@ -205,6 +205,8 @@ timeout = 120.0
 # matchers = "embedding,minhash"
 # threshold_identical = 0.95
 # threshold_similar = 0.80
+# Embedding model override. Empty string "" is treated as unset — falls
+# back to compile.embedding.model, then all-MiniLM-L6-v2 (SentenceTransformer).
 # model = ""
 # minhash_lsh_threshold = 0.8
 

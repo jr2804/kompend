@@ -59,8 +59,9 @@ or **CLI arg** (when the ingest command supports it).
 # Cosine similarity threshold for "similar" verdict (>80%)
 # threshold_similar = 0.80
 
-# Embedding model override (empty = use compile.embedding.model)
-# If that is also empty, falls back to all-MiniLM-L6-v2
+# Embedding model override.
+# An empty string "" is treated the same as None / not set — the dedup
+# matcher falls back to compile.embedding.model, then to all-MiniLM-L6-v2.
 # model = ""
 
 # Jaccard threshold for MinHash LSH index

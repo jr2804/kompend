@@ -250,7 +250,9 @@ class DedupOrchestrator:
         matchers: list[ContentMatcher] = []
         by_name: dict[str, ContentMatcher] = {}
 
-        # Resolve the effective embedding model
+        # Resolve the effective embedding model.
+        # Empty string "" and None are both treated as "not set" (falsy),
+        # so `or` chains the fallback: dedup.model → compile.embedding.model → built-in.
         model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "") or "all-MiniLM-L6-v2"
         dim = int(self._config.get("compile.embedding.dim", 384))
         lsh_threshold = float(self._config.get("dedup.minhash_lsh_threshold", 0.8))

@@ -69,6 +69,11 @@ When adding a new config key, **all 5 layers must work**. Test each.
 - **Boolean env vars** — `true/1/yes` → `True`, `false/0/no` → `False`.
   Integers are auto-coerced. Comma-separated strings become lists.
   All other values stay as strings.
+- **Empty string = unset = None** — an empty string (`""`) is treated
+  identically to `None` or a missing key. Consumers that support fallback
+  chains (e.g. `dedup.model` → `compile.embedding.model`) must treat all
+  three as "not provided" using `value or fallback`, never
+  `if value is not None`.
 - **`knox.toml.example` is the schema contract** — it must always reflect the
   current keys, defaults, and valid options. Treat it like a living spec.
 
