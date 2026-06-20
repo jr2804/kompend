@@ -18,7 +18,7 @@ from typing import Final
 from jinja2 import Template
 
 from knox.core.config._core import DEFAULTS
-from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
+from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, CONFIG_FILE, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +98,11 @@ def _copy_template(template_name: str, target: Path, relative: str) -> None:
     shutil.copyfile(source, destination)
 
 
-def _clear_directory(target: Path, *, skip: str | None = None) -> None:
-    """Remove all contents of *target*, optionally skipping a named child."""
+def _clear_directory(target: Path, *, skip: str | set[str] | None = None) -> None:
+    """Remove all contents of *target*, optionally skipping named children."""
+    skip_set = {skip} if isinstance(skip, str) else (skip or set())
     for item in target.iterdir():
-        if skip is not None and item.name == skip:
+        if item.name in skip_set:
             continue
         if item.is_dir():
             shutil.rmtree(item)
@@ -209,12 +210,12 @@ def scaffold_project(
         msg = f"Existing project detected ({existing}). Use --force to overwrite."
         raise ScaffoldError(msg)
 
-    # When force + keep_cache: clear everything except .knox/cache/.
+    # When force + keep_cache: clear everything except .knox/cache/ and .knox/dedup/.
     if force and keep_cache:
         knox_path = resolved_target_dir / KNOX_DIR
         _clear_directory(resolved_target_dir, skip=KNOX_DIR)
         if knox_path.exists():
-            _clear_directory(knox_path, skip=CACHE_SUBDIR)
+            _clear_directory(knox_path, skip={CACHE_SUBDIR, DEDUP_DIR})
 
     result = ScaffoldResult(target_dir=resolved_target_dir)
 
