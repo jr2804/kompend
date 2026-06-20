@@ -113,9 +113,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     # computed DURING extraction — not deferred to the end. This makes
     # embedding errors fatal and attributable to the specific document.
     dedup_enabled = bool((config or {}).get("dedup.enabled"))
-    dedup_orch: DedupOrchestrator | None = (
-        DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
-    )
+    dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
     for idx, path in enumerate(files):
@@ -168,6 +166,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     # Pure CPU — no network calls. Uses pre-computed fingerprints.
     dedup_skipped = 0
     if dedup_orch is not None and dedup_fps:
+
         def _dedup_progress(completed: int, total_cmp: int) -> None:
             if progress_fn is not None:
                 progress_fn(completed, max(total_cmp, 1), f"dedup {completed}/{total_cmp}")

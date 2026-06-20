@@ -51,5 +51,5 @@ enabled = true
 matchers = "embedding,minhash"
 threshold_identical = 0.95
 threshold_similar = 0.80
-model = ""
+# model = ""
 minhash_lsh_threshold = 0.8
