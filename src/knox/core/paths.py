@@ -27,12 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
-
-if TYPE_CHECKING:
-    # Type-only import — kept out of runtime to avoid a config↔paths import cycle
-    # (config.__init__ eagerly imports _core, which imports these path constants).
-    from knox.core.config._core import ResolvedConfig
+from typing import Final
 
 # ── Hidden KNOX artifacts folder ────────────────────────────────────────
 KNOX_DIR: Final[str] = ".knox"
@@ -103,8 +98,7 @@ class VaultPaths:
     ``base_dir / KNOX_DIR / SOMETHING`` pattern scattered across modules.
 
     Configurable directory names (``sources``, ``wiki``) come from
-    :data:`DEFAULTS` and can be overridden via the constructor or
-    :meth:`from_config`.
+    :data:`DEFAULTS` and can be overridden via the constructor.
 
     Directory layout::
 
@@ -296,22 +290,3 @@ class VaultPaths:
             self.vectors_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
-
-    # ── Factory ─────────────────────────────────────────────────────────
-
-    @classmethod
-    def from_config(cls, base_dir: Path, cfg: ResolvedConfig) -> VaultPaths:
-        """Build :class:`VaultPaths` using configurable dir names from config.
-
-        Reads ``paths.sources_dir`` and ``paths.output_dir`` from the resolved
-        config, falling back to the defaults.
-        """
-        # Inline import avoids a circular dependency: knox.core.config.__init__
-        # eagerly imports _core, which imports this module's path constants.
-        from knox.core.config.keys import PATHS_OUTPUT_DIR, PATHS_SOURCES_DIR  # noqa: PLC0415  # breaks config↔paths cycle
-
-        return cls(
-            base_dir=base_dir,
-            sources_dir_name=str(cfg.get(PATHS_SOURCES_DIR, DEFAULT_SOURCES_DIR_NAME)),
-            output_dir_name=str(cfg.get(PATHS_OUTPUT_DIR, DEFAULT_OUTPUT_DIR_NAME)),
-        )
