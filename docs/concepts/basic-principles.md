@@ -1,5 +1,4 @@
 ---
-icon: lucide/lightbulb
 ---
 
 # Basic Principles

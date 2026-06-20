@@ -1,5 +1,4 @@
 ---
-icon: lucide/git-branch
 ---
 
 # Pipeline Tiers

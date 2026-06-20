@@ -1,5 +1,4 @@
 ---
-icon: lucide/book-open
 ---
 
 # KNOX

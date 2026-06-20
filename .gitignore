@@ -48,10 +48,9 @@ site/
 
 # KNOX project config (copy from knox.toml.example)
 knox.toml
+zensical.toml
 node_modules/
 example-wiki/
-package*.json
-.vitepress
 
 # outputs generated in test data folders
 tests/data/**/*.png

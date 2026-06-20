@@ -1,0 +1,118 @@
+site_name: KNOX
+site_description: Knowledge Organizer for eXtended documents — a compiled LLM-wiki system
+site_author: Jan Reimes
+copyright: Copyright &copy; 2026 Jan Reimes — MIT License
+repo_url: https://codeberg.org/jr2804/knox
+
+theme:
+  name: material
+  language: en
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.footnote.tooltips
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.path
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Guides:
+    - CLI: guides/cli.md
+    - Compilation: guides/compilation.md
+    - Document Extraction: document-extraction.md
+    - Lint: guides/lint.md
+    - LLM Configuration: guides/llm-config.md
+    - Model Context Adaptation: guides/model-context.md
+    - Output: guides/output.md
+    - Provenance: guides/provenance.md
+    - Review: guides/review.md
+    - Trust: guides/trust.md
+    - Wiki Structure: guides/wiki-structure.md
+    - Initialization: guides/initialization.md
+    - Query & Memory: guides/query-memory.md
+    - Configuration: guides/configuration.md
+    - Duplicate Detection: guides/dedup.md
+  - Architecture:
+    - Overview: architecture/index.md
+    - Output: architecture/output.md
+    - Cache & State: architecture/cache.md
+    - Decision Log: architecture/decisions.md
+  - Concepts:
+    - Basic Principles: concepts/basic-principles.md
+    - Pipeline Tiers: concepts/pipeline-tiers.md
+    - WiCER Loop: concepts/wicer-loop.md
+    - Crystallize: concepts/crystallize.md
+    - Memory Lifecycle: concepts/memory-lifecycle.md
+  - Reference:
+    - Ecosystem Survey: reference/ecosystem.md
+    - Caching: caching.md
+  - Integrations:
+    - Open WebUI: integrations/open-webui.md
+  - About:
+    - Status: about/status.md
+    - Roadmap: about/roadmap.md
+    - Acknowledgements: about/acknowledgements.md
+
+# social icons omitted — Codeberg icon not in Material icon set

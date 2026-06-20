@@ -1,5 +1,4 @@
 ---
-icon: lucide/copy-check
 ---
 
 # Content Duplicate Detection

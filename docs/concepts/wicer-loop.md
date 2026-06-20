@@ -1,5 +1,4 @@
 ---
-icon: lucide/refresh-cw
 ---
 
 # WiCER Loop
