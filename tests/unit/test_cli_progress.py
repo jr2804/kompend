@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.cli._progress import NullProgressTracker, PipelineProgress, _should_show_progress
+from knox.cli._progress import PipelineProgress, _should_show_progress
 
 
 class TestShowProgress:
@@ -15,19 +15,6 @@ class TestShowProgress:
     def test_auto_non_tty(self) -> None:
         # In tests, stdout is not a TTY
         assert _should_show_progress(force=None) is False
-
-
-class TestNullProgressTracker:
-    def test_all_methods_noop(self) -> None:
-        tracker = NullProgressTracker()
-        # None of these should raise
-        tracker.start()
-        tracker.advance()
-        tracker.complete()
-        tracker.update_progress(1, "parsing")
-        tracker.reset_for_phase(10, "resolving")
-        tracker.message("working")
-        tracker.stop()
 
 
 class TestPipelineProgress:

@@ -11,10 +11,7 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
 
 from rich.console import Console
 from rich.progress import (
@@ -42,35 +39,6 @@ def _should_show_progress(force: bool | None = None) -> bool:
     if force is False:
         return False
     return sys.stdout.isatty()
-
-
-# ── Null progress (non-TTY / quiet mode) ────────────────────────────────
-
-
-@dataclass
-class NullProgressTracker:
-    """No-op progress tracker for non-TTY or quiet mode."""
-
-    def start(self) -> None:
-        pass
-
-    def advance(self, n: int = 1) -> None:
-        pass
-
-    def complete(self) -> None:
-        pass
-
-    def update_progress(self, current: int, description: str) -> None:
-        pass
-
-    def reset_for_phase(self, total: int | None, description: str) -> None:
-        pass
-
-    def message(self, msg: str) -> None:
-        pass
-
-    def stop(self) -> None:
-        pass
 
 
 # ── Rich progress tracker ───────────────────────────────────────────────
@@ -206,12 +174,3 @@ class PipelineProgress:
 
         file_tracker = FileProgressTracker(total=total_files)
         return cls(enabled=True, _file_tracker=file_tracker)
-
-
-@contextmanager
-def null_progress() -> Generator[NullProgressTracker, Any]:
-    """Context manager producing a no-op progress tracker.
-
-    Use this in non-TTY or quiet mode instead of a real progress bar.
-    """
-    yield NullProgressTracker()

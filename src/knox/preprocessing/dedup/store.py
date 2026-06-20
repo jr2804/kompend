@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -15,28 +14,40 @@ logger = logging.getLogger(__name__)
 _STORE_VERSION = "1"
 
 
-@dataclass
-class ContentStore:
-    """Persistent store for derived artifacts with automatic invalidation.
+class DedupStore:
+    """Persistent store of dedup fingerprints (+ closest-match metadata).
 
-    Subclasses define :meth:`stamp` to return a fingerprint of the
-    configuration that produced this data. If the stored stamp doesn't
-    match, the caller knows to rebuild.
+    Lives at ``.knox/dedup/fingerprints.json``.
+    Auto-invalidates when the config that produced the fingerprints changes:
+    :meth:`stamp` fingerprints the relevant dedup config keys, and
+    :meth:`is_fresh` compares the stored stamp against the current one.
 
     The ``_meta`` dict holds the version stamp. All other entries are
     keyed by document slug and hold per-document fingerprint data.
     """
 
-    path: Path
-    _data: dict[str, Any] = field(default_factory=dict)
+    def __init__(
+        self,
+        path: Path,
+        config: dict[str, Any] | None = None,
+        _data: dict[str, Any] | None = None,
+    ) -> None:
+        self.path = path
+        self.config = config or {}
+        self._data = _data or {}
 
     @property
     def stamp(self) -> str:
-        """Fingerprint of the config that produced this artifact.
-
-        Subclasses must override this to include all relevant config keys.
-        """
-        raise NotImplementedError
+        """Fingerprint over all config keys that affect fingerprint computation."""
+        cfg = self.config
+        parts = [
+            cfg.get("dedup.matchers", "embedding,minhash"),
+            cfg.get("dedup.model", ""),
+            str(cfg.get("dedup.minhash_lsh_threshold", 0.8)),
+            cfg.get("compile.embedding.model", ""),
+            str(cfg.get("compile.embedding.dim", 384)),
+        ]
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
     def is_fresh(self) -> bool:
         """True iff the persisted stamp matches the current config fingerprint."""
@@ -81,30 +92,6 @@ class ContentStore:
 
     def __len__(self) -> int:
         return len(self.slugs)
-
-
-class DedupStore(ContentStore):
-    """Persistent store of dedup fingerprints (+ closest-match metadata).
-
-    Lives at ``.knox/dedup/fingerprints.json``.
-    """
-
-    def __init__(self, path: Path, *, config: dict[str, Any] | None = None) -> None:
-        super().__init__(path=path)
-        self._config = config or {}
-
-    @property
-    def stamp(self) -> str:
-        """Fingerprint over all config keys that affect fingerprint computation."""
-        cfg = self._config
-        parts = [
-            cfg.get("dedup.matchers", "embedding,minhash"),
-            cfg.get("dedup.model", ""),
-            str(cfg.get("dedup.minhash_lsh_threshold", 0.8)),
-            cfg.get("compile.embedding.model", ""),
-            str(cfg.get("compile.embedding.dim", 384)),
-        ]
-        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
     def update_closest(
         self,
