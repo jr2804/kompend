@@ -52,6 +52,7 @@ from knox.core.config.keys import (
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
+    TRUST_USER_TRACKING,
 )
 from knox.core.hooks import clear_hooks, load_hooks_from_config
 
@@ -134,6 +135,7 @@ def build_cli_overrides(
     embed_batch_size: int | None = None,
     llm_timeout: float | None = None,
     in_place_sources: bool | None = None,
+    no_user_tracking: bool | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides."""
     overrides: dict[str, Any] = {}
@@ -183,6 +185,8 @@ def build_cli_overrides(
 
     if no_privacy:
         overrides[TRUST_PRIVACY_FILTER] = False
+    if no_user_tracking:
+        overrides[TRUST_USER_TRACKING] = False
     if llm_fallback_chain is not None:
         overrides[COMPILE_LLM_FALLBACK_CHAIN] = list(llm_fallback_chain)
     if llm_fallback_max_retries is not None:

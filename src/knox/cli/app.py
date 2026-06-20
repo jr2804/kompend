@@ -43,12 +43,17 @@ def _callback(
         help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
         envvar="KNOX_WIKI_DIR",
     ),
+    no_user_tracking: bool = typer.Option(
+        False,
+        "--no-user-tracking",
+        help="Do not record the OS user (ingested_by / memory_by) in metadata for this invocation. Env: KNOX_USER_TRACKING=false.",
+    ),
 ) -> None:
     """Knowledge Organizer for eXtended documents"""
     if version:
         typer.echo(_get_version())
         raise typer.Exit()
-    ctx.obj = {"wiki_dir": wiki_dir}
+    ctx.obj = {"wiki_dir": wiki_dir, "no_user_tracking": no_user_tracking}
 
 
 def main() -> None:

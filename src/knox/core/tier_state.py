@@ -34,6 +34,7 @@ class SourceState:
     last_compile: str = ""
     search_hits: int = 0
     last_hit: str = ""
+    ingested_by: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -48,6 +49,7 @@ class SourceState:
             last_compile=data.get("last_compile", ""),
             search_hits=int(data.get("search_hits", 0)),
             last_hit=data.get("last_hit", ""),
+            ingested_by=data.get("ingested_by", ""),
         )
 
 
@@ -113,8 +115,13 @@ class TierStateStore:
         source_path: Path,
         content_hash: str,
         tier: int,
+        ingested_by: str | None = None,
     ) -> SourceState:
-        """Insert or update the entry for ``stem`` and return it."""
+        """Insert or update the entry for ``stem`` and return it.
+
+        When *ingested_by* is ``None`` (the compile path) the existing
+        value is preserved; any string (including ``""``) overwrites it.
+        """
         _ = self  # noqa: PLR6301 — kept as instance method for future per-store config
         now = datetime.now(UTC).isoformat(timespec="seconds")
         existing = state.entries.get(stem)
@@ -125,6 +132,7 @@ class TierStateStore:
                 content_hash=content_hash,
                 current_tier=tier,
                 last_compile=now,
+                ingested_by=ingested_by or "",
             )
         else:
             entry = SourceState(
@@ -135,6 +143,7 @@ class TierStateStore:
                 last_compile=now,
                 search_hits=existing.search_hits,
                 last_hit=existing.last_hit,
+                ingested_by=ingested_by if ingested_by is not None else existing.ingested_by,
             )
         state.entries[stem] = entry
         return entry

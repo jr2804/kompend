@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import typer
 
 from knox.cli.app import app
 from knox.cli.args_memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR, TRUST_USER_TRACKING
 from knox.core.template_loader import get_template_loader
+from knox.core.user import resolve_actor
 from knox.memory.store import MemoryStore
 
 memory_app = typer.Typer(
@@ -21,15 +23,20 @@ memory_app = typer.Typer(
 app.add_typer(memory_app)
 
 
-def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path]:
-    """Resolve the memory store and project base directory from context."""
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
-    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir_override} if wiki_dir_override else {})
+def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
+    """Resolve the memory store, project base directory, and acting user."""
+    overrides: dict[str, Any] = {}
+    if ctx and ctx.obj:
+        if ctx.obj.get("wiki_dir"):
+            overrides[PATHS_WIKI_DIR] = ctx.obj["wiki_dir"]
+        if ctx.obj.get("no_user_tracking"):
+            overrides[TRUST_USER_TRACKING] = False
+    cfg = resolve_config(cli_overrides=overrides)
     paths = cfg.get("paths")
     output_dir_path = Path(paths["output_dir"])
     base_dir = output_dir_path.parent
     embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
-    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir
+    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)
 
 
 @memory_app.command("add", help="Add a query/answer pair to the memory log.")
@@ -40,9 +47,9 @@ def memory_add(
     feedback: MemoryFeedback = None,
 ) -> None:
     """Add a query, answer, and optional feedback to the memory store."""
-    store, _base_dir = _get_memory_store(ctx)
+    store, _base_dir, actor = _get_memory_store(ctx)
     try:
-        store.add_entry(query=query, answer=answer, feedback=feedback)
+        store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         typer.echo("✓ Memory entry added successfully.")
     except Exception as exc:
         typer.echo(f"Error adding memory entry: {exc}", err=True)
@@ -58,7 +65,7 @@ def memory_search(
     top_k: MemoryTopK = 5,
 ) -> None:
     """Search the memory store for past queries and answers."""
-    store, _base_dir = _get_memory_store(ctx)
+    store, _base_dir, _actor = _get_memory_store(ctx)
     try:
         results = store.search(query=query, top_k=top_k)
         if not results:
@@ -85,7 +92,7 @@ def memory_synthesize(
     limit: MemoryLimit = 20,
 ) -> None:
     """Review recent memory entries and generate a system context file."""
-    store, base_dir = _get_memory_store(ctx)
+    store, base_dir, _actor = _get_memory_store(ctx)
 
     try:
         entries = store.get_recent_entries(limit=limit)

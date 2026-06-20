@@ -150,6 +150,47 @@ class TestTierStateStore:
         store.record_hit(state, "doc1")
         assert state.entries["doc1"].search_hits == 2
 
+    def test_record_sets_ingested_by(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / STATE_FILE)
+        state = TierState()
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="alice")
+        assert state.entries["doc1"].ingested_by == "alice"
+
+    def test_record_preserves_ingested_by_when_unset(self, tmp_path: Path) -> None:
+        # The compile path does not pass ingested_by — it must preserve the
+        # value recorded during ingest rather than clobbering it.
+        store = TierStateStore(tmp_path / STATE_FILE)
+        state = TierState()
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="alice")
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=2)
+        assert state.entries["doc1"].ingested_by == "alice"
+        assert state.entries["doc1"].current_tier == 2
+
+    def test_record_empty_ingested_when_disabled(self, tmp_path: Path) -> None:
+        store = TierStateStore(tmp_path / STATE_FILE)
+        state = TierState()
+        store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="")
+        assert state.entries["doc1"].ingested_by == ""
+
+    def test_ingested_by_round_trip(self, tmp_path: Path) -> None:
+        path = tmp_path / STATE_FILE
+        store = TierStateStore(path)
+        state = TierState()
+        store.record(state, "doc1", Path("d.pdf"), "h", tier=1, ingested_by="bob")
+        store.save(state)
+        loaded = store.load()
+        assert loaded.entries["doc1"].ingested_by == "bob"
+
+    def test_old_state_file_without_ingested_by_loads(self, tmp_path: Path) -> None:
+        # A state file written before knox-gsb5 has no ingested_by field.
+        path = tmp_path / STATE_FILE
+        path.write_text(
+            json.dumps({"entries": {"doc1": {"stem": "doc1", "source_path": "d", "content_hash": "h", "current_tier": 1}}}),
+            encoding="utf-8",
+        )
+        loaded = TierStateStore(path).load()
+        assert loaded.entries["doc1"].ingested_by == ""
+
     def test_corrupt_file_returns_empty(self, tmp_path: Path) -> None:
         path = tmp_path / STATE_FILE
         path.write_text("not json", encoding="utf-8")

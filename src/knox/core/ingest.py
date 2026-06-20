@@ -61,6 +61,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     *,
     no_cache: bool = False,
     config: dict[str, Any] | None = None,
+    ingested_by: str = "",
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -94,6 +95,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             entry with a matching hash already exists.
         config: Resolved config dict (or ``None`` to skip dedup). Used to
             configure content-level duplicate detection.
+        ingested_by: OS user to record as the ingest actor in source state
+            (``compile_state.json``). Empty string records no identity.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory path.
@@ -128,7 +131,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             logger.info("Skipping %s — already cached", path.name)
             cached += 1
             count += 1
-            state_store.record(state, path.stem, path, digest, tier=1)
+            state_store.record(state, path.stem, path, digest, tier=1, ingested_by=ingested_by)
             continue
 
         parser = router.route(path)
@@ -149,7 +152,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             encoding="utf-8",
         )
         count += 1
-        state_store.record(state, path.stem, path, digest, tier=1)
+        state_store.record(state, path.stem, path, digest, tier=1, ingested_by=ingested_by)
 
         # ── Compute dedup fingerprint NOW (during extraction) ────────
         # Embedding network calls happen here. If the model is misconfigured

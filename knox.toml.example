@@ -247,6 +247,10 @@ history_size = 20
 [trust]
 # Privacy redaction filter: strip secrets/PII before sources enter the pipeline
 # privacy_filter = true
+# Record the OS user (ingested_by / memory_by) in provenance metadata.
+# Disable on shared wikis that must not store user identity.
+# CLI: --no-user-tracking   Env: KNOX_USER_TRACKING=false
+# user_tracking = true
 
 # ── Ignore patterns ─────────────────────────────────────────────────────
 

@@ -46,8 +46,13 @@ class MemoryStore:
         query: str,
         answer: str,
         feedback: str | None = None,
+        memory_by: str = "",
     ) -> None:
-        """Add a new query/answer/feedback triple to the memory store."""
+        """Add a new query/answer/feedback triple to the memory store.
+
+        *memory_by* records the acting OS user (auditing); empty string
+        records no identity.
+        """
         self._ensure_collection()
         if self._collection is None:
             raise RuntimeError("Memory collection is not initialized")
@@ -77,6 +82,7 @@ class MemoryStore:
                         "query": query,
                         "answer": answer,
                         "feedback": feedback or "",
+                        "memory_by": memory_by,
                     }
                 )
                 + "\n"
@@ -144,6 +150,12 @@ class MemoryStore:
             self._embedding_dim = self._provider.dim
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Existing store: reopen instead of recreating. ``create_and_open``
+        # raises when the path already exists, which previously broke every
+        # ``knox memory add`` after the first.
+        if self.db_path.exists():
+            self._collection = _zvec.open(path=str(self.db_path))
+            return
         schema = _zvec.CollectionSchema(
             name="knox_memory",
             fields=[

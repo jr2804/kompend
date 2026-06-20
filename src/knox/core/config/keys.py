@@ -115,3 +115,4 @@ DEDUP_MINHASH_LSH_THRESHOLD: Final[str] = "dedup.minhash_lsh_threshold"
 
 # ── trust/privacy ──
 TRUST_PRIVACY_FILTER: Final[str] = "trust.privacy_filter"
+TRUST_USER_TRACKING: Final[str] = "trust.user_tracking"

@@ -25,6 +25,7 @@ from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_M
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
+from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
@@ -154,11 +155,11 @@ def _execute_query_search(
     return results, raw
 
 
-def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None) -> None:
+def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
     """Persist a query/answer pair to the memory store."""
     try:
         mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
-        mem_store.add_entry(query=query, answer=answer)
+        mem_store.add_entry(query=query, answer=answer, memory_by=memory_by)
         mem_store.close()
         typer.echo("\n✓ Query and answer saved to memory.", err=True)
     except Exception as exc:
@@ -184,7 +185,8 @@ def query_cmd(
     synthesis and see the source context directly.
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cli_overrides = build_cli_overrides(wiki_dir=wiki_dir_override)
+    no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
+    cli_overrides = build_cli_overrides(wiki_dir=wiki_dir_override, no_user_tracking=no_user_tracking)
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
     load_hooks()
@@ -250,4 +252,4 @@ def query_cmd(
             typer.echo(f"  [{i}] {c['article']} ({source_str})")
 
     if remember:
-        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL))
+        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))

@@ -75,6 +75,7 @@ from knox.core.ingest import ingest_documents
 from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
+from knox.core.user import resolve_actor
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -313,12 +314,14 @@ def ingest_cmd(
         online_urls = []
 
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
         image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
         in_place_sources=in_place,
+        no_user_tracking=no_user_tracking,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
@@ -361,6 +364,7 @@ def ingest_cmd(
             progress_fn=_progress,
             no_cache=no_cache,
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
+            ingested_by=resolve_actor(cfg),
         )
     finally:
         tracker.finish()

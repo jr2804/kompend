@@ -312,6 +312,14 @@ NoPrivacy = Annotated[
     ),
 ]
 
+NoUserTracking = Annotated[
+    bool,
+    typer.Option(
+        "--no-user-tracking",
+        help="Do not record the OS user (ingested_by / memory_by) in metadata. Env: KNOX_USER_TRACKING=false.",
+    ),
+]
+
 Verify = Annotated[
     bool,
     typer.Option(

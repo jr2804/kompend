@@ -91,3 +91,57 @@ class TestMemoryStore:
             assert store.get_recent_entries(limit=10) == []
         finally:
             store.close()
+
+
+class TestUserTracking:
+    """memory_by provenance and store reopen (knox-gsb5)."""
+
+    def test_add_entry_records_memory_by(self, temp_wiki_dir: Path) -> None:
+        store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        try:
+            store.add_entry(query="q", answer="a", memory_by="alice")
+        finally:
+            store.close()
+        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        data = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+        assert data["memory_by"] == "alice"
+
+    def test_add_entry_default_memory_by_empty(self, temp_wiki_dir: Path) -> None:
+        store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        try:
+            store.add_entry(query="q", answer="a")
+        finally:
+            store.close()
+        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        data = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+        assert data["memory_by"] == ""
+
+    def test_store_reopens_across_instances(self, temp_wiki_dir: Path) -> None:
+        """Regression: a second MemoryStore on the same path must not crash.
+
+        Previously ``create_and_open`` raised on an existing path, so every
+        ``knox memory add`` after the first failed before writing the log.
+        """
+        s1 = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        s1.add_entry(query="q1", answer="a1", memory_by="alice")
+        s1.close()
+
+        s2 = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        try:
+            s2.add_entry(query="q2", answer="a2", memory_by="bob")
+        finally:
+            s2.close()
+
+        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert [e["query"] for e in entries] == ["q1", "q2"]
+        assert [e["memory_by"] for e in entries] == ["alice", "bob"]
+
+    def test_get_recent_entries_includes_memory_by(self, temp_wiki_dir: Path) -> None:
+        store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        try:
+            store.add_entry(query="q", answer="a", memory_by="carol")
+            recent = store.get_recent_entries(limit=5)
+            assert recent[0]["memory_by"] == "carol"
+        finally:
+            store.close()

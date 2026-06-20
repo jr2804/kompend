@@ -127,6 +127,7 @@ from knox.core.config.keys import (
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
+    TRUST_USER_TRACKING,
 )
 from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE, VaultPaths
 
@@ -238,6 +239,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "trust": {
         "privacy_filter": True,
+        "user_tracking": True,
     },
     "organize": {
         "max_depth": 3,
@@ -321,6 +323,7 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_EMBEDDING_BATCH_SIZE: "KNOX_EMBEDDING_BATCH_SIZE",
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
+    TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
     "notes.file": "KNOX_NOTES_FILE",
     ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",

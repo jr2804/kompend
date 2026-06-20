@@ -151,6 +151,12 @@ class TestEnvVars:
         result = _read_env_vars()
         assert result["compile"]["llm"]["vlm_model"] == "openai/gpt-4o"
 
+    def test_user_tracking_env_false(self, monkeypatch: Any) -> None:
+        # knox-gsb5: KNOX_USER_TRACKING=false disables user tracking.
+        monkeypatch.setenv("KNOX_USER_TRACKING", "false")
+        result = _read_env_vars()
+        assert result["trust"]["user_tracking"] is False
+
 
 # ── Config file discovery ───────────────────────────────────────────────
 
@@ -524,6 +530,10 @@ class TestValidateConfigKey:
 
     def test_section_key_rejected(self) -> None:
         assert validate_config_key("compile") is False
+
+    def test_user_tracking_is_known_key(self) -> None:
+        # knox-gsb5: trust.user_tracking must be a schema-valid key.
+        assert validate_config_key("trust.user_tracking") is True
 
 
 class TestCoerceConfigValue:

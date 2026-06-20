@@ -34,6 +34,7 @@ from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import Compiler, ImageMode, OutputFormat, PipelineConfig
 from knox.core.template_loader import get_template_loader
+from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
 from knox.memory import MemoryStore
 from knox.preprocessing.parsers.base import ParserRouter
@@ -47,11 +48,11 @@ logger = logging.getLogger(__name__)
 server = FastMCP("KNOX")
 
 
-def _make_memory_store(wiki_dir: str) -> MemoryStore:
-    """Create a MemoryStore with embedding model from resolved config."""
+def _make_memory_store(wiki_dir: str) -> tuple[MemoryStore, str]:
+    """Create a MemoryStore and resolve the acting user from config."""
     cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
     embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
-    return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model)
+    return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model), resolve_actor(cfg)
 
 
 @server.tool(name="parse_document")
@@ -230,8 +231,8 @@ def memory_add(
 ) -> dict[str, Any]:
     """Add a query/answer pair to the memory store for long-term context."""
     try:
-        store = _make_memory_store(wiki_dir)
-        store.add_entry(query=query, answer=answer, feedback=feedback)
+        store, actor = _make_memory_store(wiki_dir)
+        store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         store.close()
         return {"status": "ok", "message": "Memory entry added successfully."}
     except Exception as exc:
@@ -246,7 +247,7 @@ def memory_search(
 ) -> dict[str, Any]:
     """Search past memory entries semantically by query."""
     try:
-        store = _make_memory_store(wiki_dir)
+        store, _actor = _make_memory_store(wiki_dir)
         results = store.search(query=query, top_k=top_k)
         store.close()
         return {"status": "ok", "results": results}
@@ -261,7 +262,7 @@ def memory_synthesize(
 ) -> dict[str, Any]:
     """Synthesize recent memory entries into a system context file."""
     try:
-        store = _make_memory_store(wiki_dir)
+        store, _actor = _make_memory_store(wiki_dir)
         entries = store.get_recent_entries(limit=limit)
         if not entries:
             store.close()
