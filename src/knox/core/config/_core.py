@@ -585,6 +585,24 @@ def _merge_layer(
     return result
 
 
+def _merge_project_configs(
+    project_configs: list[Path],
+) -> tuple[dict[str, Any], dict[str, ConfigSource]]:
+    """Merge a project config hierarchy (farthest-to-closest) into one layer.
+
+    Returns the merged data and per-key provenance pointing at the winning file.
+    Closest file wins, matching ``find_all_project_configs`` ordering.
+    """
+    merged: dict[str, Any] = {}
+    prov: dict[str, ConfigSource] = {}
+    for path in reversed(project_configs):  # closest wins
+        file_data = _load_toml(path)
+        for key in _flat_keys(file_data):
+            prov[key] = ConfigSource("project", str(path))
+        merged = _deep_merge(merged, file_data)
+    return merged, prov
+
+
 def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
     """Return all dotted keys in a nested dict."""
     keys: list[str] = []
@@ -693,13 +711,7 @@ def resolve_config(
         project_configs = find_all_project_configs()
         if project_configs:
             # Merge from farthest to closest so closest wins.
-            merged_project: dict[str, Any] = {}
-            project_provenance: dict[str, ConfigSource] = {}
-            for path in reversed(project_configs):
-                file_data = _load_toml(path)
-                for key in _flat_keys(file_data):
-                    project_provenance[key] = ConfigSource("project", str(path))
-                merged_project = _deep_merge(merged_project, file_data)
+            merged_project, project_provenance = _merge_project_configs(project_configs)
             if merged_project:
                 result = _deep_merge(result, merged_project)
                 provenance.update(project_provenance)

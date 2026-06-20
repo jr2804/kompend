@@ -15,13 +15,28 @@ from knox.capture.learn import learn
 from knox.core.models import CompiledWiki
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
 from knox.search.classifier import classify
-from knox.search.retriever import TokenOverlapRetriever
+from knox.search.retriever import SearchResult, TokenOverlapRetriever
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="KNOX Web UI")
 
 _PROJECT_DIR: Path = Path.cwd()
+
+
+def _render_result(r: SearchResult) -> str:
+    """Render one retrieval result as an HTML card."""
+    source_line = (
+        f'<br><span style="font-size:0.85rem;color:#666">Source: {r.source_file}</span>'
+        if r.source_file
+        else ""
+    )
+    return (
+        '<div style="margin-bottom:1rem;padding:1rem;background:#f9f9f9;border-radius:4px">'
+        f'<strong>{r.title}</strong> <span style="color:#666;font-size:0.85rem">(score: {r.score:.3f})</span>'
+        f"{source_line}"
+        f"<p>{r.snippet}</p></div>"
+    )
 
 
 def _source_of(node: dict[str, Any]) -> str:
@@ -211,13 +226,7 @@ async def query_page(q: str = Query(default="")) -> str:
         if intent != "knowledge":
             answer_html = f"<p><em>Intent: {intent}</em></p><p>Hello! I can answer questions about your compiled wiki. Try asking something specific.</p>"
         elif results:
-            answer_html = "<h3>Results</h3>"
-            for r in results:
-                answer_html += '<div style="margin-bottom:1rem;padding:1rem;background:#f9f9f9;border-radius:4px">'
-                answer_html += f'<strong>{r.title}</strong> <span style="color:#666;font-size:0.85rem">(score: {r.score:.3f})</span>'
-                if r.source_file:
-                    answer_html += f'<br><span style="font-size:0.85rem;color:#666">Source: {r.source_file}</span>'
-                answer_html += f"<p>{r.snippet}</p></div>"
+            answer_html = "<h3>Results</h3>" + "".join(_render_result(r) for r in results)
         else:
             answer_html = "<p>No relevant content found.</p>"
 

@@ -49,22 +49,22 @@ def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -
 
     for pattern in patterns:
         p = pattern.replace("\\", "/")
-        # Try matching against the relative path string
-        if _glob_match(rel_str, p):
+        if _glob_match(rel_str, p) or _glob_match(name, p):
             return True
-        # Try matching against just the filename
-        if _glob_match(name, p):
+        # ``**/`` prefix matches anywhere in the path tree.
+        if p.startswith("**/") and _match_doublestar(rel_str, p[3:]):
             return True
-        # Try matching against the full path (for **/patterns)
-        if p.startswith("**/"):
-            suffix = p[3:]
-            if _glob_match(rel_str, suffix) or rel_str.endswith(f"/{suffix}"):
-                return True
-            if suffix.endswith("/*"):
-                prefix = suffix[:-2]
-                if prefix and prefix in rel_str:
-                    return True
 
+    return False
+
+
+def _match_doublestar(rel_str: str, suffix: str) -> bool:
+    """Match a ``**/`` pattern suffix against a relative path string."""
+    if _glob_match(rel_str, suffix) or rel_str.endswith(f"/{suffix}"):
+        return True
+    if suffix.endswith("/*"):
+        prefix = suffix[:-2]
+        return bool(prefix) and prefix in rel_str
     return False
 
 
@@ -73,31 +73,34 @@ def _glob_match(text: str, pattern: str) -> bool:
     return fnmatch.fnmatch(text, pattern)
 
 
+def _read_gitignore_patterns(path: Path) -> list[str]:
+    """Parse one ``.gitignore`` file into a list of non-comment patterns."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        logger.debug("Failed to read %s: %s", path, exc, exc_info=True)
+        return []
+    patterns = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    logger.debug("Loaded %d patterns from %s", len(patterns), path)
+    return patterns
+
+
 def load_gitignore(source_dir: Path) -> list[str]:
     """Load patterns from ``.gitignore`` in *source_dir* (or its parents)."""
-    patterns: list[str] = []
-
-    # Walk up from source_dir to find .gitignore
+    # Walk up from source_dir to find the nearest .gitignore (first wins).
     current = source_dir.resolve()
     for _ in range(10):  # limit depth
         gitignore = current / ".gitignore"
         if gitignore.exists():
-            try:
-                text = gitignore.read_text(encoding="utf-8", errors="replace")
-                for line in text.splitlines():
-                    stripped = line.strip()
-                    if stripped and not stripped.startswith("#"):
-                        patterns.append(stripped)
-                logger.debug("Loaded %d patterns from %s", len(patterns), gitignore)
-            except Exception as exc:
-                logger.debug("Failed to read %s: %s", gitignore, exc, exc_info=True)
+            return _read_gitignore_patterns(gitignore)
+        if current.parent == current:
             break
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-
-    return patterns
+        current = current.parent
+    return []
 
 
 def filter_files(

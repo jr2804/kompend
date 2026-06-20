@@ -27,10 +27,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from knox.core.config._core import ResolvedConfig
-from knox.core.config.keys import PATHS_OUTPUT_DIR, PATHS_SOURCES_DIR
+if TYPE_CHECKING:
+    # Type-only import — kept out of runtime to avoid a config↔paths import cycle
+    # (config.__init__ eagerly imports _core, which imports these path constants).
+    from knox.core.config._core import ResolvedConfig
 
 # ── Hidden KNOX artifacts folder ────────────────────────────────────────
 KNOX_DIR: Final[str] = ".knox"
@@ -304,6 +306,10 @@ class VaultPaths:
         Reads ``paths.sources_dir`` and ``paths.output_dir`` from the resolved
         config, falling back to the defaults.
         """
+        # Inline import avoids a circular dependency: knox.core.config.__init__
+        # eagerly imports _core, which imports this module's path constants.
+        from knox.core.config.keys import PATHS_OUTPUT_DIR, PATHS_SOURCES_DIR  # noqa: PLC0415  # breaks config↔paths cycle
+
         return cls(
             base_dir=base_dir,
             sources_dir_name=str(cfg.get(PATHS_SOURCES_DIR, DEFAULT_SOURCES_DIR_NAME)),

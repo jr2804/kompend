@@ -76,6 +76,12 @@ When adding a new config key, **all 5 layers must work**. Test each.
   `if value is not None`.
 - **`knox.toml.example` is the schema contract** — it must always reflect the
   current keys, defaults, and valid options. Treat it like a living spec.
+- **Config↔paths import cycle** — `knox.core.config.__init__` eagerly imports
+  `_core`, which imports path constants from `knox.core.paths`. So `paths.py`
+  must NOT import anything from `knox.core.config` at module level. The
+  `PATHS_*` keys it needs are imported **inline inside `VaultPaths.from_config()`**
+  (with `# noqa: PLC0415`), and `ResolvedConfig` is a `TYPE_CHECKING`-only
+  import. Do not "clean these up" to top-level — it recreates a hard cycle.
 
 ### File locations
 

@@ -66,12 +66,10 @@ class ChonkieChunker(BaseChunker):
             if el.type == ElementType.HEADING:
                 current_heading = str(el.content)
             elif el.type == ElementType.TEXT:
-                text = str(el.content)
-                if current_heading:
-                    parts.append(f"# {current_heading}\n{text}")
-                    current_heading = ""
-                else:
-                    parts.append(text)
+                # Prefix the text with the most recent heading, once, then clear it.
+                prefix = f"# {current_heading}\n" if current_heading else ""
+                parts.append(f"{prefix}{el.content}")
+                current_heading = ""
             elif el.type == ElementType.CODE:
                 parts.append(f"```\n{el.content}\n```")
             elif el.type == ElementType.TABLE and isinstance(el.content, list):
