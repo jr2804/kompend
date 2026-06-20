@@ -6,6 +6,7 @@ Docling is a hard dependency for KNOX's primary parsing pipeline.
 from __future__ import annotations
 
 import base64
+import binascii
 import logging
 from pathlib import Path
 from typing import Any
@@ -303,7 +304,9 @@ class DoclingParser(BaseParser):
                     raw = base64.b64decode(b64data)
                     out_path.write_bytes(raw)
                     return str(out_path.resolve())
-                except Exception:  # noqa: BLE001
+                except (binascii.Error, ValueError, OSError):
+                    # Malformed data URI or disk write failure: fall back to a placeholder
+                    # so one bad image does not abort the whole document parse.
                     logger.warning("Failed to save image from data URI for %s", out_path.name, exc_info=True)
 
             caption_text = str(captions[0]) if captions else ""
@@ -321,13 +324,19 @@ class DoclingParser(BaseParser):
 
     @staticmethod
     def _unload_result(result: Any) -> None:
-        """Unload Docling conversion result to free ONNX/OCR caches."""
+        """Unload Docling conversion result to free ONNX/OCR caches.
+
+        Best-effort cleanup: a failure here must not abort an otherwise-successful
+        parse. The backend object shape varies across Docling versions, so
+        AttributeError (missing unload), RuntimeError/OSError (cleanup failed)
+        are the realistic failures and are caught narrowly.
+        """
         try:
             backend = getattr(getattr(result, "input", None), "_backend", None)
             if backend is not None:
                 backend.unload()
-        except Exception:  # noqa: BLE001
-            logger.debug("Failed to unload Docling backend", exc_info=True)
+        except (AttributeError, RuntimeError, OSError):
+            logger.warning("Failed to unload Docling backend", exc_info=True)
 
     @staticmethod
     def _extract_page(item: Any) -> int | None:

@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -159,8 +160,8 @@ def _discover_context_window(
             max_output = info.get("max_output_tokens")
             if max_input is not None:
                 source = "litellm"
-    except Exception:  # noqa: BLE001
-        logger.debug("litellm.get_model_info failed for %s", model, exc_info=True)
+    except Exception:  # litellm.get_model_info raises bare Exception for unmapped models (best-effort probe)
+        logger.warning("litellm.get_model_info failed for %s", model, exc_info=True)
 
     # 2. Ollama runtime num_ctx (overrides litellm if available).
     if model.startswith("ollama/"):
@@ -232,7 +233,8 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         num_ctx_str = params.get("num_ctx")
         if num_ctx_str is not None:
             per_model = int(num_ctx_str)
-    except Exception:  # noqa: BLE001
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, ValueError):
+        # Ollama unreachable or returned malformed data — optional probe, degrade to None.
         logger.debug("Ollama /api/show query failed for %s", model_name, exc_info=True)
 
     # Most restrictive wins when both are set.

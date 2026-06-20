@@ -144,7 +144,13 @@ class FailoverChain:
                 attempts += 1
                 try:
                     value = call(model)
-                except Exception as exc:  # noqa: BLE001 — classified below
+                except Exception as exc:
+                    # Broad catch is required and correct here: ``call`` is arbitrary
+                    # user code invoking litellm, which raises many provider-specific
+                    # types (httpx/openai/JSON/timeout/...). Per src/knox/AGENTS.md this
+                    # is the error-hierarchy trust-boundary site — every exception is
+                    # routed through classify_litellm_error, which has a guaranteed
+                    # fallthrough to TransientError, so nothing escapes unclassified.
                     err = classify_litellm_error(exc, model=model)
 
                     # Configuration errors are fatal: do not retry, do not advance.

@@ -354,12 +354,18 @@ class WikiPipeline:
             raise ValueError(msg)
 
     def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
-        """Emit a progress event if a callback is registered."""
+        """Emit a progress event if a callback is registered.
+
+        A progress callback is arbitrary user code; it may raise anything. Per
+        src/knox/AGENTS.md this is a best-effort enrichment site: a buggy
+        callback must NOT abort the pipeline, so the broad catch is intentional.
+        The failure is logged at WARNING (not swallowed) so it stays visible.
+        """
         if self._progress_callback is not None:
             try:
                 self._progress_callback(phase, current, total, detail)
-            except Exception:  # noqa: BLE001
-                logger.debug("Progress callback error", exc_info=True)
+            except Exception:  # best-effort: callback is user code, must not abort pipeline
+                logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
 
     def _default_state_path(self) -> Path:
         """Resolve the persistent state file path."""

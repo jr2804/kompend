@@ -38,6 +38,22 @@ Providers auto-register on `import knox.llm.providers` (which happens at the top
 
 Provider registration is a side-effect of importing `knox.llm.providers`. Tests should mock the `httpx.get` call in `_discover_models` and set the relevant API key env var (or mock `_api_key`) before calling discovery methods.
 
+### Error handling
+
+Two broad `except Exception` sites in this package are **deliberate**, not
+sloppy — see the "Error handling" rule in `src/knox/AGENTS.md`:
+
+- `failover.py` `FailoverChain.run`: catches everything around the arbitrary
+  `call(model)` and routes it through `classify_litellm_error` (guaranteed
+  fallthrough → `TransientError`). Error-hierarchy trust boundary.
+- `client.py` model-introspection: `litellm.get_model_info` raises bare
+  `Exception` for unmapped models (its own API), so a narrow catch is
+  impossible. Optional-feature probe, logged at WARNING.
+
+Do not "clean up" these broad catches — they are required by the upstream
+APIs. If a narrow base class becomes available (e.g. litellm ships
+`LiteLLMException`), narrow then.
+
 ## Verification
 
 - `uv run pytest tests/unit/test_providers.py -x` — provider tests pass
