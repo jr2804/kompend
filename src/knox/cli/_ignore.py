@@ -80,11 +80,7 @@ def _read_gitignore_patterns(path: Path) -> list[str]:
     except Exception as exc:
         logger.debug("Failed to read %s: %s", path, exc, exc_info=True)
         return []
-    patterns = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
+    patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
     logger.debug("Loaded %d patterns from %s", len(patterns), path)
     return patterns
 

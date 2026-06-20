@@ -26,11 +26,7 @@ _PROJECT_DIR: Path = Path.cwd()
 
 def _render_result(r: SearchResult) -> str:
     """Render one retrieval result as an HTML card."""
-    source_line = (
-        f'<br><span style="font-size:0.85rem;color:#666">Source: {r.source_file}</span>'
-        if r.source_file
-        else ""
-    )
+    source_line = f'<br><span style="font-size:0.85rem;color:#666">Source: {r.source_file}</span>' if r.source_file else ""
     return (
         '<div style="margin-bottom:1rem;padding:1rem;background:#f9f9f9;border-radius:4px">'
         f'<strong>{r.title}</strong> <span style="color:#666;font-size:0.85rem">(score: {r.score:.3f})</span>'
