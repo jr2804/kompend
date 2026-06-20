@@ -9,6 +9,7 @@ from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
 from knox.preprocessing.dedup.store import DedupStore
+from knox.rag.zvec_store import SentenceTransformerProvider
 
 # ---------------------------------------------------------------------------
 # classify_score
@@ -91,14 +92,38 @@ class TestContentStore:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
+    """Create an EmbeddingMatcher with a real SentenceTransformerProvider."""
+    model_name: str = kwargs.get("model_name", "all-MiniLM-L6-v2")  # type: ignore[assignment]
+    dim: int = kwargs.get("dim", 384)  # type: ignore[assignment]
+    chunk_size: int = kwargs.get("chunk_size", 512)  # type: ignore[assignment]
+    provider = SentenceTransformerProvider(model_name=model_name)
+    return EmbeddingMatcher(
+        model_name=model_name,
+        dim=dim,
+        provider=provider,
+        chunk_size=chunk_size,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingMatcher
+# ---------------------------------------------------------------------------
+
+
 class TestEmbeddingMatcher:
     """Tests for the embedding-based matcher."""
 
     def test_name(self) -> None:
-        assert EmbeddingMatcher().name == "embedding"
+        assert _make_embedding_matcher().name == "embedding"
 
     def test_identical_texts_max_score(self) -> None:
-        matcher = EmbeddingMatcher()
+        matcher = _make_embedding_matcher()
         text = "Machine learning is a subset of artificial intelligence."
         fp_a = matcher.fingerprint(text)
         fp_b = matcher.fingerprint(text)
@@ -106,23 +131,19 @@ class TestEmbeddingMatcher:
         assert score > 0.99
 
     def test_different_texts_low_score(self) -> None:
-        matcher = EmbeddingMatcher()
-        fp_a = matcher.fingerprint(
-            "Machine learning is a subset of artificial intelligence."
-        )
-        fp_b = matcher.fingerprint(
-            "Quantum computing exploits superposition and entanglement."
-        )
+        matcher = _make_embedding_matcher()
+        fp_a = matcher.fingerprint("Machine learning is a subset of artificial intelligence.")
+        fp_b = matcher.fingerprint("Quantum computing exploits superposition and entanglement.")
         score = matcher.score(fp_a, fp_b)
         assert score < 0.6
 
     def test_empty_text(self) -> None:
-        matcher = EmbeddingMatcher()
+        matcher = _make_embedding_matcher()
         fp = matcher.fingerprint("")
         assert all(v == 0.0 for v in fp)
 
     def test_serialize_roundtrip(self) -> None:
-        matcher = EmbeddingMatcher()
+        matcher = _make_embedding_matcher()
         text = "This is a test document for serialization roundtrip."
         fp = matcher.fingerprint(text)
         data = matcher.serialize(fp)
@@ -132,7 +153,7 @@ class TestEmbeddingMatcher:
 
     def test_long_document_mean_pooled(self) -> None:
         """Long documents should produce stable mean-pooled vectors."""
-        matcher = EmbeddingMatcher(chunk_size=5)  # small chunk to force splitting
+        matcher = _make_embedding_matcher(chunk_size=5)  # small chunk to force splitting
         short_text = "word " * 10
         long_text = "word " * 100
         fp_short = matcher.fingerprint(short_text)
@@ -164,24 +185,16 @@ class TestMinhashMatcher:
 
     def test_similar_texts_high_score(self) -> None:
         matcher = MinhashMatcher(ngram=2)
-        fp_a = matcher.fingerprint(
-            "deep learning neural networks natural language"
-        )
-        fp_b = matcher.fingerprint(
-            "deep learning neural networks image recognition"
-        )
+        fp_a = matcher.fingerprint("deep learning neural networks natural language")
+        fp_b = matcher.fingerprint("deep learning neural networks image recognition")
         score = matcher.score(fp_a, fp_b)
         # 3 of 5 n-grams overlap (60%) → score should be > 0.35
         assert score > 0.35
 
     def test_different_texts_low_score(self) -> None:
         matcher = MinhashMatcher()
-        fp_a = matcher.fingerprint(
-            "Machine learning is a subset of artificial intelligence."
-        )
-        fp_b = matcher.fingerprint(
-            "Quantum computing exploits superposition and entanglement."
-        )
+        fp_a = matcher.fingerprint("Machine learning is a subset of artificial intelligence.")
+        fp_b = matcher.fingerprint("Quantum computing exploits superposition and entanglement.")
         score = matcher.score(fp_a, fp_b)
         assert score < 0.3
 
@@ -304,9 +317,7 @@ class TestDedupOrchestrator:
                 "dedup.threshold_identical": 0.95,
             },
         )
-        results = orch2.process_batch(
-            [("doc-2", "Paper about machine learning.")]
-        )
+        results = orch2.process_batch([("doc-2", "Paper about machine learning.")])
         assert results["doc-2"].verdict == DedupVerdict.IDENTICAL
         assert results["doc-2"].closest_match == "doc-1"
 
@@ -347,9 +358,7 @@ class TestDedupOrchestrator:
 # ---------------------------------------------------------------------------
 
 
-def _make_store(
-    tmp_path: Path, config: dict | None = None
-) -> DedupStore:
+def _make_store(tmp_path: Path, config: dict | None = None) -> DedupStore:
     return DedupStore(
         tmp_path / "dedup" / "fingerprints.json",
         config=config or {},

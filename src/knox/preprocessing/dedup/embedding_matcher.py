@@ -1,42 +1,47 @@
 """Embedding-based content similarity matcher.
 
-Uses sentence-transformers (or a litellm-compatible embedding provider)
-to compute document vectors, then compares via cosine similarity.
+Uses the configurable KNOX embedding provider (sentence-transformers or
+litellm) to compute document vectors, then compares via cosine similarity.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import Any
+from typing import TYPE_CHECKING
 
 from knox.preprocessing.dedup.base import ContentMatcher
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from knox.rag.zvec_store import EmbeddingProvider
 
-# Default embedding model when nothing is configured.
-_DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingMatcher(ContentMatcher):
-    """Matcher that uses sentence-transformer embeddings + cosine similarity.
+    """Matcher that uses embedding vectors + cosine similarity.
 
     Long documents are chunked and mean-pooled into a single vector.
+
+    Uses the existing KNOX ``EmbeddingProvider`` abstraction so that
+    both local sentence-transformers models and remote litellm providers
+    (e.g. ``litellm:ollama/granite-embedding:278m``) work transparently.
     """
 
     name = "embedding"
 
     def __init__(
         self,
-        model_name: str = _DEFAULT_EMBEDDING_MODEL,
-        dim: int = 384,
+        model_name: str,
+        dim: int,
+        provider: EmbeddingProvider,
         *,
         chunk_size: int = 512,
     ) -> None:
         self._model_name = model_name
         self._dim = dim
+        self._provider = provider
         self._chunk_size = chunk_size
-        self._model: Any = None  # lazy-loaded
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -53,21 +58,16 @@ class EmbeddingMatcher(ContentMatcher):
         if not text or not text.strip():
             return [0.0] * self._dim
 
-        model = self._get_model()
         chunks = self._chunk_text(text)
 
         if len(chunks) == 1:
-            vec = model.encode(chunks[0], normalize_embeddings=True)
-            return vec.tolist()
+            vec = self._provider.embed(chunks[0])
+            return self._normalize(vec)
 
         # Mean-pool across chunks
-        vectors = model.encode(chunks, normalize_embeddings=True)
-        mean = vectors.mean(axis=0)
-        # Re-normalize after averaging
-        norm = math.sqrt((mean * mean).sum())
-        if norm > 0:
-            mean = mean / norm
-        return mean.tolist()
+        vectors = [self._provider.embed(c) for c in chunks]
+        mean = [sum(x) / len(vectors) for x in zip(*vectors, strict=False)]
+        return self._normalize(mean)
 
     def score(self, fp_a: list[float], fp_b: list[float]) -> float:  # noqa: PLR6301 — overrides ABC
         """Cosine similarity between two embedding vectors."""
@@ -84,18 +84,18 @@ class EmbeddingMatcher(ContentMatcher):
     def deserialize(self, data: list) -> list[float]:  # noqa: PLR6301 — overrides ABC
         return [float(v) for v in data]
 
+    def __repr__(self) -> str:
+        return f"EmbeddingMatcher(model={self._model_name!r}, dim={self._dim})"
+
     # ── Internals ────────────────────────────────────────────────────────
 
-    def _get_model(self) -> Any:
-        """Lazy-load the sentence-transformers model."""
-        if self._model is None:
-            # Deferred import: sentence-transformers is heavy and only
-            # needed when dedup is enabled with the embedding matcher.
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
-
-            logger.info("Loading embedding model: %s", self._model_name)
-            self._model = SentenceTransformer(self._model_name)
-        return self._model
+    @staticmethod
+    def _normalize(vec: list[float]) -> list[float]:
+        """Return a unit-normalised copy of *vec*."""
+        norm = math.sqrt(sum(v * v for v in vec))
+        if norm > 0:
+            return [v / norm for v in vec]
+        return vec
 
     @staticmethod
     def _chunk_text(text: str, chunk_size: int = 512) -> list[str]:
@@ -112,6 +112,3 @@ class EmbeddingMatcher(ContentMatcher):
         for i in range(0, len(words), chunk_size):
             chunks.append(" ".join(words[i : i + chunk_size]))
         return chunks
-
-    def __repr__(self) -> str:
-        return f"EmbeddingMatcher(model={self._model_name!r}, dim={self._dim})"

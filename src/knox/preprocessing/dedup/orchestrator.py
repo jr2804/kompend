@@ -23,6 +23,7 @@ from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.store import DedupStore
+from knox.rag.zvec_store import LiteLLMEmbeddingProvider, SentenceTransformerProvider
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
@@ -47,9 +48,7 @@ class DedupOrchestrator:
     Usage::
 
         orch = DedupOrchestrator(base_dir, config)
-        results = orch.process_batch(
-            [("doc-1", "text of doc 1"), ("doc-2", "text of doc 2")]
-        )
+        results = orch.process_batch([("doc-1", "text of doc 1"), ("doc-2", "text of doc 2")])
         for slug, result in results.items():
             print(slug, result.verdict)
     """
@@ -234,7 +233,12 @@ class DedupOrchestrator:
 
         for name in names:
             if name == "embedding":
-                m = EmbeddingMatcher(model_name=model, dim=dim)
+                # Use the existing KNOX EmbeddingProvider abstraction to
+                # handle both local sentence-transformers and remote litellm.
+                provider: SentenceTransformerProvider | LiteLLMEmbeddingProvider = (
+                    LiteLLMEmbeddingProvider(model=model, dim=dim) if model.startswith("litellm:") else SentenceTransformerProvider(model_name=model)
+                )
+                m = EmbeddingMatcher(model_name=model, dim=dim, provider=provider)
                 matchers.append(m)
                 by_name[name] = m
             elif name == "minhash":
