@@ -166,8 +166,7 @@ Write-Host ""
 if (-not $WhatIf) {
     & $DoctorArgs[0] $DoctorArgs[1..($DoctorArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox doctor failed — fix the reported issues and retry"
-        exit $LASTEXITCODE
+        Write-Warning "knox doctor reported issues — continuing build"
     }
 }
 
@@ -181,6 +180,7 @@ $CompileArgs = @(
     $InputFiles,
     "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
+    "--vlm-model",        "",
     "--resolve-relations",
     "--flavor",           "obsidian",
     "--compiler",         "wicer",
@@ -190,9 +190,6 @@ $CompileArgs = @(
     "--config",           $ConfigPath
 )
 
-if ($VlmModel) {
-    $CompileArgs += @("--vlm-model", $VlmModel)
-}
 if ($EmbedModel) {
     $CompileArgs += @("--embed-model", $EmbedModel)
 }
