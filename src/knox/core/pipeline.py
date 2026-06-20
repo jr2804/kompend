@@ -41,6 +41,7 @@ from knox.core.template_loader import get_template_loader
 from knox.core.tier_state import TierState, TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
+from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -485,8 +486,6 @@ class WikiPipeline:
         dedup_skip: set[str] = set()
         dedup_similar: dict[str, dict[str, Any]] = {}
         try:
-            from knox.preprocessing.dedup import DedupStore  # noqa: PLC0415 — lazy for optional dedup
-
             ds = DedupStore(self._dedup_store_path())
             ds.load()
             if ds.is_fresh():

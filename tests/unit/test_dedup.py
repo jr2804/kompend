@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from knox.preprocessing.dedup.base import DedupVerdict, classify_score
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
 from knox.preprocessing.dedup.store import DedupStore
-from knox.rag.zvec_store import SentenceTransformerProvider
+from knox.rag.zvec_store import LiteLLMEmbeddingProvider, SentenceTransformerProvider
 
 # ---------------------------------------------------------------------------
 # classify_score
@@ -243,6 +246,27 @@ class TestDedupOrchestrator:
         results = orch.process_batch([("doc-1", "some text")])
         assert results["doc-1"].verdict == DedupVerdict.DIFFERENT
 
+    def test_litellm_prefix_stripped_from_model(self, tmp_path: Path) -> None:
+        """Regression: ``litellm:`` prefix must be stripped before passing to
+        LiteLLMEmbeddingProvider, otherwise litellm rejects the model string
+        with ``BadRequestError: LLM Provider NOT provided``.
+        """
+        orch = DedupOrchestrator(
+            tmp_path,
+            config={
+                "dedup.enabled": True,
+                "dedup.matchers": "embedding",
+                "dedup.model": "litellm:ollama/granite-embedding:278m",
+                "compile.embedding.dim": 384,
+            },
+        )
+        matchers, _ = orch._build_matchers()  # noqa: SLF001 — introspect build
+        emb_matcher = next(m for m in matchers if m.name == "embedding")
+        assert isinstance(emb_matcher._provider, LiteLLMEmbeddingProvider)  # noqa: SLF001
+        # Prefix must be stripped — this is the bug that caused the BadRequestError
+        assert emb_matcher._provider._model == "ollama/granite-embedding:278m"  # noqa: SLF001
+        assert not emb_matcher._provider._model.startswith("litellm:")  # noqa: SLF001
+
     def test_identical_docs_detected(self, tmp_path: Path) -> None:
         orch = DedupOrchestrator(
             tmp_path,
@@ -351,6 +375,64 @@ class TestDedupOrchestrator:
         store2.load()
         assert "doc-1" in store2
         assert store2.get("doc-1", {}).get("closest_score") == 0.0
+
+    # ── fingerprint() + compare() incremental API ───────────────────
+
+    def test_fingerprint_then_compare_matches_process_batch(self, tmp_path: Path) -> None:
+        """Incremental fingerprint+compare must yield same verdicts as process_batch."""
+        config = {
+            "dedup.enabled": True,
+            "dedup.matchers": "minhash",
+            "dedup.threshold_identical": 0.95,
+        }
+        text = "This is a paper about machine learning and neural networks."
+
+        # Path A: incremental
+        orch_inc = DedupOrchestrator(tmp_path / "inc", config=config)
+        fps = {}
+        fps["doc-a"] = orch_inc.fingerprint("doc-a", text)
+        fps["doc-b"] = orch_inc.fingerprint("doc-b", text)
+        results_inc = orch_inc.compare(fps)
+
+        # Path B: convenience
+        orch_batch = DedupOrchestrator(tmp_path / "batch", config=config)
+        results_batch = orch_batch.process_batch([("doc-a", text), ("doc-b", text)])
+
+        assert results_inc["doc-a"].verdict == results_batch["doc-a"].verdict
+        assert results_inc["doc-a"].closest_score == results_batch["doc-a"].closest_score
+
+    def test_fingerprint_returns_empty_when_disabled(self, tmp_path: Path) -> None:
+        """fingerprint() returns empty dict when dedup is disabled."""
+        orch = DedupOrchestrator(tmp_path, config={"dedup.enabled": False})
+        assert orch.fingerprint("doc-1", "some text") == {}
+
+    def test_embedding_error_is_fatal(self, tmp_path: Path) -> None:
+        """Embedding errors must propagate — not be swallowed silently.
+
+        Regression for the litellm: prefix bug and the try/except that
+        hid configuration errors.
+        """
+        orch = DedupOrchestrator(
+            tmp_path,
+            config={
+                "dedup.enabled": True,
+                "dedup.matchers": "embedding",
+                "dedup.model": "litellm:ollama/granite-embedding:278m",
+                "compile.embedding.dim": 384,
+            },
+        )
+
+        # Simulate a BadRequestError from litellm (as would happen with
+        # a misconfigured model)
+        with (
+            patch.object(
+                EmbeddingMatcher,
+                "fingerprint",
+                side_effect=RuntimeError("BadRequestError: LLM Provider NOT provided"),
+            ),
+            pytest.raises(RuntimeError, match="BadRequestError"),
+        ):
+            orch.fingerprint("doc-1", "some text")
 
 
 # ---------------------------------------------------------------------------

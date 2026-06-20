@@ -23,7 +23,7 @@ from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.store import DedupStore
-from knox.rag.zvec_store import LiteLLMEmbeddingProvider, SentenceTransformerProvider
+from knox.rag.zvec_store import _make_provider
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
@@ -73,28 +73,52 @@ class DedupOrchestrator:
     def store(self) -> DedupStore:
         return self._store
 
-    def process_batch(  # noqa: PLR0915 — multi-phase batch processing
-        self,
-        documents: list[tuple[str, str]],
-        progress_fn: ProgressFn | None = None,
-    ) -> dict[str, DedupResult]:
-        """Run dedup on a batch of ``(slug, text)`` pairs.
+    def fingerprint(self, slug: str, text: str) -> dict[str, Any]:
+        """Compute all configured fingerprints for a single document.
 
-        Compares each document against all existing fingerprints *and*
-        against other incoming documents in the same batch.
+        Call this **during extraction** (per-document). Embedding network
+        calls happen here — if the embedding model is misconfigured or the
+        provider is unreachable, the exception propagates immediately so
+        the caller can abort with a clear per-document error.
 
         Args:
-            documents: List of ``(slug, text)`` pairs for the current ingest batch.
-            progress_fn: Optional ``(completed, total)`` callback invoked after
-                each document is compared against the full corpus. Total is
-                ``N * (N - 1) / 2 + N * M`` where N = batch size, M = existing corpus.
+            slug: Document identifier (typically the file stem).
+            text: Parsed document text.
+
+        Returns:
+            Dict mapping matcher name → fingerprint. Empty when dedup is
+            disabled.
+        """
+        if not self.enabled:
+            return {}
+        fps: dict[str, Any] = {}
+        for matcher in self._matchers:
+            fps[matcher.name] = matcher.fingerprint(text)
+        return fps
+
+    def compare(  # noqa: PLR0915 — multi-phase comparison flow
+        self,
+        fingerprints: dict[str, dict[str, Any]],
+        progress_fn: ProgressFn | None = None,
+    ) -> dict[str, DedupResult]:
+        """Compare pre-computed fingerprints and produce verdicts.
+
+        Call this **at end of ingest**. Pure CPU — no network calls. Each
+        document is compared against the persistent corpus and against
+        other documents in the same batch.
+
+        Args:
+            fingerprints: Dict mapping slug → ``{matcher_name: fingerprint}``.
+                Produced by calling :meth:`fingerprint` per document during
+                extraction.
+            progress_fn: Optional ``(completed, total)`` callback.
 
         Returns:
             A dict mapping each slug to its :class:`DedupResult`.
         """
         if not self.enabled:
             logger.debug("Dedup disabled — skipping")
-            return {slug: DedupResult(DedupVerdict.DIFFERENT, None, 0.0, "") for slug, _ in documents}
+            return {slug: DedupResult(DedupVerdict.DIFFERENT, None, 0.0, "") for slug in fingerprints}
 
         self._store.load()
 
@@ -104,20 +128,7 @@ class DedupOrchestrator:
             # TODO: re-fingerprint cached parsed docs from .knox/cache/
 
         results: dict[str, DedupResult] = {}
-        new_slugs: list[str] = []
-
-        # Phase 1 — fingerprint all incoming docs
-        slug_to_fp: dict[str, dict[str, Any]] = {}
-        for slug, text in documents:
-            fps: dict[str, Any] = {}
-            for matcher in self._matchers:
-                try:
-                    fps[matcher.name] = matcher.fingerprint(text)
-                except Exception:
-                    logger.exception("Fingerprint failed for %s via %s", slug, matcher.name)
-                    fps[matcher.name] = None
-            slug_to_fp[slug] = fps
-            new_slugs.append(slug)
+        new_slugs = list(fingerprints.keys())
 
         # Phase 2 — compare each new doc against corpus + other new docs
         corpus_slugs = list(self._store.slugs)
@@ -131,7 +142,7 @@ class DedupOrchestrator:
             best_method = ""
             scores: dict[str, float] = {}
 
-            fps = slug_to_fp[slug]
+            fps = fingerprints[slug]
 
             for candidate_slug in list(self._store.slugs) + new_slugs:
                 if candidate_slug == slug:
@@ -140,13 +151,9 @@ class DedupOrchestrator:
                 matcher_scores: dict[str, float] = {}
                 for matcher in self._matchers:
                     fp_a = fps.get(matcher.name)
-                    fp_b = self._get_fingerprint(candidate_slug, matcher.name, slug_to_fp, matcher)
+                    fp_b = self._get_fingerprint(candidate_slug, matcher.name, fingerprints, matcher)
                     if fp_a is not None and fp_b is not None:
-                        try:
-                            matcher_scores[matcher.name] = matcher.score(fp_a, fp_b)
-                        except Exception:
-                            logger.exception("Score failed for %s vs %s via %s", slug, candidate_slug, matcher.name)
-                            matcher_scores[matcher.name] = 0.0
+                        matcher_scores[matcher.name] = matcher.score(fp_a, fp_b)
 
                 combined = max(matcher_scores.values()) if matcher_scores else 0.0
                 if combined > best_score:
@@ -210,8 +217,25 @@ class DedupOrchestrator:
                 )
 
         self._store.save()
-        logger.info("Dedup processed %d documents", len(documents))
+        logger.info("Dedup compared %d documents", len(fingerprints))
         return results
+
+    def process_batch(
+        self,
+        documents: list[tuple[str, str]],
+        progress_fn: ProgressFn | None = None,
+    ) -> dict[str, DedupResult]:
+        """Convenience: fingerprint all docs, then compare.
+
+        For the preferred incremental pattern, call :meth:`fingerprint`
+        per document during extraction, then :meth:`compare` at end of
+        ingest. This makes embedding errors attributable to the specific
+        document that caused them.
+        """
+        fingerprints: dict[str, dict[str, Any]] = {}
+        for slug, text in documents:
+            fingerprints[slug] = self.fingerprint(slug, text)
+        return self.compare(fingerprints, progress_fn=progress_fn)
 
     # ── Internals ────────────────────────────────────────────────────────
 
@@ -233,11 +257,10 @@ class DedupOrchestrator:
 
         for name in names:
             if name == "embedding":
-                # Use the existing KNOX EmbeddingProvider abstraction to
-                # handle both local sentence-transformers and remote litellm.
-                provider: SentenceTransformerProvider | LiteLLMEmbeddingProvider = (
-                    LiteLLMEmbeddingProvider(model=model, dim=dim) if model.startswith("litellm:") else SentenceTransformerProvider(model_name=model)
-                )
+                # Reuse the canonical EmbeddingProvider factory — it correctly
+                # handles the ``litellm:`` prefix (strips it before passing to
+                # LiteLLMEmbeddingProvider) and falls back to SentenceTransformer.
+                provider = _make_provider(model, dim=dim)
                 m = EmbeddingMatcher(model_name=model, dim=dim, provider=provider)
                 matchers.append(m)
                 by_name[name] = m

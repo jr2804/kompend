@@ -17,11 +17,28 @@ from typing import Any
 
 from knox.core.paths import VaultPaths
 from knox.core.tier_state import TierStateStore
+from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import ParserRouter
 
 logger = logging.getLogger(__name__)
 
 ProgressFn = Callable[[int, int, str], None]
+
+
+def _extract_text_for_dedup(doc: Any, path: Path) -> str:
+    """Extract plain text from a parsed document for dedup fingerprinting.
+
+    Concatenates all element text. Falls back to raw file contents when the
+    document has no extractable elements.
+    """
+    text = ""
+    elements = getattr(doc, "elements", None)
+    if elements:
+        for element in elements:
+            element_text = getattr(element, "text", None)
+            if element_text:
+                text += element_text + "\n\n"
+    return text or path.read_text(errors="replace")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +74,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     file is not re-parsed.
 
     When *config* contains ``dedup.enabled = True``, content-level duplicate
-    detection runs after parsing. Documents identified as ``identical`` are
+    detection runs alongside extraction. Fingerprints (including embedding
+    network calls) are computed per-document during the parse loop — if the
+    embedding model is misconfigured, the error is fatal and aborts ingest
+    immediately. Similarity comparison runs at end of ingest using the
+    pre-computed fingerprints. Documents identified as ``identical`` are
     counted in ``dedup_skipped`` (they are still cached, but flagged for
     the compile pipeline to skip).
 
@@ -86,7 +107,16 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     state = state_store.load()
 
     count = cached = skipped = failed = 0
-    dedup_texts: dict[str, str] = {} if (config or {}).get("dedup.enabled") else {}  # type: ignore[union-attr]
+
+    # ── Dedup orchestrator (created once, used per-document) ────────
+    # When enabled, fingerprints (including embedding network calls) are
+    # computed DURING extraction — not deferred to the end. This makes
+    # embedding errors fatal and attributable to the specific document.
+    dedup_enabled = bool((config or {}).get("dedup.enabled"))
+    dedup_orch: DedupOrchestrator | None = (
+        DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
+    )
+    dedup_fps: dict[str, dict[str, Any]] = {}
 
     for idx, path in enumerate(files):
         if progress_fn is not None:
@@ -116,15 +146,6 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             failed += 1
             continue
 
-        # Collect parsed text for dedup (if enabled)
-        if dedup_texts is not None:
-            slug = path.stem
-            text = ""
-            for element in doc.elements if hasattr(doc, "elements") else []:
-                if hasattr(element, "text") and element.text:
-                    text += element.text + "\n\n"
-            dedup_texts[slug] = text or path.read_text(errors="replace")
-
         out_path.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
@@ -132,29 +153,34 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         count += 1
         state_store.record(state, path.stem, path, digest, tier=1)
 
-    # ── Content-level duplicate detection ───────────────────────────
+        # ── Compute dedup fingerprint NOW (during extraction) ────────
+        # Embedding network calls happen here. If the model is misconfigured
+        # or the provider is unreachable, the exception propagates — the
+        # ingest ABORTS with a clear per-document error. This is intentional:
+        # dedup was explicitly enabled, so silent degradation is worse than
+        # crashing.
+        if dedup_orch is not None:
+            slug = path.stem
+            text = _extract_text_for_dedup(doc, path)
+            dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
+
+    # ── Content-level duplicate comparison (end of ingest) ──────────
+    # Pure CPU — no network calls. Uses pre-computed fingerprints.
     dedup_skipped = 0
-    if dedup_texts:
-        try:
-            from knox.preprocessing.dedup import DedupOrchestrator  # noqa: PLC0415 — lazy import for optional dedup
+    if dedup_orch is not None and dedup_fps:
+        def _dedup_progress(completed: int, total_cmp: int) -> None:
+            if progress_fn is not None:
+                progress_fn(completed, max(total_cmp, 1), f"dedup {completed}/{total_cmp}")
 
-            orch = DedupOrchestrator(base_dir, config=config or {})
-
-            def _dedup_progress(completed: int, total: int) -> None:
-                if progress_fn is not None:
-                    progress_fn(completed, max(total, 1), f"dedup {completed}/{total}")
-
-            results = orch.process_batch(list(dedup_texts.items()), progress_fn=_dedup_progress)
-            for slug, result in results.items():
-                if result.verdict.value == "identical":
-                    dedup_skipped += 1
-                    logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile", slug, result.closest_match, result.closest_score)
-                elif result.verdict.value == "similar":
-                    logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning", slug, result.closest_match, result.closest_score)
-            if dedup_skipped:
-                logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
-        except Exception:
-            logger.exception("Dedup processing failed — continuing without dedup")
+        results = dedup_orch.compare(dedup_fps, progress_fn=_dedup_progress)
+        for slug, result in results.items():
+            if result.verdict.value == "identical":
+                dedup_skipped += 1
+                logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile", slug, result.closest_match, result.closest_score)
+            elif result.verdict.value == "similar":
+                logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning", slug, result.closest_match, result.closest_score)
+        if dedup_skipped:
+            logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
 
     if progress_fn is not None:
         progress_fn(total, total, "done")
