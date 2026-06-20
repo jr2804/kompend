@@ -141,31 +141,6 @@ class DocumentRenderer:
             return self._format_via_rumdl(result)
         return result
 
-    def _assemble(self, doc: Document) -> str:
-        """Assemble a single document as canonical Markdown.
-
-        Produces YAML frontmatter (if any), a heading, and the body.
-        No flavor-specific transformations.
-        """
-        parts: list[str] = []
-
-        # Frontmatter
-        fm = render_frontmatter(doc.frontmatter)
-        if fm:
-            parts.append(fm)
-
-        # Heading
-        prefix = "#" * min(doc.heading_level, 6)
-        parts.append(f"{prefix} {doc.title}\n")
-
-        # Body
-        if doc.body:
-            parts.append(doc.body)
-            if not doc.body.endswith("\n"):
-                parts.append("")
-
-        return "\n".join(parts).strip() + "\n"
-
     def _format_via_rumdl(self, markdown: str) -> str:
         """Pipe *markdown* through ``rumdl fmt --flavor <FLAVOR>``.
 
@@ -217,6 +192,32 @@ class DocumentRenderer:
         except OSError as exc:
             logger.warning("rumdl error: %s — falling back to raw markdown", exc, exc_info=True)
             return markdown
+
+    @staticmethod
+    def _assemble(doc: Document) -> str:
+        """Assemble a single document as canonical Markdown.
+
+        Produces YAML frontmatter (if any), a heading, and the body.
+        No flavor-specific transformations.
+        """
+        parts: list[str] = []
+
+        # Frontmatter
+        fm = render_frontmatter(doc.frontmatter)
+        if fm:
+            parts.append(fm)
+
+        # Heading
+        prefix = "#" * min(doc.heading_level, 6)
+        parts.append(f"{prefix} {doc.title}\n")
+
+        # Body
+        if doc.body:
+            parts.append(doc.body)
+            if not doc.body.endswith("\n"):
+                parts.append("")
+
+        return "\n".join(parts).strip() + "\n"
 
 
 # ── Helper ───────────────────────────────────────────────────────────────

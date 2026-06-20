@@ -14,7 +14,7 @@ class TypstWriter(BaseOutputWriter):
 
     name: ClassVar[str] = "typst"
 
-    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
+    def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:  # noqa: PLR6301 — abc override, needs self
         output_dir.mkdir(parents=True, exist_ok=True)
 
         lines: list[str] = []

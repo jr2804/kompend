@@ -376,57 +376,6 @@ class TwoPhaseCompiler(BaseCompiler):
 
         return nodes, slug_to_idx
 
-    def _build_edges(
-        self,
-        nodes: list[WikiNode],
-        extractions: ExtractionSet,
-    ) -> list[dict[str, Any]]:
-        """Build cross-source entity and explicit related edges."""
-        edges: list[dict[str, Any]] = []
-        entity_index = extractions.entity_index()
-        entity_to_node: dict[str, set[str]] = defaultdict(set)
-        for ent_name in entity_index:
-            ent_lower = ent_name.lower()
-            for node in nodes:
-                match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
-                if ent_lower in match_text:
-                    entity_to_node[ent_name].add(node.id)
-
-        # Deduplicate edges — same pair may appear from both entity and related links
-        seen_edges: set[tuple[str, str]] = set()
-        for ent_name, node_ids in entity_to_node.items():
-            sorted_ids = sorted(node_ids)
-            for i in range(len(sorted_ids)):
-                for j in range(i + 1, len(sorted_ids)):
-                    pair = (sorted_ids[i], sorted_ids[j])
-                    if pair in seen_edges:
-                        continue
-                    seen_edges.add(pair)
-                    edges.append(
-                        {
-                            "source": sorted_ids[i],
-                            "target": sorted_ids[j],
-                            "type": "entity_reference",
-                            "entity": ent_name,
-                        }
-                    )
-
-        # Also wire up explicit "related" links from the LLM response.
-        title_to_id = {n.title: n.id for n in nodes}
-        for node in nodes:
-            for related_title in node.metadata.get("related", []):
-                target_id = title_to_id.get(related_title)
-                if target_id and target_id != node.id:
-                    pair = (min(node.id, target_id), max(node.id, target_id))
-                    if pair in seen_edges:
-                        continue
-                    seen_edges.add(pair)
-                    edges.append(
-                        {"source": node.id, "target": target_id, "type": "related", "entity": related_title},
-                    )
-
-        return edges
-
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
         """Run a single extraction LLM call with cache (Tier 3 Phase 1)."""
         budget = self._budget
@@ -492,3 +441,54 @@ class TwoPhaseCompiler(BaseCompiler):
             toc=[],
             metadata={"chunk_count": len(chunks), "two_phase": True, "fallback": True},
         )
+
+    @staticmethod
+    def _build_edges(
+        nodes: list[WikiNode],
+        extractions: ExtractionSet,
+    ) -> list[dict[str, Any]]:
+        """Build cross-source entity and explicit related edges."""
+        edges: list[dict[str, Any]] = []
+        entity_index = extractions.entity_index()
+        entity_to_node: dict[str, set[str]] = defaultdict(set)
+        for ent_name in entity_index:
+            ent_lower = ent_name.lower()
+            for node in nodes:
+                match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
+                if ent_lower in match_text:
+                    entity_to_node[ent_name].add(node.id)
+
+        # Deduplicate edges — same pair may appear from both entity and related links
+        seen_edges: set[tuple[str, str]] = set()
+        for ent_name, node_ids in entity_to_node.items():
+            sorted_ids = sorted(node_ids)
+            for i in range(len(sorted_ids)):
+                for j in range(i + 1, len(sorted_ids)):
+                    pair = (sorted_ids[i], sorted_ids[j])
+                    if pair in seen_edges:
+                        continue
+                    seen_edges.add(pair)
+                    edges.append(
+                        {
+                            "source": sorted_ids[i],
+                            "target": sorted_ids[j],
+                            "type": "entity_reference",
+                            "entity": ent_name,
+                        }
+                    )
+
+        # Also wire up explicit "related" links from the LLM response.
+        title_to_id = {n.title: n.id for n in nodes}
+        for node in nodes:
+            for related_title in node.metadata.get("related", []):
+                target_id = title_to_id.get(related_title)
+                if target_id and target_id != node.id:
+                    pair = (min(node.id, target_id), max(node.id, target_id))
+                    if pair in seen_edges:
+                        continue
+                    seen_edges.add(pair)
+                    edges.append(
+                        {"source": node.id, "target": target_id, "type": "related", "entity": related_title},
+                    )
+
+        return edges

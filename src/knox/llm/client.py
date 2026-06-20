@@ -348,7 +348,8 @@ class LLMClient:
         """
         chain = self.chain_for(role)
         cw = self.context_window
-        assert cw is not None, "context_window must be set before calling complete()"
+        if cw is None:
+            raise ValueError("context_window must be set before calling complete()")
         call_start = time.monotonic()
 
         def _call(model: str) -> Any:
