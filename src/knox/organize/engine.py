@@ -147,10 +147,10 @@ def _files_without_summary(sources_dir: Path, extractions: dict[str, object]) ->
     for path in sorted(sources_dir.rglob("*")):
         if not path.is_file():
             continue
-        try:
-            rel = path.relative_to(sources_dir).as_posix()
-        except ValueError:
+        # Path must live under sources_dir; skip symlinked escapes otherwise.
+        if not path.is_relative_to(sources_dir):
             continue
+        rel = path.relative_to(sources_dir).as_posix()
         if rel not in known:
             missing.append(rel)
     return missing

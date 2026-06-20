@@ -285,19 +285,26 @@ def _post_compile_actions(
             else:
                 synthesize_tracker.update_progress(current, f"[{current}/{total}] Synthesizing overview…")
 
-        overview_path = write_overview(
-            wiki,
-            base_dir,
-            model=resolved_model,
-            overview_budget=pipeline_config.budget.overview_output_max * 4,
-            timeout=pipeline_config.llm.timeout,
-            progress_callback=_synth_cb if synthesize_tracker.enabled else None,
-        )
+        try:
+            overview_path = write_overview(
+                wiki,
+                base_dir,
+                model=resolved_model,
+                overview_budget=pipeline_config.budget.overview_output_max * 4,
+                timeout=pipeline_config.llm.timeout,
+                progress_callback=_synth_cb if synthesize_tracker.enabled else None,
+            )
+        except Exception as exc:
+            # Overview is optional — catch at this boundary and report the real
+            # error instead of aborting a successful compile.
+            synthesize_tracker.finish()
+            typer.echo(f"Overview generation failed: {exc}", err=True)
+            return
         synthesize_tracker.finish()
         if overview_path:
             typer.echo(f"Overview: {overview_path}")
         else:
-            typer.echo("Overview generation skipped (LLM client unavailable).", err=True)
+            typer.echo("Overview generation skipped (no content to summarise).", err=True)
 
     if index_store:
         search_db_path = VaultPaths(base_dir).search_db_path

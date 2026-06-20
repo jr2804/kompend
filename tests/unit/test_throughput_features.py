@@ -191,11 +191,14 @@ class TestTierStateStore:
         loaded = TierStateStore(path).load()
         assert loaded.entries["doc1"].ingested_by == ""
 
-    def test_corrupt_file_returns_empty(self, tmp_path: Path) -> None:
+    def test_corrupt_file_raises(self, tmp_path: Path) -> None:
+        # Per src/knox/AGENTS.md: a corrupt state file is a bug, not a silent reset.
+        # Missing -> empty state; corrupt -> raises so the real cause surfaces.
         path = tmp_path / STATE_FILE
         path.write_text("not json", encoding="utf-8")
         store = TierStateStore(path)
-        assert store.load().entries == {}
+        with pytest.raises(json.JSONDecodeError):
+            store.load()
 
     def test_tier_distribution(self) -> None:
         state = TierState(

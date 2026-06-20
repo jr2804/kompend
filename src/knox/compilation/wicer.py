@@ -342,6 +342,7 @@ class WiCERCompiler(BaseCompiler):
             try:
                 parsed = json.loads(result.content)
             except json.JSONDecodeError:
+                logger.warning("LLM returned malformed JSON for probes — using fallback")
                 return None
             return parsed if isinstance(parsed, list) else None
 

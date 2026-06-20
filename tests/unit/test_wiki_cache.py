@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
@@ -80,9 +82,12 @@ class TestLoadCachedWiki:
         assert loaded.quality_score == 0.85
         assert loaded.iteration == 2
 
-    def test_returns_none_on_corrupt_json(self, tmp_path: Any) -> None:
+    def test_corrupt_json_raises(self, tmp_path: Any) -> None:
+        # Per src/knox/AGENTS.md: a corrupt wiki cache is a bug, not a silent miss.
+        # Missing -> None (caller prompts to compile); corrupt -> raises so the
+        # real cause surfaces instead of a misleading "run compile first".
         cache_dir = tmp_path / KNOX_DIR
         cache_dir.mkdir(parents=True)
         (cache_dir / WIKI_CACHE_FILE).write_text("{invalid json", encoding="utf-8")
-        result = load_cached_wiki(tmp_path)
-        assert result is None
+        with pytest.raises(json.JSONDecodeError):
+            load_cached_wiki(tmp_path)

@@ -216,6 +216,7 @@ def mark_stale(
         try:
             last_dt = datetime.fromisoformat(entry.last_transition)
         except ValueError:
+            logger.warning("Skipping entry %s: malformed last_transition %r", entry.node_id, entry.last_transition)
             continue
         if now - last_dt >= timedelta(days=stale_after_days):
             entry.state = LIFECYCLE_STALE

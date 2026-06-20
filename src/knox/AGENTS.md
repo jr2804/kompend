@@ -133,6 +133,53 @@ These are filed as beads issues and must be fixed before adding new text-in-code
    - Never `import` a package that isn't in the lockfile — the CI and other
      developers will fail.
 
+### Error handling — prefer "let it burn"
+
+The default is to **propagate exceptions**. "Let it burn" means surface real
+failures instead of hiding them. The codebase historically over-used
+`except: pass` and `except: return None`, converting real errors (bad API
+keys, corrupt state, missing deps, disk failures) into silent `None` values.
+This forces every caller into `if x is None` chains and produces misleading
+messages (e.g. "run compile first" when the real cause is a corrupt cache).
+
+#### When `X | None` is correct vs an antipattern
+
+| `None` means… | Verdict |
+|---|---|
+| **Absence / lookup miss** (`registry.get(name)`, optional value not set) | ✅ correct |
+| **"I tried and failed"** (mute of an exception) | ❌ raise instead |
+
+A function may return `X | None` only when `None` means the thing was
+*absent*, never to mean the operation *failed*. `load_cached_wiki` returning
+`None` for a **missing** file is correct; returning `None` for a **corrupt**
+file is the antipattern.
+
+#### The only valid `try/except` sites
+
+1. **Trust boundary** — translate a low-level error to a user-facing message
+   at the CLI/MCP top level. Catch narrowly, report the real cause.
+2. **Optional-feature probe** — narrow to the *specific* exception
+   (`ImportError`, `FileNotFoundError`), never bare `Exception`.
+3. **Best-effort enrichment** — per-item catch that *records* the failure
+   (SKIP result, warning log) and continues a batch.
+4. **Cache miss** — corrupt/unreadable cache entry treated as a miss is
+   correct, BUT narrow to `(json.JSONDecodeError, OSError)` and log at
+   `WARNING` so corruption stays visible.
+
+#### Forbidden
+
+- `except Exception: pass` / `except Exception: return None`
+- `# noqa: BLE001` or `# noqa: S110` to silence a bare-except lint
+- Muting an exception then returning `None` to mean failure
+- Catching a corrupt internal-state file (wiki cache, tier state, compile
+  state) and silently resetting/recompiling — corruption is a bug; **raise**.
+
+#### Rule of thumb
+
+If removing the `try/except` surfaces a real error to someone who needs to
+see it, remove it. If the catch genuinely serves one of the four valid sites,
+narrow the exception and make the failure visible (log/record).
+
 ### Parameter and default-value antipatterns
 
 These three patterns are **forbidden in new code**. Existing occurrences are
@@ -312,7 +359,7 @@ The `pack.toml` manifest:
 ## Verification
 
 - `ruff check src/knox/` — must pass without errors
-- `uv run mypy src/knox/` — for type safety when annotations change
+- `uv run ty check src/knox/` — type checking (mypy is not used)
 - `uv run pytest tests/unit/ -x --timeout=30` — unit tests pass
 - `uv run pytest tests/integration/ -x --timeout=120` — integration tests pass
 

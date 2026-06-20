@@ -343,15 +343,14 @@ def generate_overview(
     produces a partial overview.  The partials are then merged in a final
     synthesis call.
 
-    Returns Markdown text, or ``None`` when the LLM is unavailable.
+    Returns Markdown text, or ``None`` when there is no content to summarise.
+    LLM failures propagate to the caller — overview is optional, so the caller
+    catches and reports the real error rather than silently producing nothing.
     """
     if not source_texts:
         return None
 
-    try:
-        client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1, timeout=timeout)
-    except Exception:  # noqa: BLE001
-        return None
+    client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1, timeout=timeout)
 
     batches: list[str] = []
     current_parts: list[str] = []
@@ -373,15 +372,12 @@ def generate_overview(
     partials: list[str] = []
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
-        try:
-            result = client.complete(
-                role="synthesize",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            if result.content:
-                partials.append(result.content)
-        except Exception:  # noqa: BLE001, S110
-            pass
+        result = client.complete(
+            role="synthesize",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if result.content:
+            partials.append(result.content)
         if progress_callback:
             progress_callback(idx + 1, total_steps)
 
@@ -391,22 +387,18 @@ def generate_overview(
     if len(partials) == 1:
         return partials[0]
 
-    # Merge partial overviews.
+    # Merge partial overviews. A merge failure propagates to the caller,
+    # which reports the real error — concatenating partials silently would
+    # hide a real LLM failure behind a degraded overview.
     combined = "\n\n".join(partials)
     prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
-    try:
-        result = client.complete(
-            role="synthesize",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if progress_callback:
-            progress_callback(total_steps, total_steps)
-        return result.content
-    except Exception:  # noqa: BLE001
-        # Return concatenated partials if the merge call fails.
-        if progress_callback:
-            progress_callback(total_steps, total_steps)
-        return combined
+    result = client.complete(
+        role="synthesize",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    if progress_callback:
+        progress_callback(total_steps, total_steps)
+    return result.content
 
 
 def write_overview(

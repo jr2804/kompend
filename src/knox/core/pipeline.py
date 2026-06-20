@@ -380,6 +380,7 @@ class WikiPipeline:
             try:
                 content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
             except OSError:
+                logger.warning("Could not read %s for tier-state hashing — skipping", source_file, exc_info=True)
                 continue
             self.state_store.record(state, stem, source_file, content_hash, tier=tier)
         self.state_store.save(state)
@@ -448,11 +449,9 @@ class WikiPipeline:
         path = self._compiled_wiki_path()
         if not path.exists():
             return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.debug("Compiled wiki snapshot unreadable — treating as missing", exc_info=True)
-            return None
+        # Corrupt snapshot is a bug — let it raise so the real cause surfaces
+        # instead of silently recompiling from scratch.
+        data = json.loads(path.read_text(encoding="utf-8"))
         nodes = [WikiNode(**n) for n in data.get("nodes", [])]
         return CompiledWiki(
             nodes=nodes,
@@ -646,8 +645,9 @@ class WikiPipeline:
                 page_count=data.get("page_count", 0),
                 metadata=data.get("metadata", {}),
             )
-        except Exception:
-            logger.debug("Cache read failed for %s — ignoring", cache_path, exc_info=True)
+        except (json.JSONDecodeError, KeyError, OSError):
+            # Corrupt/unreadable cache entry = miss: re-parse. Warn so it's visible.
+            logger.warning("Corrupt parse cache at %s — reparsing", cache_path, exc_info=True)
             return None
 
     def _save_cache(self, source_file: Path, doc: ParsedDocument) -> None:

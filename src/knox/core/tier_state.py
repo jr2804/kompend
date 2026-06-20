@@ -88,14 +88,15 @@ class TierStateStore:
         self.state_path = state_path
 
     def load(self) -> TierState:
-        """Read the state file, returning an empty state if missing or invalid."""
+        """Read the state file.
+
+        Returns an empty state when the file is missing (fresh start). A
+        corrupt file is a bug — it raises so the real cause surfaces instead
+        of silently wiping tier progress.
+        """
         if not self.state_path.exists():
             return TierState()
-        try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.debug("Tier state file unreadable — starting fresh", exc_info=True)
-            return TierState()
+        data = json.loads(self.state_path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return TierState()
         return TierState.from_dict(data)

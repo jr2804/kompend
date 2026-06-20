@@ -94,7 +94,7 @@ def build_default_router(images_dir: Path | None = None) -> ParserRouter:
             docling = DoclingParser(images_dir=images_dir)
             router.register(docling)
             register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
-        except Exception as exc:
+        except (ImportError, OSError) as exc:
             logger.debug("DoclingParser not available: %s", exc, exc_info=True)
 
     if PandocParser is not None:
@@ -104,7 +104,7 @@ def build_default_router(images_dir: Path | None = None) -> ParserRouter:
             register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
             # PandocParser also serves as the binaryornot text fallback.
             router.set_text_fallback(pandoc)
-        except Exception as exc:
+        except (ImportError, OSError) as exc:
             logger.debug("PandocParser not available: %s", exc, exc_info=True)
 
     return router

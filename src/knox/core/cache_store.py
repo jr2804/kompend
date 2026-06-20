@@ -209,8 +209,9 @@ class CacheStore:
                 json.dump(_encode_json(entry), f)
             os.replace(tmp, path)
             logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, path.stat().st_size)
-        except Exception:
-            logger.debug("Cache write error for %s", path, exc_info=True)
+        except OSError:
+            # Cache write failure is non-fatal (next read is a miss), but make it visible.
+            logger.warning("Cache write failed for %s", path, exc_info=True)
 
     def has(self, layer: str, deps: dict[str, str]) -> bool:
         """Quick existence check — returns ``True`` if the file exists.

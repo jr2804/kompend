@@ -80,12 +80,8 @@ class ParserRouter:
             if parser.can_parse(source_path):
                 return parser
         # No registered parser matched — try binaryornot text fallback.
-        if self._text_fallback is not None:
-            try:
-                if not is_binary(str(source_path)):
-                    return self._text_fallback
-            except Exception:  # noqa: BLE001
-                pass
+        if self._text_fallback is not None and not is_binary(str(source_path)):
+            return self._text_fallback
         return None
 
     def parse(self, source_path: Path) -> ParsedDocument:

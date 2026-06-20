@@ -24,7 +24,8 @@ def get_current_user() -> str:
     """
     try:
         return getpass.getuser() or _UNKNOWN
-    except Exception:  # noqa: BLE001 — any failure means we cannot identify the user
+    except (ImportError, KeyError, OSError):
+        # Cannot identify the OS user (no pwd module, user not in db, etc.).
         return _UNKNOWN
 
 

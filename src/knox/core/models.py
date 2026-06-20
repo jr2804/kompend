@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -117,26 +116,23 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
     Args:
         base_dir: Project root directory (parent of the wiki output directory).
 
-    Returns ``None`` if no cache exists or the data is corrupt.
+    Returns ``None`` if no cache exists (so callers can prompt the user to
+    compile). A corrupt cache file is a bug — it raises so the real cause
+    surfaces instead of producing a misleading "run compile first" message.
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
-    logger = logging.getLogger(__name__)
     cache_file = VaultPaths(base_dir).wiki_cache_path
     if not cache_file.exists():
         return None
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-        # Reconstruct WikiNode objects from plain dicts
-        raw_nodes = data.get("nodes", [])
-        nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
-        return CompiledWiki(
-            nodes=nodes,
-            edges=data.get("edges", []),
-            toc=data.get("toc", []),
-            quality_score=data.get("quality_score", 0.0),
-            iteration=data.get("iteration", 0),
-            metadata=data.get("metadata", {}),
-        )
-    except Exception as exc:
-        logger.debug("Failed to load cached wiki from %s: %s", cache_file, exc, exc_info=True)
-        return None
+    data = json.loads(cache_file.read_text(encoding="utf-8"))
+    # Reconstruct WikiNode objects from plain dicts
+    raw_nodes = data.get("nodes", [])
+    nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
+    return CompiledWiki(
+        nodes=nodes,
+        edges=data.get("edges", []),
+        toc=data.get("toc", []),
+        quality_score=data.get("quality_score", 0.0),
+        iteration=data.get("iteration", 0),
+        metadata=data.get("metadata", {}),
+    )
