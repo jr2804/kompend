@@ -92,10 +92,14 @@ def _ping_embed_model(model: str | None) -> CheckResult:
     if not model:
         return CheckResult(name, True, "No embed model configured — skipped")
 
+    # The ``litellm:`` prefix is a KNOX convention — strip it before
+    # passing to litellm, otherwise litellm can't parse the provider.
+    effective = model.removeprefix("litellm:")
+
     try:
-        response = litellm.embedding(model=model, input="ping")
+        response = litellm.embedding(model=effective, input="ping")
         dims = len(response.data[0]["embedding"]) if response.data else 0
-        return CheckResult(name, True, f"embed OK ({model}, {dims} dims)")
+        return CheckResult(name, True, f"embed OK ({effective}, {dims} dims)")
     except Exception as exc:
         return CheckResult(name, False, f"embed failed: {exc}")
 
