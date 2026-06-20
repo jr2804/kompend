@@ -53,7 +53,7 @@ class _ClaudinIOProvider(CustomLLM):
             headers = {}
         return litellm.completion(
             messages=messages,
-            **self._delegate_kwargs(model, optional_params),
+            **self._delegate_kwargs(model, optional_params, api_key),
         )
 
     def streaming(
@@ -80,7 +80,7 @@ class _ClaudinIOProvider(CustomLLM):
         return litellm.completion(
             messages=messages,
             stream=True,
-            **self._delegate_kwargs(model, optional_params),
+            **self._delegate_kwargs(model, optional_params, api_key),
         )
 
     async def acompletion(
@@ -106,7 +106,7 @@ class _ClaudinIOProvider(CustomLLM):
             headers = {}
         return await litellm.acompletion(
             messages=messages,
-            **self._delegate_kwargs(model, optional_params),
+            **self._delegate_kwargs(model, optional_params, api_key),
         )
 
     async def astreaming(
@@ -133,7 +133,7 @@ class _ClaudinIOProvider(CustomLLM):
         async for chunk in await litellm.acompletion(
             messages=messages,
             stream=True,
-            **self._delegate_kwargs(model, optional_params),
+            **self._delegate_kwargs(model, optional_params, api_key),
         ):
             yield chunk
 
@@ -142,11 +142,16 @@ class _ClaudinIOProvider(CustomLLM):
         return os.environ.get(_CLAUDIN_IO_API_KEY_ENV, "")
 
     @staticmethod
-    def _delegate_kwargs(model: str, optional_params: dict[str, Any]) -> dict[str, Any]:
+    def _delegate_kwargs(model: str, optional_params: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
+        # If api_key is an unresolved env reference (starts with "$"), ignore it
+        # and fall back to the provider's own env var — preventing a literal
+        # "$CLAUDINIO_API_KEY" from being sent as the credential.
+        if api_key is not None and api_key.startswith("$"):
+            api_key = None
         params = {k: v for k, v in optional_params.items() if k != "stream"}
         return {
             "model": f"openai/{model}",
             "api_base": _CLAUDIN_IO_BASE_URL,
-            "api_key": _ClaudinIOProvider._api_key(),
+            "api_key": api_key or _ClaudinIOProvider._api_key(),
             **params,
         }

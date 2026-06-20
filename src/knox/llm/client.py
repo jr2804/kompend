@@ -110,15 +110,16 @@ class UsageTracker:
         }
 
 
-def _resolve_env_value(value: str) -> str:
+def _resolve_env_value(value: str) -> str | None:
     """Resolve a config value that may be an env-var reference.
 
     If *value* starts with ``$``, the remainder is treated as an
-    environment variable name. Returns the env-var value, or the
-    original string if the variable is not set.
+    environment variable name. Returns the env-var value, or ``None``
+    if the variable is not set — preventing a literal ``$XXX`` string
+    from leaking into downstream code as a real value.
     """
     if value.startswith("$"):
-        return os.environ.get(value[1:], value)
+        return os.environ.get(value[1:])
     return value
 
 
