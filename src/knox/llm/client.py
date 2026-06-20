@@ -231,7 +231,9 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
             data = json.loads(resp.read())
         params = data.get("parameters", {})
-        num_ctx_str = params.get("num_ctx")
+        # /api/show may return parameters as a Modelfile string (not a dict)
+        # — handle both forms gracefully.
+        num_ctx_str = params.get("num_ctx") if isinstance(params, dict) else None
         if num_ctx_str is not None:
             per_model = int(num_ctx_str)
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, ValueError):
