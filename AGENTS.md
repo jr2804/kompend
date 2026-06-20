@@ -107,7 +107,9 @@ absorbed by the parent.
 AGENTS.md (root)               ↤ project-wide rules
 ├── src/knox/AGENTS.md         ↤ Python source: text-in-code, antipatterns
 │   ├── cli/AGENTS.md          ↤ CLI layer: thin shell over core
-│   └── core/config/AGENTS.md  ↤ Config: resolution, precedence, TOML
+│   ├── core/config/AGENTS.md  ↤ Config: resolution, precedence, TOML
+│   └── llm/AGENTS.md          ↤ LLM client: errors, failover, custom providers
+│       └── providers/AGENTS.md ↤ Provider registration rules and patterns
 └── tests/AGENTS.md            ↤ testing conventions, test antipatterns
 ```
 

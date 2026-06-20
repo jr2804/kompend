@@ -1,7 +1,8 @@
-"""Custom litellm provider for claudin.io (Anthropic-compatible API).
+"""Custom litellm provider for claudin.io (OpenAI-compatible API).
 
-``claudin-io/claude-3.5-sonnet`` routes to ``anthropic/claude-3.5-sonnet``
-at ``https://api.claudin.io/v1/messages``.
+``claudin-io/<model>`` routes to ``https://api.claudin.io/v1``
+(OpenAI-format requests; the SDK appends ``/chat/completions``).
+Model names like ``claudinio`` (balanced) or ``claudius`` (premium).
 """
 
 from __future__ import annotations
@@ -16,20 +17,17 @@ from litellm import CustomLLM
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.types.utils import GenericStreamingChunk, ModelResponse
 
-_CLAUDIN_IO_BASE_URL = "https://api.claudin.io/v1/messages"
+_CLAUDIN_IO_BASE_URL = "https://api.claudin.io/v1"
 _CLAUDIN_IO_API_KEY_ENV = "CLAUDINIO_API_KEY"
 
 
 class _ClaudinIOProvider(CustomLLM):
     """Thin wrapper that routes ``claudin-io/<model>`` calls to
-    the claudin.io Anthropic-compatible API at https://api.claudin.io.
+    the claudin.io OpenAI-compatible API at https://api.claudin.io.
 
-    litellm receives the model name *without* the provider prefix, so
-    ``model`` here is e.g. ``"claude-3.5-sonnet"``.
-
-    The handler delegates to ``litellm.completion`` / ``litellm.acompletion``
-    with the ``anthropic/`` prefix and the claudin.io ``api_base`` / ``api_key``,
-    preserving all optional parameters (streaming, temperature, etc.).
+    Delegates to ``litellm.completion`` / ``litellm.acompletion``
+    with the claudin.io ``api_base`` / ``api_key``. The OpenAI SDK
+    appends ``/chat/completions`` to ``api_base`` automatically.
     """
 
     def completion(
@@ -147,7 +145,7 @@ class _ClaudinIOProvider(CustomLLM):
     def _delegate_kwargs(model: str, optional_params: dict[str, Any]) -> dict[str, Any]:
         params = {k: v for k, v in optional_params.items() if k != "stream"}
         return {
-            "model": f"anthropic/{model}",
+            "model": f"openai/{model}",
             "api_base": _CLAUDIN_IO_BASE_URL,
             "api_key": _ClaudinIOProvider._api_key(),
             **params,

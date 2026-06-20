@@ -10,15 +10,11 @@ some very obvious ones are still missing: Ollama Cloud, OpenCode Go/Zen.
 Registered providers
 --------------------
 ``claudin-io``
-    Anthropic-compatible API at https://api.claudin.io.  Delegates
-    to the ``anthropic`` provider but routes to the claudin.io endpoint.
-
-    Model strings follow Anthropic's naming:
-    ``claudin-io/claude-3.5-sonnet``, ``claudin-io/claude-3-haiku``, etc.
+    OpenAI-compatible API at https://api.claudin.io/v1/chat/completions.
 
     Example::
 
-        default_model = "claudin-io/claude-3.5-sonnet"
+        default_model = "claudin-io/claudinio"
 
     Authentication: set ``CLAUDINIO_API_KEY`` in your environment.
 
