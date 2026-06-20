@@ -9,17 +9,11 @@
 #   .\scripts\build-wiki.ps1 scripts\config-local.toml      # local LLM (128K ctx)
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -WhatIf
 #
-# A/B testing:
-#   Compare wiki structure, article count, and processing time between
-#   the two configs. Quality differences due to model selection are out
-#   of scope — we are testing the pipeline under different conditions.
-
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$ConfigFile,
 
-    [switch]$Force,  # deprecated — kept for backward compat, no longer forces re-parse
     [switch]$WhatIf
 )
 
@@ -48,14 +42,8 @@ Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
 function Get-ConfigValue($Key) {
     $lines = Get-Content $ConfigPath
-    $inSection = $false
-    $section = ""
     foreach ($line in $lines) {
-        if ($line -match '^\[(.+)\]') {
-            $section = $matches[1]
-            $inSection = $false
-        }
-        elseif ($line -match "^\s*$Key\s*=\s*""(.+)""") {
+        if ($line -match "^\s*$Key\s*=\s*""(.+)""") {
             return $matches[1]
         }
         elseif ($line -match "^\s*$Key\s*=\s*(.+)") {
@@ -66,7 +54,6 @@ function Get-ConfigValue($Key) {
 }
 
 $LLMModel    = Get-ConfigValue "default_model"
-$VlmModel    = Get-ConfigValue "vlm_model"
 $EmbedModel  = Get-ConfigValue "embed_model"
 $OutputName  = Get-ConfigValue "output_name"
 $OutputPath  = Join-Path $ProjectRoot $OutputName
@@ -80,13 +67,8 @@ if (-not $OutputName) {
     exit 1
 }
 
-$model_msg   = if ($LLMModel)   { $LLMModel }   else { "(default from config)" }
-$vlm_msg     = if ($VlmModel)    { $VlmModel }    else { "(default from config)" }
-$embed_msg   = if ($EmbedModel)  { $EmbedModel }  else { "(default from config)" }
-
-Write-Host "  Model:  $model_msg" -ForegroundColor DarkGray
-if ($VlmModel) { Write-Host "  VLM:    $vlm_msg" -ForegroundColor DarkGray }
-Write-Host "  Embed:  $embed_msg" -ForegroundColor DarkGray
+Write-Host "  Model:  $LLMModel" -ForegroundColor DarkGray
+Write-Host "  Embed:  $($EmbedModel)" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
