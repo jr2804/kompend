@@ -8,12 +8,9 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING
 
 from knox.preprocessing.dedup.base import ContentMatcher
-
-if TYPE_CHECKING:
-    from knox.rag.zvec_store import EmbeddingProvider
+from knox.rag.zvec_store import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
