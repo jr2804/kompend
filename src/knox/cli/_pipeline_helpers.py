@@ -39,43 +39,59 @@ logger = logging.getLogger(__name__)
 def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:
     """Build a progress callback that translates pipeline events into Rich updates.
 
-    The overall bar is reset per phase:
+    The overall bar resets per phase. Each phase has a flat handler keyed by
+    name in the dispatch table — no nested phase if/elif chain.
     - **parse**: bar tracks files (0 → N)
     - **resolve**: bar resets to track chunks (0 → M)
     - **compile** / **output**: bar becomes indeterminate
     """
 
+    def _parse(current: int, total: int, detail: str) -> None:
+        if current == 0:
+            tracker.start()
+        elif detail == "done":
+            tracker.update_progress(total, f"Parsed {total} file(s)")
+        else:
+            tracker.update_progress(current, f"[{current}/{total}] {detail}")
+
+    def _index(current: int, total: int, detail: str) -> None:
+        if current == 0:
+            tracker.start()
+            tracker.message("Downloading sources…")
+        else:
+            tracker.message("Download complete")
+
+    def _resolve(current: int, total: int, detail: str) -> None:
+        if current == 0:
+            tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
+        elif detail == "done":
+            tracker.update_progress(total, "Resolve complete")
+        else:
+            tracker.update_progress(current, f"Resolving [{current}/{total}]")
+
+    def _start_done(start_msg: str, done_msg: str) -> Callable[[int, int, str], None]:
+        """compile/output: indeterminate bar, mark done on the first update."""
+
+        def _cb(current: int, total: int, detail: str) -> None:
+            if current == 0:
+                tracker.reset_for_phase(None, start_msg)
+            else:
+                tracker.message(done_msg)
+
+        return _cb
+
+    handlers: dict[str, Callable[[int, int, str], None]] = {
+        "parse": _parse,
+        "index": _index,
+        "resolve": _resolve,
+        "compile": _start_done("Compiling wiki…", "Compile complete"),
+        "output": _start_done("Writing output…", "Output complete"),
+    }
+
     def _cb(phase: str, current: int, total: int, detail: str) -> None:
-        if phase == "parse":
-            if current == 0:
-                tracker.start()
-            elif detail == "done":
-                tracker.update_progress(total, f"Parsed {total} file(s)")
-            else:
-                tracker.update_progress(current, f"[{current}/{total}] {detail}")
-        elif phase == "index":
-            if current == 0:
-                tracker.start()
-                tracker.message("Downloading sources…")
-            else:
-                tracker.message("Download complete")
-        elif phase == "resolve":
-            if current == 0:
-                tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
-            elif detail == "done":
-                tracker.update_progress(total, "Resolve complete")
-            else:
-                tracker.update_progress(current, f"Resolving [{current}/{total}]")
-        elif phase == "compile":
-            if current == 0:
-                tracker.reset_for_phase(None, "Compiling wiki…")
-            else:
-                tracker.message("Compile complete")
-        elif phase == "output":
-            if current == 0:
-                tracker.reset_for_phase(None, "Writing output…")
-            else:
-                tracker.message("Output complete")
+        handler = handlers.get(phase)
+        if handler is not None:
+            handler(current, total, detail)
 
     return _cb
 

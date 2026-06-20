@@ -65,11 +65,13 @@ from knox.cli import (  # noqa: E402
     capture_cmds,  # noqa: F401
     config_cmd,  # noqa: F401
     init,  # noqa: F401
+    lint_cmds,  # noqa: F401
     memory_cmd,  # noqa: F401
     organize_cmds,  # noqa: F401
     pack_cmds,  # noqa: F401
     pipeline_cmds,  # noqa: F401
     quality_cmds,  # noqa: F401
     query_cmds,  # noqa: F401
+    review_cmds,  # noqa: F401
     serve_cmds,  # noqa: F401
 )

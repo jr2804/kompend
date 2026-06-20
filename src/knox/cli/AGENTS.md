@@ -46,9 +46,11 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 |---|---|
 | `app.py` | Typer app instance, version callback, command auto-import |
 | `args.py` | `Annotated` type aliases for every CLI option/argument. No logic. |
-| `commands.py` | `@app.command` functions. Parse args → call core → format output. |
+| `*_cmds.py` | `@app.command` registration, one file per command group (e.g. `pipeline_cmds.py`, `lint_cmds.py`, `review_cmds.py`, `quality_cmds.py`). Each is thin: parse args → call core → format output. |
+| `args_*.py` | Per-command argument aliases for sub-app command groups (`args_init.py`, `args_memory.py`, `args_config.py`). |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
 | `_ignore.py` | Ignore/gitignore pattern matching for source scanning. |
+| `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
 | `_progress.py` | Rich progress bar wrappers. |
 | `doctor.py` | Health checks (dirs, parsers, LLM connectivity). |
 | `status.py` | Wiki statistics collection and display. |
@@ -62,9 +64,14 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
   source of truth is `knox.core.config.DEFAULTS`. The CLI constants exist only
   for Typer's `--help` text and as fallback values passed to `resolve_config()`.
 
-### Command functions (`commands.py`)
+### Command functions (`*_cmds.py`)
 
-- Keep them short: parse → resolve config → call core → print.
+- One `*_cmds.py` file per command group. A group is a cohesive set of
+  related commands (e.g. `lint_cmds.py` = lint, `review_cmds.py` = review
+  queue, `quality_cmds.py` = lightweight diagnostics).
+- Do NOT bundle unrelated commands into one file. If a `*_cmds.py` file
+  grows past a few hundred lines holding unrelated commands, split it.
+- Keep command functions short: parse → resolve config → call core → print.
 - Never put a `for` loop that iterates over wiki nodes and does real work.
   That's business logic — move it to a core module.
 - `try/except` at the top level is fine for user-facing error messages.
@@ -113,7 +120,8 @@ touched, not extended:
 
 - Never expand the CLI's role beyond input/output formatting and thin delegation.
 - When adding a new command: add `Annotated` types to `args.py`, add the
-  `@app.command` function to `commands.py`, add argument → config mapping in
+  `@app.command` function to the appropriate `*_cmds.py` file (create one
+  if no cohesive group exists), add argument → config mapping in
   `_build_cli_overrides()`.
 - Use `typer.echo()` consistently — not `print()`.
 
