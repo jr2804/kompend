@@ -74,9 +74,9 @@ def _ping_model(model: str | None, label: str) -> CheckResult:
     try:
         client = LLMClient(default_model=model)
         result = client.try_complete(
-            [{"role": "user", "content": "ping"}],
+            [{"role": "user", "content": "Respond with exactly one word: ok"}],
             role="doctor",
-            max_tokens=5,
+            max_tokens=10,
         )
         if result is not None:
             model_used = result.diagnostics.model_used
