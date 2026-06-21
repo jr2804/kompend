@@ -39,6 +39,7 @@ dependencies = [
     "mail-parser>=4.4.0",
     "pylatexenc>=2.10",
     "docling-ibm-models>=3.13.3",
+    "opencv-python-headless>=4.13.0.92",
 ]
 
 [project.scripts]
