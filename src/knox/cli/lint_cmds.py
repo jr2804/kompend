@@ -13,6 +13,7 @@ from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
+    ConfigPath,
     JsonOutput,
     LintFix,
     LintLlm,
@@ -82,6 +83,7 @@ def lint_cmd(
     json_output: JsonOutput = False,
     llm_default_model: LlmDefaultModel = None,
     llm_context_budget: LlmContextBudget = None,
+    config: ConfigPath = None,
 ) -> None:
     """Lint a compiled wiki for quality issues.
 
@@ -97,7 +99,10 @@ def lint_cmd(
         knox lint --threshold 80        # exit 1 if score < 80
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    cfg = resolve_config(
+        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        config_path=config,
+    )
     sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
     sources_dir_str = str(sources_dir_path) if sources_dir_path.exists() else None
 
