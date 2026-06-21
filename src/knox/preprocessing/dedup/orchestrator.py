@@ -5,7 +5,7 @@ This is the main entry point for content-level duplicate detection. It:
 1. Loads the persistent fingerprint store (with version-stamp validation).
 2. For each incoming document, runs all configured matchers against the
    full corpus (existing + other incoming docs in the same batch).
-3. Combines scores (max across matchers), produces a verdict.
+3. Combines scores (arithmetic mean across matchers), produces a verdict.
 4. Updates closest-match metadata for both new and existing documents.
 5. Saves the updated store.
 """
@@ -155,7 +155,7 @@ class DedupOrchestrator:
                     if fp_a is not None and fp_b is not None:
                         matcher_scores[matcher.name] = matcher.score(fp_a, fp_b)
 
-                combined = max(matcher_scores.values()) if matcher_scores else 0.0
+                combined = sum(matcher_scores.values()) / len(matcher_scores) if matcher_scores else 0.0
                 if combined > best_score:
                     best_score = combined
                     best_match = candidate_slug
