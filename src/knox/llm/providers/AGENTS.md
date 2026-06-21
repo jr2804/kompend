@@ -58,6 +58,6 @@ Every provider must have tests in `tests/unit/test_providers.py` covering:
 | File | Contents |
 |------|----------|
 | `__init__.py` | Re-exports, `_register_custom_providers()`, auto-registration |
-| `claudin_io.py` | `_ClaudinIOProvider` — OpenAI-compat API at https://api.claudin.io/v1 |
+| `claudin_io.py` | `_ClaudinIOProvider` — OpenAI-compat API at <https://api.claudin.io/v1> |
 | `ollama_cloud.py` | `_OllamaCloudProvider` — Ollama cloud API |
 | `opencode.py` | `_OpenCodeProvider` base + `*ZenProvider`, `*GoProvider`, `*DummyProvider` |

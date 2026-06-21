@@ -432,14 +432,27 @@ class LLMClient:
         if response_format is not None and response_format.get("type") == "json_object":
             try:
                 parsed = json.loads(content)
-            except json.JSONDecodeError as exc:
-                msg = f"LLM returned invalid JSON: {exc}"
-                raise PermanentError(
-                    msg,
-                    model=diagnostics.model_used,
-                    attempts=diagnostics.attempts,
-                    cause=exc,
-                ) from exc
+            except json.JSONDecodeError:
+                # Try to salvage incomplete JSON — small models sometimes
+                # produce a '{' followed by newlines without ever closing.
+                cleaned = content.strip()
+                if cleaned and cleaned[0] == "{" and "}" not in cleaned:
+                    cleaned += "}"
+                    try:
+                        parsed = json.loads(cleaned)
+                    except json.JSONDecodeError:
+                        pass
+                    else:
+                        content = cleaned
+                        exc = None
+                if exc is not None:
+                    msg = f"LLM returned invalid JSON: {exc}"
+                    raise PermanentError(
+                        msg,
+                        model=diagnostics.model_used,
+                        attempts=diagnostics.attempts,
+                        cause=exc,
+                    ) from exc
             if not isinstance(parsed, dict):
                 msg = f"LLM returned JSON of type {type(parsed).__name__}, expected object"
                 raise PermanentError(
