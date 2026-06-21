@@ -749,9 +749,8 @@ class WikiPipeline:
 
     @staticmethod
     def _cache_key(source_file: Path) -> str:
-        """SHA-256 of file contents for cache key."""
-        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
-        return f"{source_file.stem}_{digest[:12]}"
+        """Stem-based cache key — one entry per source file, never orphans."""
+        return source_file.stem
 
 
 def build_llm_client(config: PipelineConfig) -> LLMClient:

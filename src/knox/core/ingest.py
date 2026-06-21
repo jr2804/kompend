@@ -66,7 +66,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     """Parse every file and cache the structured documents.
 
     Each file is routed to a parser, parsed into a :class:`Document`, and
-    serialised to ``base_dir/.knox/cache/<stem>_<sha256[:12]>.json``.
+    serialised to ``base_dir/.knox/cache/<stem>.json``.
     Tier-1 state is recorded so ``knox compile --start-at-tier chunk`` can
     verify prerequisites.
 
@@ -123,17 +123,6 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         if progress_fn is not None:
             progress_fn(idx, total, path.name)
 
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        cache_key = f"{path.stem}_{digest[:12]}"
-        out_path = cache_dir / f"{cache_key}.json"
-
-        if not no_cache and out_path.exists():
-            logger.info("Skipping %s — already cached", path.name)
-            cached += 1
-            count += 1
-            state_store.record(state, path.stem, path, digest, tier=1, ingested_by=ingested_by)
-            continue
-
         parser = router.route(path)
         if parser is None:
             logger.info("Skipping %s — no parser available", path.name)
@@ -147,12 +136,24 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             failed += 1
             continue
 
+        # Cache key is the file stem — stable even when raw file bytes
+        # change (e.g. URL downloads with dynamic HTML). One entry per
+        # source file; re-parsing overwrites, never orphans.
+        out_path = cache_dir / f"{path.stem}.json"
+
+        if not no_cache and out_path.exists():
+            logger.info("Skipping %s — already cached", path.name)
+            cached += 1
+            count += 1
+            state_store.record(state, path.stem, path, hashlib.sha256(path.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+            continue
+
         out_path.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
         )
         count += 1
-        state_store.record(state, path.stem, path, digest, tier=1, ingested_by=ingested_by)
+        state_store.record(state, path.stem, path, hashlib.sha256(path.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
 
         # ── Compute dedup fingerprint NOW (during extraction) ────────
         # Embedding network calls happen here. If the model is misconfigured
