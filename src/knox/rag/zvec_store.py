@@ -23,7 +23,7 @@ import litellm
 import zvec as _zvec
 from sentence_transformers import SentenceTransformer
 
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, WikiNode
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,7 @@ class ZvecWikiStore:
     """Sidecar vector store for semantic search over compiled wikis.
 
     The store is dormant until build_index() is called.
+    Uses a single zvec collection at ``db_path``.
     """
 
     _PREVIEW_LEN: int = 1000
@@ -133,7 +134,7 @@ class ZvecWikiStore:
         self.db_path = Path(db_path)
         self._provider = embedding_provider
         self._embedding_dim = embedding_dim
-        self._collection: Any = None
+        self._collection: Any | None = None
 
     @property
     def available(self) -> bool:
@@ -160,66 +161,15 @@ class ZvecWikiStore:
             self._provider = _make_provider(embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 
-        if self._collection is None:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            schema = _zvec.CollectionSchema(
-                name="knox_wiki",
-                fields=[
-                    _zvec.FieldSchema("title", _zvec.DataType.STRING),
-                    _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
-                    _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
-                    _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
-                ],
-                vectors=_zvec.VectorSchema(
-                    "embedding",
-                    _zvec.DataType.VECTOR_FP32,
-                    self._embedding_dim,
-                ),
-            )
-            self._collection = _zvec.create_and_open(
-                path=str(self.db_path),
-                schema=schema,
-            )
-
-        # Process in batches to avoid holding all embeddings in memory
-        # and to provide incremental progress logging.
-        docs_batch: list[Any] = []
-        indexed_count = 0
-        total_nodes = len(wiki.nodes)
-
-        for node in wiki.nodes:
-            doc = _zvec.Doc(
-                id=node.id,
-                vectors={"embedding": self._provider.embed(f"{node.title}\n{node.content}")},
-                fields={
-                    "title": node.title,
-                    "node_type": node.node_type,
-                    "source_file": str(node.metadata.get("source", "")) if node.metadata else "",
-                    "content_preview": node.content[: self._PREVIEW_LEN],
-                },
-            )
-            docs_batch.append(doc)
-
-            if len(docs_batch) >= batch_size:
-                self._collection.insert(docs_batch)
-                indexed_count += len(docs_batch)
-                logger.info("Indexed %d/%d nodes in zvec store", indexed_count, total_nodes)
-                docs_batch = []
-
-        # Insert any remaining nodes
-        if docs_batch:
-            self._collection.insert(docs_batch)
-            indexed_count += len(docs_batch)
-
-        logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_path)
-        return indexed_count
+        self._collection = self._create_collection()
+        return self._index_nodes(self._collection, wiki.nodes, batch_size)
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity."""
-        if not self.available:
+        if not self.available or self._provider is None:
             return []
         results = self._collection.query(
-            _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),  # ty: ignore
+            _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),
             topk=top_k,
         )
         return [
@@ -254,5 +204,74 @@ class ZvecWikiStore:
         """
         provider = embedding_provider or _make_provider(embedding_model or "", dim=embedding_dim or 384)
         store = cls(db_path=db_path, embedding_provider=provider, embedding_dim=provider.dim)
-        store._collection = _zvec.open(path=str(store.db_path))
+        coll_path = Path(store.db_path)
+        if coll_path.exists():
+            try:
+                store._collection = _zvec.open(path=str(coll_path))
+            except Exception as exc:
+                logger.warning("Could not open zvec store at %s: %s", coll_path, exc, exc_info=True)
+        else:
+            logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_path)
         return store
+
+    def _create_collection(self) -> Any:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        schema = _zvec.CollectionSchema(
+            name="knox_wiki",
+            fields=[
+                _zvec.FieldSchema("title", _zvec.DataType.STRING),
+                _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
+                _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
+                _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
+            ],
+            vectors=_zvec.VectorSchema(
+                "embedding",
+                _zvec.DataType.VECTOR_FP32,
+                self._embedding_dim,
+            ),
+        )
+        collection = _zvec.create_and_open(
+            path=str(self.db_path),
+            schema=schema,
+        )
+        self._collection = collection
+        return collection
+
+    def _index_nodes(
+        self,
+        collection: Any,
+        nodes: list[WikiNode],
+        batch_size: int,
+    ) -> int:
+        provider = self._provider
+        if provider is None:
+            raise RuntimeError("Embedding provider not configured. Call build_index() first.")
+        docs_batch: list[Any] = []
+        indexed_count = 0
+        total_nodes = len(nodes)
+
+        for node in nodes:
+            doc = _zvec.Doc(
+                id=node.id,
+                vectors={"embedding": provider.embed(f"{node.title}\n{node.content}")},
+                fields={
+                    "title": node.title,
+                    "node_type": node.node_type,
+                    "source_file": str(node.metadata.get("source", "")) if node.metadata else "",
+                    "content_preview": node.content[: self._PREVIEW_LEN],
+                },
+            )
+            docs_batch.append(doc)
+
+            if len(docs_batch) >= batch_size:
+                collection.insert(docs_batch)
+                indexed_count += len(docs_batch)
+                logger.info("Indexed %d/%d nodes in zvec store", indexed_count, total_nodes)
+                docs_batch = []
+
+        if docs_batch:
+            collection.insert(docs_batch)
+            indexed_count += len(docs_batch)
+
+        logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_path)
+        return indexed_count

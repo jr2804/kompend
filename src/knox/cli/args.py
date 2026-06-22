@@ -401,31 +401,6 @@ VlmModel = Annotated[
     ),
 ]
 
-ResolveRelations = Annotated[
-    bool,
-    typer.Option(
-        "--resolve-relations/--no-resolve-relations",
-        help=(
-            "Run LLM relation extraction during Tier 2. When enabled, the resolver "
-            "extracts typed relations (uses, depends_on, contradicts, ...) between "
-            "entities and the compiler emits them as graph edges. "
-            f"Env: {APP_NAME_UPPERCASE}_RESOLVE_RELATIONS."
-        ),
-        envvar=f"{APP_NAME_UPPERCASE}_RESOLVE_RELATIONS",
-    ),
-]
-
-RelationConfidenceThreshold = Annotated[
-    float,
-    typer.Option(
-        "--relation-confidence-threshold",
-        help=(f"Minimum confidence (0.0-1.0) for typed relations to be kept. Env: {APP_NAME_UPPERCASE}_RELATION_CONFIDENCE_THRESHOLD."),
-        min=0.0,
-        max=1.0,
-        envvar=f"{APP_NAME_UPPERCASE}_RELATION_CONFIDENCE_THRESHOLD",
-    ),
-]
-
 MemoryEnabled = Annotated[
     bool,
     typer.Option(
@@ -658,6 +633,14 @@ QuerySearchMode = Annotated[
         "--search-mode",
         "--scope",
         help="Search mode: wiki (compiled pages), raw (source files), hybrid (both), or graph (hybrid + graph traversal expansion).",
+    ),
+]
+
+QueryAdaptive = Annotated[
+    bool,
+    typer.Option(
+        "--adaptive",
+        help="Use adaptive retrieval (context-budget-aware zoom-in/zoom-out/targeted).",
     ),
 ]
 

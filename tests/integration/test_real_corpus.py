@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.chunking.hybrid import HybridChunker
+from knox.chunking import HierarchicalChunker
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ParsedDocument, ResolvedChunk
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
@@ -107,8 +107,9 @@ class TestRealCorpusWiki:
         parser = _get_parser()
 
         doc = parser.parse(source_pdfs[0])
-        chunker = HybridChunker(max_tokens=512)
-        chunks = chunker.chunk(doc)
+        chunker = HierarchicalChunker(max_tokens=512)
+        tree = chunker.chunk(doc)
+        chunks = [n.chunk for n in tree.leaves() if n.chunk]
 
         assert len(chunks) > 0
 
@@ -125,12 +126,13 @@ class TestRealCorpusWiki:
     def test_compile_all_pdfs_to_wiki(self, source_pdfs: list[Path]) -> None:
         """Parse and compile all corpus PDFs — verify no crashes."""
         parser = _get_parser()
-        chunker = HybridChunker(max_tokens=512)
+        chunker = HierarchicalChunker(max_tokens=512)
         compiler = GraphCompiler("model")
 
         for pdf in source_pdfs:
             doc = parser.parse(pdf)
-            chunks = chunker.chunk(doc)
+            tree = chunker.chunk(doc)
+            chunks = [n.chunk for n in tree.leaves() if n.chunk]
             resolved = [ResolvedChunk(chunk=c) for c in chunks]
             wiki = compiler.compile(resolved)
             assert len(wiki.nodes) > 0, f"No nodes from {pdf.name}"

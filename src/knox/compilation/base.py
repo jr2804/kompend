@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,18 @@ class BaseCompiler(ABC):
     """Compiler interface for KNOX Tier 4."""
 
     @abstractmethod
-    def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
-        """Compile resolved chunks into a knowledge graph wiki."""
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
+        """Compile resolved chunks into a knowledge graph wiki.
+
+        Parameters
+        ----------
+        chunks:
+            Resolved leaf chunks to compile.
+        trees:
+            Optional ChunkTree list for multi-resolution compilation.
+            When provided, internal node summaries and structured data
+            are used to build richer wiki pages.
+        """
         ...
 
     @staticmethod

@@ -13,6 +13,7 @@ from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_pa
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
+    QueryAdaptive,
     QueryFormat,
     QueryNoClassify,
     QueryRaw,
@@ -29,6 +30,7 @@ from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
+from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.classifier import classify
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
@@ -176,6 +178,7 @@ def query_cmd(
     config: ConfigPath = None,
     no_classify: QueryNoClassify = False,
     search_mode: QuerySearchMode = "hybrid",
+    adaptive: QueryAdaptive = False,
     remember: bool = typer.Option(False, "--remember", help="Save this query and synthesized answer to the memory store."),
 ) -> None:
     """Ask a natural language question against the compiled wiki.
@@ -204,13 +207,23 @@ def query_cmd(
 
     vector_store = _open_vector_store(state_dir, wiki)
     try:
-        retriever = HybridRetriever(
-            wiki,
-            index_path=state_dir / SEARCH_DB_FILE,
-            vector_store=vector_store,
-            sources_dir=sources_dir_path,
-        )
-        results, raw = _execute_query_search(retriever, query, search_mode, sources_dir_path, top_k)
+        if adaptive:
+            retriever = AdaptiveRetriever(
+                wiki,
+                index_path=state_dir / SEARCH_DB_FILE,
+                vector_store=vector_store,
+                sources_dir=sources_dir_path,
+            )
+            results = retriever.search(query, top_k=top_k, mode=search_mode if search_mode != "hybrid" else None)
+            raw = False
+        else:
+            retriever = HybridRetriever(
+                wiki,
+                index_path=state_dir / SEARCH_DB_FILE,
+                vector_store=vector_store,
+                sources_dir=sources_dir_path,
+            )
+            results, raw = _execute_query_search(retriever, query, search_mode, sources_dir_path, top_k)
     finally:
         if vector_store is not None:
             vector_store.close()

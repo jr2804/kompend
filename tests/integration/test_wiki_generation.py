@@ -4,7 +4,7 @@ Uses the corpus in ``tests/data/sources/`` and a local Ollama instance to
 exercise every pipeline feature end-to-end:
 
   1. Tier 1 — Preprocessing:  DoclingParser on all corpus PDFs
-  2. Tier 2 — Chunking:       HybridChunker (512 tokens)
+  2. Tier 2 — Chunking:       HierarchicalChunker (512 tokens)
   3. Tier 3 — Resolution:     VLMEnricher (glm-ocr)
   4. Tier 4 — Compilation:    TwoPhaseCompiler / GraphCompiler (graph backend)
                                WiCERCompiler (wicer backend)
@@ -38,7 +38,7 @@ from typing import Any
 
 import pytest
 
-from knox.chunking.hybrid import HybridChunker
+from knox.chunking import HierarchicalChunker
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
@@ -148,11 +148,11 @@ def parsed_docs(small_corpus: list[Path]) -> list[ParsedDocument]:
 @pytest.fixture(scope="module")
 def raw_chunks(parsed_docs: list[ParsedDocument]) -> list[ResolvedChunk]:
     """Chunk parsed documents once."""
-    chunker = HybridChunker(max_tokens=512)
+    chunker = HierarchicalChunker(max_tokens=512)
     all_chunks = []
     for doc in parsed_docs:
-        chunks = chunker.chunk(doc)
-        all_chunks.extend(chunks)
+        tree = chunker.chunk(doc)
+        all_chunks.extend(n.chunk for n in tree.leaves() if n.chunk)
     return all_chunks
 
 
@@ -596,7 +596,7 @@ class TestFullPipelineE2E:
         state = store.load()
 
         parser = DoclingParser(extract_images=False)
-        chunker = HybridChunker(max_tokens=512)
+        chunker = HierarchicalChunker(max_tokens=512)
 
         for pdf in small_corpus[:1]:
             doc = parser.parse(pdf)
@@ -646,13 +646,14 @@ class TestFullPipelineE2E:
 
         # Tier 1
         parser = DoclingParser(extract_images=False)
-        chunker = HybridChunker(max_tokens=512)
+        chunker = HierarchicalChunker(max_tokens=512)
 
         all_chunks = []
         for pdf in small_corpus:
             try:
                 doc = parser.parse(pdf)
-                all_chunks.extend(chunker.chunk(doc))
+                tree = chunker.chunk(doc)
+                all_chunks.extend(n.chunk for n in tree.leaves() if n.chunk)
             except Exception:
                 logger.exception("E2E: failed to parse %s", pdf.name)
 
@@ -772,10 +773,11 @@ class TestGenerateExampleWiki:
         logger.info("Parsed %d documents", len(parsed_docs))
 
         # ── Tier 2: chunk ─────────────────────────────────────────────
-        chunker = HybridChunker(max_tokens=512)
+        chunker = HierarchicalChunker(max_tokens=512)
         all_chunks = []
         for doc in parsed_docs:
-            all_chunks.extend(chunker.chunk(doc))
+            tree = chunker.chunk(doc)
+            all_chunks.extend(n.chunk for n in tree.leaves() if n.chunk)
         assert all_chunks, "No chunks produced"
         logger.info("Total chunks: %d", len(all_chunks))
 

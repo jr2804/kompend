@@ -20,7 +20,7 @@ from typing import Any
 from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
@@ -86,7 +86,7 @@ class WiCERCompiler(BaseCompiler):
     # Public API
     # ------------------------------------------------------------------
 
-    def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
         """Run the WiCER iterative-compilation loop.
 
         Returns a :class:`CompiledWiki` — never raises.

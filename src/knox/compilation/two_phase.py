@@ -21,6 +21,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from knox.chunking.summarizer import (
+    _structured_to_text,
+)  # ponytail: cross-module private import. Make public or move to knox.core.models if other callers appear.
 from knox.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
@@ -38,7 +41,7 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
@@ -114,7 +117,7 @@ class TwoPhaseCompiler(BaseCompiler):
             cw.source,
         )
 
-    def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
         """Run the two-phase compile with generation cache (Tier 3 Phase 2)."""
         if not chunks:
             return CompiledWiki(
@@ -124,7 +127,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 metadata={"chunk_count": 0, "two_phase": True},
             )
 
-        extractions = self.extract(chunks)
+        extractions = self.extract(chunks, trees=trees)
 
         # Generation cache: keyed by all extractions + model + gen config.
         gen_deps = self._gen_cache_deps(extractions)
@@ -138,14 +141,19 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
                 return cached
 
-        wiki = self.generate(extractions, chunks)
+        wiki = self.generate(extractions, chunks, trees=trees)
 
         if not self._config.no_cache:
             self._cache_store.set("generate", gen_deps, wiki)
         return wiki
 
-    def extract(self, chunks: list[ResolvedChunk]) -> ExtractionSet:
+    def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source.
+
+        When *trees* are provided, extraction input is built from the
+        ChunkTree hierarchy (internal node summaries + leaf text) rather
+        than flat chunk text. This gives the LLM a structured view of
+        the document with multi-resolution context.
 
         Source text is processed in batches sized to fill the context window
         (minus system prompt and output budget) so that no content is silently
@@ -158,6 +166,13 @@ class TwoPhaseCompiler(BaseCompiler):
         for rc in chunks:
             label = str(rc.chunk.source_file or "unknown")
             by_source[label].append(rc)
+
+        # Build tree lookup when available.
+        tree_by_source: dict[str, ChunkTree] = {}
+        if trees:
+            for t in trees:
+                if t.source_file is not None:
+                    tree_by_source[str(t.source_file)] = t
 
         extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
         num_sources = len(by_source)
@@ -172,7 +187,11 @@ class TwoPhaseCompiler(BaseCompiler):
 
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
-            texts = [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+
+            # Build hierarchical text from tree when available.
+            tree = tree_by_source.get(source)
+            texts = self._build_tree_texts(tree) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+
             if not texts:
                 extractions.add(Extraction(source=source))
                 continue
@@ -199,7 +218,7 @@ class TwoPhaseCompiler(BaseCompiler):
             extractions.add(_merge_extractions(source, batch_extractions))
         return extractions
 
-    def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk]) -> CompiledWiki:  # noqa: PLR0915
+    def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:  # noqa: PLR0915
         """Phase 2: merge extractions and generate per-concept pages.
 
         Batches concepts into groups of ``concepts_per_batch`` to avoid
@@ -209,7 +228,7 @@ class TwoPhaseCompiler(BaseCompiler):
         concepts = extractions.concept_pages()
         if not concepts:
             # Nothing to merge — fall back to the base compiler.
-            return self._fallback_compile(chunks)
+            return self._fallback_compile(chunks, trees=trees)
 
         # Collect images from IMAGE chunks for embedding in output
         all_images = _extract_images_from_chunks(chunks)
@@ -240,7 +259,7 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         if not nodes:
-            return self._fallback_compile(chunks)
+            return self._fallback_compile(chunks, trees=trees)
 
         self.disambiguate_duplicate_titles(nodes, chunks)
         nodes = self.filter_empty_nodes(
@@ -423,9 +442,9 @@ class TwoPhaseCompiler(BaseCompiler):
             "concepts_per_batch": str(budget.concepts_per_batch),
         }
 
-    def _fallback_compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
+    def _fallback_compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
         if self._base is not None:
-            wiki = self._base.compile(chunks)
+            wiki = self._base.compile(chunks, trees=trees)
             return CompiledWiki(
                 nodes=list(wiki.nodes),
                 edges=list(wiki.edges),
@@ -441,6 +460,32 @@ class TwoPhaseCompiler(BaseCompiler):
             toc=[],
             metadata={"chunk_count": len(chunks), "two_phase": True, "fallback": True},
         )
+
+    @staticmethod
+    def _build_tree_texts(tree: ChunkTree) -> list[str]:
+        """Build hierarchical text blocks from a ChunkTree.
+
+        Internal nodes produce heading + summary. Leaf nodes produce
+        full text. The result is a list of text blocks that preserve
+        the document's heading hierarchy.
+        """
+        texts: list[str] = []
+        for node in tree.walk():
+            if node.chunk is None and not node.structured and not node.summary:
+                continue
+            heading_prefix = ""
+            if node.heading_path:
+                heading_prefix = f"{'#' * min(node.depth + 1, 6)} {' / '.join(node.heading_path)}\n\n"
+            if node.chunk is not None:
+                # Leaf prose node — full text.
+                texts.append(f"{heading_prefix}{node.chunk.text}")
+            elif node.structured is not None:
+                # Leaf structured node — text representation.
+                texts.append(f"{heading_prefix}{_structured_to_text(node.structured)}")
+            elif node.summary:
+                # Internal node — summary only.
+                texts.append(f"{heading_prefix}[summary: {node.summary}]")
+        return texts
 
     @staticmethod
     def _build_edges(

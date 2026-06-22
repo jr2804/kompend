@@ -1,6 +1,6 @@
 """Chunk quality benchmark.
 
-Takes a mock ParsedDocument (from test fixtures), runs HybridChunker, and measures:
+Takes a mock ParsedDocument (from test fixtures), runs HierarchicalChunker, and measures:
   - Token efficiency (total chunk tokens / raw document tokens)
   - Atomic preservation (tables/code blocks atomically preserved)
   - Chunk count distribution
@@ -14,15 +14,21 @@ import time
 
 import pytest
 
-from knox.chunking.hybrid import HybridChunker
-from knox.core.models import ElementType, ParsedDocument
+from knox.chunking import HierarchicalChunker
+from knox.core.models import Chunk, ElementType, ParsedDocument
 from tests.fixtures.documents import make_test_doc
 
 pytestmark = pytest.mark.benchmark
 
 
+def _leaf_chunks(doc: ParsedDocument, max_tokens: int) -> list[Chunk]:
+    """Chunk a document and extract leaf-node Chunk objects."""
+    tree = HierarchicalChunker(max_tokens=max_tokens).chunk(doc)
+    return [n.chunk for n in tree.leaves() if n.chunk]
+
+
 class TestChunkQualityBenchmark:
-    """Quality benchmarks for HybridChunker."""
+    """Quality benchmarks for HierarchicalChunker."""
 
     @pytest.fixture(scope="class")
     def large_doc(self) -> ParsedDocument:
@@ -49,22 +55,22 @@ class TestChunkQualityBenchmark:
     def test_benchmark_chunking_speed(self, large_doc: ParsedDocument) -> None:
         """Measure chunking speed across multiple configurations."""
         configs = [
-            ("max_tokens=256", HybridChunker(max_tokens=256)),
-            ("max_tokens=512", HybridChunker(max_tokens=512)),
-            ("max_tokens=1024", HybridChunker(max_tokens=1024)),
+            ("max_tokens=256", 256),
+            ("max_tokens=512", 512),
+            ("max_tokens=1024", 1024),
         ]
         print("\n")
-        for label, chunker in configs:
+        for label, max_tok in configs:
             durations: list[float] = []
             for _ in range(5):
                 t0 = time.perf_counter()
-                chunker.chunk(large_doc)
+                _leaf_chunks(large_doc, max_tok)
                 durations.append(time.perf_counter() - t0)
             avg = sum(durations) / len(durations)
-            print(f"  ⏱  HybridChunker({label}) — avg: {avg * 1000:.1f}ms over 5 runs")
+            print(f"  ⏱  HierarchicalChunker({label}) — avg: {avg * 1000:.1f}ms over 5 runs")
 
         # Just verify it doesn't crash
-        result = HybridChunker(max_tokens=512).chunk(large_doc)
+        result = _leaf_chunks(large_doc, 512)
         assert len(result) > 0
 
     # ── Token efficiency ───────────────────────────────────────────────
@@ -84,8 +90,7 @@ class TestChunkQualityBenchmark:
         )
         raw_tokens = self._approx_tokens(raw_text)
 
-        chunker = HybridChunker(max_tokens=512)
-        chunks = chunker.chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 512)
         chunk_tokens = sum(self._approx_tokens(c.text) for c in chunks)
 
         efficiency = chunk_tokens / raw_tokens if raw_tokens > 0 else 1.0
@@ -107,7 +112,7 @@ class TestChunkQualityBenchmark:
         raw_text = "\n\n".join(str(el.content) for el in text_only_doc.elements if isinstance(el.content, str))
         raw_tokens = self._approx_tokens(raw_text)
 
-        chunks = HybridChunker(max_tokens=512).chunk(text_only_doc)
+        chunks = _leaf_chunks(text_only_doc, 512)
         chunk_tokens = sum(self._approx_tokens(c.text) for c in chunks)
         efficiency = chunk_tokens / raw_tokens if raw_tokens > 0 else 1.0
 
@@ -121,7 +126,7 @@ class TestChunkQualityBenchmark:
 
     def test_table_atomic_preservation(self, large_doc: ParsedDocument) -> None:
         """Verify tables are never split across chunks."""
-        chunks = HybridChunker(max_tokens=256).chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 256)
         table_chunks = [c for c in chunks if ElementType.TABLE in c.element_types]
         print(f"\n  🏛  Table chunks: {len(table_chunks)}")
         for c in table_chunks:
@@ -130,7 +135,7 @@ class TestChunkQualityBenchmark:
 
     def test_code_atomic_preservation(self, large_doc: ParsedDocument) -> None:
         """Verify code blocks are never split across chunks."""
-        chunks = HybridChunker(max_tokens=256).chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 256)
         code_chunks = [c for c in chunks if ElementType.CODE in c.element_types]
         print(f"\n  💻 Code chunks: {len(code_chunks)}")
         for c in code_chunks:
@@ -138,7 +143,7 @@ class TestChunkQualityBenchmark:
 
     def test_image_atomic_preservation(self, large_doc: ParsedDocument) -> None:
         """Verify images are never split across chunks."""
-        chunks = HybridChunker(max_tokens=256).chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 256)
         img_chunks = [c for c in chunks if ElementType.IMAGE in c.element_types]
         print(f"\n  🖼  Image chunks: {len(img_chunks)}")
         for c in img_chunks:
@@ -150,7 +155,7 @@ class TestChunkQualityBenchmark:
         """Measure chunk counts at different max_tokens settings."""
         results: list[tuple[int, int, int]] = []
         for max_tok in [128, 256, 512, 1024]:
-            chunks = HybridChunker(max_tokens=max_tok).chunk(large_doc)
+            chunks = _leaf_chunks(large_doc, max_tok)
             chunk_sizes = [len(c.text) for c in chunks]
             avg_size = sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0
             results.append((max_tok, len(chunks), int(avg_size)))
@@ -169,7 +174,7 @@ class TestChunkQualityBenchmark:
 
     def test_heading_context_quality(self, large_doc: ParsedDocument) -> None:
         """Measure how often heading context is populated."""
-        chunks = HybridChunker(max_tokens=256).chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 256)
         with_context = sum(1 for c in chunks if c.heading_context)
         ratio = with_context / len(chunks) if chunks else 0.0
 
@@ -184,8 +189,7 @@ class TestChunkQualityBenchmark:
 
     def test_fallback_chunking(self, large_doc: ParsedDocument) -> None:
         """Verify chunking still works — chonkie is a hard dep."""
-        chunker = HybridChunker(max_tokens=512)
-        chunks = chunker.chunk(large_doc)
+        chunks = _leaf_chunks(large_doc, 512)
         assert len(chunks) > 0, "Chunking should produce chunks"
         print(f"\n  🔧 Fallback chunking produced {len(chunks)} chunks")
 

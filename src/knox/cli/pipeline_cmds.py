@@ -58,8 +58,6 @@ from knox.cli.args import (
     Private,
     Progress,
     PromptBudget,
-    RelationConfidenceThreshold,
-    ResolveRelations,
     ReviewMode,
     StartAtTier,
     SynthesizeFlag,
@@ -76,6 +74,7 @@ from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
+from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -149,8 +148,6 @@ def compile_cmd(
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
     vlm_model: VlmModel = None,
-    resolve_relations: ResolveRelations = True,
-    relation_confidence_threshold: RelationConfidenceThreshold = 0.5,
     memory_enabled: MemoryEnabled = True,
     memory_half_life_days: MemoryHalfLifeDays = 90.0,
     memory_decay_threshold: MemoryDecayThreshold = 0.3,
@@ -196,8 +193,6 @@ def compile_cmd(
         ignore=ignore,
         llm_default_model=llm_default_model,
         vlm_model=vlm_model,
-        resolve_relations=resolve_relations,
-        relation_confidence_threshold=relation_confidence_threshold,
         memory_enabled=memory_enabled,
         memory_half_life_days=memory_half_life_days,
         memory_decay_threshold=memory_decay_threshold,
@@ -357,6 +352,7 @@ def ingest_cmd(
             tracker.update_progress(current, f"[{current + 1}/{total}] {detail}")
 
     try:
+        ingest_start = time.monotonic()
         result = ingest_documents(
             files=all_input_files,
             base_dir=base_dir,
@@ -366,6 +362,7 @@ def ingest_cmd(
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
         )
+        ingest_duration = time.monotonic() - ingest_start
     finally:
         tracker.finish()
 
@@ -379,3 +376,15 @@ def ingest_cmd(
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
     typer.echo(summary)
+
+    log_path = VaultPaths(base_dir).state_dir / "log.md"
+    prepend_log(
+        log_path,
+        generate_stage_log_entry(
+            stage="ingest",
+            duration=ingest_duration,
+            source_count=result.count,
+            source_names=[f.stem for f in all_input_files],
+            chunk_count=result.count,
+        ),
+    )

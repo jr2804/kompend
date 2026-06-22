@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from knox.compilation.base import BaseCompiler
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,13 @@ class GraphCompiler(BaseCompiler):
         self._min_concept_sources = min_concept_sources
         self._max_concept_pages = max_concept_pages
 
-    def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
         """Blind compilation of resolved chunks into a knowledge graph.
+
+        When *trees* are provided, structured data from ChunkNode leaves
+        is attached to the corresponding WikiNode's ``structured_sections``
+        field, enabling downstream consumers to access typed table/equation/
+        figure data directly.
 
         Returns a :class:`CompiledWiki` - never raises.
         """
@@ -76,6 +82,9 @@ class GraphCompiler(BaseCompiler):
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)
         edges.extend(self._build_typed_edges(chunks, nodes, entity_location))
         edges.extend(self._build_source_sibling_edges(nodes, edges))
+
+        if trees:
+            self._attach_structured_sections(nodes, chunks, trees)
 
         if self._min_concept_sources > 0:
             concept_nodes, concept_edges = self._build_concept_pages(
@@ -393,3 +402,52 @@ class GraphCompiler(BaseCompiler):
     def _build_toc(nodes: list[WikiNode]) -> list[dict[str, Any]]:
         """Build a top-level table of contents from nodes."""
         return [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
+
+    @staticmethod
+    def _attach_structured_sections(
+        nodes: list[WikiNode],
+        chunks: list[ResolvedChunk],
+        trees: list[ChunkTree],
+    ) -> None:
+        """Attach structured data from ChunkTree leaves to WikiNodes.
+
+        For each WikiNode, finds matching ChunkNode leaves (by heading
+        context and source file) and populates ``structured_sections``
+        with typed table/equation/figure data.
+        """
+        tree_map: dict[str, ChunkTree] = {}
+        for t in trees:
+            if t.source_file is not None:
+                tree_map[str(t.source_file)] = t
+
+        chunk_source: dict[str, str] = {}
+        for rc in chunks:
+            if rc.chunk.source_file and rc.chunk.id:
+                chunk_source[rc.chunk.id] = str(rc.chunk.source_file)
+
+        for node in nodes:
+            heading = node.metadata.get("heading_context", "_root")
+            source = node.metadata.get("source_file")
+            if source is None:
+                continue
+            tree = tree_map.get(source)
+            if tree is None:
+                continue
+
+            structured_sections: list[dict[str, Any]] = []
+            for chunk_node in tree.walk():
+                if chunk_node.structured is None:
+                    continue
+                chunk_heading = chunk_node.chunk.heading_context or "_root" if chunk_node.chunk is not None else heading
+                if chunk_heading != heading:
+                    continue
+                structured_sections.append(
+                    {
+                        "type": type(chunk_node.structured).__name__,
+                        "data": asdict(chunk_node.structured),
+                        "heading_path": list(chunk_node.heading_path),
+                    }
+                )
+
+            if structured_sections:
+                node.structured_sections["items"] = structured_sections
