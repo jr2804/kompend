@@ -14,7 +14,9 @@ output_name = "demo-wiki-cloud"
 [compile.llm]
 #default_model      = "ollama-cloud/deepseek-v4-flash"
 #default_model      = "opencode-zen/deepseek-v4-flash-free"
-default_model      = "openrouter/openrouter/free"
+#default_model      = "openrouter/openrouter/free"
+default_model      = "claudin-io/claudinio"
+api_key            = "$CLAUDINIO_API_KEY"
 vlm_model          = "ollama/glm-ocr"
 timeout            = 300.0
 #context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show

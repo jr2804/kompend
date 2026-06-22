@@ -12,7 +12,9 @@ output_name = "demo-wiki-local"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-default_model = "ollama/lfm2.5"
+#default_model = "ollama/lfm2.5"
+#default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
+default_model = "ollama/gemma4:e4b"
 vlm_model     = "ollama/glm-ocr"
 # context_window_cap = # optional; if not set, build-wiki.ps1 will call /api/show
 timeout = 600.0
