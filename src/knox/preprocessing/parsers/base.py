@@ -46,13 +46,13 @@ class BaseParser(ABC):
     supported_extensions: set[FileExtension] = set()
 
     @abstractmethod
-    def parse(self, source_path: Path) -> ParsedDocument:
+    def parse(self, source_file: Path) -> ParsedDocument:
         """Parse a single source file into a structured document."""
         ...
 
-    def can_parse(self, source_path: Path) -> bool:
+    def can_parse(self, source_file: Path) -> bool:
         """Check if this parser supports the given file."""
-        return source_path.suffix.lower() in self.supported_extensions
+        return source_file.suffix.lower() in self.supported_extensions
 
 
 class ParserRouter:
@@ -75,17 +75,17 @@ class ParserRouter:
         """Set a fallback parser for text files detected by binaryornot."""
         self._text_fallback = parser
 
-    def route(self, source_path: Path) -> BaseParser | None:
+    def route(self, source_file: Path) -> BaseParser | None:
         for parser in self._parsers:
-            if parser.can_parse(source_path):
+            if parser.can_parse(source_file):
                 return parser
         # No registered parser matched — try binaryornot text fallback.
-        if self._text_fallback is not None and not is_binary(str(source_path)):
+        if self._text_fallback is not None and not is_binary(str(source_file)):
             return self._text_fallback
         return None
 
-    def parse(self, source_path: Path) -> ParsedDocument:
-        parser = self.route(source_path)
+    def parse(self, source_file: Path) -> ParsedDocument:
+        parser = self.route(source_file)
         if not parser:
-            raise ValueError(f"No parser found for {source_path}")
-        return parser.parse(source_path)
+            raise ValueError(f"No parser found for {source_file}")
+        return parser.parse(source_file)

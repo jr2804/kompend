@@ -165,14 +165,14 @@ def _write_report(
     dry_run: bool,
 ) -> None:
     """Persist a JSON report next to the wiki metadata."""
-    report_path = VaultPaths(base_dir).organize_report_path
+    report_file = VaultPaths(base_dir).organize_report_path
     payload = {
         "dry_run": dry_run,
         "categories": _tree_to_json(tree),
         "moves": [{"old": m.old, "new": m.new} for m in moves],
         "link_updates": link_updates,
     }
-    report_path.write_text(
+    report_file.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )

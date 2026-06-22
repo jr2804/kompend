@@ -44,9 +44,9 @@ class MarkdownWriter(BaseOutputWriter):
 
         if not self.vault_mode:
             markdown = self.renderer.render_all(docs, title=wiki.metadata.get("title", "Compiled Wiki"))
-            output_path = output_dir / "wiki.md"
-            output_path.write_text(markdown, encoding="utf-8")
-            return output_path
+            output_file = output_dir / "wiki.md"
+            output_file.write_text(markdown, encoding="utf-8")
+            return output_file
 
         return self._write_vault(docs, wiki, output_dir)
 

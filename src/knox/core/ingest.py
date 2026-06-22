@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 ProgressFn = Callable[[int, int, str], None]
 
 
-def _extract_text_for_dedup(doc: Any, path: Path) -> str:
+def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
     """Extract plain text from a parsed document for dedup fingerprinting.
 
     Concatenates all element text. Falls back to raw file contents when the
@@ -38,7 +38,7 @@ def _extract_text_for_dedup(doc: Any, path: Path) -> str:
             element_text = getattr(element, "text", None)
             if element_text:
                 text += element_text + "\n\n"
-    return text or path.read_text(errors="replace")
+    return text or source_file.read_text(errors="replace")
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +99,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             (``compile_state.json``). Empty string records no identity.
 
     Returns:
-        :class:`IngestResult` with counts and the cache directory path.
+        :class:`IngestResult` with counts and the cache directory source_file.
     """
     total = len(files)
     paths = VaultPaths(base_dir)
@@ -119,41 +119,41 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
-    for idx, path in enumerate(files):
+    for idx, source_file in enumerate(files):
         if progress_fn is not None:
-            progress_fn(idx, total, path.name)
+            progress_fn(idx, total, source_file.name)
 
-        parser = router.route(path)
+        parser = router.route(source_file)
         if parser is None:
-            logger.info("Skipping %s — no parser available", path.name)
+            logger.info("Skipping %s — no parser available", source_file.name)
             skipped += 1
             continue
 
         try:
-            doc = parser.parse(path)
+            doc = parser.parse(source_file)
         except Exception:
-            logger.debug("Failed to parse %s", path, exc_info=True)
+            logger.debug("Failed to parse %s", source_file, exc_info=True)
             failed += 1
             continue
 
         # Cache key is the file stem — stable even when raw file bytes
         # change (e.g. URL downloads with dynamic HTML). One entry per
         # source file; re-parsing overwrites, never orphans.
-        out_path = cache_dir / f"{path.stem}.json"
+        out_file = cache_dir / f"{source_file.stem}.json"
 
-        if not no_cache and out_path.exists():
-            logger.info("Skipping %s — already cached", path.name)
+        if not no_cache and out_file.exists():
+            logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
-            state_store.record(state, path.stem, path, hashlib.sha256(path.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+            state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
             continue
 
-        out_path.write_text(
+        out_file.write_text(
             json.dumps(asdict(doc), indent=2, default=str),
             encoding="utf-8",
         )
         count += 1
-        state_store.record(state, path.stem, path, hashlib.sha256(path.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+        state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
 
         # ── Compute dedup fingerprint NOW (during extraction) ────────
         # Embedding network calls happen here. If the model is misconfigured
@@ -162,8 +162,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         # dedup was explicitly enabled, so silent degradation is worse than
         # crashing.
         if dedup_orch is not None:
-            slug = path.stem
-            text = _extract_text_for_dedup(doc, path)
+            slug = source_file.stem
+            text = _extract_text_for_dedup(doc, source_file)
             dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
 
     # ── Content-level duplicate comparison (end of ingest) ──────────

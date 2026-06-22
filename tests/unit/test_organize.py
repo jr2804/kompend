@@ -509,7 +509,7 @@ class TestUpdateWikiLinks:
             json.dumps(
                 {
                     "entries": {
-                        "a": {"source_path": "sources/old.md", "stem": "a"},
+                        "a": {"source_file": "sources/old.md", "stem": "a"},
                     },
                 },
             ),
@@ -524,7 +524,7 @@ class TestUpdateWikiLinks:
 
         assert counts["tier_state"] == 1
         data = json.loads(state.read_text(encoding="utf-8"))
-        assert data["entries"]["a"]["source_path"] == "sources/new.md"
+        assert data["entries"]["a"]["source_file"] == "sources/new.md"
 
     def test_empty_remap_is_noop(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"

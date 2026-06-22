@@ -88,28 +88,28 @@ class DoclingParser(BaseParser):
         self._pdf_config = pdf_config or PdfConfig()
         self._converter: DocumentConverter | None = None
 
-    def parse(self, source_path: Path) -> ParsedDocument:
+    def parse(self, source_file: Path) -> ParsedDocument:
         converter = self._get_converter()
 
-        if source_path.suffix.lower() == ".pdf" and self._pdf_config.max_pages_before_chunking > 0:
-            page_count = self._count_pdf_pages(source_path)
+        if source_file.suffix.lower() == ".pdf" and self._pdf_config.max_pages_before_chunking > 0:
+            page_count = self._count_pdf_pages(source_file)
             if page_count > self._pdf_config.max_pages_before_chunking:
                 logger.info(
                     "Large PDF (%d pages) — processing in chunks of %d pages",
                     page_count,
                     self._pdf_config.page_chunk_size,
                 )
-                return self._parse_chunked(source_path, converter, page_count)
+                return self._parse_chunked(source_file, converter, page_count)
 
-        result = converter.convert(str(source_path))
+        result = converter.convert(str(source_file))
         doc = result.document
-        elements, _ = self._extract_elements(doc, source_path)
+        elements, _ = self._extract_elements(doc, source_file)
         page_count = len(doc.pages) if doc.pages else 0
-        title = doc.name if hasattr(doc, "name") else source_path.stem
+        title = doc.name if hasattr(doc, "name") else source_file.stem
         self._unload_result(result)
 
         return ParsedDocument(
-            source_path=source_path,
+            source_file=source_file,
             elements=elements,
             title=title,
             page_count=page_count,
@@ -118,7 +118,7 @@ class DoclingParser(BaseParser):
 
     def _parse_chunked(
         self,
-        source_path: Path,
+        source_file: Path,
         converter: DocumentConverter,
         page_count: int,
     ) -> ParsedDocument:
@@ -131,7 +131,7 @@ class DoclingParser(BaseParser):
         chunk_size = self._pdf_config.page_chunk_size
         all_elements: list[DocumentElement] = []
         reading_order = 0
-        title = source_path.stem
+        title = source_file.stem
 
         start_page = 1
         while start_page <= page_count:
@@ -139,7 +139,7 @@ class DoclingParser(BaseParser):
             logger.debug("Processing pages %d-%d of %d", start_page, end_page, page_count)
 
             result = converter.convert(
-                str(source_path),
+                str(source_file),
                 page_range=(start_page, end_page),
             )
             doc = result.document
@@ -148,7 +148,7 @@ class DoclingParser(BaseParser):
 
             elements, reading_order = self._extract_elements(
                 doc,
-                source_path,
+                source_file,
                 reading_order_start=reading_order,
             )
             all_elements.extend(elements)
@@ -157,7 +157,7 @@ class DoclingParser(BaseParser):
             start_page = end_page + 1
 
         return ParsedDocument(
-            source_path=source_path,
+            source_file=source_file,
             elements=all_elements,
             title=title,
             page_count=page_count,
@@ -167,7 +167,7 @@ class DoclingParser(BaseParser):
     def _extract_elements(
         self,
         doc: Any,
-        source_path: Path,
+        source_file: Path,
         reading_order_start: int = 0,
     ) -> tuple[list[DocumentElement], int]:
         """Walk Docling document items and build KNOX DocumentElements.
@@ -213,7 +213,7 @@ class DoclingParser(BaseParser):
                 )
 
             elif element_type == ElementType.IMAGE:
-                content = self._extract_image(item, source_path, reading_order)
+                content = self._extract_image(item, source_file, reading_order)
                 img_meta: dict[str, Any] = {
                     "docling_type": class_name,
                     "image_mode": self.image_mode,
@@ -275,7 +275,7 @@ class DoclingParser(BaseParser):
                 self._converter = DocumentConverter()
         return self._converter
 
-    def _extract_image(self, item: Any, source_path: Path, idx: int) -> str:
+    def _extract_image(self, item: Any, source_file: Path, idx: int) -> str:
         image_ref = getattr(item, "image", None)
         uri_str = None
         if image_ref is not None:
@@ -293,8 +293,8 @@ class DoclingParser(BaseParser):
 
         if self.image_mode == "file":
             captions = getattr(item, "captions", [])
-            stem = source_path.stem
-            images_dir = self.images_dir or (source_path.parent / f"{stem}_images")
+            stem = source_file.stem
+            images_dir = self.images_dir or (source_file.parent / f"{stem}_images")
             images_dir.mkdir(parents=True, exist_ok=True)
             out_path = images_dir / f"{stem}_img_{idx}.png"
 
@@ -315,9 +315,9 @@ class DoclingParser(BaseParser):
         return f"[Image #{idx}]"
 
     @staticmethod
-    def _count_pdf_pages(source_path: Path) -> int:
+    def _count_pdf_pages(source_file: Path) -> int:
         """Count pages in a PDF using pypdfium2 (lightweight, no OCR)."""
-        document = pdfium.PdfDocument(str(source_path))
+        document = pdfium.PdfDocument(str(source_file))
         count = len(document)
         document.close()
         return count

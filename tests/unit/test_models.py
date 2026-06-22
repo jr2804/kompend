@@ -73,7 +73,7 @@ def test_parsed_document_structure() -> None:
         ),
     ]
     doc = ParsedDocument(
-        source_path=Path("test.pdf"),
+        source_file=Path("test.pdf"),
         elements=elems,
         title="Test Doc",
         author="Test Author",

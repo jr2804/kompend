@@ -106,8 +106,8 @@ def compile_wiki(
     compiler:
         Compiler backend: ``"graph"`` (default) or ``"wicer"``.
     """
-    source_path = Path(sources_dir)
-    if not source_path.exists():
+    source_dir = Path(sources_dir)
+    if not source_dir.exists():
         return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
 
     try:
@@ -132,7 +132,7 @@ def compile_wiki(
         return {"status": "error", "message": f"Unknown image_mode: {image_mode!r}. Use file or base64."}
 
     config = PipelineConfig(
-        source_dir=source_path,
+        source_dir=source_dir,
         output_dir=Path(output),
         llm=LLMConfig(default_model="", vlm_model=vlm_model),
         embedding=EmbeddingConfig(model=""),
@@ -147,13 +147,13 @@ def compile_wiki(
     try:
         wiki = pipeline.run()
         ext = "md" if output_format == "markdown" else output_format
-        output_path = Path(output) / f"wiki.{ext}"
+        output_file = Path(output) / f"wiki.{ext}"
         return {
             "status": "ok",
             "node_count": len(wiki.nodes),
             "edge_count": len(wiki.edges),
             "toc_count": len(wiki.toc),
-            "output_path": str(output_path.resolve()),
+            "output_file": str(output_file.resolve()),
             "wiki": {
                 "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
                 "edges": list(wiki.edges),
@@ -178,8 +178,8 @@ def wiki_capture(
     Uses LLM to extract decisions, discoveries, corrections, and references
     from conversation text. Results are written to sources/_captured/.
     """
-    source_path = Path(sources_dir)
-    source_path.mkdir(parents=True, exist_ok=True)
+    source_dir = Path(sources_dir)
+    source_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         cfg = resolve_config()
@@ -189,7 +189,7 @@ def wiki_capture(
         llm_client = None
 
     try:
-        paths = capture(text, sources_dir=source_path, llm_client=llm_client)
+        paths = capture(text, sources_dir=source_dir, llm_client=llm_client)
         return {
             "status": "ok",
             "count": len(paths),
@@ -209,11 +209,11 @@ def wiki_learn(
 
     Unlike wiki_capture, this stores the text verbatim without LLM extraction.
     """
-    source_path = Path(sources_dir)
-    source_path.mkdir(parents=True, exist_ok=True)
+    source_dir = Path(sources_dir)
+    source_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        learned_file = learn(text, sources_dir=source_path, tags=tags)
+        learned_file = learn(text, sources_dir=source_dir, tags=tags)
         return {
             "status": "ok",
             "file": str(learned_file),
@@ -269,18 +269,18 @@ def memory_synthesize(
             return {"status": "ok", "message": "No memory entries found to synthesize."}
 
         base_dir = Path(wiki_dir)
-        context_path = base_dir / "sources" / "_memory" / "system_context.md"
-        context_path.parent.mkdir(parents=True, exist_ok=True)
+        context_file = base_dir / "sources" / "_memory" / "system_context.md"
+        context_file.parent.mkdir(parents=True, exist_ok=True)
 
         loader = get_template_loader()
         content = loader.render(
             "memory/system_context.md.j2",
             entries=entries[:10],
         )
-        context_path.write_text(content, encoding="utf-8")
+        context_file.write_text(content, encoding="utf-8")
 
         store.close()
-        return {"status": "ok", "message": f"Synthesized context written to {context_path}"}
+        return {"status": "ok", "message": f"Synthesized context written to {context_file}"}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
@@ -319,11 +319,11 @@ def query_wiki(
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki."""
     cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
-    sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
 
-    wiki = load_cached_wiki(output_dir_path.parent)
+    wiki = load_cached_wiki(output_dir.parent)
     if wiki is None:
-        return {"status": "error", "message": f"No compiled wiki found in {output_dir_path}. Run 'compile_wiki' first."}
+        return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'compile_wiki' first."}
 
     vector_store: ZvecWikiStore | None = None
     if state_dir and (state_dir / VECTORS_DIR).exists():
@@ -336,20 +336,20 @@ def query_wiki(
     try:
         retriever = HybridRetriever(
             wiki,
-            index_path=state_dir / SEARCH_DB_FILE,
+            index_file=state_dir / SEARCH_DB_FILE,
             vector_store=vector_store,
-            sources_dir=sources_dir_path if sources_dir_path.exists() else None,
+            sources_dir=sources_dir if sources_dir.exists() else None,
         )
         expand_graph = search_mode == "graph"
         mode = "hybrid" if search_mode == "graph" else search_mode
 
         if mode == "raw":
-            if not sources_dir_path.exists():
+            if not sources_dir.exists():
                 return {"status": "error", "message": "No sources directory found for raw search."}
-            results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
+            results = retriever.search_raw(query, sources_dir, top_k=top_k)
             return {"status": "ok", "results": results, "synthesis": None, "raw": True}
         elif mode == "hybrid":
-            results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k, expand_graph=expand_graph)
+            results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
         else:
             results = retriever.search_wiki(query, top_k=top_k)
     finally:
@@ -394,10 +394,10 @@ def wiki_status(
     """Show per-wiki statistics."""
     try:
         cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
-        sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+        sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
         stats = collect_stats(
-            sources_dir=sources_dir_path if sources_dir_path.exists() else None,
-            output_dir=output_dir_path if output_dir_path.exists() else None,
+            sources_dir=sources_dir if sources_dir.exists() else None,
+            output_dir=output_dir if output_dir.exists() else None,
         )
         return {"status": "ok", "stats": stats}
     except Exception as exc:
@@ -411,7 +411,7 @@ def wiki_crystallize(
     """Synthesize captured notes into coherent wiki pages."""
     try:
         cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
-        sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+        sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
         llm_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         try:
@@ -419,7 +419,7 @@ def wiki_crystallize(
         except Exception:
             llm_client = None
 
-        paths = crystallize(sources_dir_path, llm_client=llm_client)
+        paths = crystallize(sources_dir, llm_client=llm_client)
         return {
             "status": "ok",
             "count": len(paths),

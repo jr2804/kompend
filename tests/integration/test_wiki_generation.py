@@ -206,13 +206,13 @@ class TestTier1Preprocessing:
 
         for doc in parsed_docs:
             types = {e.type for e in doc.elements}
-            assert ElementType.TEXT in types, f"{doc.source_path.name}: no TEXT elements"
+            assert ElementType.TEXT in types, f"{doc.source_file.name}: no TEXT elements"
 
     def test_parsed_docs_minimum_content(self, parsed_docs: list[ParsedDocument]) -> None:
         """Every document must have at least 100 characters of text."""
         for doc in parsed_docs:
             total_chars = sum(len(e.content) for e in doc.elements if isinstance(e.content, str))
-            assert total_chars > 100, f"{doc.source_path.name}: only {total_chars} chars"
+            assert total_chars > 100, f"{doc.source_file.name}: only {total_chars} chars"
 
 
 # ── Tier 2: Chunking ──────────────────────────────────────────────────────────
@@ -440,9 +440,9 @@ class TestSearchFTS:
 
     def test_build_and_search_fts_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """FTS index must be queryable and return relevant results."""
-        index_path = tmp_path / SEARCH_DB_FILE
-        build_chunk_index(graph_wiki, index_path)
-        assert index_path.exists(), "FTS index file not created"
+        index_file = tmp_path / SEARCH_DB_FILE
+        build_chunk_index(graph_wiki, index_file)
+        assert index_file.exists(), "FTS index file not created"
 
         # Pick a word from the first node title/content as query
         query_term = None
@@ -456,15 +456,15 @@ class TestSearchFTS:
         if query_term is None:
             pytest.skip("Could not extract a query term from wiki nodes")
 
-        results = search_fts(query_term, index_path, top_k=5)
+        results = search_fts(query_term, index_file, top_k=5)
         assert isinstance(results, list)
         logger.info("FTS search for %r: %d results", query_term, len(results))
 
     def test_fts_returns_empty_list_for_unknown_term(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """FTS search must return empty list for a term not in the corpus."""
-        index_path = tmp_path / "search_empty.db"
-        build_chunk_index(graph_wiki, index_path)
-        results = search_fts("xyzzy_nonexistent_term_42", index_path, top_k=5)
+        index_file = tmp_path / "search_empty.db"
+        build_chunk_index(graph_wiki, index_file)
+        results = search_fts("xyzzy_nonexistent_term_42", index_file, top_k=5)
         assert results == [] or isinstance(results, list)
 
 
@@ -481,7 +481,7 @@ class TestVectorStore:
         """Vector index must be buildable and return semantic search results."""
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         store = ZvecWikiStore(
-            db_path=tmp_path / VECTORS_DIR,
+            db_file=tmp_path / VECTORS_DIR,
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         )
@@ -500,7 +500,7 @@ class TestVectorStore:
         """Multiple queries must each return results (smoke test for ranking)."""
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         store = ZvecWikiStore(
-            db_path=tmp_path / "vectors2",
+            db_file=tmp_path / "vectors2",
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         )
@@ -589,10 +589,10 @@ class TestFullPipelineE2E:
     def test_tier_state_is_persisted(self, small_corpus: list[Path], tmp_path: Path) -> None:
         """TierStateStore must persist after a parse+chunk pass."""
         out_dir = tmp_path / "e2e_state"
-        state_path = out_dir / KNOX_DIR / STATE_FILE
-        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_file = out_dir / KNOX_DIR / STATE_FILE
+        state_file.parent.mkdir(parents=True, exist_ok=True)
 
-        store = TierStateStore(state_path)
+        store = TierStateStore(state_file)
         state = store.load()
 
         parser = DoclingParser(extract_images=False)
@@ -606,8 +606,8 @@ class TestFullPipelineE2E:
 
         store.save(state)
 
-        assert state_path.exists(), f"Tier state file not found at {state_path}"
-        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        assert state_file.exists(), f"Tier state file not found at {state_file}"
+        state_data = json.loads(state_file.read_text(encoding="utf-8"))
         assert len(state_data) > 0, "Tier state file is empty"
         logger.info("Tier state entries: %s", list(state_data.keys())[:5])
 
@@ -861,7 +861,7 @@ class TestGenerateExampleWiki:
         # Vector index
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
         ZvecWikiStore(
-            db_path=out_dir / KNOX_DIR / VECTORS_DIR,
+            db_file=out_dir / KNOX_DIR / VECTORS_DIR,
             embedding_provider=embed_provider,
             embedding_dim=EMBED_DIM,
         ).build_index(wiki)

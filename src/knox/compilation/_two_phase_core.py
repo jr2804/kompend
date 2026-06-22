@@ -68,12 +68,12 @@ def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, A
         if ElementType.IMAGE not in rc.chunk.element_types:
             continue
 
-        img_path = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
-        if not img_path:
+        img_ref = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
+        if not img_ref:
             # Try resolved metadata
-            img_path = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
+            img_ref = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
 
-        if not img_path:
+        if not img_ref:
             continue
 
         caption = ""
@@ -84,7 +84,7 @@ def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, A
 
         images.append(
             {
-                "path": img_path,
+                "path": img_ref,
                 "caption": caption,
                 "element_type": "image",
             }

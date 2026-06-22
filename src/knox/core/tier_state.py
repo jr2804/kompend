@@ -28,7 +28,7 @@ class SourceState:
     """Persistent state for a single source file."""
 
     stem: str
-    source_path: str
+    source_file: str
     content_hash: str
     current_tier: int = 0
     last_compile: str = ""
@@ -43,7 +43,7 @@ class SourceState:
     def from_dict(cls, data: dict[str, Any]) -> SourceState:
         return cls(
             stem=data.get("stem", ""),
-            source_path=data.get("source_path", ""),
+            source_file=data.get("source_file") or data.get("source_path", ""),
             content_hash=data.get("content_hash", ""),
             current_tier=int(data.get("current_tier", 0)),
             last_compile=data.get("last_compile", ""),
@@ -80,12 +80,12 @@ class TierStateStore:
 
     Parameters
     ----------
-    state_path:
+    state_file:
         File to read/write. Created lazily on first save.
     """
 
-    def __init__(self, state_path: Path) -> None:
-        self.state_path = state_path
+    def __init__(self, state_file: Path) -> None:
+        self.state_file = state_file
 
     def load(self) -> TierState:
         """Read the state file.
@@ -94,17 +94,17 @@ class TierStateStore:
         corrupt file is a bug — it raises so the real cause surfaces instead
         of silently wiping tier progress.
         """
-        if not self.state_path.exists():
+        if not self.state_file.exists():
             return TierState()
-        data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        data = json.loads(self.state_file.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return TierState()
         return TierState.from_dict(data)
 
     def save(self, state: TierState) -> None:
         """Persist the state to disk. Creates parent directories as needed."""
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        self.state_file.write_text(
             json.dumps(state.to_dict(), indent=2, sort_keys=True),
             encoding="utf-8",
         )
@@ -113,7 +113,7 @@ class TierStateStore:
         self,
         state: TierState,
         stem: str,
-        source_path: Path,
+        source_file: Path,
         content_hash: str,
         tier: int,
         ingested_by: str | None = None,
@@ -129,7 +129,7 @@ class TierStateStore:
         if existing is None:
             entry = SourceState(
                 stem=stem,
-                source_path=str(source_path),
+                source_file=str(source_file),
                 content_hash=content_hash,
                 current_tier=tier,
                 last_compile=now,
@@ -138,7 +138,7 @@ class TierStateStore:
         else:
             entry = SourceState(
                 stem=stem,
-                source_path=str(source_path),
+                source_file=str(source_file),
                 content_hash=content_hash,
                 current_tier=tier,
                 last_compile=now,

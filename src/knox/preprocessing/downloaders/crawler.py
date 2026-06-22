@@ -57,16 +57,16 @@ class WebCrawler(BaseDownloader):
         parsed = urlparse(url)
         domain = parsed.netloc or parsed.hostname or "unknown"
         safe_domain = re.sub(r"[^a-zA-Z0-9_.-]", "_", domain)
-        target_path = target_dir / f"{safe_domain}.md"
+        target_file = target_dir / f"{safe_domain}.md"
 
         # Check duplicate detector: skip crawl if URL already known
         if self._detector and self._detector.is_duplicate(url):
-            if target_path.exists():
+            if target_file.exists():
                 logger.info("Skipping already-crawled URL: %s", url)
-                return target_path
+                return target_file
             logger.debug("URL %s was recorded but file missing, re-crawling", url)
 
-        logger.info("Crawling %s -> %s", url, target_path)
+        logger.info("Crawling %s -> %s", url, target_file)
 
         async with AsyncWebCrawler() as crawler:
             result = await crawler.arun(url)
@@ -90,8 +90,8 @@ class WebCrawler(BaseDownloader):
                         self._detector.mark_downloaded(url, content_hash)
                     return existing_file
 
-            target_path.write_text(content, encoding="utf-8")
+            target_file.write_text(content, encoding="utf-8")
             if self._detector:
                 self._detector.mark_downloaded(url, content_hash)
-            logger.info("Saved crawler result to %s", target_path)
-            return target_path
+            logger.info("Saved crawler result to %s", target_file)
+            return target_file

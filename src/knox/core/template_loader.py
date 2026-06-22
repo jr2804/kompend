@@ -76,7 +76,7 @@ class TemplateSource:
     """Identifies where a loaded template came from."""
 
     source: str  # "builtin", "user", "project"
-    path: Path | str = ""
+    template_file: Path | str = ""
 
 
 @dataclass

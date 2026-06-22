@@ -123,10 +123,10 @@ def load_all_extractions(
     return known
 
 
-def _is_within(path: Path, root: Path) -> bool:
-    """Return True if *path* is the same as or nested inside *root*."""
+def _is_within(subject_path: Path, root_dir: Path) -> bool:
+    """Return True if *subject_path* is the same as or nested inside *root_dir*."""
     try:
-        path.relative_to(root)
+        subject_path.relative_to(root_dir)
     except ValueError:
         return False
     return True

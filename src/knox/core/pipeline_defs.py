@@ -182,7 +182,7 @@ class PipelineConfig:
     start_at_tier: Tier = Tier.INDEX  # pipeline entry point (T0 by default)
     stop_at_tier: Tier = Tier.OUTPUT  # pipeline exit point (T4 by default; T1 for ingest)
     force: bool = False  # bypass persistent tier state and re-process everything
-    tier_state_path: Path | None = None  # None = base_dir/.knox/compile_state.json
+    tier_state_file: Path | None = None  # None = base_dir/.knox/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
@@ -308,7 +308,7 @@ class PipelineConfig:
             start_at_tier=Tier(cfg.get(COMPILE_START_AT_TIER, Tier.INDEX)),
             stop_at_tier=Tier(cfg.get(COMPILE_STOP_AT_TIER, Tier.OUTPUT)),
             force=cfg.get(COMPILE_FORCE, False),
-            tier_state_path=cfg.get(COMPILE_TIER_STATE_PATH),
+            tier_state_file=cfg.get(COMPILE_TIER_STATE_PATH),
             ignore_patterns=list(cfg.get("ignore.patterns", [])),
             respect_gitignore=cfg.get(COMPILE_RESPECT_GITIGNORE, True),
             page_kind=cfg.get(COMPILE_PAGE_KIND),

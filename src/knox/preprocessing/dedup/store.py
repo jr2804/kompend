@@ -28,11 +28,11 @@ class DedupStore:
 
     def __init__(
         self,
-        path: Path,
+        store_file: Path,
         config: dict[str, Any] | None = None,
         _data: dict[str, Any] | None = None,
     ) -> None:
-        self.path = path
+        self.store_file = store_file
         self.config = config or {}
         self._data = _data or {}
 
@@ -56,12 +56,12 @@ class DedupStore:
 
     def load(self) -> None:
         """Load data from disk. Missing file = empty store."""
-        if self.path.exists():
+        if self.store_file.exists():
             try:
-                raw = self.path.read_text(encoding="utf-8")
+                raw = self.store_file.read_text(encoding="utf-8")
                 self._data = json.loads(raw)
             except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt store at %s, starting fresh", self.path, exc_info=True)
+                logger.warning("Corrupt store at %s, starting fresh", self.store_file, exc_info=True)
                 self._data = {}
         else:
             self._data = {}
@@ -72,8 +72,8 @@ class DedupStore:
             "stamp": self.stamp,
             "store_version": _STORE_VERSION,
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")
+        self.store_file.parent.mkdir(parents=True, exist_ok=True)
+        self.store_file.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")
 
     def get(self, slug: str, default: Any = None) -> Any:
         """Return fingerprint data for *slug*, or *default*."""

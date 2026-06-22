@@ -1,7 +1,7 @@
 """Source file resolution for KNOX CLI.
 
-Handles glob expansion, directory scanning, file copying into the sources
-directory, and URL downloading — shared by both `parse` and `compile`.
+Handles glob expansion, scan_dir scanning, file copying into the sources
+scan_dir, and URL downloading — shared by both `parse` and `compile`.
 """
 
 from __future__ import annotations
@@ -43,10 +43,10 @@ def resolve_files(
     ignore_patterns: list[str] | None = None,
     respect_gitignore: bool = True,
 ) -> list[Path]:
-    """Expand a mix of file paths, glob patterns, and directory paths into concrete files.
+    """Expand a mix of file paths, glob patterns, and scan_dir paths into concrete files.
 
     Args:
-        patterns: File paths, glob patterns, or directory paths.
+        patterns: File paths, glob patterns, or scan_dir paths.
         recursive: If True, descend into subdirectories.
         ignore_patterns: Glob patterns for files to exclude.
         respect_gitignore: If True, read ``.gitignore`` from source dir.
@@ -58,12 +58,12 @@ def resolve_files(
     results: list[Path] = []
 
     for raw_pattern in patterns:
-        candidate_path = Path(raw_pattern).expanduser()
+        candidate_file = Path(raw_pattern).expanduser()
 
         # Try as a glob pattern if it contains wildcard characters
         if any(c in raw_pattern for c in ("*", "?", "[")):
-            parent_dir = candidate_path.parent if candidate_path.parent != Path(".") else Path.cwd()
-            stem = candidate_path.name
+            parent_dir = candidate_file.parent if candidate_file.parent != Path(".") else Path.cwd()
+            stem = candidate_file.name
             glob_func = parent_dir.rglob if recursive else parent_dir.glob
             for match in sorted(glob_func(stem)):
                 if match.is_file() and _is_supported(match):
@@ -71,14 +71,14 @@ def resolve_files(
             continue
 
         # Existing file
-        if candidate_path.is_file():
-            if _is_supported(candidate_path):
-                _add(candidate_path, seen, results)
+        if candidate_file.is_file():
+            if _is_supported(candidate_file):
+                _add(candidate_file, seen, results)
             continue
 
-        # Existing directory — scan it
-        if candidate_path.is_dir():
-            _scan_dir(candidate_path, recursive, seen, results)
+        # Existing scan_dir — scan it
+        if candidate_file.is_dir():
+            _scan_dir(candidate_file, recursive, seen, results)
             continue
 
         # Neither file nor dir nor glob — skip silently.
@@ -173,24 +173,24 @@ def download_urls(
 # ── Internal helpers ────────────────────────────────────────────────────
 
 
-def _is_supported(candidate_path: Path) -> bool:
-    return candidate_path.suffix.lower() in get_supported_extensions()
+def _is_supported(candidate_file: Path) -> bool:
+    return candidate_file.suffix.lower() in get_supported_extensions()
 
 
-def _add(candidate_path: Path, seen: set[Path], results: list[Path]) -> None:
-    resolved = candidate_path.resolve()
+def _add(candidate_file: Path, seen: set[Path], results: list[Path]) -> None:
+    resolved = candidate_file.resolve()
     if resolved not in seen:
         seen.add(resolved)
-        results.append(candidate_path)
+        results.append(candidate_file)
 
 
 def _scan_dir(
-    directory: Path,
+    scan_dir: Path,
     recursive: bool,
     seen: set[Path],
     results: list[Path],
 ) -> None:
-    glob_func = directory.rglob if recursive else directory.glob
+    glob_func = scan_dir.rglob if recursive else scan_dir.glob
     for ext in sorted(get_supported_extensions()):
         for match in sorted(glob_func(f"*{ext}")):
             if match.is_file():

@@ -367,16 +367,16 @@ class TestDuplicateDetector:
 
     def test_init_creates_empty_db(self, tmp_path: Path) -> None:
         """A newly initialized detector has an empty database."""
-        db_path = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_path)
+        db_file = tmp_path / "hashes.json"
+        detector = DuplicateDetector(db_file)
 
-        assert not db_path.exists() or db_path.read_text() == "{}"
+        assert not db_file.exists() or db_file.read_text() == "{}"
         assert not detector.is_duplicate("https://example.com")
 
     def test_mark_and_check(self, tmp_path: Path) -> None:
         """Marking a URL makes it detectable as duplicate."""
-        db_path = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_path)
+        db_file = tmp_path / "hashes.json"
+        detector = DuplicateDetector(db_file)
 
         assert not detector.is_duplicate("https://example.com/doc.pdf")
 
@@ -386,21 +386,21 @@ class TestDuplicateDetector:
 
     def test_persistence_across_instances(self, tmp_path: Path) -> None:
         """The database persists between detector instances."""
-        db_path = tmp_path / "hashes.json"
+        db_file = tmp_path / "hashes.json"
 
-        d1 = DuplicateDetector(db_path)
+        d1 = DuplicateDetector(db_file)
         d1.mark_downloaded("https://example.com/a.pdf", "hash1")
         d1.mark_downloaded("https://example.com/b.pdf", "hash2")
 
-        d2 = DuplicateDetector(db_path)
+        d2 = DuplicateDetector(db_file)
         assert d2.is_duplicate("https://example.com/a.pdf")
         assert d2.is_duplicate("https://example.com/b.pdf")
         assert not d2.is_duplicate("https://example.com/c.pdf")
 
     def test_batch_check(self, tmp_path: Path) -> None:
         """batch_check returns correct mapping for multiple URLs."""
-        db_path = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_path)
+        db_file = tmp_path / "hashes.json"
+        detector = DuplicateDetector(db_file)
         detector.mark_downloaded("https://example.com/known.pdf", "hash")
 
         urls = [
@@ -418,10 +418,10 @@ class TestDuplicateDetector:
 
     def test_corrupt_db_starts_fresh(self, tmp_path: Path) -> None:
         """A corrupt JSON file is handled gracefully."""
-        db_path = tmp_path / "hashes.json"
-        db_path.write_text("not valid json{{{", encoding="utf-8")
+        db_file = tmp_path / "hashes.json"
+        db_file.write_text("not valid json{{{", encoding="utf-8")
 
-        detector = DuplicateDetector(db_path)
+        detector = DuplicateDetector(db_file)
         assert not detector.is_duplicate("https://example.com")
         # Writing should work despite initial corruption
         detector.mark_downloaded("https://example.com", "hash")
@@ -435,9 +435,9 @@ class TestDuplicateDetector:
 
     def test_db_path_creates_parent_dirs(self, tmp_path: Path) -> None:
         """mark_downloaded creates parent directories if needed."""
-        db_path = tmp_path / "subdir" / "nested" / "hashes.json"
-        detector = DuplicateDetector(db_path)
+        db_file = tmp_path / "subdir" / "nested" / "hashes.json"
+        detector = DuplicateDetector(db_file)
         detector.mark_downloaded("https://example.com", "hash")
-        assert db_path.exists()
-        data = json.loads(db_path.read_text(encoding="utf-8"))
+        assert db_file.exists()
+        data = json.loads(db_file.read_text(encoding="utf-8"))
         assert data == {"https://example.com": "hash"}

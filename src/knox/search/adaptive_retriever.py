@@ -25,13 +25,13 @@ class AdaptiveRetriever:
         self,
         wiki: CompiledWiki,
         *,
-        index_path: Path | None = None,
+        index_file: Path | None = None,
         vector_store: ZvecWikiStore | None = None,
         sources_dir: Path | None = None,
         max_input_tokens: int = 128_000,
     ) -> None:
         self._wiki = wiki
-        self._index_path = index_path
+        self._index_path = index_file
         self._vector_store = vector_store
         self._sources_dir = sources_dir
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}

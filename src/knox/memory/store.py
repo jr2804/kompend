@@ -34,8 +34,8 @@ class MemoryStore:
     ) -> None:
         self.base_dir = Path(base_dir)
         _paths = VaultPaths(self.base_dir)
-        self.db_path = _paths.memory_db_path
-        self.log_path = _paths.memory_log_path
+        self.db_file = _paths.memory_db_path
+        self.log_file = _paths.memory_log_path
         self._embedding_model = embedding_model
         self._embedding_dim = embedding_dim
         self._provider: EmbeddingProvider | None = embedding_provider
@@ -74,7 +74,7 @@ class MemoryStore:
         self._collection.insert([doc])
 
         # Append to chronological JSONL log for synthesis
-        with open(self.log_path, "a", encoding="utf-8") as f:
+        with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(
                 json.dumps(
                     {
@@ -122,11 +122,11 @@ class MemoryStore:
 
     def get_recent_entries(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get the most recent memory entries chronologically (for synthesis)."""
-        if not self.log_path.exists():
+        if not self.log_file.exists():
             return []
 
         entries = []
-        with open(self.log_path, encoding="utf-8") as f:
+        with open(self.log_file, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     entries.append(json.loads(line))
@@ -149,12 +149,12 @@ class MemoryStore:
             self._provider = _make_provider(self._embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_file.parent.mkdir(parents=True, exist_ok=True)
         # Existing store: reopen instead of recreating. ``create_and_open``
         # raises when the path already exists, which previously broke every
         # ``knox memory add`` after the first.
-        if self.db_path.exists():
-            self._collection = _zvec.open(path=str(self.db_path))
+        if self.db_file.exists():
+            self._collection = _zvec.open(path=str(self.db_file))
             return
         schema = _zvec.CollectionSchema(
             name="knox_memory",
@@ -171,6 +171,6 @@ class MemoryStore:
             ),
         )
         self._collection = _zvec.create_and_open(
-            path=str(self.db_path),
+            path=str(self.db_file),
             schema=schema,
         )

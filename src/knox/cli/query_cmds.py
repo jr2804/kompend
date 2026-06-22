@@ -70,8 +70,8 @@ def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
 
 def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
-    db_path = knox_dir / VECTORS_DIR
-    if not db_path.exists():
+    db_file = knox_dir / VECTORS_DIR
+    if not db_file.exists():
         return None
 
     embed_model = wiki.metadata.get("embedding_model")
@@ -79,9 +79,9 @@ def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
         logger.debug("No embedding model recorded in wiki metadata; skipping vector store")
         return None
     try:
-        return ZvecWikiStore.open(db_path, embedding_model=embed_model)
+        return ZvecWikiStore.open(db_file, embedding_model=embed_model)
     except Exception as exc:
-        logger.warning("Could not open vector store at %s: %s", db_path, exc, exc_info=True)
+        logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=True)
         return None
 
 
@@ -136,7 +136,7 @@ def _execute_query_search(
     retriever: HybridRetriever,
     query: str,
     search_mode: str,
-    sources_dir_path: Path | None,
+    sources_dir: Path | None,
     top_k: int,
 ) -> tuple[list[Any], bool]:
     """Dispatch to the requested search mode and return results + raw flag."""
@@ -145,13 +145,13 @@ def _execute_query_search(
     mode = "hybrid" if search_mode == "graph" else search_mode
 
     if mode == "raw":
-        if sources_dir_path is None:
+        if sources_dir is None:
             typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
             raise typer.Exit(1)
-        results = retriever.search_raw(query, sources_dir_path, top_k=top_k)
+        results = retriever.search_raw(query, sources_dir, top_k=top_k)
         raw = True
     elif mode == "hybrid":
-        results = retriever.search_hybrid(query, sources_dir_path, top_k=top_k, expand_graph=expand_graph)
+        results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
     else:
         results = retriever.search_wiki(query, top_k=top_k)
     return results, raw
@@ -191,7 +191,7 @@ def query_cmd(
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(wiki_dir=wiki_dir_override, no_user_tracking=no_user_tracking)
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     load_hooks()
 
     if _classify_intent(query, no_classify, format):
@@ -200,7 +200,7 @@ def query_cmd(
     wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
         typer.echo(
-            f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.",
+            f"No compiled wiki found in {output_dir}. Run 'knox compile' first.",
             err=True,
         )
         raise typer.Exit(1)
@@ -210,20 +210,20 @@ def query_cmd(
         if adaptive:
             retriever = AdaptiveRetriever(
                 wiki,
-                index_path=state_dir / SEARCH_DB_FILE,
+                index_file=state_dir / SEARCH_DB_FILE,
                 vector_store=vector_store,
-                sources_dir=sources_dir_path,
+                sources_dir=sources_dir,
             )
             results = retriever.search(query, top_k=top_k, mode=search_mode if search_mode != "hybrid" else None)
             raw = False
         else:
             retriever = HybridRetriever(
                 wiki,
-                index_path=state_dir / SEARCH_DB_FILE,
+                index_file=state_dir / SEARCH_DB_FILE,
                 vector_store=vector_store,
-                sources_dir=sources_dir_path,
+                sources_dir=sources_dir,
             )
-            results, raw = _execute_query_search(retriever, query, search_mode, sources_dir_path, top_k)
+            results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
     finally:
         if vector_store is not None:
             vector_store.close()

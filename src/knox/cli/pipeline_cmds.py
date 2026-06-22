@@ -95,7 +95,7 @@ def parse_cmd(
         files=files,
         online_urls=[],
         url_file=None,
-        sources_dir_path=None,  # ty: ignore
+        sources_dir=None,  # ty: ignore
         recursive=recursive,
         ignore=None,
     )
@@ -208,27 +208,27 @@ def compile_cmd(
         in_place_sources=in_place,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     all_input_files = _resolve_compile_inputs(
         files,
         online_urls,
         url_file,
-        sources_dir_path,
+        sources_dir,
         recursive,
         ignore,
         in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
+        typer.echo(f"No supported files found in {sources_dir}.", err=True)
         raise typer.Exit(1)
 
-    typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir_path}")
+    typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir}")
 
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
-        source_dir=sources_dir_path,
-        output_dir=output_dir_path,
+        source_dir=sources_dir,
+        output_dir=output_dir,
         input_files=all_input_files,
     )
 
@@ -255,13 +255,13 @@ def compile_cmd(
         wiki.metadata["source_names"] = [str(f) for f in all_input_files[:20]]
 
         tracker.finish()
-        typer.echo(f"Compiled wiki written to {output_dir_path}")
+        typer.echo(f"Compiled wiki written to {output_dir}")
 
         _post_compile_actions(
             wiki=wiki,
             pipeline_config=pipeline_config,
-            output_dir_path=output_dir_path,
-            sources_dir_path=sources_dir_path,
+            output_dir=output_dir,
+            sources_dir=sources_dir,
             review=review,
             bypass_review=bypass_review,
             provenance=provenance,
@@ -319,20 +319,20 @@ def ingest_cmd(
         no_user_tracking=no_user_tracking,
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
     base_dir = Path(cfg.get(PATHS_WIKI_DIR))
 
     all_input_files = _resolve_compile_inputs(
         files,
         online_urls,
         url_file,
-        sources_dir_path,
+        sources_dir,
         recursive,
         ignore,
         in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir_path}.", err=True)
+        typer.echo(f"No supported files found in {sources_dir}.", err=True)
         raise typer.Exit(1)
 
     typer.echo(f"Ingesting {len(all_input_files)} document(s)")
@@ -377,9 +377,9 @@ def ingest_cmd(
         summary += f" ({result.dedup_skipped} duplicates identified)"
     typer.echo(summary)
 
-    log_path = VaultPaths(base_dir).state_dir / "log.md"
+    log_file = VaultPaths(base_dir).log_file
     prepend_log(
-        log_path,
+        log_file,
         generate_stage_log_entry(
             stage="ingest",
             duration=ingest_duration,

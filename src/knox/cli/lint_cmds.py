@@ -52,10 +52,10 @@ def _persist_lint_fixes(
         fm = node.metadata.get("frontmatter", {})
         if not isinstance(fm, dict) or "title" not in fm:
             continue
-        md_path = output_dir / f"node_{node.id}.md"
-        if not md_path.exists():
+        md_file = output_dir / f"node_{node.id}.md"
+        if not md_file.exists():
             continue
-        text = md_path.read_text(encoding="utf-8")
+        text = md_file.read_text(encoding="utf-8")
         normalized = text.replace("\r\n", "\n")
         if normalized.startswith("---\n"):
             end_idx = normalized.find("\n---\n", 4)
@@ -66,7 +66,7 @@ def _persist_lint_fixes(
             old_fm = yaml.safe_load(old_fm_text) or {}
             old_fm.update(fm)
             new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            md_path.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
+            md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
             updated += 1
 
     _write_wiki_cache(wiki, base_dir)  # ty: ignore
@@ -103,12 +103,12 @@ def lint_cmd(
         cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
         config_path=config,
     )
-    sources_dir_path, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
-    sources_dir_str = str(sources_dir_path) if sources_dir_path.exists() else None
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    sources_dir_str = str(sources_dir) if sources_dir.exists() else None
 
     wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
-        typer.echo(f"No compiled wiki found in {output_dir_path}. Run 'knox compile' first.", err=True)
+        typer.echo(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)
 
     llm_client = None
@@ -138,16 +138,16 @@ def lint_cmd(
 
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
-        fixes_applied = _persist_lint_fixes(wiki, output_dir_path, state_dir.parent)
+        fixes_applied = _persist_lint_fixes(wiki, output_dir, state_dir.parent)
         typer.echo(f"Persisted fixes to {fixes_applied} file(s).")
 
     # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
     outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
     rule_summary = " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
 
-    log_path = state_dir.parent / "log.md"
+    log_file = state_dir.parent / "log.md"
     prepend_log(
-        log_path,
+        log_file,
         generate_stage_log_entry(
             stage="lint",
             duration=lint_elapsed,

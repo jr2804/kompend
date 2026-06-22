@@ -471,19 +471,19 @@ def _expand_env_vars_recursive(data: Any) -> Any:
     return data
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
+def _load_toml(toml_file: Path) -> dict[str, Any]:
     """Load a TOML file, returning an empty dict on failure.
 
     String values are processed through ``_expand_env_vars`` to support
     ``$VAR`` and ``${VAR}`` patterns.
     """
     try:
-        raw = path.read_bytes()
+        raw = toml_file.read_bytes()
         data: dict[str, Any] = tomllib.loads(raw.decode("utf-8"))
-        logger.debug("Loaded config from %s", path)
+        logger.debug("Loaded config from %s", toml_file)
         return _expand_env_vars_recursive(data)
     except Exception as exc:
-        logger.warning("Failed to load config %s: %s", path, exc, exc_info=True)
+        logger.warning("Failed to load config %s: %s", toml_file, exc, exc_info=True)
         return {}
 
 
@@ -541,9 +541,9 @@ class ResolvedConfig:
 
     raw: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, ConfigSource] = field(default_factory=dict)
-    project_config_path: Path | None = None
+    project_config_file: Path | None = None
     project_config_paths: list[Path] = field(default_factory=list)
-    global_config_path: Path | None = None
+    global_config_file: Path | None = None
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a dotted key from the resolved config."""
@@ -593,10 +593,10 @@ def _merge_project_configs(
     """
     merged: dict[str, Any] = {}
     prov: dict[str, ConfigSource] = {}
-    for path in reversed(project_configs):  # closest wins
-        file_data = _load_toml(path)
+    for config_file in reversed(project_configs):  # closest wins
+        file_data = _load_toml(config_file)
         for key in _flat_keys(file_data):
-            prov[key] = ConfigSource("project", str(path))
+            prov[key] = ConfigSource("project", str(config_file))
         merged = _deep_merge(merged, file_data)
     return merged, prov
 
@@ -695,14 +695,14 @@ def resolve_config(
             result = _merge_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
     # Layer 3: project config (explicit --config overrides auto-discovered)
-    project_path: Path | None = None
+    project_dir: Path | None = None
     project_configs: list[Path] = []
     if config_path is not None:
-        project_path = Path(config_path)
-        if project_path.is_file():
-            project_data = _load_toml(project_path)
+        project_dir = Path(config_path)
+        if project_dir.is_file():
+            project_data = _load_toml(project_dir)
             if project_data:
-                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_path)))
+                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
         else:
             logger.warning("Config file not found: %s", config_path)
     else:
@@ -739,9 +739,9 @@ def resolve_config(
     return ResolvedConfig(
         raw=result,
         provenance=provenance,
-        project_config_path=project_configs[0] if project_configs else project_path,
+        project_config_file=project_configs[0] if project_configs else project_dir,
         project_config_paths=project_configs,
-        global_config_path=global_path,
+        global_config_file=global_path,
     )
 
 
@@ -844,18 +844,18 @@ def get_global_config_path(*, create: bool = False) -> Path:
     return target
 
 
-def _atomic_write_toml(path: Path, data: dict[str, Any]) -> None:
-    """Write *data* to *path* atomically, keeping a ``.bak`` copy."""
-    if path.is_file():
-        backup = path.with_suffix(path.suffix + ".bak")
-        backup.write_bytes(path.read_bytes())
-    tmp = path.with_suffix(path.suffix + ".tmp")
+def _atomic_write_toml(toml_file: Path, data: dict[str, Any]) -> None:
+    """Write *data* to *toml_file* atomically, keeping a ``.bak`` copy."""
+    if toml_file.is_file():
+        backup = toml_file.with_suffix(toml_file.suffix + ".bak")
+        backup.write_bytes(toml_file.read_bytes())
+    tmp = toml_file.with_suffix(toml_file.suffix + ".tmp")
     tmp.write_text(tomli_w.dumps(data), encoding="utf-8")
-    tmp.replace(path)
+    tmp.replace(toml_file)
 
 
-def set_config_file_value(path: Path, key: str, value: Any) -> None:
-    """Set *key* to *value* in *path*, creating the file if needed.
+def set_config_file_value(config_file: Path, key: str, value: Any) -> None:
+    """Set *key* to *value* in *config_file*, creating the file if needed.
 
     Raises:
         KeyError: if *key* is not a known config key.
@@ -863,6 +863,6 @@ def set_config_file_value(path: Path, key: str, value: Any) -> None:
     """
     if not validate_config_key(key):
         raise KeyError(f"unknown config key: {key}")
-    data = _load_toml(path) if path.is_file() else {}
+    data = _load_toml(config_file) if config_file.is_file() else {}
     _set_dot(data, key, value)
-    _atomic_write_toml(path, data)
+    _atomic_write_toml(config_file, data)

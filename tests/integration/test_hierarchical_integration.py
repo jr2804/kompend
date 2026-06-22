@@ -152,7 +152,7 @@ class TestStructuredContentPreservation:
                 metadata={"caption": "where SNR is the signal-to-noise ratio in dB"},
             ),
         ]
-        doc = ParsedDocument(source_path=Path("eq.pdf"), elements=elements, page_count=1)
+        doc = ParsedDocument(source_file=Path("eq.pdf"), elements=elements, page_count=1)
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)
         structured_leaves = _structured_leaves(tree)

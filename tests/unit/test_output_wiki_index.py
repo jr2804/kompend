@@ -65,16 +65,16 @@ class TestGenerateLogEntry:
 
 class TestPrependLog:
     def test_creates_file(self, tmp_path: Path) -> None:
-        log_path = tmp_path / "log.md"
-        prepend_log(log_path, "## [2026-01-01] test\n")
-        assert log_path.exists()
-        assert "test" in log_path.read_text(encoding="utf-8")
+        log_file = tmp_path / "log.md"
+        prepend_log(log_file, "## [2026-01-01] test\n")
+        assert log_file.exists()
+        assert "test" in log_file.read_text(encoding="utf-8")
 
     def test_newest_on_top(self, tmp_path: Path) -> None:
-        log_path = tmp_path / "log.md"
-        prepend_log(log_path, "## [2026-01-01] first\n")
-        prepend_log(log_path, "## [2026-01-02] second\n")
-        text = log_path.read_text(encoding="utf-8")
+        log_file = tmp_path / "log.md"
+        prepend_log(log_file, "## [2026-01-01] first\n")
+        prepend_log(log_file, "## [2026-01-02] second\n")
+        text = log_file.read_text(encoding="utf-8")
         assert "first" in text
         assert "second" in text
         # newest entry must appear BEFORE the older entry

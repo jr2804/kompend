@@ -58,26 +58,26 @@ class PandocParser(BaseParser):
     }
 
     @override
-    def parse(self, source_path: Path) -> ParsedDocument:
-        fmt = _pandoc_module.format_from_filename(str(source_path))
+    def parse(self, source_file: Path) -> ParsedDocument:
+        fmt = _pandoc_module.format_from_filename(str(source_file))
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Pandoc version.*not supported")
-            doc = _pandoc_module.read(file=str(source_path), format=fmt)
+            doc = _pandoc_module.read(file=str(source_file), format=fmt)
 
         blocks: list[Block] = list(doc[1])
 
         elements: list[DocumentElement] = []
         for idx, block in enumerate(blocks):
-            el = _block_to_element(block, idx, source_path)
+            el = _block_to_element(block, idx, source_file)
             if el is not None:
                 elements.append(el)
 
-        title = _extract_title(blocks) or source_path.stem
+        title = _extract_title(blocks) or source_file.stem
         metadata: dict[str, Any] = {"parser": "pandoc", "format": fmt}
 
         return ParsedDocument(
-            source_path=source_path,
+            source_file=source_file,
             elements=elements,
             title=title,
             metadata=metadata,
@@ -87,7 +87,7 @@ class PandocParser(BaseParser):
 def _block_to_element(
     block: Block,
     idx: int,
-    source_path: Path,
+    source_file: Path,
 ) -> DocumentElement | None:
     el_type = _BLOCK_TYPE_MAP.get(type(block))
     if el_type is None:
@@ -106,7 +106,7 @@ def _block_to_element(
         content=content,
         reading_order=idx,
         heading_level=heading_level,
-        source_file=source_path,
+        source_file=source_file,
     )
 
 

@@ -154,14 +154,14 @@ class LifecycleState:
 class LifecycleStore:
     """JSON-backed store for per-page lifecycle state."""
 
-    def __init__(self, state_path: Path) -> None:
-        self.state_path = state_path
+    def __init__(self, state_file: Path) -> None:
+        self.state_file = state_file
 
     def load(self) -> LifecycleState:
-        if not self.state_path.exists():
+        if not self.state_file.exists():
             return LifecycleState()
         try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            data = json.loads(self.state_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return LifecycleState()
         if not isinstance(data, dict):
@@ -169,8 +169,8 @@ class LifecycleStore:
         return LifecycleState.from_dict(data)
 
     def save(self, state: LifecycleState) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(state.to_dict(), indent=2, default=str), encoding="utf-8")
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        self.state_file.write_text(json.dumps(state.to_dict(), indent=2, default=str), encoding="utf-8")
 
     def transition(
         self,

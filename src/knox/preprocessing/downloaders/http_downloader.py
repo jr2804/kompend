@@ -65,17 +65,17 @@ class HTTPDownloader(BaseDownloader):
         if parsed.scheme not in self._ALLOWED_SCHEMES:
             logger.warning("Blocked URL with disallowed scheme: %s", url)
             return None
-        target_path, original_name = self._build_target_path(url, target_dir)
+        target_file, original_name = self._build_target_path(url, target_dir)
 
         # Check duplicate detector: skip download if URL already known
         if self._detector and self._detector.is_duplicate(url):
-            if target_path.exists():
+            if target_file.exists():
                 logger.info("Skipping already-downloaded URL: %s", url)
-                return target_path
+                return target_file
             # URL was recorded but file was deleted — re-download
             logger.debug("URL %s was recorded but file missing, re-downloading", url)
 
-        logger.debug("Downloading %s -> %s", url, target_path)
+        logger.debug("Downloading %s -> %s", url, target_file)
         content: bytes | None = None
         content_type: str | None = None
         try:
@@ -111,19 +111,19 @@ class HTTPDownloader(BaseDownloader):
         # original extension is not known to any parser (e.g. .aspx,
         # no extension).
         new_ext = self._pick_extension(original_name, content_type)
-        if new_ext != target_path.suffix.lower():
-            target_path = target_path.with_suffix(new_ext)
+        if new_ext != target_file.suffix.lower():
+            target_file = target_file.with_suffix(new_ext)
             logger.debug(
                 "Re-mapped %s -> %s (Content-Type: %s)",
                 original_name,
-                target_path.name,
+                target_file.name,
                 content_type or "?",
             )
 
         # Content-based dedup: skip if identical content already exists in target_dir
         content_hash = hashlib.sha256(content).hexdigest()
         for existing_file in target_dir.iterdir():
-            if existing_file.is_file() and existing_file.suffix == target_path.suffix and existing_file.read_bytes() == content:
+            if existing_file.is_file() and existing_file.suffix == target_file.suffix and existing_file.read_bytes() == content:
                 logger.info(
                     "Skipping %s — identical content already exists as %s",
                     url,
@@ -133,10 +133,10 @@ class HTTPDownloader(BaseDownloader):
                     self._detector.mark_downloaded(url, content_hash)
                 return existing_file
 
-        target_path.write_bytes(content)
+        target_file.write_bytes(content)
         if self._detector:
             self._detector.mark_downloaded(url, content_hash)
-        return target_path
+        return target_file
 
     def batch_download(self, urls: list[str], target_dir: Path) -> list[Path]:
         """Download multiple URLs, return paths of successful downloads.

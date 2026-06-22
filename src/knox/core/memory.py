@@ -153,11 +153,11 @@ class MemoryStore:
 
     states: dict[str, NodeState] = field(default_factory=dict)
 
-    def save(self, path: Path) -> None:
-        """Persist the memory store to *path* as JSON."""
-        path.parent.mkdir(parents=True, exist_ok=True)
+    def save(self, store_file: Path) -> None:
+        """Persist the memory store to *store_file* as JSON."""
+        store_file.parent.mkdir(parents=True, exist_ok=True)
         data = {"states": [s.to_dict() for s in self.states.values()]}
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        store_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # ── Access ────────────────────────────────────────────────────────
 
@@ -261,17 +261,17 @@ class MemoryStore:
     # ── Persistence ───────────────────────────────────────────────────
 
     @classmethod
-    def load(cls, path: Path) -> MemoryStore:
+    def load(cls, store_file: Path) -> MemoryStore:
         """Load a memory store from a JSON file.
 
         Returns an empty store if the file does not exist or is corrupt.
         """
-        if not path.exists():
+        if not store_file.exists():
             return cls()
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(store_file.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to load memory store from %s: %s", path, exc, exc_info=True)
+            logger.warning("Failed to load memory store from %s: %s", store_file, exc, exc_info=True)
             return cls()
         raw_states = data.get("states", []) if isinstance(data, dict) else []
         states: dict[str, NodeState] = {}

@@ -107,11 +107,11 @@ class HierarchicalChunker(BaseChunker):
 
     @staticmethod
     def _empty_tree(document: ParsedDocument) -> ChunkTree:
-        root_id = f"{document.source_path.stem}_root"
+        root_id = f"{document.source_file.stem}_root"
         return ChunkTree(
             root_id=root_id,
             nodes={root_id: ChunkNode(id=root_id, depth=0)},
-            source_file=document.source_path,
+            source_file=document.source_file,
             strategy=ChunkStrategy.SINGLE_PASS,
         )
 
@@ -142,7 +142,7 @@ class _TreeBuilder:
     def __init__(self, chunker: HierarchicalChunker, document: ParsedDocument) -> None:
         self._chunker = chunker
         self._doc = document
-        self._stem = document.source_path.stem
+        self._stem = document.source_file.stem
 
         self._root_id = f"{self._stem}_root"
         self._nodes: dict[str, ChunkNode] = {
@@ -172,7 +172,7 @@ class _TreeBuilder:
         return ChunkTree(
             root_id=self._root_id,
             nodes=self._nodes,
-            source_file=self._doc.source_path,
+            source_file=self._doc.source_file,
             strategy=strategy,
         )
 
@@ -213,7 +213,7 @@ class _TreeBuilder:
             text=text_repr,
             element_types=[el.type],
             source_elements=[idx],
-            source_file=self._doc.source_path,
+            source_file=self._doc.source_file,
             heading_context=" / ".join(hpath),
             metadata=dict(el.metadata) if el.metadata else {},
         )
@@ -269,7 +269,7 @@ class _TreeBuilder:
             text=text,
             element_types=[ElementType.TEXT],
             source_elements=el_indices,
-            source_file=self._doc.source_path,
+            source_file=self._doc.source_file,
             heading_context=" / ".join(hpath),
         )
         self._nodes[leaf_id] = ChunkNode(

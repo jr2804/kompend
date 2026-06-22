@@ -79,7 +79,7 @@ class TestPipelineSmoke:
         doc.elements = [
             DocumentElement(type=ElementType.TABLE, content=[["A", "B"], ["1", "2"]]),
         ]
-        doc.source_path = Path("atomic.pdf")
+        doc.source_file = Path("atomic.pdf")
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         chunks = _leaf_chunks(tree)
         assert len(chunks) == 1
@@ -89,7 +89,7 @@ class TestPipelineSmoke:
     def test_chunk_id_format(self) -> None:
         """Chunk IDs should use the source filename stem."""
         doc = make_test_doc(num_paragraphs=1, include_tables=False, include_code=False, include_images=False)
-        doc.source_path = Path("my_report.pdf")
+        doc.source_file = Path("my_report.pdf")
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         for n in tree.leaves():
             if n.chunk is None:

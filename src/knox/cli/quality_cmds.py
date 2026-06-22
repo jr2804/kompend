@@ -39,18 +39,18 @@ def doctor_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
-    sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-    if not wiki_dir_override and not output_dir_path.exists():
+    if not wiki_dir_override and not output_dir.exists():
         typer.echo(
-            f"No wiki found at {output_dir_path}. Use --wiki-dir or run from a wiki directory.",
+            f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
             err=True,
         )
         raise typer.Exit(1)
 
     results = run_doctor(
-        sources_dir=sources_dir_path,
-        output_dir=output_dir_path,
+        sources_dir=sources_dir,
+        output_dir=output_dir,
         default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
         vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
         embed_model=cfg.get(COMPILE_EMBEDDING_MODEL),
@@ -75,10 +75,10 @@ def status_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
     stats = collect_stats(
-        sources_dir=sources_dir_path if sources_dir_path.exists() else None,
-        output_dir=output_dir_path if output_dir_path.exists() else None,
+        sources_dir=sources_dir if sources_dir.exists() else None,
+        output_dir=output_dir if output_dir.exists() else None,
     )
     print_status(stats, json_output=json_output)
 
@@ -129,9 +129,9 @@ def provenance_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    _sources_dir, output_dir_path, _cache_dir, state_dir = resolve_project_paths(cfg)
-    base_dir = output_dir_path.parent
-    wiki_file = output_dir_path / "wiki.md"
+    _sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    base_dir = output_dir.parent
+    wiki_file = output_dir / "wiki.md"
     if not wiki_file.exists():
         typer.echo(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.", err=True)
         raise typer.Exit(1)

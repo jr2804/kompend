@@ -373,8 +373,8 @@ class WikiPipeline:
 
     def _default_state_path(self) -> Path:
         """Resolve the persistent state file path."""
-        if self.config.tier_state_path is not None:
-            return self.config.tier_state_path
+        if self.config.tier_state_file is not None:
+            return self.config.tier_state_file
         return self.config.paths.compile_state_path
 
     def _dedup_store_path(self) -> Path:
@@ -641,7 +641,7 @@ class WikiPipeline:
                 for el in data.get("elements", [])
             ]
             return ParsedDocument(
-                source_path=Path(data["source_path"]),
+                source_file=Path(data.get("source_file") or data.get("source_path", "")),
                 elements=elements,
                 title=data.get("title", ""),
                 author=data.get("author", ""),
@@ -661,7 +661,7 @@ class WikiPipeline:
         cache_path = cache_dir / f"{self._cache_key(source_file)}.json"
         try:
             data = {
-                "source_path": str(doc.source_path),
+                "source_file": str(doc.source_file),
                 "title": doc.title,
                 "author": doc.author,
                 "language": doc.language,

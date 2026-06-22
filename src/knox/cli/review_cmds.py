@@ -69,9 +69,9 @@ def _review_lock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
 
 
 def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
-    lock_path = queue.review_dir / f"{slug}.locked" if slug else None  # ty: ignore
-    if lock_path and lock_path.exists():
-        lock_path.unlink()
+    lock_file = queue.review_dir / f"{slug}.locked" if slug else None  # ty: ignore
+    if lock_file and lock_file.exists():
+        lock_file.unlink()
         typer.echo(f"Unlocked: {slug}")
         return
     typer.echo(f"No lock for {slug!r}.", err=True)

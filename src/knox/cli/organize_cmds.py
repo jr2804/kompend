@@ -51,8 +51,8 @@ def organize_cmd(
         overrides[ORGANIZE_COLLAPSE_SINGLE_FILE] = collapse_single_file
 
     cfg = resolve_config(cli_overrides=overrides or None)
-    sources_dir_path, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
-    base_dir = Path(cfg.get(PATHS_WIKI_DIR) or sources_dir_path.parent).resolve()
+    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    base_dir = Path(cfg.get(PATHS_WIKI_DIR) or sources_dir.parent).resolve()
 
     config = resolve_organize_config(overrides or None)
 
@@ -66,8 +66,8 @@ def organize_cmd(
 
     result = organize_sources(
         base_dir=base_dir,
-        sources_dir=sources_dir_path,
-        output_dir=output_dir_path,
+        sources_dir=sources_dir,
+        output_dir=output_dir,
         llm_client=llm_client,
         config=config,
         dry_run=dry_run,

@@ -30,8 +30,8 @@ def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:
     return result
 
 
-def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
-    """Check if *path* matches any of the given glob patterns.
+def matches_any(subject_path: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
+    """Check if *subject_path* matches any of the given glob patterns.
 
     Each pattern is tested against the path's name and, when possible, against
     the path relative to *base_dir*.
@@ -41,9 +41,9 @@ def matches_any(path: Path, patterns: list[str], base_dir: Path | None = None) -
 
     # Compute relative path string (best-effort — may not be under base_dir)
     try:
-        rel_path = path.relative_to(base_dir) if base_dir else path
+        rel_path = subject_path.relative_to(base_dir) if base_dir else subject_path
     except ValueError:
-        rel_path = path
+        rel_path = subject_path
     rel_str = str(rel_path).replace("\\", "/")
     name = rel_path.name
 
@@ -73,15 +73,15 @@ def _glob_match(text: str, pattern: str) -> bool:
     return fnmatch.fnmatch(text, pattern)
 
 
-def _read_gitignore_patterns(path: Path) -> list[str]:
+def _read_gitignore_patterns(gitignore_file: Path) -> list[str]:
     """Parse one ``.gitignore`` file into a list of non-comment patterns."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = gitignore_file.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:
-        logger.debug("Failed to read %s: %s", path, exc, exc_info=True)
+        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=True)
         return []
     patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
-    logger.debug("Loaded %d patterns from %s", len(patterns), path)
+    logger.debug("Loaded %d patterns from %s", len(patterns), gitignore_file)
     return patterns
 
 

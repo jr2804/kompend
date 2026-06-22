@@ -107,12 +107,12 @@ def _ping_embed_model(model: str | None) -> CheckResult:
 def _check_git_repo() -> CheckResult:
     """Check if we are inside a git repository."""
     name = "git-repo"
-    git_path = shutil.which("git")
-    if git_path is None:
+    git_bin = shutil.which("git")
+    if git_bin is None:
         return CheckResult(name, True, "Git not installed — OK")
     try:
         result = subprocess.run(  # noqa: S603
-            [git_path, "rev-parse", "--is-inside-work-tree"],
+            [git_bin, "rev-parse", "--is-inside-work-tree"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -128,9 +128,9 @@ def _check_git_repo() -> CheckResult:
 def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
     """Check available disk space — warn if < 500 MB."""
     name = "disk-space"
-    check_path = sources_dir if sources_dir and sources_dir.exists() else Path.cwd()
+    check_dir = sources_dir if sources_dir and sources_dir.exists() else Path.cwd()
     try:
-        usage = shutil.disk_usage(str(check_path))
+        usage = shutil.disk_usage(str(check_dir))
         free_mb = usage.free / (1024 * 1024)
         if free_mb < 500:
             return CheckResult(name, False, f"Low disk space: {free_mb:.0f} MB free (< 500 MB)")

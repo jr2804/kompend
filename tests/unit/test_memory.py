@@ -32,9 +32,9 @@ class TestMemoryStore:
             store.add_entry(query="What is the capital of France?", answer="Paris", feedback="Correct and concise.")
 
             # Check JSONL
-            log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-            assert log_path.exists()
-            with open(log_path, encoding="utf-8") as f:
+            log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+            assert log_file.exists()
+            with open(log_file, encoding="utf-8") as f:
                 line = f.readline()
                 data = json.loads(line)
                 assert data["query"] == "What is the capital of France?"
@@ -102,8 +102,8 @@ class TestUserTracking:
             store.add_entry(query="q", answer="a", memory_by="alice")
         finally:
             store.close()
-        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        data = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
         assert data["memory_by"] == "alice"
 
     def test_add_entry_default_memory_by_empty(self, temp_wiki_dir: Path) -> None:
@@ -112,8 +112,8 @@ class TestUserTracking:
             store.add_entry(query="q", answer="a")
         finally:
             store.close()
-        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        data = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
         assert data["memory_by"] == ""
 
     def test_store_reopens_across_instances(self, temp_wiki_dir: Path) -> None:
@@ -132,8 +132,8 @@ class TestUserTracking:
         finally:
             s2.close()
 
-        log_path = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        entries = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
+        entries = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
         assert [e["query"] for e in entries] == ["q1", "q2"]
         assert [e["memory_by"] for e in entries] == ["alice", "bob"]
 

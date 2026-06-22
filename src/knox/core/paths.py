@@ -71,6 +71,9 @@ PROVENANCE_DIR: Final[str] = "provenance"
 # ── Verification ────────────────────────────────────────────────────────
 VERIFICATION_FILE: Final[str] = "verification.json"
 
+# ── Logging ─────────────────────────────────────────────────────────────
+LOG_FILE: Final[str] = "log.md"
+
 # ── Trust / Privacy ─────────────────────────────────────────────────────
 PRIVATE_FILE: Final[str] = "private.json"
 
@@ -123,10 +126,10 @@ class VaultPaths:
         │   ├── private.json        ← private_path
         │   ├── downloaded.json     ← downloaded_path
         │   ├── last_organize.json  ← organize_report_path
-        │   └── state.json          ← state_path
+        │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── wiki/                   ← output_dir
-        │   └── index.md            ← index_path
+        │   └── index.md            ← index_file
     """
 
     base_dir: Path
@@ -250,21 +253,26 @@ class VaultPaths:
         return self.knox_dir / ORGANIZE_REPORT_FILE
 
     @property
-    def state_path(self) -> Path:
+    def state_file(self) -> Path:
         """General state file."""
         return self.knox_dir / STATE_FILE
+
+    @property
+    def log_file(self) -> Path:
+        """Pipeline log file (prepended after each stage)."""
+        return self.knox_dir / LOG_FILE
 
     # ── Files inside output_dir/ ────────────────────────────────────────
 
     @property
-    def index_path(self) -> Path:
+    def index_file(self) -> Path:
         """Wiki entry point (table of contents)."""
         return self.output_dir / INDEX_FILE
 
     # ── Files at project root ───────────────────────────────────────────
 
     @property
-    def project_config_path(self) -> Path:
+    def project_config_file(self) -> Path:
         """User project config file (``knox.toml`` at root)."""
         return self.base_dir / PROJECT_CONFIG_FILE
 

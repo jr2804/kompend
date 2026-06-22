@@ -62,14 +62,14 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         assert store.build_index(wiki) == 1
         store.close()
 
     def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
         """Integration test: build index and search."""
         try:
-            store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+            store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Testing", content="test content here", node_type="section"),
@@ -90,7 +90,7 @@ class TestZvecWikiStore:
     def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
         db = zvec_db / "nested" / "deep" / "store"
         try:
-            store = ZvecWikiStore(db_path=str(db), embedding_provider=_TEST_PROVIDER)
+            store = ZvecWikiStore(db_file=str(db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Test", content="...", node_type="section"),
@@ -142,7 +142,7 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(wiki)
         store.close()
 
@@ -171,7 +171,7 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_path=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(wiki)
         try:
             results = store.search("methods")

@@ -33,8 +33,8 @@ def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str
             overrides[TRUST_USER_TRACKING] = False
     cfg = resolve_config(cli_overrides=overrides)
     paths = cfg.get("paths")
-    output_dir_path = Path(paths["output_dir"])
-    base_dir = output_dir_path.parent
+    output_dir = Path(paths["output_dir"])
+    base_dir = output_dir.parent
     embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
     return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)
 
@@ -100,17 +100,17 @@ def memory_synthesize(
             typer.echo("No memory entries found to synthesize.")
             return
 
-        context_path = base_dir / "sources" / "_memory" / "system_context.md"
-        context_path.parent.mkdir(parents=True, exist_ok=True)
+        context_file = base_dir / "sources" / "_memory" / "system_context.md"
+        context_file.parent.mkdir(parents=True, exist_ok=True)
 
         loader = get_template_loader()
         content = loader.render(
             "memory/system_context.md.j2",
             entries=entries[:10],
         )
-        context_path.write_text(content, encoding="utf-8")
+        context_file.write_text(content, encoding="utf-8")
 
-        typer.echo(f"✓ Synthesized context written to {context_path}")
+        typer.echo(f"✓ Synthesized context written to {context_file}")
 
     except Exception as exc:
         typer.echo(f"Error synthesizing memory: {exc}", err=True)

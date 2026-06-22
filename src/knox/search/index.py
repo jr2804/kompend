@@ -29,9 +29,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
 """
 
 
-def build_chunk_index(wiki: CompiledWiki, index_path: Path) -> None:
-    index_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(index_path))
+def build_chunk_index(wiki: CompiledWiki, index_file: Path) -> None:
+    index_file.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(index_file))
     try:
         conn.execute(_CREATE_TABLE)
         conn.execute(_CREATE_FTS)
@@ -49,16 +49,16 @@ def build_chunk_index(wiki: CompiledWiki, index_path: Path) -> None:
 
         conn.commit()
         row_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-        logger.info("Indexed %d chunks in %s", row_count, index_path)
+        logger.info("Indexed %d chunks in %s", row_count, index_file)
     finally:
         conn.close()
 
 
-def search_fts(query: str, index_path: Path, top_k: int = 5) -> list[dict[str, Any]]:
-    if not index_path.exists():
+def search_fts(query: str, index_file: Path, top_k: int = 5) -> list[dict[str, Any]]:
+    if not index_file.exists():
         return []
 
-    conn = sqlite3.connect(str(index_path))
+    conn = sqlite3.connect(str(index_file))
     try:
         clean = query.replace('"', '""')
         rows = conn.execute(

@@ -49,7 +49,7 @@ class DocumentElement:
 class ParsedDocument:
     """Output of Tier 1: Preprocessing."""
 
-    source_path: Path
+    source_file: Path
     elements: list[DocumentElement]
     title: str = ""
     author: str = ""
@@ -390,7 +390,7 @@ def _chunk_from_dict(d: dict[str, Any]) -> Chunk:
         text=d["text"],
         element_types=[ElementType(et) for et in d.get("element_types", [])],
         source_elements=d.get("source_elements", []),
-        source_file=Path(d["source_file"]) if d.get("source_file") else None,
+        source_file=Path(d.get("source_file") or d.get("source_path")) if (d.get("source_file") or d.get("source_path")) else None,
         heading_context=d.get("heading_context", ""),
         token_count=d.get("token_count", 0),
         reading_order=tuple(d["reading_order"]) if d.get("reading_order") else None,
@@ -447,6 +447,6 @@ def tree_from_dict(d: dict[str, Any]) -> ChunkTree:
     return ChunkTree(
         root_id=d["root_id"],
         nodes={nid: _node_from_dict(n) for nid, n in d.get("nodes", {}).items()},
-        source_file=Path(d["source_file"]) if d.get("source_file") else None,
+        source_file=Path(d.get("source_file") or d.get("source_path")) if (d.get("source_file") or d.get("source_path")) else None,
         strategy=ChunkStrategy(d.get("strategy", ChunkStrategy.SINGLE_PASS)),
     )

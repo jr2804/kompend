@@ -21,14 +21,14 @@ class DuplicateDetector:
     a SHA256 hash of its content.
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_file: Path) -> None:
         """Initialize the detector with a path to the JSON database.
 
         Args:
-            db_path: Path to the JSON file used for persistent storage.
+            db_file: Path to the JSON file used for persistent storage.
                      Will be created if it doesn't exist.
         """
-        self.db_path = db_path
+        self.db_file = db_file
         self._db: dict[str, str] = {}
         self._load()
 
@@ -78,20 +78,20 @@ class DuplicateDetector:
 
     def _load(self) -> None:
         """Load the database from disk."""
-        if self.db_path.exists():
+        if self.db_file.exists():
             try:
-                raw = self.db_path.read_text(encoding="utf-8")
+                raw = self.db_file.read_text(encoding="utf-8")
                 self._db = json.loads(raw)
             except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_path, exc_info=True)
+                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_file, exc_info=True)
                 self._db = {}
         else:
             self._db = {}
 
     def _save(self) -> None:
         """Persist the database to disk."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path.write_text(
+        self.db_file.parent.mkdir(parents=True, exist_ok=True)
+        self.db_file.write_text(
             json.dumps(self._db, indent=2, sort_keys=True),
             encoding="utf-8",
         )

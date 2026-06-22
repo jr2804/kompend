@@ -31,10 +31,10 @@ def init(
     keep_cache: InitKeepCache = False,
 ) -> None:
     """Create a new wiki project in TARGET (default: current directory)."""
-    target_path = Path(target)
+    target_dir = Path(target)
 
     if not force:
-        existing = find_existing_project(target_path)
+        existing = find_existing_project(target_dir)
         if existing is not None:
             typer.echo(
                 f"warning: existing KNOX project detected at {existing}.\n  Use --force to overwrite (this wipes the current vault).",
@@ -43,7 +43,7 @@ def init(
             raise typer.Exit(code=0)
 
     try:
-        result = scaffold_project(target_path, bare=bare, force=force, git=git, keep_cache=keep_cache)
+        result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache)
     except ScaffoldError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

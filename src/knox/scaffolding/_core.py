@@ -61,7 +61,7 @@ class ScaffoldResult:
 
 
 class ScaffoldError(Exception):
-    """Raised when scaffolding cannot proceed (e.g. target dir conflicts)."""
+    """Raised when scaffolding cannot proceed (e.g. target_dir dir conflicts)."""
 
 
 def _template_path(name: str) -> Path:
@@ -69,39 +69,39 @@ def _template_path(name: str) -> Path:
     return Path(str(resources.files(TEMPLATES_PACKAGE).joinpath(name)))
 
 
-def find_existing_project(target: Path) -> Path | None:
-    """Return the first existing project marker in *target*, or ``None``.
+def find_existing_project(target_dir: Path) -> Path | None:
+    """Return the first existing project marker in *target_dir*, or ``None``.
 
     A project marker is either ``knox.toml`` (project-level config) or
     ``.knox/config.toml`` (vault-level config). The returned path is the
     marker file that was found.
     """
     for marker in PROJECT_MARKERS:
-        candidate = target / marker
+        candidate = target_dir / marker
         if candidate.exists():
             return candidate
     return None
 
 
-def _create_directory(target: Path, relative: str) -> Path:
-    """Create a directory under *target* and record it in *result*."""
-    new_dir = target / relative
+def _create_directory(target_dir: Path, relative: str) -> Path:
+    """Create a directory under *target_dir* and record it in *result*."""
+    new_dir = target_dir / relative
     new_dir.mkdir(parents=True, exist_ok=True)
     return new_dir
 
 
-def _copy_template(template_name: str, target: Path, relative: str) -> None:
-    """Copy a template file into *target/relative*."""
+def _copy_template(template_name: str, target_dir: Path, relative: str) -> None:
+    """Copy a template file into *target_dir/relative*."""
     source = _template_path(template_name)
-    destination = target / relative
+    destination = target_dir / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
 
 
-def _clear_directory(target: Path, *, skip: str | set[str] | None = None) -> None:
-    """Remove all contents of *target*, optionally skipping named children."""
+def _clear_directory(target_dir: Path, *, skip: str | set[str] | None = None) -> None:
+    """Remove all contents of *target_dir*, optionally skipping named children."""
     skip_set = {skip} if isinstance(skip, str) else (skip or set())
-    for item in target.iterdir():
+    for item in target_dir.iterdir():
         if item.name in skip_set:
             continue
         if item.is_dir():
@@ -128,8 +128,8 @@ def _render_config_template(target_dir: Path, relative: str) -> None:
     logger.info("Rendered config template to %s", destination)
 
 
-def _initialise_git(target: Path) -> None:
-    """Run ``git init`` in *target* and stage an initial commit."""
+def _initialise_git(target_dir: Path) -> None:
+    """Run ``git init`` in *target_dir* and stage an initial commit."""
     git_path = shutil.which("git")
     if not git_path:
         raise FileNotFoundError("git executable not found in PATH")
@@ -137,19 +137,19 @@ def _initialise_git(target: Path) -> None:
     # All arguments are hard-coded constants — no untrusted input reaches subprocess.
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "init", "--initial-branch=main"],
-        cwd=target,
+        cwd=target_dir,
         check=True,
         capture_output=True,
     )
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "add", "."],
-        cwd=target,
+        cwd=target_dir,
         check=True,
         capture_output=True,
     )
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
         [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
-        cwd=target,
+        cwd=target_dir,
         check=True,
         capture_output=True,
     )
@@ -182,7 +182,7 @@ def scaffold_project(
         create an initial commit.
     keep_cache:
         When ``True`` (requires *force*), remove **all** contents of
-        the target directory before scaffolding — except
+        the target_dir directory before scaffolding — except
         ``.knox/cache/`` which is preserved in place. This enables fast
         re-runs where ingest can skip already-parsed documents.
 
@@ -194,7 +194,7 @@ def scaffold_project(
     Raises:
     ------
     ScaffoldError
-        If the target directory contains an existing project marker and
+        If the target_dir directory contains an existing project marker and
         ``force`` is not set, or if a filesystem operation fails.
     """
     resolved_target_dir = Path(target_dir).expanduser().resolve()

@@ -95,16 +95,16 @@ def update_wiki_links(
 
     counts["wiki_node_metadata"] = _rewrite_wiki_node_paths(wiki_root, remap)
 
-    state_path = paths.compile_state_path
-    if state_path.is_file():
-        counts["tier_state"] = _rewrite_tier_state(state_path, remap)
+    state_file = paths.compile_state_path
+    if state_file.is_file():
+        counts["tier_state"] = _rewrite_tier_state(state_file, remap)
 
     return counts
 
 
-def _rewrite_inline_citations(path: Path, remap: LinkRemap) -> int:
+def _rewrite_inline_citations(md_file: Path, remap: LinkRemap) -> int:
     try:
-        original = path.read_text(encoding="utf-8")
+        original = md_file.read_text(encoding="utf-8")
     except OSError:
         return 0
 
@@ -121,13 +121,13 @@ def _rewrite_inline_citations(path: Path, remap: LinkRemap) -> int:
 
     updated = _CITATION_RE.sub(_replace, original)
     if edits:
-        path.write_text(updated, encoding="utf-8")
+        md_file.write_text(updated, encoding="utf-8")
     return edits
 
 
-def _rewrite_provenance(path: Path, remap: LinkRemap) -> int:
+def _rewrite_provenance(prov_file: Path, remap: LinkRemap) -> int:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(prov_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return 0
     if not isinstance(data, dict):
@@ -149,7 +149,7 @@ def _rewrite_provenance(path: Path, remap: LinkRemap) -> int:
         citations[idx] = f"^[{new_name}:{m.group(2)}-{m.group(3)}]"
         edits += 1
     if edits:
-        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        prov_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
     return edits
 
 
@@ -185,9 +185,9 @@ def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
     return edits
 
 
-def _rewrite_tier_state(state_path: Path, remap: LinkRemap) -> int:
+def _rewrite_tier_state(state_file: Path, remap: LinkRemap) -> int:
     try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
+        data = json.loads(state_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return 0
     if not isinstance(data, dict):
@@ -199,15 +199,15 @@ def _rewrite_tier_state(state_path: Path, remap: LinkRemap) -> int:
     for entry in entries.values():
         if not isinstance(entry, dict):
             continue
-        path_value = entry.get("source_path")
+        path_value = entry.get("source_file")
         if not isinstance(path_value, str):
             continue
         new_value = _remap_path(path_value, remap)
         if new_value != path_value:
-            entry["source_path"] = new_value
+            entry["source_file"] = new_value
             edits += 1
     if edits:
-        state_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        state_file.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     return edits
 
 
@@ -219,8 +219,8 @@ def _remap_path(value: str, remap: LinkRemap) -> str:
     directory portion intact, so a move of ``sources/foo/x.md`` to
     ``sources/bar/x.md`` becomes ``sources/bar/x.md``.
     """
-    path = Path(value.replace("\\", "/"))
-    new_name = remap.get(path.name)
-    if new_name is None or new_name == path.name:
+    parsed_file = Path(value.replace("\\", "/"))
+    new_name = remap.get(parsed_file.name)
+    if new_name is None or new_name == parsed_file.name:
         return value
-    return str(path.with_name(new_name)).replace("\\", "/")
+    return str(parsed_file.with_name(new_name)).replace("\\", "/")

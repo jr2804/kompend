@@ -33,7 +33,7 @@ def capture_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
         default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
@@ -41,8 +41,8 @@ def capture_cmd(
     except Exception:
         llm_client = None
 
-    paths = capture(text, sources_dir=sources_dir_path, llm_client=llm_client)
-    typer.echo(f"Captured {len(paths)} item(s) to {sources_dir_path / '_captured'}")
+    paths = capture(text, sources_dir=sources_dir, llm_client=llm_client)
+    typer.echo(f"Captured {len(paths)} item(s) to {sources_dir / '_captured'}")
     for p in paths:
         typer.echo(f"  {p.name}")
 
@@ -64,9 +64,9 @@ def learn_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-    path = learn(text, sources_dir=sources_dir_path, tags=tag)
+    path = learn(text, sources_dir=sources_dir, tags=tag)
     typer.echo(f"Learned fact -> {path.name}")
 
 
@@ -86,7 +86,7 @@ def crystallize_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir_path, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
         default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
@@ -94,11 +94,11 @@ def crystallize_cmd(
     except Exception:
         llm_client = None
 
-    paths = crystallize(sources_dir_path, llm_client=llm_client)
+    paths = crystallize(sources_dir, llm_client=llm_client)
     if not paths:
         typer.echo("No captured notes found to crystallize.")
         return
-    typer.echo(f"Crystallized {len(paths)} page(s) to {sources_dir_path / '_crystallized'}")
+    typer.echo(f"Crystallized {len(paths)} page(s) to {sources_dir / '_crystallized'}")
     for p in paths:
         typer.echo(f"  {p.name}")
 
@@ -117,7 +117,7 @@ def write_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    _sources_dir, output_dir_path, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    _sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     fm: dict[str, str] = {}
     if frontmatter:
@@ -142,7 +142,7 @@ def write_cmd(
     doc = Document(title=page_title, body=body, frontmatter=fm)
     rendered = writer.renderer.render(doc)
 
-    output_path = output_dir_path / f"{page_title.lower().replace(' ', '-')}.md"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(rendered, encoding="utf-8")
-    typer.echo(f"Written: {output_path}")
+    output_file = output_dir / f"{page_title.lower().replace(' ', '-')}.md"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(rendered, encoding="utf-8")
+    typer.echo(f"Written: {output_file}")

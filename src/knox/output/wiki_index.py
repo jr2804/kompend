@@ -290,16 +290,16 @@ def generate_stage_log_entry(
     return "\n".join(lines) + "\n"
 
 
-def prepend_log(log_path: Path, entry: str) -> None:
-    """Prepend a log entry to *log_path* (newest first).
+def prepend_log(log_file: Path, entry: str) -> None:
+    """Prepend a log entry to *log_file* (newest first).
 
     Creates the file if missing.
     """
-    if log_path.exists():
-        existing = log_path.read_text(encoding="utf-8")
+    if log_file.exists():
+        existing = log_file.read_text(encoding="utf-8")
         if existing.strip():
             entry = entry.rstrip("\n") + "\n\n---\n\n" + existing
-    log_path.write_text(entry, encoding="utf-8")
+    log_file.write_text(entry, encoding="utf-8")
 
 
 def write_index_and_log(
@@ -316,16 +316,16 @@ def write_index_and_log(
     resolved_base.mkdir(parents=True, exist_ok=True)
 
     # index.md — entry point at base_dir level
-    index_path = resolved_base / INDEX_FILE
+    index_file = resolved_base / INDEX_FILE
     index_content = generate_index(wiki)
-    index_path.write_text(index_content, encoding="utf-8")
+    index_file.write_text(index_content, encoding="utf-8")
 
     # log.md (prepended, newest first)
-    log_path = resolved_base / "log.md"
+    log_file = resolved_base / "log.md"
     log_entry = generate_log_entry(wiki, stage="compile")
-    prepend_log(log_path, log_entry)
+    prepend_log(log_file, log_entry)
 
-    return {"index": index_path, "log": log_path}
+    return {"index": index_file, "log": log_file}
 
 
 def generate_overview(

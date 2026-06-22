@@ -20,7 +20,7 @@ from knox.llm.client import ContextWindow
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
     return ParsedDocument(
-        source_path=Path(f"{title}.pdf"),
+        source_file=Path(f"{title}.pdf"),
         elements=elements,
         title=title,
     )

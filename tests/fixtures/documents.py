@@ -12,7 +12,7 @@ def make_test_doc(
     include_tables: bool = True,
     include_code: bool = True,
     include_images: bool = True,
-    source_path: Path | None = None,
+    source_file: Path | None = None,
 ) -> ParsedDocument:
     """Create a realistic ParsedDocument with configurable elements.
 
@@ -21,13 +21,13 @@ def make_test_doc(
         include_tables: Whether to include a TABLE element.
         include_code: Whether to include a CODE element.
         include_images: Whether to include an IMAGE element.
-        source_path: Optional custom source path (default: fixtures/test.pdf).
+        source_file: Optional custom source path (default: fixtures/test.pdf).
 
     Returns:
         A ParsedDocument suitable for chunking benchmarks and integration tests.
     """
-    if source_path is None:
-        source_path = Path("fixtures/test.pdf")
+    if source_file is None:
+        source_file = Path("fixtures/test.pdf")
 
     elements: list[DocumentElement] = []
 
@@ -177,7 +177,7 @@ def make_test_doc(
     )
 
     return ParsedDocument(
-        source_path=source_path,
+        source_file=source_file,
         elements=elements,
         title="Test Document Title",
         page_count=4,

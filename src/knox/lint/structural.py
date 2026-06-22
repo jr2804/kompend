@@ -329,15 +329,15 @@ class StalePageRule(BaseLintRule):
 
         # ── Source file existence check ──
         if sources_dir is not None:
-            sources_path = Path(sources_dir)
-            if sources_path.exists():
+            sources_dir = Path(sources_dir)
+            if sources_dir.exists():
                 for node in wiki.nodes:
                     source_file_str = node.metadata.get("source_file")
                     if not source_file_str:
                         continue
                     source_file = Path(source_file_str)
                     if not source_file.is_absolute():
-                        source_file = sources_path / source_file
+                        source_file = sources_dir / source_file
                     if not source_file.exists():
                         results.append(
                             LintResult(
@@ -403,7 +403,7 @@ class SourceNotFoundRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
             return results
 
-        sources_path = Path(sources_dir)
+        sources_dir = Path(sources_dir)
         for node in wiki.nodes:
             source_chunks = node.source_chunks or []
             if not source_chunks:
@@ -415,7 +415,7 @@ class SourceNotFoundRule(BaseLintRule):
                 continue
             source_file = Path(source_file_str)
             if not source_file.is_absolute():
-                source_file = sources_path / source_file
+                source_file = sources_dir / source_file
             if not source_file.exists():
                 results.append(
                     LintResult(

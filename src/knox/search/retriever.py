@@ -36,12 +36,12 @@ class SynthesisResult:
 
 
 class TokenOverlapRetriever:
-    def __init__(self, wiki: CompiledWiki, index_path: Path | None = None) -> None:
+    def __init__(self, wiki: CompiledWiki, index_file: Path | None = None) -> None:
         self._wiki: CompiledWiki = wiki
         self._template_loader: TemplateLoader = get_template_loader()
-        self._index_path: Path | None = index_path
-        if index_path is not None and not index_path.exists():
-            build_chunk_index(wiki, index_path)
+        self._index_path: Path | None = index_file
+        if index_file is not None and not index_file.exists():
+            build_chunk_index(wiki, index_file)
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         if self._index_path and self._index_path.exists():
@@ -255,12 +255,12 @@ class HybridRetriever:
     def __init__(
         self,
         wiki: CompiledWiki,
-        index_path: Path | None = None,
+        index_file: Path | None = None,
         vector_store: ZvecWikiStore | None = None,
         sources_dir: Path | None = None,
     ) -> None:
         self._wiki = wiki
-        self._index_path = index_path
+        self._index_path = index_file
         self._vector_store = vector_store
         self._sources_dir = sources_dir
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}

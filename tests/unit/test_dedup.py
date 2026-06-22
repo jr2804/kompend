@@ -82,9 +82,9 @@ class TestContentStore:
         assert not store2.is_fresh()
 
     def test_corrupt_file_starts_fresh(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "store.json"
-        db_path.write_text("not json", encoding="utf-8")
-        store = DedupStore(db_path)
+        db_file = tmp_path / "store.json"
+        db_file.write_text("not json", encoding="utf-8")
+        store = DedupStore(db_file)
         store.load()
         assert len(store) == 0
         assert store._data == {}

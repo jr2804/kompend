@@ -120,18 +120,18 @@ class ZvecWikiStore:
     """Sidecar vector store for semantic search over compiled wikis.
 
     The store is dormant until build_index() is called.
-    Uses a single zvec collection at ``db_path``.
+    Uses a single zvec collection at ``db_file``.
     """
 
     _PREVIEW_LEN: int = 1000
 
     def __init__(
         self,
-        db_path: str | Path = "./.knox/vectors",
+        db_file: str | Path = "./.knox/vectors",
         embedding_provider: EmbeddingProvider | None = None,
         embedding_dim: int = 384,
     ) -> None:
-        self.db_path = Path(db_path)
+        self.db_file = Path(db_file)
         self._provider = embedding_provider
         self._embedding_dim = embedding_dim
         self._collection: Any | None = None
@@ -190,7 +190,7 @@ class ZvecWikiStore:
     @classmethod
     def open(
         cls,
-        db_path: str | Path,
+        db_file: str | Path,
         embedding_model: str | None = None,
         embedding_dim: int | None = None,
         *,
@@ -203,19 +203,19 @@ class ZvecWikiStore:
         or pass ``embedding_model`` to create one via :func:`_make_provider`.
         """
         provider = embedding_provider or _make_provider(embedding_model or "", dim=embedding_dim or 384)
-        store = cls(db_path=db_path, embedding_provider=provider, embedding_dim=provider.dim)
-        coll_path = Path(store.db_path)
-        if coll_path.exists():
+        store = cls(db_file=db_file, embedding_provider=provider, embedding_dim=provider.dim)
+        coll_dir = Path(store.db_file)
+        if coll_dir.exists():
             try:
-                store._collection = _zvec.open(path=str(coll_path))
+                store._collection = _zvec.open(path=str(coll_dir))
             except Exception as exc:
-                logger.warning("Could not open zvec store at %s: %s", coll_path, exc, exc_info=True)
+                logger.warning("Could not open zvec store at %s: %s", coll_dir, exc, exc_info=True)
         else:
-            logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_path)
+            logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
     def _create_collection(self) -> Any:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_file.parent.mkdir(parents=True, exist_ok=True)
         schema = _zvec.CollectionSchema(
             name="knox_wiki",
             fields=[
@@ -231,7 +231,7 @@ class ZvecWikiStore:
             ),
         )
         collection = _zvec.create_and_open(
-            path=str(self.db_path),
+            path=str(self.db_file),
             schema=schema,
         )
         self._collection = collection
@@ -273,5 +273,5 @@ class ZvecWikiStore:
             collection.insert(docs_batch)
             indexed_count += len(docs_batch)
 
-        logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_path)
+        logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_file)
         return indexed_count

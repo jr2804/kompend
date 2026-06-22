@@ -100,7 +100,7 @@ def _resolve_compile_inputs(
     files: CompileFiles,
     online_urls: list[str],
     url_file: UrlFile,
-    sources_dir_path: Path,
+    sources_dir: Path,
     recursive: Recursive,
     ignore: Ignore,
     *,
@@ -108,7 +108,7 @@ def _resolve_compile_inputs(
 ) -> list[Path]:
     """Resolve file arguments and URLs into a deduplicated input file list.
 
-    When *in_place* is ``True``, local files outside *sources_dir_path* are
+    When *in_place* is ``True``, local files outside *sources_dir* are
     kept at their original location instead of being copied.
     """
     if url_file is not None:
@@ -119,14 +119,14 @@ def _resolve_compile_inputs(
 
     resolved = resolve_files(*files, recursive=recursive, ignore_patterns=ignore)
 
-    sources_dir_path.mkdir(parents=True, exist_ok=True)
-    local_files = ensure_in_sources(resolved, sources_dir_path, in_place=in_place)
-    downloaded = download_urls(online_urls, sources_dir_path, base_dir=sources_dir_path.parent)
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    local_files = ensure_in_sources(resolved, sources_dir, in_place=in_place)
+    downloaded = download_urls(online_urls, sources_dir, base_dir=sources_dir.parent)
 
     all_input_files = list(dict.fromkeys(local_files + downloaded))
     if not all_input_files:
         all_input_files = resolve_files(
-            str(sources_dir_path),
+            str(sources_dir),
             recursive=recursive,
             ignore_patterns=ignore,
         )
@@ -173,45 +173,45 @@ def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
         queue.enqueue(node)
 
 
-def _annotate_provenance(wiki: CompiledWiki, output_dir_path: Path) -> None:
+def _annotate_provenance(wiki: CompiledWiki, output_dir: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
-    annotated = annotate_wiki_with_provenance(wiki, output_dir_path)
+    annotated = annotate_wiki_with_provenance(wiki, output_dir)
     typer.echo(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
 
-def _mark_private(wiki: CompiledWiki, output_dir_path: Path) -> None:
+def _mark_private(wiki: CompiledWiki, output_dir: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
-    mark_wiki_private(wiki, output_dir_path)
+    mark_wiki_private(wiki, output_dir)
 
 
 def _verify_claims(
     wiki: CompiledWiki,
-    output_dir_path: Path,
+    output_dir: Path,
     *,
     client: object,
     model: str,
     verify_budget: int = 3000,
 ) -> None:
     """Run grounding verification over wiki claims."""
-    result = verify_wiki(wiki, output_dir_path, client=client, model=model, verify_budget=verify_budget)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    result = verify_wiki(wiki, output_dir, client=client, model=model, verify_budget=verify_budget)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
     typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
 def _run_post_compile_lint(
     wiki: CompiledWiki,
-    sources_dir_path: Path,
+    sources_dir: Path,
     *,
     json_output: bool = False,
 ) -> None:
     """Run lint after compilation and print the report."""
-    runner = LintRunner(sources_dir=str(sources_dir_path) if sources_dir_path.exists() else None)
+    runner = LintRunner(sources_dir=str(sources_dir) if sources_dir.exists() else None)
     report = runner.run(wiki)
     typer.echo("\n" + report_to_text(report))
 
 
 def _cli_build_vector_index(
     wiki: CompiledWiki,
-    output_dir_path: Path,
+    output_dir: Path,
     embed_model: str | None,
     *,
     base_dir: Path | None = None,
@@ -221,7 +221,7 @@ def _cli_build_vector_index(
         typer.echo("Error: --embed-model must be provided when --index is used.", err=True)
         raise typer.Exit(1)
 
-    count = build_vector_index(wiki, output_dir_path, embed_model=embed_model, base_dir=base_dir)
+    count = build_vector_index(wiki, output_dir, embed_model=embed_model, base_dir=base_dir)
     if count > 0:
         typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
     else:
@@ -232,8 +232,8 @@ def _post_compile_actions(
     *,
     wiki: CompiledWiki,
     pipeline_config: PipelineConfig,
-    output_dir_path: Path,
-    sources_dir_path: Path,
+    output_dir: Path,
+    sources_dir: Path,
     review: bool | None,
     bypass_review: bool | None,
     provenance: bool | None,
@@ -257,19 +257,19 @@ def _post_compile_actions(
         typer.echo("--bypass-review overrides --review; writing pages directly.")
 
     if provenance:
-        _annotate_provenance(wiki, output_dir_path)
+        _annotate_provenance(wiki, output_dir)
 
     if private:
-        _mark_private(wiki, output_dir_path)
+        _mark_private(wiki, output_dir)
 
     if verify:
         resolved_model = pipeline_config.llm.default_model
         if llm_client is None:
             typer.echo("Warning: --verify requires an LLM client — skipping verification", err=True)
         else:
-            _verify_claims(wiki, output_dir_path, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
+            _verify_claims(wiki, output_dir, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
-    generated = write_index_and_log(wiki, output_dir_path, base_dir=base_dir)
+    generated = write_index_and_log(wiki, output_dir, base_dir=base_dir)
     typer.echo(f"Index: {generated['index']}")
     typer.echo(f"Log:   {generated['log']}")
 
@@ -310,9 +310,9 @@ def _post_compile_actions(
         search_db_path = VaultPaths(base_dir).search_db_path
         build_chunk_index(wiki, search_db_path)
         wiki.metadata["embedding_model"] = embed_model
-        _cli_build_vector_index(wiki, output_dir_path, pipeline_config.embedding.model, base_dir=base_dir)
+        _cli_build_vector_index(wiki, output_dir, pipeline_config.embedding.model, base_dir=base_dir)
 
     if compile_lint:
-        _run_post_compile_lint(wiki, sources_dir_path, json_output=False)
+        _run_post_compile_lint(wiki, sources_dir, json_output=False)
 
     _write_wiki_cache(wiki, base_dir)

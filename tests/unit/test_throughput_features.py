@@ -120,7 +120,7 @@ class TestTierStateStore:
     def test_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / STATE_FILE
         store = TierStateStore(path)
-        state = TierState(entries={"a": SourceState(stem="a", source_path="a", content_hash="x")})
+        state = TierState(entries={"a": SourceState(stem="a", source_file="a", content_hash="x")})
         store.save(state)
         loaded = store.load()
         assert "a" in loaded.entries
@@ -185,7 +185,7 @@ class TestTierStateStore:
         # A state file written before knox-gsb5 has no ingested_by field.
         path = tmp_path / STATE_FILE
         path.write_text(
-            json.dumps({"entries": {"doc1": {"stem": "doc1", "source_path": "d", "content_hash": "h", "current_tier": 1}}}),
+            json.dumps({"entries": {"doc1": {"stem": "doc1", "source_file": "d", "content_hash": "h", "current_tier": 1}}}),
             encoding="utf-8",
         )
         loaded = TierStateStore(path).load()
@@ -203,9 +203,9 @@ class TestTierStateStore:
     def test_tier_distribution(self) -> None:
         state = TierState(
             entries={
-                "a": SourceState(stem="a", source_path="", content_hash="", current_tier=1),
-                "b": SourceState(stem="b", source_path="", content_hash="", current_tier=3),
-                "c": SourceState(stem="c", source_path="", content_hash="", current_tier=3),
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=1),
+                "b": SourceState(stem="b", source_file="", content_hash="", current_tier=3),
+                "c": SourceState(stem="c", source_file="", content_hash="", current_tier=3),
             }
         )
         assert state.tier_distribution() == {1: 1, 3: 2}
@@ -219,7 +219,7 @@ class TestAutoPromoteDemote:
             entries={
                 "a": SourceState(
                     stem="a",
-                    source_path="",
+                    source_file="",
                     content_hash="",
                     current_tier=1,
                     search_hits=5,
@@ -235,7 +235,7 @@ class TestAutoPromoteDemote:
             entries={
                 "a": SourceState(
                     stem="a",
-                    source_path="",
+                    source_file="",
                     content_hash="",
                     current_tier=1,
                     search_hits=1,
@@ -252,7 +252,7 @@ class TestAutoPromoteDemote:
             entries={
                 "a": SourceState(
                     stem="a",
-                    source_path="",
+                    source_file="",
                     content_hash="",
                     current_tier=3,
                     last_compile=old,

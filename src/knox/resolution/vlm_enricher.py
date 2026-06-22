@@ -108,18 +108,18 @@ class VLMEnricher(BaseResolver):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _generate_caption(self, image_path: str | Path) -> str | None:
-        """Run the VLM on *image_path* and return a text caption.
+    def _generate_caption(self, image_ref: str | Path) -> str | None:
+        """Run the VLM on *image_ref* and return a text caption.
 
         Returns ``None`` when no LLM client is configured or all
         models in the failover chain failed. Raises
         :class:`FileNotFoundError` when the image file is missing.
         """
         if self._client is None:
-            logger.debug("VLMEnricher has no LLM client — skipping caption for %s", image_path)
+            logger.debug("VLMEnricher has no LLM client — skipping caption for %s", image_ref)
             return None
 
-        image_file = Path(image_path)
+        image_file = Path(image_ref)
         if not image_file.is_file():
             msg = f"Image not found: {image_file}"
             raise FileNotFoundError(msg)
