@@ -99,6 +99,7 @@ nav:
     - Output: architecture/output.md
     - Cache & State: architecture/cache.md
     - Decision Log: architecture/decisions.md
+    - Chunk Tree: architecture/chunk-tree.md
   - Concepts:
     - Basic Principles: concepts/basic-principles.md
     - Pipeline Tiers: concepts/pipeline-tiers.md

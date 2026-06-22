@@ -98,7 +98,7 @@ Splitting ingest from compile lets you:
 sequenceDiagram
     participant S as Source
     participant P as Parser
-    participant H as HybridChunker
+    participant H as HierarchicalChunker
     participant R as Resolver
     participant C as Compiler
     participant W as Writer
@@ -106,10 +106,10 @@ sequenceDiagram
     S->>P: PDF / DOCX / URL
     P->>P: Extract tables, figures, equations
     P->>H: ParsedDocument (structured JSON)
-    H->>H: Group by heading, never split atomic elements
-    H->>R: list[Chunk]
-    R->>R: Expand abbreviations, resolve cross-refs
-    R->>C: list[ResolvedChunk]
+    H->>H: Walk elements, build ChunkTree
+    H->>R: ChunkTree (hierarchical)
+    R->>R: Entity registry, VLM enrichment
+    R->>C: ResolvedChunks + ChunkTree
     C->>C: Compile → Evaluate → Diagnose → Refine
     C->>W: CompiledWiki
     W->>W: Markdown / JSON / Typst
@@ -236,14 +236,16 @@ quality in 1–2 iterations via probe Q&A and targeted diagnosis.
 
 See [`concepts/wicer-loop.md`](wicer-loop.md) for a deep dive.
 
-### 8. Hybrid Chunking
+### 8. Hierarchical Chunk Tree
 
 Structure-aware first: tables/figures/equations never split. Heading hierarchy
-groups elements. Only text-heavy sections get Chonkie treatment. This preserves
-queryability of structured data while leveraging Chonkie's mature algorithms
-(Recursive, Semantic, Table, Code) for free-form text.
+builds a `ChunkTree` with parent/child `ChunkNode` relationships — not a flat
+list. Internal nodes carry LLM-generated summaries; leaf nodes carry prose
+chunks or typed structured data. Adaptive strategy selects tree depth based on
+(doc_size, context_window) ratio. This preserves queryability of structured data
+while enabling hierarchical zoom for retrieval.
 
-See [`architecture.md`](../architecture/index.md#8-hybrid-chunking) for details.
+See [`chunk-tree.md`](../architecture/chunk-tree.md) for details.
 
 ## Further Reading
 
@@ -251,5 +253,6 @@ See [`architecture.md`](../architecture/index.md#8-hybrid-chunking) for details.
 |----------|---------|
 | [Architecture](../architecture/index.md) | Full 5-tier design, data models, integration points |
 | [Pipeline Tiers](pipeline-tiers.md) | Deep-dive per tier with class references |
+| [Chunk Tree Design](../architecture/chunk-tree.md) | Hierarchical chunk tree, fractal analysis, scaling matrix |
 | [WiCER Loop](wicer-loop.md) | Iterative compilation explainer with state diagram |
 | [Decision Log](../architecture/decisions.md) | All architectural decisions and rationale |

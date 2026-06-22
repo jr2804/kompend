@@ -182,3 +182,29 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 - Worky's research: `Worky/research/llm-wiki/` (Obsidian vault)
 - WiCER paper: <https://arxiv.org/pdf/2605.07068v1>
 - Karpathy's Gist: <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
+
+## Chunking (2026-06)
+
+### Decision: Replace flat chunk list with hierarchical chunk tree
+
+**Date:** Jun 22, 2026  
+**Context:** The original HybridChunker produced a flat `list[Chunk]` — heading hierarchy was stored as a string (`heading_context = "Chapter 1 / Section 1.2"`), not navigable. Tables, equations, and figures were stringified to text during chunking, losing their structure. Retrieval was context-window-blind (fixed top_k, no adaptive depth). Resolution processed each chunk independently with no cross-section reasoning.
+
+**Alternatives considered:**
+
+1. **Keep flat chunks, add RAG-style retrieval improvements** — rejected: doesn't solve structured content loss or cross-reference reasoning.
+2. **RAPTOR-style recursive summarization only** — rejected: summarization is lossy for tables/equations. Only suitable for prose; structured content needs structured extraction.
+3. **Keep flat chunks, add separate structured store** — rejected: separates content from its document context, complicates resolution and compilation.
+
+**Decision:** Replace HybridChunker with HierarchicalChunker producing `ChunkTree` — a tree of `ChunkNode` objects with parent/child relationships, heading paths, and typed structured data (StructuredTable, StructuredEquation, StructuredFigure). No backward compatibility — the old flat path is deleted entirely.
+
+**Consequences:**
+
+- ChunkTree replaces `list[Chunk]` throughout the pipeline (no backward compat).
+- Structured data (tables/equations/figures) preserved as typed records, not stringified.
+- Entity registry enables programmatic cross-reference checking at data level.
+- Adaptive retrieval can zoom in/out based on available context budget.
+- Same analytical pattern (fractal) applies at document and wiki levels.
+- 5-phase implementation: data structures (Phase 0) → chunker (Phase 1) → extraction + summaries (Phase 2) → entity registry + xref (Phase 3) → adaptive retrieval (Phase 4) → multi-resolution compilation (Phase 5).
+
+**Related:** knox-evmg, knox-ctwe, knox-hhf5, knox-rves, knox-96qo, knox-ne47

@@ -49,54 +49,52 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 2: CHUNKING (Context-Window Aware Hybrid)                         │
+│  TIER 2: CHUNKING (Hierarchical ChunkTree)                              │
 │  ┌──────────────────────────────────────────────────────────────┐      │
-│  │  Step 1: Group by heading hierarchy                          │      │
-│  │  ├─ Section → Subsection → (elements... )                    │      │
+│  │  Step 1: Walk elements in reading order                     │      │
+│  │  ├─ HEADING level N → open/close internal ChunkNode at depth N│    │
 │  │  │  Tables/figures/equations/code: NEVER SPLIT (atomic)       │      │
-│  │  │  Text sections: split if > token_budget                  │      │
-│  │  └─ Heading preserved as chunk-level metadata                │      │
+│  │  │  Text runs → split via RecursiveChunker if > token_budget │      │
+│  │  └─ Heading path preserved as tuple on every node             │      │
 │  │                                                             │      │
-│  │  Step 2: Select chunker based on content type              │      │
-│  │  ├─ Dense text → Chonkie SemanticChunker            │      │
-│  │  ├─ Mixed topic → Chonkie RecursiveChunker           │      │
-│  │  ├─ Large table → Chonkie TableChunker               │      │
-│  │  ├─ Code block → Chonkie CodeChunker                 │      │
-│  │  └─ Small text → Fixed-size window                    │      │
+│  │  Step 2: Build ChunkTree (not flat list)                    │      │
+│  │  ├─ Internal nodes: heading sections with summary            │      │
+│  │  ├─ Leaf nodes: prose chunks or structured data              │      │
+│  │  ├─ Structured leaves carry typed records                    │      │
+│  │  │  (StructuredTable, StructuredEquation, StructuredFigure)  │      │
+│  │  └─ Token counts computed bottom-up                          │      │
 │  │                                                             │      │
-│  │  Step 3: Budget management                                  │      │
-│  │  ├─ Detect model token limit via litellm                    │      │
-│  │  ├─ Reserve 20% budget for prompts/system/instructions       │      │
-│  │  └─ Distribute remainder across chunks                       │      │
+│  │  Step 3: Adaptive strategy by (doc_size, context_window)    │      │
+│  │  ├─ SINGLE_PASS: doc fits in CW → root + leaves only        │      │
+│  │  ├─ TWO_LEVEL: doc ≤10×CW → root + section nodes + leaves   │      │
+│  │  └─ MULTI_RESOLUTION: doc >>10×CW → full depth tree         │      │
 │  └──────────────────────────────────────────────────────────────┘      │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 3: RESOLUTION (Optional, Multi-Turn)                            │
-│  ┌──────────────┐  ┌─────────────────┐  ┌─────────────────┐           │
-│  │ LLM Resolver │  │ VLM Enricher    │  │ MCP Tool Hooks  │           │
-│  │ │ extracts   │  │ │ analyze       │  │ │ external      │           │
-│  │ │ typed      │  │ │ extracted figs│  │ │ lookup tools  │           │
-│  │ │ relations  │  │ │ via context   │  │ │ (DOI, gloss-  │           │
-│  │ │ with conf- │  │ │ from nearby   │  │ │ ary, etc.)    │           │
-│  │ │ idence     │  │ └─────────────────┘  │               │           │
-│  │ └──────────────┘  └──────────────────────┘               │           │
-│  │                                                         │           │
-│  │  Per-document resolution workflow:                       │           │
-│  │  ├─ Default: one-shot (no resolution, fastest)           │           │
-│  │  ├─ Opt-in: typed relation extraction (uses, depends_on, │           │
-│  │  │   contradicts, ...) with confidence scores            │           │
-│  │  └─ Opt-in: VLM captions for extracted images/figures    │           │
-│  │                                                           │           │
-│  │  Each resolver is pluggable via MCP or CLI tool.         │           │
-│  └─────────────────────────────────────────────────────────────────────┘
-
+│  TIER 3: RESOLUTION (Entity Registry + VLM)                            │
+│  ┌──────────────────┐  ┌─────────────────┐                              │
+│  │ EntityRegistry   │  │ VLMEnricher     │                              │
+│  │ │ programmatic   │  │ │ analyze        │                              │
+│  │ │ acronym/def    │  │ │ extracted figs │                              │
+│  │ │ extraction     │  │ │ via vision LLM │                              │
+│  │ │ dedup by       │  │ └─────────────────┘                              │
+│  │ │ canonical name │  └──────────────────┘                              │
+│  │ └──────────────────┘                                                  │
+│  │                                                                      │
+│  │  CrossReferenceChecker (no LLM):                                     │
+│  │  ├─ check_definitions: flag entities defined differently              │
+│  │  ├─ check_references: flag unresolved section/table/figure refs      │
+│  │  └─ check_table_consistency: flag contradicting table values         │
+│  └──────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TIER 4: COMPILATION (Model-Agnostic, WiCER Loop)                     │
 │  ┌──────────────────────────────────────────────────────────────┐      │
+│  │  Uses ChunkTree hierarchy: internal node summaries feed LLM   │      │
+│  │  extraction; structured leaves feed directly (no LLM needed)  │      │
 │  │                                                             │      │
 │  │  +──────────────────────────────+                          │      │
 │  │  │  Step A: BLIND COMPILATION   │                          │      │
@@ -186,7 +184,7 @@ class DocumentElement:
     source_file: Path | None = None
 ```
 
-### `Chunk`
+### `Chunk` (leaf content)
 
 ```python
 @dataclass
@@ -200,6 +198,52 @@ class Chunk:
     token_count: int = 0
     reading_order: tuple[int, int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+```
+
+### `ChunkNode` / `ChunkTree` (hierarchical)
+
+```python
+@dataclass
+class ChunkNode:
+    id: str
+    parent_id: str | None = None
+    children_ids: list[str] = field(default_factory=list)
+    depth: int = 0
+    heading_path: tuple[str, ...] = field(default_factory=tuple)
+    chunk: Chunk | None = None          # leaf prose
+    structured: StructuredData | None = None  # leaf table/equation/figure
+    summary: str = ""                   # internal node summary
+    token_count: int = 0
+
+@dataclass
+class ChunkTree:
+    root_id: str
+    nodes: dict[str, ChunkNode]
+    source_file: Path | None = None
+    strategy: ChunkStrategy = SINGLE_PASS
+```
+
+### `StructuredData` types
+
+```python
+@dataclass
+class StructuredTable:
+    columns: list[str]
+    rows: list[dict[str, str]]
+    caption: str = ""
+
+@dataclass
+class StructuredEquation:
+    latex: str
+    variables: list[EquationVariable] = field(default_factory=list)
+    caption: str = ""
+
+@dataclass
+class StructuredFigure:
+    caption: str
+    alt_text: str = ""
+    image_ref: str = ""
+    description: str = ""
 ```
 
 ### `ResolvedChunk`
@@ -273,9 +317,16 @@ Vision-capable LLMs analyze extracted figures during compilation. The `VLMEnrich
 
 Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1). Blind compilation over-compresses 2–3× beyond targets. WiCER recovers 80% of lost quality in 1–2 iterations via probe Q&A and targeted diagnosis. KNOX's `WikiCompiler` implements the CEGAR-style loop: compile → evaluate → diagnose → refine.
 
-### 8. Hybrid Chunking
+### 8. Hierarchical Chunk Tree
 
-Structure-aware first: tables/figures/equations never split. Heading hierarchy groups elements. Only text-heavy sections get Chonkie treatment. This preserves queryability of structured data while leveraging Chonkie's mature algorithms (Recursive, Semantic, Table, Code) for free-form text.
+Structure-aware first: tables/figures/equations never split. Heading hierarchy
+builds a `ChunkTree` with parent/child `ChunkNode` relationships — not a flat
+list. Internal nodes carry LLM-generated summaries; leaf nodes carry prose
+chunks or typed structured data (StructuredTable, StructuredEquation,
+StructuredFigure). Adaptive strategy selects tree depth based on
+(doc_size, context_window) ratio: single_pass, two_level, or multi_resolution.
+This preserves queryability of structured data while enabling hierarchical
+zoom for retrieval.
 
 ## Integration Points
 
@@ -315,9 +366,9 @@ Optional extras:
 ```text
 source.pdf
     → Tier 1: DoclingParser.parse() → ParsedDocument (structured JSON)
-    → Tier 2: HybridChunker.chunk() → list[Chunk]
-    → Tier 3: LLMResolver.resolve() → list[ResolvedChunk]
-    → Tier 4: WikiCompiler.compile() → compiled_wiki.json
+    → Tier 2: HierarchicalChunker.chunk() → ChunkTree (hierarchical)
+    → Tier 3: EntityRegistry.scan_tree() + VLMEnricher.enrich()
+    → Tier 4: TwoPhaseCompiler.compile(resolved, trees=all_trees) → compiled_wiki.json
     → Tier 5: MarkdownOutputWriter.write() → wiki/ (markdown files)
 ```
 
@@ -336,3 +387,4 @@ source.pdf
 | [Output architecture](output.md) | Output writers, DocumentRenderer, flavor system |
 | [Cache and state directory](cache.md) | `.knox/` layout, project-local vs global, cache lifecycle |
 | [Decision log](decisions.md) | Architectural decisions and rationale |
+| [Chunk tree design](chunk-tree.md) | Hierarchical chunk tree, fractal analysis, scaling matrix |

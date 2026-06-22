@@ -44,51 +44,58 @@ flowchart LR
 ## Tier 2: Chunking
 
 **Input:** `ParsedDocument`  
-**Output:** `list[Chunk]`  
+**Output:** `ChunkTree` (hierarchical tree of `ChunkNode` objects)  
 **Interface:** `BaseChunker` in `src/knox/chunking/base.py`
 
 ``` mermaid
 flowchart LR
-    PD[ParsedDocument] --> Group[Group by heading]
-    Group --> Atomic[Atomic elements<br>tables, figures, equations]
-    Group --> Text[Text sections]
-    Text --> Chonkie[Chonkie<br>RecursiveChunker]
-    Atomic --> Chunks[list[Chunk]]
-    Chonkie --> Chunks
+    PD[ParsedDocument] --> Walk[Walk elements in reading order]
+    Walk --> Heading[HEADING → open/close internal node]
+    Walk --> Atomic[ATOMIC → structured leaf node]
+    Walk --> Text[TEXT/LIST_ITEM → buffer]
+    Text --> Split[Split if > token budget]
+    Heading --> Tree[ChunkTree]
+    Atomic --> Tree
+    Split --> Tree
 ```
 
 **Key classes:**
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseChunker` | `chunking/base.py` | Abstract interface: `chunk(doc) → list[Chunk]` |
-| `HybridChunker` | `chunking/hybrid.py` | Structure-aware + Chonkie fallback |
-| `DevChunker` | `chunking/dev_chunker.py` | Development/test chunker |
-| `ChonkieChunker` | `chunking/chonkie_chunker.py` | Standalone Chonkie adapter |
+| `BaseChunker` | `chunking/base.py` | Abstract interface: `chunk(doc) → ChunkTree` |
+| `HierarchicalChunker` | `chunking/hierarchical.py` | Structure-aware tree builder with adaptive strategy |
+| `NodeSummarizer` | `chunking/summarizer.py` | Bottom-up LLM summaries for internal nodes |
+| `extract_structured` | `chunking/extractors.py` | Table/equation/figure → typed StructuredData |
 
 ## Tier 3: Resolution
 
-**Input:** `list[Chunk]`  
-**Output:** `list[ResolvedChunk]`  
+**Input:** `list[ChunkTree]`  
+**Output:** `list[ResolvedChunk]` + `CrossReferenceResult`  
 **Interface:** `BaseResolver` in `src/knox/resolution/base.py`
 
 ``` mermaid
 flowchart LR
-    Chunks[list[Chunk]] --> LLM[LLMResolver]
-    Chunks --> VLM[VLMEnricher]
-    LLM --> Chain[ResolverChain]
-    VLM --> Chain
-    Chain --> RC[list[ResolvedChunk]]
+    Trees[list[ChunkTree]] --> Registry[EntityRegistry<br>scan_tree]
+    Trees --> VLM[VLMEnricher<br>per-leaf]
+    Registry --> Checker[CrossReferenceChecker]
+    Checker --> Xref[CrossReferenceResult]
+    VLM --> RC[list[ResolvedChunk]]
 ```
 
 **Key classes:**
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseResolver` | `resolution/base.py` | Abstract interface: `resolve(chunks) → list[ResolvedChunk]` |
-| `LLMResolver` | `resolution/llm_resolver.py` | Typed relation extraction with confidence (`uses`, `depends_on`, `contradicts`, …) |
+| `BaseResolver` | `resolution/base.py` | Abstract interface: `resolve(chunk) → ResolvedChunk` |
 | `VLMEnricher` | `resolution/vlm_enricher.py` | Figure captioning via vision LLM |
 | `ResolverChain` | `resolution/chain.py` | Sequential resolver application |
+| `EntityRegistry` | `core/entity_registry.py` | Programmatic acronym/definition extraction, dedup |
+| `CrossReferenceChecker` | `core/xref_checker.py` | Definition consistency, reference validation, table checks |
+
+The old `LLMResolver` (per-leaf typed relation extraction) has been removed.
+Entity extraction is now programmatic via `EntityRegistry`; cross-document
+relations are inferred during compilation from shared entities.
 
 ## Tier 4: Compilation
 
