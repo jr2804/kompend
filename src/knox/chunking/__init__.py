@@ -1,8 +1,11 @@
 """KNOX chunking tier."""
 
-from knox.chunking.hybrid import HybridChunker
+from knox.chunking.extractors import extract_structured
+from knox.chunking.hierarchical import HierarchicalChunker
+from knox.chunking.summarizer import NodeSummarizer
 
-__all__ = ["HybridChunker"]
-
-# Optional: ChonkieChunker is available for standalone chonkie-based chunking.
-# from knox.chunking.chonkie_chunker import ChonkieChunker
+__all__ = [
+    "HierarchicalChunker",
+    "NodeSummarizer",
+    "extract_structured",
+]

@@ -5,14 +5,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from knox.core.models import Chunk, ParsedDocument
+from knox.core.models import ChunkTree, ParsedDocument
 from knox.llm.client import ContextWindow
 
 
 class BaseChunker(ABC):
     """Chunker interface for KNOX Tier 2.
 
-    Implementations split a ParsedDocument into a list of Chunks,
+    Implementations split a ParsedDocument into a :class:`ChunkTree`,
     preserving structure (tables, figures, code blocks remain atomic).
     """
 
@@ -41,6 +41,6 @@ class BaseChunker(ABC):
             raise ValueError(msg)
 
     @abstractmethod
-    def chunk(self, document: ParsedDocument) -> list[Chunk]:
-        """Split a parsed document into semantic chunks."""
+    def chunk(self, document: ParsedDocument) -> ChunkTree:
+        """Split a parsed document into a hierarchical chunk tree."""
         ...

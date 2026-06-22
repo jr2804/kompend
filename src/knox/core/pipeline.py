@@ -20,15 +20,17 @@ from pathlib import Path
 from typing import Any
 
 from knox.chunking.base import BaseChunker
-from knox.chunking.hybrid import HybridChunker
+from knox.chunking.hierarchical import HierarchicalChunker
+from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
+from knox.core.entity_registry import EntityRegistry
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
-from knox.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, CrossReferenceResult, DocumentElement, ElementType, ParsedDocument, WikiNode, tree_from_dict, tree_to_dict
 from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import (
     ALL_TIERS,
@@ -40,6 +42,7 @@ from knox.core.pipeline_defs import (
 )
 from knox.core.template_loader import get_template_loader
 from knox.core.tier_state import TierState, TierStateStore
+from knox.core.xref_checker import CrossReferenceChecker
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.dedup import DedupStore
@@ -48,7 +51,6 @@ from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
-from knox.resolution.llm_resolver import LLMResolver
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
@@ -89,6 +91,7 @@ class WikiPipeline:
         output_writer: BaseOutputWriter | None = None,
         state_store: TierStateStore | None = None,
         llm_client: LLMClient | None = None,
+        summarizer: NodeSummarizer | None = None,
     ) -> None:
         self.config = config
         self.downloader = downloader
@@ -98,11 +101,13 @@ class WikiPipeline:
         self.compiler = compiler
         self.output_writer = output_writer
         self.llm_client = llm_client
+        self.summarizer = summarizer
         self.state_store = state_store or TierStateStore(self._default_state_path())
         self._progress_callback: ProgressCallback | None = None
         self._cache_store = CacheStore(self._cache_dir())
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
+        self.xref_result: CrossReferenceResult | None = None
 
     @property
     def state(self) -> TierState:
@@ -163,7 +168,7 @@ class WikiPipeline:
             logger.info("Force mode enabled — invalidating all caches")
             self._cache_store.invalidate()
 
-        all_chunks: list[Any] = []
+        all_trees: list[ChunkTree] = []
         resolved: list[Any] = []
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
         self._tier_timings.clear()
@@ -176,18 +181,19 @@ class WikiPipeline:
             self._emit("index", 1, 1, "done")
         if self._should_run(Tier.CHUNK):
             _t0 = time.monotonic()
-            all_chunks = self._parse_and_chunk()
-            self.last_chunk_count = len(all_chunks)
+            all_trees = self._parse_and_chunk()
+            self.last_chunk_count = sum(1 for t in all_trees for _ in t.leaves())
             self._tier_timings["chunk"] = time.monotonic() - _t0
             self._record_tier_state(1)
         if self._should_run(Tier.RESOLVE):
             # When T1 was skipped (start_at_tier >= resolve), warm-load
             # chunks from the T1 cache so the resolver has input.
-            if not all_chunks:
-                all_chunks = self._parse_and_chunk()
-            self._emit("resolve", 0, len(all_chunks), "starting")
+            if not all_trees:
+                all_trees = self._parse_and_chunk()
+            leaf_count = sum(1 for t in all_trees for _ in t.leaves())
+            self._emit("resolve", 0, leaf_count, "starting")
             _t0 = time.monotonic()
-            resolved = self._resolve_chunks(all_chunks)
+            resolved = self._resolve_chunks(all_trees)
             self._tier_timings["resolve"] = time.monotonic() - _t0
             self._record_tier_state(2)
             self._emit("resolve", len(resolved), len(resolved), "done")
@@ -195,12 +201,12 @@ class WikiPipeline:
             # When T2 was skipped (start_at_tier >= compile), warm-load
             # chunks and resolve them from cache.
             if not resolved:
-                all_chunks = self._parse_and_chunk()
-                resolved = self._resolve_chunks(all_chunks)
+                all_trees = self._parse_and_chunk()
+                resolved = self._resolve_chunks(all_trees)
             self._emit("compile", 0, 1, "starting")
             _t0 = time.monotonic()
             if self.compiler:
-                wiki = self.compiler.compile(resolved)
+                wiki = self.compiler.compile(resolved, trees=all_trees)
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             self._tier_timings["compile"] = time.monotonic() - _t0
@@ -272,8 +278,6 @@ class WikiPipeline:
             self._run_index_tier()
         if target_level >= TIER_LEVEL[TIER_CHUNK]:
             self._parse_and_chunk()
-        if target_level >= TIER_LEVEL[TIER_RESOLVE]:
-            self._run_resolve_tier()
         if target_level >= TIER_LEVEL[TIER_COMPILE]:
             self._run_compile_tier()
         if target_level >= TIER_LEVEL[TIER_OUTPUT]:
@@ -397,22 +401,14 @@ class WikiPipeline:
             for url in self.config.online_sources:
                 self.downloader.download(url, self.config.source_dir)
 
-    def _run_resolve_tier(self) -> None:
-        """Tier 2: resolve chunks into ResolvedChunks (if a resolver is wired)."""
-        # Re-runs the chunk->resolve step; cheap when no resolver is set.
-        chunks = self._parse_and_chunk()
-        if not self.resolver:
-            return
-        for chunk in chunks:
-            self.resolver.resolve(chunk)
-
     def _run_compile_tier(self) -> None:
-        """Tier 3: compile resolved chunks into a CompiledWiki."""
-        chunks = self._parse_and_chunk()
-        resolved = [self.resolver.resolve(chunk) for chunk in chunks] if self.resolver else list(chunks)
+        """Tier 2+3: resolve leaf chunks from ChunkTree and compile into CompiledWiki."""
+        trees = self._parse_and_chunk()
+        resolved = self._resolve_chunks(trees)
         if not self.compiler:
             return
-        wiki = self.compiler.compile(resolved)
+        wiki = self.compiler.compile(resolved, trees=trees)
+        self._build_wiki_hierarchy(wiki, trees)
         if self.config.privacy_filter:
             wiki, _ = filter_wiki(wiki)
         self._save_compiled_wiki(wiki)
@@ -515,7 +511,7 @@ class WikiPipeline:
 
         state = self.state
 
-        def _process_one(source_file: Path) -> list[Any]:
+        def _process_one(source_file: Path) -> ChunkTree | None:
             """Parse a single file (cache-aware) and chunk it."""
             stem = source_file.stem
             content_hash = ""
@@ -532,13 +528,13 @@ class WikiPipeline:
                         parsed = self._load_cache(source_file)
                 if parsed is None:
                     if not self.parser:
-                        return []
+                        return None
                     try:
                         parsed = self.parser.parse(source_file)
                         _ = len(parsed.elements)
                     except Exception:
                         logger.exception("Failed to parse %s", source_file)
-                        return []
+                        return None
                     if use_cache:
                         self._save_cache(source_file, parsed)
                         if not content_hash:
@@ -548,7 +544,7 @@ class WikiPipeline:
                 self._apply_privacy_filter(parsed.elements)
 
             if not self.chunker:
-                return []
+                return None
 
             # ── Attach dedup similarity warning if applicable ────────
             similar_entry = dedup_similar.get(stem)
@@ -572,20 +568,13 @@ class WikiPipeline:
                 if cached is not None:
                     if content_hash:
                         self.state_store.record(state, stem, source_file, content_hash, tier=1)
-                    tags = self._extract_source_tags(source_file, self.config.source_dir)
-                    if tags:
-                        for chunk in cached:
-                            chunk.metadata["tags"] = tags
-                    return cached
+                    tree = tree_from_dict(cached)
+                    self._apply_tags_to_tree(tree, source_file)
+                    return tree
 
             # 2b. Chunk and cache.
-            chunks = self.chunker.chunk(parsed)
-
-            # Attach directory-based tags to each chunk.
-            tags = self._extract_source_tags(source_file, self.config.source_dir)
-            if tags:
-                for chunk in chunks:
-                    chunk.metadata["tags"] = tags
+            tree = self.chunker.chunk(parsed)
+            self._apply_tags_to_tree(tree, source_file)
 
             if content_hash:
                 self.state_store.record(state, stem, source_file, content_hash, tier=1)
@@ -593,10 +582,10 @@ class WikiPipeline:
                     "source": content_hash,
                     "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
                 }
-                self._cache_store.set("chunk", chunk_deps, chunks)
-            return chunks
+                self._cache_store.set("chunk", chunk_deps, tree_to_dict(tree))
+            return tree
 
-        all_chunks: list[Any] = []
+        trees: list[ChunkTree] = []
         if workers > 1 and len(source_files) > 1:
             completed = 0
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -604,7 +593,9 @@ class WikiPipeline:
                 for future in as_completed(futures):
                     sf = futures[future]
                     try:
-                        all_chunks.extend(future.result())
+                        tree = future.result()
+                        if tree is not None:
+                            trees.append(tree)
                     except Exception:
                         logger.exception("Worker failed for %s", sf)
                     finally:
@@ -612,11 +603,18 @@ class WikiPipeline:
                         self._emit("parse", completed, len(source_files), sf.name)
         else:
             for idx, sf in enumerate(source_files):
-                all_chunks.extend(_process_one(sf))
+                tree = _process_one(sf)
+                if tree is not None:
+                    trees.append(tree)
                 self._emit("parse", idx + 1, len(source_files), sf.name)
 
         self._emit("parse", len(source_files), len(source_files), "done")
-        return all_chunks
+
+        if self.summarizer is not None:
+            for tree in trees:
+                self.summarizer.summarize(tree)
+
+        return trees
 
     def _cache_dir(self) -> Path:
         """Resolve the cache directory."""
@@ -685,40 +683,43 @@ class WikiPipeline:
         except Exception:
             logger.debug("Cache write failed for %s — ignoring", cache_path, exc_info=True)
 
-    def _resolve_chunks(self, chunks: list[Any]) -> list[Any]:
-        """Resolve chunks with per-chunk cache (Tier 2)."""
+    def _resolve_chunks(self, trees: list[ChunkTree]) -> list[Any]:
+        """Resolve leaf chunks from trees and build entity registry + xref.
+
+        VLM enrichment (image captions) runs per-leaf when configured.
+        Entity registry and cross-reference checks run programmatically
+        (no LLM) across the full tree set.
+        """
+        registry = EntityRegistry()
+        for tree in trees:
+            registry.scan_tree(tree)
+        checker = CrossReferenceChecker(registry)
+        self.xref_result = checker.check_all(trees)
+        logger.info(
+            "Cross-reference check: %d entities, %d issues",
+            self.xref_result.entity_count,
+            len(self.xref_result.issues),
+        )
+
         if not self.resolver:
-            return list(chunks)
+            return [node.chunk for t in trees for node in t.leaves() if node.chunk]
 
+        leaf_chunks = [node.chunk for t in trees for node in t.leaves() if node.chunk]
         resolved: list[Any] = []
-        vlm_model = self.config.llm.vlm_model or "none"
-        use_cache = not self.config.no_cache
-        total = len(chunks)
-
-        for idx, chunk in enumerate(chunks):
-            if use_cache and chunk.text:
-                deps = {
-                    "chunk_text": hashlib.sha256(chunk.text.encode()).hexdigest(),
-                    "vlm_model": vlm_model,
-                }
-                cached = self._cache_store.get("resolve", deps)
-                if cached is not None:
-                    resolved.append(cached)
-                    self._emit("resolve", idx + 1, total, "")
-                    continue
-
+        total = len(leaf_chunks)
+        for idx, chunk in enumerate(leaf_chunks):
             rc = self.resolver.resolve(chunk)
-
-            if use_cache and chunk.text:
-                deps = {
-                    "chunk_text": hashlib.sha256(chunk.text.encode()).hexdigest(),
-                    "vlm_model": vlm_model,
-                }
-                self._cache_store.set("resolve", deps, rc)
             resolved.append(rc)
             self._emit("resolve", idx + 1, total, "")
-
         return resolved
+
+    def _apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
+        """Attach directory-based tags to every leaf chunk in *tree*."""
+        tags = self._extract_source_tags(source_file, self.config.source_dir)
+        if tags:
+            for node in tree.leaves():
+                if node.chunk:
+                    node.chunk.metadata["tags"] = tags
 
     @staticmethod
     def _extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
@@ -746,6 +747,59 @@ class WikiPipeline:
                 el.content, _ = filter_sensitive(el.content)
             elif isinstance(el.content, list):
                 el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+
+    @staticmethod
+    def _build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
+        """Populate WikiNode hierarchy fields from ChunkTree data.
+
+        Maps ChunkTree internal node structure onto WikiNodes by matching
+        heading paths. Sets parent_id, children_ids, depth, and heading_path
+        on each WikiNode.
+        # ponytail: matching by (heading_context, source_file) from metadata
+        # is fragile — resolver/VLM may use different keys. Silent skip on
+        # mismatch, no warning. Fix by having ChunkTree expose a stable
+        # source_key that all tiers agree on.
+        """
+        if not wiki.nodes or not trees:
+            return
+
+        tree_map: dict[str, ChunkTree] = {}
+        for t in trees:
+            if t.source_file is not None:
+                tree_map[str(t.source_file)] = t
+
+        node_by_heading: dict[tuple[str, str | None], WikiNode] = {}
+        for node in wiki.nodes:
+            heading = node.metadata.get("heading_context", "_root")
+            source = node.metadata.get("source_file")
+            node_by_heading[(heading, source)] = node
+
+        for node in wiki.nodes:
+            heading = node.metadata.get("heading_context", "_root")
+            source = node.metadata.get("source_file")
+            if source is None:
+                continue
+            tree = tree_map.get(source)
+            if tree is None:
+                continue
+
+            for chunk_node in tree.walk():
+                if chunk_node.chunk is None:
+                    continue
+                chunk_heading = chunk_node.chunk.heading_context or "_root"
+                if chunk_heading == heading:
+                    node.depth = chunk_node.depth
+                    node.heading_path = chunk_node.heading_path
+                    if chunk_node.parent_id:
+                        parent_chunk = tree.nodes.get(chunk_node.parent_id)
+                        if parent_chunk and parent_chunk.chunk:
+                            parent_heading = parent_chunk.chunk.heading_context or "_root"
+                            parent_node = node_by_heading.get((parent_heading, source))
+                            if parent_node is not None:
+                                node.parent_id = parent_node.id
+                                if node.id not in parent_node.children_ids:
+                                    parent_node.children_ids.append(node.id)
+                    break
 
     @staticmethod
     def _cache_key(source_file: Path) -> str:
@@ -785,7 +839,7 @@ def build_pipeline(
 
     Constructs a WikiPipeline with default components:
     - DoclingParser (lazy-fallback)
-    - HybridChunker
+    - HierarchicalChunker
     - Compiler selected by ``config.compiler``:
       - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
       - ``"wicer"``: WiCERCompiler (compile-evaluate-refine loop)
@@ -851,10 +905,11 @@ def build_pipeline(
     return WikiPipeline(
         config=config,
         parser=parser,
-        chunker=HybridChunker(
+        chunker=HierarchicalChunker(
             context_window=chunker_context_window,
             chunk_size_min=config.budget.chunk_size_min,
             chunk_size_max=config.budget.chunk_size_max,
+            summary_chunk_threshold=config.budget.summary_chunk_threshold,
         ),
         resolver=resolver,
         compiler=base_compiler,
@@ -865,33 +920,23 @@ def build_pipeline(
             max_related_links=config.output.max_related_links,
         ),
         llm_client=llm_client if needs_llm else None,
+        summarizer=NodeSummarizer(
+            llm_client=llm_client if needs_llm else None,
+            cache_store=CacheStore(config.paths.cache_dir),
+            max_content_chars=config.budget.summary_max_content_chars,
+            target_chars=config.budget.summary_target_chars,
+            skip_single_child=config.budget.summary_skip_single_child,
+        ),
     )
 
 
 def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
-    """Construct the default resolver chain (M7).
+    """Construct the resolver chain.
 
-    When relation extraction is enabled, an :class:`LLMResolver` runs first
-    to extract typed relations with confidence. When a VLM model is
-    configured, a :class:`VLMEnricher` is appended to enrich image chunks
-    without discarding earlier resolver output.
+    When a VLM model is configured, a :class:`VLMEnricher` enriches
+    image chunks with generated captions.
     """
     resolvers: list[BaseResolver] = []
-
-    if config.resolve_relations:
-        if config.llm.default_model:
-            resolvers.append(
-                LLMResolver(
-                    client=llm_client,
-                    confidence_threshold=config.relation_confidence_threshold,
-                )
-            )
-            logger.debug(
-                "LLMResolver added to resolver chain (threshold=%s)",
-                config.relation_confidence_threshold,
-            )
-        else:
-            logger.warning("Relation extraction requested but no default LLM model is configured")
 
     if config.llm.vlm_model:
         try:

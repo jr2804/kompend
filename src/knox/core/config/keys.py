@@ -37,8 +37,6 @@ COMPILE_SYNTHESIZE: Final[str] = "compile.synthesize"
 COMPILE_REVIEW: Final[str] = "compile.review"
 COMPILE_PROVENANCE: Final[str] = "compile.provenance"
 COMPILE_PRIVATE: Final[str] = "compile.private"
-COMPILE_RESOLVE_RELATIONS: Final[str] = "compile.resolve_relations"
-COMPILE_RELATION_CONFIDENCE_THRESHOLD: Final[str] = "compile.relation_confidence_threshold"
 COMPILE_RESPECT_GITIGNORE: Final[str] = "compile.respect_gitignore"
 COMPILE_MEMORY_ENABLED: Final[str] = "compile.memory_enabled"
 COMPILE_MEMORY_HALF_LIFE_DAYS: Final[str] = "compile.memory_half_life_days"
@@ -98,6 +96,12 @@ COMPILE_BUDGET_VERIFY_OUTPUT_MAX: Final[str] = "compile.budget.verify_output_max
 COMPILE_BUDGET_LINT_OUTPUT_MAX: Final[str] = "compile.budget.lint_output_max"
 COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX: Final[str] = "compile.budget.wicer_probe_output_max"
 COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX: Final[str] = "compile.budget.wicer_eval_output_max"
+
+# Node summarization (Phase 2 — hierarchical chunk tree summaries)
+COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS: Final[str] = "compile.budget.summary_max_content_chars"
+COMPILE_BUDGET_SUMMARY_TARGET_CHARS: Final[str] = "compile.budget.summary_target_chars"
+COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD: Final[str] = "compile.budget.summary_skip_single_child"
+COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD: Final[str] = "compile.budget.summary_chunk_threshold"
 
 # ── compile.output sub-section ──
 COMPILE_OUTPUT_FLAVOR: Final[str] = "compile.output.flavor"

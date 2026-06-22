@@ -10,14 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.failover import CallDiagnostics
 from knox.resolution import VLMEnricher
-from knox.resolution.chain import ResolverChain
-from knox.resolution.llm_resolver import LLMResolver
 
 
 def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> Chunk:
@@ -43,14 +39,6 @@ def _make_client(try_complete_return: LLMResult | None = None) -> LLMClient:
     client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
     client.try_complete = MagicMock(return_value=try_complete_return)  # type: ignore[method-assign]
     return client
-
-
-def _llm_result(data: dict, model: str = "ollama/test") -> LLMResult:
-    return LLMResult(
-        content="",
-        json_data=data,
-        diagnostics=CallDiagnostics(model_used=model, attempts=1, total_latency_s=0.01),
-    )
 
 
 class TestVLMEnricher:
@@ -152,95 +140,3 @@ class TestVLMEnricherIntegration:
         mock_completion.assert_called_once()
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert descs[0]["context"] == "caption text"
-
-
-class TestLLMResolver:
-    """LLMResolver extracts entities and typed relations."""
-
-    def test_empty_text_returns_resolved_unchanged(self) -> None:
-        client = _make_client()
-        resolver = LLMResolver(client=client)
-        chunk = _text_chunk("")
-        resolved = resolver.resolve(chunk)
-        assert resolved.chunk == chunk
-        assert resolved.entities == []
-        assert resolved.relations == []
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
-
-    def test_entities_and_relations_parsed(self) -> None:
-        result = _llm_result(
-            {
-                "entities": [
-                    {"name": "KNOX", "type": "project", "context": "knowledge base"},
-                    {"name": "WiCER", "type": "method", "context": "compiler"},
-                ],
-                "relations": [
-                    {"source": "KNOX", "target": "WiCER", "type": "uses", "confidence": 0.9},
-                ],
-            }
-        )
-        client = _make_client(try_complete_return=result)
-        resolver = LLMResolver(client=client, confidence_threshold=0.0)
-        resolved = resolver.resolve(_text_chunk("KNOX uses WiCER."))
-        assert len(resolved.entities) == 2
-        assert resolved.relations[0]["type"] == "uses"
-        assert resolved.relations[0]["confidence"] == pytest.approx(0.9)
-
-    def test_relations_filtered_by_confidence(self) -> None:
-        result = _llm_result(
-            {
-                "entities": [{"name": "A", "type": "x"}, {"name": "B", "type": "y"}],
-                "relations": [
-                    {"source": "A", "target": "B", "type": "uses", "confidence": 0.9},
-                    {"source": "A", "target": "B", "type": "related", "confidence": 0.3},
-                ],
-            }
-        )
-        client = _make_client(try_complete_return=result)
-        resolver = LLMResolver(client=client, confidence_threshold=0.5)
-        resolved = resolver.resolve(_text_chunk("A uses B."))
-        assert len(resolved.relations) == 1
-        assert resolved.relations[0]["type"] == "uses"
-
-    def test_unknown_relation_types_dropped(self) -> None:
-        result = _llm_result(
-            {
-                "entities": [{"name": "A", "type": "x"}, {"name": "B", "type": "y"}],
-                "relations": [
-                    {"source": "A", "target": "B", "type": "invented", "confidence": 0.9},
-                ],
-            }
-        )
-        client = _make_client(try_complete_return=result)
-        resolver = LLMResolver(client=client)
-        resolved = resolver.resolve(_text_chunk("A invented B."))
-        assert resolved.relations == []
-
-    def test_resolver_chain_accumulates_results(self) -> None:
-        """A resolver chain preserves LLMResolver output when VLM runs after it."""
-        text_chunk = _text_chunk("KNOX uses WiCER.")
-
-        relation_result = _llm_result(
-            {
-                "entities": [
-                    {"name": "KNOX", "type": "project"},
-                    {"name": "WiCER", "type": "method"},
-                ],
-                "relations": [
-                    {"source": "KNOX", "target": "WiCER", "type": "uses", "confidence": 0.8},
-                ],
-            }
-        )
-        llm_client = _make_client(try_complete_return=relation_result)
-        vlm_client = _make_client()
-
-        chain = ResolverChain(
-            [
-                LLMResolver(client=llm_client, confidence_threshold=0.0),
-                VLMEnricher(client=vlm_client),
-            ]
-        )
-        resolved = chain.resolve(text_chunk)
-        # Relations from LLMResolver survive the subsequent VLMEnricher pass.
-        assert len(resolved.relations) == 1
-        assert resolved.relations[0]["type"] == "uses"

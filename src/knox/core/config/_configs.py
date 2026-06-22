@@ -98,6 +98,12 @@ class BudgetConfig:
     wicer_probe_output_max: int = 4096
     wicer_eval_output_max: int = 4096
 
+    # Node summarization (Phase 2 — hierarchical chunk tree summaries)
+    summary_max_content_chars: int = 8000
+    summary_target_chars: int = 600
+    summary_skip_single_child: bool = True
+    summary_chunk_threshold: int = 10
+
 
 @dataclass
 class OutputConfig:

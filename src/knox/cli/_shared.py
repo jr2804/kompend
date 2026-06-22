@@ -38,8 +38,6 @@ from knox.core.config.keys import (
     COMPILE_PAGE_KIND,
     COMPILE_PRIVATE,
     COMPILE_PROVENANCE,
-    COMPILE_RELATION_CONFIDENCE_THRESHOLD,
-    COMPILE_RESOLVE_RELATIONS,
     COMPILE_REVIEW,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
@@ -119,8 +117,6 @@ def build_cli_overrides(
     ignore: list[str] | None = None,
     llm_default_model: str | None = None,
     vlm_model: str | None = None,
-    resolve_relations: bool | None = None,
-    relation_confidence_threshold: float | None = None,
     memory_enabled: bool | None = None,
     memory_half_life_days: float | None = None,
     memory_decay_threshold: float | None = None,
@@ -150,7 +146,6 @@ def build_cli_overrides(
         (COMPILE_OUTPUT_FLAVOR, flavor),
         (COMPILE_LLM_DEFAULT_MODEL, llm_default_model),
         (COMPILE_LLM_VLM_MODEL, vlm_model),
-        (COMPILE_RELATION_CONFIDENCE_THRESHOLD, relation_confidence_threshold),
         (COMPILE_MEMORY_HALF_LIFE_DAYS, memory_half_life_days),
         (COMPILE_MEMORY_DECAY_THRESHOLD, memory_decay_threshold),
         (COMPILE_PAGE_KIND, kind),
@@ -176,7 +171,6 @@ def build_cli_overrides(
         (COMPILE_SYNTHESIZE, synthesize),
         (COMPILE_INDEX, index_store),
         (COMPILE_LINT, compile_lint),
-        (COMPILE_RESOLVE_RELATIONS, resolve_relations),
         (COMPILE_MEMORY_ENABLED, memory_enabled),
     ]
     for key, val in _flags:

@@ -240,24 +240,6 @@ class TestResolveConfig:
 
         assert resolve_config(cli_overrides={"compile.llm.vlm_model": "anthropic/claude-sonnet"}).get("compile.llm.vlm_model") == "anthropic/claude-sonnet"
 
-    def test_relation_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
-        monkeypatch.chdir(tmp_path)
-        cfg = resolve_config()
-        assert cfg.get("compile.resolve_relations") is True
-        assert cfg.get("compile.relation_confidence_threshold") == 0.5
-
-        config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nresolve_relations = true\nrelation_confidence_threshold = 0.5\n")
-        cfg = resolve_config()
-        assert cfg.get("compile.resolve_relations") is True
-        assert cfg.get("compile.relation_confidence_threshold") == 0.5
-
-        monkeypatch.setenv("KNOX_RESOLVE_RELATIONS", "false")
-        monkeypatch.setenv("KNOX_RELATION_CONFIDENCE_THRESHOLD", "0.9")
-        cfg = resolve_config()
-        assert cfg.get("compile.resolve_relations") is False
-        assert cfg.get("compile.relation_confidence_threshold") == 0.9
-
     def test_memory_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()

@@ -113,6 +113,13 @@ lint_output_max = 8192
 wicer_probe_output_max = 4096
 wicer_eval_output_max = 4096
 
+# Node summarization (hierarchical chunk tree internal nodes)
+summary_max_content_chars = 8000
+summary_target_chars = 600
+summary_skip_single_child = true
+# Max chunks before switching from two_level to multi_resolution strategy
+summary_chunk_threshold = 10
+
 # ── LLM settings ────────────────────────────────────────────────────────
 
 [compile.llm]

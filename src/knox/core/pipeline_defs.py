@@ -43,6 +43,10 @@ from knox.core.config.keys import (
     COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX,
     COMPILE_BUDGET_OVERVIEW_OUTPUT_MIN,
     COMPILE_BUDGET_OVERVIEW_OUTPUT_RATIO,
+    COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD,
+    COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS,
+    COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD,
+    COMPILE_BUDGET_SUMMARY_TARGET_CHARS,
     COMPILE_BUDGET_VERIFY_MIN_NGRAM,
     COMPILE_BUDGET_VERIFY_OUTPUT_MAX,
     COMPILE_BUDGET_VERIFY_OUTPUT_MIN,
@@ -78,8 +82,6 @@ from knox.core.config.keys import (
     COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
     COMPILE_PDF_PAGE_CHUNK_OVERLAP,
     COMPILE_PDF_PAGE_CHUNK_SIZE,
-    COMPILE_RELATION_CONFIDENCE_THRESHOLD,
-    COMPILE_RESOLVE_RELATIONS,
     COMPILE_RESPECT_GITIGNORE,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
@@ -186,8 +188,6 @@ class PipelineConfig:
     page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
-    resolve_relations: bool = True  # Run LLM relation extraction during Tier 2
-    relation_confidence_threshold: float = 0.5  # Minimum confidence for typed relations
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
@@ -265,6 +265,10 @@ class PipelineConfig:
             lint_output_max=cfg.get(COMPILE_BUDGET_LINT_OUTPUT_MAX, BudgetConfig().lint_output_max),
             wicer_probe_output_max=cfg.get(COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX, BudgetConfig().wicer_probe_output_max),
             wicer_eval_output_max=cfg.get(COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX, BudgetConfig().wicer_eval_output_max),
+            summary_max_content_chars=cfg.get(COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS, BudgetConfig().summary_max_content_chars),
+            summary_target_chars=cfg.get(COMPILE_BUDGET_SUMMARY_TARGET_CHARS, BudgetConfig().summary_target_chars),
+            summary_skip_single_child=cfg.get(COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD, BudgetConfig().summary_skip_single_child),
+            summary_chunk_threshold=cfg.get(COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD, BudgetConfig().summary_chunk_threshold),
         )
 
         output_config = OutputConfig(
@@ -310,8 +314,6 @@ class PipelineConfig:
             page_kind=cfg.get(COMPILE_PAGE_KIND),
             compiler=cfg.get(COMPILE_COMPILER, Compiler.GRAPH),
             privacy_filter=cfg.get(TRUST_PRIVACY_FILTER, True),
-            resolve_relations=cfg.get(COMPILE_RESOLVE_RELATIONS, True),
-            relation_confidence_threshold=cfg.get(COMPILE_RELATION_CONFIDENCE_THRESHOLD, 0.5),
             memory_enabled=cfg.get(COMPILE_MEMORY_ENABLED, True),
             memory_half_life_days=cfg.get(COMPILE_MEMORY_HALF_LIFE_DAYS, 90.0),
             memory_decay_threshold=cfg.get(COMPILE_MEMORY_DECAY_THRESHOLD, 0.3),

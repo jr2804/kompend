@@ -1,10 +1,20 @@
-"""Tests for the KNOX HybridChunker."""
+"""Tests for the KNOX HierarchicalChunker."""
 
 from pathlib import Path
 
-from knox.chunking.hybrid import HybridChunker
+from knox.chunking.hierarchical import HierarchicalChunker
 from knox.core.config._core import DEFAULTS
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import (
+    ChunkNode,
+    ChunkStrategy,
+    ChunkTree,
+    DocumentElement,
+    ElementType,
+    ParsedDocument,
+    StructuredEquation,
+    StructuredFigure,
+    StructuredTable,
+)
 from knox.llm.client import ContextWindow
 
 
@@ -20,54 +30,70 @@ def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
     return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
 
 
+def _text_leaves(tree: ChunkTree) -> list[ChunkNode]:
+    """Leaf nodes carrying a TEXT chunk."""
+    return [n for n in tree.leaves() if n.chunk is not None and ElementType.TEXT in n.chunk.element_types]
+
+
+def _structured_leaves(tree: ChunkTree) -> list[ChunkNode]:
+    """Leaf nodes carrying structured data."""
+    return [n for n in tree.leaves() if n.structured is not None]
+
+
 def _sentence_ends(text: str) -> bool:
-    """Return True if the text ends at a sentence or paragraph boundary."""
     stripped = text.rstrip()
     return not stripped or stripped[-1] in ".!?\n"
 
 
-class TestHybridChunker:
-    """Test suite for HybridChunker."""
+class TestHierarchicalChunker:
+    """Test suite for HierarchicalChunker."""
+
+    # ── basic structure ─────────────────────────────────────────────────
 
     def test_empty_document(self) -> None:
         doc = _make_doc([])
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        assert result == []
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        assert isinstance(tree, ChunkTree)
+        assert len(tree.nodes) == 1  # just root
+        assert tree.strategy == ChunkStrategy.SINGLE_PASS
+        root = tree.nodes[tree.root_id]
+        assert root.children_ids == []
+        assert root.chunk is None
+        assert root.structured is None
 
     def test_single_text(self) -> None:
-        doc = _make_doc(
-            [
-                DocumentElement(type=ElementType.TEXT, content="Hello world."),
-            ]
-        )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        assert len(result) >= 1
-        assert ElementType.TEXT in result[0].element_types
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="Hello world.")])
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        leaves = _text_leaves(tree)
+        assert len(leaves) == 1
+        assert "Hello world." in leaves[0].chunk.text
+
+    def test_source_file_propagated(self) -> None:
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="x")])
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        assert tree.source_file == Path("test.pdf")
+
+    # ── atomic elements ─────────────────────────────────────────────────
 
     def test_table_is_atomic(self) -> None:
         doc = _make_doc(
             [
                 DocumentElement(type=ElementType.HEADING, content="Data", heading_level=1),
-                DocumentElement(
-                    type=ElementType.TABLE,
-                    content=[["A", "B"], ["1", "2"]],
-                ),
+                DocumentElement(type=ElementType.TABLE, content=[["A", "B"], ["1", "2"]]),
             ]
         )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        table_chunks = [c for c in result if ElementType.TABLE in c.element_types]
-        assert len(table_chunks) == 1, "TABLE must never be split"
-        assert "A | B" in table_chunks[0].text
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        tables = _structured_leaves(tree)
+        assert len(tables) == 1, "TABLE must be a single atomic leaf"
+        assert isinstance(tables[0].structured, StructuredTable)
+        assert tables[0].structured.columns == ["A", "B"]
+        assert tables[0].structured.rows == [{"A": "1", "B": "2"}]
 
     def test_code_is_atomic(self) -> None:
-        doc = _make_doc(
-            [
-                DocumentElement(type=ElementType.CODE, content="print('hello')"),
-            ]
-        )
-        result = HybridChunker(max_tokens=256).chunk(doc)
-        code_chunks = [c for c in result if ElementType.CODE in c.element_types]
-        assert len(code_chunks) == 1
+        doc = _make_doc([DocumentElement(type=ElementType.CODE, content="print('hello')")])
+        tree = HierarchicalChunker(max_tokens=256).chunk(doc)
+        code_leaves = [n for n in tree.leaves() if n.chunk is not None and ElementType.CODE in n.chunk.element_types]
+        assert len(code_leaves) == 1
 
     def test_image_is_atomic(self) -> None:
         doc = _make_doc(
@@ -76,28 +102,92 @@ class TestHybridChunker:
                 DocumentElement(type=ElementType.IMAGE, content=b"fake_png_data"),
             ]
         )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        img_chunks = [c for c in result if ElementType.IMAGE in c.element_types]
-        assert len(img_chunks) == 1
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        imgs = [n for n in _structured_leaves(tree) if isinstance(n.structured, StructuredFigure)]
+        assert len(imgs) == 1
 
-    def test_heading_context_preserved(self) -> None:
+    def test_formula_is_atomic(self) -> None:
+        doc = _make_doc([DocumentElement(type=ElementType.FORMULA, content=r"E = mc^2")])
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        eqs = [n for n in _structured_leaves(tree) if isinstance(n.structured, StructuredEquation)]
+        assert len(eqs) == 1
+        assert eqs[0].structured.latex == r"E = mc^2"
+
+    # ── heading hierarchy ───────────────────────────────────────────────
+
+    def test_heading_creates_internal_node(self) -> None:
         doc = _make_doc(
             [
                 DocumentElement(type=ElementType.HEADING, content="Results", heading_level=1),
                 DocumentElement(type=ElementType.TEXT, content="Significant findings."),
             ]
         )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        assert any("Results" in c.heading_context or "Results" in c.text for c in result)
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        root = tree.nodes[tree.root_id]
+        assert len(root.children_ids) == 1
+        heading_node = tree.nodes[root.children_ids[0]]
+        assert heading_node.chunk is None
+        assert heading_node.structured is None
+        assert len(heading_node.children_ids) == 1
 
-    def test_long_text_is_chunked(self) -> None:
+    def test_heading_path_on_leaves(self) -> None:
         doc = _make_doc(
             [
-                DocumentElement(type=ElementType.TEXT, content=("word " * 500)),
+                DocumentElement(type=ElementType.HEADING, content="Chapter 1", heading_level=1),
+                DocumentElement(type=ElementType.HEADING, content="Section 1.1", heading_level=2),
+                DocumentElement(type=ElementType.TEXT, content="Deep content."),
             ]
         )
-        result = HybridChunker(max_tokens=100).chunk(doc)
-        assert len(result) > 1, "Long text should produce multiple chunks"
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        leaves = _text_leaves(tree)
+        assert len(leaves) == 1
+        assert leaves[0].heading_path == ("Chapter 1", "Section 1.1")
+        assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"
+
+    def test_nested_heading_hierarchy(self) -> None:
+        doc = _make_doc(
+            [
+                DocumentElement(type=ElementType.HEADING, content="A", heading_level=1),
+                DocumentElement(type=ElementType.TEXT, content="Under A"),
+                DocumentElement(type=ElementType.HEADING, content="B", heading_level=1),
+                DocumentElement(type=ElementType.HEADING, content="B1", heading_level=2),
+                DocumentElement(type=ElementType.TEXT, content="Under B1"),
+                DocumentElement(type=ElementType.HEADING, content="C", heading_level=1),
+                DocumentElement(type=ElementType.TEXT, content="Under C"),
+            ]
+        )
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        root = tree.nodes[tree.root_id]
+        assert len(root.children_ids) == 3
+        a_node = tree.nodes[root.children_ids[0]]
+        b_node = tree.nodes[root.children_ids[1]]
+        c_node = tree.nodes[root.children_ids[2]]
+        assert len(a_node.children_ids) == 1
+        assert len(b_node.children_ids) == 1
+        assert len(c_node.children_ids) == 1
+        b1 = tree.nodes[b_node.children_ids[0]]
+        assert len(b1.children_ids) == 1
+
+    def test_heading_closes_deeper_levels(self) -> None:
+        """A heading at level 1 closes open level-2+ headings."""
+        doc = _make_doc(
+            [
+                DocumentElement(type=ElementType.HEADING, content="A", heading_level=1),
+                DocumentElement(type=ElementType.HEADING, content="A1", heading_level=2),
+                DocumentElement(type=ElementType.TEXT, content="under A1"),
+                DocumentElement(type=ElementType.HEADING, content="B", heading_level=1),
+                DocumentElement(type=ElementType.TEXT, content="under B"),
+            ]
+        )
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        root = tree.nodes[tree.root_id]
+        # A and B are both depth-1 children of root
+        assert len(root.children_ids) == 2
+        b_node = tree.nodes[root.children_ids[1]]
+        assert b_node.depth == 1
+        # B's text leaf is at depth 2, not depth 3
+        b_text = tree.nodes[b_node.children_ids[0]]
+        assert b_text.depth == 2
 
     def test_mixed_content(self) -> None:
         doc = _make_doc(
@@ -109,20 +199,68 @@ class TestHybridChunker:
                 DocumentElement(type=ElementType.TEXT, content="Final remarks."),
             ]
         )
-        result = HybridChunker(max_tokens=256).chunk(doc)
-        assert len(result) >= 3  # text_run + table + text_run
-        types_seen = set()
-        for c in result:
-            types_seen.update(c.element_types)
-        assert ElementType.TEXT in types_seen or ElementType.HEADING in types_seen
-        # TABLE must be present as atomic
-        assert any(ElementType.TABLE in c.element_types for c in result)
+        tree = HierarchicalChunker(max_tokens=256).chunk(doc)
+        assert len(_text_leaves(tree)) == 2
+        assert len(_structured_leaves(tree)) == 1
+
+    def test_metadata_elements_skipped(self) -> None:
+        doc = _make_doc(
+            [
+                DocumentElement(type=ElementType.METADATA, content={"key": "val"}),
+                DocumentElement(type=ElementType.TEXT, content="Real content."),
+            ]
+        )
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        leaves = _text_leaves(tree)
+        assert len(leaves) == 1
+        assert "Real content." in leaves[0].chunk.text
+
+    # ── strategy selection ──────────────────────────────────────────────
+
+    def test_strategy_single_pass(self) -> None:
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="Small doc.")])
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        assert tree.strategy == ChunkStrategy.SINGLE_PASS
+
+    def test_strategy_two_level(self) -> None:
+        """Doc producing <= 10 chunks → TWO_LEVEL."""
+        # effective_max=100 (reserve=0). 500 tokens → ceil(500/100)=5 chunks <= 10
+        text = "word " * 500  # ~625 tokens → 7 chunks
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
+        tree = HierarchicalChunker(max_tokens=100, reserve_ratio=0.0).chunk(doc)
+        assert tree.strategy == ChunkStrategy.TWO_LEVEL
+
+    def test_strategy_multi_resolution(self) -> None:
+        """Doc producing > 10 chunks → MULTI_RESOLUTION."""
+        # effective_max=100. 1500 tokens → ceil(1500/100)=15 chunks > 10
+        text = "word " * 1200  # ~1500 tokens → 15 chunks
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
+        tree = HierarchicalChunker(max_tokens=100, reserve_ratio=0.0).chunk(doc)
+        assert tree.strategy == ChunkStrategy.MULTI_RESOLUTION
+
+    # ── token computation ───────────────────────────────────────────────
+
+    def test_subtree_token_computation(self) -> None:
+        doc = _make_doc(
+            [
+                DocumentElement(type=ElementType.HEADING, content="S", heading_level=1),
+                DocumentElement(type=ElementType.TEXT, content="First part here."),
+                DocumentElement(type=ElementType.TEXT, content="Second part here."),
+            ]
+        )
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        root = tree.nodes[tree.root_id]
+        section = tree.nodes[root.children_ids[0]]
+        expected = sum(tree.nodes[c].token_count for c in section.children_ids)
+        assert section.token_count == expected
+        assert root.token_count == section.token_count
+
+    # ── effective_max / context window ──────────────────────────────────
 
     def test_reserve_ratio_effective(self) -> None:
-        """20% reserve reduces effective max_tokens."""
-        chunker = HybridChunker(max_tokens=1000, reserve_ratio=0.2)
+        chunker = HierarchicalChunker(max_tokens=1000, reserve_ratio=0.2)
         assert chunker._effective_max == 800
-        chunker2 = HybridChunker(max_tokens=1000, reserve_ratio=0.0)
+        chunker2 = HierarchicalChunker(max_tokens=1000, reserve_ratio=0.0)
         assert chunker2._effective_max == 1000
 
     def test_chunk_ids_assigned(self) -> None:
@@ -133,12 +271,11 @@ class TestHybridChunker:
                 DocumentElement(type=ElementType.CODE, content="x=1"),
             ]
         )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        for c in result:
-            assert c.id.startswith("test_chunk_"), f"Bad ID: {c.id}"
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        for node in tree.leaves():
+            assert node.id.startswith("test_"), f"Bad ID: {node.id}"
 
     def test_heading_context_with_brackets_in_text(self) -> None:
-        """Adversarial text: literal '[' and ']' in content must not be parsed as heading markers."""
         doc = _make_doc(
             [
                 DocumentElement(
@@ -152,101 +289,94 @@ class TestHybridChunker:
                 ),
             ]
         )
-        result = HybridChunker(max_tokens=512).chunk(doc)
-        # The heading context should reflect the real heading, not any bracket substring.
-        for c in result:
-            assert "key" not in c.heading_context or "Config" in c.heading_context
-        assert any("Config [key] = value" in c.heading_context for c in result if c.heading_context)
+        tree = HierarchicalChunker(max_tokens=512).chunk(doc)
+        leaves = _text_leaves(tree)
+        assert len(leaves) == 1
+        assert "Config [key] = value" in leaves[0].heading_path
 
     def test_config_chunk_size_flows_to_effective_max(self) -> None:
-        """The config chunk_size (passed as max_tokens) must reach _effective_max."""
-        chunker = HybridChunker(max_tokens=1024, reserve_ratio=0.2)
+        chunker = HierarchicalChunker(max_tokens=1024, reserve_ratio=0.2)
         assert chunker._effective_max == 819
 
     def test_default_chunk_size_is_1024(self) -> None:
-        """DEFAULTS chunk_size must be 1024 (not the old 512)."""
         assert DEFAULTS["compile"]["chunk_size"] == 1024
 
     def test_context_window_adapts_effective_max(self) -> None:
-        """When context_window is provided, _effective_max adapts to model capacity."""
         cw = ContextWindow(max_input=8192, max_output=4096, source="test")
-        chunker = HybridChunker(max_tokens=1024, context_window=cw, reserve_ratio=0.2)
-        available = int(8192 * 0.8)
-        assert chunker._effective_max == available
+        chunker = HierarchicalChunker(max_tokens=1024, context_window=cw, reserve_ratio=0.2)
+        assert chunker._effective_max == int(8192 * 0.8)
 
     def test_context_window_tiny_model(self) -> None:
-        """Tiny context window is clamped up to chunk_size_min (safety floor)."""
         cw = ContextWindow(max_input=512, max_output=256, source="test")
-        chunker = HybridChunker(context_window=cw, chunk_size_min=2048)
+        chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048)
         assert chunker._effective_max == 2048
 
     def test_context_window_huge_model(self) -> None:
-        """Huge context window is clamped to chunk_size_max (safety ceiling)."""
         cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source="test")
-        chunker = HybridChunker(context_window=cw, chunk_size_max=131072)
+        chunker = HierarchicalChunker(context_window=cw, chunk_size_max=131072)
         assert chunker._effective_max == 131072
 
     def test_no_context_window_uses_max_tokens(self) -> None:
-        """Without context_window, falls back to max_tokens path."""
-        chunker = HybridChunker(max_tokens=2048, reserve_ratio=0.25)
+        chunker = HierarchicalChunker(max_tokens=2048, reserve_ratio=0.25)
         assert chunker._effective_max == int(2048 * 0.75)
 
+    # ── text splitting ──────────────────────────────────────────────────
+
+    def test_long_text_is_chunked(self) -> None:
+        doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="word " * 500)])
+        tree = HierarchicalChunker(max_tokens=100).chunk(doc)
+        assert len(_text_leaves(tree)) > 1, "Long text should produce multiple leaves"
+
     def test_splits_at_paragraph_boundary(self) -> None:
-        """Paragraph boundaries are preferred over mid-sentence cuts."""
         paragraphs = [
             "First paragraph has two clear sentences. Here is the second one.",
             "Second paragraph is longer and should stay together if possible. It has more words that we can count.",
         ]
         doc = _make_doc(_text_elements(paragraphs))
-        # Force split by using a small budget.
-        result = HybridChunker(max_tokens=24, reserve_ratio=0.0).chunk(doc)
-        assert len(result) >= 1
-        # At least one chunk should end cleanly (sentence/paragraph boundary).
-        assert any(_sentence_ends(c.text) for c in result)
+        tree = HierarchicalChunker(max_tokens=24, reserve_ratio=0.0).chunk(doc)
+        leaves = _text_leaves(tree)
+        assert len(leaves) >= 1
+        assert any(_sentence_ends(n.chunk.text) for n in leaves)
 
     def test_no_mid_sentence_cut_when_chunk_fits(self) -> None:
-        """If a sentence fits in the budget, the chunker must not cut it."""
         sentences = [
             "Short sentence one.",
             "Short sentence two.",
             "Short sentence three is the longest of them all.",
         ]
         doc = _make_doc(_text_elements(sentences))
-        result = HybridChunker(max_tokens=12, reserve_ratio=0.0).chunk(doc)
-        for c in result:
-            assert _sentence_ends(c.text)
+        tree = HierarchicalChunker(max_tokens=12, reserve_ratio=0.0).chunk(doc)
+        leaves = _text_leaves(tree)
+        for n in leaves:
+            assert _sentence_ends(n.chunk.text)
 
     def test_long_paragraph_split_at_sentence_boundary(self) -> None:
-        """A paragraph larger than the budget is split at sentence ends."""
         text = "Sentence one is moderately long. " * 6
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
-        result = HybridChunker(max_tokens=16, reserve_ratio=0.0).chunk(doc)
-        for c in result:
-            assert _sentence_ends(c.text)
+        tree = HierarchicalChunker(max_tokens=16, reserve_ratio=0.0).chunk(doc)
+        leaves = _text_leaves(tree)
+        for n in leaves:
+            assert _sentence_ends(n.chunk.text)
 
 
 class TestContextWindowClamp:
     """Chunk size must be clamped to [chunk_size_min, chunk_size_max] (knox-7sp)."""
 
     def test_large_context_clamped_to_max(self) -> None:
-        """A 1M-token model must not produce 800K-token chunks."""
         cw = ContextWindow(max_input=1_000_000, max_output=8192, source="litellm")
-        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 131072
 
     def test_small_context_respects_min(self) -> None:
-        """An 8K model gets 80% minus reserve, above chunk_size_min."""
         cw = ContextWindow(max_input=8192, max_output=4096, source="litellm")
-        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 6553
 
     def test_mid_range_context_unclamped(self) -> None:
-        """A 128K model is below chunk_size_max, so no upper clamp."""
         cw = ContextWindow(max_input=131072, max_output=8192, source="litellm")
-        chunker = HybridChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
+        chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 104857
 
     def test_fallback_uses_max_tokens_unclamped(self) -> None:
-        """Without context_window, legacy max_tokens is used directly."""
-        chunker = HybridChunker(max_tokens=1024, reserve_ratio=0.2)
+        chunker = HierarchicalChunker(max_tokens=1024, reserve_ratio=0.2)
         assert chunker._effective_max == 819
