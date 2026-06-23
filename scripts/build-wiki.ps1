@@ -163,7 +163,6 @@ $CompileArgs = @(
     "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
     "--vlm-model",        "",
-    "--resolve-relations",
     "--flavor",           "obsidian",
     "--compiler",         "wicer",
     "--workers",          "1",
