@@ -432,7 +432,7 @@ class LLMClient:
         if response_format is not None and response_format.get("type") == "json_object":
             try:
                 parsed = json.loads(content)
-            except json.JSONDecodeError as exc:
+            except json.JSONDecodeError:
                 # Try to salvage incomplete JSON — small models sometimes
                 # produce a '{' followed by newlines without ever closing.
                 cleaned = content.strip()
