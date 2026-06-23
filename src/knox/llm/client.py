@@ -432,9 +432,10 @@ class LLMClient:
         if response_format is not None and response_format.get("type") == "json_object":
             try:
                 parsed = json.loads(content)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 # Try to salvage incomplete JSON — small models sometimes
                 # produce a '{' followed by newlines without ever closing.
+                parsed = None
                 cleaned = content.strip()
                 if cleaned and cleaned[0] == "{" and "}" not in cleaned:
                     cleaned += "}"
@@ -444,8 +445,10 @@ class LLMClient:
                         pass
                     else:
                         content = cleaned
-                        exc = None
-                if exc is not None:
+                # ponytail: use `parsed` as salvage-succeeded sentinel; the
+                # previous code left `exc` unbound in the non-salvage path,
+                # raising UnboundLocalError instead of PermanentError.
+                if parsed is None:
                     msg = f"LLM returned invalid JSON: {exc}"
                     raise PermanentError(
                         msg,

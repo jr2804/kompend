@@ -123,6 +123,20 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         if progress_fn is not None:
             progress_fn(idx, total, source_file.name)
 
+        # Cache key is the file stem — stable even when raw file bytes
+        # change (e.g. URL downloads with dynamic HTML). One entry per
+        # source file; re-parsing overwrites, never orphans.
+        # NOTE: the cache check MUST run before parser.parse() — Docling
+        # extraction is expensive and must not repeat for cached files.
+        out_file = cache_dir / f"{source_file.stem}.json"
+
+        if not no_cache and out_file.exists():
+            logger.info("Skipping %s — already cached", source_file.name)
+            cached += 1
+            count += 1
+            state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+            continue
+
         parser = router.route(source_file)
         if parser is None:
             logger.info("Skipping %s — no parser available", source_file.name)
@@ -134,18 +148,6 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         except Exception:
             logger.debug("Failed to parse %s", source_file, exc_info=True)
             failed += 1
-            continue
-
-        # Cache key is the file stem — stable even when raw file bytes
-        # change (e.g. URL downloads with dynamic HTML). One entry per
-        # source file; re-parsing overwrites, never orphans.
-        out_file = cache_dir / f"{source_file.stem}.json"
-
-        if not no_cache and out_file.exists():
-            logger.info("Skipping %s — already cached", source_file.name)
-            cached += 1
-            count += 1
-            state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
             continue
 
         out_file.write_text(

@@ -6,4 +6,4 @@ role: wicer.probe
 response_format: json_object
 ---
 
-Based on the following text, generate 2 Q&A pairs as a JSON list where each item has "question" and "answer" keys. Focus on factual content that can be verified. Text: {{ text }}
+Based on the following text, generate 2 Q&A pairs as a JSON object of the form {"probes": [{"question": "...", "answer": "..."}, ...]} where each item has "question" and "answer" keys. Focus on factual content that can be verified. Text: {{ text }}
