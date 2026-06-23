@@ -47,7 +47,13 @@ class GraphCompiler(BaseCompiler):
         self._min_concept_sources = min_concept_sources
         self._max_concept_pages = max_concept_pages
 
-    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
+    def compile(
+        self,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        pinned_facts: list[str] | None = None,
+    ) -> CompiledWiki:
         """Blind compilation of resolved chunks into a knowledge graph.
 
         When *trees* are provided, structured data from ChunkNode leaves
@@ -55,8 +61,14 @@ class GraphCompiler(BaseCompiler):
         field, enabling downstream consumers to access typed table/equation/
         figure data directly.
 
+        ``pinned_facts`` is accepted for interface symmetry with synthesis
+        compilers but ignored here: this compiler rearranges raw chunk text
+        rather than generating new content, so there is no prompt into which
+        a preservation constraint could be injected.
+
         Returns a :class:`CompiledWiki` - never raises.
         """
+        del pinned_facts  # accepted for BaseCompiler symmetry, not used
         if not chunks:
             return CompiledWiki(
                 nodes=[],

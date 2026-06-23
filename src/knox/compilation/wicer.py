@@ -20,7 +20,7 @@ from typing import Any
 from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
@@ -33,15 +33,23 @@ _loader = get_template_loader()
 class WiCERCompiler(BaseCompiler):
     """Compile-Evaluate-Refine loop for improved compilation quality.
 
-    Runs up to *max_iterations* rounds of blind compilation, probe
-    generation, LLM-as-judge evaluation, failure diagnosis, and
-    refinement.
+    Implements Algorithm 1 from arXiv:2605.07068v1 (CEGAR-style):
+    runs up to *max_iterations* rounds of compilation, probe generation,
+    LLM-as-judge evaluation, failure diagnosis, and re-compilation with
+    a monotonically growing pin set of facts the prior pass dropped.
+
+    The base compiler must be synthesis-capable so the pin set can be
+    honored through the generation prompt; a non-synthesis compiler
+    (e.g. raw :class:`GraphCompiler`) will silently drop the pin set
+    and the loop will not converge.
 
     Parameters
     ----------
     base_compiler:
         The underlying compiler used for blind and refined compilation.
-        Defaults to a fresh :class:`GraphCompiler`.
+        Defaults to a fresh :class:`GraphCompiler` (sufficient for tests
+        and offline fallback, but the production pipeline wires a
+        :class:`~knox.compilation.two_phase.TwoPhaseCompiler` here).
     max_iterations:
         Maximum number of refinement rounds (default 3).
     llm_client:
@@ -86,10 +94,23 @@ class WiCERCompiler(BaseCompiler):
     # Public API
     # ------------------------------------------------------------------
 
-    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:
         """Run the WiCER iterative-compilation loop.
 
+        Implements Algorithm 1 from arXiv:2605.07068v1:
+
+        1. ``W_0 = Compile(D)`` — blind compilation via the base compiler
+           (synthesis-capable; e.g. :class:`TwoPhaseCompiler`).
+        2. For each iteration: probe → evaluate → diagnose failures →
+           accumulate critical facts into ``F_cumulative`` →
+           ``W_{t+1} = Compile(D, pin=F_cumulative)``.
+        3. Stop on convergence (no failures or no new facts) or max iters.
+
         Returns a :class:`CompiledWiki` — never raises.
+
+        ``pinned_facts`` is an optional caller-supplied seed for
+        ``F_cumulative`` (e.g. for chained WiCER passes or external
+        constraints). New facts diagnosed by the loop are appended to it.
         """
         if not chunks:
             return CompiledWiki(
@@ -104,24 +125,36 @@ class WiCERCompiler(BaseCompiler):
                 },
             )
 
-        wiki = self._blind_compile(chunks)
-        self._step("blind compilation done")
+        # F_cumulative — facts that MUST appear in W_{t+1} (CEGAR refinement).
+        cumulative_pinned: list[str] = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
+
+        # Count sources once to drive a determinate progress bar. The base
+        # compiler's per-source extraction (the bulk of compile time) reports
+        # against this total; WiCER's own steps hold the bar full.
+        num_sources = max(len({str(rc.chunk.source_file or "unknown") for rc in chunks}), 1)
+        # Propagate the hook to the synthesis base so its extraction counts
+        # are visible (otherwise the bar has nothing real to count).
+        self._compiler.on_progress = self.on_progress
+
+        wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned or None)
+        self._report(num_sources, num_sources, "blind compilation done")
         iteration_info: dict[str, Any] = {
             "wicer_iterations": 0,
             "wicer_refinements": 0,
             "wicer_probes_generated": 0,
             "wicer_probes_passed": 0,
+            "wicer_pinned_facts": len(cumulative_pinned),
         }
 
         for attempt in range(self.max_iterations):
-            self._step(f"iter {attempt + 1}/{self.max_iterations} — generating probes")
+            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — generating probes")
             probes = self._generate_probes(wiki, chunks)
             if not probes:
                 logger.info("WiCER: no probes generated, ending loop")
                 break
             iteration_info["wicer_probes_generated"] += len(probes)
 
-            self._step(f"iter {attempt + 1}/{self.max_iterations} — evaluating {len(probes)} probes")
+            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — evaluating {len(probes)} probes")
             eval_results = self._evaluate(wiki, probes)
             failures = [r for r in eval_results if not r.get("correct", False)]
             passed = len(eval_results) - len(failures)
@@ -132,17 +165,27 @@ class WiCERCompiler(BaseCompiler):
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
-            self._step(f"iter {attempt + 1}/{self.max_iterations} — diagnosing {len(failures)} failures")
-            pinned_facts = self._diagnose(failures)
-            if not pinned_facts:
+            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — diagnosing {len(failures)} failures")
+            new_facts = self._diagnose(failures)
+            if not new_facts:
                 logger.info("WiCER: no critical facts extracted, ending loop")
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
-            self._step(f"iter {attempt + 1}/{self.max_iterations} — refining wiki")
-            wiki = self._refine(wiki, pinned_facts)
+            # F_cumulative ← F_cumulative ∪ D_facts (dedup, preserve order).
+            before = len(cumulative_pinned)
+            cumulative_pinned = list(dict.fromkeys(cumulative_pinned + [f.strip() for f in new_facts if f and f.strip()]))
+            added = len(cumulative_pinned) - before
+            if added == 0:
+                logger.info("WiCER: all diagnosed facts already pinned, ending loop")
+                iteration_info["wicer_iterations"] = attempt + 1
+                break
+
+            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — recompiling with {len(cumulative_pinned)} pinned fact(s)")
+            wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned)
             iteration_info["wicer_refinements"] += 1
             iteration_info["wicer_iterations"] = attempt + 1
+            iteration_info["wicer_pinned_facts"] = len(cumulative_pinned)
         else:
             iteration_info["wicer_iterations"] = self.max_iterations
 
@@ -153,9 +196,20 @@ class WiCERCompiler(BaseCompiler):
     # WiCER steps  (each is overridable for testing)
     # ------------------------------------------------------------------
 
-    def _blind_compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
-        """Step A: initial blind compilation."""
-        return self._compiler.compile(chunks)
+    def _blind_compile(
+        self,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        pinned_facts: list[str] | None = None,
+    ) -> CompiledWiki:
+        """Step A / D: compile via the base compiler.
+
+        Used both for the initial blind pass (``pinned_facts=None``) and
+        for refinement passes that re-run the base compiler with the
+        cumulative pin set as a preservation constraint.
+        """
+        return self._compiler.compile(chunks, trees=trees, pinned_facts=pinned_facts)
 
     def _generate_probes(self, wiki: CompiledWiki, chunks: list[ResolvedChunk]) -> list[dict]:
         """Step B: generate probe Q&A pairs from source chunks.
@@ -295,42 +349,6 @@ class WiCERCompiler(BaseCompiler):
                 return [str(f) for f in facts if f]
 
         return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
-
-    @staticmethod
-    def _refine(wiki: CompiledWiki, pinned_facts: list[str]) -> CompiledWiki:
-        """Step D: re-compile with pinned facts appended."""
-        if not pinned_facts:
-            return wiki
-
-        fact_content = "\n".join(f"- {f}" for f in pinned_facts)
-        fact_node_id = "node_refinement_pinned_facts"
-
-        existing_nodes = list(wiki.nodes)
-        refinement_idx = None
-        for i, n in enumerate(existing_nodes):
-            if n.id == fact_node_id:
-                refinement_idx = i
-                break
-
-        refinement_node = WikiNode(
-            id=fact_node_id,
-            title="Pinned Refinement Facts",
-            content=fact_content,
-            node_type="reference",
-            metadata={"pinned_facts": True},
-        )
-
-        if refinement_idx is not None:
-            existing_nodes[refinement_idx] = refinement_node
-        else:
-            existing_nodes.append(refinement_node)
-
-        return CompiledWiki(
-            nodes=existing_nodes,
-            edges=list(wiki.edges),
-            toc=list(wiki.toc),
-            metadata={**wiki.metadata, "refined_with_pinned_facts": len(pinned_facts)},
-        )
 
     @staticmethod
     def _extract_probe_list(result: Any) -> list[dict] | None:

@@ -206,14 +206,14 @@ class WikiPipeline:
             self._emit("compile", 0, 1, "starting")
             _t0 = time.monotonic()
             if self.compiler:
-                # Attach the progress hook so the compiler can report
-                # sub-steps (WiCER iterations / two-phase extract-generate)
-                # to the CLI bar during the otherwise-opaque compile call.
-                self.compiler.on_step = lambda desc: self._emit("compile", 0, 1, desc)
+                # Attach the progress hook so the compiler reports real,
+                # countable work units (source extractions, WiCER steps) to
+                # a determinate bar instead of an indeterminate spinner.
+                self.compiler.on_progress = lambda c, t, d: self._emit("compile", c, t, d)
                 try:
                     wiki = self.compiler.compile(resolved, trees=all_trees)
                 finally:
-                    self.compiler.on_step = None
+                    self.compiler.on_progress = None
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             self._tier_timings["compile"] = time.monotonic() - _t0
@@ -849,7 +849,8 @@ def build_pipeline(
     - HierarchicalChunker
     - Compiler selected by ``config.compiler``:
       - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
-      - ``"wicer"``: WiCERCompiler (compile-evaluate-refine loop)
+      - ``"wicer"``: WiCERCompiler wrapping TwoPhaseCompiler (so the
+        CEGAR loop refines real synthesized pages, not raw chunk dumps)
     - Output writer selected by ``config.compile_target``
 
     Parameters
@@ -884,13 +885,23 @@ def build_pipeline(
         resolver = _build_resolver_chain(config, llm_client)
 
         if config.compiler == Compiler.WICER:
+            # WiCER refines through its base compiler: each iteration calls
+            # base.compile(..., pinned_facts=F_cumulative). The base must
+            # therefore be synthesis-capable (extract → generate) so the
+            # pin set is honored in the generation prompt. Wrap TwoPhase
+            # — not raw GraphCompiler, which only rearranges chunk text
+            # and would silently drop the pin set.
             base_compiler = WiCERCompiler(
                 config=config,
-                base_compiler=GraphCompiler(
-                    model=config.llm.default_model,
-                    min_content_length=config.budget.min_content_length,
-                    min_concept_sources=config.budget.min_concept_sources,
-                    max_concept_pages=config.budget.max_concept_pages,
+                base_compiler=TwoPhaseCompiler(
+                    config=config,
+                    base=GraphCompiler(
+                        model=config.llm.default_model,
+                        min_content_length=config.budget.min_content_length,
+                        min_concept_sources=config.budget.min_concept_sources,
+                        max_concept_pages=config.budget.max_concept_pages,
+                    ),
+                    llm_client=llm_client,
                 ),
                 llm_client=llm_client,
             )

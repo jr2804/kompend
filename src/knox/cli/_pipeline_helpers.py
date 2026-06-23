@@ -36,7 +36,7 @@ from knox.verification import verify_wiki
 logger = logging.getLogger(__name__)
 
 
-def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:
+def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:  # noqa: PLR0915
     """Build a progress callback that translates pipeline events into Rich updates.
 
     The overall bar resets per phase. Each phase has a flat handler keyed by
@@ -70,14 +70,11 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
             tracker.update_progress(current, f"Resolving [{current}/{total}]")
 
     def _start_done(start_msg: str, done_msg: str) -> Callable[[int, int, str], None]:
-        """compile/output: indeterminate bar driven by sub-step descriptions.
+        """output: indeterminate bar driven by start/done events.
 
         Events arrive as ``_emit(phase, current, total, detail)``:
         - ``detail == "starting"`` → reset to indeterminate bar
         - ``detail == "done"``      → mark phase complete
-        - any other non-empty ``detail`` → a compiler sub-step
-          (e.g. "iter 1/3 — generating probes"); update the description so
-          the bar visibly reflects progress during long compile calls.
         """
 
         def _cb(current: int, total: int, detail: str) -> None:
@@ -85,8 +82,35 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
                 tracker.message(done_msg)
             elif detail == "starting":
                 tracker.reset_for_phase(None, start_msg)
-            elif detail:
-                tracker.message(detail)
+
+        return _cb
+
+    def _compile() -> Callable[[int, int, str], None]:
+        """compile: DETERMINATE bar counting real work units.
+
+        The compiler reports ``(current, total, description)`` where
+        *total* is the number of countable units (e.g. source extractions).
+        The bar fills as work completes instead of faking activity. The
+        bar resets once when *total* is first known, then advances on each
+        report and fills to 100% on "done".
+        """
+        state: dict[str, int | None] = {"total": None}
+
+        def _cb(current: int, total: int, detail: str) -> None:
+            if detail == "done":
+                if state["total"] is not None:
+                    tracker.update_progress(state["total"], "Compile complete")
+                else:
+                    tracker.message("Compile complete")
+            elif detail == "starting":
+                tracker.reset_for_phase(None, "Compiling wiki…")
+                state["total"] = None
+            elif total and total != state["total"]:
+                state["total"] = total
+                tracker.reset_for_phase(total, "Compiling wiki…")
+                tracker.update_progress(current, detail)
+            else:
+                tracker.update_progress(current, detail)
 
         return _cb
 
@@ -94,7 +118,7 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
         "parse": _parse,
         "index": _index,
         "resolve": _resolve,
-        "compile": _start_done("Compiling wiki…", "Compile complete"),
+        "compile": _compile(),
         "output": _start_done("Writing output…", "Output complete"),
     }
 

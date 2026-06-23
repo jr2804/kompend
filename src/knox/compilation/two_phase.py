@@ -117,8 +117,21 @@ class TwoPhaseCompiler(BaseCompiler):
             cw.source,
         )
 
-    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
-        """Run the two-phase compile with generation cache (Tier 3 Phase 2)."""
+    def compile(
+        self,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        pinned_facts: list[str] | None = None,
+    ) -> CompiledWiki:
+        """Run the two-phase compile with generation cache (Tier 3 Phase 2).
+
+        When *pinned_facts* is non-empty, each fact is injected into the
+        generation prompt as a hard preservation constraint (WiCER /
+        CEGAR-style refinement). Pinned facts are also folded into the
+        generation cache key so a refined call cannot serve a stale wiki
+        from a prior iteration.
+        """
         if not chunks:
             return CompiledWiki(
                 nodes=[],
@@ -127,10 +140,13 @@ class TwoPhaseCompiler(BaseCompiler):
                 metadata={"chunk_count": 0, "two_phase": True},
             )
 
+        num_sources = len({str(rc.chunk.source_file or "unknown") for rc in chunks})
+        self._report(0, num_sources, "Compiling wiki…")
         extractions = self.extract(chunks, trees=trees)
 
-        # Generation cache: keyed by all extractions + model + gen config.
-        gen_deps = self._gen_cache_deps(extractions)
+        # Generation cache: keyed by all extractions + model + gen config
+        # + pinned facts (refined compilations must miss prior cache).
+        gen_deps = self._gen_cache_deps(extractions, pinned_facts=pinned_facts)
         if not self._config.no_cache:
             cached = self._cache_store.get("generate", gen_deps)
             if cached is not None:
@@ -141,8 +157,8 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
                 return cached
 
-        self._step("generating wiki")
-        wiki = self.generate(extractions, chunks, trees=trees)
+        self._report(num_sources, num_sources, "generating wiki")
+        wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
 
         if not self._config.no_cache:
             self._cache_store.set("generate", gen_deps, wiki)
@@ -187,7 +203,7 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
-            self._step(f"extracting [{source_idx}/{num_sources}]")
+            self._report(source_idx, num_sources, f"extracting [{source_idx}/{num_sources}]")
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
 
             # Build hierarchical text from tree when available.
@@ -220,12 +236,23 @@ class TwoPhaseCompiler(BaseCompiler):
             extractions.add(_merge_extractions(source, batch_extractions))
         return extractions
 
-    def generate(self, extractions: ExtractionSet, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:  # noqa: PLR0915
+    def generate(  # noqa: PLR0915
+        self,
+        extractions: ExtractionSet,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        pinned_facts: list[str] | None = None,
+    ) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages.
 
         Batches concepts into groups of ``concepts_per_batch`` to avoid
         overwhelming the LLM with a single massive prompt. Source segments
         are sized adaptively based on the discovered context window.
+
+        ``pinned_facts`` is forwarded to the prompt template so the LLM
+        treats each item as a hard preservation constraint when emitting
+        page content (WiCER refinement input).
         """
         concepts = extractions.concept_pages()
         if not concepts:
@@ -252,12 +279,16 @@ class TwoPhaseCompiler(BaseCompiler):
 
         source_segments = _segment_sources(sources, segment_char_size)
 
+        # Normalize pinned facts: drop empties + dedup (preserve order).
+        pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
+
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
         nodes, slug_to_idx = self._generate_all_pages(
             concepts,
             source_segments,
             generation_system,
             all_images,
+            pinned_facts=pinned_clean,
         )
 
         if not nodes:
@@ -288,6 +319,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 "two_phase": True,
                 "concepts_merged": len(concepts),
                 "context_window": cw.max_input,
+                "pinned_facts_count": len(pinned_clean),
             },
         )
 
@@ -297,6 +329,8 @@ class TwoPhaseCompiler(BaseCompiler):
         source_segments: list[list[tuple[str, str]]],
         generation_system: str,
         all_images: list[dict[str, Any]],
+        *,
+        pinned_facts: list[str],
     ) -> tuple[list[WikiNode], dict[str, int]]:
         """Generate (or fallback-generate) one node per concept/segment pair."""
         nodes: list[WikiNode] = []
@@ -306,10 +340,11 @@ class TwoPhaseCompiler(BaseCompiler):
         num_segments = len(source_segments)
         batch_size = self._budget.concepts_per_batch
         logger.info(
-            "TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d)",
+            "TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d, pinned=%d)",
             num_concepts,
             num_segments,
             batch_size,
+            len(pinned_facts),
         )
         for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
@@ -331,6 +366,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     "compilation/generation_prompt.md.j2",
                     concepts_json=json.dumps(batch),
                     content=content_block,
+                    pinned_facts=pinned_facts,
                 )
                 data = _try_litellm_json(
                     prompt,
@@ -431,10 +467,17 @@ class TwoPhaseCompiler(BaseCompiler):
             return result
         return _fallback_extraction(source, combined)
 
-    def _gen_cache_deps(self, extractions: ExtractionSet) -> dict[str, str]:
-        """Compute dependency hashes for generation cache."""
+    def _gen_cache_deps(self, extractions: ExtractionSet, *, pinned_facts: list[str] | None = None) -> dict[str, str]:
+        """Compute dependency hashes for generation cache.
+
+        ``pinned_facts`` participates in the key so that a WiCER
+        refinement (same extractions, new pin set) cannot serve a stale
+        wiki from a prior iteration.
+        """
         blob = "|".join(json.dumps(e.to_dict(), sort_keys=True) for e in extractions.extractions)
         ext_hash = hashlib.sha256(blob.encode()).hexdigest()
+        pin_blob = "\n".join(sorted(f.strip() for f in (pinned_facts or []) if f and f.strip()))
+        pin_hash = hashlib.sha256(pin_blob.encode()).hexdigest()
         budget = self._budget
         return {
             "extractions": ext_hash,
@@ -442,6 +485,7 @@ class TwoPhaseCompiler(BaseCompiler):
             "chunk_size_min": str(budget.chunk_size_min),
             "chunk_size_max": str(budget.chunk_size_max),
             "concepts_per_batch": str(budget.concepts_per_batch),
+            "pinned_facts": pin_hash,
         }
 
     def _fallback_compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:

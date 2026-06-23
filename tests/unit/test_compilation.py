@@ -11,7 +11,7 @@ import pytest
 from knox.compilation import GraphCompiler, WiCERCompiler
 from knox.compilation.base import BaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.llm.client import LLMClient
 
@@ -675,33 +675,88 @@ class TestWiCERCompilerUnavailable:
         wiki = compiler.compile([])
         assert wiki.metadata["chunk_count"] == 0
 
-    def test_refine_appends_facts(self) -> None:
-        """_refine adds a pinned facts node."""
-        chunks = _make_chunks(count=1, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
-        config.budget.wicer_max_iterations = 0
-        compiler = WiCERCompiler(config=config)
-        wiki = compiler._blind_compile(chunks)
-        pinned = ["KNOX is a knowledge base project.", "WiCER is iterative."]
-        refined = compiler._refine(wiki, pinned)
-        assert len(refined.nodes) == len(wiki.nodes) + 1
-        fact_node = refined.nodes[-1]
-        assert fact_node.node_type == "reference"
-        assert "KNOX is a knowledge base project" in fact_node.content
+    def test_refine_recompiles_with_pinned_facts(self) -> None:
+        """Refinement calls the base compiler with the cumulative pin set.
 
-    def test_refine_updates_existing_fact_node(self) -> None:
-        """Repeated refinement updates the same pinned facts node."""
+        Per Algorithm 1 of arXiv:2605.07068v1, refinement is a full
+        re-compile of the source with the dropped facts injected as a
+        hard preservation constraint — not a post-hoc node append.
+        """
+
+        class _RecordingCompiler(BaseCompiler):
+            def __init__(self) -> None:
+                self.calls: list[list[str] | None] = []
+
+            def compile(
+                self,
+                chunks: list[ResolvedChunk],
+                *,
+                trees: list[ChunkTree] | None = None,
+                pinned_facts: list[str] | None = None,
+            ) -> CompiledWiki:
+                del chunks, trees
+                self.calls.append(list(pinned_facts) if pinned_facts else None)
+                return CompiledWiki(
+                    nodes=[WikiNode(id="n0", title="N", content="X", node_type="section")],
+                    edges=[],
+                    toc=[{"title": "N", "id": "n0", "level": 1}],
+                    metadata={"chunk_count": 1},
+                )
+
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 0
-        config.budget.min_content_length = 0
-        compiler = WiCERCompiler(config=config)
-        wiki = compiler._blind_compile(chunks)
-        wiki = compiler._refine(wiki, ["Fact one."])
-        wiki = compiler._refine(wiki, ["Fact two."])
-        # Only one extra node, not two
-        assert len(wiki.nodes) == 2  # 1 original + 1 pinned
-        assert "Fact two" in wiki.nodes[-1].content
+        rec = _RecordingCompiler()
+        compiler = WiCERCompiler(config=config, base_compiler=rec)
+
+        # Seed pinned facts as a public-API caller would, so we exercise
+        # the same flow the loop uses on iteration 1+.
+        wiki = compiler.compile(chunks, pinned_facts=["KNOX is a knowledge base project.", "WiCER is iterative."])
+
+        assert rec.calls == [["KNOX is a knowledge base project.", "WiCER is iterative."]]
+        # No stray "Pinned Refinement Facts" node — refinement happens
+        # via re-compile, not by appending to the wiki.
+        assert all(n.id != "node_refinement_pinned_facts" for n in wiki.nodes)
+        assert wiki.metadata["wicer_pinned_facts"] == 2
+
+    def test_refine_accumulates_pinned_facts_monotonically(self) -> None:
+        """F_cumulative grows across iterations; dedup preserves order."""
+
+        class _RecordingCompiler(BaseCompiler):
+            def __init__(self) -> None:
+                self.calls: list[list[str] | None] = []
+
+            def compile(
+                self,
+                chunks: list[ResolvedChunk],
+                *,
+                trees: list[ChunkTree] | None = None,
+                pinned_facts: list[str] | None = None,
+            ) -> CompiledWiki:
+                del chunks, trees
+                self.calls.append(list(pinned_facts) if pinned_facts else None)
+                return CompiledWiki(
+                    nodes=[WikiNode(id="n0", title="N", content="X", node_type="section")],
+                    edges=[],
+                    toc=[{"title": "N", "id": "n0", "level": 1}],
+                    metadata={"chunk_count": 1},
+                )
+
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config.budget.wicer_max_iterations = 0
+        compiler = WiCERCompiler(config=config, base_compiler=_RecordingCompiler())
+
+        # Seed F_cumulative; with max_iterations=0 the loop body does not
+        # run, so we observe only the seed-dedup behavior of the initial
+        # blind compile call.
+        wiki = compiler.compile(chunks, pinned_facts=["Fact one.", "Fact one.", "Fact two."])
+
+        # Dedup (preserve order) on the seed.
+        assert wiki.metadata["wicer_pinned_facts"] == 2
+        recording = compiler._compiler
+        assert isinstance(recording, _RecordingCompiler)
+        assert recording.calls == [["Fact one.", "Fact two."]]
 
     @pytest.fixture(autouse=True)
     def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
@@ -827,7 +882,14 @@ class TestWiCERCompilerWithMock:
         """A custom BaseCompiler can be injected."""
 
         class DummyCompiler(BaseCompiler):
-            def compile(self, chunks: list[ResolvedChunk]) -> CompiledWiki:
+            def compile(
+                self,
+                chunks: list[ResolvedChunk],
+                *,
+                trees: list[ChunkTree] | None = None,
+                pinned_facts: list[str] | None = None,
+            ) -> CompiledWiki:
+                del chunks, trees, pinned_facts
                 return CompiledWiki(
                     nodes=[WikiNode(id="dummy", title="Dummy", content="X", node_type="section")],
                     edges=[],

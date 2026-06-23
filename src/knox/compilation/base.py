@@ -19,13 +19,20 @@ _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
 class BaseCompiler(ABC):
     """Compiler interface for KNOX Tier 4."""
 
-    # Optional progress hook. The pipeline sets this before ``compile`` so
-    # the compiler can report sub-steps (e.g. WiCER iterations) to the CLI
-    # progress bar. ``None`` = no display attached (tests, library use).
-    on_step: Callable[[str], None] | None = None
+    # Optional progress hook: ``(current, total, description)``. The pipeline
+    # sets this before ``compile`` so the compiler can report real, countable
+    # progress (e.g. per-source extraction counts) to a determinate CLI bar.
+    # ``None`` = no display attached (tests, library use).
+    on_progress: Callable[[int, int, str], None] | None = None
 
     @abstractmethod
-    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
+    def compile(
+        self,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        pinned_facts: list[str] | None = None,
+    ) -> CompiledWiki:
         """Compile resolved chunks into a knowledge graph wiki.
 
         Parameters
@@ -36,6 +43,15 @@ class BaseCompiler(ABC):
             Optional ChunkTree list for multi-resolution compilation.
             When provided, internal node summaries and structured data
             are used to build richer wiki pages.
+        pinned_facts:
+            Optional list of facts the compiler MUST preserve in the
+            generated wiki. Used by WiCER to forward CEGAR-style
+            preservation constraints discovered during the
+            compile-evaluate-refine loop. Synthesis-based compilers
+            (e.g. :class:`TwoPhaseCompiler`) inject these as explicit
+            constraints in the generation prompt. Compilers that only
+            rearrange raw chunk text (e.g. :class:`GraphCompiler`)
+            ignore this parameter.
         """
         ...
 
@@ -180,7 +196,12 @@ class BaseCompiler(ABC):
                 node.title = f"{node.title} ({suffix})"
                 logger.debug("Disambiguated node %s title -> %s", node.id, node.title)
 
-    def _step(self, description: str) -> None:
-        """Report a compile sub-step to the progress display (no-op if unset)."""
-        if self.on_step is not None:
-            self.on_step(description)
+    def _report(self, current: int, total: int, description: str) -> None:
+        """Report compile progress to the display (no-op if no hook).
+
+        *current*/*total* let the bar fill determinately; *description*
+        updates the status line. Compilers MUST call this so the bar
+        counts real work units rather than faking activity.
+        """
+        if self.on_progress is not None:
+            self.on_progress(current, total, description)

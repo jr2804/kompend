@@ -4,6 +4,8 @@ variables:
     required: true
   - name: content
     required: true
+  - name: pinned_facts
+    required: false
 role: compile.generate
 response_format: json_object
 ---
@@ -17,6 +19,15 @@ Rules:
 - Cross-reference related concepts using [[Concept Name]] wikilink syntax.
 - Do NOT repeat the same information across multiple pages — each page should focus on its own concept.
 - If a concept only appears in one source, note that explicitly.
+{% if pinned_facts %}
+
+MUST-PRESERVE FACTS (hard constraint, WiCER refinement input):
+The following facts were dropped by a prior compilation pass and MUST appear, verbatim or paraphrased without loss of meaning, in the wiki page of the most relevant concept. Allocate prose budget to these BEFORE general coverage. Cite their source as you would any other claim.
+
+{% for fact in pinned_facts %}
+- {{ fact }}
+{% endfor %}
+{% endif %}
 
 Return a JSON object with exactly one key "pages", whose value is a list of objects each with:
   - "title": concept name (title-case noun phrase)
