@@ -70,13 +70,22 @@ The WiCER compiler lives in `src/knox/compilation/wicer.py`:
 | Component | Method | Purpose |
 |-----------|--------|---------|
 | `WiCERCompiler` | `compile()` | Main loop orchestrator |
-| `_blind_compile()` | Initial one-shot compilation |  |
+| `_blind_compile()` | Compile pass — delegates to the base compiler, forwarding the cumulative pin set on each iteration |  |
 | `_evaluate()` | Probe Q&A generation + scoring |  |
 | `_diagnose()` | Trace failures to source facts |  |
-| `_refine()` | Re-compile with pinned facts |  |
 
-The `GraphCompiler` in `src/knox/compilation/graph.py` provides the two-phase
-(extract-then-generate) alternative without the iterative loop.
+Refinement is **not** a separate "append pinned facts" step. Each
+iteration calls the base compiler again with `pinned_facts=F_cumulative`,
+which a synthesis compiler injects into its generation prompt as a hard
+preservation constraint (see `compilation/generation_prompt.md.j2`).
+This matches Algorithm 1 of the paper: once a fact is pinned, the next
+compilation cannot lose it.
+
+`build_pipeline` (in `src/knox/core/pipeline.py`) wires WiCER's base
+compiler to a `TwoPhaseCompiler` (extract → generate with provenance).
+The `GraphCompiler` is blind and produces raw heading-grouped chunk
+dumps; it cannot honor `pinned_facts` and is used only as the inner
+fallback for TwoPhase when the LLM is unavailable.
 
 ## Configuration
 
