@@ -36,7 +36,7 @@ $ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
 # ── Read build settings from config ─────────────────────────────────────
-# We parse the TOML to extract [build] section values. Since PowerShell
+# We parse the TOML to extract model settings. Since PowerShell
 # doesn't have native TOML support, we use a simple regex approach for
 # the specific keys we need.
 
@@ -55,15 +55,15 @@ function Get-ConfigValue($Key) {
 
 $LLMModel    = Get-ConfigValue "default_model"
 $EmbedModel  = Get-ConfigValue "embed_model"
-$OutputName  = Get-ConfigValue "output_name"
+# Derive output directory name from config filename:
+#   scripts\config-cloud.toml  →  demo-wiki-cloud
+#   scripts\config-local.toml   →  demo-wiki-local
+$BaseName    = [System.IO.Path]::GetFileNameWithoutExtension($ConfigFile)
+$OutputName  = $BaseName -replace "^config-", "demo-wiki-"
 $OutputPath  = Join-Path $ProjectRoot $OutputName
 
 if (-not $LLMModel) {
     Write-Error "Config missing [compile.llm] default_model"
-    exit 1
-}
-if (-not $OutputName) {
-    Write-Error "Config missing [build] output_name"
     exit 1
 }
 
