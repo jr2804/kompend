@@ -141,6 +141,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
                 return cached
 
+        self._step("generating wiki")
         wiki = self.generate(extractions, chunks, trees=trees)
 
         if not self._config.no_cache:
@@ -186,6 +187,7 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
+            self._step(f"extracting [{source_idx}/{num_sources}]")
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
 
             # Build hierarchical text from tree when available.

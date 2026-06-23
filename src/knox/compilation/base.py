@@ -6,6 +6,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
 from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
@@ -17,6 +18,11 @@ _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
 
 class BaseCompiler(ABC):
     """Compiler interface for KNOX Tier 4."""
+
+    # Optional progress hook. The pipeline sets this before ``compile`` so
+    # the compiler can report sub-steps (e.g. WiCER iterations) to the CLI
+    # progress bar. ``None`` = no display attached (tests, library use).
+    on_step: Callable[[str], None] | None = None
 
     @abstractmethod
     def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
@@ -173,3 +179,8 @@ class BaseCompiler(ABC):
                 used_suffixes.add(suffix.lower())
                 node.title = f"{node.title} ({suffix})"
                 logger.debug("Disambiguated node %s title -> %s", node.id, node.title)
+
+    def _step(self, description: str) -> None:
+        """Report a compile sub-step to the progress display (no-op if unset)."""
+        if self.on_step is not None:
+            self.on_step(description)

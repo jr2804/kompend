@@ -70,13 +70,23 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
             tracker.update_progress(current, f"Resolving [{current}/{total}]")
 
     def _start_done(start_msg: str, done_msg: str) -> Callable[[int, int, str], None]:
-        """compile/output: indeterminate bar, mark done on the first update."""
+        """compile/output: indeterminate bar driven by sub-step descriptions.
+
+        Events arrive as ``_emit(phase, current, total, detail)``:
+        - ``detail == "starting"`` → reset to indeterminate bar
+        - ``detail == "done"``      → mark phase complete
+        - any other non-empty ``detail`` → a compiler sub-step
+          (e.g. "iter 1/3 — generating probes"); update the description so
+          the bar visibly reflects progress during long compile calls.
+        """
 
         def _cb(current: int, total: int, detail: str) -> None:
-            if current == 0:
-                tracker.reset_for_phase(None, start_msg)
-            else:
+            if detail == "done":
                 tracker.message(done_msg)
+            elif detail == "starting":
+                tracker.reset_for_phase(None, start_msg)
+            elif detail:
+                tracker.message(detail)
 
         return _cb
 

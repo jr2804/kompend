@@ -156,11 +156,7 @@ def _discover_context_window(
     # 1. litellm model info — skip custom providers (never in litellm's DB,
     # so get_model_info always raises; calling it only produces a misleading
     # traceback-style warning). Build the registered custom prefixes once.
-    custom_prefixes = {
-        f"{e['provider']}/"
-        for e in (litellm.custom_provider_map or [])
-        if e.get("provider")
-    }
+    custom_prefixes = {f"{e['provider']}/" for e in (litellm.custom_provider_map or []) if e.get("provider")}
     if not any(model.startswith(p) for p in custom_prefixes):
         try:
             info = litellm.get_model_info(model)

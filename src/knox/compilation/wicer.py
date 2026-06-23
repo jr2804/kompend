@@ -105,6 +105,7 @@ class WiCERCompiler(BaseCompiler):
             )
 
         wiki = self._blind_compile(chunks)
+        self._step("blind compilation done")
         iteration_info: dict[str, Any] = {
             "wicer_iterations": 0,
             "wicer_refinements": 0,
@@ -113,12 +114,14 @@ class WiCERCompiler(BaseCompiler):
         }
 
         for attempt in range(self.max_iterations):
+            self._step(f"iter {attempt + 1}/{self.max_iterations} — generating probes")
             probes = self._generate_probes(wiki, chunks)
             if not probes:
                 logger.info("WiCER: no probes generated, ending loop")
                 break
             iteration_info["wicer_probes_generated"] += len(probes)
 
+            self._step(f"iter {attempt + 1}/{self.max_iterations} — evaluating {len(probes)} probes")
             eval_results = self._evaluate(wiki, probes)
             failures = [r for r in eval_results if not r.get("correct", False)]
             passed = len(eval_results) - len(failures)
@@ -129,12 +132,14 @@ class WiCERCompiler(BaseCompiler):
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
+            self._step(f"iter {attempt + 1}/{self.max_iterations} — diagnosing {len(failures)} failures")
             pinned_facts = self._diagnose(failures)
             if not pinned_facts:
                 logger.info("WiCER: no critical facts extracted, ending loop")
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
+            self._step(f"iter {attempt + 1}/{self.max_iterations} — refining wiki")
             wiki = self._refine(wiki, pinned_facts)
             iteration_info["wicer_refinements"] += 1
             iteration_info["wicer_iterations"] = attempt + 1

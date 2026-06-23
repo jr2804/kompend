@@ -17,12 +17,15 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
+    ProgressColumn,
     SpinnerColumn,
+    Task,
     TaskID,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+from rich.text import Text
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -42,6 +45,21 @@ def _should_show_progress(force: bool | None = None) -> bool:
 
 
 # ── Rich progress tracker ───────────────────────────────────────────────
+
+
+class _PercentageColumn(ProgressColumn):
+    """Percentage column that hides for indeterminate (total=None) tasks.
+
+    Rich renders ``0%`` for indeterminate tasks, which reads as "stuck".
+    Return an empty cell instead — the spinner + elapsed time + sub-step
+    description convey activity for indeterminate phases (compile/output).
+    """
+
+    def render(self, task: Task) -> Text:  # noqa: PLR6301  # mandatory Rich ProgressColumn API
+        if task.total is None:
+            return Text("")
+        pct = task.percentage or 0.0
+        return Text(f"{pct:>3.0f}%", style="progress.percentage")
 
 
 @dataclass
@@ -76,7 +94,7 @@ class FileProgressTracker:
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            _PercentageColumn(),
             TimeRemainingColumn(),
             TimeElapsedColumn(),
             console=self.console,
@@ -134,15 +152,16 @@ class PipelineProgress:
         """Reset the bar for a new pipeline phase.
 
         *total* sets the new bar total; ``None`` makes it indeterminate.
+
+        Rich's ``Progress.update(total=None)`` treats ``None`` as a
+        no-op sentinel ("don't change"), so it can *never* switch a task
+        to indeterminate. To actually change the total we recreate the
+        task via the proper ``add_task`` API.
         """
         ft = self._file_tracker
         if ft and ft._progress and ft._overall_task is not None:
-            ft._progress.update(
-                ft._overall_task,
-                total=total,
-                completed=0,
-                description=description,
-            )
+            ft._progress.remove_task(ft._overall_task)
+            ft._overall_task = ft._progress.add_task(description, total=total)
 
     def message(self, msg: str) -> None:
         """Update the bar description without changing progress."""

@@ -206,7 +206,14 @@ class WikiPipeline:
             self._emit("compile", 0, 1, "starting")
             _t0 = time.monotonic()
             if self.compiler:
-                wiki = self.compiler.compile(resolved, trees=all_trees)
+                # Attach the progress hook so the compiler can report
+                # sub-steps (WiCER iterations / two-phase extract-generate)
+                # to the CLI bar during the otherwise-opaque compile call.
+                self.compiler.on_step = lambda desc: self._emit("compile", 0, 1, desc)
+                try:
+                    wiki = self.compiler.compile(resolved, trees=all_trees)
+                finally:
+                    self.compiler.on_step = None
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             self._tier_timings["compile"] = time.monotonic() - _t0
