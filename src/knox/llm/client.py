@@ -153,16 +153,32 @@ def _discover_context_window(
     max_output: int | None = None
     source = "fallback"
 
-    # 1. litellm model info
-    try:
-        info = litellm.get_model_info(model)
-        if info:
-            max_input = info.get("max_input_tokens")
-            max_output = info.get("max_output_tokens")
-            if max_input is not None:
-                source = "litellm"
-    except Exception:  # litellm.get_model_info raises bare Exception for unmapped models (best-effort probe)
-        logger.warning("litellm.get_model_info failed for %s", model, exc_info=True)
+    # 1. litellm model info — skip custom providers (never in litellm's DB,
+    # so get_model_info always raises; calling it only produces a misleading
+    # traceback-style warning). Build the registered custom prefixes once.
+    custom_prefixes = {
+        f"{e['provider']}/"
+        for e in (litellm.custom_provider_map or [])
+        if e.get("provider")
+    }
+    if not any(model.startswith(p) for p in custom_prefixes):
+        try:
+            info = litellm.get_model_info(model)
+            if info:
+                max_input = info.get("max_input_tokens")
+                max_output = info.get("max_output_tokens")
+                if max_input is not None:
+                    source = "litellm"
+        except Exception:  # litellm raises bare Exception for unmapped models (best-effort probe)
+            # Not fatal: discovery falls through to the Ollama/fallback paths.
+            # No exc_info — litellm's message is self-explanatory and a
+            # traceback box looks like a crash.
+            logger.warning(
+                "litellm has no model info for %s — using fallback context limits",
+                model,
+            )
+    else:
+        logger.debug("Custom provider model %s — skipping litellm.get_model_info", model)
 
     # 2. Ollama runtime num_ctx (overrides litellm if available).
     if model.startswith("ollama/"):
