@@ -3,10 +3,19 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Final
 
 from knox.core.models import WikiNode
 
 logger = logging.getLogger(__name__)
+
+# Absolute token reserves for retrieval context budgeting.  Replaces an earlier
+# percentage-based safety margin that wasted ~150K tokens at 1M-context scale
+# while only covering ~500-token-prompt overhead at 8K scale.  Absolute reserves
+# scale correctly: prompt and response sizes are bounded, not proportional to
+# the model's window.
+_DEFAULT_SYSTEM_PROMPT_RESERVE: Final[int] = 4096
+_DEFAULT_RESPONSE_RESERVE: Final[int] = 4096
 
 
 class RetrievalMode(StrEnum):
@@ -28,14 +37,14 @@ class BudgetPlan:
 class ContextBudgetManager:
     """Calculate available token budget and plan retrieval strategy.
 
-    The budget is: context_window.max_input - system_prompt - reserve - response_reserve.
+    The budget is: ``max_input - system_prompt_reserve - response_reserve``.
+    Both reserves are absolute token counts (not percentages) so retrieval
+    on a 1M-token model does not surrender hundreds of thousands of tokens
+    to a margin sized for an 8K model.
+
     The plan decides what to include at what resolution based on query type
     and candidate count.
     """
-
-    _SYSTEM_PROMPT_RESERVE: int = 2000
-    _RESPONSE_RESERVE: int = 2000
-    _RESERVE_RATIO: float = 0.15
 
     def __init__(
         self,
@@ -43,17 +52,14 @@ class ContextBudgetManager:
         *,
         system_prompt_reserve: int | None = None,
         response_reserve: int | None = None,
-        reserve_ratio: float | None = None,
     ) -> None:
         self._max_input = max_input_tokens
-        self._system_reserve = system_prompt_reserve or self._SYSTEM_PROMPT_RESERVE
-        self._response_reserve = response_reserve or self._RESPONSE_RESERVE
-        self._reserve_ratio = reserve_ratio or self._RESERVE_RATIO
+        self._system_reserve = system_prompt_reserve if system_prompt_reserve is not None else _DEFAULT_SYSTEM_PROMPT_RESERVE
+        self._response_reserve = response_reserve if response_reserve is not None else _DEFAULT_RESPONSE_RESERVE
 
     @property
     def available_tokens(self) -> int:
-        raw = self._max_input - self._system_reserve - self._response_reserve
-        return max(1, int(raw * (1 - self._reserve_ratio)))
+        return max(1, self._max_input - self._system_reserve - self._response_reserve)
 
     def plan_zoom_in(
         self,

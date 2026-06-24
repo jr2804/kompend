@@ -6,6 +6,35 @@ LLM client layer. All LLM calls go through `LLMClient` — never import litellm 
 
 Custom litellm providers live in `knox.llm.providers/`.
 
+## Format module
+
+`knox.llm.format` is the single source of truth for LLM communication formats.
+It owns `salvage_json` (moved from `client.py`), `encode_for_llm`, `decode_from_llm`,
+`format_system_hint`, and `inject_format_hint`.
+
+Supported formats (config key `compile.llm.data_format`):
+
+| Value | Token reduction | Requires | Notes |
+|-------|----------------|----------|-------|
+| `"json"` | baseline | — | API-level `response_format: json_object` guarantee |
+| `"toon"` | 30–60% | `uv add toon_format` | Best with frontier models for output |
+| `"ison"` | 30–70% | `uv add ison-py` | Best with frontier models for output |
+
+**Input benefit:** `encode_for_llm()` serializes context data (entity batches, concept
+lists) in the chosen format before injection into prompt templates — reduces input
+tokens, leaving more budget for model output and reducing truncation-related
+malformed responses with small local models.
+
+**Output behaviour:** When `data_format != "json"` and `response_format=JSON_RESPONSE_FORMAT`
+is requested, `LLMClient.complete()` injects a format hint into the system message,
+skips the API-level `response_format` constraint, and parses the response with
+`decode_from_llm()`. Reliable output format switching requires capable models;
+for local/small models the input-only benefit is safer.
+
+**Call sites to update when adding new LLM context serialization:**
+Use `encode_for_llm(data, config.llm.data_format)` instead of `json.dumps(data)`
+for any Python data injected as a Jinja2 template variable for an LLM call.
+
 ## Provider submodule
 
 `src/knox/llm/providers/` registers providers that litellm does not ship

@@ -47,7 +47,7 @@ class HierarchicalChunker(BaseChunker):
     def __init__(
         self,
         max_tokens: int | None = None,
-        reserve_ratio: float = 0.2,
+        reserve_tokens: int | None = None,
         tokenizer_name: str = "cl100k_base",
         context_window: Any | None = None,
         chunk_size_min: int = 2048,
@@ -57,7 +57,7 @@ class HierarchicalChunker(BaseChunker):
     ) -> None:
         super().__init__(
             max_tokens=max_tokens,
-            reserve_ratio=reserve_ratio,
+            reserve_tokens=reserve_tokens,
             context_window=context_window,
             chunk_size_min=chunk_size_min,
             chunk_size_max=chunk_size_max,

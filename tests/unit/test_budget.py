@@ -28,8 +28,8 @@ class TestContextBudgetManager:
         assert 0 < mgr.available_tokens < 128_000
 
     def test_available_tokens_custom_reserves(self) -> None:
-        mgr = ContextBudgetManager(128_000, system_prompt_reserve=500, response_reserve=500, reserve_ratio=0.1)
-        expected = int((128_000 - 500 - 500) * 0.9)
+        mgr = ContextBudgetManager(128_000, system_prompt_reserve=500, response_reserve=500)
+        expected = 128_000 - 500 - 500
         assert mgr.available_tokens == expected
 
     def test_available_tokens_minimum(self) -> None:

@@ -65,28 +65,35 @@ Once the context window is known, the chunker
 computes the target chunk size:
 
 ```text
-raw        = int(max_input × (1 − reserve_ratio))
+raw        = max(0, max_input - reserve_tokens)
 effective  = max(chunk_size_min, min(raw, chunk_size_max))
 ```
 
 | Parameter | Default | Env var | Meaning |
 |-----------|---------|---------|---------|
-| `reserve_ratio` | `0.2` (20%) | — | Reserved for system prompt, instructions, and output |
+| `reserve_tokens` | `8192` | — | Absolute headroom for system prompt + LLM output budget |
 | `chunk_size_min` | `2048` tokens | `KNOX_BUDGET_CHUNK_SIZE_MIN` | Safety floor — never produce smaller chunks |
 | `chunk_size_max` | `131072` tokens | `KNOX_BUDGET_CHUNK_SIZE_MAX` | Safety ceiling — never produce larger chunks |
 
+> **Why absolute, not percentage?** A 20% ratio reserves 200K tokens on a
+> 1M-context model where the real overhead (system prompt + output budget)
+> is bounded at a few thousand tokens. Absolute reserves scale correctly:
+> the chunker recovers ~25K extra tokens at 128K and ~190K at 1M without
+> sacrificing safety on small models, where the ``chunk_size_min`` floor
+> still applies.
+
 ### Concrete Sizing by Model Class
 
-| Model context | Available (80%) | Effective after clamp | Clamped? |
-|---------------|-----------------|-----------------------|----------|
-| 4K (e.g. Phi-3-mini) | 3 276 | **3 276** | No (above min) |
-| 8K (e.g. Llama 3.1 8B) | 6 553 | **6 553** | No |
-| 32K (e.g. Mistral 7B) | 26 214 | **26 214** | No |
-| 128K (e.g. GPT-4o) | 104 857 | **104 857** | No |
-| 200K (e.g. Claude 3.5) | 163 840 | **131 072** | Yes — capped at max |
-| 1M (e.g. Gemini 1.5) | 819 200 | **131 072** | Yes — capped at max |
+| Model context | Available (− reserve) | Effective after clamp | Clamped? |
+|---------------|-----------------------|-----------------------|----------|
+| 4K (e.g. Phi-3-mini) | −4 096 | **2 048** | Yes — floored to min |
+| 8K (e.g. Llama 3.1 8B) | 0 | **2 048** | Yes — floored to min |
+| 32K (e.g. Mistral 7B) | 23 808 | **23 808** | No |
+| 128K (e.g. GPT-4o) | 122 880 | **122 880** | No |
+| 200K (e.g. Claude 3.5) | 196 608 | **131 072** | Yes — capped at max |
+| 1M (e.g. Gemini 1.5) | 991 808 | **131 072** | Yes — capped at max |
 
-Without the clamp, a 1M-token model would produce 800K-token chunks —
+Without the clamp, a 1M-token model would produce 992K-token chunks —
 far too large for retrieval quality. The `chunk_size_max` rail prevents this.
 
 > **Configuring the rails:** Lower `chunk_size_max` for finer-grained
@@ -152,10 +159,11 @@ is **output quality**, which is entirely model-dependent.
 
 | Aspect | How KNOX adapts |
 |--------|-----------------|
-| Chunk size | Proportional to model context (clamped to rails) |
+| Chunk size | `context_window − reserve_tokens`, clamped to rails |
 | Number of chunks | Inversely proportional to chunk size |
-| Output token budget | Per-phase `ratio × input`, clamped to `[min, max]` |
-| System-prompt reserve | 20% of context reserved automatically |
+| Output token budget | Per-phase absolute ceiling (`*_output_max`) |
+| Retrieval system-prompt reserve | 4 096 tokens absolute |
+| Retrieval response reserve | 4 096 tokens absolute |
 
 ### What KNOX Does NOT Equalize
 
@@ -183,22 +191,22 @@ forced to split semantic units that belong together.
 
 ## Output Budget Reference
 
-KNOX uses ratio-based output budgets per pipeline phase. Each ratio is
-multiplied by the input token count, then clamped:
+KNOX uses **absolute** per-phase output token budgets. These cap how many
+tokens each LLM call is allowed to emit:
 
 ```text
-output_tokens = clamp(input_tokens × ratio, output_min, output_max)
+max_tokens = *_output_max   # per-phase ceiling, scales the same on 8K or 1M models
 ```
 
-| Phase | Ratio | Min | Max | Env var prefix |
-|-------|-------|-----|-----|----------------|
-| Extraction | `0.3` | 512 | 8 192 | `KNOX_BUDGET_EXTRACT_OUTPUT_*` |
-| Generation | — | — | 16 384 | `KNOX_BUDGET_GEN_OUTPUT_MAX` |
-| Overview | `0.1` | 256 | 4 096 | `KNOX_BUDGET_OVERVIEW_OUTPUT_*` |
-| Verification | `0.2` | 256 | 4 096 | — (config only) |
-| Lint | — | — | 8 192 | — (config only) |
-| WiCER probe | — | — | 4 096 | — (config only) |
-| WiCER eval | — | — | 4 096 | — (config only) |
+| Phase | Max tokens | Env var |
+|-------|-----------|---------|
+| Extraction | 8 192 | `KNOX_BUDGET_EXTRACT_OUTPUT_MAX` |
+| Generation | 16 384 | `KNOX_BUDGET_GEN_OUTPUT_MAX` |
+| Overview | 4 096 | `KNOX_BUDGET_OVERVIEW_OUTPUT_MAX` |
+| Verification | 4 096 | — (config only) |
+| Lint | 8 192 | — (config only) |
+| WiCER probe | 4 096 | — (config only) |
+| WiCER eval | — | — |
 
 All values are in tokens.
 

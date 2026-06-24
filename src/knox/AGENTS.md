@@ -273,18 +273,22 @@ The two failure modes are equally bad:
 - **Too small** — real matches beyond the cutoff are silently dropped.
 - **Too large** — wastes context but still truncates long inputs.
 
-    # ❌ FORBIDDEN — magic character crop
-    match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
+## ❌ FORBIDDEN — magic character crop
 
-    # ❌ FORBIDDEN — magic token crop (same sin, different unit)
+    match_text = (f"{node.title} {[node.content or ''](:200)}").lower()
+
+## ❌ FORBIDDEN — magic token crop (same sin, different unit)
+
     prompt = text[:4096]
 
-    # ✅ CORRECT — scan/process the full content
+## ✅ CORRECT — scan/process the full content
+
     match_text = (f"{node.title} {node.content or ''}").lower()
 
-    # ✅ CORRECT — when a limit is genuinely needed (model context window,
-    #              output budget), derive it from config, not a literal,
-    #              and batch/chunk so nothing is silently dropped
+## ✅ CORRECT — when a limit is genuinely needed (model context window
+
+    # output budget), derive it from config, not a literal,
+    # and batch/chunk so nothing is silently dropped
     segment_char_size = _tokens_to_chars(cw.max_input - system_tokens - budget)
     segments = _segment_sources(sources, segment_char_size)
 
@@ -294,7 +298,7 @@ in code — and the code must **batch or paginate** so no content is silently
 lost. Hard-coded ``[:N]`` / ``[:tokens]`` crops are **forbidden,
 non-negotiable**. No exceptions.
 
-#### Summary
+### Summary
 
 | Pattern | Forbidden | Correct approach |
 |---------|-----------|-----------------|
@@ -303,7 +307,7 @@ non-negotiable**. No exceptions.
 | `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
 | ``content[:200]`` / ``text[:4096]`` | ❌ | Full content, or batch with a config/model-derived limit |
 
-### Jinja2 conventions
+#### Jinja2 conventions
 
 - Template files use the `.md.j2` extension (markdown + Jinja2).
 - Variables use `{{ snake_case_name }}` syntax.
@@ -325,7 +329,7 @@ non-negotiable**. No exceptions.
   role: lint.factual-consistency
   response_format: json_object
 
-## temperature: 0.0
+### temperature: 0.0
 
     ---
 
@@ -340,7 +344,7 @@ Required variables declared in frontmatter are checked by the loader. If a
 required variable is missing, `ValueError` is raised before the template is
 ever rendered.
 
-### Adding new text — checklist
+#### Adding new text — checklist
 
 Before adding a string constant to a Python file, ask:
 
@@ -351,7 +355,7 @@ Before adding a string constant to a Python file, ask:
 5. **Is this an error message referencing code internals?** → Acceptable in Python.
 6. **Have I added a `templates/` directory if one doesn't exist?** → Do it.
 
-### Pack structure
+#### Pack structure
 
 When moving prompts out of `packs/builtins/<name>.py`, use this layout:
 
@@ -381,7 +385,7 @@ The `pack.toml` manifest:
     response_format = "json_object"
     temperature = 0.0
 
-## Work Guidance
+### Work Guidance
 
 - Python 3.11+ only. Use modern typing syntax (`X | None`, `list[str]`).
 - Every module in `src/knox/` must have an `__init__.py` (even if empty) that
@@ -391,7 +395,7 @@ The `pack.toml` manifest:
 - `src/knox/core/config/` governs all configuration — see its AGENTS.md for
   config-specific rules.
 
-## Verification
+### Verification
 
 - `ruff check src/knox/` — must pass without errors
 - `ty check src/knox/` — type checking (mypy is not used)
@@ -400,7 +404,7 @@ The `pack.toml` manifest:
 
 ---
 
-## Child DOX Index
+### Child DOX Index
 
 | Path | Scope |
 |------|-------|

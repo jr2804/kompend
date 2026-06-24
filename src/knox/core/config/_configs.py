@@ -32,6 +32,21 @@ class OutputFormat(StrEnum):
     TYPST = "typst"
 
 
+class LlmDataFormat(StrEnum):
+    """Data format for LLM communication (prompt input and response output).
+
+    - ``JSON``: Standard JSON (default). Uses API-level response_format guarantee.
+    - ``TOON``: Token-Oriented Object Notation. 30-60% fewer tokens vs JSON.
+    - ``ISON``: Interchange Simple Object Notation. 30-70% fewer tokens vs JSON.
+
+    Required packages: TOON → ``uv add toon_format``, ISON → ``uv add ison-py``.
+    """
+
+    JSON = "json"
+    TOON = "toon"
+    ISON = "ison"
+
+
 @dataclass
 class LLMConfig:
     """Configuration for LLM models, timeouts, and fallback behavior."""
@@ -49,16 +64,19 @@ class LLMConfig:
     role_models: dict[str, str] = field(default_factory=dict)
     api_base: str | None = None
     api_key: str | None = None
+    data_format: LlmDataFormat = LlmDataFormat.JSON
 
 
 @dataclass
 class BudgetConfig:
-    """Adaptive token budgets for LLM operations.
+    """Token budgets and structural limits for LLM operations.
 
-    Fixed char budgets have been replaced with adaptive sizing:
-    - Input: context window discovered from model (knox-0rq)
-    - Output: clamp(input_tokens * ratio, output_min, output_max) per phase (knox-vxd)
-    - Chunking: clamp(available_tokens, chunk_size_min, chunk_size_max) (knox-7sp)
+    Sizing strategy:
+    - Input chunks: ``clamp(context_window - reserve, chunk_size_min, chunk_size_max)`` (knox-7sp)
+    - LLM output reserves: per-phase absolute ``*_output_max`` (knox-vxd).  Absolute
+      reserves scale correctly to large context windows; an earlier ratio-based
+      design (``*_output_ratio`` / ``*_output_min``) was specified but never
+      implemented and has been removed.
     """
 
     # Structural controls (not token budgets)
@@ -73,28 +91,23 @@ class BudgetConfig:
     chunk_size_min: int = 2048
     chunk_size_max: int = 131072
 
-    # Extraction output: ratio × input, clamped
-    extract_output_ratio: float = 0.3
-    extract_output_min: int = 512
+    # Extraction output reserve (tokens, absolute)
     extract_output_max: int = 8192
 
-    # Generation output: fixed ceiling per concept (expansion, not compression)
+    # Generation output: per-concept ceiling (expansion, not compression)
     gen_output_max: int = 16384
 
-    # Overview output: ratio × total sources, clamped
-    overview_output_ratio: float = 0.1
-    overview_output_min: int = 256
+    # Overview input batch size (×4 → chars) and verification excerpt slice
+    # size (×4 → chars).  Named ``*_output_max`` for historical reasons; both
+    # are consumed as input-chunking budgets, not LLM ``max_tokens`` caps.
     overview_output_max: int = 4096
-
-    # Verification output: ratio × excerpt, clamped
-    verify_output_ratio: float = 0.2
-    verify_output_min: int = 256
     verify_output_max: int = 4096
 
-    # Lint output
+    # Lint output reserve (tokens, absolute) — currently unused, retained for
+    # forthcoming lint-LLM integration.
     lint_output_max: int = 8192
 
-    # WiCER probe/eval output
+    # WiCER probe/eval output reserves (tokens, absolute)
     wicer_probe_output_max: int = 4096
     wicer_eval_output_max: int = 4096
 

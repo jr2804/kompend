@@ -826,6 +826,7 @@ def build_llm_client(config: PipelineConfig) -> LLMClient:
 
     return LLMClient(
         default_model=default_model,
+        data_format=config.llm.data_format,
         fallback_chain=list(config.llm.fallback_chain),
         max_retries_per_model=config.llm.fallback_max_retries,
         timeout=config.llm.timeout,

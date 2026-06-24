@@ -256,9 +256,9 @@ class TestRetrievalBudget:
 
     def test_budget_manager_available_tokens(self) -> None:
         """ContextBudgetManager computes available_tokens correctly."""
-        mgr = ContextBudgetManager(max_input_tokens=32000, reserve_ratio=0.2)
-        raw = 32000 - 2000 - 2000  # max_input - system_reserve - response_reserve
-        expected = int(raw * (1 - 0.2))
+        mgr = ContextBudgetManager(max_input_tokens=32000)
+        # Default reserves: system + response (both 4096 absolute, no ratio).
+        expected = 32000 - 4096 - 4096
         assert mgr.available_tokens == expected
 
     def test_zoom_in_plan_within_budget(self) -> None:
@@ -269,7 +269,7 @@ class TestRetrievalBudget:
             WikiNode(id="sec2", title="Section 2", content="C" * 400, node_type="section", depth=1, parent_id="root", children_ids=["leaf2"]),
             WikiNode(id="leaf2", title="Leaf 2", content="D" * 400, node_type="concept", depth=2, parent_id="sec2"),
         ]
-        mgr = ContextBudgetManager(max_input_tokens=32000, reserve_ratio=0.2)
+        mgr = ContextBudgetManager(max_input_tokens=32000)
         plan = mgr.plan_zoom_in(candidates=nodes, query="test query")
         assert plan.estimated_tokens <= mgr.available_tokens
         assert plan.mode == RetrievalMode.ZOOM_IN
@@ -288,7 +288,7 @@ class TestRetrievalBudget:
                 children_ids=[f"leaf{i}" for i in range(20)],
             )
         )
-        mgr = ContextBudgetManager(max_input_tokens=32000, reserve_ratio=0.2)
+        mgr = ContextBudgetManager(max_input_tokens=32000)
         plan = mgr.plan_zoom_out(candidates=nodes, query="test query")
         assert plan.estimated_tokens <= mgr.available_tokens
         assert plan.mode == RetrievalMode.ZOOM_OUT
@@ -299,7 +299,7 @@ class TestRetrievalBudget:
             WikiNode(id="t1", title="Table 1", content="Accuracy results", node_type="concept", structured_sections={"table": {"cols": ["A"]}}),
             WikiNode(id="t2", title="Table 2", content="Latency results", node_type="concept", structured_sections={"table": {"cols": ["B"]}}),
         ]
-        mgr = ContextBudgetManager(max_input_tokens=32000, reserve_ratio=0.2)
+        mgr = ContextBudgetManager(max_input_tokens=32000)
         plan = mgr.plan_targeted(candidates=nodes, query="table accuracy")
         assert plan.estimated_tokens <= mgr.available_tokens
         assert plan.mode == RetrievalMode.TARGETED

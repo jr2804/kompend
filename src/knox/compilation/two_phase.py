@@ -45,6 +45,7 @@ from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
+from knox.llm.format import encode_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +365,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
                 prompt = _loader.render(
                     "compilation/generation_prompt.md.j2",
-                    concepts_json=json.dumps(batch),
+                    concepts_json=encode_for_llm(batch, self._config.llm.data_format),
                     content=content_block,
                     pinned_facts=pinned_facts,
                 )
@@ -373,6 +374,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     system=generation_system,
                     model=self._model,
                     timeout=self._timeout,
+                    data_format=self._config.llm.data_format,
                 )
 
                 if not isinstance(data, dict):
@@ -453,6 +455,7 @@ class TwoPhaseCompiler(BaseCompiler):
             system=extraction_system,
             model=self._model,
             timeout=self._timeout,
+            data_format=self._config.llm.data_format,
         )
         if isinstance(data, dict):
             result = Extraction(

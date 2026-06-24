@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Final
 
 from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
@@ -24,10 +24,17 @@ from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.llm.format import encode_for_llm
 
 logger = logging.getLogger(__name__)
 
 _loader = get_template_loader()
+
+# Absolute token reserve carved out of the context window for the WiCER probe
+# and evaluation prompts (system prompt + framing overhead).  Sized for the
+# compact JSON-emitting prompts used by ``probe_questions.md.j2`` and
+# ``probe_eval.md.j2``; both are short fixed envelopes.
+_WICER_PROMPT_RESERVE_TOKENS: Final[int] = 1024
 
 
 class WiCERCompiler(BaseCompiler):
@@ -81,10 +88,10 @@ class WiCERCompiler(BaseCompiler):
         cw = llm_client.context_window if llm_client else None
         if cw is not None:
             self._probe_input_chars = _tokens_to_chars(
-                max(1, cw.max_input - 1024 - self._probe_output_budget),
+                max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget),
             )
             self._eval_input_chars = _tokens_to_chars(
-                max(1, cw.max_input - 1024 - self._eval_output_budget),
+                max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget),
             )
         else:
             self._probe_input_chars = _tokens_to_chars(self._probe_output_budget)
@@ -303,7 +310,7 @@ class WiCERCompiler(BaseCompiler):
                         "content": _loader.render(
                             "compilation/wicer_evaluate.md.j2",
                             wiki_text=segment,
-                            probes_json=json.dumps(probes),
+                            probes_json=encode_for_llm(probes, self._config.llm.data_format),
                         ),
                     },
                 ],
@@ -337,7 +344,13 @@ class WiCERCompiler(BaseCompiler):
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a diagnostic assistant. Return only valid JSON."},
-                {"role": "user", "content": _loader.render("compilation/wicer_diagnose.md.j2", failures_json=json.dumps(failures))},
+                {
+                    "role": "user",
+                    "content": _loader.render(
+                        "compilation/wicer_diagnose.md.j2",
+                        failures_json=encode_for_llm(failures, self._config.llm.data_format),
+                    ),
+                },
             ],
             role="wicer.refine",
             response_format=JSON_RESPONSE_FORMAT,

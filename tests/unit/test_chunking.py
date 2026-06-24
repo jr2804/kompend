@@ -227,7 +227,7 @@ class TestHierarchicalChunker:
         # effective_max=100 (reserve=0). 500 tokens → ceil(500/100)=5 chunks <= 10
         text = "word " * 500  # ~625 tokens → 7 chunks
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
-        tree = HierarchicalChunker(max_tokens=100, reserve_ratio=0.0).chunk(doc)
+        tree = HierarchicalChunker(max_tokens=100, reserve_tokens=0).chunk(doc)
         assert tree.strategy == ChunkStrategy.TWO_LEVEL
 
     def test_strategy_multi_resolution(self) -> None:
@@ -235,7 +235,7 @@ class TestHierarchicalChunker:
         # effective_max=100. 1500 tokens → ceil(1500/100)=15 chunks > 10
         text = "word " * 1200  # ~1500 tokens → 15 chunks
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
-        tree = HierarchicalChunker(max_tokens=100, reserve_ratio=0.0).chunk(doc)
+        tree = HierarchicalChunker(max_tokens=100, reserve_tokens=0).chunk(doc)
         assert tree.strategy == ChunkStrategy.MULTI_RESOLUTION
 
     # ── token computation ───────────────────────────────────────────────
@@ -257,10 +257,10 @@ class TestHierarchicalChunker:
 
     # ── effective_max / context window ──────────────────────────────────
 
-    def test_reserve_ratio_effective(self) -> None:
-        chunker = HierarchicalChunker(max_tokens=1000, reserve_ratio=0.2)
+    def test_reserve_tokens_effective(self) -> None:
+        chunker = HierarchicalChunker(max_tokens=1000, reserve_tokens=200)
         assert chunker._effective_max == 800
-        chunker2 = HierarchicalChunker(max_tokens=1000, reserve_ratio=0.0)
+        chunker2 = HierarchicalChunker(max_tokens=1000, reserve_tokens=0)
         assert chunker2._effective_max == 1000
 
     def test_chunk_ids_assigned(self) -> None:
@@ -295,7 +295,7 @@ class TestHierarchicalChunker:
         assert "Config [key] = value" in leaves[0].heading_path
 
     def test_config_chunk_size_flows_to_effective_max(self) -> None:
-        chunker = HierarchicalChunker(max_tokens=1024, reserve_ratio=0.2)
+        chunker = HierarchicalChunker(max_tokens=1024, reserve_tokens=205)
         assert chunker._effective_max == 819
 
     def test_default_chunk_size_is_1024(self) -> None:
@@ -303,8 +303,8 @@ class TestHierarchicalChunker:
 
     def test_context_window_adapts_effective_max(self) -> None:
         cw = ContextWindow(max_input=8192, max_output=4096, source="test")
-        chunker = HierarchicalChunker(max_tokens=1024, context_window=cw, reserve_ratio=0.2)
-        assert chunker._effective_max == int(8192 * 0.8)
+        chunker = HierarchicalChunker(max_tokens=1024, context_window=cw, reserve_tokens=1639)
+        assert chunker._effective_max == 8192 - 1639
 
     def test_context_window_tiny_model(self) -> None:
         cw = ContextWindow(max_input=512, max_output=256, source="test")
@@ -317,8 +317,8 @@ class TestHierarchicalChunker:
         assert chunker._effective_max == 131072
 
     def test_no_context_window_uses_max_tokens(self) -> None:
-        chunker = HierarchicalChunker(max_tokens=2048, reserve_ratio=0.25)
-        assert chunker._effective_max == int(2048 * 0.75)
+        chunker = HierarchicalChunker(max_tokens=2048, reserve_tokens=512)
+        assert chunker._effective_max == 2048 - 512
 
     # ── text splitting ──────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ class TestHierarchicalChunker:
             "Second paragraph is longer and should stay together if possible. It has more words that we can count.",
         ]
         doc = _make_doc(_text_elements(paragraphs))
-        tree = HierarchicalChunker(max_tokens=24, reserve_ratio=0.0).chunk(doc)
+        tree = HierarchicalChunker(max_tokens=24, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) >= 1
         assert any(_sentence_ends(n.chunk.text) for n in leaves)
@@ -345,7 +345,7 @@ class TestHierarchicalChunker:
             "Short sentence three is the longest of them all.",
         ]
         doc = _make_doc(_text_elements(sentences))
-        tree = HierarchicalChunker(max_tokens=12, reserve_ratio=0.0).chunk(doc)
+        tree = HierarchicalChunker(max_tokens=12, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
             assert _sentence_ends(n.chunk.text)
@@ -353,7 +353,7 @@ class TestHierarchicalChunker:
     def test_long_paragraph_split_at_sentence_boundary(self) -> None:
         text = "Sentence one is moderately long. " * 6
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content=text)])
-        tree = HierarchicalChunker(max_tokens=16, reserve_ratio=0.0).chunk(doc)
+        tree = HierarchicalChunker(max_tokens=16, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
             assert _sentence_ends(n.chunk.text)
@@ -369,14 +369,16 @@ class TestContextWindowClamp:
 
     def test_small_context_respects_min(self) -> None:
         cw = ContextWindow(max_input=8192, max_output=4096, source="litellm")
+        # Default reserve_tokens=8192 zeros out an 8K window → floored to chunk_size_min.
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
-        assert chunker._effective_max == 6553
+        assert chunker._effective_max == 2048
 
     def test_mid_range_context_unclamped(self) -> None:
         cw = ContextWindow(max_input=131072, max_output=8192, source="litellm")
+        # Default reserve_tokens=8192 → effective=122880, sits between min and max rails.
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
-        assert chunker._effective_max == 104857
+        assert chunker._effective_max == 131072 - 8192
 
     def test_fallback_uses_max_tokens_unclamped(self) -> None:
-        chunker = HierarchicalChunker(max_tokens=1024, reserve_ratio=0.2)
+        chunker = HierarchicalChunker(max_tokens=1024, reserve_tokens=205)
         assert chunker._effective_max == 819

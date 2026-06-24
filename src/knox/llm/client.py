@@ -25,96 +25,16 @@ import litellm
 import knox.llm.providers  # noqa: F401 — registers custom providers on import
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
+from knox.llm.format import (
+    decode_from_llm,
+    format_system_hint,
+    inject_format_hint,
+    salvage_json,  # noqa: F401 — re-exported; callers import from here
+)
 
 logger = logging.getLogger(__name__)
 
 JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
-
-
-def salvage_json(content: str) -> Any | None:
-    """Best-effort parse of JSON that small LLMs may truncate or malform.
-
-    Tries, in order:
-    1. Direct ``json.loads``.
-    2. Strip markdown code fences.
-    3. Close unclosed ``{ }`` / ``[ ]`` (respecting string literals).
-    4. ``raw_decode`` to salvage the first valid value from extra data.
-
-    Returns the parsed value or ``None`` if nothing could be salvaged.
-    """
-    if not content or not content.strip():
-        return None
-    content = content.strip()
-
-    # 1. Direct parse
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-
-    # 2. Strip markdown code fences
-    if content.startswith("```"):
-        inner = content.split("\n", 1)[-1] if "\n" in content else content[3:]
-        inner = inner.strip()
-        if inner.endswith("```"):
-            inner = inner[:-3].strip()
-        try:
-            return json.loads(inner)
-        except json.JSONDecodeError:
-            content = inner
-
-    # 3. Close unclosed brackets/braces (truncated output)
-    closed = _close_truncated_json(content)
-    if closed is not None:
-        try:
-            return json.loads(closed)
-        except json.JSONDecodeError:
-            pass
-
-    # 4. Salvage the first valid JSON value (handles extra data)
-    try:
-        decoder = json.JSONDecoder()
-        obj, _end = decoder.raw_decode(content)
-        return obj
-    except json.JSONDecodeError:
-        pass
-
-    return None
-
-
-def _close_truncated_json(s: str) -> str | None:
-    """Close any unclosed ``{``/``[`` in *s*, respecting string literals.
-
-    Returns the closed string, or ``None`` if brackets are already balanced.
-    """
-    stack: list[str] = []
-    in_string = False
-    escape = False
-    for ch in s:
-        if escape:
-            escape = False
-            continue
-        if ch == "\\":
-            escape = True
-            continue
-        if ch == '"':
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch in "{[":
-            stack.append("}" if ch == "{" else "]")
-        elif ch in "}]" and stack and stack[-1] == ch:
-            stack.pop()
-    if not stack and not in_string:
-        return None
-    s = s.rstrip()
-    if s.endswith(","):
-        s = s[:-1]
-    # Close an unterminated string literal before closing brackets.
-    if in_string:
-        s += '"'
-    return s + "".join(reversed(stack))
 
 
 @dataclass(frozen=True)
@@ -385,6 +305,15 @@ class LLMClient:
     change over time, and the right choice depends on the user's
     environment and budget.
     """
+    data_format: str = "json"
+    """LLM communication format: ``"json"`` (default), ``"toon"``, or ``"ison"``.
+
+    Controls both how structured context data is serialized for prompt
+    input (via :func:`encode_for_llm`) and how the LLM response is
+    parsed. For non-JSON formats, the API-level ``response_format:
+    json_object`` constraint is replaced with a system-message hint.
+    Requires optional packages: ``toon_format`` (TOON) or ``ison-py`` (ISON).
+    """
     fallback_chain: list[str] = field(default_factory=list)
     role_models: dict[str, list[str]] = field(default_factory=dict)
     max_retries_per_model: int = 2
@@ -449,6 +378,16 @@ class LLMClient:
         Raises a typed :class:`knox.llm.errors.LLMError` subclass on
         failure — never a raw provider exception and never silently.
         """
+        # Apply format-aware messaging: non-JSON formats replace the
+        # API-level json_object constraint with a system-message hint.
+        effective_rf = response_format
+        effective_messages: list[dict[str, Any]] = list(messages)
+        if self.data_format != "json" and response_format is not None:
+            hint = format_system_hint(self.data_format)
+            if hint:
+                effective_messages = inject_format_hint(effective_messages, hint)
+            effective_rf = None  # don't pass response_format to litellm
+
         chain = self.chain_for(role)
         cw = self.context_window
         if cw is None:
@@ -458,11 +397,11 @@ class LLMClient:
         def _call(model: str) -> Any:
             kwargs: dict[str, Any] = {
                 "model": model,
-                "messages": messages,
+                "messages": effective_messages,
                 "temperature": temperature,
             }
-            if response_format is not None:
-                kwargs["response_format"] = response_format
+            if effective_rf is not None:
+                kwargs["response_format"] = effective_rf
             if max_tokens is not None:
                 kwargs["max_tokens"] = max_tokens
             if self.timeout is not None:
@@ -528,16 +467,18 @@ class LLMClient:
 
         json_data: dict[str, Any] | None = None
         if response_format is not None and response_format.get("type") == "json_object":
-            parsed = salvage_json(content)
+            # Use format-aware decoder; falls back to salvage_json for "json".
+            parsed = decode_from_llm(content, self.data_format)
             if parsed is None:
-                msg = "LLM returned invalid JSON"
+                fmt_label = self.data_format.upper()
+                msg = f"LLM returned unparseable {fmt_label}"
                 raise PermanentError(
                     msg,
                     model=diagnostics.model_used,
                     attempts=diagnostics.attempts,
                 )
             if not isinstance(parsed, dict):
-                msg = f"LLM returned JSON of type {type(parsed).__name__}, expected object"
+                msg = f"LLM returned {type(parsed).__name__}, expected object"
                 raise PermanentError(
                     msg,
                     model=diagnostics.model_used,
