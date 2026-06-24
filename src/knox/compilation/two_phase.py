@@ -586,4 +586,30 @@ class TwoPhaseCompiler(BaseCompiler):
                         {"source": node.id, "target": target_id, "type": "related", "entity": related_title},
                     )
 
+        # Title-based edges: if a page's title appears as plaintext in another
+        # page's content, that's an implicit cross-reference (not just entity
+        # co-occurrence). The orphan check treats both endpoints as linked, so
+        # direction is semantic (mentioning page → mentioned page) not structural.
+        for node in nodes:
+            content_lower = (node.content or "").lower()
+            for other in nodes:
+                if other.id == node.id:
+                    continue
+                other_title = other.title.lower().strip()
+                if len(other_title) < 4:  # ponytail: skip very short generic titles
+                    continue
+                if other_title in content_lower:
+                    pair = (min(node.id, other.id), max(node.id, other.id))
+                    if pair in seen_edges:
+                        continue
+                    seen_edges.add(pair)
+                    edges.append(
+                        {
+                            "source": node.id,
+                            "target": other.id,
+                            "type": "title_reference",
+                            "entity": other.title,
+                        }
+                    )
+
         return edges
