@@ -260,6 +260,40 @@ what the effective fallback is in the docstring:
                 ``TierStateStore(output_dir / ".knox" / "compile_state.json")``.
         """
 
+#### Antipattern 4 — Hard cropping to fixed character/token counts
+
+**Never** crop text (LLM output, page content, entity-matching input, prompt
+context) to a hard-coded number of characters or tokens. A magic number like
+``content[:200]`` silently discards the tail of every input — links, entities,
+and facts that live past the cutoff are lost forever, producing false negatives
+(orphan pages, missing edges, dropped citations) that look like compiler bugs.
+
+The two failure modes are equally bad:
+
+- **Too small** — real matches beyond the cutoff are silently dropped.
+- **Too large** — wastes context but still truncates long inputs.
+
+    # ❌ FORBIDDEN — magic character crop
+    match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
+
+    # ❌ FORBIDDEN — magic token crop (same sin, different unit)
+    prompt = text[:4096]
+
+    # ✅ CORRECT — scan/process the full content
+    match_text = (f"{node.title} {node.content or ''}").lower()
+
+    # ✅ CORRECT — when a limit is genuinely needed (model context window,
+    #              output budget), derive it from config, not a literal,
+    #              and batch/chunk so nothing is silently dropped
+    segment_char_size = _tokens_to_chars(cw.max_input - system_tokens - budget)
+    segments = _segment_sources(sources, segment_char_size)
+
+**Rule:** If you must bound input size (context window, output token budget),
+the limit comes from the model's discovered limits or config — never a literal
+in code — and the code must **batch or paginate** so no content is silently
+lost. Hard-coded ``[:N]`` / ``[:tokens]`` crops are **forbidden,
+non-negotiable**. No exceptions.
+
 #### Summary
 
 | Pattern | Forbidden | Correct approach |
@@ -267,6 +301,7 @@ what the effective fallback is in the docstring:
 | `model="ollama/llama3.2"` | ❌ | Config object / explicit param |
 | `budget: int = 6000` | ❌ | Config object with grouped defaults |
 | `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
+| ``content[:200]`` / ``text[:4096]`` | ❌ | Full content, or batch with a config/model-derived limit |
 
 ### Jinja2 conventions
 

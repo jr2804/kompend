@@ -157,28 +157,32 @@ class MissingFrontmatterRule:
 
 
 class OrphanPageRule(BaseLintRule):
-    """Detect pages with no incoming links from other pages.
+    """Detect pages with no connections to other pages.
 
     A page is considered linked if it has incoming ``[[wikilinks]]`` in other
-    pages' content OR incoming edges in ``wiki.edges`` (structured
-    cross-references created by the compiler).
+    pages' content OR participates in any edge in ``wiki.edges``. Relationship
+    edges (``entity_reference``, ``sibling``, ``related``, ``concept_reference``)
+    are undirected connections — both endpoints are linked, not just the
+    ``target``. Counting only ``target`` falsely orphaned every node that sorts
+    alphabetically first and was stored as ``source``.
     """
 
     name = "orphan-page"
-    description = "Pages with no incoming links"
+    description = "Pages with no connections to other pages"
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         incoming_content = _incoming_link_counts(wiki)
-        incoming_edges: set[str] = set()
+        # Relationship edges connect both endpoints — count either role.
+        linked_nodes: set[str] = set()
         for edge in wiki.edges:
-            target = edge.get("target")
-            if target:
-                incoming_edges.add(target)
+            for endpoint in (edge.get("source"), edge.get("target")):
+                if endpoint:
+                    linked_nodes.add(endpoint)
 
         results: list[LintResult] = []
         for node in wiki.nodes:
             has_content_links = incoming_content.get(node.id, 0) > 0
-            has_edge_links = node.id in incoming_edges
+            has_edge_links = node.id in linked_nodes
             if not has_content_links and not has_edge_links:
                 # Skip single-page wikis — orphans are meaningless there
                 if len(wiki.nodes) <= 1:

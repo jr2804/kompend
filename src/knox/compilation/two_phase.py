@@ -545,7 +545,11 @@ class TwoPhaseCompiler(BaseCompiler):
         for ent_name in entity_index:
             ent_lower = ent_name.lower()
             for node in nodes:
-                match_text = (f"{node.title} {(node.content or '')[:200]}").lower()
+                # Scan FULL content — cropping to the first N chars (the old
+                # [:200]) silently dropped every match past the cutoff, falsely
+                # orphaning pages whose entity mentions appear later. See
+                # src/knox/AGENTS.md: Antipattern 4 (no hard crops).
+                match_text = (f"{node.title} {node.content or ''}").lower()
                 if ent_lower in match_text:
                     entity_to_node[ent_name].add(node.id)
 
