@@ -296,6 +296,46 @@ history_size = 20
 # Glob patterns excluded from source discovery
 # patterns = ["*.tmp", ".drafts/", "*.bak"]
 
+# ── Search / RAG settings ──────────────────────────────────────────────
+# Enhanced retrieval pipeline features. All default to disabled except
+# semantic cache. Each is an optional plug-in step — enable only what
+# you need.
+
+[search]
+
+# Semantic cache: cosine-similarity cache for repeat queries.
+# When a query is semantically similar (above threshold) to a cached one,
+# the cached answer is returned directly — no retrieval or LLM call.
+# cache.enabled = true
+# cache.threshold = 0.92
+# cache.max_entries = 500
+
+# Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
+# retrieve independently for each, then merge via RRF. Improves recall
+# for ambiguous or under-specified queries.
+# expansion.enabled = false
+# expansion.variants = 3
+
+# CRAG (Corrective RAG): LLM grades each retrieved chunk for relevance.
+# Chunks below threshold are dropped before synthesis.
+# crag.enabled = false
+# crag.threshold = 0.3
+
+# Neural re-ranker: cross-encoder re-ranks top-K candidates by true
+# query-passage relevance. Requires sentence-transformers.
+# reranker.enabled = false
+# reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# reranker.top_k = 20
+
+# HyDE (Hypothetical Document Embeddings): for sparse queries, generate
+# a hypothetical answer first, then use its embedding for retrieval.
+# hyde.enabled = false
+
+# Contextual Retrieval: during T2 chunking, prepend situating context
+# to each chunk before embedding. Improves both compilation and query.
+# contextual.enabled = false
+# contextual.model = ""
+
 # ── Event hooks ─────────────────────────────────────────────────────────
 # Register Python callables that fire on pipeline events.
 # Each value is a list of "module:attribute" import paths.

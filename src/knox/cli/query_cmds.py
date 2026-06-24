@@ -22,7 +22,25 @@ from knox.cli.args import (
     QueryTopK,
 )
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, COMPILE_LLM_FALLBACK_CHAIN, COMPILE_LLM_ROLE_MODELS
+from knox.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_FALLBACK_CHAIN,
+    COMPILE_LLM_ROLE_MODELS,
+    SEARCH_CACHE_ENABLED,
+    SEARCH_CACHE_THRESHOLD,
+    SEARCH_CACHE_MAX_ENTRIES,
+    SEARCH_EXPANSION_ENABLED,
+    SEARCH_EXPANSION_VARIANTS,
+    SEARCH_CRAG_ENABLED,
+    SEARCH_CRAG_THRESHOLD,
+    SEARCH_RERANKER_ENABLED,
+    SEARCH_RERANKER_MODEL,
+    SEARCH_RERANKER_TOP_K,
+    SEARCH_HYDE_ENABLED,
+    SEARCH_CONTEXTUAL_ENABLED,
+    SEARCH_CONTEXTUAL_MODEL,
+)
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
@@ -32,6 +50,7 @@ from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.classifier import classify
+from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
 logger = logging.getLogger(__name__)
@@ -168,6 +187,42 @@ def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model
         typer.echo(f"\nWarning: Failed to save to memory: {exc}", err=True)
 
 
+def _build_enhanced_retriever(
+    wiki: CompiledWiki,
+    vector_store: ZvecWikiStore | None,
+    sources_dir: Path | None,
+    state_dir: Path,
+    cfg: Any,
+    llm_client: LLMClient | None,
+) -> EnhancedRetriever:
+    """Build an EnhancedRetriever from resolved config."""
+    return EnhancedRetriever(
+        wiki,
+        index_file=state_dir / SEARCH_DB_FILE,
+        vector_store=vector_store,
+        sources_dir=sources_dir,
+        llm_client=llm_client,
+        # Semantic cache
+        cache_enabled=cfg.get(SEARCH_CACHE_ENABLED, True),
+        cache_threshold=cfg.get(SEARCH_CACHE_THRESHOLD, 0.92),
+        cache_max_entries=cfg.get(SEARCH_CACHE_MAX_ENTRIES, 500),
+        cache_dir=state_dir,
+        cache_embedding_model=cfg.get(COMPILE_EMBEDDING_MODEL),
+        # Multi-query expansion
+        expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
+        expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
+        # CRAG
+        crag_enabled=cfg.get(SEARCH_CRAG_ENABLED, False),
+        crag_threshold=cfg.get(SEARCH_CRAG_THRESHOLD, 0.3),
+        # Neural re-ranker
+        reranker_enabled=cfg.get(SEARCH_RERANKER_ENABLED, False),
+        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, "cross-encoder/ms-marco-MiniLM-L-6-v2"),
+        reranker_top_k=cfg.get(SEARCH_RERANKER_TOP_K, 20),
+        # HyDE
+        hyde_enabled=cfg.get(SEARCH_HYDE_ENABLED, False),
+    )
+
+
 @app.command(name="query")
 def query_cmd(
     ctx: typer.Context,
@@ -186,6 +241,10 @@ def query_cmd(
     Retrieves relevant context from the last compiled wiki and optionally
     synthesizes an answer using the configured LLM. Use --raw to skip LLM
     synthesis and see the source context directly.
+
+    Enhanced RAG features (semantic cache, multi-query expansion, CRAG,
+    neural re-ranker, HyDE) are configurable via knox.toml under [search].
+    All default to disabled except semantic cache.
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
@@ -206,6 +265,8 @@ def query_cmd(
         raise typer.Exit(1)
 
     vector_store = _open_vector_store(state_dir, wiki)
+    llm_client = _try_build_llm_client(config)
+
     try:
         if adaptive:
             retriever = AdaptiveRetriever(
@@ -217,13 +278,48 @@ def query_cmd(
             results = retriever.search(query, top_k=top_k, mode=search_mode if search_mode != "hybrid" else None)
             raw = False
         else:
-            retriever = HybridRetriever(
-                wiki,
-                index_file=state_dir / SEARCH_DB_FILE,
-                vector_store=vector_store,
-                sources_dir=sources_dir,
+            # Use EnhancedRetriever when RAG features are enabled
+            enhanced = _build_enhanced_retriever(
+                wiki, vector_store, sources_dir, state_dir, cfg, llm_client
             )
-            results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
+
+            # Check semantic cache first
+            if not raw:
+                cached = enhanced.check_cache(query)
+                if cached is not None:
+                    if format == "json":
+                        typer.echo(format_json_output(cached, []))
+                    else:
+                        typer.echo(cached.answer)
+                        typer.echo("")
+                        typer.echo("Sources:")
+                        for i, c in enumerate(cached.citations, 1):
+                            source_str: str = c.get("source") or "wiki"
+                            typer.echo(f"  [{i}] {c['article']} ({source_str})")
+                    if remember:
+                        _save_query_memory(state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+                    return
+
+            # Check if any enhanced features are enabled
+            has_enhanced = (
+                cfg.get(SEARCH_EXPANSION_ENABLED, False)
+                or cfg.get(SEARCH_CRAG_ENABLED, False)
+                or cfg.get(SEARCH_RERANKER_ENABLED, False)
+                or cfg.get(SEARCH_HYDE_ENABLED, False)
+            )
+
+            if has_enhanced:
+                expand_graph = search_mode == "graph"
+                results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
+                raw = False
+            else:
+                retriever = HybridRetriever(
+                    wiki,
+                    index_file=state_dir / SEARCH_DB_FILE,
+                    vector_store=vector_store,
+                    sources_dir=sources_dir,
+                )
+                results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
     finally:
         if vector_store is not None:
             vector_store.close()
@@ -238,15 +334,17 @@ def query_cmd(
         _print_raw_results(results, format)
         return
 
-    llm_client = _try_build_llm_client(config)
     if llm_client is None:
         typer.echo("Warning: No LLM configured. Showing raw context instead.", err=True)
         _print_raw_results(results, "text")
         return
 
     try:
-        synthesizer = TokenOverlapRetriever(wiki)
-        synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
+        if has_enhanced:
+            synthesis = enhanced.synthesize(query, results)
+        else:
+            synthesizer = TokenOverlapRetriever(wiki)
+            synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
     except Exception as exc:
         typer.echo(f"LLM synthesis failed: {exc}", err=True)
         typer.echo("Showing raw context instead:", err=True)

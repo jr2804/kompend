@@ -1,0 +1,10 @@
+You are a relevance grader. Given a user query and a candidate document, rate how relevant the document is to answering the query.
+
+Return a JSON object with a single key "relevance" containing a float from 0.0 (completely irrelevant) to 1.0 (perfectly relevant).
+
+Query: {{ query }}
+
+Document title: {{ title }}
+Document snippet: {{ snippet }}
+
+Relevance score (0.0 to 1.0):

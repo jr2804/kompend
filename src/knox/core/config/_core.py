@@ -125,6 +125,19 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
+    SEARCH_CACHE_ENABLED,
+    SEARCH_CACHE_THRESHOLD,
+    SEARCH_CACHE_MAX_ENTRIES,
+    SEARCH_EXPANSION_ENABLED,
+    SEARCH_EXPANSION_VARIANTS,
+    SEARCH_CRAG_ENABLED,
+    SEARCH_CRAG_THRESHOLD,
+    SEARCH_RERANKER_ENABLED,
+    SEARCH_RERANKER_MODEL,
+    SEARCH_RERANKER_TOP_K,
+    SEARCH_HYDE_ENABLED,
+    SEARCH_CONTEXTUAL_ENABLED,
+    SEARCH_CONTEXTUAL_MODEL,
 )
 from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE, VaultPaths
 
@@ -240,6 +253,33 @@ DEFAULTS: dict[str, Any] = {
         "privacy_filter": True,
         "user_tracking": True,
     },
+    "search": {
+        "cache": {
+            "enabled": True,
+            "threshold": 0.92,
+            "max_entries": 500,
+        },
+        "expansion": {
+            "enabled": False,
+            "variants": 3,
+        },
+        "crag": {
+            "enabled": False,
+            "threshold": 0.3,
+        },
+        "reranker": {
+            "enabled": False,
+            "model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            "top_k": 20,
+        },
+        "hyde": {
+            "enabled": False,
+        },
+        "contextual": {
+            "enabled": False,
+            "model": "",
+        },
+    },
     "organize": {
         "max_depth": 3,
         "min_subcategories": 2,
@@ -320,6 +360,19 @@ _ENV_MAP: dict[str, str] = {
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
     TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
+    SEARCH_CACHE_ENABLED: "KNOX_SEARCH_CACHE_ENABLED",
+    SEARCH_CACHE_THRESHOLD: "KNOX_SEARCH_CACHE_THRESHOLD",
+    SEARCH_CACHE_MAX_ENTRIES: "KNOX_SEARCH_CACHE_MAX_ENTRIES",
+    SEARCH_EXPANSION_ENABLED: "KNOX_SEARCH_EXPANSION_ENABLED",
+    SEARCH_EXPANSION_VARIANTS: "KNOX_SEARCH_EXPANSION_VARIANTS",
+    SEARCH_CRAG_ENABLED: "KNOX_SEARCH_CRAG_ENABLED",
+    SEARCH_CRAG_THRESHOLD: "KNOX_SEARCH_CRAG_THRESHOLD",
+    SEARCH_RERANKER_ENABLED: "KNOX_SEARCH_RERANKER_ENABLED",
+    SEARCH_RERANKER_MODEL: "KNOX_SEARCH_RERANKER_MODEL",
+    SEARCH_RERANKER_TOP_K: "KNOX_SEARCH_RERANKER_TOP_K",
+    SEARCH_HYDE_ENABLED: "KNOX_SEARCH_HYDE_ENABLED",
+    SEARCH_CONTEXTUAL_ENABLED: "KNOX_SEARCH_CONTEXTUAL_ENABLED",
+    SEARCH_CONTEXTUAL_MODEL: "KNOX_SEARCH_CONTEXTUAL_MODEL",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
     "notes.file": "KNOX_NOTES_FILE",
     ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",
