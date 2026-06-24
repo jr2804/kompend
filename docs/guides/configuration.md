@@ -28,6 +28,19 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys:
 | `KNOX_NOTES_FILE` | `notes.file` |
 | `KNOX_LLM_MODEL` | `compile.llm.default_model` |
 | `KNOX_VLM_MODEL` | `compile.llm.vlm_model` |
+| `KNOX_SEARCH_CACHE_ENABLED` | `search.cache.enabled` |
+| `KNOX_SEARCH_CACHE_THRESHOLD` | `search.cache.threshold` |
+| `KNOX_SEARCH_CACHE_MAX_ENTRIES` | `search.cache.max_entries` |
+| `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` |
+| `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` |
+| `KNOX_SEARCH_CRAG_ENABLED` | `search.crag.enabled` |
+| `KNOX_SEARCH_CRAG_THRESHOLD` | `search.crag.threshold` |
+| `KNOX_SEARCH_RERANKER_ENABLED` | `search.reranker.enabled` |
+| `KNOX_SEARCH_RERANKER_MODEL` | `search.reranker.model` |
+| `KNOX_SEARCH_RERANKER_TOP_K` | `search.reranker.top_k` |
+| `KNOX_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` |
+| `KNOX_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` |
+| `KNOX_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` |
 
 ### Layer 3: Project config (hierarchical)
 

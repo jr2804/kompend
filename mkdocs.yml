@@ -106,6 +106,7 @@ nav:
     - WiCER Loop: concepts/wicer-loop.md
     - Crystallize: concepts/crystallize.md
     - Memory Lifecycle: concepts/memory-lifecycle.md
+    - RAG Pipeline: concepts/rag-pipeline.md
   - Reference:
     - Ecosystem Survey: reference/ecosystem.md
     - Caching: caching.md
