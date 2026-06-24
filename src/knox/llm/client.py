@@ -31,6 +31,92 @@ logger = logging.getLogger(__name__)
 JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
 
 
+def salvage_json(content: str) -> Any | None:
+    """Best-effort parse of JSON that small LLMs may truncate or malform.
+
+    Tries, in order:
+    1. Direct ``json.loads``.
+    2. Strip markdown code fences.
+    3. Close unclosed ``{ }`` / ``[ ]`` (respecting string literals).
+    4. ``raw_decode`` to salvage the first valid value from extra data.
+
+    Returns the parsed value or ``None`` if nothing could be salvaged.
+    """
+    if not content or not content.strip():
+        return None
+    content = content.strip()
+
+    # 1. Direct parse
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Strip markdown code fences
+    if content.startswith("```"):
+        inner = content.split("\n", 1)[-1] if "\n" in content else content[3:]
+        inner = inner.strip()
+        if inner.endswith("```"):
+            inner = inner[:-3].strip()
+        try:
+            return json.loads(inner)
+        except json.JSONDecodeError:
+            content = inner
+
+    # 3. Close unclosed brackets/braces (truncated output)
+    closed = _close_truncated_json(content)
+    if closed is not None:
+        try:
+            return json.loads(closed)
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Salvage the first valid JSON value (handles extra data)
+    try:
+        decoder = json.JSONDecoder()
+        obj, _end = decoder.raw_decode(content)
+        return obj
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
+def _close_truncated_json(s: str) -> str | None:
+    """Close any unclosed ``{``/``[`` in *s*, respecting string literals.
+
+    Returns the closed string, or ``None`` if brackets are already balanced.
+    """
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    for ch in s:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack and stack[-1] == ch:
+            stack.pop()
+    if not stack and not in_string:
+        return None
+    s = s.rstrip()
+    if s.endswith(","):
+        s = s[:-1]
+    # Close an unterminated string literal before closing brackets.
+    if in_string:
+        s += '"'
+    return s + "".join(reversed(stack))
+
+
 @dataclass(frozen=True)
 class LLMResult:
     """Successful completion returned by :meth:`LLMClient.complete`.
@@ -442,32 +528,14 @@ class LLMClient:
 
         json_data: dict[str, Any] | None = None
         if response_format is not None and response_format.get("type") == "json_object":
-            try:
-                parsed = json.loads(content)
-            except json.JSONDecodeError as exc:
-                # Try to salvage incomplete JSON — small models sometimes
-                # produce a '{' followed by newlines without ever closing.
-                parsed = None
-                cleaned = content.strip()
-                if cleaned and cleaned[0] == "{" and "}" not in cleaned:
-                    cleaned += "}"
-                    try:
-                        parsed = json.loads(cleaned)
-                    except json.JSONDecodeError:
-                        pass
-                    else:
-                        content = cleaned
-                # ponytail: use `parsed` as salvage-succeeded sentinel; the
-                # previous code left `exc` unbound in the non-salvage path,
-                # raising UnboundLocalError instead of PermanentError.
-                if parsed is None:
-                    msg = f"LLM returned invalid JSON: {exc}"
-                    raise PermanentError(
-                        msg,
-                        model=diagnostics.model_used,
-                        attempts=diagnostics.attempts,
-                        cause=exc,
-                    ) from exc
+            parsed = salvage_json(content)
+            if parsed is None:
+                msg = "LLM returned invalid JSON"
+                raise PermanentError(
+                    msg,
+                    model=diagnostics.model_used,
+                    attempts=diagnostics.attempts,
+                )
             if not isinstance(parsed, dict):
                 msg = f"LLM returned JSON of type {type(parsed).__name__}, expected object"
                 raise PermanentError(

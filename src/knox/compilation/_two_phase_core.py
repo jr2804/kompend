@@ -6,7 +6,6 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections import defaultdict
@@ -18,7 +17,7 @@ from slugify import slugify as _slugify_impl
 
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT
+from knox.llm.client import JSON_RESPONSE_FORMAT, salvage_json
 
 logger = logging.getLogger(__name__)
 
@@ -327,10 +326,20 @@ def _try_litellm_json(
         content = response.choices[0].message.content
         if not content:
             return None
-        return json.loads(content)
+        parsed = salvage_json(content)
+        if parsed is None:
+            elapsed = time.monotonic() - start
+            # ponytail: JSON parse failure is non-fatal — the caller falls
+            # back gracefully. A full traceback box looks like a crash.
+            logger.warning(
+                "LLM returned unparseable JSON for model=%s in=%.1fs — using fallback",
+                model,
+                elapsed,
+            )
+        return parsed
     except Exception:
         elapsed = time.monotonic() - start
-        logger.error("LLM fail model=%s in=%.1fs", model, elapsed, exc_info=True)
+        logger.warning("LLM call failed for model=%s in=%.1fs — using fallback", model, elapsed)
         return None
 
 
