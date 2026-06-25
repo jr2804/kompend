@@ -2,7 +2,7 @@
 
 [global]
 # Maximum allowed line length (KNOX docs have long URLs and tables)
-line-length = 120
+line-length = 320
 
 # Markdown flavor/dialect: knox targets Obsidian by default
 flavor = "obsidian"
