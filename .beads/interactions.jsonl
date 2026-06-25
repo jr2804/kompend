@@ -240,3 +240,5 @@
 {"id":"int-d0de12a0","kind":"field_change","created_at":"2026-06-24T17:26:56.429062318Z","actor":"Hermes","issue_id":"knox-0uw","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-f8a1440d","kind":"field_change","created_at":"2026-06-24T17:26:57.220185945Z","actor":"Hermes","issue_id":"knox-9aa","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-e4a9a6d2","kind":"field_change","created_at":"2026-06-24T17:26:57.770062404Z","actor":"Hermes","issue_id":"knox-8t0","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-e5c84bba","kind":"field_change","created_at":"2026-06-24T17:28:48.780284112Z","actor":"Hermes","issue_id":"knox-2ei","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-9609d951","kind":"field_change","created_at":"2026-06-24T17:28:49.36801645Z","actor":"Hermes","issue_id":"knox-rxx","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}

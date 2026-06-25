@@ -43,6 +43,22 @@ extract_output_max = 16384
 gen_output_max     = 32768
 lint_output_max    = 16384
 
+# ── Search / RAG enhancements (optional plug-in steps) ─────────────────
+[search]
+cache.enabled = true
+cache.threshold = 0.92
+cache.max_entries = 500
+expansion.enabled = true
+expansion.variants = 3
+crag.enabled = true
+crag.threshold = 0.3
+reranker.enabled = true
+reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+reranker.top_k = 20
+hyde.enabled = true
+contextual.enabled = true
+contextual.model = ""
+
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]
 enabled = true

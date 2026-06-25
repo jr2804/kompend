@@ -50,7 +50,6 @@ from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.classifier import classify
-from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
 logger = logging.getLogger(__name__)
@@ -194,8 +193,9 @@ def _build_enhanced_retriever(
     state_dir: Path,
     cfg: Any,
     llm_client: LLMClient | None,
-) -> EnhancedRetriever:
+):
     """Build an EnhancedRetriever from resolved config."""
+    from knox.search.pipeline import EnhancedRetriever
     return EnhancedRetriever(
         wiki,
         index_file=state_dir / SEARCH_DB_FILE,
@@ -266,6 +266,7 @@ def query_cmd(
 
     vector_store = _open_vector_store(state_dir, wiki)
     llm_client = _try_build_llm_client(config)
+    has_enhanced = False
 
     try:
         if adaptive:
