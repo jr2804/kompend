@@ -153,6 +153,8 @@ class ChunkNode:
     structured: StructuredData | None = None
     summary: str = ""
     token_count: int = 0
+    contextual_context: str = ""
+    contextual_embedding: list[float] | None = None
 
 
 @dataclass

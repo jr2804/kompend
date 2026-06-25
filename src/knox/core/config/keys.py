@@ -114,3 +114,18 @@ DEDUP_MINHASH_LSH_THRESHOLD: Final[str] = "dedup.minhash_lsh_threshold"
 # ── trust/privacy ──
 TRUST_PRIVACY_FILTER: Final[str] = "trust.privacy_filter"
 TRUST_USER_TRACKING: Final[str] = "trust.user_tracking"
+
+# ── search section ──
+SEARCH_CACHE_ENABLED: Final[str] = "search.cache.enabled"
+SEARCH_CACHE_THRESHOLD: Final[str] = "search.cache.threshold"
+SEARCH_CACHE_MAX_ENTRIES: Final[str] = "search.cache.max_entries"
+SEARCH_EXPANSION_ENABLED: Final[str] = "search.expansion.enabled"
+SEARCH_EXPANSION_VARIANTS: Final[str] = "search.expansion.variants"
+SEARCH_CRAG_ENABLED: Final[str] = "search.crag.enabled"
+SEARCH_CRAG_THRESHOLD: Final[str] = "search.crag.threshold"
+SEARCH_RERANKER_ENABLED: Final[str] = "search.reranker.enabled"
+SEARCH_RERANKER_MODEL: Final[str] = "search.reranker.model"
+SEARCH_RERANKER_TOP_K: Final[str] = "search.reranker.top_k"
+SEARCH_HYDE_ENABLED: Final[str] = "search.hyde.enabled"
+SEARCH_CONTEXTUAL_ENABLED: Final[str] = "search.contextual.enabled"
+SEARCH_CONTEXTUAL_MODEL: Final[str] = "search.contextual.model"

@@ -61,6 +61,23 @@ Available MCP tools:
 3. On subsequent, related queries, the agent calls `memory_search` to see how similar questions were handled previously.
 4. Periodically, the agent (or a background cron job) calls `memory_synthesize` to update the global system context.
 
+## Enhanced RAG Pipeline
+
+KNOX includes optional RAG enhancement techniques that improve retrieval quality.
+Each is a plug-in step configurable via `knox.toml` under `[search]`:
+
+| Feature | Config | Default | Description |
+|---------|--------|---------|-------------|
+| **Semantic Cache** | `search.cache.enabled` | `true` | Cosine-similarity cache for repeat queries |
+| **Multi-Query Expansion** | `search.expansion.enabled` | `false` | N query variants + RRF merge (RAG-Fusion) |
+| **CRAG** | `search.crag.enabled` | `false` | LLM relevance grading, drop noise |
+| **Neural Re-ranker** | `search.reranker.enabled` | `false` | Cross-encoder post-fusion ranking |
+| **HyDE** | `search.hyde.enabled` | `false` | Hypothetical answer embeddings |
+| **Contextual Retrieval** | `search.contextual.enabled` | `false` | Situating context for chunk embeddings |
+
+All features default to **disabled** (except semantic cache). Enable only what you need.
+See [RAG Pipeline](../concepts/rag-pipeline.md) for full documentation.
+
 ## Configuration
 
 The memory layer respects the global wiki directory context. By default, it looks for the `.knox/` directory in the current working directory (or the directory specified by `--wiki-dir` in the CLI).

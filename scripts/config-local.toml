@@ -49,3 +49,19 @@ threshold_identical = 0.95
 threshold_similar = 0.80
 # model = ""
 minhash_lsh_threshold = 0.8
+
+# ── Search / RAG enhancements (optional plug-in steps) ─────────────────
+[search]
+cache.enabled = true
+cache.threshold = 0.92
+cache.max_entries = 500
+expansion.enabled = true
+expansion.variants = 3
+crag.enabled = true
+crag.threshold = 0.3
+reranker.enabled = true
+reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+reranker.top_k = 20
+hyde.enabled = true
+contextual.enabled = true
+contextual.model = ""
