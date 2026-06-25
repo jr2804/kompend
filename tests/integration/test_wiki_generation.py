@@ -836,7 +836,13 @@ class TestGenerateExampleWiki:
         assert pages["log"].exists()
 
         # overview (LLM synthesis)
-        overview_path = write_overview(wiki, md_vault, model=LLM_MODEL, timeout=120)
+        overview_path = write_overview(
+            wiki,
+            md_vault,
+            model=LLM_MODEL,
+            overview_budget=config.budget.overview_output_max * 4,
+            timeout=120,
+        )
         if overview_path:
             logger.info("overview.md generated")
         else:

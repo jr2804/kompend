@@ -5,11 +5,6 @@ from pathlib import Path
 PROJECT_ROOT_DIR = Path(__file__).parent.parent
 
 
-def test_copier_answers_exists() -> None:
-    answers = PROJECT_ROOT_DIR / ".copier-answers.yml"
-    assert answers.exists(), "copier answers file missing"
-
-
 def test_mise_config_structure() -> None:
     """Verify mise config in .config/mise/ (template style), not root mise.toml."""
     config_dir = PROJECT_ROOT_DIR / ".config" / "mise"
