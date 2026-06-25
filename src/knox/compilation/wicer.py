@@ -24,7 +24,7 @@ from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.format import encode_for_llm
+from knox.llm.format import encode_for_llm, structured_return_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +343,7 @@ class WiCERCompiler(BaseCompiler):
 
         result = self._client.try_complete(
             messages=[
-                {"role": "system", "content": "You are a diagnostic assistant. Return only valid JSON."},
+                {"role": "system", "content": f"You are a diagnostic assistant. {structured_return_instruction(self._config.llm.data_format)}"},
                 {
                     "role": "user",
                     "content": _loader.render(

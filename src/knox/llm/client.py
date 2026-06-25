@@ -26,9 +26,6 @@ import knox.llm.providers  # noqa: F401 — registers custom providers on import
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 from knox.llm.format import (
-    decode_from_llm,
-    format_system_hint,
-    inject_format_hint,
     salvage_json,  # noqa: F401 — re-exported; callers import from here
 )
 
@@ -378,16 +375,6 @@ class LLMClient:
         Raises a typed :class:`knox.llm.errors.LLMError` subclass on
         failure — never a raw provider exception and never silently.
         """
-        # Apply format-aware messaging: non-JSON formats replace the
-        # API-level json_object constraint with a system-message hint.
-        effective_rf = response_format
-        effective_messages: list[dict[str, Any]] = list(messages)
-        if self.data_format != "json" and response_format is not None:
-            hint = format_system_hint(self.data_format)
-            if hint:
-                effective_messages = inject_format_hint(effective_messages, hint)
-            effective_rf = None  # don't pass response_format to litellm
-
         chain = self.chain_for(role)
         cw = self.context_window
         if cw is None:
@@ -397,11 +384,11 @@ class LLMClient:
         def _call(model: str) -> Any:
             kwargs: dict[str, Any] = {
                 "model": model,
-                "messages": effective_messages,
+                "messages": messages,
                 "temperature": temperature,
             }
-            if effective_rf is not None:
-                kwargs["response_format"] = effective_rf
+            if response_format is not None:
+                kwargs["response_format"] = response_format
             if max_tokens is not None:
                 kwargs["max_tokens"] = max_tokens
             if self.timeout is not None:
@@ -467,11 +454,9 @@ class LLMClient:
 
         json_data: dict[str, Any] | None = None
         if response_format is not None and response_format.get("type") == "json_object":
-            # Use format-aware decoder; falls back to salvage_json for "json".
-            parsed = decode_from_llm(content, self.data_format)
+            parsed = salvage_json(content)
             if parsed is None:
-                fmt_label = self.data_format.upper()
-                msg = f"LLM returned unparseable {fmt_label}"
+                msg = "LLM returned invalid JSON"
                 raise PermanentError(
                     msg,
                     model=diagnostics.model_used,

@@ -10,30 +10,27 @@ Custom litellm providers live in `knox.llm.providers/`.
 
 `knox.llm.format` is the single source of truth for LLM communication formats.
 It owns `salvage_json` (moved from `client.py`), `encode_for_llm`, `decode_from_llm`,
-`format_system_hint`, and `inject_format_hint`.
+and `structured_return_instruction`.
 
-Supported formats (config key `compile.llm.data_format`):
+Supported formats (`LlmDataFormat` enum, config key `compile.llm.data_format`):
 
-| Value | Token reduction | Requires | Notes |
-|-------|----------------|----------|-------|
-| `"json"` | baseline | — | API-level `response_format: json_object` guarantee |
-| `"toon"` | 30–60% | `uv add toon_format` | Best with frontier models for output |
-| `"ison"` | 30–70% | `uv add ison-py` | Best with frontier models for output |
+| Value | Token reduction | Package | Scope |
+|-------|----------------|---------|-------|
+| `JSON` | baseline | stdlib | input + output |
+| `TOON` | 30–60% | `toon_format` (core dep) | input only |
+| `ISON` | 30–70% | `ison-py` → `ison_parser` (core dep) | input only |
 
-**Input benefit:** `encode_for_llm()` serializes context data (entity batches, concept
-lists) in the chosen format before injection into prompt templates — reduces input
-tokens, leaving more budget for model output and reducing truncation-related
-malformed responses with small local models.
+**Input only.** TOON and ISON apply to context data serialized into prompt
+templates (`encode_for_llm`). LLM output stays JSON — the
+`response_format: json_object` API constraint is preserved so providers
+enforce valid JSON at the protocol level. Models are not reliably
+trained on TOON/ISON output syntax, and embedding format specs in every
+call is unnecessary overhead.
 
-**Output behaviour:** When `data_format != "json"` and `response_format=JSON_RESPONSE_FORMAT`
-is requested, `LLMClient.complete()` injects a format hint into the system message,
-skips the API-level `response_format` constraint, and parses the response with
-`decode_from_llm()`. Reliable output format switching requires capable models;
-for local/small models the input-only benefit is safer.
-
-**Call sites to update when adding new LLM context serialization:**
-Use `encode_for_llm(data, config.llm.data_format)` instead of `json.dumps(data)`
-for any Python data injected as a Jinja2 template variable for an LLM call.
+**Call-site rule:** Use `encode_for_llm(data, config.llm.data_format)` instead
+of `json.dumps(data)` for any Python data injected as a Jinja2 template
+variable in an LLM call. Leave all `response_format=JSON_RESPONSE_FORMAT`
+and `salvage_json()` usages unchanged.
 
 ## Provider submodule
 

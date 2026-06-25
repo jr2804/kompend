@@ -17,8 +17,7 @@ from slugify import slugify as _slugify_impl
 
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT
-from knox.llm.format import decode_from_llm, format_system_hint, inject_format_hint
+from knox.llm.client import JSON_RESPONSE_FORMAT, salvage_json
 
 logger = logging.getLogger(__name__)
 
@@ -283,31 +282,20 @@ def _try_litellm_json(
     model: str,
     system: str | None = None,
     timeout: float | None = None,
-    data_format: str = "json",
 ) -> Any | None:
-    """Call litellm completion and return parsed structured data, or None on failure."""
+    """Call litellm completion and return parsed JSON, or None on failure."""
     start = time.monotonic()
     try:
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-
-        # Apply format-aware messaging for non-JSON formats.
-        effective_rf: dict[str, str] | None = JSON_RESPONSE_FORMAT
-        if data_format != "json":
-            hint = format_system_hint(data_format)
-            if hint:
-                messages = inject_format_hint(messages, hint)  # type: ignore[arg-type]
-            effective_rf = None  # don't use API-level JSON mode
-
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
+            "response_format": JSON_RESPONSE_FORMAT,
             "temperature": 0.0,
         }
-        if effective_rf is not None:
-            kwargs["response_format"] = effective_rf
         if timeout is not None:
             kwargs["timeout"] = timeout
         response = litellm.completion(**kwargs)
@@ -338,12 +326,13 @@ def _try_litellm_json(
         content = response.choices[0].message.content
         if not content:
             return None
-        parsed = decode_from_llm(content, data_format)
+        parsed = salvage_json(content)
         if parsed is None:
             elapsed = time.monotonic() - start
+            # ponytail: JSON parse failure is non-fatal — the caller falls
+            # back gracefully. A full traceback box looks like a crash.
             logger.warning(
-                "LLM returned unparseable %s for model=%s in=%.1fs — using fallback",
-                data_format.upper(),
+                "LLM returned unparseable JSON for model=%s in=%.1fs — using fallback",
                 model,
                 elapsed,
             )

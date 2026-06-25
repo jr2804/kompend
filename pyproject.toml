@@ -40,6 +40,8 @@ dependencies = [
     "pylatexenc>=2.10",
     "docling-ibm-models>=3.13.3",
     "opencv-python-headless>=4.13.0.92",
+    "toon-format>=0.9.0b1",
+    "ison-py>=1.0.2",
 ]
 
 [project.scripts]

@@ -374,7 +374,6 @@ class TwoPhaseCompiler(BaseCompiler):
                     system=generation_system,
                     model=self._model,
                     timeout=self._timeout,
-                    data_format=self._config.llm.data_format,
                 )
 
                 if not isinstance(data, dict):
@@ -455,7 +454,6 @@ class TwoPhaseCompiler(BaseCompiler):
             system=extraction_system,
             model=self._model,
             timeout=self._timeout,
-            data_format=self._config.llm.data_format,
         )
         if isinstance(data, dict):
             result = Extraction(

@@ -1,33 +1,15 @@
 """LLM communication format utilities.
 
-Supports JSON (default), TOON, and ISON as compact alternatives for both
-LLM prompt input context and LLM response parsing.
+Supports JSON (default), TOON, and ISON as compact alternatives for LLM
+prompt input context (serialize structured data before injection into
+templates). TOON and ISON reduce prompt token count by 30–70 %, leaving
+more context window budget for model output and reducing truncation-related
+malformed responses with small local models.
 
-Input benefit
--------------
-Serializing structured context data (entity lists, concept batches) in
-TOON or ISON reduces prompt token count by 30–70 %, leaving more context
-window budget for the model's output. This directly addresses the most
-common source of malformed/truncated responses with small local models.
-
-Output benefit
---------------
-Asking the model to respond in TOON or ISON (via a system-message hint)
-uses simpler syntax — no nested braces, minimal punctuation — which reduces
-generation errors. Trade-off: the API-level ``response_format: json_object``
-guarantee is lost; reliability depends on model quality. Works best with
-frontier models. For small/local models the input-only benefit is safer.
-
-Optional packages (only required when the corresponding format is configured)
-------------------------------------------------------------------------------
-TOON: ``uv add toon_format``   (PyPI: toon_format >= 0.9.0)
-ISON: ``uv add ison-py``       (PyPI: ison-py >= 1.0.0)
-
-The try/except ImportError guards below are intentional Optional-feature
-probes (see src/knox/AGENTS.md — Error handling). The packages are declared
-under [project.optional-dependencies] in pyproject.toml. Importing at module
-level (not inline) satisfies PLC0415; graceful fallback satisfies the
-optional-dep antipattern rules.
+LLM *output* always uses JSON — the ``response_format: json_object`` API
+constraint is kept so providers can enforce valid JSON at the protocol
+level. TOON and ISON are not yet widely understood by models, and attaching
+a format specification to every call would be counterproductive.
 """
 
 from __future__ import annotations
@@ -35,27 +17,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-# ── Optional dependency probes ───────────────────────────────────────────
-# Module-level try/except so imports fire once, not on every call.
+import ison_parser as _ison
+import toon_format as _toon
 
-try:
-    import toon_format as _toon  # type: ignore[import-untyped]
+from knox.core.config._configs import LlmDataFormat
 
-    _HAS_TOON = True
-except ImportError:
-    _toon = None  # type: ignore[assignment]
-    _HAS_TOON = False
-
-try:
-    import ison_py as _ison  # type: ignore[import-untyped]
-
-    _HAS_ISON = True
-except ImportError:
-    _ison = None  # type: ignore[assignment]
-    _HAS_ISON = False
-
-
-# ── JSON salvage (moved from client.py, re-exported there) ───────────────
+# ── JSON salvage (re-exported; callers import salvage_json from here) ────
 
 
 def salvage_json(content: str) -> Any | None:
@@ -73,13 +40,11 @@ def salvage_json(content: str) -> Any | None:
         return None
     content = content.strip()
 
-    # 1. Direct parse
     try:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
 
-    # 2. Strip markdown code fences
     if content.startswith("```"):
         inner = content.split("\n", 1)[-1] if "\n" in content else content[3:]
         inner = inner.strip()
@@ -90,7 +55,6 @@ def salvage_json(content: str) -> Any | None:
         except json.JSONDecodeError:
             content = inner
 
-    # 3. Close unclosed brackets/braces (truncated output)
     closed = _close_truncated_json(content)
     if closed is not None:
         try:
@@ -98,7 +62,6 @@ def salvage_json(content: str) -> Any | None:
         except json.JSONDecodeError:
             pass
 
-    # 4. Salvage the first valid JSON value (handles extra data)
     try:
         decoder = json.JSONDecoder()
         obj, _end = decoder.raw_decode(content)
@@ -138,7 +101,6 @@ def _close_truncated_json(s: str) -> str | None:
     s = s.rstrip()
     if s.endswith(","):
         s = s[:-1]
-    # Close an unterminated string literal before closing brackets.
     if in_string:
         s += '"'
     return s + "".join(reversed(stack))
@@ -147,7 +109,7 @@ def _close_truncated_json(s: str) -> str | None:
 # ── Format encode / decode ────────────────────────────────────────────────
 
 
-def encode_for_llm(data: Any, fmt: str) -> str:
+def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
     """Serialize *data* to the LLM communication format *fmt*.
 
     Use this to serialize structured context data before injecting into
@@ -159,100 +121,47 @@ def encode_for_llm(data: Any, fmt: str) -> str:
     data:
         Python dict or list to serialize.
     fmt:
+        :class:`LlmDataFormat` value or equivalent string:
         ``"json"`` (default), ``"toon"``, or ``"ison"``.
     """
-    if fmt == "json":
+    if fmt == LlmDataFormat.JSON:
         return json.dumps(data, ensure_ascii=False)
-    if fmt == "toon":
-        if not _HAS_TOON:
-            raise ImportError("toon_format is required when data_format='toon'. Install with: uv add toon_format")
+    if fmt == LlmDataFormat.TOON:
         return _toon.encode(data)
-    if fmt == "ison":
-        if not _HAS_ISON:
-            raise ImportError("ison-py is required when data_format='ison'. Install with: uv add ison-py")
+    if fmt == LlmDataFormat.ISON:
         doc = _ison.from_dict(data if isinstance(data, dict) else {"data": data})
         return _ison.dumps(doc)
-    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: 'json', 'toon', 'ison'")
+    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
 
 
-def decode_from_llm(text: str, fmt: str) -> Any | None:
+def decode_from_llm(text: str, fmt: LlmDataFormat) -> Any | None:
     """Parse an LLM response in format *fmt* to a Python object.
 
     Returns the parsed object or ``None`` if parsing fails entirely.
+    LLM output is always JSON in practice; this exists for completeness
+    and potential future use.
     """
-    if fmt == "json":
+    if fmt == LlmDataFormat.JSON:
         return salvage_json(text)
-    if fmt == "toon":
-        if not _HAS_TOON:
-            raise ImportError("toon_format is required when data_format='toon'. Install with: uv add toon_format")
+    if fmt == LlmDataFormat.TOON:
         try:
             return _toon.decode(text)
         except Exception:
-            # Try non-strict mode for slightly malformed TOON
             try:
                 return _toon.decode(text, {"strict": False})
             except Exception:
                 return None
-    if fmt == "ison":
-        if not _HAS_ISON:
-            raise ImportError("ison-py is required when data_format='ison'. Install with: uv add ison-py")
+    if fmt == LlmDataFormat.ISON:
         try:
-            doc = _ison.parse(text)
-            return json.loads(doc.to_json())
+            return json.loads(_ison.loads(text).to_json())
         except Exception:
             return None
-    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: 'json', 'toon', 'ison'")
+    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
 
 
-# ── System message helpers ────────────────────────────────────────────────
+# ── System message helper ─────────────────────────────────────────────────
 
 
-def format_system_hint(fmt: str) -> str:
-    """Return a system-message addition instructing the model to use *fmt*.
-
-    Returns an empty string for ``"json"`` (default, no hint needed).
-    Appended to the system message when ``data_format != 'json'``.
-    """
-    if fmt == "toon":
-        return (
-            "\n\nIMPORTANT — use TOON format (Token-Oriented Object Notation) "
-            "instead of JSON for all structured responses.\n"
-            "TOON syntax quick reference:\n"
-            "  Simple object:    key: value\n"
-            "  Primitive array:  name[N]: val1,val2,val3\n"
-            "  Tabular array:    name[N]{field1,field2}:\n"
-            "                      row1val1,row1val2\n"
-            "                      row2val1,row2val2\n"
-            "Do NOT use JSON braces { }, brackets [ ], or colons in values "
-            "unless the value itself contains them."
-        )
-    if fmt == "ison":
-        return (
-            "\n\nIMPORTANT — use ISON format (Interchange Simple Object Notation) "
-            "instead of JSON for all structured responses.\n"
-            "ISON syntax quick reference:\n"
-            "  Table block:  table.name\n"
-            "                field1 field2 field3\n"
-            "                val1   val2   val3\n"
-            "  Object block: object.name\n"
-            "                key value\n"
-            "                k1  v1\n"
-            "Do NOT use JSON braces, brackets, or comma separators."
-        )
-    return ""  # "json": no hint needed
-
-
-def inject_format_hint(messages: list[dict[str, Any]], hint: str) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with *hint* appended to the system message.
-
-    If no system message exists, prepends one. Does not mutate the input list.
-    """
-    if not hint:
-        return messages
-    result = list(messages)
-    if result and result[0].get("role") == "system":
-        result[0] = dict(result[0])
-        result[0]["content"] = result[0]["content"] + hint
-    else:
-        result.insert(0, {"role": "system", "content": hint.strip()})
-    return result
+def structured_return_instruction(fmt: LlmDataFormat) -> str:
+    """Return the format-appropriate instruction for system messages."""
+    return f"Return only valid {str(fmt).upper()}."

@@ -38,8 +38,6 @@ class LlmDataFormat(StrEnum):
     - ``JSON``: Standard JSON (default). Uses API-level response_format guarantee.
     - ``TOON``: Token-Oriented Object Notation. 30-60% fewer tokens vs JSON.
     - ``ISON``: Interchange Simple Object Notation. 30-70% fewer tokens vs JSON.
-
-    Required packages: TOON → ``uv add toon_format``, ISON → ``uv add ison-py``.
     """
 
     JSON = "json"

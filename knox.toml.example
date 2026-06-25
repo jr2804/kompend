@@ -186,15 +186,12 @@ default_model = "ollama/llama3.2"
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 2
 
-# LLM communication data format: "json" (default) | "toon" | "ison"
-# Compact formats reduce prompt token count by 30-70%, giving small-context models
+# LLM communication data format for prompt input context: "json" (default) | "toon" | "ison"
+# Compact formats reduce input token count by 30-70%, giving small-context models
 # more output budget and reducing truncated/malformed responses.
-# TOON: install with `uv add toon_format`
-# ISON: install with `uv add ison-py`
-# Or both: `uv add 'knox[llm-formats]'`
-# Output format note: non-JSON formats replace the API-level response_format
-# guarantee with prompt-level instructions. Works best with frontier models.
-# For local/small models the token savings on input alone are the main benefit.
+# LLM output always uses JSON regardless of this setting — the API-level
+# response_format guarantee is preserved.
+# Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"
 
 # LLM call timeout
