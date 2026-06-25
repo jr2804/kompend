@@ -6,32 +6,41 @@ KNOX lint checks compiled wikis for structural and semantic quality issues.
 
 ```bash
 # Run all 8 structural rules (default, zero LLM cost)
-knox lint
+knox lint run
 
 # Auto-fix supported issues
-knox lint --fix
+knox lint run --fix
 
 # Also run LLM-powered rules (slow, expensive)
-knox lint --llm
+knox lint run --llm
 
 # Run only specific rules
-knox lint --rule broken-wikilinks --rule orphan-page
+knox lint run --rule broken-wikilinks --rule orphan-page
 
 # Machine-readable output for CI
-knox lint --json
+knox lint run --json
 
 # Fail CI if health score below threshold
-knox lint --threshold 80
+knox lint run --threshold 80
 ```
 
 ## Commands
 
-### `knox lint`
+`knox lint` is a command group with three sub-commands:
+
+| Sub-command | Description |
+|------------|-------------|
+| `knox lint run` | Run lint rules and save the result to history |
+| `knox lint history` | Query past lint runs (scores, trends, details) |
+| `knox lint prune` | Remove old history entries |
+
+### `knox lint run`
 
 ```text
-knox lint [OPTIONS]
+knox lint run [OPTIONS]
 
-Lint a compiled wiki for quality issues.
+Lint a compiled wiki for quality issues. Every run is appended to
+.knox/lint_history.jsonl for later querying.
 
 Options:
   --fix              Auto-fix structural issues where possible
@@ -42,6 +51,61 @@ Options:
 ```
 
 Wiki paths are resolved from `--wiki-dir` (or `KNOX_WIKI_DIR`). See [Configuration](./configuration.md).
+
+### `knox lint history`
+
+```text
+knox lint history [OPTIONS]
+
+Show past lint runs from .knox/lint_history.jsonl.
+
+Options:
+  --last INT, -n     Show last N entries (default 10)
+  --trend            Show score trend sparkline
+  --json             Output in JSON format
+```
+
+Examples:
+
+```bash
+# Show last 10 lint runs
+knox lint history
+
+# Show only the most recent run
+knox lint history -n 1
+
+# Show score trend over time (Unicode sparkline)
+knox lint history --trend
+
+# Machine-readable output for dashboards
+knox lint history --json
+```
+
+### `knox lint prune`
+
+```text
+knox lint prune [OPTIONS]
+
+Remove old entries from .knox/lint_history.jsonl.
+At least one of --keep-last or --max-age-days is required.
+
+Options:
+  --keep-last INT          Keep only the most recent N entries
+  --max-age-days INT       Remove entries older than N days
+```
+
+Examples:
+
+```bash
+# Keep only the last 50 runs
+knox lint prune --keep-last 50
+
+# Remove entries older than 90 days
+knox lint prune --max-age-days 90
+
+# Combined: keep last 50 AND younger than 90 days
+knox lint prune --keep-last 50 --max-age-days 90
+```
 
 ### `knox compile --lint`
 
@@ -98,14 +162,14 @@ health_score = 100 × (PASS results) / (total results)
 A perfect wiki scores 100%. Use `--threshold` in CI:
 
 ```bash
-knox lint --threshold 80
+knox lint run --threshold 80
 # Exit code 0 if score ≥ 80, exit code 1 otherwise
 ```
 
 ## JSON Output
 
 ```bash
-knox lint --json
+knox lint run --json
 ```
 
 Returns:
@@ -131,6 +195,22 @@ Returns:
 }
 ```
 
+## History
+
+Every `knox lint run` appends a structured entry to `.knox/lint_history.jsonl`. Each entry includes:
+
+| Field | Content |
+|-------|---------|
+| `timestamp` | ISO 8601 UTC |
+| `duration_seconds` | Wall-clock time of the lint run |
+| `options` | Active rules, `enable_llm`, `fix`, `threshold` |
+| `llm` | Model name + token usage (or `null` for structural-only) |
+| `config_snapshot` | Relevant compile settings (compiler, chunk size, model, fallback chain) |
+| `wiki_meta` | Node count |
+| `report` | Full `LintReport` (health score, per-rule results) |
+
+Query with `knox lint history` (see above). Prune old entries with `knox lint prune`.
+
 ## CI Integration
 
 ### GitHub Actions
@@ -139,7 +219,7 @@ Returns:
 - name: Lint compiled wiki
   run: |
     knox compile ./sources
-    knox lint --threshold 80 --json > lint-report.json
+    knox lint run --threshold 80 --json > lint-report.json
 ```
 
 ### Pre-commit
@@ -149,7 +229,7 @@ Returns:
   hooks:
     - id: knox-lint
       name: knox lint
-      entry: knox lint --threshold 80
+      entry: knox lint run --threshold 80
       language: system
       pass_filenames: false
 ```

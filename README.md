@@ -157,7 +157,7 @@ Full option reference: `knox <command> --help`
 | `knox provenance SLUG` | Show source-to-article provenance for a page |
 | `knox memory add/search/synthesize` | Manage query memory and context synthesis |
 | **Quality** | |
-| `knox lint` | Lint compiled wiki for quality issues (`--fix`, `--llm`, `--rule`, `--threshold`) |
+| `knox lint run/history/prune` | Lint wiki, query past runs, or prune history (`--fix`, `--llm`, `--rule`, `--threshold`) |
 | `knox review list/approve/reject/lock/unlock` | Manage the review queue for compiled pages |
 | **Capture** | |
 | `knox capture "..."` | LLM-extract decisions, discoveries, corrections from text |

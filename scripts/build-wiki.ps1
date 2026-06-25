@@ -193,7 +193,7 @@ Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cy
 $LintArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "lint",
+    "lint", "run",
     "--llm",
     "--llm-default-model", $LLMModel,
     "--fix",

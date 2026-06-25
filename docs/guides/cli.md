@@ -12,7 +12,9 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox doctor` | Validate configuration and connectivity |
 | `knox status` | Show per-wiki statistics |
 | `knox list-parsers` | List all registered parsers |
-| `knox lint` | Run quality linters on the compiled wiki |
+| `knox lint run` | Run quality linters on the compiled wiki |
+| `knox lint history` | Show past lint runs and score trends |
+| `knox lint prune` | Remove old lint history entries |
 | `knox review` | Manage the review queue |
 | `knox provenance` | Show provenance for a wiki page |
 | `knox capture` | Extract knowledge items from free text |
