@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from knox.logging import get_logger
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 

@@ -23,7 +23,6 @@ Every template is checked at render time:
 from __future__ import annotations
 
 import importlib.resources as ir
-import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -34,8 +33,9 @@ import yaml
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined, meta
 
 from knox.core.config._core import find_project_config
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Module-level singleton ───────────────────────────────────────────
 

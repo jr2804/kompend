@@ -8,14 +8,14 @@ failover and observability work the same way as text models.
 from __future__ import annotations
 
 import base64
-import logging
 from pathlib import Path
 
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 from knox.resolution.base import BaseResolver
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _MIME_BY_EXT: dict[str, str] = {

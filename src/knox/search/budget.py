@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 
 from knox.core.models import WikiNode
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Absolute token reserves for retrieval context budgeting.  Replaces an earlier
 # percentage-based safety margin that wasted ~150K tokens at 1M-context scale

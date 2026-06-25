@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from knox.core.models import CompiledWiki
 from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.runner import LintRunner, report_to_text
+from knox.logging import get_console, get_err_console, get_logger
 from knox.output.wiki_index import write_index_and_log, write_overview
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
@@ -33,7 +33,7 @@ from knox.search.index import build_chunk_index
 from knox.trust import mark_wiki_private
 from knox.verification import verify_wiki
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:  # noqa: PLR0915
@@ -194,10 +194,10 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
 def _print_tier_listing(pipeline: object) -> None:
     """Print the tier listing from a WikiPipeline."""
     if not hasattr(pipeline, "list_tiers"):
-        typer.echo("Pipeline does not support tier listing.", err=True)
+        get_err_console().print("Pipeline does not support tier listing.")
         return
 
-    typer.echo(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]  # ty:ignore[call-non-callable]
+    get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]  # ty:ignore[call-non-callable]
 
 
 def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
@@ -210,7 +210,7 @@ def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
 def _annotate_provenance(wiki: CompiledWiki, output_dir: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
     annotated = annotate_wiki_with_provenance(wiki, output_dir)
-    typer.echo(f"Annotated {len(annotated.nodes)} nodes with provenance")
+    get_console().print(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
 
 def _mark_private(wiki: CompiledWiki, output_dir: Path) -> None:
@@ -228,7 +228,7 @@ def _verify_claims(
 ) -> None:
     """Run grounding verification over wiki claims."""
     result = verify_wiki(wiki, output_dir, client=client, model=model, verify_budget=verify_budget)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
-    typer.echo(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
+    get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
 def _run_post_compile_lint(
@@ -240,7 +240,7 @@ def _run_post_compile_lint(
     """Run lint after compilation and print the report."""
     runner = LintRunner(sources_dir=str(sources_dir) if sources_dir.exists() else None)
     report = runner.run(wiki)
-    typer.echo("\n" + report_to_text(report))
+    get_console().print("\n" + report_to_text(report))
 
 
 def _cli_build_vector_index(
@@ -252,14 +252,14 @@ def _cli_build_vector_index(
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
     if not embed_model:
-        typer.echo("Error: --embed-model must be provided when --index is used.", err=True)
+        get_err_console().print("Error: --embed-model must be provided when --index is used.")
         raise typer.Exit(1)
 
     count = build_vector_index(wiki, output_dir, embed_model=embed_model, base_dir=base_dir)
     if count > 0:
-        typer.echo(f"Indexed {count} nodes in zvec store for semantic search")
+        get_console().print(f"Indexed {count} nodes in zvec store for semantic search")
     else:
-        typer.echo("Warning: no nodes indexed — vector index skipped", err=True)
+        get_err_console().print("Warning: no nodes indexed — vector index skipped")
 
 
 def _post_compile_actions(
@@ -286,9 +286,9 @@ def _post_compile_actions(
 
     if review and not bypass_review:
         _send_to_review_queue(wiki, base_dir)
-        typer.echo(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
+        get_console().print(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
     elif bypass_review and review:
-        typer.echo("--bypass-review overrides --review; writing pages directly.")
+        get_console().print("--bypass-review overrides --review; writing pages directly.")
 
     if provenance:
         _annotate_provenance(wiki, output_dir)
@@ -299,13 +299,13 @@ def _post_compile_actions(
     if verify:
         resolved_model = pipeline_config.llm.default_model
         if llm_client is None:
-            typer.echo("Warning: --verify requires an LLM client — skipping verification", err=True)
+            get_err_console().print("Warning: --verify requires an LLM client — skipping verification")
         else:
             _verify_claims(wiki, output_dir, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
     generated = write_index_and_log(wiki, output_dir, base_dir=base_dir)
-    typer.echo(f"Index: {generated['index']}")
-    typer.echo(f"Log:   {generated['log']}")
+    get_console().print(f"Index: {generated['index']}")
+    get_console().print(f"Log:   {generated['log']}")
 
     if synthesize:
         resolved_model = pipeline_config.llm.default_model
@@ -332,13 +332,13 @@ def _post_compile_actions(
             # Overview is optional — catch at this boundary and report the real
             # error instead of aborting a successful compile.
             synthesize_tracker.finish()
-            typer.echo(f"Overview generation failed: {exc}", err=True)
+            get_err_console().print(f"Overview generation failed: {exc}")
             return
         synthesize_tracker.finish()
         if overview_path:
-            typer.echo(f"Overview: {overview_path}")
+            get_console().print(f"Overview: {overview_path}")
         else:
-            typer.echo("Overview generation skipped (no content to summarise).", err=True)
+            get_err_console().print("Overview generation skipped (no content to summarise).")
 
     if index_store:
         search_db_path = VaultPaths(base_dir).search_db_path

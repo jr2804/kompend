@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 import typer
@@ -25,9 +24,10 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
 )
 from knox.llm.client import LLMClient
+from knox.logging import get_console, get_err_console, get_logger
 from knox.organize.engine import OrganizeResult, organize_sources, resolve_organize_config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @app.command(name="organize")
@@ -61,7 +61,7 @@ def organize_cmd(
         timeout = cfg.get(COMPILE_LLM_TIMEOUT)
         llm_client = LLMClient(default_model=default_model, timeout=timeout)
     except Exception as exc:
-        typer.echo(f"Failed to initialize LLM client: {exc}", err=True)
+        get_err_console().print(f"Failed to initialize LLM client: {exc}")
         raise typer.Exit(code=1) from exc
 
     result = organize_sources(
@@ -79,29 +79,28 @@ def organize_cmd(
 def _print_result(result: OrganizeResult, dry_run: bool) -> None:
     prefix = "Dry run — " if dry_run else ""
     n_cats = len(result.tree.categories)
-    typer.echo(f"{prefix}proposed {n_cats} top-level categor{'y' if n_cats == 1 else 'ies'}.")
+    get_console().print(f"{prefix}proposed {n_cats} top-level categor{'y' if n_cats == 1 else 'ies'}.")
     _print_categories(result.tree.categories, indent=1)
     if result.tree.unfiled:
-        typer.echo(f"  (unfiled: {len(result.tree.unfiled)} file(s) kept at top level)")
+        get_console().print(f"  (unfiled: {len(result.tree.unfiled)} file(s) kept at top level)")
     if result.files_without_summary:
-        typer.echo(
+        get_err_console().print(
             f"Note: {len(result.files_without_summary)} file(s) had no extraction summary and were ignored.",
-            err=True,
         )
     if dry_run:
-        typer.echo("No files moved. Re-run without --dry-run to apply.")
+        get_console().print("No files moved. Re-run without --dry-run to apply.")
         return
-    typer.echo(f"Moved {result.moved_count} file(s).")
+    get_console().print(f"Moved {result.moved_count} file(s).")
     if result.link_updates:
-        typer.echo("Wiki link updates:")
+        get_console().print("Wiki link updates:")
         for location, count in result.link_updates.items():
             if count:
-                typer.echo(f"  - {location}: {count}")
+                get_console().print(f"  - {location}: {count}")
 
 
 def _print_categories(categories: list, *, indent: int) -> None:
     pad = "  " * indent
     for cat in categories:
         n_sub = len(cat.subcategories)
-        typer.echo(f"{pad}{cat.name}/ ({len(cat.files)} file(s), {n_sub} sub-categor{'y' if n_sub == 1 else 'ies'})")
+        get_console().print(f"{pad}{cat.name}/ ({len(cat.files)} file(s), {n_sub} sub-categor{'y' if n_sub == 1 else 'ies'})")
         _print_categories(cat.subcategories, indent=indent + 1)

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -46,8 +45,9 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
 from knox.llm.format import encode_for_llm
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

@@ -5,7 +5,6 @@ Used by ``knox list-parsers`` and ``ParserRouter`` for parser discovery.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,9 @@ try:
 except ImportError:
     PandocParser = None  # ty: ignore
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 # In-memory registry of all parsers
 _registry: dict[str, dict[str, Any]] = {}

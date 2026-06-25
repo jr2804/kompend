@@ -14,16 +14,16 @@ Config keys (under ``[search.cache]``):
 from __future__ import annotations
 
 import json
-import logging
 import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Data model ────────────────────────────────────────────────────────────
 

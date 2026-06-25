@@ -6,18 +6,18 @@ scan_dir, and URL downloading — shared by both `parse` and `compile`.
 
 from __future__ import annotations
 
-import logging
 import shutil
 from pathlib import Path
 
 from knox.cli._ignore import filter_files
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── Extension helpers ───────────────────────────────────────────────────

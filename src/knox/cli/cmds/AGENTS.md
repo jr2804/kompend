@@ -42,6 +42,7 @@ Every command follows the thin-wrapper pattern:
 from knox.cli.app import app
 from knox.cli.args import CompileFiles, TargetFormat
 from knox.cli._shared import resolve_project_paths
+from knox.logging import get_console, get_err_console
 
 @app.command()
 def compile(
@@ -52,9 +53,9 @@ def compile(
     try:
         paths = resolve_project_paths(files)
         result = knox.core.compile(paths, output_format)
-        typer.echo(result)
+        get_console().print(result)
     except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
+        get_err_console().print(f"Error: {e}")
         raise typer.Exit(1)
 ```
 
@@ -63,7 +64,7 @@ def compile(
 1. Import `Annotated` types from `knox.cli.args`
 2. Call core/business logic once
 3. Format and print output
-4. Catch and report errors with `typer.echo(..., err=True)`
+4. Catch and report errors with `get_err_console().print(...)`
 5. Never loop over wiki nodes or do data transformation — that's business logic
 
 ### Import rules
@@ -114,7 +115,7 @@ Example:
 
 ### Error handling
 
-- Catch user-facing errors and `typer.echo(..., err=True)` with actionable message
+- Catch user-facing errors and `get_err_console().print(...)` with actionable message
 - Do NOT catch and silently ignore — propagate failures
 - For expected errors (missing file), print user message then `raise typer.Exit(1)`
 - For unexpected errors, include stack trace in logs, brief message to user

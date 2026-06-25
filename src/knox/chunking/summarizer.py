@@ -22,7 +22,6 @@ Key design decisions:
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -36,12 +35,13 @@ from knox.core.models import (
     StructuredTable,
 )
 from knox.core.template_loader import get_template_loader
+from knox.logging import get_logger
 
 if TYPE_CHECKING:
     from knox.core.cache_store import CacheStore
     from knox.llm.client import LLMClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _TEMPLATE = "chunking/node_summary.md.j2"
 _CACHE_LAYER = "summary"

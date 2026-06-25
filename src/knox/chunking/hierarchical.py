@@ -13,7 +13,6 @@ Strategy:
 
 from __future__ import annotations
 
-import logging
 import math
 from typing import Any
 
@@ -31,8 +30,9 @@ from knox.core.models import (
     ElementType,
     ParsedDocument,
 )
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HierarchicalChunker(BaseChunker):

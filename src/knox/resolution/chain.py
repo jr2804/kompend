@@ -7,12 +7,11 @@ returns the last successful result.
 
 from __future__ import annotations
 
-import logging
-
 from knox.core.models import Chunk, ResolvedChunk
+from knox.logging import get_logger
 from knox.resolution.base import BaseResolver
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ResolverChain(BaseResolver):

@@ -13,6 +13,7 @@ from knox.cli.app import app
 from knox.cli.args import JsonOutput
 from knox.core.config import resolve_config
 from knox.core.paths import REVIEW_DIR
+from knox.logging import get_console, get_err_console
 from knox.review import ReviewQueue
 
 
@@ -48,23 +49,23 @@ def review_cmd(
 def _review_list(queue: ReviewQueue, json_output: bool) -> None:  # ty: ignore
     entries = queue.list_entries()  # ty: ignore
     if json_output:
-        typer.echo(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
+        get_console().print(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
         return
     if not entries:
-        typer.echo("No pages in the review queue.")
+        get_console().print("No pages in the review queue.")
         return
     for e in entries:
-        typer.echo(f"  [{e.status:9s}] {e.slug}  ({e.title})")
+        get_console().print(f"  [{e.status:9s}] {e.slug}  ({e.title})", markup=False)
 
 
 def _review_lock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
     if not slug:
-        typer.echo("Lock requires a slug.", err=True)
+        get_err_console().print("Lock requires a slug.")
         raise typer.Exit(1)
     if queue.lock(slug):  # ty: ignore
-        typer.echo(f"Locked: {slug}")
+        get_console().print(f"Locked: {slug}")
         return
-    typer.echo(f"Cannot lock {slug!r}: no approved page found.", err=True)
+    get_err_console().print(f"Cannot lock {slug!r}: no approved page found.")
     raise typer.Exit(1)
 
 
@@ -72,31 +73,31 @@ def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
     lock_file = queue.review_dir / f"{slug}.locked" if slug else None  # ty: ignore
     if lock_file and lock_file.exists():
         lock_file.unlink()
-        typer.echo(f"Unlocked: {slug}")
+        get_console().print(f"Unlocked: {slug}")
         return
-    typer.echo(f"No lock for {slug!r}.", err=True)
+    get_err_console().print(f"No lock for {slug!r}.")
     raise typer.Exit(1)
 
 
 def _review_approve(queue: ReviewQueue, slug: str | None, approve_all: bool) -> None:  # ty: ignore
     approved = queue.approve(slug or "", approve_all=approve_all)  # ty: ignore
     if not approved:
-        typer.echo("No matching pages to approve.", err=True)
+        get_err_console().print("No matching pages to approve.")
         raise typer.Exit(1)
     for e in approved:
-        typer.echo(f"Approved: {e.slug}")
+        get_console().print(f"Approved: {e.slug}")
 
 
 def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> None:  # ty: ignore
     if not slug:
-        typer.echo("Reject requires a slug.", err=True)
+        get_err_console().print("Reject requires a slug.")
         raise typer.Exit(1)
     rejected = queue.reject(slug, reason=reason or "")  # ty: ignore
     if not rejected:
-        typer.echo(f"No pending page with slug {slug!r}.", err=True)
+        get_err_console().print(f"No pending page with slug {slug!r}.")
         raise typer.Exit(1)
     for e in rejected:
-        typer.echo(f"Rejected: {e.slug}")
+        get_console().print(f"Rejected: {e.slug}")
 
 
 def _dispatch_review_action(
@@ -117,6 +118,6 @@ def _dispatch_review_action(
     }
     handler = handlers.get(action)
     if handler is None:
-        typer.echo(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.", err=True)
+        get_err_console().print(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.")
         raise typer.Exit(1)
     handler()

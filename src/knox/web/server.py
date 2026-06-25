@@ -1,5 +1,4 @@
 import json
-import logging
 import subprocess
 import sys
 import webbrowser
@@ -14,10 +13,11 @@ from knox.capture.ingest import ingest
 from knox.capture.learn import learn
 from knox.core.models import CompiledWiki
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
+from knox.logging import get_logger
 from knox.search.classifier import classify
 from knox.search.retriever import SearchResult, TokenOverlapRetriever
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 app = FastAPI(title="KNOX Web UI")
 

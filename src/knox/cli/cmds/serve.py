@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import typer
-
 from knox.cli.app import app
 from knox.cli.args import ServeHost, ServeOpen, ServePort
+from knox.logging import get_console, get_err_console
 from knox.mcp.server import main as mcp_main
 from knox.web.server import serve
 
@@ -39,7 +38,7 @@ def serve_cmd(
         knox serve
         knox serve --port 8080 --open
     """
-    typer.echo(f"Starting KNOX web UI at http://{host}:{port}")
+    get_console().print(f"Starting KNOX web UI at http://{host}:{port}")
     if host != "127.0.0.1":
-        typer.echo("Warning: Binding to non-localhost exposes the server to the network.", err=True)
+        get_err_console().print("Warning: Binding to non-localhost exposes the server to the network.")
     serve(host=host, port=port, open_browser=open_browser)

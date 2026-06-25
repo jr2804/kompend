@@ -16,13 +16,12 @@ Config keys (under ``[search.contextual]``):
 
 from __future__ import annotations
 
-import logging
-
 from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ContextualEnricher:

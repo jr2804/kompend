@@ -14,7 +14,6 @@ are supported via ``_make_provider``:
 from __future__ import annotations
 
 import contextlib
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -24,8 +23,9 @@ import zvec as _zvec
 from sentence_transformers import SentenceTransformer
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── Embedding provider interface ────────────────────────────────────────

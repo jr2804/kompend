@@ -12,14 +12,14 @@ Three responsibilities:
 
 from __future__ import annotations
 
-import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from knox.logging import get_logger
 from knox.organize.categorize import CategoryNode, CategoryTree
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

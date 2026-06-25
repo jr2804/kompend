@@ -12,7 +12,6 @@ The module is responsible for the *brain* of the organize workflow:
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,8 +21,9 @@ from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

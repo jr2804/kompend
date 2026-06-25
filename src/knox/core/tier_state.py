@@ -14,13 +14,14 @@ process restart and not require sqlite migrations.
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

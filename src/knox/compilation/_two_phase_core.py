@@ -6,7 +6,6 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
-import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -18,8 +17,9 @@ from slugify import slugify as _slugify_impl
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, salvage_json
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

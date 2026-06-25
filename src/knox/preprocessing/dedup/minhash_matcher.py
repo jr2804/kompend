@@ -7,15 +7,15 @@ large corpora.
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
 
 from datasketch import MinHash, MinHashLSH
 
+from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default number of permutation hash functions for MinHash.
 # 128 gives a good balance of accuracy vs. storage for corpus sizes

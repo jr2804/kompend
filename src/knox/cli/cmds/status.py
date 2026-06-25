@@ -7,11 +7,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import typer
-
 from knox.cli._sources import get_supported_extensions
 from knox.core.config import find_project_config
 from knox.core.paths import INDEX_FILE
+from knox.logging import get_console
 
 
 def collect_stats(
@@ -71,28 +70,28 @@ def print_status(stats: dict, json_output: bool = False) -> int:
         sys.stdout.write("\n")
         return 0
 
-    typer.echo(f"  Wiki:      {stats['wiki_name']}")
+    get_console().print(f"  Wiki:      {stats['wiki_name']}")
     if stats["config_path"]:
-        typer.echo(f"  Config:    {stats['config_path']}")
+        get_console().print(f"  Config:    {stats['config_path']}")
     else:
-        typer.echo("  Config:    (none — using defaults)")
+        get_console().print("  Config:    (none — using defaults)")
 
     src = stats["sources"]
     size_mb = src["total_size_bytes"] / (1024 * 1024)
-    typer.echo(f"  Sources:   {src['count']} file(s)  ({size_mb:.1f} MB)")
+    get_console().print(f"  Sources:   {src['count']} file(s)  ({size_mb:.1f} MB)")
 
     arts = stats["articles"]
-    typer.echo(f"  Articles:  {arts['count']} page(s)  ({arts['total_words']:,} words)")
+    get_console().print(f"  Articles:  {arts['count']} page(s)  ({arts['total_words']:,} words)")
 
     if stats["last_compile"]:
-        typer.echo(f"  Compiled:  {stats['last_compile']}")
+        get_console().print(f"  Compiled:  {stats['last_compile']}")
     else:
-        typer.echo("  Compiled:  (never)")
+        get_console().print("  Compiled:  (never)")
 
     if stats["tier_distribution"]:
-        typer.echo(f"  Tiers:     {stats['tier_distribution']}")
+        get_console().print(f"  Tiers:     {stats['tier_distribution']}")
 
     if stats["health_score"] is not None:
-        typer.echo(f"  Health:    {stats['health_score']}/100")
+        get_console().print(f"  Health:    {stats['health_score']}/100")
 
     return 0

@@ -65,8 +65,6 @@ Registered providers
 
 from __future__ import annotations
 
-import logging
-
 import litellm
 
 from knox.llm.providers.claudin_io import _ClaudinIOProvider
@@ -77,8 +75,9 @@ from knox.llm.providers.opencode import (
     _OpenCodeProvider,
     _OpenCodeZenProvider,
 )
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = [
     "_ClaudinIOProvider",

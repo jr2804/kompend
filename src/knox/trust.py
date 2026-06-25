@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -12,6 +11,7 @@ from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 from knox.provenance import (
     LIFECYCLE_ARCHIVED,
     LIFECYCLE_DRAFT,
@@ -19,7 +19,7 @@ from knox.provenance import (
     VALID_LIFECYCLE_STATES,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Patterns used by the privacy filter. Conservative on purpose — false
 # positives (over-redaction) are safer than false negatives.

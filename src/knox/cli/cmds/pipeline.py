@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from pathlib import Path
 
@@ -75,11 +74,12 @@ from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
 from knox.llm.errors import LLMError
+from knox.logging import get_console, get_err_console, get_logger
 from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @app.command(name="parse")
@@ -104,13 +104,13 @@ def parse_cmd(
     for path in resolved:
         parser = router.route(path)
         if parser is None:
-            typer.echo(f"No parser for {path}", err=True)
+            get_err_console().print(f"No parser for {path}")
             continue
         doc = parser.parse(path)
-        typer.echo(f"{path.name}: {len(doc.elements)} element(s)")
+        get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
             for el in doc.elements:  # ty: ignore
-                typer.echo(f"  - {el.get('type')}: {str(el.get('text', ''))[:80]}")  # ty: ignore
+                get_console().print(f"  - {el.get('type')}: {str(el.get('text', ''))[:80]}")  # ty: ignore
 
 
 @app.command(name="compile")
@@ -221,10 +221,10 @@ def compile_cmd(
         in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir}.", err=True)
+        get_err_console().print(f"No supported files found in {sources_dir}.")
         raise typer.Exit(1)
 
-    typer.echo(f"Compiling {len(all_input_files)} document(s) -> {output_dir}")
+    get_console().print(f"Compiling {len(all_input_files)} document(s) -> {output_dir}")
 
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
@@ -256,7 +256,7 @@ def compile_cmd(
         wiki.metadata["source_names"] = [str(f) for f in all_input_files[:20]]
 
         tracker.finish()
-        typer.echo(f"Compiled wiki written to {output_dir}")
+        get_console().print(f"Compiled wiki written to {output_dir}")
 
         _post_compile_actions(
             wiki=wiki,
@@ -285,9 +285,9 @@ def compile_cmd(
             parts.append(f"  attempts: {exc.attempts}")
             if exc.cause:
                 parts.append(f"  cause: {exc.cause}")
-            typer.echo("\n".join(parts), err=True)
+            get_err_console().print("\n".join(parts))
         else:
-            typer.echo(f"Error: {exc}", err=True)
+            get_err_console().print(f"Error: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -342,10 +342,10 @@ def ingest_cmd(
         in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
     )
     if not all_input_files:
-        typer.echo(f"No supported files found in {sources_dir}.", err=True)
+        get_err_console().print(f"No supported files found in {sources_dir}.")
         raise typer.Exit(1)
 
-    typer.echo(f"Ingesting {len(all_input_files)} document(s)")
+    get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
     images_dir = VaultPaths(base_dir).images_dir
     router: ParserRouter = build_default_router(images_dir=images_dir)
@@ -385,7 +385,7 @@ def ingest_cmd(
         summary += f" ({result.failed} failed)"
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
-    typer.echo(summary)
+    get_console().print(summary)
 
     log_file = VaultPaths(base_dir).log_file
     prepend_log(

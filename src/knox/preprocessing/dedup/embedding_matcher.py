@@ -6,13 +6,13 @@ litellm) to compute document vectors, then compares via cosine similarity.
 
 from __future__ import annotations
 
-import logging
 import math
 
+from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher
 from knox.rag.zvec_store import EmbeddingProvider
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EmbeddingMatcher(ContentMatcher):

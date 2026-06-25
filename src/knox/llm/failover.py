@@ -14,7 +14,6 @@ The chain returns the first successful result alongside diagnostics
 
 from __future__ import annotations
 
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,8 +27,9 @@ from knox.llm.errors import (
     PermanentError,
     TransientError,
 )
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar("T")
 

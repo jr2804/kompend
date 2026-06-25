@@ -14,7 +14,6 @@ All default to **disabled** — opt-in only.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from knox.core.models import CompiledWiki
@@ -37,7 +36,9 @@ except ImportError:
     _CrossEncoder = None  # type: ignore[assignment]
     _HAS_SENTENCE_TRANSFORMERS = False
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class EnhancedRetriever:

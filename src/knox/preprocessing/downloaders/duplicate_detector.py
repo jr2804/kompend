@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DuplicateDetector:

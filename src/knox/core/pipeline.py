@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,6 +43,7 @@ from knox.core.template_loader import get_template_loader
 from knox.core.tier_state import TierState, TierStateStore
 from knox.core.xref_checker import CrossReferenceChecker
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.downloaders.base import BaseDownloader
@@ -54,7 +54,7 @@ from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive, filter_wiki
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Type for progress event callbacks. Parameters:
 #   phase   – pipeline phase ("index", "parse", "resolve", "compile", "output")

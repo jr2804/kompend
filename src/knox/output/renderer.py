@@ -11,7 +11,6 @@ upstream to ``rvben/rumdl``.
 
 from __future__ import annotations
 
-import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,9 +18,10 @@ from typing import Any
 
 import yaml
 
+from knox.logging import get_logger
 from knox.output.models import Document
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Flavour auto-detection ──────────────────────────────────────────────
 

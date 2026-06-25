@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -17,10 +16,11 @@ from typing import Any
 
 from knox.core.paths import VaultPaths
 from knox.core.tier_state import TierStateStore
+from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import ParserRouter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ProgressFn = Callable[[int, int, str], None]
 

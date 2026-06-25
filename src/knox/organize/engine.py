@@ -10,7 +10,6 @@ counters so they can render a meaningful summary.
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from knox.core.config.keys import (
 )
 from knox.core.paths import VaultPaths
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 from knox.organize.categorize import (
     CategoryNode,
     CategoryTree,
@@ -32,7 +32,7 @@ from knox.organize.categorize import (
 from knox.organize.links import LinkRemap, build_link_remap, update_wiki_links
 from knox.organize.move import FileMove, flatten_sources, materialize_tree, move_files
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

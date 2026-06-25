@@ -12,13 +12,13 @@ This is the main entry point for content-level duplicate detection. It:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
@@ -27,7 +27,7 @@ from knox.rag.zvec_store import _make_provider
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

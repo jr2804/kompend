@@ -14,8 +14,6 @@ Business modules must not import litellm directly.
 
 from __future__ import annotations
 
-import logging
-
 from knox.llm.classifier import classify_litellm_error
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.errors import (
@@ -26,8 +24,9 @@ from knox.llm.errors import (
     TransientError,
 )
 from knox.llm.failover import FailoverChain
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     from litellm.types.integrations.custom_logger import AgenticLoopPlan  # noqa: F401

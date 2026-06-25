@@ -6,7 +6,7 @@ from importlib.metadata import version
 
 import typer
 
-from knox.logging import configure_logging
+from knox.logging import configure_logging, get_console
 
 
 # Version management
@@ -53,7 +53,7 @@ def _callback(
 ) -> None:
     """Knowledge Organizer for eXtended documents"""
     if version:
-        typer.echo(_get_version())
+        get_console().print(_get_version())
         raise typer.Exit()
     ctx.obj = {"wiki_dir": wiki_dir, "no_user_tracking": no_user_tracking}
 

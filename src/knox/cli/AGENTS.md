@@ -22,7 +22,7 @@ calls the right core function, and formats the output. Nothing more.
 - Input validation at the string level (file exists? flag parsing?)
 - Output formatting (print, `--json`, progress bars, `typer.Exit`)
 - CLI-specific orchestration (resolve files, download URLs, copy to sources dir)
-- Thin wrapper helpers that delegate to core with a `typer.echo` after
+- Thin wrapper helpers that delegate to core with a console print after
 
 ### What does NOT belong in `knox.cli`
 
@@ -79,7 +79,7 @@ See `src/knox/cli/cmds/AGENTS.md` for detailed command organization rules.
 - Never put a `for` loop that iterates over wiki nodes and does real work.
   That's business logic — move it to a core module.
 - `try/except` at the top level is fine for user-facing error messages.
-- Use `typer.echo(msg, err=True)` for errors, `typer.echo(msg)` for output.
+- Use `get_console().print(msg)` for stdout output, `get_err_console().print(msg)` for stderr. Import from `knox.logging`.
 - `--json` flag: serialize and print. No other behavior change.
 
 ### CLI overrides → config
@@ -96,7 +96,7 @@ Every CLI flag that maps to a config key must:
 Helper functions like `_send_to_review_queue`, `_annotate_provenance`,
 `_verify_claims` are acceptable as thin wrappers — they import the core
 function, call it, and print a status line. The test: if you strip the
-`typer.echo()` line, the remaining code should be a single function call
+`get_console().print()` line, the remaining code should be a single function call
 to a core module.
 
 ## Known violations (do not replicate)
@@ -127,7 +127,7 @@ touched, not extended:
   `@app.command` function to the appropriate `cmds/` module file (create one
   if no cohesive group exists), add argument → config mapping in
   `_build_cli_overrides()`.
-- Use `typer.echo()` consistently — not `print()`.
+- Use `get_console()` / `get_err_console()` from `knox.logging` for all output — not `typer.echo()` or `print()`.
 
 ## Verification
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from knox.cli.app import app
+from knox.logging import get_console, get_err_console
 from knox.packs.base import get_registry
 from knox.packs.builtins import academic_pack, technical_pack
 
@@ -18,11 +19,11 @@ def pack_list_cmd() -> None:
     """
     registry = get_registry()
     if not registry.names:
-        typer.echo("No packs registered.")
+        get_console().print("No packs registered.")
         return
-    typer.echo(f"Registered packs ({len(registry.names)}):")
+    get_console().print(f"Registered packs ({len(registry.names)}):")
     for pack in registry.all:
-        typer.echo(f"  {pack.name:<20} v{pack.version}  {pack.description}")
+        get_console().print(f"  {pack.name:<20} v{pack.version}  {pack.description}")
 
 
 @app.command(name="pack-install")
@@ -43,7 +44,7 @@ def pack_install_cmd(
     pack = pack_map.get(name.lower())
     if pack is None:
         available = ", ".join(sorted(pack_map))
-        typer.echo(f"Unknown pack '{name}'. Available: {available}", err=True)
+        get_err_console().print(f"Unknown pack '{name}'. Available: {available}")
         raise typer.Exit(1)
     registry.register(pack)
-    typer.echo(f"Installed pack '{pack.name}' v{pack.version}")
+    get_console().print(f"Installed pack '{pack.name}' v{pack.version}")

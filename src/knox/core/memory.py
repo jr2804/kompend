@@ -16,7 +16,6 @@ Implements the Rohit-v2 memory lifecycle concepts:
 from __future__ import annotations
 
 import json
-import logging
 import math
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -25,8 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 DEFAULT_HALF_LIFE_DAYS = 90.0
 DEFAULT_DECAY_THRESHOLD = 0.3

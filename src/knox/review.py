@@ -14,7 +14,6 @@ any text editor, and committed to git for traceability.
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -25,8 +24,9 @@ from typing import Any
 from slugify import slugify as _slugify_impl
 
 from knox.core.models import WikiNode
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def slugify(title: str) -> str:

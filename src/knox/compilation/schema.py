@@ -12,12 +12,13 @@ Page kinds define the structure and behaviour of wiki pages:
 from __future__ import annotations
 
 import importlib.resources as ir
-import logging
 import tomllib
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _load_builtin_kinds() -> dict[str, dict[str, Any]]:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 from pathlib import Path
 from typing import Any, override
@@ -23,9 +22,10 @@ from pandoc.types import (  # ty: ignore
 )
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.logging import get_logger
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _BLOCK_TYPE_MAP: dict[type, ElementType] = {
     Header: ElementType.HEADING,

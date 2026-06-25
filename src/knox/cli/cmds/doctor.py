@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -11,12 +10,12 @@ import sys
 from pathlib import Path
 
 import litellm
-import typer
 
 from knox.llm.client import LLMClient
+from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Check results ───────────────────────────────────────────────────────
 
@@ -196,12 +195,12 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
     else:
         for r in results:
             icon = "[OK]" if r.passed else "[!!]"
-            typer.echo(f"  {icon} {r.name}: {r.message}")
+            get_console().print(f"  {icon} {r.name}: {r.message}", markup=False)
 
         total = len(results)
-        typer.echo(f"\n  {passed_count}/{total} checks passed", nl=False)
+        get_console().print(f"\n  {passed_count}/{total} checks passed", end="")
         if failed_count:
-            typer.echo(f", {failed_count} failed", nl=False)
-        typer.echo("")
+            get_console().print(f", {failed_count} failed", end="")
+        get_console().print("")
 
     return 1 if failed_count else 0

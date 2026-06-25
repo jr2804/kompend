@@ -19,6 +19,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_VLM_MODEL,
 )
 from knox.core.models import load_cached_wiki
+from knox.logging import get_console, get_err_console
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 
 # ── doctor ──────────────────────────────────────────────────────────────
@@ -42,9 +43,8 @@ def doctor_cmd(
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     if not wiki_dir_override and not output_dir.exists():
-        typer.echo(
+        get_err_console().print(
             f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
-            err=True,
         )
         raise typer.Exit(1)
 
@@ -101,14 +101,14 @@ def list_parsers_cmd(
         return
 
     if not parsers:
-        typer.echo("No parsers registered.")
+        get_console().print("No parsers registered.")
         return
 
-    typer.echo(f"Registered parsers ({len(parsers)}):")
+    get_console().print(f"Registered parsers ({len(parsers)}):")
     for p in parsers:
         exts = ", ".join(p.get("extensions", []) or [])
         ptype = p.get("type", "built-in")
-        typer.echo(f"  • {p['name']} ({ptype})  [{exts}]")
+        get_console().print(f"  • {p['name']} ({ptype})  [{exts}]", markup=False)
 
 
 # ── provenance ──────────────────────────────────────────────────────────
@@ -133,17 +133,17 @@ def provenance_cmd(
     base_dir = output_dir.parent
     wiki_file = output_dir / "wiki.md"
     if not wiki_file.exists():
-        typer.echo(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.", err=True)
+        get_err_console().print(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
-        typer.echo("Could not load compiled wiki metadata.", err=True)
+        get_err_console().print("Could not load compiled wiki metadata.")
         raise typer.Exit(1)
 
     nodes = [n for n in wiki.nodes if n.id == page_slug or n.title.lower() == page_slug.lower()]
     if not nodes:
-        typer.echo(f"Page '{page_slug}' not found in compiled wiki.", err=True)
+        get_err_console().print(f"Page '{page_slug}' not found in compiled wiki.")
         raise typer.Exit(1)
 
     node = nodes[0]
@@ -155,9 +155,9 @@ def provenance_cmd(
         sys.stdout.write("\n")
         return
 
-    typer.echo(f"# {node.title}\n")
+    get_console().print(f"# {node.title}\n")
     if source_chunks:
         for chunk_id in source_chunks:
-            typer.echo(f"  Source: {chunk_id}")
+            get_console().print(f"  Source: {chunk_id}")
     else:
-        typer.echo("  (no provenance tracked)")
+        get_console().print("  (no provenance tracked)")

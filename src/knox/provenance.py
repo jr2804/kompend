@@ -13,7 +13,6 @@ a round-trip through the markdown output writer.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -21,8 +20,9 @@ from pathlib import Path
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _CITATION_RE = re.compile(r"\^\[([^\]]+?):(\d+)-(\d+)\]")
 

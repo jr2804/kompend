@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -10,8 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
 

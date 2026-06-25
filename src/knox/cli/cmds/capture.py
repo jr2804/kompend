@@ -14,6 +14,7 @@ from knox.cli.args import CaptureText, Frontmatter, LearnTags, LearnText
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_LLM_DEFAULT_MODEL
 from knox.llm.client import LLMClient
+from knox.logging import get_console, get_err_console
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 
@@ -42,9 +43,9 @@ def capture_cmd(
         llm_client = None
 
     paths = capture(text, sources_dir=sources_dir, llm_client=llm_client)
-    typer.echo(f"Captured {len(paths)} item(s) to {sources_dir / '_captured'}")
+    get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / '_captured'}")
     for p in paths:
-        typer.echo(f"  {p.name}")
+        get_console().print(f"  {p.name}")
 
 
 @app.command(name="learn")
@@ -67,7 +68,7 @@ def learn_cmd(
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     path = learn(text, sources_dir=sources_dir, tags=tag)
-    typer.echo(f"Learned fact -> {path.name}")
+    get_console().print(f"Learned fact -> {path.name}")
 
 
 @app.command(name="crystallize")
@@ -96,11 +97,11 @@ def crystallize_cmd(
 
     paths = crystallize(sources_dir, llm_client=llm_client)
     if not paths:
-        typer.echo("No captured notes found to crystallize.")
+        get_console().print("No captured notes found to crystallize.")
         return
-    typer.echo(f"Crystallized {len(paths)} page(s) to {sources_dir / '_crystallized'}")
+    get_console().print(f"Crystallized {len(paths)} page(s) to {sources_dir / '_crystallized'}")
     for p in paths:
-        typer.echo(f"  {p.name}")
+        get_console().print(f"  {p.name}")
 
 
 @app.command(name="write")
@@ -134,7 +135,7 @@ def write_cmd(
                 content = sf.read_text(encoding="utf-8", errors="replace")[:2000]
                 body_parts.append(f"From {sf.name}:\n\n{content}\n")
             except Exception as exc:
-                typer.echo(f"Warning: could not read {sf}: {exc}", err=True)
+                get_err_console().print(f"Warning: could not read {sf}: {exc}")
 
     body = "\n\n".join(body_parts) if body_parts else "_(Content pending)_"
 
@@ -145,4 +146,4 @@ def write_cmd(
     output_file = output_dir / f"{page_title.lower().replace(' ', '-')}.md"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(rendered, encoding="utf-8")
-    typer.echo(f"Written: {output_file}")
+    get_console().print(f"Written: {output_file}")

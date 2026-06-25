@@ -7,7 +7,6 @@ model discovery from ``/v1/models`` and automatic endpoint routing
 
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
@@ -18,7 +17,9 @@ from litellm import CustomLLM
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.types.utils import GenericStreamingChunk, ModelResponse
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 _OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen"
 _OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go"

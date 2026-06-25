@@ -11,7 +11,6 @@ substring heuristic so the pipeline remains useful offline.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,9 +21,10 @@ from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.logging import get_logger
 from knox.provenance import Citation, extract_citations
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

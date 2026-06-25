@@ -7,7 +7,6 @@ consumed by the ``knox init`` CLI command.
 
 from __future__ import annotations
 
-import logging
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -19,8 +18,9 @@ from jinja2 import Template
 
 from knox.core.config._core import DEFAULTS
 from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, CONFIG_FILE, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"

@@ -49,6 +49,7 @@ from knox.lint.history import (
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
+from knox.logging import get_console, get_err_console
 from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 
 lint_app = typer.Typer(
@@ -142,15 +143,14 @@ def lint_run(
 
     wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
-        typer.echo(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.", err=True)
+        get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
     llm_client = None
     if llm or _uses_llm_rule(rule):
         if not llm_default_model:
-            typer.echo(
+            get_err_console().print(
                 "LLM-powered lint rules require --llm-default-model (e.g. --llm-default-model openai/gpt-4o).",
-                err=True,
             )
             raise typer.Exit(1)
 
@@ -173,7 +173,7 @@ def lint_run(
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
         fixes_applied = _persist_lint_fixes(wiki, output_dir, state_dir.parent)
-        typer.echo(f"Persisted fixes to {fixes_applied} file(s).")
+        get_console().print(f"Persisted fixes to {fixes_applied} file(s).")
 
     # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
     outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
@@ -220,12 +220,12 @@ def lint_run(
     save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
 
     if json_output:
-        typer.echo(report_to_json(report))
+        get_console().print(report_to_json(report))
     else:
-        typer.echo(report_to_text(report))
+        get_console().print(report_to_text(report))
 
     if threshold is not None and report.health_score < threshold:
-        typer.echo(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.", err=True)
+        get_err_console().print(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.")
         raise typer.Exit(1)
 
 
@@ -258,9 +258,9 @@ def lint_history(
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=last)
 
     if json_output:
-        typer.echo(history_to_json(entries))
+        get_console().print(history_to_json(entries))
     else:
-        typer.echo(history_to_text(entries, show_trend=trend))
+        get_console().print(history_to_text(entries, show_trend=trend))
 
 
 # ── Sub-command: prune ───────────────────────────────────────────────────
@@ -282,7 +282,7 @@ def lint_prune(
         knox lint prune --max-age-days 30     # remove entries older than 30 days
     """
     if keep_last is None and max_age_days is None:
-        typer.echo("At least one of --keep-last or --max-age-days must be provided.", err=True)
+        get_err_console().print("At least one of --keep-last or --max-age-days must be provided.")
         raise typer.Exit(1)
 
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
@@ -297,4 +297,4 @@ def lint_prune(
         keep_last=keep_last,
         max_age_days=max_age_days,
     )
-    typer.echo(f"Removed {removed} entr{'y' if removed == 1 else 'ies'}.")
+    get_console().print(f"Removed {removed} entr{'y' if removed == 1 else 'ies'}.")

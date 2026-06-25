@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from importlib import resources
 from pathlib import Path
 
@@ -10,9 +9,10 @@ import typer
 
 from knox.cli.app import app
 from knox.cli.args.init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
+from knox.logging import get_console, get_err_console, get_logger
 from knox.scaffolding import ScaffoldError, find_existing_project, scaffold_project
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _NEXT_STEPS_RESOURCE: str = "next_steps.txt"
@@ -36,26 +36,25 @@ def init(
     if not force:
         existing = find_existing_project(target_dir)
         if existing is not None:
-            typer.echo(
+            get_err_console().print(
                 f"warning: existing KNOX project detected at {existing}.\n  Use --force to overwrite (this wipes the current vault).",
-                err=True,
             )
             raise typer.Exit(code=0)
 
     try:
         result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache)
     except ScaffoldError as exc:
-        typer.echo(f"error: {exc}", err=True)
+        get_err_console().print(f"error: {exc}")
         raise typer.Exit(code=1) from exc
 
-    typer.echo(f"Created wiki project at {result.target_dir}")
+    get_console().print(f"Created wiki project at {result.target_dir}")
     for directory in result.created_dirs:
-        typer.echo(f"  + {directory.relative_to(result.target_dir)}/")
+        get_console().print(f"  + {directory.relative_to(result.target_dir)}/")
     for file in result.copied_files:
-        typer.echo(f"  + {file.relative_to(result.target_dir)}")
+        get_console().print(f"  + {file.relative_to(result.target_dir)}")
     if result.skipped_files:
-        typer.echo(f"  - skipped (--bare): {', '.join(result.skipped_files)}")
+        get_console().print(f"  - skipped (--bare): {', '.join(result.skipped_files)}")
     if result.git_initialised:
-        typer.echo("  + git init: initial commit created")
-    typer.echo("")
-    typer.echo(_load_next_steps(), nl=False)
+        get_console().print("  + git init: initial commit created")
+    get_console().print("")
+    get_console().print(_load_next_steps(), end="")

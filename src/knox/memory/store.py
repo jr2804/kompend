@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,9 +10,10 @@ from typing import Any
 import zvec as _zvec
 
 from knox.core.paths import VaultPaths
+from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryStore:

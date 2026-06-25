@@ -8,7 +8,6 @@ concatenation fallback is used.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,8 +18,9 @@ from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

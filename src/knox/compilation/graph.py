@@ -8,7 +8,6 @@ different papers from being mixed on a single wiki page.
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
@@ -16,8 +15,9 @@ from typing import Any
 
 from knox.compilation.base import BaseCompiler
 from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GraphCompiler(BaseCompiler):

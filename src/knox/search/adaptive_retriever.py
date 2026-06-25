@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.budget import BudgetPlan, ContextBudgetManager
 from knox.search.index import search_fts
 from knox.search.retriever import SearchResult, _extract_snippet, _tokenize  # ponytail: private retriever imports. Make public when other callers appear.
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AdaptiveRetriever:

@@ -6,7 +6,6 @@ Uses the official ``mcp`` Python SDK (FastMCP) for stdio transport.
 from __future__ import annotations
 
 import dataclasses
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +35,7 @@ from knox.core.pipeline_defs import Compiler, ImageMode, OutputFormat, PipelineC
 from knox.core.template_loader import get_template_loader
 from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
+from knox.logging import get_logger
 from knox.memory import MemoryStore
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -43,7 +43,7 @@ from knox.rag.zvec_store import ZvecWikiStore
 from knox.scaffolding import ScaffoldError, scaffold_project
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 server = FastMCP("KNOX")
 

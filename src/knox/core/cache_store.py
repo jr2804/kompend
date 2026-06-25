@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 import shutil
 import tempfile
@@ -40,8 +39,9 @@ from knox.core.models import (
     ResolvedChunk,
     WikiNode,
 )
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _CACHE_DATACLASSES: dict[str, type] = {

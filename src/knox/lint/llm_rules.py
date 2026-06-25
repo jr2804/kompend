@@ -7,14 +7,14 @@ default and only run when the user passes ``--llm``.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from knox.core.template_loader import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.llm.client import JSON_RESPONSE_FORMAT
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

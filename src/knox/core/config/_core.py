@@ -49,7 +49,6 @@ from __future__ import annotations
 
 import contextlib
 import copy
-import logging
 import os
 import re
 import tomllib
@@ -137,8 +136,9 @@ from knox.core.config.keys import (
     TRUST_USER_TRACKING,
 )
 from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE, VaultPaths
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── File paths ───────────────────────────────────────────────────────────
 

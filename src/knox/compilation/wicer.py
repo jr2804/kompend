@@ -14,7 +14,6 @@ crashes on a single bad provider.
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Final
 
 from knox.compilation._two_phase_core import _tokens_to_chars
@@ -25,8 +24,9 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.format import encode_for_llm, structured_return_instruction
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _loader = get_template_loader()
 

@@ -10,10 +10,11 @@ Patterns can come from:
 from __future__ import annotations
 
 import fnmatch
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug
 from knox.core.hooks import HookEvent, fire_hook
+from knox.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def learn(

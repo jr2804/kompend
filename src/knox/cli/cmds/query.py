@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +44,7 @@ from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
+from knox.logging import get_console, get_err_console, get_logger
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
@@ -52,7 +52,7 @@ from knox.search.classifier import classify
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
@@ -114,14 +114,14 @@ def _print_raw_results(results: list[Any], format: str) -> None:
             }
             for r in results
         ]
-        typer.echo(json.dumps(output, indent=2))
+        get_console().print(json.dumps(output, indent=2))
     else:
         for r in results:
-            typer.echo(f"  [{r.score:.3f}] {r.title}")
+            get_console().print(f"  [{r.score:.3f}] {r.title}")
             if r.source_file:
-                typer.echo(f"        Source: {r.source_file}")
-            typer.echo(f"        {r.snippet}")
-            typer.echo("")
+                get_console().print(f"        Source: {r.source_file}")
+            get_console().print(f"        {r.snippet}")
+            get_console().print("")
 
 
 def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
@@ -136,7 +136,7 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     if result.response is None:
         return False
     if format == "json":
-        typer.echo(
+        get_console().print(
             json.dumps(
                 {
                     "intent": result.intent.value,
@@ -146,7 +146,7 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
             )
         )
     else:
-        typer.echo(result.response)
+        get_console().print(result.response)
     return True
 
 
@@ -164,7 +164,7 @@ def _execute_query_search(
 
     if mode == "raw":
         if sources_dir is None:
-            typer.echo("No sources directory found. Use --sources-dir to specify.", err=True)
+            get_err_console().print("No sources directory found. Use --sources-dir to specify.")
             raise typer.Exit(1)
         results = retriever.search_raw(query, sources_dir, top_k=top_k)
         raw = True
@@ -181,9 +181,9 @@ def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model
         mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
         mem_store.add_entry(query=query, answer=answer, memory_by=memory_by)
         mem_store.close()
-        typer.echo("\n✓ Query and answer saved to memory.", err=True)
+        get_err_console().print("\n✓ Query and answer saved to memory.")
     except Exception as exc:
-        typer.echo(f"\nWarning: Failed to save to memory: {exc}", err=True)
+        get_err_console().print(f"\nWarning: Failed to save to memory: {exc}")
 
 
 def _build_enhanced_retriever(
@@ -264,14 +264,14 @@ def _handle_enhanced_search(
         cached = enhanced.check_cache(query)
         if cached is not None:
             if format == "json":
-                typer.echo(format_json_output(cached, []))
+                get_console().print(format_json_output(cached, []))
             else:
-                typer.echo(cached.answer)
-                typer.echo("")
-                typer.echo("Sources:")
+                get_console().print(cached.answer)
+                get_console().print("")
+                get_console().print("Sources:")
                 for i, c in enumerate(cached.citations, 1):
                     source_str: str = c.get("source") or "wiki"
-                    typer.echo(f"  [{i}] {c['article']} ({source_str})")
+                    get_console().print(f"  [{i}] {c['article']} ({source_str})", markup=False)
             if remember:
                 _save_query_memory(state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
             return ([], False, True)  # Signal early return
@@ -311,21 +311,21 @@ def _synthesize_and_output(
             synthesizer = TokenOverlapRetriever(wiki)
             synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
     except Exception as exc:
-        typer.echo(f"LLM synthesis failed: {exc}", err=True)
-        typer.echo("Showing raw context instead:", err=True)
+        get_err_console().print(f"LLM synthesis failed: {exc}")
+        get_err_console().print("Showing raw context instead:")
         _print_raw_results(results, "text")
         raise typer.Exit(1)
 
     if format == "json":
-        typer.echo(format_json_output(synthesis, results))
+        get_console().print(format_json_output(synthesis, results))
     else:
-        typer.echo(synthesis.answer)
-        typer.echo("")
-        typer.echo("Sources:")
+        get_console().print(synthesis.answer)
+        get_console().print("")
+        get_console().print("Sources:")
         c: dict[str, Any]
         for i, c in enumerate(synthesis.citations, 1):
             source_str: str = c.get("source") or "wiki"
-            typer.echo(f"  [{i}] {c['article']} ({source_str})")
+            get_console().print(f"  [{i}] {c['article']} ({source_str})", markup=False)
 
     if remember:
         _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
@@ -366,9 +366,8 @@ def query_cmd(
 
     wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
-        typer.echo(
+        get_err_console().print(
             f"No compiled wiki found in {output_dir}. Run 'knox compile' first.",
-            err=True,
         )
         raise typer.Exit(1)
 
@@ -411,7 +410,7 @@ def query_cmd(
     fire_hook(HookEvent.ON_QUERY, query=query, results=results, search_mode=search_mode)
 
     if not results:
-        typer.echo("No relevant content found.")
+        get_console().print("No relevant content found.")
         raise typer.Exit(0)
 
     if raw:
@@ -419,7 +418,7 @@ def query_cmd(
         return
 
     if llm_client is None:
-        typer.echo("Warning: No LLM configured. Showing raw context instead.", err=True)
+        get_err_console().print("Warning: No LLM configured. Showing raw context instead.")
         _print_raw_results(results, "text")
         return
 
