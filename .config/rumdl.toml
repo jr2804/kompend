@@ -6,3 +6,8 @@ line-length = 120
 
 # Markdown flavor/dialect: knox targets Obsidian by default
 flavor = "obsidian"
+
+[per-file-ignores]
+"README.md" = ["MD033", "MD013"]  # Allow long line length and HTML in README
+"docs/**/*.md" = ["MD013", "MD041"]  # Relax rules for generated docs
+"**/AGENTS.md" = ["MD013"]  # Allow long lines in AGENTS.md (agent-only files)
