@@ -102,8 +102,8 @@ knox query "what is the main result?"
 - [Open-WebUI](integrations/open-webui.md) — Connecting KNOX with Open-WebUI
 - [Ecosystem](reference/ecosystem.md) — LLM-wiki tool survey
 
-### Project
+### Project & Community
 
-- [Status](about/status.md) — Feature completion matrix
-- [Roadmap](about/roadmap.md) — Milestones and upcoming work
+- [Architecture Decisions](architecture/decisions.md) — Design choices and rationale
 - [Acknowledgements](about/acknowledgements.md) — Credits and investigated projects
+- **Active Work** — See [beads issue tracker](https://github.com/Hermes/knox) in `.beads/` for milestones, active tasks, and project status
