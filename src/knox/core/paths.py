@@ -81,6 +81,9 @@ PRIVATE_FILE: Final[str] = "private.json"
 COMPILE_STATE_FILE: Final[str] = "compile_state.json"
 STATE_FILE: Final[str] = "state.json"
 
+# ── Lint history (append-only JSONL) ─────────────────────────────────────
+LINT_HISTORY_FILE: Final[str] = "lint_history.jsonl"
+
 # ── Organize (LLM-based file categorisation) ─────────────────────────────
 ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
 
@@ -125,8 +128,9 @@ class VaultPaths:
         │   ├── verification.json   ← verification_path
         │   ├── private.json        ← private_path
         │   ├── downloaded.json     ← downloaded_path
-        │   ├── last_organize.json  ← organize_report_path
-        │   └── state.json          ← state_file
+    │   ├── last_organize.json  ← organize_report_path
+    │   ├── lint_history.jsonl  ← lint_history_path
+    │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── wiki/                   ← output_dir
         │   └── index.md            ← index_file
@@ -261,6 +265,11 @@ class VaultPaths:
     def log_file(self) -> Path:
         """Pipeline log file (prepended after each stage)."""
         return self.knox_dir / LOG_FILE
+
+    @property
+    def lint_history_path(self) -> Path:
+        """Append-only JSONL log of lint runs."""
+        return self.knox_dir / LINT_HISTORY_FILE
 
     # ── Files inside output_dir/ ────────────────────────────────────────
 

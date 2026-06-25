@@ -46,6 +46,42 @@ LintThreshold = Annotated[
     ),
 ]
 
+LintHistoryLast = Annotated[
+    int,
+    typer.Option(
+        "--last",
+        "-n",
+        help="Show the last N history entries.",
+        min=1,
+    ),
+]
+
+LintHistoryTrend = Annotated[
+    bool,
+    typer.Option(
+        "--trend",
+        help="Show a health-score trend sparkline.",
+    ),
+]
+
+LintPruneKeep = Annotated[
+    int | None,
+    typer.Option(
+        "--keep-last",
+        help="Keep only the most recent N entries, removing the rest.",
+        min=1,
+    ),
+]
+
+LintPruneAgeDays = Annotated[
+    int | None,
+    typer.Option(
+        "--max-age-days",
+        help="Remove entries older than N days.",
+        min=1,
+    ),
+]
+
 # ── N5 web serve command ─────────────────────────────────────────────────
 
 ServeHost = Annotated[

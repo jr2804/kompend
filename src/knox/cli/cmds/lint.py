@@ -1,4 +1,12 @@
-"""The ``knox lint`` command."""
+"""The ``knox lint`` command group.
+
+Sub-commands
+------------
+
+* ``knox lint run``     — run lint rules and save to history.
+* ``knox lint history`` — query past lint runs.
+* ``knox lint prune``   — remove old history entries.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +24,11 @@ from knox.cli.args import (
     ConfigPath,
     JsonOutput,
     LintFix,
+    LintHistoryLast,
+    LintHistoryTrend,
     LintLlm,
+    LintPruneAgeDays,
+    LintPruneKeep,
     LintRule,
     LintThreshold,
     LlmContextBudget,
@@ -25,10 +37,29 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
+from knox.core.paths import LINT_HISTORY_FILE
+from knox.lint.history import (
+    entry_from_report,
+    history_to_json,
+    history_to_text,
+    load_lint_history,
+    prune_lint_history,
+    save_lint_entry,
+)
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.output.wiki_index import generate_stage_log_entry, prepend_log
+
+lint_app = typer.Typer(
+    name="lint",
+    help="Lint a compiled wiki for quality issues and query lint history.",
+    no_args_is_help=True,
+)
+app.add_typer(lint_app)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
 
 
 def _uses_llm_rule(rule: list[str] | None) -> bool:
@@ -73,8 +104,11 @@ def _persist_lint_fixes(
     return updated
 
 
-@app.command(name="lint")
-def lint_cmd(
+# ── Sub-command: run ─────────────────────────────────────────────────────
+
+
+@lint_app.command("run", help="Run lint rules against the compiled wiki.")
+def lint_run(
     ctx: typer.Context,
     fix: LintFix = False,
     llm: LintLlm = False,
@@ -85,18 +119,18 @@ def lint_cmd(
     llm_context_budget: LlmContextBudget = None,
     config: ConfigPath = None,
 ) -> None:
-    """Lint a compiled wiki for quality issues.
+    """Run structural (and optionally LLM-powered) lint rules.
 
-    Runs 8 structural rules by default. Add --llm to also run 3
-    LLM-powered rules (slow, expensive). Use --rule to run only specific
-    rules and --fix to auto-fix supported issues.
+    Results are printed and also appended to
+    ``.knox/lint_history.jsonl`` for later querying via
+    ``knox lint history``.
 
     Examples:
-        knox lint                       # structural rules only
-        knox lint --llm                 # structural + LLM rules
-        knox lint --fix                 # auto-fix what's possible
-        knox lint --rule broken-wikilinks --rule orphan-page
-        knox lint --threshold 80        # exit 1 if score < 80
+        knox lint run                       # structural rules only
+        knox lint run --llm                 # structural + LLM rules
+        knox lint run --fix                 # auto-fix what's possible
+        knox lint run --rule broken-wikilinks --rule orphan-page
+        knox lint run --threshold 80        # exit 1 if score < 80
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(
@@ -160,6 +194,31 @@ def lint_cmd(
         ),
     )
 
+    # ── Persist to lint history ──────────────────────────────────────────
+    llm_meta: dict | None = None
+    if llm_client:
+        llm_meta = {
+            "model": llm_default_model,
+            "usage": llm_client.usage.to_dict(),
+        }
+
+    options = {
+        "rules": list(rule) if rule else None,
+        "enable_llm": llm,
+        "fix": fix,
+        "threshold": threshold,
+        "llm_context_budget": llm_context_budget,
+    }
+    entry = entry_from_report(
+        report,
+        duration_seconds=lint_elapsed,
+        options=options,
+        config=cfg,
+        node_count=len(wiki.nodes),
+        llm=llm_meta,
+    )
+    save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
+
     if json_output:
         typer.echo(report_to_json(report))
     else:
@@ -168,3 +227,74 @@ def lint_cmd(
     if threshold is not None and report.health_score < threshold:
         typer.echo(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.", err=True)
         raise typer.Exit(1)
+
+
+# ── Sub-command: history ─────────────────────────────────────────────────
+
+
+@lint_app.command("history", help="Show past lint runs and score trends.")
+def lint_history(
+    ctx: typer.Context,
+    last: LintHistoryLast = 10,
+    trend: LintHistoryTrend = False,
+    json_output: JsonOutput = False,
+    config: ConfigPath = None,
+) -> None:
+    """Query the lint history log.
+
+    Examples:
+        knox lint history              # last 10 runs
+        knox lint history -n 5         # last 5 runs
+        knox lint history --trend      # with score sparkline
+        knox lint history --json       # machine-readable
+    """
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(
+        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        config_path=config,
+    )
+    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+
+    entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=last)
+
+    if json_output:
+        typer.echo(history_to_json(entries))
+    else:
+        typer.echo(history_to_text(entries, show_trend=trend))
+
+
+# ── Sub-command: prune ───────────────────────────────────────────────────
+
+
+@lint_app.command("prune", help="Remove old entries from the lint history.")
+def lint_prune(
+    ctx: typer.Context,
+    keep_last: LintPruneKeep = None,
+    max_age_days: LintPruneAgeDays = None,
+    config: ConfigPath = None,
+) -> None:
+    """Remove old entries from ``.knox/lint_history.jsonl``.
+
+    At least one of --keep-last or --max-age-days must be provided.
+
+    Examples:
+        knox lint prune --keep-last 50        # keep only 50 newest
+        knox lint prune --max-age-days 30     # remove entries older than 30 days
+    """
+    if keep_last is None and max_age_days is None:
+        typer.echo("At least one of --keep-last or --max-age-days must be provided.", err=True)
+        raise typer.Exit(1)
+
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(
+        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        config_path=config,
+    )
+    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+
+    removed = prune_lint_history(
+        state_dir / LINT_HISTORY_FILE,
+        keep_last=keep_last,
+        max_age_days=max_age_days,
+    )
+    typer.echo(f"Removed {removed} entr{'y' if removed == 1 else 'ies'}.")

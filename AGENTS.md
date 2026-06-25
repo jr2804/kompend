@@ -338,6 +338,7 @@ a literal in any `.py` file outside `paths.py`. Always import from
 | `VERIFICATION_FILE` | `"verification.json"` | Verification results |
 | `PRIVATE_FILE` | `"private.json"` | Private page manifest |
 | `COMPILE_STATE_FILE` | `"compile_state.json"` | Tier state checkpoint |
+| `LINT_HISTORY_FILE` | `"lint_history.jsonl"` | Append-only lint history log |
 | `STATE_FILE` | `"state.json"` | General state file |
 
 **Configurable directory names** (`"sources"`, `"wiki"`) live in `DEFAULTS`

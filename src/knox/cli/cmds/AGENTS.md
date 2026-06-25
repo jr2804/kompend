@@ -23,7 +23,7 @@ Commands organized by domain/functional grouping:
 | `config.py` | Configuration management | `/knox config` (sub-app: get, set, validate, show) |
 | `doctor.py` | Health/diagnostic checks | `/knox doctor` |
 | `init.py` | Project initialization | `/knox init` (sub-app: bare, scaffold, bootstrap) |
-| `lint.py` | Linting and validation | `/knox lint` |
+| `lint.py` | Linting and validation | `/knox lint` (sub-app: run, history, prune) |
 | `memory.py` | Memory/RAG operations | `/knox memory` (sub-app: query, add, feedback) |
 | `organize.py` | Wiki organization | `/knox organize` |
 | `pack.py` | Archive packing | `/knox pack` |
