@@ -113,8 +113,7 @@ nav:
   - Integrations:
     - Open WebUI: integrations/open-webui.md
   - About:
-    - Status: about/status.md
-    - Roadmap: about/roadmap.md
+    - Motivation: about/motivation.md
     - Acknowledgements: about/acknowledgements.md
 
 # social icons omitted — Codeberg icon not in Material icon set
