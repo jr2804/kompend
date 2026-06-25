@@ -9,8 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
-from knox.cli.doctor import CheckResult, print_doctor_results, run_doctor
-from knox.cli.status import collect_stats, print_status
+from knox.cli.cmds.doctor import CheckResult, print_doctor_results, run_doctor
+from knox.cli.cmds.status import collect_stats, print_status
 
 
 class TestCheckResult:

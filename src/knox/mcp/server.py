@@ -16,7 +16,7 @@ from knox.capture.capture import capture
 from knox.capture.crystallize import crystallize
 from knox.capture.learn import learn
 from knox.cli._shared import resolve_project_paths
-from knox.cli.status import collect_stats
+from knox.cli.cmds.status import collect_stats
 from knox.core.config import (
     EmbeddingConfig,
     LLMConfig,

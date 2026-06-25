@@ -10,8 +10,8 @@ import typer
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import ConfigPath, JsonOutput, Verbose
-from knox.cli.doctor import print_doctor_results, run_doctor
-from knox.cli.status import collect_stats, print_status
+from knox.cli.cmds.doctor import print_doctor_results, run_doctor
+from knox.cli.cmds.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,

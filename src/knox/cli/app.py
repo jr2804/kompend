@@ -61,17 +61,19 @@ def main() -> None:
     app()
 
 
-from knox.cli import (  # noqa: E402
-    capture_cmds,  # noqa: F401
-    config_cmd,  # noqa: F401
+from knox.cli.cmds import (  # noqa: E402
+    capture,  # noqa: F401
+    config,  # noqa: F401
+    doctor,  # noqa: F401
     init,  # noqa: F401
-    lint_cmds,  # noqa: F401
-    memory_cmd,  # noqa: F401
-    organize_cmds,  # noqa: F401
-    pack_cmds,  # noqa: F401
-    pipeline_cmds,  # noqa: F401
-    quality_cmds,  # noqa: F401
-    query_cmds,  # noqa: F401
-    review_cmds,  # noqa: F401
-    serve_cmds,  # noqa: F401
+    lint,  # noqa: F401
+    memory,  # noqa: F401
+    organize,  # noqa: F401
+    pack,  # noqa: F401
+    pipeline,  # noqa: F401
+    quality,  # noqa: F401
+    query,  # noqa: F401
+    review,  # noqa: F401
+    serve,  # noqa: F401
+    status,  # noqa: F401
 )

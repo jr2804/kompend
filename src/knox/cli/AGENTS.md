@@ -42,36 +42,38 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
 ### File responsibilities
 
-| File | Purpose |
+| File/Directory | Purpose |
 |---|---|
 | `app.py` | Typer app instance, version callback, command auto-import |
-| `args.py` | `Annotated` type aliases for every CLI option/argument. No logic. |
-| `*_cmds.py` | `@app.command` registration, one file per command group (e.g. `pipeline_cmds.py`, `lint_cmds.py`, `review_cmds.py`, `quality_cmds.py`). Each is thin: parse args → call core → format output. |
-| `args_*.py` | Per-command argument aliases for sub-app command groups (`args_init.py`, `args_memory.py`, `args_config.py`). |
+| `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
+| `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
 | `_ignore.py` | Ignore/gitignore pattern matching for source scanning. |
 | `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
 | `_progress.py` | Rich progress bar wrappers. |
-| `doctor.py` | Health checks (dirs, parsers, LLM connectivity). |
-| `status.py` | Wiki statistics collection and display. |
+| `_shared.py` | Shared utilities (config resolution, CLI overrides, hook loading). |
 
-### Argument declarations (`args.py`)
+### Argument declarations (`args/` submodule)
 
-- All `typer.Option` / `typer.Argument` live in `args.py` as `Annotated` types.
+See `src/knox/cli/args/AGENTS.md` for detailed argument organization rules.
+
+**Summary:**
+- All `typer.Option` / `typer.Argument` live in `args/` as `Annotated` types.
+- Arguments organized by domain into 9 modules: `common.py`, `compile.py`, `parse.py`, `query.py`, `pipeline.py`, `config.py`, `init.py`, `memory.py`, `other.py`.
 - Commands import the types, never call `typer.Option()` inline (B008).
 - Default values are module-level constants (`DEFAULT_CHUNK_SIZE`, etc.).
 - **These constants are the CLI's own defaults, not the source of truth.** The
   source of truth is `knox.core.config.DEFAULTS`. The CLI constants exist only
   for Typer's `--help` text and as fallback values passed to `resolve_config()`.
 
-### Command functions (`*_cmds.py`)
+### Command functions (`cmds/` submodule)
 
-- One `*_cmds.py` file per command group. A group is a cohesive set of
-  related commands (e.g. `lint_cmds.py` = lint, `review_cmds.py` = review
-  queue, `quality_cmds.py` = lightweight diagnostics).
-- Do NOT bundle unrelated commands into one file. If a `*_cmds.py` file
-  grows past a few hundred lines holding unrelated commands, split it.
-- Keep command functions short: parse → resolve config → call core → print.
+See `src/knox/cli/cmds/AGENTS.md` for detailed command organization rules.
+
+**Summary:**
+- One file per command group organized by domain. Groups are cohesive sets of related commands.
+- 14 command modules: `capture.py`, `config.py`, `doctor.py`, `init.py`, `lint.py`, `memory.py`, `organize.py`, `pack.py`, `pipeline.py`, `quality.py`, `query.py`, `review.py`, `serve.py`, `status.py`.
+- Each command function is thin: parse args → resolve config → call core → print.
 - Never put a `for` loop that iterates over wiki nodes and does real work.
   That's business logic — move it to a core module.
 - `try/except` at the top level is fine for user-facing error messages.
@@ -135,4 +137,7 @@ touched, not extended:
 
 ## Child DOX Index
 
-*This module has no child AGENTS.md files.*
+| Path | Scope |
+|------|-------|
+| `src/knox/cli/args/AGENTS.md` | Argument definitions — Annotated types, domain organization, reusable type patterns |
+| `src/knox/cli/cmds/AGENTS.md` | Command implementations — @app.command registration, thin wrapper patterns, sub-apps (config, init, memory) |
