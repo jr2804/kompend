@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.search.cache import CacheEntry, SemanticCache
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import SearchResult, SynthesisResult
 
@@ -68,8 +69,6 @@ class TestCheckCache:
     def test_cache_hit_returns_synthesis_result(self) -> None:
         retriever = EnhancedRetriever(_make_wiki(), cache_enabled=False)
         # Inject a fake cache with a hit
-        from knox.search.cache import CacheEntry, SemanticCache
-
         fake_cache = MagicMock(spec=SemanticCache)
         fake_cache.lookup.return_value = CacheEntry(
             query="q",
@@ -149,8 +148,6 @@ class TestSynthesize:
     def test_synthesize_stores_in_cache(self) -> None:
         wiki = _make_wiki()
         retriever = EnhancedRetriever(wiki, cache_enabled=False)
-
-        from knox.search.cache import SemanticCache
 
         fake_cache = MagicMock(spec=SemanticCache)
         retriever._cache = fake_cache
