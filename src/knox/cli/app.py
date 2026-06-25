@@ -6,6 +6,8 @@ from importlib.metadata import version
 
 import typer
 
+from knox.logging import configure_logging
+
 
 # Version management
 def _get_version() -> str:
@@ -58,6 +60,7 @@ def _callback(
 
 def main() -> None:
     """Entry point for the CLI application."""
+    configure_logging()
     app()
 
 

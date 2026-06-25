@@ -25,7 +25,10 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+from rich.table import Column
 from rich.text import Text
+
+from knox.logging import get_err_console
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -78,7 +81,7 @@ class FileProgressTracker:
     """
 
     total: int
-    console: Console = field(default_factory=lambda: Console(stderr=True, force_terminal=True))
+    console: Console = field(default_factory=get_err_console)
     _progress: Progress | None = None
     _overall_task: TaskID | None = None
     _start_time: float = 0.0
@@ -92,8 +95,8 @@ class FileProgressTracker:
         self._start_time = time.time()
         self._progress = Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
+            TextColumn("[progress.description]{task.description}", table_column=Column(no_wrap=True)),
+            BarColumn(bar_width=None),
             _PercentageColumn(),
             TimeRemainingColumn(),
             TimeElapsedColumn(),

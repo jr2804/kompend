@@ -69,7 +69,9 @@ logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
-logger = logging.getLogger(__name__)
+from knox.logging import get_logger  # noqa: E402
+
+logger = get_logger(__name__)
 
 
 def load_hooks() -> None:
