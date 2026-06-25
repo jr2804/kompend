@@ -2,9 +2,26 @@
 
 ## Knowledge Organizer for eXtended documents
 
-A compiled LLM-wiki system for scientific and technical documents. Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web sources into an interlinked, queryable knowledge base — with structure-preserving parsing, hybrid chunking, multi-turn resolution, and WiCER iterative compilation.
+Karpathy's [compiled LLM-wiki concept](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+went viral — and for good reason. You'll find plenty of implementations on
+GitHub, but they mostly fall into two camps:
 
-Inspired by [Karpathy's compiled LLM-wiki concept](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
+- those that want to run everything on a Raspberry Pi with an outdated
+  2.5B-parameter model and lecture you about *privacy* while you watch it
+  hallucinate half your sources;
+- and those that require a Gemini Ultra / Claude Max / Codex Pro subscription
+  plus exclusive use of the corresponding tools.
+
+Both are technically impressive. Neither is looking left or right — not out
+of malice, they're just unaware that anyone might operate outside their
+chosen stack.
+
+KNOX refuses to pick a side. [Read the full motivation →](docs/about/motivation.md)
+
+Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web
+sources into an interlinked, queryable knowledge base — with
+structure-preserving parsing, hybrid chunking, multi-turn resolution, and
+WiCER iterative compilation.
 
 ## Quick Start
 

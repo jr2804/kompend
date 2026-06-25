@@ -9,6 +9,11 @@ A compiled LLM-wiki system for scientific and technical documents.
 Parse, chunk, resolve, and compile PDFs, DOCX, spreadsheets, and
 web sources into an interlinked, queryable knowledge base.
 
+Unlike most tools in this space, KNOX is provider-agnostic, adapts
+to whatever LLM you have — from a local 8B model to a frontier API —
+and uses structure-preserving parsing so technical content (tables,
+equations, figures) survives extraction intact. [Read why →](about/motivation.md)
+
 ---
 
 ## 5-Tier Pipeline
@@ -56,6 +61,7 @@ knox query "what is the main result?"
 
 ### Getting Started
 
+- [Motivation](about/motivation.md) — Why KNOX exists and what makes it different
 - [Getting Started](guides/cli.md) — CLI setup, compile/query examples
 - [Initialization](guides/initialization.md) — `knox init` project scaffolding
 - [Configuration](guides/configuration.md) — 5-layer config system, `knox config` subcommands
