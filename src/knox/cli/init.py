@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from knox.cli.app import app
-from knox.cli.args_init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
+from knox.cli.args.init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
 from knox.scaffolding import ScaffoldError, find_existing_project, scaffold_project
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ from typing import Any
 import typer
 
 from knox.cli.app import app
-from knox.cli.args_config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
+from knox.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 from knox.core.config import (
     coerce_config_value,
     get_global_config_path,

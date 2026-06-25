@@ -25,12 +25,6 @@ from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
 logger = logging.getLogger(__name__)
 
-# ── Config key constants ──────────────────────────────────────────────────
-
-SEARCH_CACHE_ENABLED: str = "search.cache.enabled"
-SEARCH_CACHE_THRESHOLD: str = "search.cache.threshold"
-SEARCH_CACHE_MAX_ENTRIES: str = "search.cache.max_entries"
-
 # ── Data model ────────────────────────────────────────────────────────────
 
 
@@ -173,9 +167,7 @@ class SemanticCache:
         try:
             self._cache_file.parent.mkdir(parents=True, exist_ok=True)
             raw = [_serialize_entry(e) for e in self._entries]
-            self._cache_file.write_text(
-                json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            self._cache_file.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception as exc:
             logger.warning("Failed to save semantic cache: %s", exc)
 

@@ -1,0 +1,75 @@
+"""CLI arguments for the query command."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+import typer
+
+# ── Q17 query command ──────────────────────────────────────────────────
+
+QueryText = Annotated[
+    str,
+    typer.Argument(
+        help="Natural language question to ask against the compiled wiki.",
+    ),
+]
+
+QueryTopK = Annotated[
+    int,
+    typer.Option(
+        "--top-k",
+        help="Number of context chunks to retrieve (default: 5).",
+        min=1,
+        max=50,
+    ),
+]
+
+QueryRaw = Annotated[
+    bool,
+    typer.Option(
+        "--raw",
+        help="Return raw context chunks without LLM synthesis.",
+    ),
+]
+
+QueryFormat = Annotated[
+    str,
+    typer.Option(
+        "--format",
+        help="Output format: text (default) or json.",
+    ),
+]
+
+QueryNoClassify = Annotated[
+    bool,
+    typer.Option(
+        "--no-classify",
+        help="Skip intent classification (always retrieve).",
+    ),
+]
+
+QuerySearchMode = Annotated[
+    str,
+    typer.Option(
+        "--search-mode",
+        "--scope",
+        help="Search mode: wiki (compiled pages), raw (source files), hybrid (both), or graph (hybrid + graph traversal expansion).",
+    ),
+]
+
+QueryAdaptive = Annotated[
+    bool,
+    typer.Option(
+        "--adaptive",
+        help="Use adaptive retrieval (context-budget-aware zoom-in/zoom-out/targeted).",
+    ),
+]
+
+QueryRemember = Annotated[
+    bool,
+    typer.Option(
+        "--remember",
+        help="Save this query and synthesized answer to the memory store.",
+    ),
+]

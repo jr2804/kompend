@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import CompiledWiki
+from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.cache import SemanticCache
@@ -27,10 +27,15 @@ from knox.search.retriever import (
     SearchResult,
     SynthesisResult,
     TokenOverlapRetriever,
-    _extract_snippet,
-    _tokenize,
 )
-from knox.core.template_loader import TemplateLoader, get_template_loader
+
+try:
+    from sentence_transformers import CrossEncoder as _CrossEncoder
+
+    _HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    _CrossEncoder = None  # type: ignore[assignment]
+    _HAS_SENTENCE_TRANSFORMERS = False
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +152,7 @@ class EnhancedRetriever:
             return []
 
         # Fuse multi-query results via RRF
-        if len(all_results) > 1:
-            results = self._fuse_multi_query(all_results, top_k=top_k * 2)
-        else:
-            results = all_results[0]
+        results = self._fuse_multi_query(all_results, top_k=top_k * 2) if len(all_results) > 1 else all_results[0]
 
         # Step 5: Neural re-ranking
         if self._reranker_enabled and results:
@@ -194,9 +196,7 @@ class EnhancedRetriever:
             return [query]
 
         try:
-            system_prompt = self._template_loader.render(
-                "search/expand_query.md.j2", query=query
-            )
+            system_prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
             result = self._llm_client.complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -219,45 +219,12 @@ class EnhancedRetriever:
             logger.warning("Query expansion failed: %s", exc, exc_info=True)
             return [query]
 
-    @staticmethod
-    def _fuse_multi_query(
-        result_lists: list[list[SearchResult]], top_k: int
-    ) -> list[SearchResult]:
-        """Fuse multiple result lists via RRF."""
-        rrf_k = 60
-        scores: dict[str, float] = {}
-        representatives: dict[str, SearchResult] = {}
-        for result_list in result_lists:
-            for rank, result in enumerate(result_list):
-                scores[result.article_id] = (
-                    scores.get(result.article_id, 0.0) + 1.0 / (rrf_k + rank)
-                )
-                if result.article_id not in representatives:
-                    representatives[result.article_id] = result
-
-        fused: list[SearchResult] = []
-        for article_id, score in scores.items():
-            r = representatives[article_id]
-            fused.append(
-                SearchResult(
-                    article_id=article_id,
-                    title=r.title,
-                    snippet=r.snippet,
-                    score=round(score, 6),
-                    source_file=r.source_file,
-                )
-            )
-        fused.sort(key=lambda x: x.score, reverse=True)
-        return fused[:top_k]
-
     # ── HyDE ──────────────────────────────────────────────────────────────
 
     def _generate_hypothetical(self, query: str) -> str:
         """Generate a hypothetical answer passage for sparse queries."""
         try:
-            system_prompt = self._template_loader.render(
-                "search/hyde_generate.md.j2", query=query
-            )
+            system_prompt = self._template_loader.render("search/hyde_generate.md.j2", query=query)
             result = self._llm_client.complete(
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -276,14 +243,13 @@ class EnhancedRetriever:
 
     # ── Neural Re-ranker ──────────────────────────────────────────────────
 
-    def _neural_rerank(
-        self, query: str, candidates: list[SearchResult]
-    ) -> list[SearchResult]:
+    def _neural_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
         """Re-rank candidates using a cross-encoder model."""
         try:
-            from sentence_transformers import CrossEncoder
+            if not _HAS_SENTENCE_TRANSFORMERS or _CrossEncoder is None:
+                raise ImportError
 
-            reranker = CrossEncoder(self._reranker_model)
+            reranker = _CrossEncoder(self._reranker_model)
             pairs: list[tuple[str, str]] = []
             for c in candidates:
                 text = c.snippet or c.title
@@ -316,10 +282,7 @@ class EnhancedRetriever:
             )
             return results
         except ImportError:
-            logger.warning(
-                "Neural re-ranker requires sentence-transformers. "
-                "Install with: uv add sentence-transformers"
-            )
+            logger.warning("Neural re-ranker requires sentence-transformers. Install with: uv add sentence-transformers")
             return candidates
         except Exception as exc:
             logger.warning("Neural re-ranking failed: %s", exc, exc_info=True)
@@ -327,9 +290,7 @@ class EnhancedRetriever:
 
     # ── CRAG (Corrective RAG) ──────────────────────────────────────────────
 
-    def _crag_filter(
-        self, query: str, candidates: list[SearchResult]
-    ) -> list[SearchResult]:
+    def _crag_filter(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
         """Grade each candidate for relevance and drop low-scoring ones."""
         if self._llm_client is None:
             return candidates
@@ -377,3 +338,30 @@ class EnhancedRetriever:
         except Exception as exc:
             logger.debug("CRAG grading failed for %s: %s", result.title, exc)
         return 0.5  # neutral fallback
+
+    @staticmethod
+    def _fuse_multi_query(result_lists: list[list[SearchResult]], top_k: int) -> list[SearchResult]:
+        """Fuse multiple result lists via RRF."""
+        rrf_k = 60
+        scores: dict[str, float] = {}
+        representatives: dict[str, SearchResult] = {}
+        for result_list in result_lists:
+            for rank, result in enumerate(result_list):
+                scores[result.article_id] = scores.get(result.article_id, 0.0) + 1.0 / (rrf_k + rank)
+                if result.article_id not in representatives:
+                    representatives[result.article_id] = result
+
+        fused: list[SearchResult] = []
+        for article_id, score in scores.items():
+            r = representatives[article_id]
+            fused.append(
+                SearchResult(
+                    article_id=article_id,
+                    title=r.title,
+                    snippet=r.snippet,
+                    score=round(score, 6),
+                    source_file=r.source_file,
+                )
+            )
+        fused.sort(key=lambda x: x.score, reverse=True)
+        return fused[:top_k]

@@ -17,6 +17,7 @@ from knox.cli.args import (
     QueryFormat,
     QueryNoClassify,
     QueryRaw,
+    QueryRemember,
     QuerySearchMode,
     QueryText,
     QueryTopK,
@@ -28,18 +29,16 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
     SEARCH_CACHE_ENABLED,
-    SEARCH_CACHE_THRESHOLD,
     SEARCH_CACHE_MAX_ENTRIES,
-    SEARCH_EXPANSION_ENABLED,
-    SEARCH_EXPANSION_VARIANTS,
+    SEARCH_CACHE_THRESHOLD,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
+    SEARCH_EXPANSION_ENABLED,
+    SEARCH_EXPANSION_VARIANTS,
+    SEARCH_HYDE_ENABLED,
     SEARCH_RERANKER_ENABLED,
     SEARCH_RERANKER_MODEL,
     SEARCH_RERANKER_TOP_K,
-    SEARCH_HYDE_ENABLED,
-    SEARCH_CONTEXTUAL_ENABLED,
-    SEARCH_CONTEXTUAL_MODEL,
 )
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
@@ -50,6 +49,7 @@ from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.classifier import classify
+from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
 logger = logging.getLogger(__name__)
@@ -193,9 +193,8 @@ def _build_enhanced_retriever(
     state_dir: Path,
     cfg: Any,
     llm_client: LLMClient | None,
-):
+) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
-    from knox.search.pipeline import EnhancedRetriever
     return EnhancedRetriever(
         wiki,
         index_file=state_dir / SEARCH_DB_FILE,
@@ -223,6 +222,117 @@ def _build_enhanced_retriever(
     )
 
 
+def _handle_adaptive_search(
+    query: str,
+    top_k: int,
+    search_mode: str,
+    vector_store: ZvecWikiStore | None,
+    sources_dir: Path | None,
+    wiki: CompiledWiki,
+    state_dir: Path,
+) -> tuple[list[Any], bool]:
+    """Search using adaptive retriever."""
+    retriever = AdaptiveRetriever(
+        wiki,
+        index_file=state_dir / SEARCH_DB_FILE,
+        vector_store=vector_store,
+        sources_dir=sources_dir,
+    )
+    mode = search_mode if search_mode != "hybrid" else None
+    results = retriever.search(query, top_k=top_k, mode=mode)
+    return results, False
+
+
+def _handle_enhanced_search(
+    query: str,
+    top_k: int,
+    raw: bool,
+    search_mode: str,
+    sources_dir: Path | None,
+    vector_store: ZvecWikiStore | None,
+    state_dir: Path,
+    wiki: CompiledWiki,
+    cfg: Any,
+    llm_client: LLMClient | None,
+    remember: bool,
+    format: str,
+) -> tuple[list[Any], bool, bool] | None:
+    """Search using enhanced retriever with RAG features. Returns (results, raw, early_return) or None."""
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
+
+    if not raw:
+        cached = enhanced.check_cache(query)
+        if cached is not None:
+            if format == "json":
+                typer.echo(format_json_output(cached, []))
+            else:
+                typer.echo(cached.answer)
+                typer.echo("")
+                typer.echo("Sources:")
+                for i, c in enumerate(cached.citations, 1):
+                    source_str: str = c.get("source") or "wiki"
+                    typer.echo(f"  [{i}] {c['article']} ({source_str})")
+            if remember:
+                _save_query_memory(
+                    state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg)
+                )
+            return ([], False, True)  # Signal early return
+
+    has_enhanced = (
+        cfg.get(SEARCH_EXPANSION_ENABLED, False)
+        or cfg.get(SEARCH_CRAG_ENABLED, False)
+        or cfg.get(SEARCH_RERANKER_ENABLED, False)
+        or cfg.get(SEARCH_HYDE_ENABLED, False)
+    )
+
+    if has_enhanced:
+        expand_graph = search_mode == "graph"
+        results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
+        return (results, False, False)
+
+    return None
+
+
+def _synthesize_and_output(
+    query: str,
+    results: list[Any],
+    format: str,
+    has_enhanced: bool,
+    enhanced: EnhancedRetriever | None,
+    wiki: CompiledWiki,
+    llm_client: LLMClient | None,
+    remember: bool,
+    state_dir: Path,
+    cfg: Any,
+) -> None:
+    """Synthesize results and output the answer."""
+    try:
+        if has_enhanced and enhanced is not None:
+            synthesis = enhanced.synthesize(query, results)
+        else:
+            synthesizer = TokenOverlapRetriever(wiki)
+            synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
+    except Exception as exc:
+        typer.echo(f"LLM synthesis failed: {exc}", err=True)
+        typer.echo("Showing raw context instead:", err=True)
+        _print_raw_results(results, "text")
+        raise typer.Exit(1)
+
+    if format == "json":
+        typer.echo(format_json_output(synthesis, results))
+    else:
+        typer.echo(synthesis.answer)
+        typer.echo("")
+        typer.echo("Sources:")
+        c: dict[str, Any]
+        for i, c in enumerate(synthesis.citations, 1):
+            source_str: str = c.get("source") or "wiki"
+            typer.echo(f"  [{i}] {c['article']} ({source_str})")
+
+    if remember:
+        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+
+
 @app.command(name="query")
 def query_cmd(
     ctx: typer.Context,
@@ -234,7 +344,7 @@ def query_cmd(
     no_classify: QueryNoClassify = False,
     search_mode: QuerySearchMode = "hybrid",
     adaptive: QueryAdaptive = False,
-    remember: bool = typer.Option(False, "--remember", help="Save this query and synthesized answer to the memory store."),
+    remember: QueryRemember = False,
 ) -> None:
     """Ask a natural language question against the compiled wiki.
 
@@ -266,54 +376,28 @@ def query_cmd(
 
     vector_store = _open_vector_store(state_dir, wiki)
     llm_client = _try_build_llm_client(config)
-    has_enhanced = False
 
     try:
         if adaptive:
-            retriever = AdaptiveRetriever(
-                wiki,
-                index_file=state_dir / SEARCH_DB_FILE,
-                vector_store=vector_store,
-                sources_dir=sources_dir,
-            )
-            results = retriever.search(query, top_k=top_k, mode=search_mode if search_mode != "hybrid" else None)
-            raw = False
+            results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir)
+            has_enhanced = False
         else:
-            # Use EnhancedRetriever when RAG features are enabled
-            enhanced = _build_enhanced_retriever(
-                wiki, vector_store, sources_dir, state_dir, cfg, llm_client
+            enhanced_result = _handle_enhanced_search(
+                query, top_k, raw, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client, remember, format
             )
-
-            # Check semantic cache first
-            if not raw:
-                cached = enhanced.check_cache(query)
-                if cached is not None:
-                    if format == "json":
-                        typer.echo(format_json_output(cached, []))
-                    else:
-                        typer.echo(cached.answer)
-                        typer.echo("")
-                        typer.echo("Sources:")
-                        for i, c in enumerate(cached.citations, 1):
-                            source_str: str = c.get("source") or "wiki"
-                            typer.echo(f"  [{i}] {c['article']} ({source_str})")
-                    if remember:
-                        _save_query_memory(state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+            if enhanced_result is not None:
+                results, raw, should_return = enhanced_result
+                if should_return:
                     return
-
-            # Check if any enhanced features are enabled
-            has_enhanced = (
-                cfg.get(SEARCH_EXPANSION_ENABLED, False)
-                or cfg.get(SEARCH_CRAG_ENABLED, False)
-                or cfg.get(SEARCH_RERANKER_ENABLED, False)
-                or cfg.get(SEARCH_HYDE_ENABLED, False)
-            )
-
-            if has_enhanced:
-                expand_graph = search_mode == "graph"
-                results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
-                raw = False
+                has_enhanced = (
+                    cfg.get(SEARCH_EXPANSION_ENABLED, False)
+                    or cfg.get(SEARCH_CRAG_ENABLED, False)
+                    or cfg.get(SEARCH_RERANKER_ENABLED, False)
+                    or cfg.get(SEARCH_HYDE_ENABLED, False)
+                )
+                enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
             else:
+                enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
                 retriever = HybridRetriever(
                     wiki,
                     index_file=state_dir / SEARCH_DB_FILE,
@@ -321,6 +405,7 @@ def query_cmd(
                     sources_dir=sources_dir,
                 )
                 results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
+                has_enhanced = False
     finally:
         if vector_store is not None:
             vector_store.close()
@@ -340,28 +425,5 @@ def query_cmd(
         _print_raw_results(results, "text")
         return
 
-    try:
-        if has_enhanced:
-            synthesis = enhanced.synthesize(query, results)
-        else:
-            synthesizer = TokenOverlapRetriever(wiki)
-            synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
-    except Exception as exc:
-        typer.echo(f"LLM synthesis failed: {exc}", err=True)
-        typer.echo("Showing raw context instead:", err=True)
-        _print_raw_results(results, "text")
-        raise typer.Exit(1)
-
-    if format == "json":
-        typer.echo(format_json_output(synthesis, results))
-    else:
-        typer.echo(synthesis.answer)
-        typer.echo("")
-        typer.echo("Sources:")
-        c: dict[str, Any]
-        for i, c in enumerate(synthesis.citations, 1):
-            source_str: str = c.get("source") or "wiki"
-            typer.echo(f"  [{i}] {c['article']} ({source_str})")
-
-    if remember:
-        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client) if has_enhanced else None
+    _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, llm_client, remember, state_dir, cfg)

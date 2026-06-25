@@ -8,7 +8,7 @@ from typing import Any
 import typer
 
 from knox.cli.app import app
-from knox.cli.args_memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
+from knox.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR, TRUST_USER_TRACKING
 from knox.core.template_loader import get_template_loader

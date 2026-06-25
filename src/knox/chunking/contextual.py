@@ -17,9 +17,8 @@ Config keys (under ``[search.contextual]``):
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from knox.core.models import ChunkNode, ChunkTree, ParsedDocument
+from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
 
@@ -60,7 +59,7 @@ class ContextualEnricher:
         if not leaves:
             return tree
 
-        doc_title = doc.title or doc.source_path.stem
+        doc_title = doc.title or doc.source_file.stem
         doc_summary = self._summarize_document(doc)
 
         for leaf in leaves:
@@ -74,32 +73,6 @@ class ContextualEnricher:
         )
         return tree
 
-    def _collect_leaves(self, tree: ChunkTree) -> list[ChunkNode]:
-        """Collect all leaf nodes from a ChunkTree."""
-        leaves: list[ChunkNode] = []
-
-        def _walk(node: ChunkNode) -> None:
-            if not node.children:
-                leaves.append(node)
-            for child in node.children:
-                _walk(child)
-
-        _walk(tree.root)
-        return leaves
-
-    def _summarize_document(self, doc: ParsedDocument) -> str:
-        """Generate a one-line summary of the document."""
-        elements = doc.elements
-        headings = [
-            e.content
-            for e in elements
-            if hasattr(e, "type") and str(e.type) in ("HEADING", "ElementType.HEADING")
-            and isinstance(e.content, str)
-        ]
-        if headings:
-            return "; ".join(headings[:5])
-        return doc.title or doc.source_path.stem
-
     def _build_context(
         self,
         node: ChunkNode,
@@ -111,14 +84,12 @@ class ContextualEnricher:
         Uses the heading path and document metadata to describe where
         this chunk fits in the document.
         """
-        heading_path = " > ".join(
-            h for h in (node.heading_path or []) if h
-        ) or "document root"
+        heading_path = " > ".join(h for h in (node.heading_path or []) if h) or "document root"
 
         # Estimate chunk content length
         content_preview = ""
         if node.chunk:
-            content_preview = node.chunk[:200]
+            content_preview = node.chunk.text[:200]
         elif node.structured:
             content_preview = str(node.structured)[:200]
 
@@ -147,3 +118,30 @@ class ContextualEnricher:
 
         # Fallback: structural context without LLM
         return f"This chunk is from '{doc_title}', under section: {heading_path}."
+
+    @staticmethod
+    def _collect_leaves(tree: ChunkTree) -> list[ChunkNode]:
+        """Collect all leaf nodes from a ChunkTree."""
+        leaves: list[ChunkNode] = []
+
+        def _walk(node: ChunkNode) -> None:
+            if not node.children_ids:
+                leaves.append(node)
+            for child_id in node.children_ids:
+                child = tree.nodes.get(child_id)
+                if child is not None:
+                    _walk(child)
+
+        root = tree.nodes.get(tree.root_id)
+        if root is not None:
+            _walk(root)
+        return leaves
+
+    @staticmethod
+    def _summarize_document(doc: ParsedDocument) -> str:
+        """Generate a one-line summary of the document."""
+        elements = doc.elements
+        headings = [e.content for e in elements if e.type == ElementType.HEADING and isinstance(e.content, str)]
+        if headings:
+            return "; ".join(headings[:5])
+        return doc.title or doc.source_file.stem
