@@ -324,6 +324,8 @@ class WiCERCompiler(BaseCompiler):
                     for i, r in enumerate(results):
                         if i >= len(probes):
                             break
+                        if not isinstance(r, dict):
+                            continue
                         if r.get("correct", False) or i not in probe_results:  # ty: ignore
                             probe_results[i] = r  # ty: ignore
 

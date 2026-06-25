@@ -337,9 +337,9 @@ def _try_litellm_json(
                 elapsed,
             )
         return parsed
-    except Exception:
+    except Exception as exc:
         elapsed = time.monotonic() - start
-        logger.warning("LLM call failed for model=%s in=%.1fs — using fallback", model, elapsed)
+        logger.warning("LLM call failed for model=%s in=%.1fs — %s", model, elapsed, exc)
         return None
 
 

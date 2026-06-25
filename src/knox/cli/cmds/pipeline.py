@@ -74,6 +74,7 @@ from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
+from knox.llm.errors import LLMError
 from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
@@ -277,7 +278,16 @@ def compile_cmd(
 
     except Exception as exc:
         tracker.stop()
-        typer.echo(f"Error: {exc}", err=True)
+        if isinstance(exc, LLMError):
+            parts = [f"Error: {exc}"]
+            if exc.model:
+                parts.append(f"  model: {exc.model}")
+            parts.append(f"  attempts: {exc.attempts}")
+            if exc.cause:
+                parts.append(f"  cause: {exc.cause}")
+            typer.echo("\n".join(parts), err=True)
+        else:
+            typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
 

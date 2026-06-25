@@ -29,6 +29,8 @@ from knox.llm.format import (
     salvage_json,  # noqa: F401 — re-exported; callers import from here
 )
 
+litellm.suppress_debug_info = True  # suppress stdout noise on exceptions
+
 logger = logging.getLogger(__name__)
 
 JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
@@ -445,7 +447,13 @@ class LLMClient:
 
         # Extract content (raise PermanentError on missing/empty content).
         if not content:
-            msg = "LLM returned empty content"
+            msg = (
+                f"LLM returned empty content "
+                f"(model={diagnostics.model_used!r}, role={role!r}). "
+                f"This often indicates a wrong model name, missing API key, "
+                f"or provider returning empty — check your --llm-default-model "
+                f"and config."
+            )
             raise PermanentError(
                 msg,
                 model=diagnostics.model_used,
@@ -456,14 +464,20 @@ class LLMClient:
         if response_format is not None and response_format.get("type") == "json_object":
             parsed = salvage_json(content)
             if parsed is None:
-                msg = "LLM returned invalid JSON"
+                msg = (
+                    f"LLM returned invalid JSON "
+                    f"(model={diagnostics.model_used!r}, role={role!r})"
+                )
                 raise PermanentError(
                     msg,
                     model=diagnostics.model_used,
                     attempts=diagnostics.attempts,
                 )
             if not isinstance(parsed, dict):
-                msg = f"LLM returned {type(parsed).__name__}, expected object"
+                msg = (
+                    f"LLM returned {type(parsed).__name__}, expected object "
+                    f"(model={diagnostics.model_used!r}, role={role!r})"
+                )
                 raise PermanentError(
                     msg,
                     model=diagnostics.model_used,
