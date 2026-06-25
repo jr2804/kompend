@@ -18,7 +18,7 @@ calls the right core function, and formats the output. Nothing more.
 ### What belongs in `knox.cli`
 
 - Typer command definitions (`@app.command`)
-- `Annotated` argument/option declarations (`args.py`)
+- `Annotated` argument/option declarations (`args/` submodule)
 - Input validation at the string level (file exists? flag parsing?)
 - Output formatting (print, `--json`, progress bars, `typer.Exit`)
 - CLI-specific orchestration (resolve files, download URLs, copy to sources dir)
@@ -58,6 +58,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 See `src/knox/cli/args/AGENTS.md` for detailed argument organization rules.
 
 **Summary:**
+
 - All `typer.Option` / `typer.Argument` live in `args/` as `Annotated` types.
 - Arguments organized by domain into 9 modules: `common.py`, `compile.py`, `parse.py`, `query.py`, `pipeline.py`, `config.py`, `init.py`, `memory.py`, `other.py`.
 - Commands import the types, never call `typer.Option()` inline (B008).
@@ -71,6 +72,7 @@ See `src/knox/cli/args/AGENTS.md` for detailed argument organization rules.
 See `src/knox/cli/cmds/AGENTS.md` for detailed command organization rules.
 
 **Summary:**
+
 - One file per command group organized by domain. Groups are cohesive sets of related commands.
 - 14 command modules: `capture.py`, `config.py`, `doctor.py`, `init.py`, `lint.py`, `memory.py`, `organize.py`, `pack.py`, `pipeline.py`, `quality.py`, `query.py`, `review.py`, `serve.py`, `status.py`.
 - Each command function is thin: parse args → resolve config → call core → print.
@@ -121,8 +123,8 @@ touched, not extended:
 ## Work Guidance
 
 - Never expand the CLI's role beyond input/output formatting and thin delegation.
-- When adding a new command: add `Annotated` types to `args.py`, add the
-  `@app.command` function to the appropriate `*_cmds.py` file (create one
+- When adding a new command: add `Annotated` types to `args/` submodule, add the
+  `@app.command` function to the appropriate `cmds/` module file (create one
   if no cohesive group exists), add argument → config mapping in
   `_build_cli_overrides()`.
 - Use `typer.echo()` consistently — not `print()`.

@@ -273,9 +273,7 @@ def _handle_enhanced_search(
                     source_str: str = c.get("source") or "wiki"
                     typer.echo(f"  [{i}] {c['article']} ({source_str})")
             if remember:
-                _save_query_memory(
-                    state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg)
-                )
+                _save_query_memory(state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
             return ([], False, True)  # Signal early return
 
     has_enhanced = (

@@ -59,6 +59,7 @@ def compile(
 ```
 
 **Structure:**
+
 1. Import `Annotated` types from `knox.cli.args`
 2. Call core/business logic once
 3. Format and print output
@@ -77,13 +78,14 @@ def compile(
 
 - Command functions are lowercase: `compile()`, `lint()`, `query()`
 - Helper functions prefixed with `_` (private): `_build_review_queue()`, `_annotate_provenance()`
-- Sub-app functions follow the same pattern (e.g., `config_cmd.py` defines `config` and its sub-commands)
+- Sub-app functions follow the same pattern (e.g., `config.py` defines `config` and its sub-commands)
 
 ### Sub-apps (config, init, memory)
 
 Each sub-app has its own Typer instance and set of sub-commands:
 
 **config.py:**
+
 ```python
 config_app = typer.Typer()
 
@@ -105,6 +107,7 @@ Same structure for init.py and memory.py — each is a thin wrapper with sub-com
 Every CLI flag that affects config must be mapped in `_build_cli_overrides()` in `_shared.py`.
 
 Example:
+
 - Flag: `--llm-model` (from args.py)
 - Config key: `llm.model`
 - Resolved in command: `cfg = resolve_config(overrides={"llm.model": llm_model})`
@@ -127,7 +130,7 @@ Example:
 - All modules import successfully: `uv run python -c "from knox.cli.cmds import *"`
 - No circular imports with `app.py`: `uv run python -c "from knox.cli import app, cmds"`
 - All commands register with app: `uv run python -m knox.cli --help` shows all commands
-- Backward compatibility works: `from knox.cli.lint_cmds import lint` still works via `__init__.py` re-exports
+- Backward compatibility maintained: Old import paths (`from knox.cli.lint_cmds import lint`) still work via `__init__.py` re-exports
 
 ## Child DOX Index
 

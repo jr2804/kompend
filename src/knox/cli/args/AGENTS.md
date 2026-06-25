@@ -71,6 +71,7 @@ ChunkSize = Annotated[
 ### Reuse via re-export
 
 `__init__.py` re-exports all type aliases with `from module import X as X` for:
+
 - Backward compatibility (old imports continue working)
 - Central discoverability (one place to see all argument types)
 - Easier IDE navigation
@@ -91,6 +92,7 @@ These live in `common.py` and are imported by multiple command modules:
 ### Domain-specific argument clusters
 
 **Compile arguments** (`compile.py`):
+
 - `CompileFiles` — Input files/directories
 - `TargetFormat` — Output format (md, json, yaml)
 - `ImageMode` — Embed, extract, or reference images
@@ -99,12 +101,14 @@ These live in `common.py` and are imported by multiple command modules:
 - `EmbedBatchSize` — Batch size for embedding
 
 **Query arguments** (`query.py`):
+
 - `QueryText` — Search text
 - `QueryTopK` — Number of results
 - `QueryFormat` — Output format
 - `QuerySearchMode` — Vector, BM25, or hybrid search
 
 **Pipeline arguments** (`pipeline.py`):
+
 - `StartAtTier` — Which compilation tier to begin at
 - `Workers` — Number of parallel workers
 - `NoCacheFlag` — Skip cache and recompile

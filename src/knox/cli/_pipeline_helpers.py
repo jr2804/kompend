@@ -1,6 +1,6 @@
 """Internal helpers for pipeline CLI commands.
 
-Private API — external callers should use ``knox.cli.pipeline_cmds``.
+Private API — external callers should use ``knox.cli.cmds.pipeline``.
 """
 
 from __future__ import annotations

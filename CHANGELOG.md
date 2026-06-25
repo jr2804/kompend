@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- CLI refactored: monolithic `commands.py` split into domain submodules (`pipeline_cmds`, `quality_cmds`, `query_cmds`, `capture_cmds`, `pack_cmds`, `serve_cmds`)
+- CLI refactored: scattered command files and arguments consolidated into organized submodules. Arguments now in `knox.cli.args` submodule (9 domain-organized modules); commands now in `knox.cli.cmds` submodule (14 domain-organized modules). Backward compatibility maintained via `__init__.py` re-exports.
 - Config precedence now supports hierarchical project config (multiple `.knox/config.toml` files merged)
 - HybridChunker now adapts chunk size to the LLM model's discovered context window. When an LLM is configured (Tier 2+), the chunker uses `_discover_context_window()` to find the model's actual `max_input` and computes effective chunk size as `clamp(max_input * (1 - reserve_ratio), chunk_size_min, chunk_size_max)`. For Tier 0-1 only runs (no LLM), falls back to `compile.chunk_size` config.
 - **Breaking:** `compile.chunk_size` default changed from `512` to `1024`. Previous default was silently ignored due to a parameter name mismatch (`chunk_size=` was passed to `**kwargs` instead of `max_tokens=`). Now that the config is actually wired, 1024 tokens produces better embedding quality for 768-dim models.
