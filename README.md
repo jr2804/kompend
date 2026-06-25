@@ -235,8 +235,6 @@ Quick reference:
 | Memory lifecycle | [`docs/concepts/memory-lifecycle.md`](./docs/concepts/memory-lifecycle.md) |
 | Architecture | [`docs/architecture/index.md`](./docs/architecture/index.md) |
 | Decision log | [`docs/architecture/decisions.md`](./docs/architecture/decisions.md) |
-| Implementation status | [`docs/about/status.md`](./docs/about/status.md) |
-| Roadmap | [`docs/about/roadmap.md`](./docs/about/roadmap.md) |
 | Ecosystem survey | [`docs/reference/ecosystem.md`](./docs/reference/ecosystem.md) |
 | Open-WebUI integration | [`docs/integrations/open-webui.md`](./docs/integrations/open-webui.md) |
 
