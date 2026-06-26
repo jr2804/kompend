@@ -69,6 +69,7 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, PATHS_WIKI_DIR
 from knox.core.ingest import ingest_documents
+from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
@@ -251,9 +252,9 @@ def compile_cmd(
         wiki = pipeline.run(progress_callback=progress_cb)
         elapsed = time.monotonic() - start_time
 
-        wiki.metadata["duration_seconds"] = round(elapsed, 2)
-        wiki.metadata["source_count"] = len(all_input_files)
-        wiki.metadata["source_names"] = [str(f) for f in all_input_files[:20]]
+        wiki.metadata[str(WikiField.DURATION_SECONDS)] = round(elapsed, 2)
+        wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(all_input_files)
+        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in all_input_files[:20]]
 
         tracker.finish()
         get_console().print(f"Compiled wiki written to {output_dir}")

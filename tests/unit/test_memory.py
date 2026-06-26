@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from knox.core.paths import KNOX_DIR, MEMORY_LOG_FILE
-from knox.memory.store import MemoryStore
+from knox.memory.store import MemoryField, MemoryStore
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -37,16 +37,16 @@ class TestMemoryStore:
             with open(log_file, encoding="utf-8") as f:
                 line = f.readline()
                 data = json.loads(line)
-                assert data["query"] == "What is the capital of France?"
-                assert data["answer"] == "Paris"
-                assert data["feedback"] == "Correct and concise."
-                assert "timestamp" in data
+                assert data[MemoryField.QUERY] == "What is the capital of France?"
+                assert data[MemoryField.ANSWER] == "Paris"
+                assert data[MemoryField.FEEDBACK] == "Correct and concise."
+                assert MemoryField.TIMESTAMP in data
 
             # Check zvec search works
             results = store.search(query="capital france", top_k=1)
             assert len(results) == 1
-            assert results[0]["query"] == "What is the capital of France?"
-            assert results[0]["answer"] == "Paris"
+            assert results[0][MemoryField.QUERY] == "What is the capital of France?"
+            assert results[0][MemoryField.ANSWER] == "Paris"
         finally:
             store.close()
 
@@ -61,7 +61,7 @@ class TestMemoryStore:
             results = store.search(query="apple", top_k=2)
             assert len(results) == 2
             # Both apple entries should be in the top 2
-            queries = [r["query"] for r in results]
+            queries = [r[MemoryField.QUERY] for r in results]
             assert "apple fruit" in queries
             assert "apple company" in queries
         finally:
@@ -78,8 +78,8 @@ class TestMemoryStore:
             recent = store.get_recent_entries(limit=2)
             assert len(recent) == 2
             # Should be newest first
-            assert recent[0]["query"] == "third"
-            assert recent[1]["query"] == "second"
+            assert recent[0][MemoryField.QUERY] == "third"
+            assert recent[1][MemoryField.QUERY] == "second"
         finally:
             store.close()
 
@@ -104,7 +104,7 @@ class TestUserTracking:
             store.close()
         log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
         data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
-        assert data["memory_by"] == "alice"
+        assert data[MemoryField.MEMORY_BY] == "alice"
 
     def test_add_entry_default_memory_by_empty(self, temp_wiki_dir: Path) -> None:
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
@@ -114,7 +114,7 @@ class TestUserTracking:
             store.close()
         log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
         data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
-        assert data["memory_by"] == ""
+        assert data[MemoryField.MEMORY_BY] == ""
 
     def test_store_reopens_across_instances(self, temp_wiki_dir: Path) -> None:
         """Regression: a second MemoryStore on the same path must not crash.
@@ -134,14 +134,14 @@ class TestUserTracking:
 
         log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
         entries = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-        assert [e["query"] for e in entries] == ["q1", "q2"]
-        assert [e["memory_by"] for e in entries] == ["alice", "bob"]
+        assert [e[MemoryField.QUERY] for e in entries] == ["q1", "q2"]
+        assert [e[MemoryField.MEMORY_BY] for e in entries] == ["alice", "bob"]
 
     def test_get_recent_entries_includes_memory_by(self, temp_wiki_dir: Path) -> None:
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
         try:
             store.add_entry(query="q", answer="a", memory_by="carol")
             recent = store.get_recent_entries(limit=5)
-            assert recent[0]["memory_by"] == "carol"
+            assert recent[0][MemoryField.MEMORY_BY] == "carol"
         finally:
             store.close()

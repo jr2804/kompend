@@ -1,9 +1,12 @@
-"""Lightweight query memory store using zvec for semantic retrieval and JSONL for chronological logs."""
+"""Lightweight query memory store using zvec for semantic retrieval and JSONL
+for chronological logs.
+"""
 
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,25 @@ from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
 logger = get_logger(__name__)
+
+
+class MemoryField(StrEnum):
+    """Single source of truth for memory store field and vector names.
+
+    Covers zvec schema fields, the vector key, the JSONL log keys, and the
+    search-result dict keys — all are the same contract.
+    """
+
+    QUERY = "query"
+    ANSWER = "answer"
+    FEEDBACK = "feedback"
+    TIMESTAMP = "timestamp"
+    MEMORY_BY = "memory_by"
+    SCORE = "score"
+    QUERY_EMBEDDING = "query_embedding"
+
+
+_MEMORY_COLLECTION_NAME = "knox_memory"
 
 
 class MemoryStore:
@@ -63,12 +85,12 @@ class MemoryStore:
 
         doc = _zvec.Doc(
             id=f"mem_{timestamp.replace(':', '').replace('.', '')}",
-            vectors={"query_embedding": embedding},
+            vectors={str(MemoryField.QUERY_EMBEDDING): embedding},
             fields={
-                "query": query,
-                "answer": answer,
-                "feedback": feedback or "",
-                "timestamp": timestamp,
+                str(MemoryField.QUERY): query,
+                str(MemoryField.ANSWER): answer,
+                str(MemoryField.FEEDBACK): feedback or "",
+                str(MemoryField.TIMESTAMP): timestamp,
             },
         )
         self._collection.insert([doc])
@@ -78,11 +100,11 @@ class MemoryStore:
             f.write(
                 json.dumps(
                     {
-                        "timestamp": timestamp,
-                        "query": query,
-                        "answer": answer,
-                        "feedback": feedback or "",
-                        "memory_by": memory_by,
+                        str(MemoryField.TIMESTAMP): timestamp,
+                        str(MemoryField.QUERY): query,
+                        str(MemoryField.ANSWER): answer,
+                        str(MemoryField.FEEDBACK): feedback or "",
+                        str(MemoryField.MEMORY_BY): memory_by,
                     }
                 )
                 + "\n"
@@ -102,7 +124,7 @@ class MemoryStore:
 
         embedding = self._provider.embed(query)  # ty: ignore
         results = self._collection.query(
-            _zvec.VectorQuery("query_embedding", vector=embedding),
+            _zvec.VectorQuery(MemoryField.QUERY_EMBEDDING, vector=embedding),
             topk=top_k,
         )
 
@@ -111,11 +133,11 @@ class MemoryStore:
             fields = res.fields if isinstance(res.fields, dict) else {}
             entries.append(
                 {
-                    "query": fields.get("query", ""),
-                    "answer": fields.get("answer", ""),
-                    "feedback": fields.get("feedback", ""),
-                    "timestamp": fields.get("timestamp", ""),
-                    "score": res.score if res.score is not None else 0.0,
+                    str(MemoryField.QUERY): fields.get(MemoryField.QUERY, ""),
+                    str(MemoryField.ANSWER): fields.get(MemoryField.ANSWER, ""),
+                    str(MemoryField.FEEDBACK): fields.get(MemoryField.FEEDBACK, ""),
+                    str(MemoryField.TIMESTAMP): fields.get(MemoryField.TIMESTAMP, ""),
+                    str(MemoryField.SCORE): res.score if res.score is not None else 0.0,
                 }
             )
         return entries
@@ -157,15 +179,15 @@ class MemoryStore:
             self._collection = _zvec.open(path=str(self.db_file))
             return
         schema = _zvec.CollectionSchema(
-            name="knox_memory",
+            name=_MEMORY_COLLECTION_NAME,
             fields=[
-                _zvec.FieldSchema("query", _zvec.DataType.STRING),
-                _zvec.FieldSchema("answer", _zvec.DataType.STRING),
-                _zvec.FieldSchema("feedback", _zvec.DataType.STRING),
-                _zvec.FieldSchema("timestamp", _zvec.DataType.STRING),
+                _zvec.FieldSchema(MemoryField.QUERY, _zvec.DataType.STRING),
+                _zvec.FieldSchema(MemoryField.ANSWER, _zvec.DataType.STRING),
+                _zvec.FieldSchema(MemoryField.FEEDBACK, _zvec.DataType.STRING),
+                _zvec.FieldSchema(MemoryField.TIMESTAMP, _zvec.DataType.STRING),
             ],
             vectors=_zvec.VectorSchema(
-                "query_embedding",
+                MemoryField.QUERY_EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
                 self._embedding_dim,
             ),

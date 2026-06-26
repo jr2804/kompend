@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 
@@ -163,22 +164,22 @@ def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
         return 0
     if not isinstance(data, dict):
         return 0
-    nodes = data.get("nodes", [])
+    nodes = data.get(WikiField.NODES, [])
     if not isinstance(nodes, list):
         return 0
     edits = 0
     for node in nodes:
         if not isinstance(node, dict):
             continue
-        meta = node.get("metadata")
+        meta = node.get(WikiField.METADATA)
         if not isinstance(meta, dict):
             continue
-        source = meta.get("source_file")
+        source = meta.get(MetadataField.SOURCE_FILE)
         if not isinstance(source, str):
             continue
         new_source = _remap_path(source, remap)
         if new_source != source:
-            meta["source_file"] = new_source
+            meta[MetadataField.SOURCE_FILE] = new_source
             edits += 1
     if edits:
         cache.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
@@ -199,12 +200,12 @@ def _rewrite_tier_state(state_file: Path, remap: LinkRemap) -> int:
     for entry in entries.values():
         if not isinstance(entry, dict):
             continue
-        path_value = entry.get("source_file")
+        path_value = entry.get(MetadataField.SOURCE_FILE)
         if not isinstance(path_value, str):
             continue
         new_value = _remap_path(path_value, remap)
         if new_value != path_value:
-            entry["source_file"] = new_value
+            entry[MetadataField.SOURCE_FILE] = new_value
             edits += 1
     if edits:
         state_file.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

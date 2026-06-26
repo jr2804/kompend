@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from knox.core.models import MetadataField
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,7 +45,7 @@ class SourceState:
     def from_dict(cls, data: dict[str, Any]) -> SourceState:
         return cls(
             stem=data.get("stem", ""),
-            source_file=data.get("source_file") or data.get("source_path", ""),
+            source_file=data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, ""),
             content_hash=data.get("content_hash", ""),
             current_tier=int(data.get("current_tier", 0)),
             last_compile=data.get("last_compile", ""),

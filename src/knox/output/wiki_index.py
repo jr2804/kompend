@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from knox.core.cache_store import CacheStore
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
@@ -28,11 +28,11 @@ def generate_index(wiki: CompiledWiki) -> str:
     lines: list[str] = ["# Wiki Index\n"]
 
     # Stats summary
-    source_count = wiki.metadata.get("source_count", 0)
+    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     article_count = len(wiki.nodes)
     total_words = sum(len(n.content.split()) for n in wiki.nodes)
     last_compile = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    duration = wiki.metadata.get("duration_seconds")
+    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
 
     lines.append("## Summary\n")
     lines.append(f"- **Sources:** {source_count}")
@@ -165,10 +165,10 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:
         Pipeline stage identifier: ``"compile"``, ``"ingest"``, ``"lint"``, etc.
     """
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    source_count = wiki.metadata.get("source_count", 0)
+    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     article_count = len(wiki.nodes)
-    duration = wiki.metadata.get("duration_seconds")
-    llm_model = wiki.metadata.get("llm_model")
+    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
+    llm_model = wiki.metadata.get(WikiField.LLM_MODEL)
     tier_timings = wiki.metadata.get("tier_timings", {})
     llm_usage = wiki.metadata.get("llm_usage", {})
 

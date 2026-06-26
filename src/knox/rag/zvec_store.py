@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -23,12 +24,33 @@ import litellm
 import zvec as _zvec
 from sentence_transformers import SentenceTransformer
 
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
 _ZVEC_MAX_ID_LEN = 64
+
+
+class ZvecField(StrEnum):
+    """zvec collection field and vector names — the single source of truth.
+
+    Every schema field declared in :meth:`ZvecWikiStore._create_collection`,
+    every key written in :meth:`ZvecWikiStore._index_nodes`, and every key
+    read from ``hit`` dicts in ``search()`` callers must use these members.
+    Hard-coding the string literals defeats the schema/reader contract and is
+    forbidden (see ``src/knox/rag/AGENTS.md``).
+    """
+
+    NODE_ID = "node_id"
+    TITLE = "title"
+    NODE_TYPE = "node_type"
+    SOURCE_FILE = "source_file"
+    CONTENT_PREVIEW = "content_preview"
+    EMBEDDING = "embedding"
+
+
+_ZVEC_COLLECTION_NAME = "knox_wiki"
 
 
 def _safe_id(node_id: str) -> str:
@@ -180,12 +202,12 @@ class ZvecWikiStore:
         if not self.available or self._provider is None:
             return []
         results = self._collection.query(
-            _zvec.VectorQuery("embedding", vector=self._provider.embed(query)),
+            _zvec.VectorQuery(ZvecField.EMBEDDING, vector=self._provider.embed(query)),
             topk=top_k,
         )
         return [
             {
-                "id": (r.fields.get("node_id", r.id) if isinstance(r.fields, dict) else r.id),
+                "id": (r.fields.get(ZvecField.NODE_ID, r.id) if isinstance(r.fields, dict) else r.id),
                 "score": r.score if r.score is not None else 0.0,
                 **(r.fields if isinstance(r.fields, dict) else {}),
             }
@@ -228,16 +250,16 @@ class ZvecWikiStore:
     def _create_collection(self) -> Any:
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
         schema = _zvec.CollectionSchema(
-            name="knox_wiki",
+            name=_ZVEC_COLLECTION_NAME,
             fields=[
-                _zvec.FieldSchema("node_id", _zvec.DataType.STRING),
-                _zvec.FieldSchema("title", _zvec.DataType.STRING),
-                _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
-                _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
-                _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
             ],
             vectors=_zvec.VectorSchema(
-                "embedding",
+                ZvecField.EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
                 self._embedding_dim,
             ),
@@ -265,13 +287,13 @@ class ZvecWikiStore:
         for node in nodes:
             doc = _zvec.Doc(
                 id=_safe_id(node.id),
-                vectors={"embedding": provider.embed(f"{node.title}\n{node.content}")},
+                vectors={ZvecField.EMBEDDING: provider.embed(f"{node.title}\n{node.content}")},
                 fields={
-                    "node_id": node.id,
-                    "title": node.title,
-                    "node_type": node.node_type,
-                    "source_file": str(node.metadata.get("source", "")) if node.metadata else "",
-                    "content_preview": node.content[: self._PREVIEW_LEN],
+                    ZvecField.NODE_ID: node.id,
+                    ZvecField.TITLE: node.title,
+                    ZvecField.NODE_TYPE: node.node_type,
+                    ZvecField.SOURCE_FILE: str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else "",
+                    ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
                 },
             )
             docs_batch.append(doc)

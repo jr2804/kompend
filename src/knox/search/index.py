@@ -1,22 +1,38 @@
 from __future__ import annotations
 
 import sqlite3
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, MetadataField
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CREATE_TABLE = """
+
+class FtsField(StrEnum):
+    """Column and result-dict key names for the FTS5 chunk index.
+
+    Single source of truth for column names used in CREATE TABLE,
+    INSERT, SELECT, and the result dict.
+    """
+
+    ID = "id"
+    ARTICLE_ID = "article_id"
+    TITLE = "title"
+    CONTENT = "content"
+    HEADING = "heading"
+
+
+_CREATE_TABLE = f"""
 CREATE TABLE IF NOT EXISTS chunks (
-    id TEXT PRIMARY KEY,
-    article_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    source_file TEXT,
-    heading TEXT
+    {FtsField.ID} TEXT PRIMARY KEY,
+    {FtsField.ARTICLE_ID} TEXT NOT NULL,
+    {FtsField.TITLE} TEXT NOT NULL,
+    {FtsField.CONTENT} TEXT NOT NULL,
+    {MetadataField.SOURCE_FILE} TEXT,
+    {FtsField.HEADING} TEXT
 )
 """
 
@@ -40,10 +56,11 @@ def build_chunk_index(wiki: CompiledWiki, index_file: Path) -> None:
 
         for node in wiki.nodes:
             source = ""
-            if node.metadata and "source" in node.metadata:
-                source = str(node.metadata["source"])
+            if node.metadata and MetadataField.SOURCE in node.metadata:
+                source = str(node.metadata[MetadataField.SOURCE])
+            _cols = f"{FtsField.ID}, {FtsField.ARTICLE_ID}, {FtsField.TITLE}, {FtsField.CONTENT}, {MetadataField.SOURCE_FILE}, {FtsField.HEADING}"
             conn.execute(
-                "INSERT INTO chunks (id, article_id, title, content, source_file, heading) VALUES (?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO chunks ({_cols}) VALUES (?, ?, ?, ?, ?, ?)",  # noqa: S608
                 (node.id, node.id, node.title, node.content or "", source, ""),
             )
 
@@ -61,8 +78,9 @@ def search_fts(query: str, index_file: Path, top_k: int = 5) -> list[dict[str, A
     conn = sqlite3.connect(str(index_file))
     try:
         clean = query.replace('"', '""')
+        _scols = f"c.{FtsField.ID}, c.{FtsField.ARTICLE_ID}, c.{FtsField.TITLE}, c.{FtsField.CONTENT}, c.{MetadataField.SOURCE_FILE}"
         rows = conn.execute(
-            "SELECT c.id, c.article_id, c.title, c.content, c.source_file, "
+            f"SELECT {_scols}, "  # noqa: S608
             "rank FROM chunks_fts f JOIN chunks c ON c.rowid = f.rowid "
             "WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
             (clean, top_k),
@@ -72,11 +90,11 @@ def search_fts(query: str, index_file: Path, top_k: int = 5) -> list[dict[str, A
         for row in rows:
             results.append(
                 {
-                    "id": row[0],
-                    "article_id": row[1],
-                    "title": row[2],
-                    "content": row[3],
-                    "source_file": row[4],
+                    str(FtsField.ID): row[0],
+                    str(FtsField.ARTICLE_ID): row[1],
+                    str(FtsField.TITLE): row[2],
+                    str(FtsField.CONTENT): row[3],
+                    str(MetadataField.SOURCE_FILE): row[4],
                     "score": 1.0 / (1.0 + abs(row[5])) if row[5] is not None else 0.0,
                 }
             )

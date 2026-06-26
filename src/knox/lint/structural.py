@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from knox.core.models import MetadataField
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -336,7 +337,7 @@ class StalePageRule(BaseLintRule):
             sources_dir = Path(sources_dir)
             if sources_dir.exists():
                 for node in wiki.nodes:
-                    source_file_str = node.metadata.get("source_file")
+                    source_file_str = node.metadata.get(MetadataField.SOURCE_FILE)
                     if not source_file_str:
                         continue
                     source_file = Path(source_file_str)
@@ -414,7 +415,7 @@ class SourceNotFoundRule(BaseLintRule):
                 continue
             # source_chunks are chunk IDs, not file paths. Check if
             # metadata references source_file.
-            source_file_str = node.metadata.get("source_file")
+            source_file_str = node.metadata.get(MetadataField.SOURCE_FILE)
             if not source_file_str:
                 continue
             source_file = Path(source_file_str)

@@ -28,7 +28,19 @@ from knox.core.cache_store import CacheStore
 from knox.core.entity_registry import EntityRegistry
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
-from knox.core.models import ChunkTree, CompiledWiki, CrossReferenceResult, DocumentElement, ElementType, ParsedDocument, WikiNode, tree_from_dict, tree_to_dict
+from knox.core.models import (
+    ChunkTree,
+    CompiledWiki,
+    CrossReferenceResult,
+    DocumentElement,
+    ElementType,
+    MetadataField,
+    ParsedDocument,
+    WikiField,
+    WikiNode,
+    tree_from_dict,
+    tree_to_dict,
+)
 from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import (
     ALL_TIERS,
@@ -230,12 +242,12 @@ class WikiPipeline:
             self._record_tier_state(4)
             self._emit("output", 1, 1, "done")
 
-        wiki.metadata["tier_timings"] = {k: round(v, 2) for k, v in self._tier_timings.items()}
+        wiki.metadata[str(WikiField.TIER_TIMINGS)] = {k: round(v, 2) for k, v in self._tier_timings.items()}
         if self.llm_client is not None:
-            wiki.metadata["llm_usage"] = self.llm_client.usage.to_dict()
-            wiki.metadata["llm_model"] = self.config.llm.default_model
+            wiki.metadata[str(WikiField.LLM_USAGE)] = self.llm_client.usage.to_dict()
+            wiki.metadata[str(WikiField.LLM_MODEL)] = self.config.llm.default_model
             report = self.llm_client.degradation_report()
-            wiki.metadata["llm_degradation"] = report
+            wiki.metadata[str(WikiField.LLM_DEGRADATION)] = report
             if report["failed_calls"] > 0:
                 rate_pct = report["degradation_rate"] * 100
                 logger.warning(
@@ -460,14 +472,14 @@ class WikiPipeline:
         # Corrupt snapshot is a bug — let it raise so the real cause surfaces
         # instead of silently recompiling from scratch.
         data = json.loads(path.read_text(encoding="utf-8"))
-        nodes = [WikiNode(**n) for n in data.get("nodes", [])]
+        nodes = [WikiNode(**n) for n in data.get(WikiField.NODES, [])]
         return CompiledWiki(
             nodes=nodes,
-            edges=data.get("edges", []),
-            toc=data.get("toc", []),
-            quality_score=data.get("quality_score", 0.0),
-            iteration=data.get("iteration", 0),
-            metadata=data.get("metadata", {}),
+            edges=data.get(WikiField.EDGES, []),
+            toc=data.get(WikiField.TOC, []),
+            quality_score=data.get(WikiField.QUALITY_SCORE, 0.0),
+            iteration=data.get(WikiField.ITERATION, 0),
+            metadata=data.get(WikiField.METADATA, {}),
         )
 
     def _parse_and_chunk(self) -> list[Any]:  # noqa: PLR0915 — nested _process_one plus chunk cache logic
@@ -647,13 +659,13 @@ class WikiPipeline:
                 for el in data.get("elements", [])
             ]
             return ParsedDocument(
-                source_file=Path(data.get("source_file") or data.get("source_path", "")),
+                source_file=Path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
                 elements=elements,
                 title=data.get("title", ""),
                 author=data.get("author", ""),
                 language=data.get("language", "en"),
                 page_count=data.get("page_count", 0),
-                metadata=data.get("metadata", {}),
+                metadata=data.get(WikiField.METADATA, {}),
             )
         except (json.JSONDecodeError, KeyError, OSError):
             # Corrupt/unreadable cache entry = miss: re-parse. Warn so it's visible.
@@ -667,7 +679,7 @@ class WikiPipeline:
         cache_path = cache_dir / f"{self._cache_key(source_file)}.json"
         try:
             data = {
-                "source_file": str(doc.source_file),
+                str(MetadataField.SOURCE_FILE): str(doc.source_file),
                 "title": doc.title,
                 "author": doc.author,
                 "language": doc.language,
@@ -776,13 +788,13 @@ class WikiPipeline:
 
         node_by_heading: dict[tuple[str, str | None], WikiNode] = {}
         for node in wiki.nodes:
-            heading = node.metadata.get("heading_context", "_root")
-            source = node.metadata.get("source_file")
+            heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
+            source = node.metadata.get(MetadataField.SOURCE_FILE)
             node_by_heading[(heading, source)] = node
 
         for node in wiki.nodes:
-            heading = node.metadata.get("heading_context", "_root")
-            source = node.metadata.get("source_file")
+            heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
+            source = node.metadata.get(MetadataField.SOURCE_FILE)
             if source is None:
                 continue
             tree = tree_map.get(source)
