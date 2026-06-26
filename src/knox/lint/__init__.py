@@ -8,6 +8,7 @@ from knox.lint.history import (
     prune_lint_history,
     save_lint_entry,
 )
+from knox.lint.remediation import RemediationAction, remediate, remediation_to_text
 from knox.lint.runner import LintRunner
 from knox.lint.structural import STRUCTURAL_RULES
 
@@ -18,11 +19,14 @@ __all__ = [
     "LintResult",
     "LintRuleOutcome",
     "LintRunner",
+    "RemediationAction",
     "Severity",
     "analyze_gaps",
     "entry_from_report",
     "gaps_to_text",
     "load_lint_history",
     "prune_lint_history",
+    "remediate",
+    "remediation_to_text",
     "save_lint_entry",
 ]

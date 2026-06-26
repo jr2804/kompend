@@ -72,6 +72,14 @@ LintPruneAgeDays = Annotated[
     ),
 ]
 
+LintDryRun = Annotated[
+    bool,
+    typer.Option(
+        "--dry-run",
+        help="Show what would be remediated without modifying the wiki.",
+    ),
+]
+
 # ── N5 web serve command ─────────────────────────────────────────────────
 
 ServeHost = Annotated[

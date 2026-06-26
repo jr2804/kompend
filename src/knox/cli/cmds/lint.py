@@ -3,10 +3,11 @@
 Sub-commands
 ------------
 
-* ``knox lint run``     — run lint rules and save to history.
-* ``knox lint history`` — query past lint runs.
-* ``knox lint gaps``    — analyze lint results for knowledge gaps.
-* ``knox lint prune``   — remove old history entries.
+* ``knox lint run``       — run lint rules and save to history.
+* ``knox lint history``   — query past lint runs.
+* ``knox lint gaps``      — analyze lint results for knowledge gaps.
+* ``knox lint remediate`` — auto-fix, LLM-generate, or recommend fixes for lint findings.
+* ``knox lint prune``     — remove old history entries.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
     JsonOutput,
+    LintDryRun,
     LintFix,
     LintHistoryLast,
     LintHistoryTrend,
@@ -49,6 +51,7 @@ from knox.lint.history import (
     save_lint_entry,
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
+from knox.lint.remediation import remediate, remediation_to_text
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console
@@ -342,3 +345,98 @@ def lint_gaps(
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(gaps_to_text(recs))
+
+
+# ── Sub-command: remediate ───────────────────────────────────────────────
+
+
+@lint_app.command("remediate", help="Auto-fix, LLM-generate, or recommend fixes for lint findings.")
+def lint_remediate(
+    ctx: typer.Context,
+    dry_run: LintDryRun = False,
+    llm_default_model: LlmDefaultModel = None,
+    json_output: JsonOutput = False,
+    config: ConfigPath = None,
+) -> None:
+    """Remediate lint findings from the latest lint run.
+
+    Three tiers of remediation:
+
+    * **Tier 1** (auto-fix, no LLM): image embed syntax errors.
+    * **Tier 2** (LLM-generated): coverage gaps filled from cached extractions.
+    * **Tier 3** (recommendations): issues needing new sources or manual review.
+
+    Tier 2 requires ``--llm-default-model``. Without it, only tier 1 runs
+    and tier 2/3 are reported as recommendations.
+
+    Examples:
+        knox lint remediate                          # tier 1 only
+        knox lint remediate --dry-run                # preview all tiers
+        knox lint remediate --llm-default-model ollama/llama3.2
+    """
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(
+        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        config_path=config,
+    )
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    base_dir = state_dir.parent
+
+    # Load latest lint history entry
+    entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
+    if not entries:
+        get_err_console().print("No lint history found. Run `knox lint run` or compile with --lint first.")
+        raise typer.Exit(1)
+
+    report_dict = entries[-1].get("report", {})
+
+    # Load current wiki
+    wiki = load_cached_wiki(base_dir)
+    if wiki is None:
+        get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
+        raise typer.Exit(1)
+
+    # Set up LLM client for tier 2
+    llm_client = None
+    if llm_default_model:
+        llm_client = LLMClient(default_model=llm_default_model)
+
+    sources_dir_path = sources_dir if sources_dir.exists() else None
+
+    actions = remediate(
+        wiki,
+        report_dict,
+        base_dir=base_dir,
+        sources_dir=sources_dir_path,
+        llm_client=llm_client,
+        dry_run=dry_run,
+    )
+
+    # Persist changes unless dry-run
+    applied_count = sum(1 for a in actions if a.status == "applied")
+    if applied_count > 0 and not dry_run:
+        _write_wiki_cache(wiki, base_dir)
+        get_console().print(f"Persisted {applied_count} remediation(s) to wiki cache.\n")
+
+    if json_output:
+        get_console().print(
+            json.dumps(
+                [
+                    {
+                        "tier": a.tier,
+                        "category": a.category,
+                        "description": a.description,
+                        "status": a.status,
+                        "details": a.details,
+                    }
+                    for a in actions
+                ],
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        ts = entries[-1].get("timestamp", "?")
+        score = report_dict.get("health_score", 0.0)
+        get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
+        get_console().print(remediation_to_text(actions))

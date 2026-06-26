@@ -228,6 +228,24 @@ if (-not $WhatIf) {
     # gaps exits 0 regardless — it's informational
 }
 
+# ── Remediate (auto-fix + LLM-generated concept pages) ────────────────
+Write-Host ""
+Write-Host "=== Remediate (auto-fix + concept generation) ===" -ForegroundColor Cyan
+$RemediateArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "lint", "remediate",
+    "--llm-default-model", $LLMModel,
+    "--config", $ConfigPath
+)
+
+Write-Host ($RemediateArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $RemediateArgs[0] $RemediateArgs[1..($RemediateArgs.Length - 1)]
+}
+
 # ── Lint History (trend across builds) ────────────────────────────────
 Write-Host ""
 Write-Host "=== Lint History (trend) ===" -ForegroundColor Cyan
