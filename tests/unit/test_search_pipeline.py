@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.search.cache import CacheEntry, SemanticCache
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import SearchResult, SynthesisResult
 
@@ -55,54 +54,25 @@ class TestFuseMultiQuery:
             assert r.score > 0
 
 
-class TestCheckCache:
-    """check_cache delegates to SemanticCache."""
-
-    def test_returns_none_when_no_cache(self) -> None:
-        retriever = EnhancedRetriever(_make_wiki(), cache_enabled=False)
-        assert retriever.check_cache("any query") is None
-
-    def test_cache_miss_returns_none(self) -> None:
-        retriever = EnhancedRetriever(_make_wiki(), cache_enabled=False)
-        assert retriever.check_cache("something") is None
-
-    def test_cache_hit_returns_synthesis_result(self) -> None:
-        retriever = EnhancedRetriever(_make_wiki(), cache_enabled=False)
-        # Inject a fake cache with a hit
-        fake_cache = MagicMock(spec=SemanticCache)
-        fake_cache.lookup.return_value = CacheEntry(
-            query="q",
-            answer="cached answer",
-            citations=[{"article": "Alpha Page", "source": "s"}],
-        )
-        retriever._cache = fake_cache
-
-        result = retriever.check_cache("q")
-        assert result is not None
-        assert isinstance(result, SynthesisResult)
-        assert result.answer == "cached answer"
-        assert result.citations[0]["article"] == "Alpha Page"
-
-
 class TestSearchPipeline:
     """EnhancedRetriever.search runs the pipeline."""
 
     def test_no_features_delegates_to_hybrid(self) -> None:
         wiki = _make_wiki()
-        retriever = EnhancedRetriever(wiki, cache_enabled=False)
+        retriever = EnhancedRetriever(wiki)
         results = retriever.search("alpha", top_k=2)
         assert isinstance(results, list)
         assert all(isinstance(r, SearchResult) for r in results)
 
     def test_top_k_respected(self) -> None:
         wiki = _make_wiki()
-        retriever = EnhancedRetriever(wiki, cache_enabled=False)
+        retriever = EnhancedRetriever(wiki)
         results = retriever.search("alpha beta", top_k=1)
         assert len(results) <= 1
 
     def test_returns_empty_on_no_results(self) -> None:
         wiki = _make_wiki()
-        retriever = EnhancedRetriever(wiki, cache_enabled=False)
+        retriever = EnhancedRetriever(wiki)
         # Mock inner retriever to return nothing
         retriever._retriever.search_hybrid = MagicMock(return_value=[])  # type: ignore[method-assign]
         results = retriever.search("something completely absent", top_k=5)
@@ -115,7 +85,6 @@ class TestSearchPipeline:
         mock_client.complete.return_value = MagicMock(json_data={"relevance": 0.0}, content="")
         retriever = EnhancedRetriever(
             wiki,
-            cache_enabled=False,
             crag_enabled=True,
             crag_threshold=0.5,
             llm_client=mock_client,
@@ -132,7 +101,6 @@ class TestSearchPipeline:
         mock_client.complete.return_value = MagicMock(json_data={"relevance": 0.9}, content="")
         retriever = EnhancedRetriever(
             wiki,
-            cache_enabled=False,
             crag_enabled=True,
             crag_threshold=0.5,
             llm_client=mock_client,
@@ -143,14 +111,11 @@ class TestSearchPipeline:
 
 
 class TestSynthesize:
-    """synthesize stores to cache when enabled."""
+    """synthesize returns the synthesis result."""
 
-    def test_synthesize_stores_in_cache(self) -> None:
+    def test_synthesize_returns_result(self) -> None:
         wiki = _make_wiki()
-        retriever = EnhancedRetriever(wiki, cache_enabled=False)
-
-        fake_cache = MagicMock(spec=SemanticCache)
-        retriever._cache = fake_cache
+        retriever = EnhancedRetriever(wiki)
 
         mock_client = MagicMock()
         mock_client.complete.return_value = MagicMock(
@@ -169,4 +134,3 @@ class TestSynthesize:
             synthesis = retriever.synthesize("q", results)
 
         assert synthesis.answer == "the answer"
-        fake_cache.store.assert_called_once_with("q", "the answer", [{"article": "alpha"}])

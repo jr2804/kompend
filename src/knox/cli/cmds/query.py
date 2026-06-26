@@ -27,9 +27,6 @@ from knox.core.config.keys import (
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
-    SEARCH_CACHE_ENABLED,
-    SEARCH_CACHE_MAX_ENTRIES,
-    SEARCH_CACHE_THRESHOLD,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
     SEARCH_EXPANSION_ENABLED,
@@ -201,12 +198,6 @@ def _build_enhanced_retriever(
         vector_store=vector_store,
         sources_dir=sources_dir,
         llm_client=llm_client,
-        # Semantic cache
-        cache_enabled=cfg.get(SEARCH_CACHE_ENABLED, True),
-        cache_threshold=cfg.get(SEARCH_CACHE_THRESHOLD, 0.92),
-        cache_max_entries=cfg.get(SEARCH_CACHE_MAX_ENTRIES, 500),
-        cache_dir=state_dir,
-        cache_embedding_model=cfg.get(COMPILE_EMBEDDING_MODEL),
         # Multi-query expansion
         expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
         expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
@@ -246,7 +237,6 @@ def _handle_adaptive_search(
 def _handle_enhanced_search(
     query: str,
     top_k: int,
-    raw: bool,
     search_mode: str,
     sources_dir: Path | None,
     vector_store: ZvecWikiStore | None,
@@ -254,27 +244,9 @@ def _handle_enhanced_search(
     wiki: CompiledWiki,
     cfg: Any,
     llm_client: LLMClient | None,
-    remember: bool,
-    format: str,
-) -> tuple[list[Any], bool, bool] | None:
-    """Search using enhanced retriever with RAG features. Returns (results, raw, early_return) or None."""
+) -> list[Any] | None:
+    """Search using enhanced retriever with RAG features. Returns results or None."""
     enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
-
-    if not raw:
-        cached = enhanced.check_cache(query)
-        if cached is not None:
-            if format == "json":
-                get_console().print(format_json_output(cached, []))
-            else:
-                get_console().print(cached.answer)
-                get_console().print("")
-                get_console().print("Sources:")
-                for i, c in enumerate(cached.citations, 1):
-                    source_str: str = c.get("source") or "wiki"
-                    get_console().print(f"  [{i}] {c['article']} ({source_str})", markup=False)
-            if remember:
-                _save_query_memory(state_dir, query, cached.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
-            return ([], False, True)  # Signal early return
 
     has_enhanced = (
         cfg.get(SEARCH_EXPANSION_ENABLED, False)
@@ -286,7 +258,7 @@ def _handle_enhanced_search(
     if has_enhanced:
         expand_graph = search_mode == "graph"
         results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
-        return (results, False, False)
+        return results
 
     return None
 
@@ -350,9 +322,9 @@ def query_cmd(
     synthesizes an answer using the configured LLM. Use --raw to skip LLM
     synthesis and see the source context directly.
 
-    Enhanced RAG features (semantic cache, multi-query expansion, CRAG,
+    Enhanced RAG features (multi-query expansion, CRAG,
     neural re-ranker, HyDE) are configurable via knox.toml under [search].
-    All default to disabled except semantic cache.
+    All default to disabled.
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
@@ -380,21 +352,13 @@ def query_cmd(
             has_enhanced = False
         else:
             enhanced_result = _handle_enhanced_search(
-                query, top_k, raw, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client, remember, format
+                query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client
             )
             if enhanced_result is not None:
-                results, raw, should_return = enhanced_result
-                if should_return:
-                    return
-                has_enhanced = (
-                    cfg.get(SEARCH_EXPANSION_ENABLED, False)
-                    or cfg.get(SEARCH_CRAG_ENABLED, False)
-                    or cfg.get(SEARCH_RERANKER_ENABLED, False)
-                    or cfg.get(SEARCH_HYDE_ENABLED, False)
-                )
-                enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
+                results = enhanced_result
+                raw = False
+                has_enhanced = True
             else:
-                enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
                 retriever = HybridRetriever(
                     wiki,
                     index_file=state_dir / SEARCH_DB_FILE,

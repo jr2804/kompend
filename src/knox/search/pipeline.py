@@ -2,11 +2,10 @@
 
 Wraps the existing :class:`HybridRetriever` with configurable plug-in steps:
 
-1. **Semantic Cache** — cosine-similarity cache for repeat queries
-2. **Multi-Query Expansion (RAG-Fusion)** — N query variants + RRF merge
-3. **CRAG (Corrective RAG)** — LLM relevance grading, drop noise
-4. **Neural Re-ranker** — cross-encoder post-fusion ranking
-5. **HyDE** — hypothetical answer embeddings for sparse queries
+1. **Multi-Query Expansion (RAG-Fusion)** — N query variants + RRF merge
+2. **CRAG (Corrective RAG)** — LLM relevance grading, drop noise
+3. **Neural Re-ranker** — cross-encoder post-fusion ranking
+4. **HyDE** — hypothetical answer embeddings for sparse queries
 
 Each step is optional and configurable via ``knox.toml`` under ``[search]``.
 All default to **disabled** — opt-in only.
@@ -20,7 +19,6 @@ from knox.core.models import CompiledWiki
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.rag.zvec_store import ZvecWikiStore
-from knox.search.cache import SemanticCache
 from knox.search.retriever import (
     HybridRetriever,
     SearchResult,
@@ -46,7 +44,7 @@ class EnhancedRetriever:
 
     Each step is enabled/disabled via config. The pipeline order is:
 
-    ``SemanticCache → MultiQueryExpansion → HybridRetrieval → NeuralRerank → CRAG → Synthesis``
+    ``MultiQueryExpansion → HybridRetrieval → NeuralRerank → CRAG → Synthesis``
     """
 
     def __init__(
@@ -57,12 +55,6 @@ class EnhancedRetriever:
         vector_store: ZvecWikiStore | None = None,
         sources_dir: Path | None = None,
         llm_client: LLMClient | None = None,
-        # Semantic cache config
-        cache_enabled: bool = False,
-        cache_threshold: float = 0.92,
-        cache_max_entries: int = 500,
-        cache_dir: Path | None = None,
-        cache_embedding_model: str | None = None,
         # Multi-query expansion config
         expansion_enabled: bool = False,
         expansion_variants: int = 3,
@@ -87,16 +79,6 @@ class EnhancedRetriever:
             vector_store=vector_store,
             sources_dir=sources_dir,
         )
-
-        # Semantic cache
-        self._cache: SemanticCache | None = None
-        if cache_enabled:
-            self._cache = SemanticCache(
-                cache_dir=cache_dir,
-                threshold=cache_threshold,
-                max_entries=cache_max_entries,
-                embedding_model=cache_embedding_model,
-            )
 
         # Expansion config
         self._expansion_enabled = expansion_enabled
@@ -126,23 +108,21 @@ class EnhancedRetriever:
         """Run the full enhanced retrieval pipeline.
 
         Steps (when enabled):
-        1. Semantic cache lookup
-        2. Multi-query expansion (RAG-Fusion)
-        3. HyDE hypothetical embedding
-        4. Hybrid retrieval (FTS + vector + token-overlap + raw)
-        5. Neural re-ranking
-        6. CRAG relevance grading
+        1. Multi-query expansion (RAG-Fusion)
+        2. HyDE hypothetical embedding
+        3. Hybrid retrieval (FTS + vector + token-overlap + raw)
+        4. Neural re-ranking
+        5. CRAG relevance grading
         """
-        # Step 1: Semantic cache (handled externally — caller checks before calling)
-        # Step 2: Multi-query expansion
+        # Step 1: Multi-query expansion
         queries = self._expand_queries(query) if self._expansion_enabled else [query]
 
-        # Step 3: HyDE — generate hypothetical answer for embedding
+        # Step 2: HyDE — generate hypothetical answer for embedding
         if self._hyde_enabled and self._llm_client is not None:
             hyde_query = self._generate_hypothetical(query)
             queries.append(hyde_query)
 
-        # Step 4: Hybrid retrieval for each query variant
+        # Step 3: Hybrid retrieval for each query variant
         all_results: list[list[SearchResult]] = []
         for q in queries:
             results = self._retriever.search_hybrid(q, sources_dir, top_k=top_k * 2, expand_graph=expand_graph)
@@ -155,11 +135,11 @@ class EnhancedRetriever:
         # Fuse multi-query results via RRF
         results = self._fuse_multi_query(all_results, top_k=top_k * 2) if len(all_results) > 1 else all_results[0]
 
-        # Step 5: Neural re-ranking
+        # Step 4: Neural re-ranking
         if self._reranker_enabled and results:
             results = self._neural_rerank(query, results)
 
-        # Step 6: CRAG relevance grading
+        # Step 5: CRAG relevance grading
         if self._crag_enabled and self._llm_client is not None and results:
             results = self._crag_filter(query, results)
 
@@ -170,24 +150,10 @@ class EnhancedRetriever:
         query: str,
         results: list[SearchResult],
     ) -> SynthesisResult:
-        """Synthesize an answer from search results, with optional cache store."""
+        """Synthesize an answer from search results."""
         synthesizer = TokenOverlapRetriever(self._wiki)
         synthesis = synthesizer.synthesize(query, results, llm_client=self._llm_client)
-
-        # Store in semantic cache if enabled
-        if self._cache is not None and synthesis.answer:
-            self._cache.store(query, synthesis.answer, synthesis.citations)
-
         return synthesis
-
-    def check_cache(self, query: str) -> SynthesisResult | None:
-        """Check semantic cache. Returns cached result or None."""
-        if self._cache is None:
-            return None
-        entry = self._cache.lookup(query)
-        if entry is None:
-            return None
-        return SynthesisResult(answer=entry.answer, citations=entry.citations)
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────
 
