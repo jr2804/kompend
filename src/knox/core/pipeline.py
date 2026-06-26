@@ -18,7 +18,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from knox.chunking.base import BaseChunker
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -85,7 +84,7 @@ class WikiPipeline:
         config: PipelineConfig,
         downloader: BaseDownloader | None = None,
         parser: BaseParser | None = None,
-        chunker: BaseChunker | None = None,
+        chunker: HierarchicalChunker | None = None,
         resolver: BaseResolver | None = None,
         compiler: BaseCompiler | None = None,
         output_writer: BaseOutputWriter | None = None,

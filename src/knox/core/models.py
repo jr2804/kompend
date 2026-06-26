@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -452,3 +453,63 @@ def tree_from_dict(d: dict[str, Any]) -> ChunkTree:
         source_file=Path(d.get("source_file") or d.get("source_path")) if (d.get("source_file") or d.get("source_path")) else None,
         strategy=ChunkStrategy(d.get("strategy", ChunkStrategy.SINGLE_PASS)),
     )
+
+
+# ── Provenance ────────────────────────────────────────────────────────────
+
+
+_CITATION_RE = re.compile(r"\^\[([^\]]+?):(\d+)-(\d+)\]")
+
+LIFECYCLE_DRAFT = "draft"
+LIFECYCLE_REVIEWED = "reviewed"
+LIFECYCLE_VERIFIED = "verified"
+LIFECYCLE_STALE = "stale"
+LIFECYCLE_ARCHIVED = "archived"
+
+VALID_LIFECYCLE_STATES: tuple[str, ...] = (
+    LIFECYCLE_DRAFT,
+    LIFECYCLE_REVIEWED,
+    LIFECYCLE_VERIFIED,
+    LIFECYCLE_STALE,
+    LIFECYCLE_ARCHIVED,
+)
+
+
+@dataclass
+class Citation:
+    """A single ``^[source:start-end]`` citation."""
+
+    source: str
+    start: int
+    end: int
+    context: str = ""
+
+    def to_marker(self) -> str:
+        return f"^[{self.source}:{self.start}-{self.end}]"
+
+
+def extract_citations(text: str) -> list[Citation]:
+    """Parse all ``^[source:42-58]`` citations in *text*."""
+    out: list[Citation] = []
+    for match in _CITATION_RE.finditer(text):
+        out.append(
+            Citation(
+                source=match.group(1),
+                start=int(match.group(2)),
+                end=int(match.group(3)),
+            )
+        )
+    return out
+
+
+def merge_duplicate_citations(citations: Iterable[Citation]) -> list[Citation]:
+    """Remove duplicates by (source, start, end), preserving first-seen order."""
+    seen: set[tuple[str, int, int]] = set()
+    out: list[Citation] = []
+    for c in citations:
+        key = (c.source, c.start, c.end)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out

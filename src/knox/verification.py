@@ -6,6 +6,9 @@ costly — never enabled by default.
 
 When the LLM is unavailable the verifier falls back to a deterministic
 substring heuristic so the pipeline remains useful offline.
+
+ponytail: opt-in, costly, never enabled by default. The substring fallback
+  IS the practical path. Add LLM path only when a user profile requests it.
 """
 
 from __future__ import annotations
@@ -17,12 +20,11 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.config._core import DEFAULTS
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
 from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.logging import get_logger
-from knox.provenance import Citation, extract_citations
 
 logger = get_logger(__name__)
 

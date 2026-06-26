@@ -14,11 +14,10 @@ Strategy:
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Final
 
 from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules
 
-from knox.chunking.base import BaseChunker
 from knox.chunking.extractors import extract_structured
 from knox.core.models import (
     ATOMIC_TYPES,
@@ -34,8 +33,14 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Absolute token reserve carved out of the context window before computing the
+# effective chunk size.  Replaces an earlier `reserve_ratio` (20%) that wasted
+# ~25K tokens on a 128K-context model and ~200K on a 1M-context model — even
+# though real LLM-call overhead (system prompt + output budget) is bounded.
+_DEFAULT_RESERVE_TOKENS: Final[int] = 8192
 
-class HierarchicalChunker(BaseChunker):
+
+class HierarchicalChunker:
     """Structure-aware chunker that builds a :class:`ChunkTree`.
 
     The tree mirrors the document's heading hierarchy.  Atomic elements
@@ -55,13 +60,21 @@ class HierarchicalChunker(BaseChunker):
         summary_chunk_threshold: int = 10,
         **kwargs: Any,
     ) -> None:
-        super().__init__(
-            max_tokens=max_tokens,
-            reserve_tokens=reserve_tokens,
-            context_window=context_window,
-            chunk_size_min=chunk_size_min,
-            chunk_size_max=chunk_size_max,
-        )
+        self.max_tokens = max_tokens
+        self._chunk_size_min = chunk_size_min
+        self._chunk_size_max = chunk_size_max
+        if context_window is not None:
+            effective_reserve = reserve_tokens if reserve_tokens is not None else _DEFAULT_RESERVE_TOKENS
+            self.reserve_tokens = effective_reserve
+            raw = max(0, context_window.max_input - effective_reserve)
+            self._effective_max = max(self._chunk_size_min, min(raw, self._chunk_size_max))
+        elif max_tokens is not None:
+            effective_reserve = reserve_tokens if reserve_tokens is not None else 0
+            self.reserve_tokens = effective_reserve
+            self._effective_max = max(0, max_tokens - effective_reserve)
+        else:
+            msg = "Either context_window or max_tokens must be provided"
+            raise ValueError(msg)
         self.tokenizer_name = tokenizer_name
         self._summary_chunk_threshold = summary_chunk_threshold
 
@@ -249,7 +262,7 @@ class _TreeBuilder:
                     p_depth + 1,
                     hpath,
                     piece,
-                    el_indices,  # ponytail: each piece gets ALL buffer indices (provenance ceiling). Fix would require tracking char ranges through Chonkie splits.
+                    el_indices,  # ponytail: each piece gets ALL buffer indices (provenance ceiling). Needs char-range tracking.
                     _estimate_tokens(piece),
                 )
         self._text_buffer = []

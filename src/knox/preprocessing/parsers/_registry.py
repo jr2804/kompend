@@ -8,19 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from knox.preprocessing.parsers.base import ParserRouter
-
-try:
-    from knox.preprocessing.parsers.docling_parser import DoclingParser
-except ImportError:
-    DoclingParser = None  # ty: ignore
-
-try:
-    from knox.preprocessing.parsers.pandoc_parser import PandocParser
-except ImportError:
-    PandocParser = None  # ty: ignore
-
 from knox.logging import get_logger
+from knox.preprocessing.parsers.base import ParserRouter
+from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers.pandoc_parser import PandocParser
 
 logger = get_logger(__name__)
 
@@ -28,44 +19,9 @@ logger = get_logger(__name__)
 _registry: dict[str, dict[str, Any]] = {}
 
 
-def register_parser(
-    name: str,
-    parser_type: str,  # "built-in", "external", "http"
-    extensions: list[str],
-    metadata: dict[str, Any] | None = None,
-) -> None:
-    """Register a parser in the global registry.
-
-    Idempotent — re-registering the same name is a no-op.
-
-    Args:
-        name: Parser name (class name or command name).
-        parser_type: ``"built-in"``, ``"external"``, or ``"http"``.
-        extensions: List of supported file extensions (with dot, e.g. ``[".xyz"]``).
-        metadata: Optional extra info (command path, URL, etc.).
-    """
-    if name not in _registry:
-        _registry[name] = {
-            "name": name,
-            "type": parser_type,
-            "extensions": extensions,
-            "metadata": metadata or {},
-        }
-
-
 def get_registered_parsers() -> list[dict[str, Any]]:
     """Return all registered parsers as a list of dicts."""
     return list(_registry.values())
-
-
-def get_parser_names() -> list[str]:
-    """Return names of all registered parsers."""
-    return list(_registry.keys())
-
-
-def clear_registry() -> None:
-    """Clear the registry (useful for testing)."""
-    _registry.clear()
 
 
 def get_all_extensions() -> set[str]:
@@ -75,6 +31,17 @@ def get_all_extensions() -> set[str]:
         for ext in entry.get("extensions", []):
             extensions.add(ext.lower())
     return extensions
+
+
+def _register(name: str, parser_type: str, extensions: list[str]) -> None:
+    """Register a parser in the global registry. Idempotent."""
+    if name not in _registry:
+        _registry[name] = {
+            "name": name,
+            "type": parser_type,
+            "extensions": extensions,
+            "metadata": {},
+        }
 
 
 def build_default_router(images_dir: Path | None = None) -> ParserRouter:
@@ -89,23 +56,13 @@ def build_default_router(images_dir: Path | None = None) -> ParserRouter:
             instead of next to each source file. Typically ``<base>/.knox/cache/images``.
     """
     router = ParserRouter()
+    docling = DoclingParser(images_dir=images_dir)
+    router.register(docling)
+    _register("DoclingParser", "built-in", list(docling.supported_extensions))
 
-    if DoclingParser is not None:
-        try:
-            docling = DoclingParser(images_dir=images_dir)
-            router.register(docling)
-            register_parser("DoclingParser", "built-in", list(docling.supported_extensions))
-        except (ImportError, OSError) as exc:
-            logger.debug("DoclingParser not available: %s", exc, exc_info=True)
-
-    if PandocParser is not None:
-        try:
-            pandoc = PandocParser()
-            router.register(pandoc)
-            register_parser("PandocParser", "built-in", list(pandoc.supported_extensions))
-            # PandocParser also serves as the binaryornot text fallback.
-            router.set_text_fallback(pandoc)
-        except (ImportError, OSError) as exc:
-            logger.debug("PandocParser not available: %s", exc, exc_info=True)
+    pandoc = PandocParser()
+    router.register(pandoc)
+    _register("PandocParser", "built-in", list(pandoc.supported_extensions))
+    router.set_text_fallback(pandoc)
 
     return router

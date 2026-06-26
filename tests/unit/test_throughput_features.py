@@ -17,7 +17,7 @@ from knox.compilation.two_phase import (
     _segment_sources,
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import Chunk, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
 from knox.core.paths import KNOX_DIR, PRIVATE_FILE, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE, VERIFICATION_FILE
 from knox.core.pipeline import (
     ALL_TIERS,
@@ -36,12 +36,7 @@ from knox.core.tier_state import (
     TierStateStore,
     auto_promote_demote,
 )
-from knox.provenance import (
-    Citation,
-    annotate_wiki_with_provenance,
-    extract_citations,
-    merge_duplicate_citations,
-)
+from knox.provenance import annotate_wiki_with_provenance
 from knox.review import ReviewQueue, slugify
 from knox.trust import (
     LIFECYCLE_DRAFT,

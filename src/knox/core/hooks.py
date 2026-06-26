@@ -1,21 +1,14 @@
 """Event-driven automation hooks for KNOX pipeline operations.
 
-Hooks let users register callbacks that fire on key pipeline events
-(pre/post compile, capture, query, lint).  Hooks are loaded from the
-``[hooks]`` config section as ``module:attribute`` import paths.
-
-Example ``knox.toml``::
-
-    [hooks]
-    post_compile = ["mypkg.hooks:auto_lint"]
-    on_capture = ["mypkg.hooks:notify"]
+Hooks let users register callbacks that fire on key pipeline events.
+Hooks are loaded from the ``[hooks]`` config section as ``module:attribute``
+import paths.  A global dict of event→callbacks is kept at module level.
 """
 
 from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -34,71 +27,38 @@ class HookEvent(StrEnum):
     ON_LINT = "on_lint"
 
 
-@dataclass
-class HookContext:
-    """Context passed to every hook callback."""
+HookCallback = Callable[..., None]
 
-    event: HookEvent
-    data: dict[str, Any] = field(default_factory=dict)
-
-
-HookCallback = Callable[[HookContext], None]
-
-
-class HookRegistry:
-    """Registry of event-to-callback mappings."""
-
-    def __init__(self) -> None:
-        self._hooks: dict[HookEvent, list[HookCallback]] = {}
-
-    def register(self, event: HookEvent, callback: HookCallback) -> None:
-        """Register a callback for an event."""
-        self._hooks.setdefault(event, []).append(callback)
-
-    def clear(self) -> None:
-        """Remove all registered hooks."""
-        self._hooks.clear()
-
-    def fire(self, event: HookEvent, **data: Any) -> None:
-        """Fire all callbacks registered for *event*.
-
-        Exceptions in individual callbacks are logged and swallowed so a
-        faulty hook never breaks the pipeline.
-        """
-        ctx = HookContext(event=event, data=data)
-        for callback in self._hooks.get(event, []):
-            try:
-                callback(ctx)
-            except Exception:
-                logger.exception("Hook %s for %s raised", callback, event)
-
-
-# ── Module-level convenience API ────────────────────────────────────────
-
-_default_registry = HookRegistry()
+# Module-level registry: event → list of callables
+_hooks: dict[HookEvent, list[HookCallback]] = {}
 
 
 def register_hook(event: HookEvent, callback: HookCallback) -> None:
-    """Register a hook on the default global registry."""
-    _default_registry.register(event, callback)
+    """Register a callback for an event."""
+    _hooks.setdefault(event, []).append(callback)
 
 
 def fire_hook(event: HookEvent, **data: Any) -> None:
-    """Fire all hooks for *event* on the default global registry."""
-    _default_registry.fire(event, **data)
+    """Fire all callbacks registered for *event*.
+
+    Exceptions in individual callbacks are logged and swallowed so a
+    faulty hook never breaks the pipeline.
+    """
+    for callback in _hooks.get(event, []):
+        try:
+            callback(**data)
+        except Exception:
+            logger.exception("Hook %s for %s raised", callback, event)
 
 
 def clear_hooks() -> None:
-    """Clear all hooks on the default global registry."""
-    _default_registry.clear()
+    """Remove all registered hooks."""
+    _hooks.clear()
 
 
-def get_registry() -> HookRegistry:
+def get_registry() -> dict[HookEvent, list[HookCallback]]:
     """Return the default global registry (for testing/introspection)."""
-    return _default_registry
-
-
-# ── Config-driven loading ──────────────────────────────────────────────
+    return _hooks
 
 
 def load_hooks_from_config(config: dict[str, Any]) -> int:
@@ -109,7 +69,7 @@ def load_hooks_from_config(config: dict[str, Any]) -> int:
         [hooks]
         post_compile = ["mypkg.hooks:auto_lint"]
 
-    Each callable dotted_name uses ``module:attribute`` syntax.
+    Each callable uses ``module:attribute`` syntax.
 
     Returns the number of hooks successfully loaded.
     """

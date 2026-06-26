@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from knox.core.hooks import HookContext
 
-
-def query_logger(ctx: HookContext) -> None:
+def query_logger(**data: object) -> None:
     """Example hook callable for testing config-driven hook loading."""

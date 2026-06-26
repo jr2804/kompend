@@ -8,64 +8,26 @@ Provenance lives in two places:
 
 The format is intentionally simple and human-readable so it can survive
 a round-trip through the markdown output writer.
+
+Note: ``Citation``, ``extract_citations``, ``merge_duplicate_citations``,
+and lifecycle constants moved to :mod:`knox.core.models`. Import from there.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import (
+    Citation,
+    CompiledWiki,
+    WikiNode,
+    extract_citations,
+)
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
-
-_CITATION_RE = re.compile(r"\^\[([^\]]+?):(\d+)-(\d+)\]")
-
-LIFECYCLE_DRAFT = "draft"
-LIFECYCLE_REVIEWED = "reviewed"
-LIFECYCLE_VERIFIED = "verified"
-LIFECYCLE_STALE = "stale"
-LIFECYCLE_ARCHIVED = "archived"
-
-VALID_LIFECYCLE_STATES: tuple[str, ...] = (
-    LIFECYCLE_DRAFT,
-    LIFECYCLE_REVIEWED,
-    LIFECYCLE_VERIFIED,
-    LIFECYCLE_STALE,
-    LIFECYCLE_ARCHIVED,
-)
-
-
-@dataclass
-class Citation:
-    """A single ``^[source:start-end]`` citation."""
-
-    source: str
-    start: int
-    end: int
-    context: str = ""
-
-    def to_marker(self) -> str:
-        return f"^[{self.source}:{self.start}-{self.end}]"
-
-
-def extract_citations(text: str) -> list[Citation]:
-    """Parse all ``^[source:42-58]`` citations in *text*."""
-    out: list[Citation] = []
-    for match in _CITATION_RE.finditer(text):
-        out.append(
-            Citation(
-                source=match.group(1),
-                start=int(match.group(2)),
-                end=int(match.group(3)),
-            )
-        )
-    return out
 
 
 def annotate_wiki_with_provenance(wiki: CompiledWiki, output_dir: Path) -> CompiledWiki:
@@ -112,16 +74,3 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, output_dir: Path) -> Compi
 def citations_for_slug(slug_to_node: dict[str, WikiNode]) -> dict[str, list[Citation]]:
     """Convenience helper for the ``knox provenance <slug>`` command."""
     return {slug: extract_citations(node.content) for slug, node in slug_to_node.items()}
-
-
-def merge_duplicate_citations(citations: Iterable[Citation]) -> list[Citation]:
-    """Remove duplicates by (source, start, end), preserving first-seen order."""
-    seen: set[tuple[str, int, int]] = set()
-    out: list[Citation] = []
-    for c in citations:
-        key = (c.source, c.start, c.end)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(c)
-    return out

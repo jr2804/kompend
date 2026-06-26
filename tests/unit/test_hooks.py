@@ -2,14 +2,7 @@
 
 from __future__ import annotations
 
-from knox.core.hooks import (
-    HookContext,
-    HookEvent,
-    clear_hooks,
-    fire_hook,
-    load_hooks_from_config,
-    register_hook,
-)
+from knox.core.hooks import HookEvent, clear_hooks, fire_hook, load_hooks_from_config, register_hook
 
 
 class TestHookRegistry:
@@ -21,14 +14,14 @@ class TestHookRegistry:
 
     def test_register_and_fire(self) -> None:
         calls: list[str] = []
-        register_hook(HookEvent.POST_COMPILE, lambda ctx: calls.append(ctx.event.value))
+        register_hook(HookEvent.POST_COMPILE, lambda **kw: calls.append(HookEvent.POST_COMPILE.value))
         fire_hook(HookEvent.POST_COMPILE, wiki="fake")
         assert calls == ["post_compile"]
 
     def test_multiple_callbacks_same_event(self) -> None:
         results: list[int] = []
-        register_hook(HookEvent.ON_CAPTURE, lambda ctx: results.append(1))
-        register_hook(HookEvent.ON_CAPTURE, lambda ctx: results.append(2))
+        register_hook(HookEvent.ON_CAPTURE, lambda **kw: results.append(1))
+        register_hook(HookEvent.ON_CAPTURE, lambda **kw: results.append(2))
         fire_hook(HookEvent.ON_CAPTURE)
         assert results == [1, 2]
 
@@ -37,23 +30,23 @@ class TestHookRegistry:
 
     def test_context_data_passed_through(self) -> None:
         received: dict = {}
-        register_hook(HookEvent.ON_QUERY, lambda ctx: received.update(ctx.data))
+        register_hook(HookEvent.ON_QUERY, lambda **kw: received.update(kw))
         fire_hook(HookEvent.ON_QUERY, query="hello", results=["r1"])
         assert received == {"query": "hello", "results": ["r1"]}
 
     def test_exception_in_callback_does_not_propagate(self) -> None:
-        def bad_hook(_ctx: HookContext) -> None:
+        def bad_hook(**kw: object) -> None:
             raise RuntimeError("boom")
 
         register_hook(HookEvent.POST_COMPILE, bad_hook)
         good_called: list[bool] = []
-        register_hook(HookEvent.POST_COMPILE, lambda ctx: good_called.append(True))
+        register_hook(HookEvent.POST_COMPILE, lambda **kw: good_called.append(True))
         fire_hook(HookEvent.POST_COMPILE)
         assert good_called == [True]
 
     def test_clear_hooks(self) -> None:
         calls: list[str] = []
-        register_hook(HookEvent.ON_LINT, lambda ctx: calls.append("fired"))
+        register_hook(HookEvent.ON_LINT, lambda **kw: calls.append("fired"))
         clear_hooks()
         fire_hook(HookEvent.ON_LINT)
         assert calls == []
@@ -61,8 +54,8 @@ class TestHookRegistry:
     def test_event_isolation(self) -> None:
         compile_calls: list[str] = []
         capture_calls: list[str] = []
-        register_hook(HookEvent.POST_COMPILE, lambda ctx: compile_calls.append("c"))
-        register_hook(HookEvent.ON_CAPTURE, lambda ctx: capture_calls.append("cap"))
+        register_hook(HookEvent.POST_COMPILE, lambda **kw: compile_calls.append("c"))
+        register_hook(HookEvent.ON_CAPTURE, lambda **kw: capture_calls.append("cap"))
         fire_hook(HookEvent.POST_COMPILE)
         assert compile_calls == ["c"]
         assert capture_calls == []
@@ -104,7 +97,7 @@ class TestLoadFromConfig:
 
         fired: list[bool] = []
 
-        def my_query_hook(_ctx: HookContext) -> None:
+        def my_query_hook(**kw: object) -> None:
             fired.append(True)
 
         register_hook(HookEvent.ON_QUERY, my_query_hook)
