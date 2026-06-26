@@ -106,10 +106,15 @@ def _register_custom_providers() -> None:
     if litellm.custom_provider_map is None:
         litellm.custom_provider_map = []
 
+    # Trigger lazy load of provider_list so we can extend it.
+    _ = litellm.provider_list
+
     for name, handler_cls in providers:
         already = [e for e in litellm.custom_provider_map if e.get("provider") == name]
         if not already:
             litellm.custom_provider_map.append({"provider": name, "custom_handler": handler_cls()})
+            litellm._custom_providers.append(name)
+            litellm.provider_list.append(name)
             logger.debug("Registered custom litellm provider: %s", name)
 
 
