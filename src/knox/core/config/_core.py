@@ -511,6 +511,17 @@ def _expand_env_vars_recursive(data: Any) -> Any:
     return data
 
 
+def _strip_strings_recursive(data: Any) -> Any:
+    """Recursively strip leading/trailing whitespace from all string values."""
+    if isinstance(data, str):
+        return data.strip()
+    if isinstance(data, dict):
+        return {k: _strip_strings_recursive(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_strip_strings_recursive(v) for v in data]
+    return data
+
+
 def _load_toml(toml_file: Path) -> dict[str, Any]:
     """Load a TOML file, returning an empty dict on failure.
 
@@ -520,8 +531,10 @@ def _load_toml(toml_file: Path) -> dict[str, Any]:
     try:
         raw = toml_file.read_bytes()
         data: dict[str, Any] = tomllib.loads(raw.decode("utf-8"))
+        data = _expand_env_vars_recursive(data)
+        data = _strip_strings_recursive(data)
         logger.debug("Loaded config from %s", toml_file)
-        return _expand_env_vars_recursive(data)
+        return data
     except Exception as exc:
         logger.warning("Failed to load config %s: %s", toml_file, exc, exc_info=True)
         return {}
@@ -550,6 +563,8 @@ def _read_env_vars() -> dict[str, Any]:
                 coerced = float(value)
         if "," in value and not isinstance(coerced, (int, float)):
             coerced = [v.strip() for v in value.split(",") if v.strip()]
+        elif isinstance(coerced, str):
+            coerced = coerced.strip()
         _set_dot(result, dotted_key, coerced)
     return result
 
@@ -840,6 +855,7 @@ def coerce_config_value(value: str, key: str) -> Any:
     Raises:
         ValueError: when *value* cannot be coerced to the expected type.
     """
+    value = value.strip()
     current = _get_dot(DEFAULTS, key)
     handler = _COERCE_HANDLERS.get(type(current))
     if handler is not None:
