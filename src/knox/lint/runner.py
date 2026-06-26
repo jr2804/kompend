@@ -213,6 +213,11 @@ def report_to_json(report: LintReport) -> str:
     return json.dumps(report_to_dict(report), indent=2, default=str)
 
 
+def report_to_summary(report: LintReport) -> str:
+    """Compact one-line summary for pipeline/CLI status output."""
+    return f"Lint: {report.health_score:.0f}% health ({report.passes} pass / {report.failures} fail / {report.skips} skip)"
+
+
 def report_to_text(report: LintReport) -> str:
     """Format a lint report as a human-readable table."""
     lines: list[str] = []

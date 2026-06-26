@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,9 +22,10 @@ from knox.cli.args import (
     UrlFile,
 )
 from knox.core.models import CompiledWiki
-from knox.core.paths import VaultPaths
+from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
-from knox.lint.runner import LintRunner, report_to_text
+from knox.lint.history import entry_from_report, save_lint_entry
+from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.wiki_index import write_index_and_log, write_overview
 from knox.provenance import annotate_wiki_with_provenance
@@ -235,12 +237,31 @@ def _run_post_compile_lint(
     wiki: CompiledWiki,
     sources_dir: Path,
     *,
+    base_dir: Path,
     json_output: bool = False,
 ) -> None:
-    """Run lint after compilation and print the report."""
+    """Run lint after compilation, persist to history, and print a summary."""
     runner = LintRunner(sources_dir=str(sources_dir) if sources_dir.exists() else None)
+    lint_start = time.monotonic()
     report = runner.run(wiki)
-    get_console().print("\n" + report_to_text(report))
+    lint_elapsed = time.monotonic() - lint_start
+
+    state_dir = VaultPaths(base_dir).knox_dir
+    entry = entry_from_report(
+        report,
+        duration_seconds=lint_elapsed,
+        options={"context": "pipeline"},
+        config=type("Cfg", (), {"get": staticmethod(lambda k: None)})(),
+        node_count=len(wiki.nodes),
+    )
+    save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
+
+    get_console().print(f"\n{report_to_summary(report)}")
+    if report.failures > 0:
+        get_console().print(
+            f"  Details: `knox lint run` (full report) or `knox lint gaps` (source recommendations)\n"
+            f"  History: `knox lint history` — saved to .knox/{LINT_HISTORY_FILE}"
+        )
 
 
 def _cli_build_vector_index(
@@ -347,6 +368,6 @@ def _post_compile_actions(
         _cli_build_vector_index(wiki, output_dir, pipeline_config.embedding.model, base_dir=base_dir)
 
     if compile_lint:
-        _run_post_compile_lint(wiki, sources_dir, json_output=False)
+        _run_post_compile_lint(wiki, sources_dir, base_dir=base_dir)
 
     _write_wiki_cache(wiki, base_dir)

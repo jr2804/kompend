@@ -5,11 +5,13 @@ Sub-commands
 
 * ``knox lint run``     — run lint rules and save to history.
 * ``knox lint history`` — query past lint runs.
+* ``knox lint gaps``    — analyze lint results for knowledge gaps.
 * ``knox lint prune``   — remove old history entries.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
 from pathlib import Path
@@ -30,7 +32,6 @@ from knox.cli.args import (
     LintPruneAgeDays,
     LintPruneKeep,
     LintRule,
-    LintThreshold,
     LlmContextBudget,
     LlmDefaultModel,
 )
@@ -38,6 +39,7 @@ from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
+from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
     entry_from_report,
     history_to_json,
@@ -114,7 +116,6 @@ def lint_run(
     fix: LintFix = False,
     llm: LintLlm = False,
     rule: LintRule = None,
-    threshold: LintThreshold = None,
     json_output: JsonOutput = False,
     llm_default_model: LlmDefaultModel = None,
     llm_context_budget: LlmContextBudget = None,
@@ -131,7 +132,6 @@ def lint_run(
         knox lint run --llm                 # structural + LLM rules
         knox lint run --fix                 # auto-fix what's possible
         knox lint run --rule broken-wikilinks --rule orphan-page
-        knox lint run --threshold 80        # exit 1 if score < 80
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(
@@ -206,7 +206,6 @@ def lint_run(
         "rules": list(rule) if rule else None,
         "enable_llm": llm,
         "fix": fix,
-        "threshold": threshold,
         "llm_context_budget": llm_context_budget,
     }
     entry = entry_from_report(
@@ -223,10 +222,6 @@ def lint_run(
         get_console().print(report_to_json(report))
     else:
         get_console().print(report_to_text(report))
-
-    if threshold is not None and report.health_score < threshold:
-        get_err_console().print(f"\nHealth score {report.health_score:.0f}% is below threshold {threshold}%.")
-        raise typer.Exit(1)
 
 
 # ── Sub-command: history ─────────────────────────────────────────────────
@@ -298,3 +293,52 @@ def lint_prune(
         max_age_days=max_age_days,
     )
     get_console().print(f"Removed {removed} entr{'y' if removed == 1 else 'ies'}.")
+
+
+# ── Sub-command: gaps ────────────────────────────────────────────────────
+
+
+@lint_app.command("gaps", help="Analyze lint results for knowledge gaps and source recommendations.")
+def lint_gaps(
+    ctx: typer.Context,
+    json_output: JsonOutput = False,
+    config: ConfigPath = None,
+) -> None:
+    """Analyze the latest lint run to identify missing knowledge and recommend sources.
+
+    Reads the most recent entry from ``.knox/lint_history.jsonl`` and extracts
+    actionable gap signals: missing topics (broken wikilinks), coverage gaps,
+    poor-quality pages, empty pages, orphan topics, and contradictions.
+
+    Examples:
+        knox lint gaps              # analyze latest lint run
+        knox lint gaps --json       # machine-readable output
+    """
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(
+        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        config_path=config,
+    )
+    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+
+    entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
+    if not entries:
+        get_err_console().print("No lint history found. Run `knox lint run` or compile with --lint first.")
+        raise typer.Exit(1)
+
+    report_dict = entries[-1].get("report", {})
+    recs = analyze_gaps(report_dict)
+
+    if json_output:
+        get_console().print(
+            json.dumps(
+                [{"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action} for r in recs],
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        ts = entries[-1].get("timestamp", "?")
+        score = report_dict.get("health_score", 0.0)
+        get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
+        get_console().print(gaps_to_text(recs))

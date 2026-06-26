@@ -36,16 +36,6 @@ LintRule = Annotated[
     ),
 ]
 
-LintThreshold = Annotated[
-    int | None,
-    typer.Option(
-        "--threshold",
-        help="Exit with error if health score is below this value (0-100).",
-        min=0,
-        max=100,
-    ),
-]
-
 LintHistoryLast = Annotated[
     int,
     typer.Option(

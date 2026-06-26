@@ -35,7 +35,6 @@ Config files use TOML. Example ``knox.toml``::
 
     [lint]
     enabled = ["broken-wikilinks", "orphan-page"]
-    threshold = 80
 
     [eval]
     threshold = 80
@@ -226,7 +225,6 @@ DEFAULTS: dict[str, Any] = {
     },
     "lint": {
         "enabled": None,  # None = all structural rules
-        "threshold": None,
     },
     "eval": {
         "threshold": None,
@@ -340,7 +338,6 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_EMBEDDING_MODEL: "KNOX_EMBEDDING_MODEL",
     COMPILE_EMBEDDING_DIM: "KNOX_EMBEDDING_DIM",  # deprecated — auto-detected from model
     COMPILE_EMBEDDING_BATCH_SIZE: "KNOX_EMBEDDING_BATCH_SIZE",
-    "lint.threshold": "KNOX_LINT_THRESHOLD",
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
     TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
     SEARCH_EXPANSION_ENABLED: "KNOX_SEARCH_EXPANSION_ENABLED",
