@@ -2,7 +2,6 @@
 
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.lint.history import (
-    LintHistoryEntry,
     entry_from_report,
     load_lint_history,
     prune_lint_history,
@@ -14,7 +13,6 @@ from knox.lint.structural import STRUCTURAL_RULES
 __all__ = [
     "STRUCTURAL_RULES",
     "BaseLintRule",
-    "LintHistoryEntry",
     "LintResult",
     "LintRuleOutcome",
     "LintRunner",

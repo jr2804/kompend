@@ -11,7 +11,6 @@ import pytest
 
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.history import (
-    LintHistoryEntry,
     entry_from_report,
     history_to_json,
     history_to_text,
@@ -20,8 +19,6 @@ from knox.lint.history import (
     save_lint_entry,
 )
 from knox.lint.runner import LintReport, _build_report, report_to_dict
-
-# ── Stubs / helpers ──────────────────────────────────────────────────────
 
 
 class _StubConfig:
@@ -34,11 +31,7 @@ class _StubConfig:
         return self._data.get(key, default)
 
 
-def _make_report(
-    *,
-    health_score: float = 90.0,
-    results: list[LintResult] | None = None,
-) -> LintReport:
+def _make_report(*, health_score: float = 90.0, results: list[LintResult] | None = None) -> LintReport:
     if results is None:
         results = [
             LintResult(rule="orphan-page", outcome=LintRuleOutcome.PASS, severity=Severity.INFO, message="ok"),
@@ -49,24 +42,17 @@ def _make_report(
     return report
 
 
-def _make_entry(
-    *,
-    timestamp: str = "2025-01-01T00:00:00+00:00",
-    score: float = 90.0,
-) -> LintHistoryEntry:
+def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> dict[str, Any]:
     report = _make_report(health_score=score)
-    return LintHistoryEntry(
-        timestamp=timestamp,
-        duration_seconds=1.5,
-        options={"rules": None, "enable_llm": False, "fix": False, "threshold": None},
-        llm=None,
-        config_snapshot={"compile.compiler": "graph", "compile.chunk_size": 512},
-        wiki_meta={"node_count": 10},
-        report=report_to_dict(report),
-    )
-
-
-# ── save / load round-trip ───────────────────────────────────────────────
+    return {
+        "timestamp": timestamp,
+        "duration_seconds": 1.5,
+        "options": {"rules": None, "enable_llm": False, "fix": False, "threshold": None},
+        "llm": None,
+        "config_snapshot": {"compile.compiler": "graph", "compile.chunk_size": 512},
+        "wiki_meta": {"node_count": 10},
+        "report": report_to_dict(report),
+    }
 
 
 class TestSaveLoad:
@@ -77,10 +63,10 @@ class TestSaveLoad:
 
         loaded = load_lint_history(path)
         assert len(loaded) == 1
-        assert loaded[0].timestamp == entry.timestamp
-        assert loaded[0].duration_seconds == entry.duration_seconds
-        assert loaded[0].options == entry.options
-        assert loaded[0].report["health_score"] == entry.report["health_score"]
+        assert loaded[0]["timestamp"] == entry["timestamp"]
+        assert loaded[0]["duration_seconds"] == entry["duration_seconds"]
+        assert loaded[0]["options"] == entry["options"]
+        assert loaded[0]["report"]["health_score"] == entry["report"]["health_score"]
 
     def test_save_appends_multiple_entries(self, tmp_path: Path) -> None:
         path = tmp_path / "lint_history.jsonl"
@@ -89,8 +75,8 @@ class TestSaveLoad:
 
         loaded = load_lint_history(path)
         assert len(loaded) == 5
-        assert loaded[0].timestamp == "2025-01-01T00:00:00+00:00"
-        assert loaded[-1].timestamp == "2025-01-05T00:00:00+00:00"
+        assert loaded[0]["timestamp"] == "2025-01-01T00:00:00+00:00"
+        assert loaded[-1]["timestamp"] == "2025-01-05T00:00:00+00:00"
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         path = tmp_path / "subdir" / "nested" / "lint_history.jsonl"
@@ -104,12 +90,10 @@ class TestSaveLoad:
     def test_load_skips_blank_lines(self, tmp_path: Path) -> None:
         path = tmp_path / "lint_history.jsonl"
         entry = _make_entry()
-        path.write_text(f"\n{entry.to_json()}\n\n\n", encoding="utf-8")
+        line = json.dumps(entry, default=str, ensure_ascii=False)
+        path.write_text(f"\n{line}\n\n\n", encoding="utf-8")
         loaded = load_lint_history(path)
         assert len(loaded) == 1
-
-
-# ── last_n filtering ─────────────────────────────────────────────────────
 
 
 class TestLastN:
@@ -120,8 +104,8 @@ class TestLastN:
 
         loaded = load_lint_history(path, last_n=3)
         assert len(loaded) == 3
-        assert loaded[0].timestamp == "2025-01-08T00:00:00+00:00"
-        assert loaded[-1].timestamp == "2025-01-10T00:00:00+00:00"
+        assert loaded[0]["timestamp"] == "2025-01-08T00:00:00+00:00"
+        assert loaded[-1]["timestamp"] == "2025-01-10T00:00:00+00:00"
 
     def test_last_n_zero_returns_empty(self, tmp_path: Path) -> None:
         path = tmp_path / "lint_history.jsonl"
@@ -134,9 +118,6 @@ class TestLastN:
         save_lint_entry(_make_entry(), path)
         loaded = load_lint_history(path, last_n=100)
         assert len(loaded) == 1
-
-
-# ── prune ────────────────────────────────────────────────────────────────
 
 
 class TestPrune:
@@ -152,14 +133,13 @@ class TestPrune:
 
     def test_prune_max_age_days(self, tmp_path: Path) -> None:
         path = tmp_path / "lint_history.jsonl"
-        # Old entries (far in the past) + recent entries
         now = datetime.now(UTC)
         for days_ago in [100, 50, 10, 1, 0]:
             ts = (now - timedelta(days=days_ago)).isoformat(timespec="seconds")
             save_lint_entry(_make_entry(timestamp=ts), path)
 
         removed = prune_lint_history(path, max_age_days=30)
-        assert removed == 2  # 100-day and 50-day entries removed
+        assert removed == 2
         remaining = load_lint_history(path)
         assert len(remaining) == 3
 
@@ -170,7 +150,6 @@ class TestPrune:
             ts = (now - timedelta(days=days_ago)).isoformat(timespec="seconds")
             save_lint_entry(_make_entry(timestamp=ts), path)
 
-        # max_age removes 2 (100, 50), then keep_last=2 keeps newest 2 of remaining 3
         removed = prune_lint_history(path, max_age_days=30, keep_last=2)
         assert removed == 3
         remaining = load_lint_history(path)
@@ -190,9 +169,6 @@ class TestPrune:
     def test_prune_requires_at_least_one_criterion(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="At least one"):
             prune_lint_history(tmp_path / "lint_history.jsonl")
-
-
-# ── entry_from_report ────────────────────────────────────────────────────
 
 
 class TestEntryFromReport:
@@ -215,19 +191,19 @@ class TestEntryFromReport:
             node_count=42,
             llm={"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}},
         )
-        assert entry.duration_seconds == 2.5
-        assert entry.options["rules"] == ["orphan-page"]
-        assert entry.config_snapshot["compile.compiler"] == "wicer"
-        assert entry.config_snapshot["compile.chunk_size"] == 1024
-        assert entry.wiki_meta["node_count"] == 42
-        assert entry.llm == {"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}}
-        assert entry.report["health_score"] == report.health_score
-        assert "T" in entry.timestamp  # ISO format
+        assert entry["duration_seconds"] == 2.5
+        assert entry["options"]["rules"] == ["orphan-page"]
+        assert entry["config_snapshot"]["compile.compiler"] == "wicer"
+        assert entry["config_snapshot"]["compile.chunk_size"] == 1024
+        assert entry["wiki_meta"]["node_count"] == 42
+        assert entry["llm"] == {"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}}
+        assert entry["report"]["health_score"] == report.health_score
+        assert "T" in entry["timestamp"]
 
     def test_auto_timestamp(self) -> None:
         report = _make_report()
         entry = entry_from_report(report, duration_seconds=0.1, options={}, config=_StubConfig(), node_count=1)
-        assert "+" in entry.timestamp  # timezone-aware ISO
+        assert "+" in entry["timestamp"]
 
     def test_custom_timestamp(self) -> None:
         report = _make_report()
@@ -239,30 +215,7 @@ class TestEntryFromReport:
             node_count=1,
             timestamp="2020-01-01T00:00:00+00:00",
         )
-        assert entry.timestamp == "2020-01-01T00:00:00+00:00"
-
-
-# ── Serialization ────────────────────────────────────────────────────────
-
-
-class TestSerialization:
-    def test_to_json_roundtrip(self) -> None:
-        entry = _make_entry()
-        data = json.loads(entry.to_json())
-        restored = LintHistoryEntry.from_dict(data)
-        assert restored.timestamp == entry.timestamp
-        assert restored.report["health_score"] == entry.report["health_score"]
-
-    def test_from_dict_handles_missing_optional_fields(self) -> None:
-        data = {"timestamp": "2025-01-01T00:00:00+00:00"}
-        entry = LintHistoryEntry.from_dict(data)
-        assert entry.timestamp == "2025-01-01T00:00:00+00:00"
-        assert entry.duration_seconds == 0.0
-        assert entry.options == {}
-        assert entry.report == {}
-
-
-# ── Output formatting ────────────────────────────────────────────────────
+        assert entry["timestamp"] == "2020-01-01T00:00:00+00:00"
 
 
 class TestFormatting:
@@ -304,6 +257,6 @@ class TestFormatting:
 
     def test_history_to_text_shows_model_tag(self) -> None:
         entry = _make_entry()
-        entry.llm = {"model": "openai/gpt-4o", "usage": {}}
+        entry["llm"] = {"model": "openai/gpt-4o", "usage": {}}
         text = history_to_text([entry])
         assert "openai/gpt-4o" in text
