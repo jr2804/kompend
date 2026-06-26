@@ -187,7 +187,7 @@ if (-not $WhatIf) {
     }
 }
 
-# ── Lint (Step 6) ──────────────────────────────────────────────────────
+# ── Lint (Structural + LLM rules, saves to lint_history.jsonl) ─────────
 Write-Host ""
 Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
@@ -197,7 +197,6 @@ $LintArgs = @(
     "--llm",
     "--llm-default-model", $LLMModel,
     "--fix",
-    "--threshold", "80",
     "--config", $ConfigPath
 )
 
@@ -207,8 +206,44 @@ Write-Host ""
 if (-not $WhatIf) {
     & $LintArgs[0] $LintArgs[1..($LintArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Linting reported issues or health score fell below 80% (exit code $LASTEXITCODE)"
+        Write-Warning "Linting reported issues (exit code $LASTEXITCODE)"
     }
+}
+
+# ── Gap Analysis (source recommendations from lint results) ───────────
+Write-Host ""
+Write-Host "=== Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
+$GapsArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "lint", "gaps",
+    "--config", $ConfigPath
+)
+
+Write-Host ($GapsArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $GapsArgs[0] $GapsArgs[1..($GapsArgs.Length - 1)]
+    # gaps exits 0 regardless — it's informational
+}
+
+# ── Lint History (trend across builds) ────────────────────────────────
+Write-Host ""
+Write-Host "=== Lint History (trend) ===" -ForegroundColor Cyan
+$HistoryArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "lint", "history",
+    "--last", "5",
+    "--config", $ConfigPath
+)
+
+Write-Host ($HistoryArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $HistoryArgs[0] $HistoryArgs[1..($HistoryArgs.Length - 1)]
 }
 
 # ── Done ───────────────────────────────────────────────────────────────
