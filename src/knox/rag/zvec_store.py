@@ -14,6 +14,7 @@ are supported via ``_make_provider``:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,16 @@ from knox.core.models import CompiledWiki, WikiNode
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
+_ZVEC_MAX_ID_LEN = 64
+
+
+def _safe_id(node_id: str) -> str:
+    """Truncate *node_id* to zvec's 64-char PK limit with a hash suffix."""
+    if len(node_id) <= _ZVEC_MAX_ID_LEN:
+        return node_id
+    suffix = hashlib.md5(node_id.encode()).hexdigest()[:8]  # noqa: S324
+    return f"{node_id[: _ZVEC_MAX_ID_LEN - 9]}-{suffix}"
 
 
 # ── Embedding provider interface ────────────────────────────────────────
@@ -174,7 +185,7 @@ class ZvecWikiStore:
         )
         return [
             {
-                "id": r.id,
+                "id": (r.fields.get("node_id", r.id) if isinstance(r.fields, dict) else r.id),
                 "score": r.score if r.score is not None else 0.0,
                 **(r.fields if isinstance(r.fields, dict) else {}),
             }
@@ -219,6 +230,7 @@ class ZvecWikiStore:
         schema = _zvec.CollectionSchema(
             name="knox_wiki",
             fields=[
+                _zvec.FieldSchema("node_id", _zvec.DataType.STRING),
                 _zvec.FieldSchema("title", _zvec.DataType.STRING),
                 _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
                 _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
@@ -252,9 +264,10 @@ class ZvecWikiStore:
 
         for node in nodes:
             doc = _zvec.Doc(
-                id=node.id,
+                id=_safe_id(node.id),
                 vectors={"embedding": provider.embed(f"{node.title}\n{node.content}")},
                 fields={
+                    "node_id": node.id,
                     "title": node.title,
                     "node_type": node.node_type,
                     "source_file": str(node.metadata.get("source", "")) if node.metadata else "",
