@@ -146,6 +146,11 @@ class TestEnvVars:
         result = _read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
+    def test_string_value_stripped(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "  openai/gpt-4o  ")
+        result = _read_env_vars()
+        assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
+
     def test_vlm_model_env(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
         result = _read_env_vars()
@@ -228,6 +233,17 @@ class TestResolveConfig:
         monkeypatch.setenv("KNOX_CHUNK_SIZE", "64")
         cfg = resolve_config(cli_overrides={"compile.chunk_size": 32})
         assert cfg.get("compile.chunk_size") == 32
+
+    def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text(
+            '[compile.llm]\ndefault_model = " openai/gpt-4o "\nvlm_model = "\\tollama/llava\\n"\nfallback_chain = [" openai/gpt-4o ", " anthropic/claude "]\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.llm.default_model") == "openai/gpt-4o"
+        assert cfg.get("compile.llm.vlm_model") == "ollama/llava"
+        assert cfg.get("compile.llm.fallback_chain") == ["openai/gpt-4o", "anthropic/claude"]
 
     def test_vlm_model_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
@@ -539,6 +555,15 @@ class TestCoerceConfigValue:
 
     def test_coerce_string(self) -> None:
         assert coerce_config_value("openai/gpt-4o", "compile.llm.default_model") == "openai/gpt-4o"
+
+    def test_coerce_string_stripped(self) -> None:
+        assert coerce_config_value("  openai/gpt-4o  ", "compile.llm.default_model") == "openai/gpt-4o"
+
+    def test_coerce_integer_stripped(self) -> None:
+        assert coerce_config_value(" 1024 ", "compile.chunk_size") == 1024
+
+    def test_coerce_boolean_stripped(self) -> None:
+        assert coerce_config_value(" true ", "compile.no_cache") is True
 
     def test_coerce_boolean_invalid_raises(self) -> None:
         with pytest.raises(ValueError, match="expected boolean"):

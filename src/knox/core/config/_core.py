@@ -58,6 +58,8 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
+from pydantic import Field, create_model
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from knox.core.config.keys import (
     COMPILE_BUDGET_CHUNK_SIZE_MAX,
@@ -543,29 +545,76 @@ def _load_toml(toml_file: Path) -> dict[str, Any]:
 # ── Env var layer ───────────────────────────────────────────────────────
 
 
+# Build pydantic-settings model dynamically from _ENV_MAP.
+# Field names are KNOX_* suffixes lowercased; types inferred from patterns.
+_KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
+for _env_name in _ENV_MAP.values():
+    _fn = _env_name.removeprefix("KNOX_").lower()
+    # Comma-separated lists (stored as str, split in _read_env_vars)
+    if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS",
+                     "KNOX_SEARCH_EXPANSION_VARIANTS"):
+        _KnoxEnvFields[_fn] = (str | None, Field(None))
+    # Booleans
+    elif _env_name.endswith("_ENABLED") or _env_name in (
+        "KNOX_NO_CACHE", "KNOX_FORCE", "KNOX_IN_PLACE_SOURCES",
+        "KNOX_MEMORY_ENABLED", "KNOX_PRIVACY_FILTER", "KNOX_USER_TRACKING",
+        "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE", "KNOX_DEDUP_ENABLED",
+    ):
+        _KnoxEnvFields[_fn] = (bool | None, Field(None))
+    # Numeric: check float patterns first, then int
+    elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
+        _KnoxEnvFields[_fn] = (float | None, Field(None))
+    elif _env_name in (
+        "KNOX_CHUNK_SIZE", "KNOX_WORKERS", "KNOX_LINT_THRESHOLD",
+        "KNOX_SEARCH_CACHE_MAX_ENTRIES", "KNOX_SEARCH_RERANKER_TOP_K",
+        "KNOX_SEARCH_CACHE_THRESHOLD", "KNOX_SEARCH_CRAG_THRESHOLD",
+        "KNOX_EVAL_THRESHOLD", "KNOX_ORGANIZE_MAX_DEPTH",
+        "KNOX_ORGANIZE_MIN_SUBCATEGORIES", "KNOX_EMBEDDING_DIM",
+        "KNOX_EMBEDDING_BATCH_SIZE", "KNOX_LLM_NUM_CTX_MIN",
+        "KNOX_LLM_NUM_CTX_MAX", "KNOX_LLM_FALLBACK_MAX_RETRIES",
+        "KNOX_BUDGET_CONCEPTS_PER_BATCH", "KNOX_BUDGET_WICER_MAX_ITERATIONS",
+        "KNOX_BUDGET_MIN_CONTENT_LENGTH", "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
+        "KNOX_BUDGET_MAX_CONCEPT_PAGES", "KNOX_BUDGET_CHUNK_SIZE_MIN",
+        "KNOX_BUDGET_CHUNK_SIZE_MAX", "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
+        "KNOX_BUDGET_GEN_OUTPUT_MAX", "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
+        "KNOX_LLM_CONTEXT_WINDOW_CAP", "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
+        "KNOX_PDF_PAGE_CHUNK_SIZE", "KNOX_PDF_PAGE_CHUNK_OVERLAP",
+        "KNOX_DEDUP_THRESHOLD_IDENTICAL", "KNOX_DEDUP_THRESHOLD_SIMILAR",
+        "KNOX_LLM_TIMEOUT", "KNOX_LLM_FALLBACK_MAX_INPUT",
+        "KNOX_LLM_FALLBACK_MAX_OUTPUT", "KNOX_MEMORY_HALF_LIFE_DAYS",
+        "KNOX_MEMORY_DECAY_THRESHOLD",
+    ):
+        _KnoxEnvFields[_fn] = (int | None, Field(None))
+    else:
+        _KnoxEnvFields[_fn] = (str | None, Field(None))
+
+_KnoxEnvSettingsModel = create_model(
+    "_KnoxEnvSettings",
+    __base__=BaseSettings,
+    __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
+    **_KnoxEnvFields,
+)
+
+
 def _read_env_vars() -> dict[str, Any]:
-    """Read KNOX_* env vars and return as a nested config dict."""
+    """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
+    settings = _KnoxEnvSettingsModel()
     result: dict[str, Any] = {}
     for dotted_key, env_name in _ENV_MAP.items():
-        value = os.environ.get(env_name)
-        if value is None:
-            continue
-        # Type coerce: booleans, integers, comma-separated lists
-        coerced: Any = value
-        if value.lower() in ("true", "1", "yes"):
-            coerced = True
-        elif value.lower() in ("false", "0", "no"):
-            coerced = False
-        elif value.isdigit():
-            coerced = int(value)
-        else:
-            with contextlib.suppress(ValueError):
-                coerced = float(value)
-        if "," in value and not isinstance(coerced, (int, float)):
-            coerced = [v.strip() for v in value.split(",") if v.strip()]
-        elif isinstance(coerced, str):
-            coerced = coerced.strip()
-        _set_dot(result, dotted_key, coerced)
+        field_name = env_name.removeprefix("KNOX_").lower()
+        value = getattr(settings, field_name, None)
+        if value is not None:
+            # Strip whitespace for string values
+            if isinstance(value, str):
+                value = value.strip()
+            # Comma-separated list fields
+            if env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT",
+                            "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
+                if isinstance(value, str):
+                    value = [v.strip() for v in value.split(",") if v.strip()]
+                elif isinstance(value, list):
+                    pass  # already a list
+            _set_dot(result, dotted_key, value)
     return result
 
 
