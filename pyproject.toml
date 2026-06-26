@@ -42,6 +42,7 @@ dependencies = [
     "opencv-python-headless>=4.13.0.92",
     "toon-format>=0.9.0b1",
     "ison-py>=1.0.2",
+    "pydantic-settings>=2.14.2",
 ]
 
 [project.scripts]

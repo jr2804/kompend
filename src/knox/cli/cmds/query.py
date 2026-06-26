@@ -351,9 +351,7 @@ def query_cmd(
             results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir)
             has_enhanced = False
         else:
-            enhanced_result = _handle_enhanced_search(
-                query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client
-            )
+            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client)
             if enhanced_result is not None:
                 results = enhanced_result
                 raw = False

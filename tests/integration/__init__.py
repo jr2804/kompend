@@ -1,1 +1,0 @@
-"""Integration tests for KNOX pipeline stages."""

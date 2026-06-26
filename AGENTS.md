@@ -406,6 +406,8 @@ TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
 - Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/knox/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
+- After changing CLI commands, MCP tools, config keys, or output format, check
+  `skills/knox/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
 
 ### Closeout
