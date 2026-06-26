@@ -121,9 +121,6 @@ from knox.core.config.keys import (
     PATHS_SOURCES_DIR,
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
-    SEARCH_CACHE_ENABLED,
-    SEARCH_CACHE_MAX_ENTRIES,
-    SEARCH_CACHE_THRESHOLD,
     SEARCH_CONTEXTUAL_ENABLED,
     SEARCH_CONTEXTUAL_MODEL,
     SEARCH_CRAG_ENABLED,
@@ -248,11 +245,6 @@ DEFAULTS: dict[str, Any] = {
         "user_tracking": True,
     },
     "search": {
-        "cache": {
-            "enabled": True,
-            "threshold": 0.92,
-            "max_entries": 500,
-        },
         "expansion": {
             "enabled": False,
             "variants": 3,
@@ -351,9 +343,6 @@ _ENV_MAP: dict[str, str] = {
     "lint.threshold": "KNOX_LINT_THRESHOLD",
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
     TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
-    SEARCH_CACHE_ENABLED: "KNOX_SEARCH_CACHE_ENABLED",
-    SEARCH_CACHE_THRESHOLD: "KNOX_SEARCH_CACHE_THRESHOLD",
-    SEARCH_CACHE_MAX_ENTRIES: "KNOX_SEARCH_CACHE_MAX_ENTRIES",
     SEARCH_EXPANSION_ENABLED: "KNOX_SEARCH_EXPANSION_ENABLED",
     SEARCH_EXPANSION_VARIANTS: "KNOX_SEARCH_EXPANSION_VARIANTS",
     SEARCH_CRAG_ENABLED: "KNOX_SEARCH_CRAG_ENABLED",
@@ -551,37 +540,57 @@ _KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
 for _env_name in _ENV_MAP.values():
     _fn = _env_name.removeprefix("KNOX_").lower()
     # Comma-separated lists (stored as str, split in _read_env_vars)
-    if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS",
-                     "KNOX_SEARCH_EXPANSION_VARIANTS"):
+    if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
         _KnoxEnvFields[_fn] = (str | None, Field(None))
     # Booleans
     elif _env_name.endswith("_ENABLED") or _env_name in (
-        "KNOX_NO_CACHE", "KNOX_FORCE", "KNOX_IN_PLACE_SOURCES",
-        "KNOX_MEMORY_ENABLED", "KNOX_PRIVACY_FILTER", "KNOX_USER_TRACKING",
-        "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE", "KNOX_DEDUP_ENABLED",
+        "KNOX_NO_CACHE",
+        "KNOX_FORCE",
+        "KNOX_IN_PLACE_SOURCES",
+        "KNOX_MEMORY_ENABLED",
+        "KNOX_PRIVACY_FILTER",
+        "KNOX_USER_TRACKING",
+        "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
+        "KNOX_DEDUP_ENABLED",
     ):
         _KnoxEnvFields[_fn] = (bool | None, Field(None))
     # Numeric: check float patterns first, then int
     elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
         _KnoxEnvFields[_fn] = (float | None, Field(None))
     elif _env_name in (
-        "KNOX_CHUNK_SIZE", "KNOX_WORKERS", "KNOX_LINT_THRESHOLD",
-        "KNOX_SEARCH_CACHE_MAX_ENTRIES", "KNOX_SEARCH_RERANKER_TOP_K",
-        "KNOX_SEARCH_CACHE_THRESHOLD", "KNOX_SEARCH_CRAG_THRESHOLD",
-        "KNOX_EVAL_THRESHOLD", "KNOX_ORGANIZE_MAX_DEPTH",
-        "KNOX_ORGANIZE_MIN_SUBCATEGORIES", "KNOX_EMBEDDING_DIM",
-        "KNOX_EMBEDDING_BATCH_SIZE", "KNOX_LLM_NUM_CTX_MIN",
-        "KNOX_LLM_NUM_CTX_MAX", "KNOX_LLM_FALLBACK_MAX_RETRIES",
-        "KNOX_BUDGET_CONCEPTS_PER_BATCH", "KNOX_BUDGET_WICER_MAX_ITERATIONS",
-        "KNOX_BUDGET_MIN_CONTENT_LENGTH", "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
-        "KNOX_BUDGET_MAX_CONCEPT_PAGES", "KNOX_BUDGET_CHUNK_SIZE_MIN",
-        "KNOX_BUDGET_CHUNK_SIZE_MAX", "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
-        "KNOX_BUDGET_GEN_OUTPUT_MAX", "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
-        "KNOX_LLM_CONTEXT_WINDOW_CAP", "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
-        "KNOX_PDF_PAGE_CHUNK_SIZE", "KNOX_PDF_PAGE_CHUNK_OVERLAP",
-        "KNOX_DEDUP_THRESHOLD_IDENTICAL", "KNOX_DEDUP_THRESHOLD_SIMILAR",
-        "KNOX_LLM_TIMEOUT", "KNOX_LLM_FALLBACK_MAX_INPUT",
-        "KNOX_LLM_FALLBACK_MAX_OUTPUT", "KNOX_MEMORY_HALF_LIFE_DAYS",
+        "KNOX_CHUNK_SIZE",
+        "KNOX_WORKERS",
+        "KNOX_LINT_THRESHOLD",
+        "KNOX_SEARCH_RERANKER_TOP_K",
+        "KNOX_SEARCH_CRAG_THRESHOLD",
+        "KNOX_EVAL_THRESHOLD",
+        "KNOX_ORGANIZE_MAX_DEPTH",
+        "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
+        "KNOX_EMBEDDING_DIM",
+        "KNOX_EMBEDDING_BATCH_SIZE",
+        "KNOX_LLM_NUM_CTX_MIN",
+        "KNOX_LLM_NUM_CTX_MAX",
+        "KNOX_LLM_FALLBACK_MAX_RETRIES",
+        "KNOX_BUDGET_CONCEPTS_PER_BATCH",
+        "KNOX_BUDGET_WICER_MAX_ITERATIONS",
+        "KNOX_BUDGET_MIN_CONTENT_LENGTH",
+        "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
+        "KNOX_BUDGET_MAX_CONCEPT_PAGES",
+        "KNOX_BUDGET_CHUNK_SIZE_MIN",
+        "KNOX_BUDGET_CHUNK_SIZE_MAX",
+        "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
+        "KNOX_BUDGET_GEN_OUTPUT_MAX",
+        "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
+        "KNOX_LLM_CONTEXT_WINDOW_CAP",
+        "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
+        "KNOX_PDF_PAGE_CHUNK_SIZE",
+        "KNOX_PDF_PAGE_CHUNK_OVERLAP",
+        "KNOX_DEDUP_THRESHOLD_IDENTICAL",
+        "KNOX_DEDUP_THRESHOLD_SIMILAR",
+        "KNOX_LLM_TIMEOUT",
+        "KNOX_LLM_FALLBACK_MAX_INPUT",
+        "KNOX_LLM_FALLBACK_MAX_OUTPUT",
+        "KNOX_MEMORY_HALF_LIFE_DAYS",
         "KNOX_MEMORY_DECAY_THRESHOLD",
     ):
         _KnoxEnvFields[_fn] = (int | None, Field(None))
@@ -608,8 +617,7 @@ def _read_env_vars() -> dict[str, Any]:
             if isinstance(value, str):
                 value = value.strip()
             # Comma-separated list fields
-            if env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT",
-                            "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
+            if env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
                 if isinstance(value, str):
                     value = [v.strip() for v in value.split(",") if v.strip()]
                 elif isinstance(value, list):

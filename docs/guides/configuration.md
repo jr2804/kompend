@@ -28,9 +28,6 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys:
 | `KNOX_NOTES_FILE` | `notes.file` |
 | `KNOX_LLM_MODEL` | `compile.llm.default_model` |
 | `KNOX_VLM_MODEL` | `compile.llm.vlm_model` |
-| `KNOX_SEARCH_CACHE_ENABLED` | `search.cache.enabled` |
-| `KNOX_SEARCH_CACHE_THRESHOLD` | `search.cache.threshold` |
-| `KNOX_SEARCH_CACHE_MAX_ENTRIES` | `search.cache.max_entries` |
 | `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` |
 | `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` |
 | `KNOX_SEARCH_CRAG_ENABLED` | `search.crag.enabled` |

@@ -68,14 +68,13 @@ Each is a plug-in step configurable via `knox.toml` under `[search]`:
 
 | Feature | Config | Default | Description |
 |---------|--------|---------|-------------|
-| **Semantic Cache** | `search.cache.enabled` | `true` | Cosine-similarity cache for repeat queries |
 | **Multi-Query Expansion** | `search.expansion.enabled` | `false` | N query variants + RRF merge (RAG-Fusion) |
 | **CRAG** | `search.crag.enabled` | `false` | LLM relevance grading, drop noise |
 | **Neural Re-ranker** | `search.reranker.enabled` | `false` | Cross-encoder post-fusion ranking |
 | **HyDE** | `search.hyde.enabled` | `false` | Hypothetical answer embeddings |
 | **Contextual Retrieval** | `search.contextual.enabled` | `false` | Situating context for chunk embeddings |
 
-All features default to **disabled** (except semantic cache). Enable only what you need.
+All features default to **disabled**. Enable only what you need.
 See [RAG Pipeline](../concepts/rag-pipeline.md) for full documentation.
 
 ## Configuration

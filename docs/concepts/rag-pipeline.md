@@ -1,41 +1,28 @@
 # RAG Pipeline
 
-KNOX's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `knox.toml` under `[search]`, and all default to **disabled** (except semantic cache).
+KNOX's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `knox.toml` under `[search]`, and all default to **disabled**.
 
 ## Pipeline Flow
 
 ```text
 User Query
     │
-    ├── 1. Semantic Cache ── HIT → return cached answer instantly
-    │       MISS ↓
-    │
-    ├── 2. Multi-Query Expansion (RAG-Fusion) ── generate N variants
+    ├── 1. Multi-Query Expansion (RAG-Fusion) ── generate N variants
     │       ↓
-    ├── 3. HyDE ── generate hypothetical answer for embedding
+    ├── 2. HyDE ── generate hypothetical answer for embedding
     │       ↓
-    ├── 4. Hybrid Retrieval (FTS + vector + token-overlap + raw)
+    ├── 3. Hybrid Retrieval (FTS + vector + token-overlap + raw)
     │       ↓
-    ├── 5. Neural Re-ranker ── cross-encoder re-ranking
+    ├── 4. Neural Re-ranker ── cross-encoder re-ranking
     │       ↓
-    ├── 6. CRAG ── LLM relevance grading, drop noise
+    ├── 5. CRAG ── LLM relevance grading, drop noise
     │       ↓
-    └── 7. LLM Synthesis ── generate final answer
+    └── 6. LLM Synthesis ── generate final answer
 ```
 
 ## Step Details
 
-### 1. Semantic Cache
-
-**Config:** `[search.cache]` — `enabled`, `threshold`, `max_entries`
-
-Stores query embeddings and their answers. On repeat queries with cosine similarity above the threshold, returns the cached answer directly — no retrieval or LLM call.
-
-- **When to enable:** Always (enabled by default). Zero cost on cache miss, instant response on hit.
-- **Threshold:** `0.92` (default). Lower = more cache hits but more false positives.
-- **Persistence:** Cached entries survive across sessions (stored in `.knox/semantic_cache.json`).
-
-### 2. Multi-Query Expansion (RAG-Fusion)
+### 1. Multi-Query Expansion (RAG-Fusion)
 
 **Config:** `[search.expansion]` — `enabled`, `variants`
 
@@ -45,7 +32,7 @@ Generates N query variants via LLM (keyword rewrites + semantic rewrites), retri
 - **Cost:** N× retrieval cost + 1 LLM call for expansion.
 - **Variants:** 3 (default). More variants = better recall but higher cost.
 
-### 3. HyDE (Hypothetical Document Embeddings)
+### 2. HyDE (Hypothetical Document Embeddings)
 
 **Config:** `[search.hyde]` — `enabled`
 
@@ -54,7 +41,7 @@ For sparse or ambiguous queries, generates a hypothetical ideal answer passage v
 - **When to enable:** Short queries (1-3 words) or queries where the user doesn't know the right terminology.
 - **Cost:** 1 LLM call per query + 1 extra vector search.
 
-### 4. Hybrid Retrieval
+### 3. Hybrid Retrieval
 
 Always active. Combines four retrieval methods via RRF:
 
@@ -63,7 +50,7 @@ Always active. Combines four retrieval methods via RRF:
 - **Token-overlap** — Simple token intersection for fallback
 - **Raw sources** — BM25 search over original source files
 
-### 5. Neural Re-ranker
+### 4. Neural Re-ranker
 
 **Config:** `[search.reranker]` — `enabled`, `model`, `top_k`
 
@@ -73,7 +60,7 @@ Re-ranks the top-K candidates from hybrid retrieval using a cross-encoder model 
 - **Model:** Default `cross-encoder/ms-marco-MiniLM-L-6-v2`. Any sentence-transformers CrossEncoder model works.
 - **top_k:** 20 (default). Higher = more candidates re-ranked but slower.
 
-### 6. CRAG (Corrective RAG)
+### 5. CRAG (Corrective RAG)
 
 **Config:** `[search.crag]` — `enabled`, `threshold`
 
@@ -83,7 +70,7 @@ After retrieval, the LLM grades each candidate chunk for relevance to the query.
 - **Threshold:** `0.3` (default). Lower = more permissive, higher = stricter filtering.
 - **Cost:** 1 LLM call per candidate chunk. Use with `top_k` to control cost.
 
-### 7. LLM Synthesis
+### 6. LLM Synthesis
 
 Always active when an LLM is configured. Synthesizes the final answer from the filtered, ranked candidates.
 
@@ -91,11 +78,6 @@ Always active when an LLM is configured. Synthesizes the final answer from the f
 
 ```toml
 [search]
-
-# Semantic cache
-cache.enabled = true
-cache.threshold = 0.92
-cache.max_entries = 500
 
 # Multi-query expansion (RAG-Fusion)
 expansion.enabled = false
@@ -122,9 +104,6 @@ contextual.model = ""
 
 | Variable | Config Key | Description |
 |----------|------------|-------------|
-| `KNOX_SEARCH_CACHE_ENABLED` | `search.cache.enabled` | Enable semantic cache |
-| `KNOX_SEARCH_CACHE_THRESHOLD` | `search.cache.threshold` | Cache similarity threshold |
-| `KNOX_SEARCH_CACHE_MAX_ENTRIES` | `search.cache.max_entries` | Max cached entries |
 | `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` | Enable multi-query expansion |
 | `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` | Number of query variants |
 | `KNOX_SEARCH_CRAG_ENABLED` | `search.crag.enabled` | Enable CRAG relevance grading |

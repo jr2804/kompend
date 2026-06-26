@@ -305,18 +305,10 @@ history_size = 20
 # patterns = ["*.tmp", ".drafts/", "*.bak"]
 
 # ── Search / RAG settings ──────────────────────────────────────────────
-# Enhanced retrieval pipeline features. All default to disabled except
-# semantic cache. Each is an optional plug-in step — enable only what
-# you need.
+# Enhanced retrieval pipeline features. All default to disabled.
+# Each is an optional plug-in step — enable only what you need.
 
 [search]
-
-# Semantic cache: cosine-similarity cache for repeat queries.
-# When a query is semantically similar (above threshold) to a cached one,
-# the cached answer is returned directly — no retrieval or LLM call.
-# cache.enabled = true
-# cache.threshold = 0.92
-# cache.max_entries = 500
 
 # Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
 # retrieve independently for each, then merge via RRF. Improves recall

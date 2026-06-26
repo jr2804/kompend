@@ -8,8 +8,9 @@
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-default_model      = "ollama-cloud/deepseek-v4-flash"
+#default_model      = "ollama-cloud/deepseek-v4-flash"
 #default_model      = "opencode-zen/deepseek-v4-flash-free"
+default_model      = "opencode-zen/gpt-5.4-nano"
 #default_model      = "openrouter/openrouter/free"
 #default_model      = "claudin-io/claudinio"
 #api_key            = "$CLAUDINIO_API_KEY"
@@ -45,9 +46,6 @@ lint_output_max    = 16384
 
 # ── Search / RAG enhancements (optional plug-in steps) ─────────────────
 [search]
-cache.enabled = true
-cache.threshold = 0.92
-cache.max_entries = 500
 expansion.enabled = true
 expansion.variants = 3
 crag.enabled = true

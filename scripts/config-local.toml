@@ -8,8 +8,8 @@
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-#default_model = "ollama/lfm2.5"
-default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
+default_model = "ollama/lfm2.5"
+#default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
 #default_model = "ollama/gemma4:e4b"
 vlm_model     = "ollama/glm-ocr"
 context_window_cap = 96000   # optional cap; auto-discovered from model by default
@@ -52,9 +52,6 @@ minhash_lsh_threshold = 0.8
 
 # ── Search / RAG enhancements (optional plug-in steps) ─────────────────
 [search]
-cache.enabled = true
-cache.threshold = 0.92
-cache.max_entries = 500
 expansion.enabled = true
 expansion.variants = 3
 crag.enabled = true
