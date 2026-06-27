@@ -147,30 +147,6 @@ class _OpenCodeProvider(CustomLLM):
         )
         yield self._response_to_chunk(response)
 
-    # ── Stream-workaround helper ─────────────────────────────────
-
-    @staticmethod
-    def _response_to_chunk(response: Any) -> GenericStreamingChunk:
-        """Convert a non-streaming ModelResponse into a single terminal chunk."""
-        try:
-            choice = response.choices[0]
-            text = (choice.message.content or "") if hasattr(choice, "message") else ""
-            finish = getattr(choice, "finish_reason", None) or "stop"
-        except (AttributeError, IndexError):
-            text, finish = "", "stop"
-        # usage intentionally omitted: litellm's stream handler does Usage(**usage)
-        # which fails on Usage objects (only accepts dicts). Knox doesn't read
-        # per-chunk usage; non-stream Usage is still tracked via the response object.
-        return {
-            "text": text,
-            "tool_use": None,
-            "is_finished": True,
-            "finish_reason": finish,
-            "usage": None,
-            "index": 0,
-            "provider_specific_fields": None,
-        }
-
     # ── Error wrapping ──────────────────────────────────────────────
 
     @classmethod
@@ -284,6 +260,30 @@ class _OpenCodeProvider(CustomLLM):
             "api_base": f"{cls._base_url}/v1",
             "api_key": api_key,
             **params,
+        }
+
+    # ── Stream-workaround helper ─────────────────────────────────
+
+    @staticmethod
+    def _response_to_chunk(response: Any) -> GenericStreamingChunk:
+        """Convert a non-streaming ModelResponse into a single terminal chunk."""
+        try:
+            choice = response.choices[0]
+            text = (choice.message.content or "") if hasattr(choice, "message") else ""
+            finish = getattr(choice, "finish_reason", None) or "stop"
+        except (AttributeError, IndexError):
+            text, finish = "", "stop"
+        # usage intentionally omitted: litellm's stream handler does Usage(**usage)
+        # which fails on Usage objects (only accepts dicts). Knox doesn't read
+        # per-chunk usage; non-stream Usage is still tracked via the response object.
+        return {
+            "text": text,
+            "tool_use": None,
+            "is_finished": True,
+            "finish_reason": finish,
+            "usage": None,
+            "index": 0,
+            "provider_specific_fields": None,
         }
 
 

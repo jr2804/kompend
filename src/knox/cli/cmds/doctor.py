@@ -75,7 +75,12 @@ def _ping_model(model: str | None, label: str) -> CheckResult:
         result = client.try_complete(
             [{"role": "user", "content": "Respond with exactly one word: ok"}],
             role="doctor",
-            max_tokens=10,
+            # Reasoning models (e.g. deepseek-v4-flash) emit reasoning_content
+            # before the answer; a tiny budget is consumed by thinking and the
+            # visible content stays empty -> false negative on connectivity.
+            # 128 gives reasoning headroom while staying below litellm's
+            # repetition-loop threshold (some vision models spam on a text ping).
+            max_tokens=128,
         )
         if result is not None:
             model_used = result.diagnostics.model_used

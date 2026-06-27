@@ -35,6 +35,11 @@ logger = get_logger(__name__)
 
 JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
 
+# Max times to bump max_tokens when a reasoning model exhausts the budget on
+# reasoning_content (finish_reason="length", empty visible content). Each bump
+# multiplies the budget; a genuinely empty response still raises PermanentError.
+_REASONING_TRUNCATION_BUMPS: Final[int] = 3
+
 
 @dataclass(frozen=True)
 class LLMResult:
@@ -383,7 +388,7 @@ class LLMClient:
             raise ValueError("context_window must be set before calling complete()")
         call_start = time.monotonic()
 
-        def _call(model: str) -> Any:
+        def _call(model: str) -> Any:  # noqa: PLR0915
             kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
@@ -400,37 +405,70 @@ class LLMClient:
             if self._api_key is not None:
                 kwargs["api_key"] = _resolve_env_value(self._api_key)
             # Streaming enables TTFT measurement for split TPS metrics.
-            kwargs["stream"] = True
-            kwargs["stream_options"] = {"include_usage": True}
-            try:
-                stream = litellm.completion(**kwargs)
-            except (TypeError, ValueError):
-                # Some providers don't support streaming params.
-                kwargs.pop("stream", None)
-                kwargs.pop("stream_options", None)
-                resp = litellm.completion(**kwargs)
-                content = resp.choices[0].message.content or ""
-                usage = getattr(resp, "usage", None)
-                pt = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
-                ct = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
-                elapsed = time.monotonic() - call_start
-                return _StreamResult(content=content, prompt_tokens=pt, completion_tokens=ct, ttft_s=elapsed)
-
-            ttft: float | None = None
+            # Reasoning models (e.g. deepseek-v4-flash) can spend a tight
+            # max_tokens budget entirely on ``reasoning_content`` and return
+            # finish_reason="length" with empty *visible* content. When that
+            # happens, bump the budget and retry the same call so the model can
+            # finish reasoning and emit its answer. Bounded attempts avoid
+            # runaway cost; a genuinely empty response still raises below.
+            budget = max_tokens
             chunks: list[str] = []
             pt = 0
             ct = 0
-            for event in stream:
-                if ttft is None:
-                    ttft = time.monotonic() - call_start
-                if event.choices:
-                    delta = event.choices[0].delta
-                    if delta and delta.content:
-                        chunks.append(delta.content)
-                u = getattr(event, "usage", None)
-                if u is not None:
-                    pt = int(getattr(u, "prompt_tokens", 0) or 0)
-                    ct = int(getattr(u, "completion_tokens", 0) or 0)
+            ttft: float | None = None
+            for _ in range(_REASONING_TRUNCATION_BUMPS + 1):
+                if budget is not None:
+                    kwargs["max_tokens"] = budget
+                kwargs["stream"] = True
+                kwargs["stream_options"] = {"include_usage": True}
+                try:
+                    stream = litellm.completion(**kwargs)
+                except (TypeError, ValueError):
+                    # Some providers don't support streaming params.
+                    kwargs.pop("stream", None)
+                    kwargs.pop("stream_options", None)
+                    resp = litellm.completion(**kwargs)
+                    content = resp.choices[0].message.content or ""
+                    usage = getattr(resp, "usage", None)
+                    pt = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+                    ct = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
+                    elapsed = time.monotonic() - call_start
+                    return _StreamResult(content=content, prompt_tokens=pt, completion_tokens=ct, ttft_s=elapsed)
+
+                chunks = []
+                pt = 0
+                ct = 0
+                ttft = None
+                saw_reasoning = False
+                for event in stream:
+                    if ttft is None:
+                        ttft = time.monotonic() - call_start
+                    if event.choices:
+                        choice = event.choices[0]
+                        delta = choice.delta
+                        if delta:
+                            if delta.content:
+                                chunks.append(delta.content)
+                            if getattr(delta, "reasoning_content", None):
+                                saw_reasoning = True
+                    u = getattr(event, "usage", None)
+                    if u is not None:
+                        pt = int(getattr(u, "prompt_tokens", 0) or 0)
+                        ct = int(getattr(u, "completion_tokens", 0) or 0)
+                content = "".join(chunks)
+                # Reasoning model spent the budget on thinking but emitted no
+                # visible answer -> retry with more room. (finish_reason is
+                # often "stop" here, not "length", so key on empty content +
+                # reasoning seen rather than the finish reason.)
+                if not content and saw_reasoning and budget is not None:
+                    budget = max(budget * 4, 4096)
+                    continue
+                return _StreamResult(
+                    content=content,
+                    prompt_tokens=pt,
+                    completion_tokens=ct,
+                    ttft_s=ttft if ttft is not None else time.monotonic() - call_start,
+                )
             return _StreamResult(
                 content="".join(chunks),
                 prompt_tokens=pt,
