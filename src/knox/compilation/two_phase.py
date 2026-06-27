@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -156,10 +157,14 @@ class TwoPhaseCompiler(BaseCompiler):
                     len(cached.nodes),
                     len(cached.edges),
                 )
+                if getattr(self, "_extraction_stats", None):
+                    cached.metadata["extraction_stats"] = self._extraction_stats
                 return cached
 
-        self._report(num_sources, num_sources, "generating wiki")
+        # Progress is reported inside generate() per batch×segment.
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+        if getattr(self, "_extraction_stats", None):
+            wiki.metadata["extraction_stats"] = self._extraction_stats
 
         if not self._config.no_cache:
             self._cache_store.set("generate", gen_deps, wiki)
@@ -203,9 +208,12 @@ class TwoPhaseCompiler(BaseCompiler):
             max(1, cw.max_input - self._extract_system_tokens - budget.extract_output_max),
         )
 
+        # Per-source extraction timing + summary stats (for log / metadata).
+        self._extraction_stats: list[dict[str, Any]] = []
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
             self._report(source_idx, num_sources, f"extracting [{source_idx}/{num_sources}]")
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
+            src_start = time.monotonic()
 
             # Build hierarchical text from tree when available.
             tree = tree_by_source.get(source)
@@ -213,6 +221,18 @@ class TwoPhaseCompiler(BaseCompiler):
 
             if not texts:
                 extractions.add(Extraction(source=source))
+                self._extraction_stats.append(
+                    {
+                        "source": source,
+                        "duration_s": 0.0,
+                        "summary_chars": 0,
+                        "summary_words": 0,
+                        "entity_count": 0,
+                        "concept_count": 0,
+                        "tag_count": 0,
+                        "batches": 0,
+                    }
+                )
                 continue
 
             # Batch texts into budget-sized groups so nothing is dropped.
@@ -234,7 +254,20 @@ class TwoPhaseCompiler(BaseCompiler):
                 batch_extractions.append(self._extract_one(source, combined, extraction_system))
 
             # Merge all batch extractions for this source.
-            extractions.add(_merge_extractions(source, batch_extractions))
+            merged = _merge_extractions(source, batch_extractions)
+            extractions.add(merged)
+            self._extraction_stats.append(
+                {
+                    "source": source,
+                    "duration_s": round(time.monotonic() - src_start, 1),
+                    "summary_chars": len(merged.summary),
+                    "summary_words": len(merged.summary.split()),
+                    "entity_count": len(merged.entities),
+                    "concept_count": len(merged.concepts),
+                    "tag_count": len(merged.tags),
+                    "batches": len(batch_extractions),
+                }
+            )
         return extractions
 
     def generate(  # noqa: PLR0915
@@ -284,6 +317,13 @@ class TwoPhaseCompiler(BaseCompiler):
         pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
 
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
+
+        # Compute total generation steps for a determinate progress bar.
+        num_concepts = len(concepts)
+        gen_total = ((num_concepts + self._budget.concepts_per_batch - 1) // self._budget.concepts_per_batch) * len(source_segments)
+        if gen_total > 0:
+            self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
+
         nodes, slug_to_idx = self._generate_all_pages(
             concepts,
             source_segments,
@@ -347,19 +387,20 @@ class TwoPhaseCompiler(BaseCompiler):
             batch_size,
             len(pinned_facts),
         )
+        gen_progress_total = ((num_concepts + batch_size - 1) // batch_size) * num_segments
+        gen_progress_step = 0
         for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
 
             # Iterate through ALL source segments for this concept batch,
             # generating pages from each segment and merging.
             for seg_idx, segment in enumerate(source_segments):
+                gen_progress_step += 1
+                seg_label = f"gen batch {batch_start + 1}-{batch_start + len(batch)}/{num_concepts} seg {seg_idx + 1}/{num_segments}"
+                self._report(gen_progress_step, gen_progress_total, seg_label)
                 logger.info(
-                    "TwoPhase: gen batch %d-%d/%d segment %d/%d",
-                    batch_start,
-                    len(batch),
-                    num_concepts,
-                    seg_idx + 1,
-                    num_segments,
+                    "TwoPhase: %s",
+                    seg_label,
                 )
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
@@ -432,6 +473,7 @@ class TwoPhaseCompiler(BaseCompiler):
                         slug_to_idx,
                     )
 
+        self._report(gen_progress_total, gen_progress_total, "generating complete")
         return nodes, slug_to_idx
 
     def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:

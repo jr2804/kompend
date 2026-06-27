@@ -13,6 +13,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, MetadataField, WikiField
@@ -98,19 +99,38 @@ def _edge_type_counts(wiki: CompiledWiki) -> dict[str, int]:
     return counts
 
 
-def _sources_for_table(wiki: CompiledWiki) -> list[tuple[str, int, int]]:
-    """Group pages by source stem → (stem, page_count, word_count)."""
+def _fmt_tokens_k(n: int) -> str:
+    """Format number with K/M suffix (integer-friendly)."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _per_source_stats(wiki: CompiledWiki) -> list[dict[str, str | int]]:
+    """Group generated pages by source stem with per-source stats.
+
+    Returns a list of dicts sorted by descending page count, each with:
+    - ``stem`` (str)
+    - ``pages`` (int)
+    - ``chars`` (int)
+    - ``tokens_est`` (int, chars/4)
+    """
     source_map: dict[str, list[int]] = {}
     for node in wiki.nodes:
         sc = node.source_chunks or []
         if not sc:
             continue
         stem = sc[0].split("/")[0] if "/" in sc[0] else sc[0].rsplit("_", 1)[0] if "_" in sc[0] else sc[0]
-        words = len(node.content.split())
-        entry = source_map.setdefault(stem, [0, 0])
-        entry[0] += 1
-        entry[1] += words
-    return [(stem, pages, words) for stem, (pages, words) in sorted(source_map.items(), key=lambda x: -x[1][0])]
+        source_map.setdefault(stem, [0, 0])
+        source_map[stem][0] += 1
+        source_map[stem][1] += len(node.content or "")
+
+    result: list[dict[str, str | int]] = []
+    for stem, (pages, chars) in sorted(source_map.items(), key=lambda x: -x[1][0]):
+        result.append({"stem": stem, "pages": pages, "chars": chars, "tokens_est": max(chars // 4, 1)})
+    return result
 
 
 def _format_sources_table(sources: list[str]) -> list[str]:
@@ -123,6 +143,49 @@ def _format_sources_table(sources: list[str]) -> list[str]:
     lines = ["", "| # | Source |", "|---|--------|"]
     for i, src in enumerate(sources, 1):
         lines.append(f"| {i} | {src} |")
+    return lines
+
+
+def _format_per_source_stats(stats: list[dict[str, str | int]]) -> list[str]:
+    """Format per-source stats as a markdown table."""
+    if not stats:
+        return []
+    lines = ["", "| Source | Pages | Chars | ~Tokens |", "|--------|------:|------:|--------:|"]
+    for s in stats:
+        lines.append(f"| {s['stem']} | {s['pages']} | {_fmt_tokens_k(int(s['chars']))} | {_fmt_tokens_k(int(s['tokens_est']))} |")
+    return lines
+
+
+def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
+    """Format per-source extraction timing + summary stats as a markdown table.
+
+    One row per source: extraction time, summary length, and counts of
+    entities/concepts/tags extracted plus the number of LLM batches needed.
+    """
+    if not stats:
+        return []
+    lines = [
+        "",
+        "**Extraction:**",
+        "",
+        "| Source | Time | Summary | Entities | Concepts | Tags | Batches |",
+        "|--------|-----:|--------:|---------:|---------:|-----:|--------:|",
+    ]
+    total_time = 0.0
+    total_words = 0
+    for s in stats:
+        dur = float(s.get("duration_s", 0.0))
+        total_time += dur
+        words = int(s.get("summary_words", 0))
+        total_words += words
+        summary_cell = f"{words}w" if words else "-"
+        lines.append(
+            f"| {s.get('source', '?')} | {dur:.1f}s | {summary_cell} | "
+            f"{s.get('entity_count', 0)} | {s.get('concept_count', 0)} | "
+            f"{s.get('tag_count', 0)} | {s.get('batches', 0)} |"
+        )
+    if len(stats) > 1:
+        lines.append(f"| **total** | **{total_time:.1f}s** | **{total_words}w** | | | | |")
     return lines
 
 
@@ -155,7 +218,7 @@ def _format_tier_timings_block(tier_timings: dict, duration: float | None) -> li
     return lines
 
 
-def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:
+def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  # noqa: PLR0915
     """Generate a rich log entry for ``log.md``.
 
     Parameters
@@ -190,17 +253,32 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:
     if header_suffix:
         lines[-1] += f" | {header_suffix}"
 
+    # Source list and per-source stats
     source_names = wiki.metadata.get("source_names", [])
     if source_names:
         lines.append("")
         lines.extend(_format_sources_table(source_names))
 
-    # Per-document stats
+    per_source = _per_source_stats(wiki)
+    if per_source:
+        lines.extend(_format_per_source_stats(per_source))
+
+    extraction_stats = wiki.metadata.get("extraction_stats")
+    if extraction_stats:
+        lines.extend(_format_extraction_stats(extraction_stats))
+
+    # Aggregate content stats
     if wiki.nodes:
         total_words = sum(len(n.content.split()) for n in wiki.nodes)
         avg_words = total_words // article_count if article_count else 0
+        total_chars = sum(len(n.content or "") for n in wiki.nodes)
+        total_tokens_est = max(total_chars // 4, 1)
         lines.append("")
-        lines.append(f"**Words:** {total_words:,} total (~{avg_words:,}/page)")
+        lines.append(
+            f"**Content:** {_fmt_tokens(total_words)} words "
+            f"({_fmt_tokens_k(total_chars)} chars, ~{_fmt_tokens_k(total_tokens_est)} tokens) "
+            f"— avg {avg_words:,} words/page"
+        )
 
     # Created: counts by node_type
     if wiki.nodes:
