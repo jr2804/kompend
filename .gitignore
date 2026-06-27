@@ -63,3 +63,4 @@ sources/
 /.commandcode
 *.log
 mise.local.toml
+nul
