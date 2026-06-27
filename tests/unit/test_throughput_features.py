@@ -436,6 +436,71 @@ class TestTwoPhaseCompiler:
         assert ext.extractions[0].summary == "x"
         assert ext.extractions[0].concepts[0]["name"] == "attention"
 
+    def test_extract_populates_extraction_stats(self) -> None:
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        compiler = TwoPhaseCompiler(config=config)
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="Hello world this is a test",
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
+            mock.return_value = {
+                "summary": "one two three four",
+                "entities": [{"name": "KNOX", "type": "PROJECT"}],
+                "concepts": [{"name": "attention", "definition": "y"}],
+                "tags": ["ml"],
+            }
+            compiler.extract(chunks)
+        stats = compiler._extraction_stats
+        assert len(stats) == 1
+        s = stats[0]
+        assert s["source"] == "a.pdf"
+        assert s["duration_s"] >= 0.0
+        assert s["summary_words"] == 4
+        assert s["summary_chars"] == len("one two three four")
+        assert s["entity_count"] == 1
+        assert s["concept_count"] == 1
+        assert s["tag_count"] == 1
+        assert s["batches"] == 1
+
+    def test_compile_writes_extraction_stats_to_metadata(self) -> None:
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        compiler = TwoPhaseCompiler(config=config)
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="Hello world",
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
+            # First call (extract) returns a summary; generation also mocked.
+            mock.return_value = {
+                "summary": "a summary",
+                "entities": [],
+                "concepts": [{"name": "attention", "definition": "y"}],
+                "tags": [],
+            }
+            wiki = compiler.compile(chunks)
+        assert "extraction_stats" in wiki.metadata
+        stats = wiki.metadata["extraction_stats"]
+        assert len(stats) == 1
+        assert stats[0]["source"] == "a.pdf"
+        assert stats[0]["summary_words"] == 2
+
 
 # ===========================================================================
 #  N8: Review queue

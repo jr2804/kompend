@@ -62,6 +62,29 @@ class TestGenerateLogEntry:
         assert "a.pdf" in entry
         assert "b.pdf" in entry
 
+    def test_extraction_stats_table(self) -> None:
+        wiki = _make_wiki(
+            metadata={
+                "source_count": 2,
+                "source_names": ["a.pdf", "b.pdf"],
+                "extraction_stats": [
+                    {"source": "a.pdf", "duration_s": 12.3, "summary_words": 340, "entity_count": 12, "concept_count": 5, "tag_count": 3, "batches": 2},
+                    {"source": "b.pdf", "duration_s": 8.1, "summary_words": 0, "entity_count": 4, "concept_count": 2, "tag_count": 0, "batches": 1},
+                ],
+            }
+        )
+        entry = generate_log_entry(wiki)
+        assert "**Extraction:**" in entry
+        assert "a.pdf" in entry
+        assert "12.3s" in entry
+        assert "340w" in entry  # summary words rendered
+        assert "b.pdf" in entry
+        assert "8.1s" in entry
+        assert "-" in entry  # zero summary renders as dash
+        # total row present when >1 source
+        assert "**total**" in entry
+        assert "20.4s" in entry
+
 
 class TestPrependLog:
     def test_creates_file(self, tmp_path: Path) -> None:
