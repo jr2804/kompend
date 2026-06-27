@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from knox.capture.ingest import ingest
 from knox.capture.learn import learn
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, WikiField
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
 from knox.search.classifier import classify
@@ -37,7 +37,7 @@ def _render_result(r: SearchResult) -> str:
 
 def _source_of(node: dict[str, Any]) -> str:
     """Extract source file from a wiki node's metadata, or '' if absent."""
-    meta = node.get("metadata") or {}
+    meta = node.get(WikiField.METADATA) or {}
     return meta.get("source", "")
 
 
@@ -57,8 +57,8 @@ def _load_wiki() -> dict[str, Any]:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard() -> str:
     wiki = _load_wiki()
-    nodes = wiki.get("nodes", [])
-    edges = wiki.get("edges", [])
+    nodes = wiki.get(WikiField.NODES, [])
+    edges = wiki.get(WikiField.EDGES, [])
     toc = wiki.get("toc", [])
     source_count = len({_source_of(n) for n in nodes if _source_of(n)})
     return f"""<!DOCTYPE html>
@@ -126,7 +126,7 @@ async def dashboard() -> str:
 @app.get("/wiki", response_class=HTMLResponse)
 async def wiki_list() -> str:
     wiki = _load_wiki()
-    nodes = wiki.get("nodes", [])
+    nodes = wiki.get(WikiField.NODES, [])
     rows = "".join(
         f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td><td>{n.get("node_type", "")}</td><td>{_source_of(n)}</td></tr>' for n in nodes
     )
@@ -171,7 +171,7 @@ async def wiki_list() -> str:
 @app.get("/wiki/{node_id}", response_class=HTMLResponse)
 async def wiki_page(node_id: str) -> str:
     wiki = _load_wiki()
-    node = next((n for n in wiki.get("nodes", []) if n.get("id") == node_id), None)
+    node = next((n for n in wiki.get(WikiField.NODES, []) if n.get("id") == node_id), None)
     if not node:
         return HTMLResponse("<h1>Not Found</h1>", status_code=404)  # ty: ignore
     content = node.get("content", "")
@@ -208,12 +208,12 @@ async def query_page(q: str = Query(default="")) -> str:
     answer_html = ""
     if q:
         w = CompiledWiki(
-            nodes=wiki.get("nodes", []),
-            edges=wiki.get("edges", []),
-            toc=wiki.get("toc", []),
-            quality_score=wiki.get("quality_score", 0.0),
-            iteration=wiki.get("iteration", 0),
-            metadata=wiki.get("metadata", {}),
+            nodes=wiki.get(WikiField.NODES, []),
+            edges=wiki.get(WikiField.EDGES, []),
+            toc=wiki.get(WikiField.TOC, []),
+            quality_score=wiki.get(WikiField.QUALITY_SCORE, 0.0),
+            iteration=wiki.get(WikiField.ITERATION, 0),
+            metadata=wiki.get(WikiField.METADATA, {}),
         )
         retriever = TokenOverlapRetriever(w)
         results = retriever.search(q, top_k=5)
@@ -268,8 +268,8 @@ async def query_page(q: str = Query(default="")) -> str:
 @app.get("/graph", response_class=HTMLResponse)
 async def force_graph() -> str:
     wiki = _load_wiki()
-    nodes_json = json.dumps([{"id": n.get("id"), "title": n.get("title"), "type": n.get("node_type")} for n in wiki.get("nodes", [])])
-    edges_json = json.dumps(list(wiki.get("edges", [])))
+    nodes_json = json.dumps([{"id": n.get("id"), "title": n.get("title"), "type": n.get("node_type")} for n in wiki.get(WikiField.NODES, [])])
+    edges_json = json.dumps(list(wiki.get(WikiField.EDGES, [])))
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>KNOX Graph</title>

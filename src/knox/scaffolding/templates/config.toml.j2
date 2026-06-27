@@ -144,7 +144,6 @@ batch_size = {{ defaults.compile.embedding.batch_size }}
 [lint]
 # None = all structural rules. Override to enable a subset.
 enabled = {% if defaults.lint.enabled is not none %}{{ defaults.lint.enabled }}{% else %}[]{% endif %}
-threshold = {% if defaults.lint.threshold is not none %}{{ defaults.lint.threshold }}{% else %}80{% endif %}
 
 # ── Eval settings ─────────────────────────────────────────────────────────
 

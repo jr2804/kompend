@@ -6,9 +6,9 @@ from pathlib import Path
 
 from knox.core.models import CompiledWiki
 from knox.core.paths import VaultPaths
-from knox.rag.zvec_store import ZvecWikiStore
+from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 
-__all__ = ["ZvecWikiStore", "build_vector_index"]
+__all__ = ["ZvecField", "ZvecWikiStore", "build_vector_index"]
 
 
 def build_vector_index(

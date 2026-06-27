@@ -41,6 +41,19 @@ extract_output_max = 16384
 gen_output_max = 32768
 lint_output_max = 16384
 
+# ── Lint (all structural rules enabled for demo) ───────────────────────
+[lint]
+enabled = [
+    "broken-wikilinks",
+    "missing-frontmatter",
+    "orphan-page",
+    "duplicate-title",
+    "empty-page",
+    "heading-skip",
+    "stale-page",
+    "source-not-found",
+]
+
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]
 enabled = true

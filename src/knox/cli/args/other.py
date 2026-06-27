@@ -36,16 +36,6 @@ LintRule = Annotated[
     ),
 ]
 
-LintThreshold = Annotated[
-    int | None,
-    typer.Option(
-        "--threshold",
-        help="Exit with error if health score is below this value (0-100).",
-        min=0,
-        max=100,
-    ),
-]
-
 LintHistoryLast = Annotated[
     int,
     typer.Option(
@@ -79,6 +69,14 @@ LintPruneAgeDays = Annotated[
         "--max-age-days",
         help="Remove entries older than N days.",
         min=1,
+    ),
+]
+
+LintDryRun = Annotated[
+    bool,
+    typer.Option(
+        "--dry-run",
+        help="Show what would be remediated without modifying the wiki.",
     ),
 ]
 

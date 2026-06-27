@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.compilation.base import BaseCompiler
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -316,7 +316,7 @@ class GraphCompiler(BaseCompiler):
 
         by_source: dict[str, list[int]] = defaultdict(list)
         for idx, node in enumerate(nodes):
-            source = node.metadata.get("source_file")
+            source = node.metadata.get(MetadataField.SOURCE_FILE)
             if source is not None:
                 by_source[source].append(idx)
 
@@ -348,7 +348,7 @@ class GraphCompiler(BaseCompiler):
         relevant excerpts from every mentioning section.  Bidirectional
         edges connect the concept page to each source section.
         """
-        node_sources: dict[str, str | None] = {n.id: n.metadata.get("source_file") for n in nodes}
+        node_sources: dict[str, str | None] = {n.id: n.metadata.get(MetadataField.SOURCE_FILE) for n in nodes}
 
         candidates: list[tuple[str, set[int], set[str]]] = []
         for entity_name, node_indices in entity_location.items():
@@ -438,8 +438,8 @@ class GraphCompiler(BaseCompiler):
                 chunk_source[rc.chunk.id] = str(rc.chunk.source_file)
 
         for node in nodes:
-            heading = node.metadata.get("heading_context", "_root")
-            source = node.metadata.get("source_file")
+            heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
+            source = node.metadata.get(MetadataField.SOURCE_FILE)
             if source is None:
                 continue
             tree = tree_map.get(source)

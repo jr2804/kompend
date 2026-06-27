@@ -276,9 +276,6 @@ timeout = 120.0
 # Rules to run (null = all structural rules)
 # enabled = ["broken-wikilinks", "orphan-page", "duplicate-title"]
 
-# Exit with error if health score falls below this threshold
-# threshold = 80
-
 # ── Eval settings ───────────────────────────────────────────────────────
 
 [eval]

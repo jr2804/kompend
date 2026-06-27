@@ -13,6 +13,46 @@ from typing import Any, TypeAlias
 from knox.core.paths import VaultPaths
 
 
+class MetadataField(StrEnum):
+    """Canonical keys for ``WikiNode.metadata`` and provenance data dicts.
+
+    Every metadata / source-file / provenance key that crosses file boundaries
+    must live here, not as a bare literal.
+    """
+
+    SOURCE = "source"
+    SOURCE_FILE = "source_file"
+    SOURCE_PATH = "source_path"
+    SOURCE_COUNT = "source_count"
+    SOURCE_NAMES = "source_names"
+    HEADING_CONTEXT = "heading_context"
+    READING_ORDER = "reading_order"
+    PROVENANCE = "provenance"
+    IMAGE_PATH = "image_path"
+    IMAGE_BASE64 = "image_base64"
+
+
+class WikiField(StrEnum):
+    """Dict key contract for ``CompiledWiki`` JSON serialization.
+
+    Keys written by :meth:`CompiledWiki.to_dict` (or built by pipeline) and
+    read by :func:`CompiledWiki.from_dict` and ``web/server.py``.
+    """
+
+    NODES = "nodes"
+    EDGES = "edges"
+    TOC = "toc"
+    QUALITY_SCORE = "quality_score"
+    ITERATION = "iteration"
+    CHUNK_COUNT = "chunk_count"
+    DURATION_SECONDS = "duration_seconds"
+    LLM_USAGE = "llm_usage"
+    LLM_MODEL = "llm_model"
+    LLM_DEGRADATION = "llm_degradation"
+    TIER_TIMINGS = "tier_timings"
+    METADATA = "metadata"
+
+
 class ElementType(StrEnum):
     """Document element types for structure-preserving extraction.
 
@@ -298,15 +338,15 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
         return None
     data = json.loads(cache_file.read_text(encoding="utf-8"))
     # Reconstruct WikiNode objects from plain dicts
-    raw_nodes = data.get("nodes", [])
+    raw_nodes = data.get(WikiField.NODES, [])
     nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
     return CompiledWiki(
         nodes=nodes,
-        edges=data.get("edges", []),
-        toc=data.get("toc", []),
-        quality_score=data.get("quality_score", 0.0),
-        iteration=data.get("iteration", 0),
-        metadata=data.get("metadata", {}),
+        edges=data.get(WikiField.EDGES, []),
+        toc=data.get(WikiField.TOC, []),
+        quality_score=data.get(WikiField.QUALITY_SCORE, 0.0),
+        iteration=data.get(WikiField.ITERATION, 0),
+        metadata=data.get(WikiField.METADATA, {}),
     )
 
 
@@ -382,22 +422,27 @@ def _chunk_to_dict(chunk: Chunk) -> dict[str, Any]:
         "heading_context": chunk.heading_context,
         "token_count": chunk.token_count,
         "reading_order": list(chunk.reading_order) if chunk.reading_order else None,
-        "metadata": chunk.metadata,
+        str(WikiField.METADATA): chunk.metadata,
     }
 
 
 def _chunk_from_dict(d: dict[str, Any]) -> Chunk:
     """Deserialize a Chunk from a dict."""
+
+
+def _chunk_from_dict(d: dict[str, Any]) -> Chunk:
+    """Deserialize a Chunk from a dict."""
+    src = d.get(MetadataField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
     return Chunk(
         id=d["id"],
         text=d["text"],
         element_types=[ElementType(et) for et in d.get("element_types", [])],
         source_elements=d.get("source_elements", []),
-        source_file=Path(d.get("source_file") or d.get("source_path")) if (d.get("source_file") or d.get("source_path")) else None,
+        source_file=Path(src) if src else None,
         heading_context=d.get("heading_context", ""),
         token_count=d.get("token_count", 0),
         reading_order=tuple(d["reading_order"]) if d.get("reading_order") else None,
-        metadata=d.get("metadata", {}),
+        metadata=d.get(WikiField.METADATA, {}),
     )
 
 
@@ -447,10 +492,16 @@ def tree_from_dict(d: dict[str, Any]) -> ChunkTree:
     version = d.get("version", 0)
     if version != CHUNK_TREE_CACHE_VERSION:
         raise ValueError(f"ChunkTree cache version mismatch: expected {CHUNK_TREE_CACHE_VERSION}, got {version}")
+    return _tree_from_dict(d)
+
+
+def _tree_from_dict(d: dict[str, Any]) -> ChunkTree:
+    """Deserialize a ChunkTree from a dict."""
+    src = d.get(MetadataField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
     return ChunkTree(
         root_id=d["root_id"],
         nodes={nid: _node_from_dict(n) for nid, n in d.get("nodes", {}).items()},
-        source_file=Path(d.get("source_file") or d.get("source_path")) if (d.get("source_file") or d.get("source_path")) else None,
+        source_file=Path(src) if src else None,
         strategy=ChunkStrategy(d.get("strategy", ChunkStrategy.SINGLE_PASS)),
     )
 

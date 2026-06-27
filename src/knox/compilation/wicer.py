@@ -372,9 +372,11 @@ class WiCERCompiler(BaseCompiler):
         Accepts ``[{...}, {...}]`` or ``{"probes": [...]}`` /
         ``{"results": [...]}`` / ``{"items": [...]}``. Falls back to
         the single list-valued key when the object has only one.
+        String items are coerced to ``{"question": str}``.
         """
         if result is None:
             return None
+        raw: list | None = None
         # Try direct list shape first (older content path).
         if result.json_data is None:
             try:
@@ -382,17 +384,30 @@ class WiCERCompiler(BaseCompiler):
             except json.JSONDecodeError:
                 logger.warning("LLM returned malformed JSON for probes — using fallback")
                 return None
-            return parsed if isinstance(parsed, list) else None
+            if isinstance(parsed, list):
+                raw = parsed
+        else:
+            data = result.json_data
+            for key in ("probes", "results", "items"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    raw = value
+                    break
+            if raw is None:
+                list_values = [v for v in data.values() if isinstance(v, list)]
+                if len(list_values) == 1:
+                    raw = list_values[0]
 
-        data = result.json_data
-        for key in ("probes", "results", "items"):
-            value = data.get(key)
-            if isinstance(value, list):
-                return value
-        list_values = [v for v in data.values() if isinstance(v, list)]
-        if len(list_values) == 1:
-            return list_values[0]
-        return None
+        if raw is None:
+            return None
+
+        probes: list[dict] = []
+        for item in raw:
+            if isinstance(item, dict):
+                probes.append(item)
+            elif isinstance(item, str) and item.strip():
+                probes.append({"question": item.strip()})
+        return probes if probes else None
 
     @staticmethod
     def _fallback_probes(text: str) -> list[dict]:

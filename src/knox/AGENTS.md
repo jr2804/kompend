@@ -298,6 +298,52 @@ in code — and the code must **batch or paginate** so no content is silently
 lost. Hard-coded ``[:N]`` / ``[:tokens]`` crops are **forbidden,
 non-negotiable**. No exceptions.
 
+### Antipattern 5 — Hard-coded schema/field-name strings
+
+**Never** scatter field names, dict keys, or schema column names across a
+module as bare string literals when one site defines the contract (the schema)
+and other sites must agree with it (writers, readers, query callers). A typo
+in one literal silently desyncs the schema from its readers — a stored field
+that never comes back, a query that never matches — and the bug is invisible
+until runtime, often far from the cause.
+
+This applies wherever there is a **named, closed set of keys** shared between
+a definition and its consumers: vector-store schemas, FTS/SQL column dicts,
+metadata keys, serialization tags, API response shapes.
+
+## ❌ FORBIDDEN — schema field names as bare literals
+
+    # schema defines the fields…
+    fields=[
+        _zvec.FieldSchema("node_id", _zvec.DataType.STRING),
+        _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
+    ]
+    # …but readers repeat the same strings by hand
+    source_file = hit.get("source_file")
+    node_id = hit.get("node_id")
+
+## ✅ CORRECT — single source of truth as a StrEnum or Final[str] constants
+
+    class ZvecField(StrEnum):
+        NODE_ID = "node_id"
+        SOURCE_FILE = "source_file"
+
+    _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING)
+    source_file = hit.get(ZvecField.SOURCE_FILE)
+
+**Rule:** When a string literal names a field/column/key that appears in more
+than one place (or is part of any persisted schema), it **must** be a
+`StrEnum` member (for a closed named set) or a `Final[str]` constant (for a
+single value). The string value lives in exactly one definition; every other
+site imports the symbol. Bare literals for such names are **forbidden,
+non-negotiable**.
+
+**Scope:** This governs our own schema/contract keys only. Keys defined by an
+external API or library (e.g. a litellm response ``{"embedding": [...]}``, a
+JSON field from an upstream SDK) are that API's contract, not ours to rename —
+they are read as literals. When in doubt whether a key is ours, ask: did we
+define the schema that produces it? If yes, it is ours and must be a symbol.
+
 ### Summary
 
 | Pattern | Forbidden | Correct approach |
@@ -306,6 +352,7 @@ non-negotiable**. No exceptions.
 | `budget: int = 6000` | ❌ | Config object with grouped defaults |
 | `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
 | ``content[:200]`` / ``text[:4096]`` | ❌ | Full content, or batch with a config/model-derived limit |
+| Bare schema/field-name literals (``hit.get("source_file")``) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
 
 #### Jinja2 conventions
 

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
-from knox.rag.zvec_store import ZvecWikiStore
+from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 from knox.search.budget import BudgetPlan, ContextBudgetManager
-from knox.search.index import search_fts
+from knox.search.index import FtsField, search_fts
 from knox.search.retriever import SearchResult, _extract_snippet, _tokenize  # ponytail: private retriever imports. Make public when other callers appear.
 
 logger = get_logger(__name__)
@@ -101,7 +101,7 @@ class AdaptiveRetriever:
                     title=node.title,
                     snippet=snippet,
                     score=1.0,
-                    source_file=str(node.metadata.get("source", "")) if node.metadata else None,
+                    source_file=str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else None,
                 )
             )
         results.sort(key=lambda r: r.score, reverse=True)
@@ -138,11 +138,11 @@ class AdaptiveRetriever:
             snippet = _extract_snippet(content, query_tokens) if content else ""
             results.append(
                 SearchResult(
-                    article_id=row["article_id"],
+                    article_id=row[FtsField.ARTICLE_ID],
                     title=row.get("title", ""),
                     snippet=snippet,
                     score=float(row.get("score", 0.0)),
-                    source_file=row.get("source_file"),
+                    source_file=row.get(ZvecField.SOURCE_FILE),
                 )
             )
         return results
@@ -160,11 +160,11 @@ class AdaptiveRetriever:
         for hit in hits:
             node_id = hit.get("id", "")
             node = self._node_by_id.get(node_id)
-            title = hit.get("title") or (node.title if node else node_id)
-            snippet = _extract_snippet(node.content, query_tokens) if node and node.content else hit.get("content_preview", "") or title
-            source_file: str | None = hit.get("source_file")
-            if source_file is None and node and node.metadata and node.metadata.get("source"):
-                source_file = str(node.metadata["source"])
+            title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
+            snippet = _extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+            source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
+            if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
+                source_file = str(node.metadata[MetadataField.SOURCE])
             results.append(
                 SearchResult(
                     article_id=node_id,
@@ -200,8 +200,8 @@ class AdaptiveRetriever:
         for score, node in scored[:top_k]:
             snippet = _extract_snippet(node.content, query_set) if node.content else node.title
             source_file = None
-            if node.metadata and node.metadata.get("source"):
-                source_file = str(node.metadata["source"])
+            if node.metadata and node.metadata.get(MetadataField.SOURCE):
+                source_file = str(node.metadata[MetadataField.SOURCE])
             results.append(
                 SearchResult(
                     article_id=node.id,
