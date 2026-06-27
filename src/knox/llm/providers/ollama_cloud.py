@@ -144,10 +144,15 @@ class _OllamaCloudProvider(CustomLLM):
         return os.environ.get(_OLLAMA_CLOUD_API_KEY_ENV, "")
 
     @staticmethod
+    def _short_model(model: str) -> str:
+        """Strip provider prefix, e.g. ``ollama-cloud/deepseek-v4-flash`` → ``deepseek-v4-flash``."""
+        return model.split("/", 1)[-1] if "/" in model else model
+
+    @staticmethod
     def _delegate_kwargs(model: str, optional_params: dict[str, Any]) -> dict[str, Any]:
         params = {k: v for k, v in optional_params.items() if k != "stream"}
         return {
-            "model": f"ollama_chat/{model}",
+            "model": f"ollama_chat/{_OllamaCloudProvider._short_model(model)}",
             "api_base": _OLLAMA_CLOUD_BASE_URL,
             "api_key": _OllamaCloudProvider._api_key(),
             **params,

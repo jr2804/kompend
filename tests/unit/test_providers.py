@@ -29,9 +29,9 @@ class TestClaudinIOProvider:
         assert providers[0]["custom_handler"] is not None
 
     def test_provider_model_format(self) -> None:
-        """Provider should delegate with custom base URL."""
-        # Test _delegate_kwargs generates the right model and api_base
-        kwargs = _ClaudinIOProvider._delegate_kwargs(self._TEST_MODEL, {"temperature": 0.7})
+        """Provider should delegate with custom base URL, stripping prefix."""
+        # _delegate_kwargs receives the full prefix/model string from the patched get_llm_provider
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {"temperature": 0.7})
         assert kwargs["model"] == f"openai/{self._TEST_MODEL}"
         assert kwargs["api_base"] == "https://api.claudin.io/v1"
         assert kwargs["temperature"] == 0.7
@@ -39,13 +39,13 @@ class TestClaudinIOProvider:
     def test_provider_uses_env_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Provider should use CLAUDINIO_API_KEY from environment."""
         monkeypatch.setenv("CLAUDINIO_API_KEY", "test-key-123")
-        kwargs = _ClaudinIOProvider._delegate_kwargs(self._TEST_MODEL, {})
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {})
         assert kwargs["api_key"] == "test-key-123"
 
     def test_provider_no_api_key_when_env_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Provider should return empty string when env var not set."""
         monkeypatch.delenv("CLAUDINIO_API_KEY", raising=False)
-        kwargs = _ClaudinIOProvider._delegate_kwargs(self._TEST_MODEL, {})
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {})
         assert kwargs["api_key"] == ""
 
     def test_completion_delegates_to_litellm(self) -> None:
@@ -168,8 +168,8 @@ class TestOllamaCloudProvider:
         assert len(providers) == 1
 
     def test_provider_model_format(self) -> None:
-        """Provider should delegate to ollama_chat/ prefix."""
-        kwargs = _OllamaCloudProvider._delegate_kwargs("deepseek-v4-flash", {"temperature": 0.7})
+        """Provider should delegate to ollama_chat/ prefix, stripping provider prefix."""
+        kwargs = _OllamaCloudProvider._delegate_kwargs("ollama-cloud/deepseek-v4-flash", {"temperature": 0.7})
         assert kwargs["model"] == "ollama_chat/deepseek-v4-flash"
         assert kwargs["api_base"] == "https://ollama.com"
 
@@ -186,7 +186,7 @@ class TestOpenCodeZenProvider:
         try:
             kwargs = _OpenCodeZenProvider._delegate_kwargs("deepseek-v4-flash-free", {"temperature": 0.5})
             assert kwargs["model"] == "openai/deepseek-v4-flash-free"
-            assert kwargs["api_base"] == "https://opencode.ai/zen/v1/chat/completions"
+            assert kwargs["api_base"] == "https://opencode.ai/zen/v1"
             assert kwargs["temperature"] == 0.5
         finally:
             _OpenCodeZenProvider._model_cache = None
@@ -234,7 +234,7 @@ class TestOpenCodeZenProvider:
                 optional_params={},
             )
         assert mock.call_args.kwargs["model"] == "openai/deepseek-v4-flash-free"
-        assert mock.call_args.kwargs["api_base"] == "https://opencode.ai/zen/v1/chat/completions"
+        assert mock.call_args.kwargs["api_base"] == "https://opencode.ai/zen/v1"
 
     def test_model_discovery_populates_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
@@ -275,7 +275,7 @@ class TestOpenCodeGoProvider:
         _OpenCodeGoProvider._model_cache = {"deepseek-v4-flash": "openai"}
         try:
             kwargs = _OpenCodeGoProvider._delegate_kwargs("deepseek-v4-flash", {})
-            assert kwargs["api_base"] == "https://opencode.ai/zen/go/v1/chat/completions"
+            assert kwargs["api_base"] == "https://opencode.ai/zen/go/v1"
         finally:
             _OpenCodeGoProvider._model_cache = None
 
@@ -330,3 +330,39 @@ class TestOpenCodeDummyProvider:
                 logging_obj=None,
                 optional_params={},
             )
+
+
+class TestGetLlmProviderPatch:
+    """Verify the monkey-patch prevents OpenAI model-name collision."""
+
+    def test_custom_provider_prefix_kept_intact(self) -> None:
+        """get_llm_provider returns full prefix/model for custom providers."""
+        model, provider, _api_key, _api_base = litellm.get_llm_provider("opencode-zen/gpt-5.4-nano")
+        assert model == "opencode-zen/gpt-5.4-nano"
+        assert provider == "opencode-zen"
+
+    def test_custom_provider_not_in_provider_list(self) -> None:
+        """Custom providers are NOT in litellm.provider_list (avoids prefix stripping)."""
+        assert "opencode-zen" not in litellm.provider_list
+        assert "opencode-go" not in litellm.provider_list
+        assert "opencode" not in litellm.provider_list
+        assert "claudin-io" not in litellm.provider_list
+        assert "ollama-cloud" not in litellm.provider_list
+
+    def test_custom_provider_in_custom_providers(self) -> None:
+        """Custom providers ARE in litellm._custom_providers."""
+        assert "opencode-zen" in litellm._custom_providers
+        assert "opencode-go" in litellm._custom_providers
+        assert "opencode" in litellm._custom_providers
+
+    def test_bare_opencode_routes_to_dummy(self) -> None:
+        """Bare opencode/ prefix returns correct provider (dummy)."""
+        model, provider, _api_key, _api_base = litellm.get_llm_provider("opencode/gpt-5.4-nano")
+        assert model == "opencode/gpt-5.4-nano"
+        assert provider == "opencode"
+
+    def test_non_custom_provider_unaffected(self) -> None:
+        """Non-custom providers still work normally."""
+        model, provider, _api_key, _api_base = litellm.get_llm_provider("openai/gpt-4")
+        assert model == "gpt-4"
+        assert provider == "openai"

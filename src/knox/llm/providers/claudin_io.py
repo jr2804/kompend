@@ -142,6 +142,11 @@ class _ClaudinIOProvider(CustomLLM):
         return os.environ.get(_CLAUDIN_IO_API_KEY_ENV, "")
 
     @staticmethod
+    def _short_model(model: str) -> str:
+        """Strip provider prefix, e.g. ``claudin-io/claudinio`` → ``claudinio``."""
+        return model.split("/", 1)[-1] if "/" in model else model
+
+    @staticmethod
     def _delegate_kwargs(model: str, optional_params: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
         # If api_key is an unresolved env reference (starts with "$"), ignore it
         # and fall back to the provider's own env var — preventing a literal
@@ -150,7 +155,7 @@ class _ClaudinIOProvider(CustomLLM):
             api_key = None
         params = {k: v for k, v in optional_params.items() if k != "stream"}
         return {
-            "model": f"openai/{model}",
+            "model": f"openai/{_ClaudinIOProvider._short_model(model)}",
             "api_base": _CLAUDIN_IO_BASE_URL,
             "api_key": api_key or _ClaudinIOProvider._api_key(),
             **params,

@@ -113,15 +113,16 @@ def _sources_for_table(wiki: CompiledWiki) -> list[tuple[str, int, int]]:
     return [(stem, pages, words) for stem, (pages, words) in sorted(source_map.items(), key=lambda x: -x[1][0])]
 
 
-def _format_sources_table(sources: list[str], max_rows: int = 12) -> list[str]:
-    """Format a source list as a markdown table or inline list."""
+def _format_sources_table(sources: list[str]) -> list[str]:
+    """Format a source list as a markdown table or inline list.
+
+    No row cap: a comprehensive ingest list is more useful than a tidy log.
+    """
     if len(sources) <= 5:
         return [", ".join(f"`{s}`" for s in sources)]
     lines = ["", "| # | Source |", "|---|--------|"]
-    for i, src in enumerate(sources[:max_rows], 1):
+    for i, src in enumerate(sources, 1):
         lines.append(f"| {i} | {src} |")
-    if len(sources) > max_rows:
-        lines.append(f"| ... | _{len(sources) - max_rows} more_ |")
     return lines
 
 
@@ -320,8 +321,9 @@ def write_index_and_log(
     index_content = generate_index(wiki)
     index_file.write_text(index_content, encoding="utf-8")
 
-    # log.md (prepended, newest first)
-    log_file = resolved_base / "log.md"
+    # log.md goes under .knox/ (single canonical pipeline log; matches ingest path)
+    log_file = VaultPaths(resolved_base).log_file
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     log_entry = generate_log_entry(wiki, stage="compile")
     prepend_log(log_file, log_entry)
 

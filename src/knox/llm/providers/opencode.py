@@ -63,7 +63,6 @@ class _OpenCodeProvider(CustomLLM):
         client: HTTPHandler | None = None,
     ) -> ModelResponse | litellm.CustomStreamWrapper:
         return self._call_litellm(
-            model,
             messages=messages,
             **self._delegate_kwargs(model, optional_params),
         )
@@ -87,12 +86,16 @@ class _OpenCodeProvider(CustomLLM):
         timeout: float | httpx.Timeout | None = None,
         client: HTTPHandler | None = None,
     ) -> Iterator[GenericStreamingChunk]:
-        return self._call_litellm(
-            model,
+        # opencode-zen/go send non-spec stream chunks with choices:[] → OpenAI
+        # SDK does choices[0] → IndexError. Workaround: do a non-streaming
+        # call and emit one chunk. Knox uses LLM for batch compilation,
+        # so loss of incremental streaming is fine.
+        # ponytail: single-chunk fake stream; revisit if opencode fixes their SSE format.
+        response = self._call_litellm(
             messages=messages,
-            stream=True,
             **self._delegate_kwargs(model, optional_params),
         )
+        yield self._response_to_chunk(response)
 
     async def acompletion(
         self,
@@ -114,7 +117,6 @@ class _OpenCodeProvider(CustomLLM):
         client: AsyncHTTPHandler | None = None,
     ) -> Any | ModelResponse | litellm.CustomStreamWrapper:
         return await self._call_litellm_async(
-            model,
             messages=messages,
             **self._delegate_kwargs(model, optional_params),
         )
@@ -138,20 +140,42 @@ class _OpenCodeProvider(CustomLLM):
         timeout: float | httpx.Timeout | None = None,
         client: AsyncHTTPHandler | None = None,
     ) -> AsyncIterator[GenericStreamingChunk]:  # type: ignore[override]
-        async for chunk in await self._call_litellm_async(
-            model,
+        # See streaming() for rationale. Same workaround for async path.
+        response = await self._call_litellm_async(
             messages=messages,
-            stream=True,
             **self._delegate_kwargs(model, optional_params),
-        ):
-            yield chunk
+        )
+        yield self._response_to_chunk(response)
+
+    # ── Stream-workaround helper ─────────────────────────────────
+
+    @staticmethod
+    def _response_to_chunk(response: Any) -> GenericStreamingChunk:
+        """Convert a non-streaming ModelResponse into a single terminal chunk."""
+        try:
+            choice = response.choices[0]
+            text = (choice.message.content or "") if hasattr(choice, "message") else ""
+            finish = getattr(choice, "finish_reason", None) or "stop"
+        except (AttributeError, IndexError):
+            text, finish = "", "stop"
+        # usage intentionally omitted: litellm's stream handler does Usage(**usage)
+        # which fails on Usage objects (only accepts dicts). Knox doesn't read
+        # per-chunk usage; non-stream Usage is still tracked via the response object.
+        return {
+            "text": text,
+            "tool_use": None,
+            "is_finished": True,
+            "finish_reason": finish,
+            "usage": None,
+            "index": 0,
+            "provider_specific_fields": None,
+        }
 
     # ── Error wrapping ──────────────────────────────────────────────
 
     @classmethod
     def _call_litellm(
         cls,
-        model: str,
         messages: list,
         **kwargs: Any,
     ) -> Any:
@@ -160,6 +184,7 @@ class _OpenCodeProvider(CustomLLM):
         Catches API errors and re-raises with the model name and
         available models when the model isn't in the discovered list.
         """
+        model = kwargs.get("model", "")
         try:
             return litellm.completion(messages=messages, **kwargs)
         except Exception as exc:
@@ -173,11 +198,11 @@ class _OpenCodeProvider(CustomLLM):
     @classmethod
     async def _call_litellm_async(
         cls,
-        model: str,
         messages: list,
         **kwargs: Any,
     ) -> Any:
         """Async call litellm.acompletion with error wrapping."""
+        model = kwargs.get("model", "")
         try:
             return await litellm.acompletion(messages=messages, **kwargs)
         except Exception as exc:
@@ -256,7 +281,7 @@ class _OpenCodeProvider(CustomLLM):
             }
         return {
             "model": f"openai/{short}",
-            "api_base": f"{cls._base_url}/v1/chat/completions",
+            "api_base": f"{cls._base_url}/v1",
             "api_key": api_key,
             **params,
         }

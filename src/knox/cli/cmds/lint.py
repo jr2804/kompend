@@ -40,7 +40,7 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import LINT_HISTORY_FILE
+from knox.core.paths import LINT_HISTORY_FILE, LOG_FILE
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
     entry_from_report,
@@ -182,7 +182,7 @@ def lint_run(
     outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
     rule_summary = " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
 
-    log_file = state_dir.parent / "log.md"
+    log_file = state_dir / LOG_FILE
     prepend_log(
         log_file,
         generate_stage_log_entry(

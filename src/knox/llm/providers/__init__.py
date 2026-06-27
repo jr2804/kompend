@@ -65,6 +65,8 @@ Registered providers
 
 from __future__ import annotations
 
+from typing import Any
+
 import litellm
 
 from knox.llm.providers.claudin_io import _ClaudinIOProvider
@@ -88,6 +90,8 @@ __all__ = [
     "_OpenCodeZenProvider",
     "_register_custom_providers",
 ]
+
+_CUSTOM_PROVIDER_PREFIXES: set[str] = set()
 
 
 def _register_custom_providers() -> None:
@@ -114,9 +118,49 @@ def _register_custom_providers() -> None:
         if not already:
             litellm.custom_provider_map.append({"provider": name, "custom_handler": handler_cls()})
             litellm._custom_providers.append(name)
-            litellm.provider_list.append(name)
+            _CUSTOM_PROVIDER_PREFIXES.add(name)
             logger.debug("Registered custom litellm provider: %s", name)
+
+
+def _patch_get_llm_provider() -> None:
+    """Monkey-patch ``get_llm_provider`` to keep custom-provider
+    prefixes intact in the returned model name.
+
+    Without this patch, ``get_llm_provider`` strips the prefix (e.g.
+    ``opencode-zen/gpt-5.4-nano`` → ``gpt-5.4-nano``) and litellm's
+    ``completion()`` then matches the bare model name against
+    ``open_ai_chat_completion_models``, routing to the OpenAI handler
+    instead of our custom provider.
+
+    With the patch, the full ``prefix/model`` string is returned, so
+    the OpenAI model-name check does not falsely match, and the
+    ``custom_llm_provider in litellm._custom_providers`` branch is
+    reached correctly.
+
+    Patches both ``litellm.utils.get_llm_provider`` (used by
+    ``litellm.main.completion``) and ``litellm.get_llm_provider``
+    (the public API).
+    """
+    _original = litellm.utils.get_llm_provider
+
+    def _patched(
+        model: str,
+        custom_llm_provider: str | None = None,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        litellm_params: Any = None,
+    ) -> Any:
+        if "/" in model:
+            prefix = model.split("/", 1)[0]
+            if prefix in _CUSTOM_PROVIDER_PREFIXES:
+                return model, prefix, api_key, api_base
+        return _original(model, custom_llm_provider, api_base, api_key, litellm_params)
+
+    litellm.utils.get_llm_provider = _patched  # type: ignore[assignment]
+    litellm.get_llm_provider = _patched  # type: ignore[assignment]
+    litellm.main.get_llm_provider = _patched  # type: ignore[assignment]
 
 
 # Auto-register on import.
 _register_custom_providers()
+_patch_get_llm_provider()
