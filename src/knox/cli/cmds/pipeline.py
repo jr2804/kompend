@@ -246,6 +246,10 @@ def compile_cmd(
         force_progress=show_progress,
     )
     progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
+    # Start the bar eagerly (idempotent). The parse handler also calls start(),
+    # but when parsing is skipped (--start-at-tier >= resolve) only this call
+    # guarantees the live display is running before any phase.
+    tracker.start()
 
     try:
         start_time = time.monotonic()

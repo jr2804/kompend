@@ -47,6 +47,27 @@ def _should_show_progress(force: bool | None = None) -> bool:
     return sys.stdout.isatty()
 
 
+def _make_progress_console(force: bool) -> Console:
+    """Build the stderr console that owns the progress bar.
+
+    When *force* is set (``--progress`` passed explicitly) the console is
+    forced into terminal mode so Rich's live refresh thread runs. Without
+    this, environments where ``sys.stderr.isatty()`` is unreliable (some
+    Windows/PowerShell hosts) get a single static render that never updates.
+
+    When *force* is unset (auto/TTY mode) the shared cached err console is
+    reused so log output via RichHandler stays Live-aware (prints above the
+    bar) instead of clobbering it.
+    """
+    if not force:
+        return get_err_console()
+    return Console(
+        stderr=True,
+        force_terminal=True,
+        no_color=not sys.stderr.isatty(),
+    )
+
+
 # ── Rich progress tracker ───────────────────────────────────────────────
 
 
@@ -102,6 +123,7 @@ class FileProgressTracker:
             TimeElapsedColumn(),
             console=self.console,
             transient=False,
+            refresh_per_second=10,
         )
         self._progress.start()
         self._overall_task = self._progress.add_task(
@@ -189,10 +211,18 @@ class PipelineProgress:
         total_files: int,
         force_progress: bool | None = None,
     ) -> PipelineProgress:
-        """Create a PipelineProgress, auto-detecting TTY."""
+        """Create a PipelineProgress, auto-detecting TTY.
+
+        When progress is forced (``--progress``), the bar console is created
+        with ``force_terminal=True`` so Rich's live refresh thread runs even
+        when TTY auto-detection fails (e.g. some Windows/PowerShell hosts).
+        Without this, Rich renders the bar once and never refreshes — the bar
+        freezes mid-phase while events keep firing underneath.
+        """
         show = _should_show_progress(force_progress)
         if not show:
             return cls(enabled=False)
 
-        file_tracker = FileProgressTracker(total=total_files)
+        console = _make_progress_console(force=bool(force_progress))
+        file_tracker = FileProgressTracker(total=total_files, console=console)
         return cls(enabled=True, _file_tracker=file_tracker)
