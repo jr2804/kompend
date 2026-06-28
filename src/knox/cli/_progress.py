@@ -172,6 +172,7 @@ class PipelineProgress:
         ft = self._file_tracker
         if ft and ft._progress and ft._overall_task is not None:
             ft._progress.update(ft._overall_task, completed=current, description=description)
+            ft._progress.refresh()
 
     def reset_for_phase(self, total: int | None, description: str) -> None:
         """Reset the bar for a new pipeline phase.
@@ -187,12 +188,14 @@ class PipelineProgress:
         if ft and ft._progress and ft._overall_task is not None:
             ft._progress.remove_task(ft._overall_task)
             ft._overall_task = ft._progress.add_task(description, total=total)
+            ft._progress.refresh()
 
     def message(self, msg: str) -> None:
         """Update the bar description without changing progress."""
         ft = self._file_tracker
         if ft and ft._progress and ft._overall_task is not None:
             ft._progress.update(ft._overall_task, description=msg)
+            ft._progress.refresh()
 
     def finish(self) -> None:
         """Mark progress complete and stop the display."""
