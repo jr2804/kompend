@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,6 +27,7 @@ from knox.core.config._core import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
 from knox.core.paths import KNOX_DIR
 
 # ── Deep merge ──────────────────────────────────────────────────────────
@@ -635,3 +638,85 @@ class TestSetConfigFileValue:
     def test_unknown_key_raises(self, tmp_path: Any) -> None:
         with pytest.raises(KeyError):
             set_config_file_value(tmp_path / "config.toml", "compile.unknown", "x")
+
+
+# ── Config generation ───────────────────────────────────────────────────
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class TestGenerateScaffoldConfig:
+    def test_produces_valid_toml(self) -> None:
+        text = generate_scaffold_config()
+        assert text.startswith("# KNOX configuration")
+        data = tomllib.loads(text)
+        assert "compile" in data
+        assert "paths" in data
+
+    def test_excludes_hidden_keys(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        compile_section = data.get("compile", {})
+        assert "sources_dir" not in compile_section
+        assert "output_dir" not in compile_section
+
+    def test_excludes_none_values(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        compile_llm = data.get("compile", {}).get("llm", {})
+        assert "default_model" not in compile_llm
+        assert "vlm_model" not in compile_llm
+
+    def test_excludes_empty_sections(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        assert "hooks" not in data  # empty dict in DEFAULTS
+
+    def test_sections_in_expected_order(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        keys = list(data.keys())
+        assert keys[0] == "paths"
+        assert keys[1] == "notes"
+        assert "compile" in keys
+
+    def test_budget_keys_present(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        budget = data["compile"]["budget"]
+        assert budget["concepts_per_batch"] == 8
+        assert budget["extract_output_max"] == 8192
+
+
+class TestExtractTomlKeys:
+    def test_simple_keys(self) -> None:
+        text = '[compile]\nformat = "markdown"\nchunk_size = 1024\n'
+        keys = extract_toml_keys(text)
+        assert "compile.format" in keys
+        assert "compile.chunk_size" in keys
+
+    def test_nested_sections(self) -> None:
+        text = '[compile.llm]\ndefault_model = "x"\ntimeout = 120.0\n'
+        keys = extract_toml_keys(text)
+        assert "compile.llm.default_model" in keys
+        assert "compile.llm.timeout" in keys
+
+    def test_commented_keys(self) -> None:
+        text = "[compile]\n# force = false\n# no_cache = false\n"
+        keys = extract_toml_keys(text)
+        assert "compile.force" in keys
+        assert "compile.no_cache" in keys
+
+    def test_dotted_key_at_root(self) -> None:
+        text = 'compile.format = "markdown"\n'
+        keys = extract_toml_keys(text)
+        assert "compile.format" in keys
+
+
+class TestKnoxDotExampleSync:
+    """knox.toml.example must document every key in DEFAULTS."""
+
+    def test_example_covers_all_defaults(self) -> None:
+        example_path = _PROJECT_ROOT / "knox.toml.example"
+        if not example_path.exists():
+            pytest.skip("knox.toml.example not found")
+        text = example_path.read_text(encoding="utf-8")
+        example_keys = extract_toml_keys(text)
+        missing = get_default_keys() - example_keys
+        assert not missing, f"knox.toml.example is missing keys present in DEFAULTS: {sorted(missing)}"

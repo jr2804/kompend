@@ -27,6 +27,7 @@ from knox.core.config._core import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.config.generate import generate_scaffold_config
 
 __all__ = [
     "DEFAULTS",
@@ -45,6 +46,7 @@ __all__ = [
     "find_all_project_configs",
     "find_global_config",
     "find_project_config",
+    "generate_scaffold_config",
     "get_global_config_path",
     "get_project_config_path",
     "resolve_config",

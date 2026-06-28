@@ -7,6 +7,9 @@
 # `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
 
 [paths]
+# Root directory for resolving all relative paths. When unset, uses
+# the directory containing this config file, or the value of --wiki-dir.
+# wiki_dir = "."
 sources_dir = "sources"
 output_dir = "wiki"
 cache_dir = ".knox/cache"
@@ -75,6 +78,11 @@ workers = 1
 # CLI: --in-place | Env: KNOX_IN_PLACE_SOURCES
 # in_place_sources = false
 
+# Page kind for N9 schema-driven compilation:
+# concept | entity | comparison | overview | custom
+# When unset, page kind is auto-detected from content.
+# page_kind = "concept"
+
 # ── Memory lifecycle ──────────────────────────────────────────────────────
 #
 # KNOX tracks a lifecycle state per wiki node across compiles:
@@ -113,22 +121,16 @@ max_concept_pages = 50         # cap on auto-generated concept pages per compila
 chunk_size_min = 2048          # floor: prevents useless tiny chunks
 chunk_size_max = 131072        # ceiling: safety rail for models claiming 1M+ context
 
-# Extraction output: 0.3× input tokens, clamped
-extract_output_ratio = 0.3
-extract_output_min = 512
+# Extraction output ceiling (tokens)
 extract_output_max = 8192
 
 # Generation output: fixed ceiling per concept (expansion, not compression)
 gen_output_max = 16384
 
-# Overview output: 0.1× total source tokens, clamped
-overview_output_ratio = 0.1
-overview_output_min = 256
+# Overview output ceiling (tokens)
 overview_output_max = 4096
 
-# Verification output: 0.2× excerpt tokens, clamped
-verify_output_ratio = 0.2
-verify_output_min = 256
+# Verification output ceiling (tokens)
 verify_output_max = 4096
 
 # Lint output ceiling (tokens)

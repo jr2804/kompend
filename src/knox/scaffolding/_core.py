@@ -14,10 +14,9 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
-from jinja2 import Template
-
 from knox.core.config._core import DEFAULTS
-from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, CONFIG_FILE, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
+from knox.core.config.generate import generate_scaffold_config
+from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,7 +24,6 @@ logger = get_logger(__name__)
 
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"
 
-TEMPLATE_CONFIG: Final[str] = CONFIG_FILE + ".j2"
 TEMPLATE_NOTES: Final[str] = "NOTES.md"
 TEMPLATE_README: Final[str] = "README.md"
 TEMPLATE_GITIGNORE: Final[str] = "gitignore"
@@ -110,22 +108,16 @@ def _clear_directory(target_dir: Path, *, skip: str | set[str] | None = None) ->
             item.unlink()
 
 
-def _render_config_template(target_dir: Path, relative: str) -> None:
-    """Render the Jinja2 config template with current :data:`DEFAULTS`.
+def _write_config(target_dir: Path, relative: str) -> None:
+    """Generate and write the scaffold config from current :data:`DEFAULTS`.
 
-    Reads ``config.toml.j2`` from the templates package, renders it
-    with the ``defaults`` variable set to :data:`DEFAULTS`, and writes
-    the result to *target_dir/relative*.  This keeps config values in
-    sync with code — no more hard-coded duplicates.
+    Uses :func:`generate_scaffold_config` so config values are always
+    derived from code — no hand-maintained template to drift.
     """
-    source = _template_path(TEMPLATE_CONFIG)
     destination = target_dir / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
-
-    raw = source.read_text(encoding="utf-8")
-    rendered = Template(raw).render(defaults=DEFAULTS)
-    destination.write_text(rendered, encoding="utf-8")
-    logger.info("Rendered config template to %s", destination)
+    destination.write_text(generate_scaffold_config(), encoding="utf-8")
+    logger.info("Generated config at %s", destination)
 
 
 def _initialise_git(target_dir: Path) -> None:
@@ -230,9 +222,7 @@ def scaffold_project(
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
     config_relative_file = KNOX_CONFIG_FILE
-    # Render the Jinja2 config template with current DEFAULTS so values
-    # are always derived from code — never hard-coded in the template.
-    _render_config_template(resolved_target_dir, config_relative_file)
+    _write_config(resolved_target_dir, config_relative_file)
     result.copied_files.append(resolved_target_dir / config_relative_file)
 
     _copy_template(TEMPLATE_GITIGNORE, resolved_target_dir, ".gitignore")

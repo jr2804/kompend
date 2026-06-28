@@ -20,6 +20,7 @@ through this package — no other module reads config files or env vars directly
 src/knox/core/config/
 ├── __init__.py    # Public API re-exports
 ├── _core.py       # Config resolution engine (merge, precedence, discovery)
+├── generate.py    # Code-driven TOML generation from DEFAULTS
 ├── keys.py        # Config key constants
 ├── _configs.py    # Config dataclass definitions
 └── AGENTS.md      # This file
@@ -27,6 +28,11 @@ src/knox/core/config/
 
 Public API lives in `__init__.py`. Internal helpers in `_core.py` are prefixed
 with `_` and should not be imported outside this package or tests.
+
+`generate.py` provides `generate_scaffold_config()` (used by `knox init` to
+write `.knox/config.toml` from `DEFAULTS` — no Jinja2 template involved) and
+`extract_toml_keys()` / `get_default_keys()` (used by the sync test to verify
+`knox.toml.example` documents every key in `DEFAULTS`).
 
 ### Precedence order (memorize this)
 
@@ -50,6 +56,8 @@ When adding a new config key, **all 5 layers must work**. Test each.
    Map the CLI parameter name to the same dotted key used in `DEFAULTS`.
 4. **Update `knox.toml.example`** — add the new key with a comment explaining
    valid values. Keep the same section structure as `DEFAULTS`.
+   The sync test (`TestKnoxDotExampleSync`) will fail if a key in `DEFAULTS`
+   is missing from `knox.toml.example`.
 5. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
    `cfg.get("dotted.key", fallback)`.
 6. **Write tests** — at minimum: default value, project config override, env var
@@ -99,7 +107,8 @@ When adding a new config key, **all 5 layers must work**. Test each.
 - Test provenance via `cfg.source_of("key")` — it must report the winning layer.
 - After changing `DEFAULTS` or `_ENV_MAP`, verify each layer override still
   wins in the correct order.
-- `knox.toml.example` must stay in sync with `DEFAULTS` — run a diff check.
+- `knox.toml.example` must stay in sync with `DEFAULTS` — enforced by
+  `TestKnoxDotExampleSync` in `tests/unit/test_config.py`.
 
 ---
 
