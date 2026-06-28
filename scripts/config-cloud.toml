@@ -9,8 +9,9 @@
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
 #default_model      = "ollama-cloud/deepseek-v4-flash"
+default_model      = "ollama-cloud/qwen3.5"
 #default_model      = "opencode-zen/deepseek-v4-flash-free"
-default_model      = "opencode-zen/gpt-5.4-nano"
+#default_model      = "opencode-zen/gpt-5.4-nano"
 #default_model      = "openrouter/openrouter/free"
 #default_model      = "claudin-io/claudinio"
 #api_key            = "$CLAUDINIO_API_KEY"
