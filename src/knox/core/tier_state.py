@@ -16,13 +16,18 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from knox.core.models import MetadataField
+from knox.core.pipeline_defs import TIER_LEVEL, Tier
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Tier level at which a source is considered fully compiled (OUTPUT = 4).
+_OUTPUT_TIER_LEVEL = TIER_LEVEL[Tier.OUTPUT]
 
 
 @dataclass
@@ -160,6 +165,111 @@ class TierStateStore:
         existing.search_hits += 1
         existing.last_hit = datetime.now(UTC).isoformat(timespec="seconds")
         state.entries[stem] = existing
+
+
+class CompileStatus(StrEnum):
+    """High-level compile status for display in ``knox status``."""
+
+    NOT_INITIALIZED = "not-initialized"
+    NO_SOURCES = "no-sources"
+    NOT_INDEXED = "not-indexed"
+    IN_PROGRESS = "in-progress"
+    PARTIALLY_COMPILED = "partially-compiled"
+    COMPILED = "compiled"
+    BROKEN = "broken"
+
+
+@dataclass(frozen=True)
+class CompileStatusInfo:
+    """Rich compile status for ``knox status`` output."""
+
+    status: CompileStatus
+    total: int = 0
+    indexed: int = 0
+    compiled: int = 0
+    error: str = ""
+
+    def label(self) -> str:
+        """Human-readable one-line label for CLI display."""
+        s = self.status
+        if s is CompileStatus.NOT_INITIALIZED:
+            result = "not initialized"
+        elif s is CompileStatus.NO_SOURCES:
+            result = "initialized, no sources"
+        elif s is CompileStatus.NOT_INDEXED:
+            result = f"{self.total} source(s) not indexed"
+        elif s is CompileStatus.IN_PROGRESS:
+            result = f"{self.indexed} source(s) ingested, not compiled"
+        elif s is CompileStatus.PARTIALLY_COMPILED:
+            result = f"partially compiled ({self.compiled}/{self.total})"
+        elif s is CompileStatus.COMPILED:
+            result = f"compiled ({self.compiled} source(s))"
+        elif s is CompileStatus.BROKEN:
+            result = f"broken: {self.error}" if self.error else "broken"
+        else:
+            result = str(s)
+        return result
+
+
+def classify_compile_status(
+    *,
+    state_dir_exists: bool,
+    sources_count: int,
+    tier_state: TierState | None,
+    wiki_exists: bool,
+    error: str = "",
+) -> CompileStatusInfo:
+    """Classify compile state for human-friendly status display.
+
+    Parameters
+    ----------
+    state_dir_exists:
+        Whether the ``.knox/`` metadata directory exists on disk.
+    sources_count:
+        Number of source files found in the sources directory.
+    tier_state:
+        Loaded :class:`TierState`, or ``None`` if the state file is
+        missing or could not be parsed.
+    wiki_exists:
+        Whether the compiled wiki output file (``wiki.md``) exists.
+
+    Error:
+        Error message when the tier state file is corrupt.
+    """
+    if error:
+        info = CompileStatusInfo(status=CompileStatus.BROKEN, total=sources_count, error=error)
+    elif not state_dir_exists:
+        info = CompileStatusInfo(status=CompileStatus.NOT_INITIALIZED)
+    elif sources_count == 0:
+        info = CompileStatusInfo(status=CompileStatus.NO_SOURCES)
+    elif tier_state is None or not tier_state.entries:
+        info = CompileStatusInfo(status=CompileStatus.NOT_INDEXED, total=sources_count)
+    else:
+        dist = tier_state.tier_distribution()
+        indexed = len(tier_state.entries)
+        compiled = sum(c for tier, c in dist.items() if tier >= _OUTPUT_TIER_LEVEL)
+        if compiled >= indexed and compiled > 0:
+            info = CompileStatusInfo(
+                status=CompileStatus.COMPILED,
+                total=sources_count,
+                indexed=indexed,
+                compiled=compiled,
+            )
+        elif compiled > 0 or wiki_exists:
+            info = CompileStatusInfo(
+                status=CompileStatus.PARTIALLY_COMPILED,
+                total=sources_count,
+                indexed=indexed,
+                compiled=compiled,
+            )
+        else:
+            info = CompileStatusInfo(
+                status=CompileStatus.IN_PROGRESS,
+                total=sources_count,
+                indexed=indexed,
+                compiled=compiled,
+            )
+    return info
 
 
 def auto_promote_demote(

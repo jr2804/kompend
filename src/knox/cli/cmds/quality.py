@@ -75,10 +75,11 @@ def status_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     stats = collect_stats(
         sources_dir=sources_dir if sources_dir.exists() else None,
         output_dir=output_dir if output_dir.exists() else None,
+        state_dir=state_dir if state_dir.exists() else None,
     )
     print_status(stats, json_output=json_output)
 

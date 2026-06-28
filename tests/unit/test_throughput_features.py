@@ -35,6 +35,7 @@ from knox.core.tier_state import (
     TierState,
     TierStateStore,
     auto_promote_demote,
+    classify_compile_status,
 )
 from knox.provenance import annotate_wiki_with_provenance
 from knox.review import ReviewQueue, slugify
@@ -204,6 +205,138 @@ class TestTierStateStore:
             }
         )
         assert state.tier_distribution() == {1: 1, 3: 2}
+
+
+class TestClassifyCompileStatus:
+    """classify_compile_status() classification logic."""
+
+    def test_not_initialized(self) -> None:
+        info = classify_compile_status(
+            state_dir_exists=False,
+            sources_count=0,
+            tier_state=None,
+            wiki_exists=False,
+        )
+        assert info.status.value == "not-initialized"
+
+    def test_no_sources(self) -> None:
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=0,
+            tier_state=None,
+            wiki_exists=False,
+        )
+        assert info.status.value == "no-sources"
+
+    def test_not_indexed(self) -> None:
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=3,
+            tier_state=None,
+            wiki_exists=False,
+        )
+        assert info.status.value == "not-indexed"
+        assert info.total == 3
+
+    def test_in_progress(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=1),
+                "b": SourceState(stem="b", source_file="", content_hash="", current_tier=2),
+            }
+        )
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=2,
+            tier_state=state,
+            wiki_exists=False,
+        )
+        assert info.status.value == "in-progress"
+        assert info.indexed == 2
+        assert info.compiled == 0
+
+    def test_partially_compiled_by_tier(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=4),
+                "b": SourceState(stem="b", source_file="", content_hash="", current_tier=1),
+            }
+        )
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=2,
+            tier_state=state,
+            wiki_exists=False,
+        )
+        assert info.status.value == "partially-compiled"
+        assert info.compiled == 1
+
+    def test_partially_compiled_by_wiki(self) -> None:
+        # Wiki exists but not all entries at tier 4
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=3),
+                "b": SourceState(stem="b", source_file="", content_hash="", current_tier=3),
+            }
+        )
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=2,
+            tier_state=state,
+            wiki_exists=True,
+        )
+        assert info.status.value == "partially-compiled"
+
+    def test_compiled(self) -> None:
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=4),
+                "b": SourceState(stem="b", source_file="", content_hash="", current_tier=4),
+            }
+        )
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=2,
+            tier_state=state,
+            wiki_exists=True,
+        )
+        assert info.status.value == "compiled"
+        assert info.compiled == 2
+
+    def test_broken(self) -> None:
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=5,
+            tier_state=None,
+            wiki_exists=False,
+            error="Invalid JSON at line 1",
+        )
+        assert info.status.value == "broken"
+        assert "Invalid JSON" in info.error
+        assert "broken" in info.label()
+
+    def test_label_formats(self) -> None:
+        """label() returns human-readable strings."""
+        info = classify_compile_status(
+            state_dir_exists=False,
+            sources_count=0,
+            tier_state=None,
+            wiki_exists=False,
+        )
+        assert info.label() == "not initialized"
+
+        state = TierState(
+            entries={
+                "a": SourceState(stem="a", source_file="", content_hash="", current_tier=4),
+            }
+        )
+        info = classify_compile_status(
+            state_dir_exists=True,
+            sources_count=1,
+            tier_state=state,
+            wiki_exists=True,
+        )
+        assert "compiled" in info.label()
 
 
 class TestAutoPromoteDemote:
