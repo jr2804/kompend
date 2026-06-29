@@ -109,7 +109,7 @@ writer_class = BaseOutputWriter.get("markdown")  # MarkdownWriter
 
 ## Flavor auto-detection
 
-When `--flavor` is not explicitly provided, KNOX inspects the output directory:
+When `compile.output.flavor` is not explicitly set, KNOX inspects the output directory:
 
 | File/dir present | Flavor detected |
 |-----------------|----------------|
@@ -118,4 +118,4 @@ When `--flavor` is not explicitly provided, KNOX inspects the output directory:
 | `_quarto.yml` or `*.qmd` files | `quarto` |
 | none | `obsidian` (default) |
 
-Explicit `--flavor` always overrides auto-detection.
+Explicit `compile.output.flavor` always overrides auto-detection.

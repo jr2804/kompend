@@ -10,6 +10,13 @@ knox init [DIR]
 
 If `DIR` is omitted, the current directory is used.
 
+To seed the vault with a chosen config (e.g. a cloud/local LLM profile), pass it
+— the file is copied verbatim into `<dir>/.knox/config.toml`:
+
+```bash
+knox init ./my-vault --config scripts/config-cloud.toml
+```
+
 ## What it creates
 
 ```text
@@ -77,14 +84,14 @@ fast re-runs where ingest should skip already-parsed documents.
 knox init --force --keep-cache ./existing-project
 ```
 
-### `--in-place`
+### `--config`
 
-Keep source files at their original location instead of copying them into
-`sources/`. Use this when your sources already live in the target directory
-structure.
+Install a chosen TOML config as the vault's `.knox/config.toml` instead of the
+generated default. Use this to seed a vault with a specific LLM/budget/profile
+(e.g. a cloud or local demo config). The file is copied verbatim.
 
 ```bash
-knox init --in-place ./existing-project
+knox init ./my-vault --config scripts/config-cloud.toml
 ```
 
 ### `--git`

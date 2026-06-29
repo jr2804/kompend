@@ -5,9 +5,9 @@ KNOX uses a layered configuration system. Values are resolved from multiple sour
 ## 5-Layer Precedence
 
 ```text
-1. CLI flags (--wiki-dir, --format, ...)         ← highest
+1. CLI flags (--wiki-dir, --set, model swaps, ...)   ← highest
 2. Environment variables (KNOX_*)
-3. Project config (.knox/config.toml + knox.toml)
+3. Project config (.knox/config.toml + knox.toml) — discovered from --wiki-dir when set
 4. Global config (~/.config/knox/config.toml)
 5. Built-in defaults                              ← lowest
 ```

@@ -48,7 +48,7 @@ knox compile --start-at-tier chunk   # later: T2→T5 using parsed sources
 Parsed documents are cached in `.knox/cache/` using the same key format
 as the pipeline, so compile picks them up transparently.
 
-## Two-phase compiler (`--compiler two-phase`)
+## WiCER compiler (config: `compile.compiler = wicer`)
 
 The **non-default** `TwoPhaseCompiler` runs a concept-extraction pipeline:
 
@@ -59,13 +59,13 @@ The **non-default** `TwoPhaseCompiler` runs a concept-extraction pipeline:
    for shared entities.
 
 ```bash
-knox compile *.pdf --compiler two-phase
+knox compile *.pdf --set compile.compiler=wicer
 ```
 
 To use the **default** graph compiler explicitly:
 
 ```bash
-knox compile *.pdf --compiler graph
+knox compile *.pdf --set compile.compiler=graph
 ```
 
 ## Vision enrichment (VLM)
@@ -110,7 +110,7 @@ graph LR
     RRF --> R[Ranked results]
 ```
 
-The vector store is built at compile time with `--index --index-store` and re-opened at query time using the persisted embedding model. If the vector store is absent, the retriever falls back to token overlap only.
+The vector store is built at compile time by default (indexing is on; pass `--no-index` to skip) and re-opened at query time using the persisted embedding model. If the vector store is absent, the retriever falls back to token overlap only.
 
 ## Page kinds
 
@@ -149,8 +149,8 @@ graph LR
 ```bash
 knox compile *.pdf --memory              # enable (default)
 knox compile *.pdf --no-memory           # disable
-knox compile *.pdf --memory-half-life-days 180
-knox compile *.pdf --memory-decay-threshold 0.2
+knox compile *.pdf --set compile.memory_half_life_days=180
+knox compile *.pdf --set compile.memory_decay_threshold=0.2
 ```
 
 Memory state is persisted at `base_dir/.knox/memory.json`. Stale and superseded pages surface as lint failures in the `stale-page` rule.
@@ -193,13 +193,14 @@ Hook callbacks receive a `HookContext` and exceptions are isolated — a failing
 
 ## Prompt budget
 
-Each concept page in phase 2 sees at most `--prompt-budget` characters
-of source content (default 200 000). When a concept draws from many
-sources, the content is **fair-share truncated** — each source gets
-an equal slice, not first-N-chunks. Excess truncation is logged.
+Each concept page in phase 2 sees at most `compile.budget.gen_output_max`
+characters of source content. When a concept draws from many sources, the
+content is **fair-share truncated** — each source gets an equal slice, not
+first-N-chunks. Excess truncation is logged. Tune it in config:
 
 ```bash
-knox compile *.pdf --prompt-budget 100000
+knox config set compile.budget.gen_output_max 100000
+knox compile *.pdf --set compile.budget.gen_output_max=100000
 ```
 
 ## Per-source state

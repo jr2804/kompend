@@ -19,9 +19,6 @@ knox lint run --rule broken-wikilinks --rule orphan-page
 
 # Machine-readable output for CI
 knox lint run --json
-
-# Fail CI if health score below threshold
-knox lint run --threshold 80
 ```
 
 ## Commands
@@ -46,7 +43,6 @@ Options:
   --fix              Auto-fix structural issues where possible
   --llm              Enable LLM-powered lint rules (slow, expensive)
   --rule TEXT        Run only specific rule(s) (repeatable)
-  --threshold INT    Exit with error if health score below this value (0-100)
   --json             Output in JSON format for machine readability
 ```
 
@@ -159,11 +155,13 @@ The health score is computed as:
 health_score = 100 × (PASS results) / (total results)
 ```
 
-A perfect wiki scores 100%. Use `--threshold` in CI:
+A perfect wiki scores 100%. `knox lint run` reports the score but does **not**
+gate on it — the exit code is 0 unless the run itself fails. To fail CI on a
+low score, parse the JSON output:
 
 ```bash
-knox lint run --threshold 80
-# Exit code 0 if score ≥ 80, exit code 1 otherwise
+knox lint run --json > lint-report.json
+python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
 ## JSON Output
@@ -203,7 +201,7 @@ Every `knox lint run` appends a structured entry to `.knox/lint_history.jsonl`. 
 |-------|---------|
 | `timestamp` | ISO 8601 UTC |
 | `duration_seconds` | Wall-clock time of the lint run |
-| `options` | Active rules, `enable_llm`, `fix`, `threshold` |
+| `options` | Active rules, `enable_llm`, `fix` |
 | `llm` | Model name + token usage (or `null` for structural-only) |
 | `config_snapshot` | Relevant compile settings (compiler, chunk size, model, fallback chain) |
 | `wiki_meta` | Node count |
@@ -219,7 +217,8 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
 - name: Lint compiled wiki
   run: |
     knox compile ./sources
-    knox lint run --threshold 80 --json > lint-report.json
+    knox lint run --json > lint-report.json
+    python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
 ### Pre-commit
@@ -229,10 +228,15 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
   hooks:
     - id: knox-lint
       name: knox lint
-      entry: knox lint run --threshold 80
+      entry: knox lint run --json
       language: system
       pass_filenames: false
 ```
+
+The hook runs lint and writes JSON but, like `knox lint run` itself, exits 0
+unless the run fails. To make a pre-commit hook gate on the score, wrap the
+JSON parse (see [Health Score](#health-score)) in a small script and point
+`entry` at it.
 
 ## FAQ
 

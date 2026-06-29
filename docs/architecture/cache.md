@@ -44,7 +44,7 @@ project root — **not** inside `wiki/`.
 |------|----------|-------------|-------|-----------|
 | `last_wiki.json` | Full `CompiledWiki` dataclass as JSON | 10 KB – 10 MB | Project-local | Pipeline after compile |
 | `compile_state.json` | Per-file tier progress (parsed, chunked, etc.) | < 50 KB | Project-local | `TierStateStore` |
-| `search.db` | SQLite FTS5 index over compiled wiki pages | < 10 MB | Project-local | Compile with `--index-store` |
+| `search.db` | SQLite FTS5 index over compiled wiki pages | < 10 MB | Project-local | Compile with `--index` (on by default) |
 | `memory.json` | Memory lifecycle: confidence, tiers, supersession | < 100 KB | Project-local | `update_memory_for_compile` |
 | `cache/*.json` | Cached `ParsedDocument` per source file (hash-keyed) | 100 KB – 100 MB | Project-local | Pipeline parse tier |
 | `vectors/` | Zvec embedded vector database for semantic search | 1 – 100 MB | Project-local | `ZvecWikiStore` |
@@ -88,7 +88,7 @@ the KNOX project template).
 | `cache/*.json` | Source file modified or `--no-cache` flag | Delete `.knox/cache/` or re-run compile |
 | `compile_state.json` | Any source file changes | `--force` flag re-processes everything |
 | `last_wiki.json` | After every successful compile | Overwritten automatically |
-| `search.db` | After compile changes node content | Re-run `--index-store` |
+| `search.db` | After compile changes node content | Re-run `compile --index` (on by default) |
 | `memory.json` | After every successful compile (when `memory_enabled`) | Overwritten automatically |
 | `vectors/` | After compile changes node content | Re-run `--index` |
 | `review/` | After review actions | Entries removed as they are approved/rejected |

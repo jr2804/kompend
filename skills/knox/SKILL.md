@@ -74,9 +74,9 @@ uv tool install --git https://codeberg.org/jr2804/knox
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git` |
-| `knox compile <files>` | Compile sources into wiki | `--compiler graph\|wicer`, `--start-at-tier`, `--llm-default-model`, `--vlm-model`, `--embed-model`, `--format markdown\|json\|typst`, `--force`, `--no-cache`, `--workers N`, `--review`, `--verify`, `--provenance`, `--private`, `--synthesize`, `--flavor none\|pages\|wiki`, `--online-urls`, `--url-file` |
-| `knox ingest <files>` | Copy files into sources without compiling | `--recursive` |
+| `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
+| `knox compile <files>` | Compile sources into wiki | `--start-at-tier`, `--llm-default-model`, `--vlm-model`, `--embed-model`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--provenance`, `--private`, `--synthesize/--no-synthesize`, `--index/--no-index`, `--url`, `--url-file`, `--set key=val` (config-only values: format, flavor, compiler, image_mode, budgets, timeouts) |
+| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--set key=val` |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
 

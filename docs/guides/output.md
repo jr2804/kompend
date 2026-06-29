@@ -1,27 +1,27 @@
 # Output Configuration Guide
 
-KNOX supports multiple Markdown flavors for compiled output via `--flavor`
-and the `output` section in your config file.
+KNOX supports multiple Markdown flavors for compiled output via the `compile.output.flavor`
+config key (set with `knox config set compile.output.flavor <flavor>` or override
+one run with `--set compile.output.flavor=<flavor>`).
 
-## CLI flags
-
-| Flag | Description | Default |
+| Key / flag | Description | Default |
 |------|-------------|---------|
-| `--flavor` | Markdown output flavor | `obsidian` (auto-detected) |
-| `--frontmatter` | Frontmatter fields (`key=value`) | — |
-| `--synthesize` | Generate LLM overview page | `False` |
+| `compile.output.flavor` (`--set compile.output.flavor=`) | Markdown output flavor | `obsidian` (auto-detected) |
+| `compile.output.frontmatter` | Frontmatter fields | — |
+| `--synthesize/--no-synthesize` | Generate LLM overview page | `True` (default-on) |
 
-### Examples
+## Examples
 
 ```bash
 # Obsidian-compatible wiki (default)
-knox compile . --flavor obsidian
+knox config set compile.output.flavor obsidian
 
 # GitHub-flavored Markdown
-knox compile . --flavor gfm
+knox config set compile.output.flavor gfm
 
-# MkDocs site
-knox compile . --flavor mkdocs --frontmatter language=en
+# MkDocs site (with frontmatter field)
+knox config set compile.output.flavor mkdocs
+knox config set compile.output.frontmatter '{language="en"}'
 ```
 
 ## Config file (`.knox/config.toml`)
@@ -37,7 +37,7 @@ rumdl_config = ".rumdl.toml"   # custom rumdl config (optional)
 
 ### Flavor auto-detection
 
-Without `--flavor`, KNOX inspects the output directory:
+Without an explicit `compile.output.flavor`, KNOX inspects the output directory:
 
 | Marker | Flavor | Use case |
 |--------|--------|----------|
@@ -46,7 +46,7 @@ Without `--flavor`, KNOX inspects the output directory:
 | `_quarto.yml` or `*.qmd` files | `quarto` | Quarto project |
 | none | `obsidian` | Default fallback |
 
-Explicit `--flavor` always overrides auto-detection.
+Explicit `compile.output.flavor` always overrides auto-detection.
 
 ## Available flavors
 
@@ -122,10 +122,12 @@ output:
       domain: general
 ```
 
-### From CLI
+### From config
 
 ```bash
-knox compile . --frontmatter language=en --frontmatter domain=ml
+knox config set compile.output.frontmatter '{language="en", domain="ml"}'
+# ...or for one run only:
+knox compile . --set compile.output.frontmatter='{language="en", domain="ml"}'
 ```
 
 ### In `knox write`

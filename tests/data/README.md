@@ -27,7 +27,7 @@ as `sources/` (speech intelligibility, listening effort, LEAP, hearing
 aids) but added on the *second* compile pass — after the wiki already
 exists. This demonstrates the incremental / knowledge-growth workflow:
 
-```
+```text
 ingest batch2/ → compile --start-at-tier chunk → lint → history
 ```
 

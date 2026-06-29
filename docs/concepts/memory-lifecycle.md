@@ -36,7 +36,7 @@ If a page is not recompiled, its retention decays exponentially:
 retention = confidence * exp(-days_since_review / half_life)
 ```
 
-Pages whose retention falls below `--memory-decay-threshold` (default 0.3) are flagged as stale by the `stale-page` lint rule.
+Pages whose retention falls below `compile.memory_decay_threshold` (default 0.3) are flagged as stale by the `stale-page` lint rule.
 
 ## Supersession
 
@@ -45,10 +45,13 @@ When a new compile produces a page with the same title but a different node ID (
 ## Configuration
 
 ```bash
-knox compile *.pdf --memory                   # enable (default)
-knox compile *.pdf --no-memory                # disable
-knox compile *.pdf --memory-half-life-days 90 # decay speed
-knox compile *.pdf --memory-decay-threshold 0.3
+knox compile *.pdf --memory                  # enable (default)
+knox compile *.pdf --no-memory               # disable
+# Tuning (config-only):
+knox config set compile.memory_half_life_days 90     # decay speed
+knox config set compile.memory_decay_threshold 0.3
+# ...or override one run:
+knox compile *.pdf --set compile.memory_half_life_days=90
 ```
 
 State is persisted at `base_dir/.knox/memory.json`.

@@ -129,16 +129,13 @@ knox compile [OPTIONS] FILES...
 **Options:**
 
 | Flag | Default | Description |
-|------|---------|-------------|
-| `--format`, `-f` | `markdown` | Output format: markdown, json, typst |
-| `--chunk-size` | `512` | Chunk size in tokens |
-| `--image-mode` | `file` | Image handling: file, base64 |
-| `--index` | — | Index compiled wiki in zvec for semantic search |
+|------|---------|------------|
+| Output shape (`--format`, `--image-mode`, `--flavor`, `--compiler`, `--kind`) and tuning values (budgets, timeouts, decay params) are **config-only** — set them with `knox config set compile.<key> <val>` or override per-run with `--set compile.<key>=<val>`. |  |  |
+| `--index/--no-index` | on | Index compiled wiki in zvec for semantic search |
 | `--embed-model` | — | Embedding model for zvec indexing |
-| `--embed-dim` | — | Embedding dimension |
 | `--vlm-model` | — | Vision model for captioning images during resolution |
-| `--resolve-relations` | — | Extract typed relations (uses, depends_on, contradicts, ...) between entities |
-| `--relation-confidence-threshold` | `0.0` | Minimum confidence for typed relations to be kept |
+| `--verify/--no-verify` | on | Run grounding verification on each claim |
+| `--synthesize/--no-synthesize` | on | Generate LLM-synthesized overview.md |
 | `--ignore` | — | Ignore pattern (glob-style, repeatable) |
 | `--progress/--no-progress` | auto | Show rich progress bars (auto-detected for TTY) |
 

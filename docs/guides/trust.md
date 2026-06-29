@@ -39,10 +39,12 @@ knox query "topic" --include-private
 ## Grounding verification
 
 `--verify` runs an LLM-as-judge on every claim in the compiled wiki
-and writes a report to `.knox/verification.json`:
+and writes a report to `.knox/verification.json`. It is **on by default**;
+pass `--no-verify` to skip the cost:
 
 ```bash
-knox compile *.pdf --verify
+knox compile *.pdf            # verify runs by default
+knox compile *.pdf --no-verify
 ```
 
 Each claim is given:
