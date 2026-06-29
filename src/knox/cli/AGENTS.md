@@ -115,6 +115,45 @@ not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a
 vault with a chosen config at creation time via `knox init <dir> --config <toml>`
 (the file is copied verbatim into the vault).
 
+### Progress bars
+
+**Recurring trap:** a progress bar looks "stuck," gets
+"fixed" with a plumbing change, and still looks stuck — because the real
+cause was a slow/hung backend operation, not the bar. This has happened
+repeatedly. Break the cycle with this diagnostic order:
+
+1. **Confirm the total is correct first.** A bar that shows "Captioning
+   images (171)" means the `reset_for_phase(total, ...)` call worked — the
+   plumbing is wired. A wrong total (e.g. 0) is a real plumbing bug; a
+   correct total is not.
+2. **Confirm the elapsed timer is advancing.** If `0:12:11` keeps climbing,
+   the bar is live and rendering — the loop is just blocked. A frozen
+   timer means the UI thread died (a different bug).
+3. **Then conclude: the bar is correct, the *work* is slow.** 0% with a
+   correct total + advancing timer = the first unit is still running. A
+   single VLM/LLM call that hangs until timeout (e.g. `glm-ocr` looping
+   on a degenerate token) will pin the bar at 0% for the full timeout
+   duration × retry count.
+
+Do NOT "fix" a bar that passes steps 1–2. Investigate the backend call
+that isn't completing. The fix lives in `src/knox/llm/`, the resolver,
+or the model config (`timeout`, `fallback_max_retries`), not in
+`_progress.py` or `_pipeline_helpers.py`.
+
+**Signal-path contract:** a phase advances only when the core tier calls
+`self._emit(phase, current, total, detail)`. The CLI handler in
+`_pipeline_helpers._make_progress_callback` maps `(current, total, detail)`
+to `tracker.reset_for_phase` / `tracker.update_progress`. When adding a
+sub-phase (like the VLM captioning burst inside resolve), emit a sentinel
+`(0, n, "<phase_name>")` to switch the bar, then `(i+1, n, "<detail>")`
+per unit. The handler must recognize both the sentinel `detail` string and
+the per-unit one.
+
+**Determinate vs indeterminate:** bars with a known `total` (parse,
+resolve, image-captioning) fill as units complete. Bars without one
+(compile, output) are indeterminate and convey activity via description
+updates, not percentage. Never fake a percentage on an indeterminate task.
+
 ### No direct core imports in thin wrappers
 
 Helper functions like `_send_to_review_queue`, `_annotate_provenance`,
