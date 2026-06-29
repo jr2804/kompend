@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -17,56 +18,41 @@ from knox.cli._progress import PipelineProgress
 from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
-    DEFAULT_COMPILE_FORMAT,
-    DEFAULT_COMPILER,
-    DEFAULT_IMAGE_MODE,
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
-    DEFAULT_PROMPT_BUDGET,
     DEFAULT_START_AT_TIER,
-    BudgetConcepts,
-    BudgetGenSegment,
     BypassReview,
+    CliSet,
     CompileFiles,
     CompileLint,
-    CompilerChoice,
     ConfigPath,
-    EmbedBatchSize,
     EmbedModel,
     ForceTier,
-    Frontmatter,
     Ignore,
-    ImageMode,
     IndexStore,
     InPlaceFlag,
-    KindOption,
     ListTiers,
     LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     LlmRoleModel,
-    LlmTimeout,
-    MemoryDecayThreshold,
     MemoryEnabled,
-    MemoryHalfLifeDays,
     NoCacheFlag,
     NoPrivacy,
     OnlineUrls,
-    OutputFlavor,
     ParseFiles,
     PrintElements,
     Private,
     Progress,
-    PromptBudget,
+    Provenance,
     ReviewMode,
     StartAtTier,
     SynthesizeFlag,
-    TargetFormat,
     UrlFile,
     Verify,
     VlmModel,
     Workers,
 )
-from knox.core.config import resolve_config
+from knox.core.config import coerce_config_value, resolve_config, validate_config_key
 from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, PATHS_WIKI_DIR
 from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
@@ -81,6 +67,31 @@ from knox.preprocessing.parsers._registry import build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
 logger = get_logger(__name__)
+
+
+def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
+    """Parse repeated ``--set key=value`` items into a coerced override dict.
+
+    Each value is validated against the known config schema and coerced to the
+    type declared in :data:`knox.core.config.DEFAULTS`. Unknown keys or bad
+    values abort the run with a clear error. The result is merged last by
+    :func:`build_cli_overrides` so it overrides every other CLI flag.
+    """
+    result: dict[str, Any] = {}
+    if not items:
+        return result
+    for item in items:
+        if "=" not in item:
+            raise typer.BadParameter(f"--set expects key=value, got: {item!r}")
+        key, _, val = item.partition("=")
+        key = key.strip()
+        if not validate_config_key(key):
+            raise typer.BadParameter(f"unknown config key: {key!r}")
+        try:
+            result[key] = coerce_config_value(val, key)
+        except ValueError as exc:
+            raise typer.BadParameter(f"--set {key}: {exc}") from exc
+    return result
 
 
 @app.command(name="parse")
@@ -122,43 +133,31 @@ def compile_cmd(
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     recursive: bool = False,
-    target_format: TargetFormat = DEFAULT_COMPILE_FORMAT,
-    image_mode: ImageMode = DEFAULT_IMAGE_MODE,
-    index_store: IndexStore = False,
     embed_model: EmbedModel = None,
     ignore: Ignore = None,
     show_progress: Progress = None,
     start_at_tier: StartAtTier = DEFAULT_START_AT_TIER,
-    no_cache: NoCacheFlag = False,
+    no_cache: NoCacheFlag = None,
     workers: Workers = 1,
-    force: ForceTier = False,
-    in_place: InPlaceFlag = False,
+    force: ForceTier = None,
+    in_place: InPlaceFlag = None,
     list_tiers: ListTiers = False,
-    prompt_budget: PromptBudget = DEFAULT_PROMPT_BUDGET,
-    review: ReviewMode = False,
+    review: ReviewMode = None,
     bypass_review: BypassReview = False,
-    provenance: bool = False,
-    private: Private = False,
-    no_privacy: NoPrivacy = False,
-    verify: Verify = False,
-    flavor: OutputFlavor = None,
-    frontmatter: Frontmatter = None,
-    kind: KindOption = None,
-    compiler: CompilerChoice = DEFAULT_COMPILER,
-    synthesize: SynthesizeFlag = False,
+    provenance: Provenance = None,
+    private: Private = None,
+    no_privacy: NoPrivacy = None,
+    verify: Verify = None,
+    synthesize: SynthesizeFlag = None,
+    index_store: IndexStore = None,
+    compile_lint: CompileLint = None,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
     vlm_model: VlmModel = None,
-    memory_enabled: MemoryEnabled = True,
-    memory_half_life_days: MemoryHalfLifeDays = 90.0,
-    memory_decay_threshold: MemoryDecayThreshold = 0.3,
+    memory_enabled: MemoryEnabled = None,
     llm_role_model: LlmRoleModel = None,
-    compile_lint: CompileLint = False,
-    budget_gen_segment: BudgetGenSegment = None,
-    budget_concepts: BudgetConcepts = None,
-    embed_batch_size: EmbedBatchSize = None,
-    llm_timeout: LlmTimeout = None,
+    cli_set: CliSet = None,
 ) -> None:
     """Compile documents into a knowledge wiki.
 
@@ -169,6 +168,11 @@ def compile_cmd(
 
     The sources directory and output directory default to 'sources' and 'wiki'
     in the current working directory respectively.
+
+    Output shape (format, flavor, frontmatter, kind, compiler, image_mode) and
+    tuning values (budgets, timeouts, decay params) are read from config —
+    override per-run with ``--set compile.<key>=<val>`` or permanently with
+    ``knox config set``.
     """
     if online_urls is None:
         online_urls = []
@@ -176,8 +180,6 @@ def compile_cmd(
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
-        target_format=target_format,
-        image_mode=image_mode,
         start_at_tier=start_at_tier,
         no_cache=no_cache,
         workers=workers,
@@ -190,24 +192,16 @@ def compile_cmd(
         synthesize=synthesize,
         index_store=index_store,
         compile_lint=compile_lint,
-        flavor=flavor,
-        frontmatter=frontmatter,
         ignore=ignore,
         llm_default_model=llm_default_model,
         vlm_model=vlm_model,
         memory_enabled=memory_enabled,
-        memory_half_life_days=memory_half_life_days,
-        memory_decay_threshold=memory_decay_threshold,
         llm_fallback_chain=llm_fallback_chain,
         llm_fallback_max_retries=llm_fallback_max_retries,
         llm_role_model=llm_role_model,
-        kind=kind,
-        compiler=compiler,
-        budget_gen_segment=budget_gen_segment,
-        budget_concepts=budget_concepts,
         embed_model=embed_model,
-        llm_timeout=llm_timeout,
         in_place_sources=in_place,
+        cli_set=parse_cli_set(cli_set),
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
@@ -304,12 +298,12 @@ def ingest_cmd(
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     recursive: bool = False,
-    image_mode: ImageMode = DEFAULT_IMAGE_MODE,
     ignore: Ignore = None,
-    no_cache: NoCacheFlag = False,
+    no_cache: NoCacheFlag = None,
     workers: Workers = 1,
-    in_place: InPlaceFlag = False,
+    in_place: InPlaceFlag = None,
     show_progress: Progress = None,
+    cli_set: CliSet = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
@@ -327,11 +321,11 @@ def ingest_cmd(
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
-        image_mode=image_mode,
         no_cache=no_cache,
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,
+        cli_set=parse_cli_set(cli_set),
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)

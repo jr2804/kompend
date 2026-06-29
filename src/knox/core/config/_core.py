@@ -151,6 +151,7 @@ DEFAULTS: dict[str, Any] = {
         "sources_dir": "sources",
         "output_dir": "wiki",
         "format": "markdown",
+        "compiler": "graph",
         "chunk_size": 1024,  # legacy fallback only — chunk target derived from context window
         "image_mode": "file",
         "mode": "full",
@@ -166,9 +167,9 @@ DEFAULTS: dict[str, Any] = {
         "bypass_review": False,
         "provenance": False,
         "private": False,
-        "verify": False,
-        "synthesize": False,
-        "index": False,
+        "verify": True,
+        "synthesize": True,
+        "index": True,
         "lint": False,
         "budget": {
             "concepts_per_batch": 8,

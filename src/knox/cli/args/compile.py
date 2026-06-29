@@ -7,9 +7,6 @@ from typing import Annotated
 
 import typer
 
-from knox.core.pipeline_defs import ImageMode as ImageModeEnum
-from knox.core.pipeline_defs import OutputFormat as OutputFormatEnum
-
 # ── `compile` command surface ───────────────────────────────────────────
 
 CompileFiles = Annotated[
@@ -36,23 +33,6 @@ UrlFile = Annotated[
     ),
 ]
 
-TargetFormat = Annotated[
-    OutputFormatEnum,
-    typer.Option(
-        "--format",
-        "-f",
-        help="Output format: markdown, json, typst.",
-    ),
-]
-
-ImageMode = Annotated[
-    ImageModeEnum,
-    typer.Option(
-        "--image-mode",
-        help="Image handling: file, base64.",
-    ),
-]
-
 Ignore = Annotated[
     list[str] | None,
     typer.Option(
@@ -62,10 +42,10 @@ Ignore = Annotated[
 ]
 
 IndexStore = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--index",
-        help="Index compiled wiki in zvec for semantic search.",
+        "--index/--no-index",
+        help="Index compiled wiki in zvec for semantic search. Default: on.",
     ),
 ]
 
@@ -74,17 +54,6 @@ EmbedModel = Annotated[
     typer.Option(
         "--embed-model",
         help="Embedding model for zvec indexing.",
-    ),
-]
-
-EmbedBatchSize = Annotated[
-    int | None,
-    typer.Option(
-        "--embed-batch-size",
-        help="Batch size for embedding generation during indexing.",
-        min=1,
-        max=1000,
-        rich_help_panel="Advanced",
     ),
 ]
 
@@ -99,33 +68,19 @@ Frontmatter = Annotated[
 ]
 
 SynthesizeFlag = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--synthesize",
-        help="Also generate an LLM-synthesized overview.md page.",
-    ),
-]
-
-# ── N13: multi-flavor Markdown via rumdl ────────────────────────────────
-
-OutputFlavor = Annotated[
-    str | None,
-    typer.Option(
-        "--flavor",
-        help=(
-            "Markdown output flavor: obsidian, gfm, mkdocs, mdx, quarto, myst, "
-            "standard, pandoc, kramdown, azure_devops. "
-            "Auto-detected from output dir when not set."
-        ),
+        "--synthesize/--no-synthesize",
+        help="Also generate an LLM-synthesized overview.md page. Default: on.",
     ),
 ]
 
 # ── N1 compile --lint integration ───────────────────────────────────────
 
 CompileLint = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--lint",
+        "--lint/--no-lint",
         help="Run lint after compilation and report quality issues.",
     ),
 ]

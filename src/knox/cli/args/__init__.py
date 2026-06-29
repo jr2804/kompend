@@ -14,12 +14,9 @@ from __future__ import annotations
 # Common/global arguments
 from .common import (
     APP_NAME_UPPERCASE,
-    DEFAULT_COMPILE_FORMAT,
-    DEFAULT_COMPILER,
-    DEFAULT_IMAGE_MODE,
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
-    DEFAULT_PROMPT_BUDGET,
     DEFAULT_START_AT_TIER,
+    CliSet,
     ConfigPath,
     JsonOutput,
     Progress,
@@ -32,16 +29,12 @@ from .common import (
 from .compile import (
     CompileFiles,
     CompileLint,
-    EmbedBatchSize,
     EmbedModel,
     Frontmatter,
     Ignore,
-    ImageMode,
     IndexStore,
     OnlineUrls,
-    OutputFlavor,
     SynthesizeFlag,
-    TargetFormat,
     UrlFile,
 )
 
@@ -49,7 +42,7 @@ from .compile import (
 from .config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 
 # Init command
-from .init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
+from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
 
 # Memory command
 from .memory import (
@@ -62,14 +55,10 @@ from .memory import (
 
 # Other commands (lint, serve, organize, capture, learn, ingest, llm, etc.)
 from .other import (
-    BudgetConcepts,
-    BudgetGenSegment,
     BypassReview,
     CaptureText,
-    CompilerChoice,
     IncludePrivate,
     IngestTarget,
-    KindOption,
     LearnTags,
     LearnText,
     LintDryRun,
@@ -85,10 +74,7 @@ from .other import (
     LlmFallbackChain,
     LlmFallbackMaxRetries,
     LlmRoleModel,
-    LlmTimeout,
-    MemoryDecayThreshold,
     MemoryEnabled,
-    MemoryHalfLifeDays,
     NoPrivacy,
     NoUserTracking,
     OrganizeCollapseSingle,
@@ -96,7 +82,6 @@ from .other import (
     OrganizeMaxDepth,
     OrganizeMinSubcategories,
     Private,
-    PromptBudget,
     Provenance,
     ReviewMode,
     ServeHost,
@@ -134,45 +119,37 @@ from .query import (
 __all__ = [
     # Common
     "APP_NAME_UPPERCASE",
-    "DEFAULT_COMPILER",
-    "DEFAULT_COMPILE_FORMAT",
-    "DEFAULT_IMAGE_MODE",
     "DEFAULT_LLM_FALLBACK_MAX_RETRIES",
-    "DEFAULT_PROMPT_BUDGET",
     "DEFAULT_START_AT_TIER",
-    "BudgetConcepts",
-    "BudgetGenSegment",
     # Other
     "BypassReview",
     "CaptureText",
+    "CliSet",
     # Compile
     "CompileFiles",
     "CompileLint",
-    "CompilerChoice",
     # Config
     "ConfigGlobalOpt",
     "ConfigKeyArg",
     "ConfigPath",
     "ConfigValueArg",
-    "EmbedBatchSize",
     "EmbedModel",
     # Pipeline
     "ForceTier",
     "Frontmatter",
     "Ignore",
-    "ImageMode",
     "InPlaceFlag",
     "IncludePrivate",
     "IndexStore",
     "IngestTarget",
     # Init
     "InitBare",
+    "InitConfig",
     "InitForce",
     "InitGit",
     "InitKeepCache",
     "InitTarget",
     "JsonOutput",
-    "KindOption",
     "LearnTags",
     "LearnText",
     "LintDryRun",
@@ -189,13 +166,10 @@ __all__ = [
     "LlmFallbackChain",
     "LlmFallbackMaxRetries",
     "LlmRoleModel",
-    "LlmTimeout",
     # Memory
     "MemoryAnswer",
-    "MemoryDecayThreshold",
     "MemoryEnabled",
     "MemoryFeedback",
-    "MemoryHalfLifeDays",
     "MemoryLimit",
     "MemoryQuery",
     "MemoryTopK",
@@ -207,13 +181,11 @@ __all__ = [
     "OrganizeDryRun",
     "OrganizeMaxDepth",
     "OrganizeMinSubcategories",
-    "OutputFlavor",
     # Parse
     "ParseFiles",
     "PrintElements",
     "Private",
     "Progress",
-    "PromptBudget",
     "Provenance",
     # Query
     "QueryAdaptive",
@@ -231,7 +203,6 @@ __all__ = [
     "ServePort",
     "StartAtTier",
     "SynthesizeFlag",
-    "TargetFormat",
     "UrlFile",
     "Verbose",
     "Verify",

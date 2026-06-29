@@ -13,14 +13,8 @@ from typing import Any
 
 from knox.core.config import resolve_config
 from knox.core.config.keys import (
-    COMPILE_BUDGET_CONCEPTS_PER_BATCH,
-    COMPILE_BUDGET_GEN_OUTPUT_MAX,
-    COMPILE_COMPILER,
-    COMPILE_EMBEDDING_BATCH_SIZE,
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
-    COMPILE_FORMAT,
-    COMPILE_IMAGE_MODE,
     COMPILE_IN_PLACE_SOURCES,
     COMPILE_INDEX,
     COMPILE_LINT,
@@ -28,14 +22,9 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_FALLBACK_MAX_RETRIES,
     COMPILE_LLM_ROLE_MODELS,
-    COMPILE_LLM_TIMEOUT,
     COMPILE_LLM_VLM_MODEL,
-    COMPILE_MEMORY_DECAY_THRESHOLD,
     COMPILE_MEMORY_ENABLED,
-    COMPILE_MEMORY_HALF_LIFE_DAYS,
     COMPILE_NO_CACHE,
-    COMPILE_OUTPUT_FLAVOR,
-    COMPILE_PAGE_KIND,
     COMPILE_PRIVATE,
     COMPILE_PROVENANCE,
     COMPILE_REVIEW,
@@ -99,8 +88,6 @@ def resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:  # noqa: A
 def build_cli_overrides(
     *,
     wiki_dir: str | None = None,
-    target_format: str | None = None,
-    image_mode: str | None = None,
     start_at_tier: str | None = None,
     stop_at_tier: str | None = None,
     no_cache: bool | None = None,
@@ -114,49 +101,37 @@ def build_cli_overrides(
     synthesize: bool | None = None,
     index_store: bool | None = None,
     compile_lint: bool | None = None,
-    flavor: str | None = None,
-    frontmatter: list[str] | None = None,
     ignore: list[str] | None = None,
     llm_default_model: str | None = None,
     vlm_model: str | None = None,
     memory_enabled: bool | None = None,
-    memory_half_life_days: float | None = None,
-    memory_decay_threshold: float | None = None,
     llm_fallback_chain: list[str] | None = None,
     llm_fallback_max_retries: int | None = None,
     llm_role_model: list[str] | None = None,
-    kind: str | None = None,
-    compiler: str | None = None,
-    budget_concepts: int | None = None,
-    budget_gen_segment: int | None = None,
     embed_model: str | None = None,
-    embed_batch_size: int | None = None,
-    llm_timeout: float | None = None,
     in_place_sources: bool | None = None,
     no_user_tracking: bool | None = None,
+    cli_set: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a flat dotted-key dict of non-None CLI overrides."""
+    """Build a flat dotted-key dict of non-None CLI overrides.
+
+    Output-shape and tuning values (format, flavor, frontmatter, kind,
+    compiler, image_mode, budgets, timeouts, decay params) are NOT accepted
+    here — they are config-only, set via ``knox config set`` or ``--set``.
+    The escape hatch is *cli_set*: values already coerced by
+    :func:`coerce_config_value` for a ``--set key=val`` option, merged last so
+    it overrides everything else below CLI.
+    """
     overrides: dict[str, Any] = {}
 
     _simple: list[tuple[str, Any]] = [
         (PATHS_WIKI_DIR, wiki_dir),
-        (COMPILE_FORMAT, target_format),
-        (COMPILE_IMAGE_MODE, image_mode),
         (COMPILE_START_AT_TIER, start_at_tier),
         (COMPILE_STOP_AT_TIER, stop_at_tier),
         (COMPILE_WORKERS, workers),
-        (COMPILE_OUTPUT_FLAVOR, flavor),
         (COMPILE_LLM_DEFAULT_MODEL, llm_default_model),
         (COMPILE_LLM_VLM_MODEL, vlm_model),
-        (COMPILE_MEMORY_HALF_LIFE_DAYS, memory_half_life_days),
-        (COMPILE_MEMORY_DECAY_THRESHOLD, memory_decay_threshold),
-        (COMPILE_PAGE_KIND, kind),
-        (COMPILE_COMPILER, compiler),
-        (COMPILE_BUDGET_CONCEPTS_PER_BATCH, budget_concepts),
-        (COMPILE_BUDGET_GEN_OUTPUT_MAX, budget_gen_segment),
         (COMPILE_EMBEDDING_MODEL, embed_model),
-        (COMPILE_EMBEDDING_BATCH_SIZE, embed_batch_size),
-        (COMPILE_LLM_TIMEOUT, llm_timeout),
     ]
     for key, val in _simple:
         if val is not None:
@@ -176,11 +151,11 @@ def build_cli_overrides(
         (COMPILE_MEMORY_ENABLED, memory_enabled),
     ]
     for key, val in _flags:
-        if val:
+        if val is not None:
             overrides[key] = val
 
-    if no_privacy:
-        overrides[TRUST_PRIVACY_FILTER] = False
+    if no_privacy is not None:
+        overrides[TRUST_PRIVACY_FILTER] = not no_privacy
     if no_user_tracking:
         overrides[TRUST_USER_TRACKING] = False
     if llm_fallback_chain is not None:
@@ -195,4 +170,7 @@ def build_cli_overrides(
                 parsed[role.strip()] = model.strip()
         if parsed:
             overrides[COMPILE_LLM_ROLE_MODELS] = parsed
+    if cli_set:
+        # --set values are already coerced and validated; merged last = highest precedence.
+        overrides.update(cli_set)
     return overrides

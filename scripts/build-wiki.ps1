@@ -87,7 +87,8 @@ $InitArgs = @(
     $OutputPath,
     "--bare",
     "--force",
-    "--keep-cache"
+    "--keep-cache",
+    "--config",      $ConfigPath
 )
 
 Write-Host ""
@@ -111,8 +112,7 @@ $IngestArgs = @(
     "ingest",
     $InputFiles,
     "--url-file",    $UrlFile,
-    "--workers",     "1",
-    "--config",      $ConfigPath
+    "--workers",     "1"
 )
 
 # $Force no longer forces re-parse. The cache-skip logic in ingest
@@ -138,8 +138,7 @@ $DoctorArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
     "doctor",
-    "--verbose",
-    "--config", $ConfigPath
+    "--verbose"
 )
 
 Write-Host ($DoctorArgs -join " ") -ForegroundColor DarkGray
@@ -163,12 +162,7 @@ $CompileArgs = @(
     "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
     "--vlm-model",        "",
-    "--flavor",           "obsidian",
-    "--compiler",         "wicer",
-    "--workers",          "1",
-    "--verify",
-    "--index", "--synthesize", "--progress",
-    "--config",           $ConfigPath
+    "--workers",          "1"
 )
 
 if ($EmbedModel) {
@@ -196,8 +190,7 @@ $LintArgs = @(
     "lint", "run",
     "--llm",
     "--llm-default-model", $LLMModel,
-    "--fix",
-    "--config", $ConfigPath
+    "--fix"
 )
 
 Write-Host ($LintArgs -join " ") -ForegroundColor DarkGray
@@ -216,8 +209,7 @@ Write-Host "=== Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
 $GapsArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "lint", "gaps",
-    "--config", $ConfigPath
+    "lint", "gaps"
 )
 
 Write-Host ($GapsArgs -join " ") -ForegroundColor DarkGray
@@ -235,8 +227,7 @@ $RemediateArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
     "lint", "remediate",
-    "--llm-default-model", $LLMModel,
-    "--config", $ConfigPath
+    "--llm-default-model", $LLMModel
 )
 
 Write-Host ($RemediateArgs -join " ") -ForegroundColor DarkGray
@@ -253,8 +244,7 @@ $HistoryArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
     "lint", "history",
-    "--last", "5",
-    "--config", $ConfigPath
+    "--last", "5"
 )
 
 Write-Host ($HistoryArgs -join " ") -ForegroundColor DarkGray

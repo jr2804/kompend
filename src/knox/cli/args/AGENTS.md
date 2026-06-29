@@ -68,6 +68,36 @@ ChunkSize = Annotated[
 - **Default value** is a module constant, never a literal
 - **Help text** is mandatory and describes what the flag does
 
+### Bool flag pattern
+
+Two flavors, chosen by whether the flag has a config default:
+
+**Config-backed feature toggle → tri-state `bool | None` with `--flag/--no-flag`:**
+
+```python
+Verify = Annotated[
+    bool | None,
+    typer.Option(
+        "--verify/--no-verify",
+        help="... Default: on; --no-verify skips.",
+    ),
+]
+```
+
+- Default `None` means "not passed" — the resolved value comes from
+  `knox.core.config.DEFAULTS`, never from the flag.
+- Both directions override config: `--flag` → True, `--no-flag` → False.
+- `build_cli_overrides` (in `_shared.py`) uses `if val is not None:` so a
+  `False` from `--no-X` is honored, not swallowed.
+- Exception: negative-idiomatic flags keep the negative form primary —
+  `--no-cache/--cache`, `--no-privacy/--privacy`.
+
+**One-shot action → plain `bool` with `--flag` (no `--no-*`):**
+
+`verbose`, `json`, `fix`, `dry-run`, `open`, `git`, `bare`, `list-tiers`,
+`elements`, `raw`, `adaptive`, `remember`. These are off by default and
+  represent a single action this run, not a persistent toggle.
+
 ### Reuse via re-export
 
 `__init__.py` re-exports all type aliases with `from module import X as X` for:

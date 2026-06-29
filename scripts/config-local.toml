@@ -27,6 +27,10 @@ dim = 768
 flavor = "obsidian"
 max_related_links = 15
 
+# Compiler backend: graph | wicer (iterative compile-evaluate-refine loop)
+[compile]
+compiler = "wicer"
+
 # ── Paths ───────────────────────────────────────────────────────────────
 [paths]
 sources_dir = "sources"

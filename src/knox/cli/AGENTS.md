@@ -86,10 +86,34 @@ See `src/knox/cli/cmds/AGENTS.md` for detailed command organization rules.
 
 Every CLI flag that maps to a config key must:
 
-1. Be listed in `_build_cli_overrides()` with the dotted config key.
+1. Be listed in `build_cli_overrides()` with the dotted config key.
 2. The command function passes the override to `resolve_config()`.
 3. The resolved value comes from `cfg.get("dotted.key")`, never from the raw
    CLI parameter directly (unless it's purely a CLI concept like `--json`).
+4. Use tri-state `bool | None` + `--flag/--no-flag` for config-backed toggles
+   (see `args/AGENTS.md`: Bool flag pattern). Override with `if val is not None:`
+   so `--no-X` is honored — never bare `if val:` (swallows False).
+
+### Config-only values (no CLI flag)
+
+Output-shape values (`format`, `flavor`, `frontmatter`, `kind`, `compiler`,
+`image_mode`) and tuning numbers (`budget.*`, `llm.timeout`, `embedding.batch_size`,
+`memory_half_life_days`, `memory_decay_threshold`) have **no CLI flag** — they
+are set-once vault properties. Change them with `knox config set <key> <val>`
+(persistent) or override one run with `--set <key>=<val>` (ephemeral). Never
+re-add a flag for these — use the `--set` escape hatch instead.
+
+`--set` is parsed by `parse_cli_set()` (in `cmds/pipeline.py`): each `key=value`
+is validated via `validate_config_key()` and coerced via `coerce_config_value()`,
+then merged last by `build_cli_overrides(cli_set=...)` so it wins over every
+other flag.
+
+### Vault config discovery
+
+`knox --wiki-dir <vault> ...` reads *that* vault's config (`.knox/config.toml`),
+not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a
+vault with a chosen config at creation time via `knox init <dir> --config <toml>`
+(the file is copied verbatim into the vault).
 
 ### No direct core imports in thin wrappers
 

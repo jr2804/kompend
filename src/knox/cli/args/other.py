@@ -6,8 +6,6 @@ from typing import Annotated
 
 import typer
 
-from knox.core.pipeline_defs import Compiler
-
 from .common import APP_NAME_UPPERCASE
 
 # ── N1 lint command ────────────────────────────────────────────────────
@@ -177,50 +175,12 @@ IngestTarget = Annotated[
     ),
 ]
 
-# ── Q22 capture/learn/ingest commands (budget and LLM) ────────────────────
-
-PromptBudget = Annotated[
-    int,
-    typer.Option(
-        "--prompt-budget",
-        help="Maximum total chars of source content per concept (N10 fair-share).",
-        min=1,
-    ),
-]
-
-BudgetGenSegment = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-gen-segment",
-        help="Generation output max tokens per concept.",
-        rich_help_panel="Advanced",
-    ),
-]
-
-BudgetConcepts = Annotated[
-    int | None,
-    typer.Option(
-        "--budget-concepts",
-        help="Number of concepts per generation batch.",
-        rich_help_panel="Advanced",
-    ),
-]
-
-LlmTimeout = Annotated[
-    float | None,
-    typer.Option(
-        "--llm-timeout",
-        help="LLM call timeout in seconds.",
-        rich_help_panel="Advanced",
-    ),
-]
-
 # ── N8 review queue ─────────────────────────────────────────────────────
 
 ReviewMode = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--review",
+        "--review/--no-review",
         help="Send generated pages to the review queue instead of the output dir.",
     ),
 ]
@@ -236,26 +196,26 @@ BypassReview = Annotated[
 # ── N4 provenance / Q21 trust / verification ────────────────────────────
 
 Provenance = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--provenance",
+        "--provenance/--no-provenance",
         help="Emit claim-level ^[source:42-58] citations in generated pages.",
     ),
 ]
 
 Private = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--private",
+        "--private/--no-private",
         help="Mark generated pages as private (excluded from default search).",
     ),
 ]
 
 NoPrivacy = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--no-privacy",
-        help="Disable privacy redaction (secrets/PII patterns kept as-is).",
+        "--no-privacy/--privacy",
+        help="Disable privacy redaction (secrets/PII patterns kept as-is). Default: filter on.",
     ),
 ]
 
@@ -268,10 +228,10 @@ NoUserTracking = Annotated[
 ]
 
 Verify = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--verify",
-        help="Run grounding verification on each claim (opt-in, costly).",
+        "--verify/--no-verify",
+        help="Run grounding verification on each claim. Default: on; --no-verify skips.",
     ),
 ]
 
@@ -280,35 +240,6 @@ IncludePrivate = Annotated[
     typer.Option(
         "--include-private",
         help="Include private pages in search/queries.",
-    ),
-]
-
-# ── N9 schema-driven compilation ────────────────────────────────────────
-
-KindOption = Annotated[
-    str | None,
-    typer.Option(
-        "--kind",
-        help=(
-            "Page kind for schema-driven compilation. "
-            "Built-in kinds: concept, entity, comparison, overview, custom. "
-            "When set, pages are compiled and validated against the kind's schema. "
-            f"Env: {APP_NAME_UPPERCASE}_KIND."
-        ),
-        envvar=f"{APP_NAME_UPPERCASE}_KIND",
-    ),
-]
-
-CompilerChoice = Annotated[
-    Compiler,
-    typer.Option(
-        "--compiler",
-        help=(
-            "Compiler backend: graph (default, two-phase extract-then-generate) "
-            "or wicer (iterative compile-evaluate-refine loop). "
-            f"Env: {APP_NAME_UPPERCASE}_COMPILER."
-        ),
-        envvar=f"{APP_NAME_UPPERCASE}_COMPILER",
     ),
 ]
 
@@ -343,7 +274,7 @@ VlmModel = Annotated[
 ]
 
 MemoryEnabled = Annotated[
-    bool,
+    bool | None,
     typer.Option(
         "--memory/--no-memory",
         help=(
@@ -352,31 +283,6 @@ MemoryEnabled = Annotated[
             f"Env: {APP_NAME_UPPERCASE}_MEMORY_ENABLED."
         ),
         envvar=f"{APP_NAME_UPPERCASE}_MEMORY_ENABLED",
-    ),
-]
-
-MemoryHalfLifeDays = Annotated[
-    float,
-    typer.Option(
-        "--memory-half-life-days",
-        help=(
-            "Retention half-life in days for the memory decay curve. "
-            "Nodes whose retention drops below the decay threshold are flagged as stale. "
-            f"Env: {APP_NAME_UPPERCASE}_MEMORY_HALF_LIFE_DAYS."
-        ),
-        min=1.0,
-        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_HALF_LIFE_DAYS",
-    ),
-]
-
-MemoryDecayThreshold = Annotated[
-    float,
-    typer.Option(
-        "--memory-decay-threshold",
-        help=(f"Retention value (0.0-1.0) below which a node is considered stale. Env: {APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD."),
-        min=0.0,
-        max=1.0,
-        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_DECAY_THRESHOLD",
     ),
 ]
 

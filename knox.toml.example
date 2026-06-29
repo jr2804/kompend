@@ -28,6 +28,9 @@ file = "NOTES.md"
 # Output format: markdown | json | typst
 format = "markdown"
 
+# Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
+compiler = "graph"
+
 # Chunk size in tokens (atomic elements like tables are never split)
 chunk_size = 1024
 

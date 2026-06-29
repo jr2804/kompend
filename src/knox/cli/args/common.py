@@ -6,20 +6,12 @@ from typing import Annotated
 
 import typer
 
-from knox.core.pipeline_defs import Compiler
-from knox.core.pipeline_defs import ImageMode as ImageModeEnum
-from knox.core.pipeline_defs import OutputFormat as OutputFormatEnum
-
 # Application name used for environment variable prefixes.
 APP_NAME_UPPERCASE = "KNOX"
 
 # ── Defaults ────────────────────────────────────────────────────────────
 
-DEFAULT_COMPILE_FORMAT: OutputFormatEnum = OutputFormatEnum.MARKDOWN
-DEFAULT_IMAGE_MODE: ImageModeEnum = ImageModeEnum.FILE
-DEFAULT_PROMPT_BUDGET: int = 200_000
 DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
-DEFAULT_COMPILER: Compiler = Compiler.GRAPH
 DEFAULT_START_AT_TIER: str = "index"
 
 
@@ -78,5 +70,19 @@ Progress = Annotated[
     typer.Option(
         "--progress/--no-progress",
         help="Show rich progress bars (auto-detected for TTY).",
+    ),
+]
+
+CliSet = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--set",
+        help=(
+            "Override a config value for this run only (repeatable). "
+            "Format: --set compile.verify=false. Values are coerced to the "
+            "key's type. Does NOT persist — use `knox config set` for a "
+            "permanent change."
+        ),
+        rich_help_panel="Overrides",
     ),
 ]

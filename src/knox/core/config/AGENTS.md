@@ -66,8 +66,10 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
    "compile.cache.ttl": "KNOX_CACHE_TTL",
    ```
 
-3. **Add to `_build_cli_overrides()`** in `commands.py` if there is a CLI flag.
-   Map the CLI parameter name to the same dotted key used in `DEFAULTS`.
+3. **Do NOT add a CLI flag for output-shape or tuning keys.** Those are
+   config-only (set via `knox config set` or `--set`). Only input-set,
+   pipeline-control, model-swap, and bool-toggle flags belong on the CLI —
+   see `cli/args/AGENTS.md`.
 4. **Update `knox.toml.example`** — add the new key with a comment explaining
    valid values. Keep the same section structure as `DEFAULTS`.
    The sync test (`TestKnoxDotExampleSync`) will fail if a key in `DEFAULTS`

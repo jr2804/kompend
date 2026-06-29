@@ -25,10 +25,10 @@ StartAtTier = Annotated[
 ]
 
 NoCacheFlag = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--no-cache",
-        help="Bypass the parse cache and re-parse every source.",
+        "--no-cache/--cache",
+        help="Bypass the parse cache and re-parse every source. Default: cache on.",
     ),
 ]
 
@@ -43,17 +43,17 @@ Workers = Annotated[
 ]
 
 ForceTier = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--force",
+        "--force/--no-force",
         help="Re-process every source regardless of persisted tier state.",
     ),
 ]
 
 InPlaceFlag = Annotated[
-    bool,
+    bool | None,
     typer.Option(
-        "--in-place",
+        "--in-place/--no-in-place",
         help="Keep source files at their original location instead of copying to sources/.",
     ),
 ]
