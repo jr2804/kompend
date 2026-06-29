@@ -8,6 +8,7 @@ run = [
 	"bun x skills add AlmogBaku/debug-skill -a universal -y",
 	"bun x skills add https://github.com/FlorianBruniaux/claude-code-ultimate-guide/tree/main/examples -s rtk-optimizer -a universal -y",
 	"bun x skills add safishamsi/graphify -a universal -y",
+	"bun x skills add shadcn/improve -a universal -y",
 	#"bun x skills add https://github.com/ChuprinaDaria/Vibecode-Cleaner-Fartrun.git -s fartrun -a universal -y",
 	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-sloppylint -a universal -y",
 	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-ai-slop-detector -a universal -y",
