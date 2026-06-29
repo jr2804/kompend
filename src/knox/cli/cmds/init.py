@@ -5,21 +5,21 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 
+import jinja2
 import typer
 
 from knox.cli.app import app
 from knox.cli.args.init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
 from knox.logging import get_console, get_err_console, get_logger
-from knox.scaffolding import ScaffoldError, find_existing_project, scaffold_project
+from knox.scaffolding import TEMPLATE_NEXT_STEPS, ScaffoldError, find_existing_project, scaffold_project
 
 logger = get_logger(__name__)
 
 
-_NEXT_STEPS_RESOURCE: str = "next_steps.txt"
-
-
-def _load_next_steps() -> str:
-    return resources.files("knox.scaffolding.templates").joinpath(_NEXT_STEPS_RESOURCE).read_text(encoding="utf-8")
+def _load_next_steps(sources_dir: str) -> str:
+    """Load and render the next-steps template with the configured sources_dir."""
+    content = resources.files("knox.scaffolding.templates").joinpath(TEMPLATE_NEXT_STEPS).read_text(encoding="utf-8")
+    return jinja2.Template(content, keep_trailing_newline=True).render(sources_dir=sources_dir)
 
 
 @app.command(name="init", help="Scaffold a new KNOX wiki project.")
@@ -58,4 +58,4 @@ def init(
     if result.git_initialised:
         get_console().print("  + git init: initial commit created")
     get_console().print("")
-    get_console().print(_load_next_steps(), end="")
+    get_console().print(_load_next_steps(result.sources_dir or "sources"), end="")

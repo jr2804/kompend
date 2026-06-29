@@ -481,7 +481,28 @@ class WikiPipeline:
             metadata=data.get(WikiField.METADATA, {}),
         )
 
-    def _parse_and_chunk(self) -> list[Any]:  # noqa: PLR0915 — nested _process_one plus chunk cache logic
+    def _load_dedup_state(self) -> tuple[set[str], dict[str, dict[str, Any]]]:
+        """Best-effort load of dedup store.
+
+        Returns ``(dedup_skip, dedup_similar)``.
+        """
+        dedup_skip: set[str] = set()
+        dedup_similar: dict[str, dict[str, Any]] = {}
+        try:
+            ds = DedupStore(self._dedup_store_path())
+            ds.load()
+            if ds.is_fresh():
+                for slug in ds.slugs:
+                    entry = ds.get(slug, {})
+                    if entry.get("verdict") == "identical":
+                        dedup_skip.add(slug)
+                    elif entry.get("verdict") == "similar":
+                        dedup_similar[slug] = entry
+        except Exception:
+            logger.debug("Dedup store not available — skipping dedup check", exc_info=True)
+        return dedup_skip, dedup_similar
+
+    def _parse_and_chunk(self) -> list[Any]:  # noqa: PLR0915
         """Parse documents and chunk them, with optional caching and parallelism.
 
         When tier state is available, sources that already match the
@@ -499,29 +520,13 @@ class WikiPipeline:
 
         self._emit("parse", 0, len(source_files), "starting")
 
-        # ── Load dedup store (best-effort) ───────────────────────────
-        dedup_skip: set[str] = set()
-        dedup_similar: dict[str, dict[str, Any]] = {}
-        try:
-            ds = DedupStore(self._dedup_store_path())
-            ds.load()
-            if ds.is_fresh():
-                for slug in ds.slugs:
-                    entry = ds.get(slug, {})
-                    if entry.get("verdict") == "identical":
-                        dedup_skip.add(slug)
-                    elif entry.get("verdict") == "similar":
-                        dedup_similar[slug] = entry
-                if dedup_skip:
-                    logger.info("Dedup: %d source(s) flagged as identical — will skip", len(dedup_skip))
-                    source_files = [f for f in source_files if f.stem not in dedup_skip]
-                    if not source_files:
-                        self._emit("parse", 0, 0, "all skipped by dedup")
-                        return []
-            else:
-                logger.debug("Dedup store stamp mismatch or missing — skipping dedup check")
-        except Exception:
-            logger.debug("Dedup store not available — skipping dedup check", exc_info=True)
+        dedup_skip, dedup_similar = self._load_dedup_state()
+        if dedup_skip:
+            logger.info("Dedup: %d source(s) flagged as identical — will skip", len(dedup_skip))
+            source_files = [f for f in source_files if f.stem not in dedup_skip]
+            if not source_files:
+                self._emit("parse", 0, 0, "all skipped by dedup")
+                return []
 
         workers = max(1, self.config.workers)
         use_cache = not self.config.no_cache
@@ -533,29 +538,29 @@ class WikiPipeline:
             stem = source_file.stem
             content_hash = ""
 
-            # 1. Load or parse the document.
             if use_cache and not self.config.force:
                 content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
             parsed = self._load_cache(source_file) if use_cache else None
+
+            if parsed is None and use_cache and not self.config.force:
+                cached_entry = state.entries.get(stem)
+                if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
+                    parsed = self._load_cache(source_file)
+
             if parsed is None:
-                if use_cache and not self.config.force:
-                    cached_entry = state.entries.get(stem)
-                    if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
-                        parsed = self._load_cache(source_file)
-                if parsed is None:
-                    if not self.parser:
-                        return None
-                    try:
-                        parsed = self.parser.parse(source_file)
-                        _ = len(parsed.elements)
-                    except Exception:
-                        logger.exception("Failed to parse %s", source_file)
-                        return None
-                    if use_cache:
-                        self._save_cache(source_file, parsed)
-                        if not content_hash:
-                            content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+                if not self.parser:
+                    return None
+                try:
+                    parsed = self.parser.parse(source_file)
+                    _ = len(parsed.elements)
+                except Exception:
+                    logger.exception("Failed to parse %s", source_file)
+                    return None
+                if use_cache:
+                    self._save_cache(source_file, parsed)
+                    if not content_hash:
+                        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
             if self.config.privacy_filter:
                 self._apply_privacy_filter(parsed.elements)
