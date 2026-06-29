@@ -153,15 +153,12 @@ if (-not $WhatIf) {
 
 # ── Stage 2: Compile (T2+T3+T4+T5: chunk + resolve + compile + output) ─
 Write-Host ""
-Write-Host "=== Stage 2: Compile (chunk + resolve + compile + output) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 2: Compile (index + chunk + resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
     "uv", "run", "knox",
     "--wiki-dir",         $OutputPath,
     "compile",
-    $InputFiles,
-    "--start-at-tier",    "chunk",
     "--llm-default-model", $LLMModel,
-    "--vlm-model",        "",
     "--workers",          "1"
 )
 
@@ -177,6 +174,59 @@ if (-not $WhatIf) {
     & $CompileArgs[0] $CompileArgs[1..($CompileArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
         Write-Error "knox compile failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+}
+
+# ── Stage 2b: Ingest batch 2 (incremental sources) ──────────────────
+Write-Host ""
+Write-Host "=== Stage 2b: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
+$Batch2Dir  = Join-Path $ProjectRoot "tests/data/batch2"
+$Batch2Urls = Join-Path $Batch2Dir "urls.txt"
+$Ingest2Args = @(
+    "uv", "run", "knox",
+    "--wiki-dir",    $OutputPath,
+    "ingest",
+    $Batch2Dir,
+    "--url-file",    $Batch2Urls,
+    "--workers",     "1"
+)
+
+Write-Host ""
+Write-Host ($Ingest2Args -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $Ingest2Args[0] $Ingest2Args[1..($Ingest2Args.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "knox ingest (batch 2) failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+}
+
+# ── Stage 2c: Re-compile with batch 2 content ────────────────────────
+Write-Host ""
+Write-Host "=== Stage 2c: Re-compile (with batch 2 content) ===" -ForegroundColor Cyan
+$Compile2Args = @(
+    "uv", "run", "knox",
+    "--wiki-dir",         $OutputPath,
+    "compile",
+    "--llm-default-model", $LLMModel,
+    "--workers",          "1"
+)
+
+if ($EmbedModel) {
+    $Compile2Args += @("--embed-model", $EmbedModel)
+}
+
+Write-Host ""
+Write-Host ($Compile2Args -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $WhatIf) {
+    & $Compile2Args[0] $Compile2Args[1..($Compile2Args.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "knox compile (batch 2) failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
