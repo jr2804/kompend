@@ -1,14 +1,14 @@
 # Wiki
 
 This directory is a KNOX wiki project. Sources are read from
-`sources/`, the compiled wiki is written to `wiki/`, and runtime state
-lives in `.knox/`.
+`{{ sources_dir }}/`, the compiled wiki is written to `{{ output_dir }}/`, and
+runtime state lives in `.knox/`.
 
 ## Quickstart
 
-1. Drop source documents into `sources/`.
+1. Drop source documents into `{{ sources_dir }}/`.
 2. Run `knox compile` to build the wiki.
-3. Inspect the output in `wiki/`.
+3. Inspect the output in `{{ output_dir }}/`.
 
 ## Configuration
 
@@ -27,8 +27,8 @@ To inspect or modify configuration values from the CLI:
 
 | Path           | Purpose                                          |
 | -------------- | ------------------------------------------------ |
-| `sources/`     | Input documents (PDF, DOCX, MD, …)               |
-| `wiki/`        | Compiled output (Markdown + Obsidian frontmatter)|
+| `{{ sources_dir }}/` | Input documents (PDF, DOCX, MD, …)               |
+| `{{ output_dir }}/`  | Compiled output (Markdown + Obsidian frontmatter)|
 | `.knox/`       | Internal state (cache, config) — gitignored      |
 | `.knox/config.toml` | Project configuration (created by `knox init`) |
 | `NOTES.md`     | User-authored notes (read-only to KNOX)          |

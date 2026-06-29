@@ -46,6 +46,29 @@ class TestScaffoldProject:
         assert "wiki/" in content
         assert ".knox/cache/" in content
 
+    def test_renders_templates_with_custom_paths(self, tmp_path: Path) -> None:
+        """Templates reflect config paths.sources_dir / output_dir, not defaults."""
+        target = tmp_path / "wiki"
+        config_file = tmp_path / "custom.toml"
+        config_file.write_text('[paths]\nsources_dir = "my_docs"\noutput_dir = "my_output"\n', encoding="utf-8")
+        result = scaffold_project(target, force=True, config_file=config_file)
+
+        # Directories created from config
+        assert (target / "my_docs").is_dir()
+        assert (target / "my_output").is_dir()
+        assert result.sources_dir == "my_docs"
+        assert result.output_dir == "my_output"
+
+        # Rendered templates use config paths
+        gitignore = (target / ".gitignore").read_text(encoding="utf-8")
+        assert "my_output/" in gitignore
+        assert "wiki/" not in gitignore
+
+        readme = (target / "README.md").read_text(encoding="utf-8")
+        assert "my_docs/" in readme
+        assert "my_output/" in readme
+        assert "sources/" not in readme
+
     def test_creates_authored_templates_by_default(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         result = scaffold_project(target)

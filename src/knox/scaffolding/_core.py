@@ -15,6 +15,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
+import jinja2
+
 from knox.core.config._core import DEFAULTS
 from knox.core.config.generate import generate_scaffold_config
 from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
@@ -25,11 +27,12 @@ logger = get_logger(__name__)
 
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"
 
-TEMPLATE_NOTES: Final[str] = "NOTES.md"
-TEMPLATE_README: Final[str] = "README.md"
-TEMPLATE_GITIGNORE: Final[str] = "gitignore"
+TEMPLATE_NOTES: Final[str] = "NOTES.md"          # copied verbatim (contains user-facing {{ user_notes }})
+TEMPLATE_README: Final[str] = "README.md.j2"      # rendered with config paths
+TEMPLATE_GITIGNORE: Final[str] = "gitignore.j2"   # rendered with config paths
+TEMPLATE_NEXT_STEPS: Final[str] = "next_steps.txt.j2"  # rendered with config paths (console output only)
 
-AUTHORED_TEMPLATES: Final[tuple[str, ...]] = (TEMPLATE_NOTES, TEMPLATE_README)
+AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
 
 PROJECT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KNOX_CONFIG_FILE)
 
@@ -57,10 +60,22 @@ class ScaffoldResult:
     copied_files: list[Path] = field(default_factory=list)
     skipped_files: list[str] = field(default_factory=list)
     git_initialised: bool = False
+    sources_dir: str = ""
+    output_dir: str = ""
 
 
 class ScaffoldError(Exception):
     """Raised when scaffolding cannot proceed (e.g. target_dir dir conflicts)."""
+
+
+def _render_template(template_name: str, **vars: object) -> str:
+    """Read a Jinja2 scaffold template and render it with *vars*.
+
+    ``keep_trailing_newline=True`` preserves the trailing newline so
+    rendered files match their source layout exactly.
+    """
+    content = _template_path(template_name).read_text(encoding="utf-8")
+    return jinja2.Template(content, keep_trailing_newline=True).render(**vars)
 
 
 def _template_path(name: str) -> Path:
@@ -255,6 +270,9 @@ def scaffold_project(
     result.copied_files.append(resolved_target_dir / config_relative_file)
 
     sources_dir_name, output_dir_name = _read_path_dirs(resolved_target_dir / config_relative_file)
+    result.sources_dir = sources_dir_name
+    result.output_dir = output_dir_name
+    render_vars = {"sources_dir": sources_dir_name, "output_dir": output_dir_name}
     for relative in (
         sources_dir_name,
         output_dir_name,
@@ -263,15 +281,22 @@ def scaffold_project(
     ):
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
-    _copy_template(TEMPLATE_GITIGNORE, resolved_target_dir, ".gitignore")
-    result.copied_files.append(resolved_target_dir / ".gitignore")
+    # Render .gitignore from config paths (output_dir must be gitignored).
+    gitignore_dest = resolved_target_dir / ".gitignore"
+    gitignore_dest.write_text(_render_template(TEMPLATE_GITIGNORE, **render_vars), encoding="utf-8")
+    result.copied_files.append(gitignore_dest)
 
     if bare:
         result.skipped_files.extend(AUTHORED_TEMPLATES)
     else:
-        for template_name in AUTHORED_TEMPLATES:
-            _copy_template(template_name, resolved_target_dir, template_name)
-            result.copied_files.append(resolved_target_dir / template_name)
+        # NOTES.md is copied verbatim — it contains user-facing {{ user_notes }}
+        # guidance and must not be rendered by Jinja2.
+        _copy_template(TEMPLATE_NOTES, resolved_target_dir, "NOTES.md")
+        result.copied_files.append(resolved_target_dir / "NOTES.md")
+        # README.md is rendered with config paths.
+        readme_dest = resolved_target_dir / "README.md"
+        readme_dest.write_text(_render_template(TEMPLATE_README, **render_vars), encoding="utf-8")
+        result.copied_files.append(readme_dest)
 
     if git:
         try:
