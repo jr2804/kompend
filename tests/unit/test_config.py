@@ -28,6 +28,7 @@ from knox.core.config._core import (
     validate_config_key,
 )
 from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
+from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import KNOX_DIR
 
 # ── Deep merge ──────────────────────────────────────────────────────────
@@ -481,6 +482,32 @@ class TestHierarchicalConfig:
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert cfg.get("compile.chunk_size") == 64
+
+    def test_wiki_dir_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
+        # C1: --wiki-dir <vault> reads that vault's config, not cwd's.
+        tmp_path = tmp_path.resolve()
+        vault = tmp_path / "vault"
+        (vault / KNOX_DIR).mkdir(parents=True)
+        (vault / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 777\n")
+        foreign_cwd = tmp_path / "elsewhere"
+        foreign_cwd.mkdir()
+        monkeypatch.chdir(foreign_cwd)  # cwd has no config
+        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: str(vault)})
+        assert cfg.get("compile.chunk_size") == 777
+        assert str(cfg.get(PATHS_WIKI_DIR)) == str(vault)
+
+    def test_wiki_dir_env_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
+        # C1: KNOX_WIKI_DIR likewise redirects discovery.
+        tmp_path = tmp_path.resolve()
+        vault = tmp_path / "vault"
+        (vault / KNOX_DIR).mkdir(parents=True)
+        (vault / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 999\n")
+        foreign_cwd = tmp_path / "elsewhere"
+        foreign_cwd.mkdir()
+        monkeypatch.chdir(foreign_cwd)
+        monkeypatch.setenv("KNOX_WIKI_DIR", str(vault))
+        cfg = resolve_config()
+        assert cfg.get("compile.chunk_size") == 999
 
     def test_hierarchy_env_overrides_all(self, tmp_path: Any, monkeypatch: Any) -> None:
         parent = tmp_path / "parent"

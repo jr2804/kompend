@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from knox.cli.app import app
-from knox.cli.args.init import InitBare, InitForce, InitGit, InitKeepCache, InitTarget
+from knox.cli.args.init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
 from knox.logging import get_console, get_err_console, get_logger
 from knox.scaffolding import ScaffoldError, find_existing_project, scaffold_project
 
@@ -29,6 +29,7 @@ def init(
     force: InitForce = False,
     git: InitGit = False,
     keep_cache: InitKeepCache = False,
+    config: InitConfig = None,
 ) -> None:
     """Create a new wiki project in TARGET (default: current directory)."""
     target_dir = Path(target)
@@ -42,7 +43,7 @@ def init(
             raise typer.Exit(code=0)
 
     try:
-        result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache)
+        result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache, config_file=config)
     except ScaffoldError as exc:
         get_err_console().print(f"error: {exc}")
         raise typer.Exit(code=1) from exc

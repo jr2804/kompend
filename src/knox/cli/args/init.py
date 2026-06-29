@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -47,5 +48,19 @@ InitGit = Annotated[
     typer.Option(
         "--git",
         help="Run 'git init' and create an initial commit after scaffolding.",
+    ),
+]
+
+InitConfig = Annotated[
+    Path | None,
+    typer.Option(
+        "--config",
+        "-c",
+        help=(
+            "Path to a TOML config to install as the vault's .knox/config.toml "
+            "instead of the generated default. Use to seed a vault with a chosen "
+            "LLM/budget/profile (e.g. scripts/config-cloud.toml). The file is "
+            "copied verbatim."
+        ),
     ),
 ]

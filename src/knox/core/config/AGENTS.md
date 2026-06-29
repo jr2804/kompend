@@ -42,6 +42,20 @@ CLI args  >  env vars (KNOX_*)  >  project knox.toml  >  global config.toml  >  
 
 When adding a new config key, **all 5 layers must work**. Test each.
 
+### Project config discovery (Layer 3)
+
+`resolve_config` locates the project config file by walking **up** from a
+start dir. The start dir is:
+
+1. **`--config <file>`** → that exact file (replaces discovery entirely).
+2. **`--wiki-dir <vault>` / `KNOX_WIKI_DIR`** → discover from the vault.
+   Operating on a vault means reading *that* vault's config, not the cwd's.
+   This is what makes `knox --wiki-dir vault ...` self-contained.
+3. Otherwise → the **current working directory** (walk up the tree).
+
+Helper: `_wiki_dir_for_discovery()` (`_core.py`). CLI/output-shape/tuning
+values are config-only — override per-run with `--set key=val` (see CLI DOX).
+
 ### Adding a new config key — checklist
 
 1. **Add to `DEFAULTS` dict** in `_core.py` — every key must have a default.

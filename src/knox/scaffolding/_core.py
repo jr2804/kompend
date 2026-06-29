@@ -108,16 +108,22 @@ def _clear_directory(target_dir: Path, *, skip: str | set[str] | None = None) ->
             item.unlink()
 
 
-def _write_config(target_dir: Path, relative: str) -> None:
-    """Generate and write the scaffold config from current :data:`DEFAULTS`.
+def _write_config(target_dir: Path, relative: str, config_file: Path | None = None) -> None:
+    """Write the project config at ``target_dir / relative``.
 
-    Uses :func:`generate_scaffold_config` so config values are always
-    derived from code — no hand-maintained template to drift.
+    When *config_file* is given, it is copied verbatim — this is how
+    ``knox init --config <path>`` installs a chosen config into a new vault
+    (e.g. a cloud/local demo profile). Otherwise a config is generated from
+    :data:`DEFAULTS` so values stay derived from code.
     """
     destination = target_dir / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(generate_scaffold_config(), encoding="utf-8")
-    logger.info("Generated config at %s", destination)
+    if config_file is not None:
+        destination.write_text(Path(config_file).read_text(encoding="utf-8"), encoding="utf-8")
+        logger.info("Copied config from %s to %s", config_file, destination)
+    else:
+        destination.write_text(generate_scaffold_config(), encoding="utf-8")
+        logger.info("Generated config at %s", destination)
 
 
 def _initialise_git(target_dir: Path) -> None:
@@ -154,6 +160,7 @@ def scaffold_project(
     force: bool = False,
     git: bool = False,
     keep_cache: bool = False,
+    config_file: str | Path | None = None,
 ) -> ScaffoldResult:
     """Create a new KNOX wiki project in *target_dir*.
 
@@ -177,6 +184,11 @@ def scaffold_project(
         the target_dir directory before scaffolding — except
         ``.knox/cache/`` which is preserved in place. This enables fast
         re-runs where ingest can skip already-parsed documents.
+    config_file:
+        Optional path to a TOML config file to install as the vault's
+        ``.knox/config.toml`` instead of the generated default. Use this to
+        seed a vault with a chosen LLM/budget/profile (e.g. a demo config).
+        The file is copied verbatim; it must be valid KNOX TOML.
 
     Returns:
     -------
@@ -222,7 +234,7 @@ def scaffold_project(
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
     config_relative_file = KNOX_CONFIG_FILE
-    _write_config(resolved_target_dir, config_relative_file)
+    _write_config(resolved_target_dir, config_relative_file, config_file=config_file)
     result.copied_files.append(resolved_target_dir / config_relative_file)
 
     _copy_template(TEMPLATE_GITIGNORE, resolved_target_dir, ".gitignore")

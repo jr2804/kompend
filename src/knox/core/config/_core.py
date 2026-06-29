@@ -470,6 +470,26 @@ def find_global_config() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
+def _wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
+    """Return the dir to start project-config discovery from.
+
+    Reflects the *explicit* vault selection — ``--wiki-dir`` on the CLI or
+    ``KNOX_WIKI_DIR`` in the environment. Returns ``None`` when neither is
+    set, so the caller falls back to the current working directory.
+
+    A vault selected this way owns its config: discovery walks up from the
+    vault dir rather than from cwd. See ``resolve_config`` Layer 3.
+    """
+    raw: str | None = None
+    if cli_overrides:
+        raw = cli_overrides.get(PATHS_WIKI_DIR)
+    if raw is None:
+        raw = os.environ.get("KNOX_WIKI_DIR")
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
 # ── TOML loading ────────────────────────────────────────────────────────
 
 
@@ -803,7 +823,13 @@ def resolve_config(
         if global_data:
             result = _merge_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
-    # Layer 3: project config (explicit --config overrides auto-discovered)
+    # Layer 3: project config.
+    # Precedence for locating the project config file:
+    #   1. Explicit --config (uses that file directly).
+    #   2. --wiki-dir / KNOX_WIKI_DIR: discover from that vault dir.
+    #      Operating on a vault means reading that vault's config, not the
+    #      cwd's — this is what users expect "--wiki-dir <vault>" to mean.
+    #   3. Otherwise discover from cwd (walk up the tree).
     project_dir: Path | None = None
     project_configs: list[Path] = []
     if config_path is not None:
@@ -815,7 +841,8 @@ def resolve_config(
         else:
             logger.warning("Config file not found: %s", config_path)
     else:
-        project_configs = find_all_project_configs()
+        start_dir = _wiki_dir_for_discovery(cli_overrides)
+        project_configs = find_all_project_configs(start_dir)
         if project_configs:
             # Merge from farthest to closest so closest wins.
             merged_project, project_provenance = _merge_project_configs(project_configs)
