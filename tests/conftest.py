@@ -56,8 +56,8 @@ def source_pdfs(sources_dir: Path) -> list[Path]:
 
 @pytest.fixture(scope="session")
 def test_urls() -> list[str]:
-    """Return URLs from ``tests/data/urls.txt`` (one per line, ``#`` comments)."""
-    urls_file = _data_dir / "urls.txt"
+    """Return URLs from ``tests/data/sources/urls.txt`` (one per line, ``#`` comments)."""
+    urls_file = _data_dir / "sources" / "urls.txt"
     if not urls_file.exists():
         return []
     lines = urls_file.read_text(encoding="utf-8").splitlines()

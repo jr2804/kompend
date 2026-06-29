@@ -1,0 +1,15 @@
+# Batch 2 — second incremental set of sources (continuous workflow demo)
+#
+# Same domain as sources/: speech intelligibility, listening effort, LEAP,
+# hearing aids, acoustic modeling. Add URLs (PDFs, articles) to be
+# downloaded and ingested on the SECOND compile pass — after the first
+# batch has already been compiled into the wiki.
+#
+# One URL per line. Lines starting with '#' are comments.
+# Blank lines are ignored.
+https://pub.dega-akustik.de/DAGA_2015/data/articles/000272.pdf
+https://pub.dega-akustik.de/DAGA_2016/data/articles/000215.pdf
+https://pub.dega-akustik.de/DAGA_2017/data/articles/000153.pdf
+https://pub.dega-akustik.de/DAGA_2019/data/articles/000256.pdf
+https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+https://www.isca-archive.org/interspeech_2022/robach22_interspeech.pdf

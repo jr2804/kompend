@@ -1,8 +1,8 @@
-"""Integration tests using the real test corpus (tests/data/sources/ and urls.txt).
+"""Integration tests using the real test corpus (tests/data/sources/).
 
 These tests require:
   - PDF files in tests/data/sources/
-  - URLs in tests/data/urls.txt
+  - URLs in tests/data/sources/urls.txt
   - DoclingParser (or fallback parser) available
 
 They are skipped if the required resources are not present.
@@ -144,11 +144,11 @@ class TestRealCorpusWiki:
 
 
 class TestURLDownload:
-    """Download URLs from tests/data/urls.txt."""
+    """Download URLs from tests/data/sources/urls.txt."""
 
     def test_url_file_exists_and_has_urls(self, test_urls: list[str]) -> None:
         """urls.txt must exist and contain at least one URL."""
-        assert len(test_urls) > 0, "tests/data/urls.txt is empty or missing"
+        assert len(test_urls) > 0, "tests/data/sources/urls.txt is empty or missing"
 
     @pytest.mark.skipif(
         not _PARSER_OK,

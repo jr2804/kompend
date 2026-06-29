@@ -72,7 +72,7 @@ Write-Host "  Embed:  $($EmbedModel)" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources"
-$UrlFile    = Join-Path $ProjectRoot "tests/data/urls.txt"
+$UrlFile    = Join-Path $ProjectRoot "tests/data/sources/urls.txt"
 
 # ── Clean ──────────────────────────────────────────────────────────────
 # --force --keep-cache on knox init handles directory reset + cache

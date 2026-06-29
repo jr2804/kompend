@@ -686,11 +686,11 @@ class TestFullPipelineE2E:
 
 @_skip_no_parser
 class TestURLDownload:
-    """Download URLs from tests/data/urls.txt."""
+    """Download URLs from tests/data/sources/urls.txt."""
 
     def test_url_file_exists_and_has_urls(self, test_urls: list[str]) -> None:
         """urls.txt must exist and contain at least one URL."""
-        assert len(test_urls) > 0, "tests/data/urls.txt is empty or missing"
+        assert len(test_urls) > 0, "tests/data/sources/urls.txt is empty or missing"
 
     def test_download_first_url(self, test_urls: list[str], tmp_path: Path) -> None:
         """Download the first URL and verify it produces a parseable file."""
