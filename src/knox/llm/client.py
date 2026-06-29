@@ -149,7 +149,10 @@ def _discover_context_window(
     2. For Ollama models, query ``GET /api/show`` for the runtime
        ``num_ctx`` parameter (also checks ``OLLAMA_NUM_CTX`` env var).
     3. Fall back to *fallback_max_input* / *fallback_max_output*,
-       clamped to ``[num_ctx_min, num_ctx_max]``.
+       clamped to ``[num_ctx_min, num_ctx_max]``, and emit a warning
+       when the model couldn't be looked up (custom provider models
+       always fall through here — their context windows aren't in
+       litellm's DB nor discoverable via API).
 
     Discovered values from litellm or Ollama are used **as-is** — they
     are never clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max``
@@ -184,7 +187,18 @@ def _discover_context_window(
                 model,
             )
     else:
-        logger.debug("Custom provider model %s — skipping litellm.get_model_info", model)
+        # Custom providers are never in litellm's model DB, and the cloud
+        # APIs they delegate to (e.g. Ollama Cloud) typically don't expose
+        # context window metadata either.  The model's actual context is
+        # lost — the user must configure it via config key.
+        logger.warning(
+            "%s is a custom provider model — context window unknown, "
+            "using fallback_max_input=%d.  "
+            "Set fallback_max_input or context_window_cap in config to match "
+            "your model's actual context window",
+            model,
+            fallback_max_input,
+        )
 
     # 2. Ollama runtime num_ctx (overrides litellm if available).
     if model.startswith("ollama/"):
