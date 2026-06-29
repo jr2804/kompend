@@ -3,3 +3,6 @@ https://www.etsi.org/deliver/etsi_ts/103500_103599/103558/01.03.01_60/ts_103558v
 https://journals.lww.com/ear-hearing/fulltext/2019/09000/Measures_of_Listening_Effort_Are_Multidimensional.4.aspx
 https://wires.onlinelibrary.wiley.com/doi/10.1002/wcs.1514
 https://www.audiologyonline.com/articles/20q-listening-effort-understanding-its-29239
+https://en.wikipedia.org/wiki/Speech_recognition
+https://en.wikipedia.org/wiki/Speech_perception
+https://en.wikipedia.org/wiki/Phoneme
