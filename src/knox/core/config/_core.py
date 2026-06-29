@@ -197,7 +197,7 @@ DEFAULTS: dict[str, Any] = {
             "fallback_chain": [],
             "fallback_max_retries": 2,
             "timeout": 120.0,
-            "fallback_max_input": 8192,
+            "fallback_max_input": 32768,
             "fallback_max_output": 4096,
             "num_ctx_min": 2048,
             "num_ctx_max": 131072,

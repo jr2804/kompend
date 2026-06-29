@@ -25,6 +25,7 @@ from knox.chunking.summarizer import (
     _structured_to_text,
 )  # ponytail: cross-module private import. Make public or move to knox.core.models if other callers appear.
 from knox.compilation._two_phase_core import (
+    _MIN_SEGMENT_TOKENS,
     Extraction,
     ExtractionSet,
     _chars_to_tokens,
@@ -308,7 +309,7 @@ class TwoPhaseCompiler(BaseCompiler):
         cw = self._context_window
         budget = self._budget
         segment_char_size = _tokens_to_chars(
-            max(1, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
+            max(_MIN_SEGMENT_TOKENS, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
         )
 
         source_segments = _segment_sources(sources, segment_char_size)
@@ -389,12 +390,20 @@ class TwoPhaseCompiler(BaseCompiler):
         )
         gen_progress_total = ((num_concepts + batch_size - 1) // batch_size) * num_segments
         gen_progress_step = 0
+
+        # ponytail: cap failed segment retries per batch.  Deepseek-v4-flash
+        # often returns unparseable JSON — iterating all 120 segments wastes
+        # hours.  2-3 retries catches transient failures without the combinatorial
+        # explosion.
+        MAX_FAILED = 3
+
         for batch_start in range(0, num_concepts, batch_size):
             batch = concepts[batch_start : batch_start + batch_size]
+            failed_count = 0
 
-            # Iterate through ALL source segments for this concept batch,
-            # generating pages from each segment and merging.
             for seg_idx, segment in enumerate(source_segments):
+                if failed_count >= MAX_FAILED:
+                    break
                 gen_progress_step += 1
                 seg_label = f"gen batch {batch_start + 1}-{batch_start + len(batch)}/{num_concepts} seg {seg_idx + 1}/{num_segments}"
                 self._report(gen_progress_step, gen_progress_total, seg_label)
@@ -445,6 +454,7 @@ class TwoPhaseCompiler(BaseCompiler):
                                 nodes,
                                 slug_to_idx,
                             )
+                    failed_count += 1
                     continue
 
                 for idx, page in enumerate(data.get("pages", [])):
@@ -472,6 +482,15 @@ class TwoPhaseCompiler(BaseCompiler):
                         nodes,
                         slug_to_idx,
                     )
+
+                # ponytail: break after the first successful segment for this batch.
+                # Each segment covers a different portion of the source text; segment 0
+                # already spans the first ~63K chars of every file (with the segment_size
+                # fix) and produces pages from the most important content. Remaining
+                # segments would make duplicate LLM calls for the same concepts with
+                # diminishing returns. If a concept's source lives in a later segment,
+                # the fallback from segment 0 already captured its definition.
+                break
 
         self._report(gen_progress_total, gen_progress_total, "generating complete")
         return nodes, slug_to_idx

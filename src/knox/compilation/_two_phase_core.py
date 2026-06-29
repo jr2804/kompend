@@ -25,6 +25,11 @@ _loader = get_template_loader()
 
 _CHARS_PER_TOKEN = 4  # Approximate for English text.
 
+# Minimum input tokens per generation segment.  Prevents absurdly tiny segments
+# when the model's context window is unknown or the fallback max_input is small
+# enough that ``max_input - system - gen_output_max`` rounds to 1 token.
+_MIN_SEGMENT_TOKENS = 512
+
 
 def _tokens_to_chars(tokens: int) -> int:
     """Convert token count to approximate character count."""
