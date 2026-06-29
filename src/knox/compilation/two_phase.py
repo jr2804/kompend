@@ -163,12 +163,18 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         # Progress is reported inside generate() per batch×segment.
+        self._generation_fallbacks = 0
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats
 
-        if not self._config.no_cache:
+        if not self._config.no_cache and self._generation_fallbacks == 0:
             self._cache_store.set("generate", gen_deps, wiki)
+        elif self._generation_fallbacks > 0:
+            logger.info(
+                "TwoPhase: %d generation fallback(s) — skipping cache so re-run re-generates",
+                self._generation_fallbacks,
+            )
         return wiki
 
     def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
@@ -334,6 +340,7 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         if not nodes:
+            self._generation_fallbacks += 1
             return self._fallback_compile(chunks, trees=trees)
 
         self.disambiguate_duplicate_titles(nodes, chunks)
@@ -343,6 +350,7 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         if not nodes:
+            self._generation_fallbacks += 1
             return self._fallback_compile(chunks)
 
         edges = self._build_edges(nodes, extractions)
@@ -427,6 +435,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
 
                 if not isinstance(data, dict):
+                    self._generation_fallbacks += 1
                     logger.warning(
                         "TwoPhase: LLM returned non-dict for batch %d-%d, segment %d — using fallback",
                         batch_start,
