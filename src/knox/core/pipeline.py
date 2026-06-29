@@ -724,10 +724,33 @@ class WikiPipeline:
         leaf_chunks = [node.chunk for t in trees for node in t.leaves() if node.chunk]
         resolved: list[Any] = []
         total = len(leaf_chunks)
-        for idx, chunk in enumerate(leaf_chunks):
-            rc = self.resolver.resolve(chunk)
-            resolved.append(rc)
-            self._emit("resolve", idx + 1, total, "")
+
+        # Two-pass resolution: non-image chunks first (no VLM), then all
+        # image chunks batched together. This keeps the VLM loaded for one
+        # contiguous burst instead of reloading it for scattered image
+        # chunks across the 1000+ chunk stream (Ollama keep-alive churn).
+        non_image = [c for c in leaf_chunks if ElementType.IMAGE not in c.element_types]
+        image_chunks = [c for c in leaf_chunks if ElementType.IMAGE in c.element_types]
+        if image_chunks:
+            logger.info(
+                "Resolving %d image chunks in batch (VLM), %d non-image first",
+                len(image_chunks),
+                len(non_image),
+            )
+
+        done = 0
+        for i, chunk in enumerate(non_image):
+            resolved.append(self.resolver.resolve(chunk))
+            done = i + 1
+            self._emit("resolve", done, total, "")
+        if image_chunks:
+            # Signal a distinct VLM sub-phase so the CLI bar switches to
+            # "Captioning images" — makes the (slow) VLM run visible instead
+            # of looking like a stalled resolve progress bar.
+            self._emit("resolve", 0, len(image_chunks), "vlm")
+        for i, chunk in enumerate(image_chunks):
+            resolved.append(self.resolver.resolve(chunk))
+            self._emit("resolve", i + 1, len(image_chunks), "captioning")
         return resolved
 
     def _apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:

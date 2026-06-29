@@ -65,9 +65,14 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
 
     def _resolve(current: int, total: int, detail: str) -> None:
         if current == 0:
-            tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
+            if detail == "vlm":
+                tracker.reset_for_phase(total, f"Captioning images ({total})…")
+            else:
+                tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
         elif detail == "done":
             tracker.update_progress(total, "Resolve complete")
+        elif detail == "captioning":
+            tracker.update_progress(current, f"Captioning image [{current}/{total}]")
         else:
             tracker.update_progress(current, f"Resolving [{current}/{total}]")
 

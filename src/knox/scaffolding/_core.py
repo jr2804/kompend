@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tomllib
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -79,6 +80,28 @@ def find_existing_project(target_dir: Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def _read_path_dirs(config_path: Path) -> tuple[str, str]:
+    """Read ``paths.sources_dir`` and ``paths.output_dir`` from a config file.
+
+    Falls back to :data:`DEFAULTS` when the file is missing or omits the
+    keys. This is used by scaffold so created directories match the config
+    being installed, not hardcoded defaults.
+    """
+    sources = DEFAULTS["paths"]["sources_dir"]
+    output = DEFAULTS["paths"]["output_dir"]
+    if config_path.is_file():
+        try:
+            data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (tomllib.TOMLDecodeError, OSError):
+            return sources, output
+        paths = data.get("paths", {})
+        if isinstance(paths.get("sources_dir"), str):
+            sources = paths["sources_dir"]
+        if isinstance(paths.get("output_dir"), str):
+            output = paths["output_dir"]
+    return sources, output
 
 
 def _create_directory(target_dir: Path, relative: str) -> Path:
@@ -223,8 +246,15 @@ def scaffold_project(
 
     result = ScaffoldResult(target_dir=resolved_target_dir)
 
-    sources_dir_name = DEFAULTS["paths"]["sources_dir"]
-    output_dir_name = DEFAULTS["paths"]["output_dir"]
+    # Write the config FIRST so created directories match the config being
+    # installed (paths.sources_dir / paths.output_dir may differ from DEFAULTS
+    # when --config installs a custom profile). Previously these came from
+    # DEFAULTS, so a non-default sources_dir left stale/empty directories.
+    config_relative_file = KNOX_CONFIG_FILE
+    _write_config(resolved_target_dir, config_relative_file, config_file=config_file)
+    result.copied_files.append(resolved_target_dir / config_relative_file)
+
+    sources_dir_name, output_dir_name = _read_path_dirs(resolved_target_dir / config_relative_file)
     for relative in (
         sources_dir_name,
         output_dir_name,
@@ -232,10 +262,6 @@ def scaffold_project(
         CACHE_DIR,
     ):
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
-
-    config_relative_file = KNOX_CONFIG_FILE
-    _write_config(resolved_target_dir, config_relative_file, config_file=config_file)
-    result.copied_files.append(resolved_target_dir / config_relative_file)
 
     _copy_template(TEMPLATE_GITIGNORE, resolved_target_dir, ".gitignore")
     result.copied_files.append(resolved_target_dir / ".gitignore")
