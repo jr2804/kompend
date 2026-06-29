@@ -128,7 +128,6 @@ def parse_cmd(
 @app.command(name="compile")
 def compile_cmd(
     ctx: typer.Context,
-    files: CompileFiles,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -161,13 +160,9 @@ def compile_cmd(
 ) -> None:
     """Compile documents into a knowledge wiki.
 
-    Source files are gathered from the given paths (files, globs, directories)
-    and consolidated into the sources directory. If a file is already there it
-    stays in place; otherwise it is copied in. URLs are downloaded into the
-    sources directory as well.
-
-    The sources directory and output directory default to 'sources' and 'wiki'
-    in the current working directory respectively.
+    Reads all source files from the vault's ``sources/`` directory
+    (configured via ``[paths] sources_dir`` in the project config).
+    Use ``knox ingest`` to add new files or URLs to the vault first.
 
     Output shape (format, flavor, frontmatter, kind, compiler, image_mode) and
     tuning values (budgets, timeouts, decay params) are read from config —
@@ -206,26 +201,19 @@ def compile_cmd(
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-    all_input_files = _resolve_compile_inputs(
-        files,
-        online_urls,
-        url_file,
-        sources_dir,
-        recursive,
-        ignore,
-        in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
-    )
-    if not all_input_files:
+    source_extensions = ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC", "*.epub", "*.md", "*.txt", "*.html", "*.pptx")
+    source_files = [f for ext in source_extensions for f in sources_dir.rglob(ext)]
+    if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
         raise typer.Exit(1)
 
-    get_console().print(f"Compiling {len(all_input_files)} document(s) -> {output_dir}")
+    get_console().print(f"Compiling {len(source_files)} document(s) -> {output_dir}")
 
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
         source_dir=sources_dir,
         output_dir=output_dir,
-        input_files=all_input_files,
+        input_files=None,
     )
 
     pipeline = build_pipeline(pipeline_config)
@@ -236,7 +224,7 @@ def compile_cmd(
         return
 
     tracker = PipelineProgress.create(
-        total_files=len(all_input_files),
+        total_files=len(source_files),
         force_progress=show_progress,
     )
     progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
@@ -251,8 +239,8 @@ def compile_cmd(
         elapsed = time.monotonic() - start_time
 
         wiki.metadata[str(WikiField.DURATION_SECONDS)] = round(elapsed, 2)
-        wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(all_input_files)
-        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in all_input_files[:20]]
+        wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(source_files)
+        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[:20]]
 
         tracker.finish()
         get_console().print(f"Compiled wiki written to {output_dir}")

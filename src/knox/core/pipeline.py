@@ -306,13 +306,12 @@ class WikiPipeline:
     def iter_sources(self) -> Any:
         """Yield source files to process.
 
-        If ``config.input_files`` is set, yields those directly.
-        Otherwise auto-discovers supported files from ``config.source_dir``.
+        Always scans ``config.source_dir`` for supported file types.
+        The ``config.input_files`` list is only used by the ingest
+        command to copy files into the source directory — it does
+        *not* scope which files the pipeline processes.
         """
-        if self.config.input_files:
-            yield from self.config.input_files
-            return
-        for ext in ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
+        for ext in ("*.pdf", "*.docx", "*.doc", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
             yield from self.config.source_dir.rglob(ext)
 
     def list_tiers(self) -> list[dict[str, Any]]:
