@@ -27,9 +27,9 @@ logger = get_logger(__name__)
 
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"
 
-TEMPLATE_NOTES: Final[str] = "NOTES.md"          # copied verbatim (contains user-facing {{ user_notes }})
-TEMPLATE_README: Final[str] = "README.md.j2"      # rendered with config paths
-TEMPLATE_GITIGNORE: Final[str] = "gitignore.j2"   # rendered with config paths
+TEMPLATE_NOTES: Final[str] = "NOTES.md"  # copied verbatim (contains user-facing {{ user_notes }})
+TEMPLATE_README: Final[str] = "README.md.j2"  # rendered with config paths
+TEMPLATE_GITIGNORE: Final[str] = "gitignore.j2"  # rendered with config paths
 TEMPLATE_NEXT_STEPS: Final[str] = "next_steps.txt.j2"  # rendered with config paths (console output only)
 
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
