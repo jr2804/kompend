@@ -29,6 +29,7 @@ from knox.core.entity_registry import EntityRegistry
 from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import (
+    Chunk,
     ChunkTree,
     CompiledWiki,
     CrossReferenceResult,
@@ -36,6 +37,7 @@ from knox.core.models import (
     ElementType,
     MetadataField,
     ParsedDocument,
+    ResolvedChunk,
     WikiField,
     WikiNode,
     tree_from_dict,
@@ -711,6 +713,9 @@ class WikiPipeline:
         VLM enrichment (image captions) runs per-leaf when configured.
         Entity registry and cross-reference checks run programmatically
         (no LLM) across the full tree set.
+
+        Resolved chunks are cached under the ``"resolve"`` layer so VLM
+        captioning survives a re-run after a mid-pipeline failure.
         """
         registry = EntityRegistry()
         for tree in trees:
@@ -743,9 +748,35 @@ class WikiPipeline:
                 len(non_image),
             )
 
+        vlm_model = self.config.llm.vlm_model if self.config.llm.vlm_model else ""
+
+        def _resolve_one(chunk: Chunk) -> ResolvedChunk:
+            deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}
+            cached = self._cache_store.get("resolve", deps)
+            if cached is not None:
+                return ResolvedChunk(
+                    chunk=chunk,
+                    entities=cached.get("entities", []),
+                    relations=cached.get("relations", []),
+                    resolved_references=cached.get("resolved_references", []),
+                    metadata=cached.get("metadata", {}),
+                )
+            result = self.resolver.resolve(chunk)
+            self._cache_store.set(
+                "resolve",
+                deps,
+                {
+                    "entities": result.entities,
+                    "relations": result.relations,
+                    "resolved_references": result.resolved_references,
+                    "metadata": result.metadata,
+                },
+            )
+            return result
+
         done = 0
         for i, chunk in enumerate(non_image):
-            resolved.append(self.resolver.resolve(chunk))
+            resolved.append(_resolve_one(chunk))
             done = i + 1
             self._emit("resolve", done, total, "")
         if image_chunks:
@@ -754,7 +785,7 @@ class WikiPipeline:
             # of looking like a stalled resolve progress bar.
             self._emit("resolve", 0, len(image_chunks), "vlm")
         for i, chunk in enumerate(image_chunks):
-            resolved.append(self.resolver.resolve(chunk))
+            resolved.append(_resolve_one(chunk))
             self._emit("resolve", i + 1, len(image_chunks), "captioning")
         return resolved
 
