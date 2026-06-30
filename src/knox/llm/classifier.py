@@ -103,7 +103,7 @@ def classify_litellm_error(exc: BaseException, *, model: str | None = None) -> L
 
     # 'not found' in the message is a configuration error (wrong model name,
     # missing API endpoint) — fail fast rather than retry endlessly.
-    if 'not found' in message.lower():
+    if "not found" in message.lower():
         return _make(message, ConfigurationError, model, exc)
 
     # Resolve the target category from exception name first, then status code.

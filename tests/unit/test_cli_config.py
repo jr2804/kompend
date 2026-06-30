@@ -16,9 +16,9 @@ runner = CliRunner()
 class TestConfigGet:
     def test_get_known_key(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(app, ["config", "get", "compile.chunk_size"])
+        result = runner.invoke(app, ["config", "get", "compile.budget.chunk_size_min"])
         assert result.exit_code == 0
-        assert result.stdout.strip() == "1024"
+        assert result.stdout.strip() == "2048"
 
     def test_get_unknown_key(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -29,19 +29,19 @@ class TestConfigGet:
     def test_get_respects_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / KNOX_DIR).mkdir()
-        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
-        result = runner.invoke(app, ["config", "get", "compile.chunk_size"])
+        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 2048\n")
+        result = runner.invoke(app, ["config", "get", "compile.budget.chunk_size_min"])
         assert result.exit_code == 0
-        assert result.stdout.strip() == "1024"
+        assert result.stdout.strip() == "2048"
 
 
 class TestConfigSet:
     def test_set_integer_in_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(app, ["config", "set", "compile.chunk_size", "1024"])
+        result = runner.invoke(app, ["config", "set", "compile.budget.chunk_size_min", "4096"])
         assert result.exit_code == 0, result.stdout
-        assert "set compile.chunk_size = 1024" in result.stdout
-        assert (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8") == "[compile]\nchunk_size = 1024\n"
+        assert "set compile.budget.chunk_size_min = 4096" in result.stdout
+        assert (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8") == "[compile.budget]\nchunk_size_min = 4096\n"
 
     def test_set_boolean(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -68,20 +68,20 @@ class TestConfigSet:
 
     def test_set_global_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        result = runner.invoke(app, ["config", "set", "--global", "compile.chunk_size", "256"])
+        result = runner.invoke(app, ["config", "set", "--global", "compile.budget.chunk_size_min", "4096"])
         assert result.exit_code == 0, result.stdout
-        assert (tmp_path / "knox" / "config.toml").read_text(encoding="utf-8") == "[compile]\nchunk_size = 256\n"
+        assert (tmp_path / "knox" / "config.toml").read_text(encoding="utf-8") == "[compile.budget]\nchunk_size_min = 4096\n"
 
     def test_set_creates_backup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         config = tmp_path / KNOX_DIR / "config.toml"
         config.parent.mkdir()
-        config.write_text("[compile]\nchunk_size = 512\n")
-        result = runner.invoke(app, ["config", "set", "compile.chunk_size", "256"])
+        config.write_text("[compile.budget]\nchunk_size_min = 4096\n")
+        result = runner.invoke(app, ["config", "set", "compile.budget.chunk_size_min", "6144"])
         assert result.exit_code == 0
         backup = config.with_suffix(config.suffix + ".bak")
         assert backup.is_file()
-        assert "chunk_size = 512" in backup.read_text(encoding="utf-8")
+        assert "chunk_size_min = 4096" in backup.read_text(encoding="utf-8")
 
 
 class TestConfigList:
@@ -89,16 +89,16 @@ class TestConfigList:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "list"])
         assert result.exit_code == 0
-        assert "compile.chunk_size = 1024" in result.stdout
+        assert "compile.budget.chunk_size_min = 2048" in result.stdout
         assert "# default" in result.stdout
 
     def test_list_shows_project_source(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / KNOX_DIR).mkdir()
-        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 1024\n")
+        (tmp_path / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 4096\n")
         result = runner.invoke(app, ["config", "list"])
         assert result.exit_code == 0
-        assert "compile.chunk_size = 1024" in result.stdout
+        assert "compile.budget.chunk_size_min = 4096" in result.stdout
         assert "# project" in result.stdout
 
 

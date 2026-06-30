@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.config.keys import (
-    COMPILE_CHUNK_SIZE,
     COMPILE_COMPILER,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
@@ -27,7 +26,6 @@ from knox.lint.runner import LintReport, report_to_dict
 # Config keys captured in the snapshot
 _SNAPSHOT_KEYS = (
     COMPILE_COMPILER,
-    COMPILE_CHUNK_SIZE,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,

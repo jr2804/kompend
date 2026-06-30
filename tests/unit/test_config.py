@@ -47,10 +47,10 @@ class TestDeepMerge:
         assert result["b"] == 99
 
     def test_nested_override(self) -> None:
-        base = {"compile": {"chunk_size": 512, "format": "markdown"}}
-        override = {"compile": {"chunk_size": 256}}
+        base = {"compile": {"budget": {"chunk_size_min": 512}, "format": "markdown"}}
+        override = {"compile": {"budget": {"chunk_size_min": 256}}}
         result = _deep_merge(base, override)
-        assert result["compile"]["chunk_size"] == 256
+        assert result["compile"]["budget"]["chunk_size_min"] == 256
         assert result["compile"]["format"] == "markdown"
 
     def test_deep_nested(self) -> None:
@@ -106,8 +106,8 @@ class TestFlatKeys:
         assert sorted(_flat_keys(data)) == ["a", "b"]
 
     def test_nested_dict(self) -> None:
-        data = {"compile": {"chunk_size": 512, "format": "md"}}
-        assert sorted(_flat_keys(data)) == ["compile.chunk_size", "compile.format"]
+        data = {"compile": {"budget": {"chunk_size_min": 512}, "format": "md"}}
+        assert sorted(_flat_keys(data)) == ["compile.budget.chunk_size_min", "compile.format"]
 
     def test_deeply_nested(self) -> None:
         data = {"a": {"b": {"c": 1}}}
@@ -126,9 +126,9 @@ class TestEnvVars:
         assert isinstance(result, dict)
 
     def test_integer_coercion(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_CHUNK_SIZE", "256")
+        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "256")
         result = _read_env_vars()
-        assert result["compile"]["chunk_size"] == 256
+        assert result["compile"]["budget"]["chunk_size_min"] == 256
 
     def test_boolean_coercion_true(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_NO_CACHE", "true")
@@ -177,13 +177,13 @@ class TestConfigDiscovery:
 
     def test_find_project_config_finds_toml(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_project_config(start_dir=tmp_path)
         assert result == config_file
 
     def test_find_project_config_walks_up(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         subdir = tmp_path / "sub" / "dir"
         subdir.mkdir(parents=True)
         result = find_project_config(start_dir=subdir)
@@ -198,7 +198,7 @@ class TestConfigDiscovery:
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
         config_file = config_dir / "config.toml"
-        config_file.write_text("[compile]\nchunk_size = 64\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         result = find_global_config()
         assert result == config_file
@@ -211,32 +211,32 @@ class TestResolveConfig:
     def test_defaults_only(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 1024
+        assert cfg.get("compile.budget.chunk_size_min") == 2048
         assert cfg.get("compile.format") == "markdown"
         assert cfg.get("compile.llm.fallback_max_retries") == 2
         assert cfg.get("compile.llm.vlm_model") is None
 
     def test_project_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 128
+        assert cfg.get("compile.budget.chunk_size_min") == 128
         assert cfg.get("compile.format") == "markdown"  # still default
 
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_CHUNK_SIZE", "64")
+        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "64")
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 64
+        assert cfg.get("compile.budget.chunk_size_min") == 64
 
     def test_cli_overrides_env(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_CHUNK_SIZE", "64")
-        cfg = resolve_config(cli_overrides={"compile.chunk_size": 32})
-        assert cfg.get("compile.chunk_size") == 32
+        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "64")
+        cfg = resolve_config(cli_overrides={"compile.budget.chunk_size_min": 32})
+        assert cfg.get("compile.budget.chunk_size_min") == 32
 
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
@@ -284,12 +284,12 @@ class TestResolveConfig:
 
     def test_provenance_tracking(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("KNOX_WORKERS", "4")
         cfg = resolve_config(cli_overrides={"compile.format": "json"})
 
-        assert "project" in str(cfg.source_of("compile.chunk_size"))
+        assert "project" in str(cfg.source_of("compile.budget.chunk_size_min"))
         assert "env" in str(cfg.source_of("compile.workers"))
         assert "cli" in str(cfg.source_of("compile.format"))
         assert "default" in str(cfg.source_of("compile.image_mode"))
@@ -297,28 +297,28 @@ class TestResolveConfig:
     def test_global_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text("[compile]\nchunk_size = 64\n")
+        (config_dir / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # Use a subdir with no project config
         subdir = tmp_path / "project"
         subdir.mkdir()
         monkeypatch.chdir(subdir)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 64
+        assert cfg.get("compile.budget.chunk_size_min") == 64
 
     def test_project_overrides_global(self, tmp_path: Any, monkeypatch: Any) -> None:
-        # Global: chunk_size = 64
+        # Global: budget chunk_size_min = 64
         config_dir = tmp_path / "knox"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text("[compile]\nchunk_size = 64\n")
+        (config_dir / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        # Project: chunk_size = 128
+        # Project: budget chunk_size_min = 128
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        (project_dir / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 128
+        assert cfg.get("compile.budget.chunk_size_min") == 128
 
     def test_llm_config_inherits_from_global(self, tmp_path: Any, monkeypatch: Any) -> None:
         """LLM settings in global config must be inherited when project omits them."""
@@ -337,7 +337,7 @@ class TestResolveConfig:
         # Project: has [compile] but NO [compile.llm]
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text("[compile]\nchunk_size = 256\n")
+        (project_dir / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 256\n")
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
 
@@ -349,7 +349,7 @@ class TestResolveConfig:
         assert cfg.get("compile.llm.api_key") == "sk-global-test"
 
         # Project-level setting still works
-        assert cfg.get("compile.chunk_size") == 256
+        assert cfg.get("compile.budget.chunk_size_min") == 256
 
         # Provenance: LLM keys come from global config
         assert "global" in str(cfg.source_of("compile.llm.default_model")).lower()
@@ -381,7 +381,7 @@ class TestResolvedConfig:
         cfg = resolve_config()
         flat = cfg.flat()
         assert isinstance(flat, dict)
-        assert "compile.chunk_size" in flat
+        assert "compile.budget.chunk_size_min" in flat
 
     def test_get_with_default(self) -> None:
         cfg = resolve_config()
@@ -404,9 +404,9 @@ class TestResolvedConfig:
 class TestTomlLoading:
     def test_valid_toml(self, tmp_path: Any) -> None:
         f = tmp_path / "test.toml"
-        f.write_text('[compile]\nchunk_size = 256\nformat = "json"\n')
+        f.write_text('[compile.budget]\nchunk_size_min = 256\n[compile]\nformat = "json"\n')
         data = _load_toml(f)
-        assert data["compile"]["chunk_size"] == 256
+        assert data["compile"]["budget"]["chunk_size_min"] == 256
         assert data["compile"]["format"] == "json"
 
     def test_missing_file(self, tmp_path: Any) -> None:
@@ -436,7 +436,7 @@ class TestHierarchicalConfig:
 
     def test_find_all_project_configs_single(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
-        config_file.write_text("[compile]\nchunk_size = 128\n")
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_all_project_configs(start_dir=tmp_path)
         assert result == [config_file]
 
@@ -446,7 +446,7 @@ class TestHierarchicalConfig:
         child = parent / "child"
         child.mkdir()
         parent_file = parent / "knox.toml"
-        parent_file.write_text("[compile]\nchunk_size = 128\n")
+        parent_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         child_file = child / "knox.toml"
         child_file.write_text('[compile]\nformat = "json"\n')
         result = find_all_project_configs(start_dir=child)
@@ -456,9 +456,9 @@ class TestHierarchicalConfig:
         dot_knox = tmp_path / KNOX_DIR
         dot_knox.mkdir()
         dot_knox_file = dot_knox / "config.toml"
-        dot_knox_file.write_text("[compile]\nchunk_size = 64\n")
+        dot_knox_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
         root_file = tmp_path / "knox.toml"
-        root_file.write_text("[compile]\nchunk_size = 128\n")
+        root_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_all_project_configs(start_dir=tmp_path)
         assert result == [dot_knox_file]
 
@@ -467,33 +467,33 @@ class TestHierarchicalConfig:
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 128
+        assert cfg.get("compile.budget.chunk_size_min") == 128
 
     def test_hierarchy_child_overrides_parent(self, tmp_path: Any, monkeypatch: Any) -> None:
         parent = tmp_path / "parent"
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
-        (child / "knox.toml").write_text("[compile]\nchunk_size = 64\n")
+        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (child / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 64
+        assert cfg.get("compile.budget.chunk_size_min") == 64
 
     def test_wiki_dir_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
         # C1: --wiki-dir <vault> reads that vault's config, not cwd's.
         tmp_path = tmp_path.resolve()
         vault = tmp_path / "vault"
         (vault / KNOX_DIR).mkdir(parents=True)
-        (vault / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 777\n")
+        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 777\n")
         foreign_cwd = tmp_path / "elsewhere"
         foreign_cwd.mkdir()
         monkeypatch.chdir(foreign_cwd)  # cwd has no config
         cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: str(vault)})
-        assert cfg.get("compile.chunk_size") == 777
+        assert cfg.get("compile.budget.chunk_size_min") == 777
         assert str(cfg.get(PATHS_WIKI_DIR)) == str(vault)
 
     def test_wiki_dir_env_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
@@ -501,25 +501,25 @@ class TestHierarchicalConfig:
         tmp_path = tmp_path.resolve()
         vault = tmp_path / "vault"
         (vault / KNOX_DIR).mkdir(parents=True)
-        (vault / KNOX_DIR / "config.toml").write_text("[compile]\nchunk_size = 999\n")
+        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 999\n")
         foreign_cwd = tmp_path / "elsewhere"
         foreign_cwd.mkdir()
         monkeypatch.chdir(foreign_cwd)
         monkeypatch.setenv("KNOX_WIKI_DIR", str(vault))
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 999
+        assert cfg.get("compile.budget.chunk_size_min") == 999
 
     def test_hierarchy_env_overrides_all(self, tmp_path: Any, monkeypatch: Any) -> None:
         parent = tmp_path / "parent"
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
-        (child / "knox.toml").write_text("[compile]\nchunk_size = 64\n")
-        monkeypatch.setenv("KNOX_CHUNK_SIZE", "32")
+        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (child / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
+        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "32")
         monkeypatch.chdir(child)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 32
+        assert cfg.get("compile.budget.chunk_size_min") == 32
 
     def test_hierarchy_provenance(self, tmp_path: Any, monkeypatch: Any) -> None:
         tmp_path = tmp_path.resolve()
@@ -528,22 +528,22 @@ class TestHierarchicalConfig:
         child = parent / "child"
         child.mkdir()
         parent_file = parent / "knox.toml"
-        parent_file.write_text("[compile]\nchunk_size = 128\nworkers = 2\n")
+        parent_file.write_text("[compile.budget]\nchunk_size_min = 128\n[compile]\nworkers = 2\n")
         child_file = child / "knox.toml"
-        child_file.write_text("[compile]\nchunk_size = 64\n")
+        child_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert str(parent_file) in str(cfg.source_of("compile.workers"))
-        assert str(child_file) in str(cfg.source_of("compile.chunk_size"))
+        assert str(child_file) in str(cfg.source_of("compile.budget.chunk_size_min"))
 
     def test_hierarchy_dot_knox_overrides_knox_toml(self, tmp_path: Any, monkeypatch: Any) -> None:
         dot_knox = tmp_path / KNOX_DIR
         dot_knox.mkdir()
-        (dot_knox / "config.toml").write_text("[compile]\nchunk_size = 64\n")
-        (tmp_path / "knox.toml").write_text("[compile]\nchunk_size = 128\n")
+        (dot_knox / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
+        (tmp_path / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("compile.chunk_size") == 64
+        assert cfg.get("compile.budget.chunk_size_min") == 64
 
 
 # ── Config mutation helpers ───────────────────────────────────────────────
@@ -551,7 +551,7 @@ class TestHierarchicalConfig:
 
 class TestValidateConfigKey:
     def test_known_leaf_key(self) -> None:
-        assert validate_config_key("compile.chunk_size") is True
+        assert validate_config_key("compile.budget.chunk_size_min") is True
 
     def test_unknown_key(self) -> None:
         assert validate_config_key("compile.does_not_exist") is False
@@ -566,7 +566,7 @@ class TestValidateConfigKey:
 
 class TestCoerceConfigValue:
     def test_coerce_integer(self) -> None:
-        assert coerce_config_value("1024", "compile.chunk_size") == 1024
+        assert coerce_config_value("1024", "compile.budget.chunk_size_min") == 1024
 
     def test_coerce_float(self) -> None:
         assert coerce_config_value("1.5", "compile.memory_half_life_days") == 1.5
@@ -590,7 +590,7 @@ class TestCoerceConfigValue:
         assert coerce_config_value("  openai/gpt-4o  ", "compile.llm.default_model") == "openai/gpt-4o"
 
     def test_coerce_integer_stripped(self) -> None:
-        assert coerce_config_value(" 1024 ", "compile.chunk_size") == 1024
+        assert coerce_config_value(" 1024 ", "compile.budget.chunk_size_min") == 1024
 
     def test_coerce_boolean_stripped(self) -> None:
         assert coerce_config_value(" true ", "compile.no_cache") is True
@@ -635,32 +635,32 @@ class TestGetGlobalConfigPath:
 class TestSetConfigFileValue:
     def test_creates_file_and_sets_key(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
-        set_config_file_value(path, "compile.chunk_size", 1024)
+        set_config_file_value(path, "compile.budget.chunk_size_min", 1024)
         data = _load_toml(path)
-        assert data["compile"]["chunk_size"] == 1024
+        assert data["compile"]["budget"]["chunk_size_min"] == 1024
 
     def test_updates_existing_key(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
-        path.write_text("[compile]\nchunk_size = 512\n")
-        set_config_file_value(path, "compile.chunk_size", 256)
+        path.write_text("[compile.budget]\nchunk_size_min = 512\n")
+        set_config_file_value(path, "compile.budget.chunk_size_min", 256)
         data = _load_toml(path)
-        assert data["compile"]["chunk_size"] == 256
+        assert data["compile"]["budget"]["chunk_size_min"] == 256
 
     def test_adds_key_to_existing_section(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
         path.write_text('[compile]\nformat = "markdown"\n')
-        set_config_file_value(path, "compile.chunk_size", 128)
+        set_config_file_value(path, "compile.budget.chunk_size_min", 128)
         data = _load_toml(path)
         assert data["compile"]["format"] == "markdown"
-        assert data["compile"]["chunk_size"] == 128
+        assert data["compile"]["budget"]["chunk_size_min"] == 128
 
     def test_creates_backup(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
-        path.write_text("[compile]\nchunk_size = 512\n")
-        set_config_file_value(path, "compile.chunk_size", 256)
+        path.write_text("[compile.budget]\nchunk_size_min = 512\n")
+        set_config_file_value(path, "compile.budget.chunk_size_min", 256)
         backup = path.with_suffix(path.suffix + ".bak")
         assert backup.is_file()
-        assert "chunk_size = 512" in backup.read_text(encoding="utf-8")
+        assert "chunk_size_min = 512" in backup.read_text(encoding="utf-8")
 
     def test_unknown_key_raises(self, tmp_path: Any) -> None:
         with pytest.raises(KeyError):
@@ -713,10 +713,10 @@ class TestGenerateScaffoldConfig:
 
 class TestExtractTomlKeys:
     def test_simple_keys(self) -> None:
-        text = '[compile]\nformat = "markdown"\nchunk_size = 1024\n'
+        text = '[compile.budget]\nchunk_size_min = 1024\n[compile]\nformat = "markdown"\n'
         keys = extract_toml_keys(text)
         assert "compile.format" in keys
-        assert "compile.chunk_size" in keys
+        assert "compile.budget.chunk_size_min" in keys
 
     def test_nested_sections(self) -> None:
         text = '[compile.llm]\ndefault_model = "x"\ntimeout = 120.0\n'

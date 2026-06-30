@@ -35,7 +35,7 @@ class TestScaffoldProject:
         assert (target / KNOX_DIR / "config.toml").is_file()
         content = (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
         assert "[compile]" in content
-        assert "compile.chunk_size" not in content  # dotted-form not used
+        assert "compile.budget.chunk_size_min" not in content  # TOML sections used instead of dotted keys
 
     def test_creates_gitignore(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"

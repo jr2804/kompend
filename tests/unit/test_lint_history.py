@@ -49,7 +49,7 @@ def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 
         "duration_seconds": 1.5,
         "options": {"rules": None, "enable_llm": False, "fix": False, "threshold": None},
         "llm": None,
-        "config_snapshot": {"compile.compiler": "graph", "compile.chunk_size": 512},
+        "config_snapshot": {"compile.compiler": "graph", "compile.llm.default_model": "test-model"},
         "wiki_meta": {"node_count": 10},
         "report": report_to_dict(report),
     }
@@ -177,7 +177,6 @@ class TestEntryFromReport:
         cfg = _StubConfig(
             {
                 "compile.compiler": "wicer",
-                "compile.chunk_size": 1024,
                 "compile.llm.default_model": "openai/gpt-4o",
                 "compile.llm.fallback_chain": ["anthropic/claude-3.5-sonnet"],
                 "compile.llm.role_models": {"resolve": "openai/gpt-4o-mini"},
@@ -194,7 +193,7 @@ class TestEntryFromReport:
         assert entry["duration_seconds"] == 2.5
         assert entry["options"]["rules"] == ["orphan-page"]
         assert entry["config_snapshot"]["compile.compiler"] == "wicer"
-        assert entry["config_snapshot"]["compile.chunk_size"] == 1024
+        assert entry["config_snapshot"]["compile.llm.default_model"] == "openai/gpt-4o"
         assert entry["wiki_meta"]["node_count"] == 42
         assert entry["llm"] == {"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}}
         assert entry["report"]["health_score"] == report.health_score

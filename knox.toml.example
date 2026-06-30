@@ -31,9 +31,6 @@ format = "markdown"
 # Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
 compiler = "graph"
 
-# Chunk size in tokens (atomic elements like tables are never split)
-chunk_size = 1024
-
 # Image handling: file (extract to disk) | base64 (inline)
 image_mode = "file"
 
@@ -216,7 +213,6 @@ timeout = 120.0
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Leave commented to disable vector indexing.
 # model = "litellm:granite-embedding:278m"
-# dim = 384
 
 # Embedding batch size (number of texts to embed per API call)
 # batch_size = 10

@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from knox.chunking.hierarchical import HierarchicalChunker
-from knox.core.config._core import DEFAULTS
 from knox.core.models import (
     ChunkNode,
     ChunkStrategy,
@@ -297,9 +296,6 @@ class TestHierarchicalChunker:
     def test_config_chunk_size_flows_to_effective_max(self) -> None:
         chunker = HierarchicalChunker(max_tokens=1024, reserve_tokens=205)
         assert chunker._effective_max == 819
-
-    def test_default_chunk_size_is_1024(self) -> None:
-        assert DEFAULTS["compile"]["chunk_size"] == 1024
 
     def test_context_window_adapts_effective_max(self) -> None:
         cw = ContextWindow(max_input=8192, max_output=4096, source="test")

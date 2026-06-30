@@ -15,7 +15,6 @@ Config files use TOML. Example ``knox.toml``::
     sources_dir = "sources"
     output_dir = "wiki"
     format = "markdown"
-    chunk_size = 1024
     image_mode = "file"
     vlm_min_image_bytes = 2048
     vlm_min_image_dimension = 64
@@ -73,9 +72,7 @@ from knox.core.config.keys import (
     COMPILE_BUDGET_MIN_CONTENT_LENGTH,
     COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX,
     COMPILE_BUDGET_WICER_MAX_ITERATIONS,
-    COMPILE_CHUNK_SIZE,
     COMPILE_EMBEDDING_BATCH_SIZE,
-    COMPILE_EMBEDDING_DIM,
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
     COMPILE_FORMAT,
@@ -154,7 +151,6 @@ DEFAULTS: dict[str, Any] = {
         "output_dir": "wiki",
         "format": "markdown",
         "compiler": "graph",
-        "chunk_size": 1024,  # legacy fallback only — chunk target derived from context window
         "image_mode": "file",
         "vlm_min_image_bytes": 2048,
         "vlm_min_image_dimension": 64,
@@ -224,7 +220,6 @@ DEFAULTS: dict[str, Any] = {
         },
         "embedding": {
             "model": None,
-            "dim": 384,  # deprecated — auto-detected from model at runtime
             "batch_size": 10,
         },
     },
@@ -304,7 +299,6 @@ _ENV_MAP: dict[str, str] = {
     PATHS_CACHE_DIR: "KNOX_CACHE_DIR",
     PATHS_STATE_DIR: "KNOX_STATE_DIR",
     COMPILE_FORMAT: "KNOX_FORMAT",
-    COMPILE_CHUNK_SIZE: "KNOX_CHUNK_SIZE",  # deprecated — derived from context window
     COMPILE_IMAGE_MODE: "KNOX_IMAGE_MODE",
     COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
     COMPILE_WORKERS: "KNOX_WORKERS",
@@ -344,7 +338,6 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_PDF_PAGE_CHUNK_SIZE: "KNOX_PDF_PAGE_CHUNK_SIZE",
     COMPILE_PDF_PAGE_CHUNK_OVERLAP: "KNOX_PDF_PAGE_CHUNK_OVERLAP",
     COMPILE_EMBEDDING_MODEL: "KNOX_EMBEDDING_MODEL",
-    COMPILE_EMBEDDING_DIM: "KNOX_EMBEDDING_DIM",  # deprecated — auto-detected from model
     COMPILE_EMBEDDING_BATCH_SIZE: "KNOX_EMBEDDING_BATCH_SIZE",
     TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
     TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
@@ -583,7 +576,6 @@ for _env_name in _ENV_MAP.values():
     elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
         _KnoxEnvFields[_fn] = (float | None, Field(None))
     elif _env_name in (
-        "KNOX_CHUNK_SIZE",
         "KNOX_WORKERS",
         "KNOX_LINT_THRESHOLD",
         "KNOX_SEARCH_RERANKER_TOP_K",
@@ -591,7 +583,6 @@ for _env_name in _ENV_MAP.values():
         "KNOX_EVAL_THRESHOLD",
         "KNOX_ORGANIZE_MAX_DEPTH",
         "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
-        "KNOX_EMBEDDING_DIM",
         "KNOX_EMBEDDING_BATCH_SIZE",
         "KNOX_LLM_NUM_CTX_MIN",
         "KNOX_LLM_NUM_CTX_MAX",
@@ -756,9 +747,6 @@ def _resolve_paths(
 ) -> None:
     """Normalize path values under ``paths``.
 
-    - Migrates deprecated ``compile.sources_dir`` / ``compile.output_dir``
-      values to ``paths.sources_dir`` / ``paths.output_dir`` when the new
-      keys were not explicitly set.
     - Resolves relative paths against ``paths.wiki_dir`` (or cwd).
     """
     paths = result.setdefault("paths", {})

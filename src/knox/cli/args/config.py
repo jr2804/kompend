@@ -9,7 +9,7 @@ import typer
 ConfigKeyArg = Annotated[
     str,
     typer.Argument(
-        help="Dotted config key, e.g. compile.chunk_size",
+        help="Dotted config key, e.g. compile.budget.chunk_size_min",
     ),
 ]
 
