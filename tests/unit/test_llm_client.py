@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
 
 from knox.llm.client import ContextSource, LLMClient, _discover_context_window, _query_ollama_num_ctx
@@ -304,3 +306,35 @@ class TestContextWindowCap:
         assert client.context_window is not None
         assert client.context_window.max_input == 65536
         assert client.context_window.max_output == 65536
+
+
+class TestModelsDevStep:
+    """Tests for the models.dev catalog step in _discover_context_window."""
+
+    def test_custom_provider_resolved_by_models_dev(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A custom-provider model (skipped by litellm) is resolved by models.dev."""
+        monkeypatch.setattr(litellm, "custom_provider_map", [{"provider": "ollama-cloud"}], raising=False)
+        monkeypatch.setattr("knox.llm.client.resolve_model_limits", lambda _m: (1_048_576, 1_048_576))
+        cw = _discover_context_window("ollama-cloud/deepseek-v4-flash")
+        assert cw.max_input == 1_048_576
+        assert cw.max_output == 1_048_576
+        assert cw.source == ContextSource.MODELS_DEV
+
+    def test_custom_provider_not_in_catalog_falls_back_with_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A custom-provider model absent from models.dev falls back and warns once."""
+        monkeypatch.setattr(litellm, "custom_provider_map", [{"provider": "ollama-cloud"}], raising=False)
+        monkeypatch.setattr("knox.llm.client.resolve_model_limits", lambda _m: None)
+        with caplog.at_level(logging.WARNING):
+            cw = _discover_context_window(
+                "ollama-cloud/unknown-model",
+                fallback_max_input=8192,
+                fallback_max_output=4096,
+            )
+        assert cw.source == ContextSource.FALLBACK
+        assert cw.max_input == 8192
+        assert cw.max_output == 4096
+        assert "not found" in caplog.text

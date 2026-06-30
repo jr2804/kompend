@@ -28,6 +28,7 @@ from knox.llm.failover import CallDiagnostics, FailoverChain
 from knox.llm.format import (
     salvage_json,  # noqa: F401 — re-exported; callers import from here
 )
+from knox.llm.models_dev import resolve_model_limits
 from knox.logging import get_logger
 
 litellm.suppress_debug_info = True  # suppress stdout noise on exceptions
@@ -70,6 +71,7 @@ class _StreamResult:
 class ContextSource(StrEnum):
     LITELLM = "litellm"
     OLLAMA = "ollama"
+    MODELS_DEV = "models_dev"
     FALLBACK = "fallback"
 
 
@@ -151,19 +153,20 @@ def _discover_context_window(
 ) -> ContextWindow:
     """Discover the context window for *model*.
 
-    Strategy:
+    Strategy (first hit wins; each step fills only the values still missing):
     1. Try ``litellm.get_model_info()`` for static max_input/max_output.
     2. For Ollama models, query ``GET /api/show`` for the runtime
        ``num_ctx`` parameter (also checks ``OLLAMA_NUM_CTX`` env var).
-    3. Fall back to *fallback_max_input* / *fallback_max_output*,
+    3. Query the `models.dev <https://models.dev>`_ catalog — a
+       community DB that covers custom-provider models (e.g. Ollama
+       Cloud) and others absent from litellm's static tables.
+    4. Fall back to *fallback_max_input* / *fallback_max_output*,
        clamped to ``[num_ctx_min, num_ctx_max]``, and emit a warning
-       when the model couldn't be looked up (custom provider models
-       always fall through here — their context windows aren't in
-       litellm's DB nor discoverable via API).
+       when no source could resolve the model.
 
-    Discovered values from litellm or Ollama are used **as-is** — they
-    are never clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max``
-    rails apply only to the **fallback** path, never to discovered values.
+    Discovered values (steps 1–3) are used **as-is** — they are never
+    clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max`` rails apply
+    only to the **fallback** path, never to discovered values.
 
     If *context_window_cap* is set (non-``None``), it overrides discovered
     values by capping ``max_input`` and ``max_output`` to the cap.  This is
@@ -174,8 +177,9 @@ def _discover_context_window(
     source = "fallback"
 
     # 1. litellm model info — skip custom providers (never in litellm's DB,
-    # so get_model_info always raises; calling it only produces a misleading
-    # traceback-style warning). Build the registered custom prefixes once.
+    # so get_model_info always raises). Build the registered custom prefixes
+    # once. A miss here is an intermediate probe result, not a final outcome
+    # (steps 2–3 may still resolve the model), so failures log at DEBUG.
     custom_prefixes = {f"{e['provider']}/" for e in (litellm.custom_provider_map or []) if e.get("provider")}
     if not any(model.startswith(p) for p in custom_prefixes):
         try:
@@ -186,26 +190,11 @@ def _discover_context_window(
                 if max_input is not None:
                     source = ContextSource.LITELLM
         except Exception:  # litellm raises bare Exception for unmapped models (best-effort probe)
-            # Not fatal: discovery falls through to the Ollama/fallback paths.
-            # No exc_info — litellm's message is self-explanatory and a
-            # traceback box looks like a crash.
-            logger.warning(
-                "litellm has no model info for %s — using fallback context limits",
-                model,
-            )
-    else:
-        # Custom providers are never in litellm's model DB, and the cloud
-        # APIs they delegate to (e.g. Ollama Cloud) typically don't expose
-        # context window metadata either.  The model's actual context is
-        # lost — the user must configure it via config key.
-        logger.warning(
-            "%s is a custom provider model — context window unknown, "
-            "using fallback_max_input=%d.  "
-            "Set fallback_max_input or context_window_cap in config to match "
-            "your model's actual context window",
-            model,
-            fallback_max_input,
-        )
+            # Intermediate probe failure; the fallback path (step 4) emits the
+            # final WARNING only if steps 2–3 also miss.
+            logger.debug("litellm has no model info for %s", model, exc_info=True)
+    # Custom-provider models are never in litellm's DB; models.dev (step 3)
+    # is the resolver that handles them.
 
     # 2. Ollama runtime num_ctx (overrides litellm if available).
     if model.startswith("ollama/"):
@@ -219,18 +208,38 @@ def _discover_context_window(
                 max_output = ollama_ctx
                 source = ContextSource.OLLAMA
 
-    # 3. Fallback only — clamp the fallback, never the discovered value.
+    # 3. models.dev catalog — resolves custom-provider models (e.g. Ollama
+    #    Cloud) and others absent from litellm's static tables. Offline or
+    #    not-found returns None and the lookup is a silent no-op here.
+    if max_input is None or max_output is None:
+        limits = resolve_model_limits(model)
+        if limits is not None:
+            md_input, md_output = limits
+            if max_input is None:
+                max_input = md_input
+            if max_output is None:
+                max_output = md_output
+            source = ContextSource.MODELS_DEV
+
+    # 4. Fallback only — clamp the fallback, never the discovered value.
+    #    Emit a single WARNING here (covering both litellm-miss and
+    #    custom-provider-miss) so the user hears about an unknown context
+    #    window exactly once, and only when every resolver actually missed.
     if max_input is None:
+        logger.warning(
+            "%s — context window not found in litellm, Ollama, or models.dev; "
+            "using fallback_max_input=%d. Set fallback_max_input or "
+            "context_window_cap in config to match your model's actual context window",
+            model,
+            fallback_max_input,
+        )
         max_input = max(num_ctx_min, min(fallback_max_input, num_ctx_max))
         source = ContextSource.FALLBACK
     if max_output is None:
         max_output = max(num_ctx_min, min(fallback_max_output, num_ctx_max))
-        if source == ContextSource.FALLBACK:
-            pass  # already fallback
-        elif source != ContextSource.FALLBACK:
-            source = ContextSource.FALLBACK
+        source = ContextSource.FALLBACK
 
-    # 4. User-configured cap overrides discovered values.
+    # 5. User-configured cap overrides discovered values.
     # When the fallback was used and a cap is set, the cap replaces
     # the fallback entirely (it can raise as well as lower).
     if context_window_cap is not None:

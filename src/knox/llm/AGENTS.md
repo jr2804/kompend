@@ -57,15 +57,31 @@ sloppy — see the "Error handling" rule in `src/knox/AGENTS.md`:
   fallthrough → `TransientError`). Error-hierarchy trust boundary.
 - `client.py` model-introspection: `litellm.get_model_info` raises bare
   `Exception` for unmapped models (its own API), so a narrow catch is
-  impossible. Optional-feature probe, logged at WARNING.
+  impossible. Optional-feature probe, logged at DEBUG (it is now an
+  intermediate step — `models.dev` or the fallback give the final word, and
+  the single WARNING lives in the fallback step only).
 
 Do not "clean up" these broad catches — they are required by the upstream
 APIs. If a narrow base class becomes available (e.g. litellm ships
 `LiteLLMException`), narrow then.
 
+## Context-window discovery
+
+`_discover_context_window` in `client.py` resolves a model's token limits
+through a 5-step first-hit chain (each step fills only the values still
+missing): litellm static tables → Ollama runtime `/api/show` →
+`models.dev` catalog → fallback (clamped, one WARNING) → user cap.
+
+`models_dev.py` is the step that resolves **custom-provider models** (e.g.
+Ollama Cloud) absent from litellm's static DB. It fetches the
+`models.dev/catalog.json` once per process (in-memory cache) and matches
+provider-local entries first, then global lab entries by stem. Network
+failures are caught narrowly (`httpx.HTTPError, ValueError`) and logged at
+DEBUG — the caller falls through to its fallback path. Never raises.
+
 ## Verification
 
-- `uv run pytest tests/unit/test_providers.py -x` — provider tests pass
+- `uv run pytest tests/unit/test_providers.py tests/unit/test_llm_client.py tests/unit/test_models_dev.py -x` — provider, client, and context-window tests pass
 - `uv run python -c "import knox.llm.providers"` — auto-registration fires without error
 
 ---
