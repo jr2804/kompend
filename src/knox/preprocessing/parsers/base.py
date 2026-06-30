@@ -10,6 +10,11 @@ from binaryornot.check import is_binary
 
 from knox.core.models import ParsedDocument
 
+# Parser-layer image-resolution defaults. Lives here (the neutral parser base)
+# so both individual parsers and the registry's build-options share one source.
+DPI_DEFAULT: float = 200.0
+IMAGE_SCALE_DEFAULT: float = DPI_DEFAULT / 72.0  # ≈ 200 DPI for image extraction
+
 
 class FileExtension(StrEnum):
     """Canonical file extensions supported by KNOX parsers."""
@@ -44,6 +49,12 @@ class BaseParser(ABC):
     """Parser-agnostic interface for KNOX Tier 1."""
 
     supported_extensions: set[FileExtension] = set()
+
+    # Informational capability flag: True when the parser already produces
+    # figure descriptions (e.g. via an internal LLM). When True, figures it
+    # captions carry a ``description`` and VLMEnricher skips them per-figure.
+    # It is NOT a hard VLM skip — VLM still fills figures the parser missed.
+    figure_enrichment: bool = False
 
     @abstractmethod
     def parse(self, source_file: Path) -> ParsedDocument:

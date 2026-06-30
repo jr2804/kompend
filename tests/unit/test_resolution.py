@@ -112,6 +112,25 @@ class TestVLMEnricher:
         call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
         assert call_kwargs["role"] == "custom.vlm"
 
+    def test_pre_existing_description_bypasses_vlm(self) -> None:
+        """A figure already carrying a parser/backend description skips the VLM call.
+
+        Backends that emit descriptions (``chunk.metadata["description"]``) are
+        honored verbatim — VLMEnricher attaches it as an ``image_description``
+        entity and makes no LLM call.
+        """
+        client = _make_client()
+        enricher = VLMEnricher(client=client)
+        chunk = _image_chunk()
+        chunk.metadata["description"] = "A diagram of the pipeline."
+        resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(descs) == 1
+        assert descs[0]["context"] == "A diagram of the pipeline."
+        assert descs[0]["name"] == "parser_caption_chunk_img_001"
+        assert resolved.metadata.get("figure_enriched") is True
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
+
     def test_pre_filter_skips_tiny_image_no_vlm_call(self, tmp_path: Path) -> None:
         """Image below byte threshold is filtered before any VLM call."""
         tiny = tmp_path / "tiny.png"

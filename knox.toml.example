@@ -22,6 +22,16 @@ state_dir = ".knox"
 [notes]
 file = "NOTES.md"
 
+# ── Ingestion settings ──────────────────────────────────────────────────
+# Backend(s) used to parse source documents into structured elements.
+# A single name ("docling") or a comma-separated priority list
+# ("liteparse,docling") — the first backend supporting a file's format wins.
+# Run `knox doctor` to list available backends.
+# CLI: --parser | Env: KNOX_INGEST_PARSER
+
+[ingest]
+# parser = "docling"
+
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]

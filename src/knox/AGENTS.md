@@ -458,3 +458,4 @@ The `pack.toml` manifest:
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
+| `preprocessing/parsers/AGENTS.md` | Pluggable ingestion backends — registration, ParserBuildOptions, figure_enrichment semantics |

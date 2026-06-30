@@ -13,11 +13,33 @@ from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import Compiler, ImageMode, PipelineConfig
+from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
 
 def test_cli_overrides_include_vlm_model() -> None:
     overrides = _build_cli_overrides(vlm_model="openai/gpt-4o")
     assert overrides["compile.llm.vlm_model"] == "openai/gpt-4o"
+
+
+def test_cli_overrides_include_parser() -> None:
+    overrides = _build_cli_overrides(parser="liteparse")
+    assert overrides["ingest.parser"] == "liteparse"
+
+
+def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
+    """build_pipeline wires the backend named by ``config.parser`` into the router."""
+    config = _make_config(tmp_path, vlm_model="")
+    config.parser = "liteparse"
+    pipeline = build_pipeline(config)
+    assert isinstance(pipeline.router.route(Path("a.pdf")), LiteParseParser)
+
+
+def test_build_pipeline_unknown_parser_raises(tmp_path: Path) -> None:
+    """An unknown backend name propagates a ValueError from get_backend."""
+    config = _make_config(tmp_path, vlm_model="")
+    config.parser = "no-such-backend"
+    with pytest.raises(ValueError, match="Unknown parser backend"):
+        build_pipeline(config)
 
 
 def _make_config(tmp_path: Path, *, vlm_model: str) -> PipelineConfig:

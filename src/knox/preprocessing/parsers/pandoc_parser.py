@@ -23,6 +23,7 @@ from pandoc.types import (  # ty: ignore
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
+from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = get_logger(__name__)
@@ -122,3 +123,10 @@ def _extract_title(blocks: list[Block]) -> str:
         if isinstance(block, Header) and int(block[0]) == 1:
             return _render_block(block).lstrip("#").strip()
     return ""
+
+
+def _factory(_options: ParserBuildOptions) -> PandocParser:
+    return PandocParser()
+
+
+register_backend("pandoc", _factory, parser_cls=PandocParser)

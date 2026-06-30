@@ -86,3 +86,18 @@ CliSet = Annotated[
         rich_help_panel="Overrides",
     ),
 ]
+
+Parser = Annotated[
+    str | None,
+    typer.Option(
+        "--parser",
+        help=(
+            "Ingestion backend name, or a comma-separated priority list "
+            "(e.g. 'liteparse,docling'). The first backend that supports a "
+            "file's format wins; list multiple to keep coverage of formats "
+            "the primary lacks. See `knox doctor` for available backends. "
+            f"Env: {APP_NAME_UPPERCASE}_INGEST_PARSER."
+        ),
+        envvar=f"{APP_NAME_UPPERCASE}_INGEST_PARSER",
+    ),
+]

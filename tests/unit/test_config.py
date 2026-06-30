@@ -260,6 +260,20 @@ class TestResolveConfig:
 
         assert resolve_config(cli_overrides={"compile.llm.vlm_model": "anthropic/claude-sonnet"}).get("compile.llm.vlm_model") == "anthropic/claude-sonnet"
 
+    def test_ingest_parser_default(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("ingest.parser") == "docling"
+
+    def test_ingest_parser_env_override(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KNOX_INGEST_PARSER", "liteparse")
+        assert resolve_config().get("ingest.parser") == "liteparse"
+
+    def test_ingest_parser_cli_override(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KNOX_INGEST_PARSER", "liteparse")
+        assert resolve_config(cli_overrides={"ingest.parser": "docling"}).get("ingest.parser") == "docling"
+
     def test_memory_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()

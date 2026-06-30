@@ -19,6 +19,7 @@ from .common import (
     CliSet,
     ConfigPath,
     JsonOutput,
+    Parser,
     Progress,
     Recursive,
     Verbose,
@@ -184,6 +185,7 @@ __all__ = [
     "OrganizeMinSubcategories",
     # Parse
     "ParseFiles",
+    "Parser",
     "PrintElements",
     "Private",
     "Progress",

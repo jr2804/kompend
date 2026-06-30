@@ -41,6 +41,7 @@ from knox.cli.args import (
     NoPrivacy,
     OnlineUrls,
     ParseFiles,
+    Parser,
     PrintElements,
     Private,
     Progress,
@@ -54,7 +55,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import coerce_config_value, resolve_config, validate_config_key
-from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, INGEST_PARSER, PATHS_WIKI_DIR
 from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
@@ -64,7 +65,7 @@ from knox.core.user import resolve_actor
 from knox.llm.errors import LLMError
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.wiki_index import generate_stage_log_entry, prepend_log
-from knox.preprocessing.parsers._registry import build_default_router
+from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
 logger = get_logger(__name__)
@@ -100,6 +101,7 @@ def parse_cmd(
     files: ParseFiles,
     recursive: bool = False,
     print_elements: PrintElements = False,
+    parser: Parser = None,
 ) -> None:
     """Parse documents and show their structure.
 
@@ -113,13 +115,13 @@ def parse_cmd(
         recursive=recursive,
         ignore=None,
     )
-    router: ParserRouter = build_default_router()
+    router: ParserRouter = build_default_router(names=parser or "docling")
     for path in resolved:
-        parser = router.route(path)
-        if parser is None:
+        instance = router.route(path)
+        if instance is None:
             get_err_console().print(f"No parser for {path}")
             continue
-        doc = parser.parse(path)
+        doc = instance.parse(path)
         get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
             for el in doc.elements:  # ty: ignore
@@ -295,6 +297,7 @@ def ingest_cmd(
     workers: Workers = 1,
     in_place: InPlaceFlag = None,
     show_progress: Progress = None,
+    parser: Parser = None,
     cli_set: CliSet = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
@@ -317,6 +320,7 @@ def ingest_cmd(
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,
+        parser=parser,
         cli_set=parse_cli_set(cli_set),
     )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
@@ -339,7 +343,8 @@ def ingest_cmd(
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
     images_dir = VaultPaths(base_dir).images_dir
-    router: ParserRouter = build_default_router(images_dir=images_dir)
+    parser_name = cfg.get(INGEST_PARSER)
+    router: ParserRouter = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name)
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,

@@ -111,6 +111,7 @@ from knox.core.config.keys import (
     DEDUP_MODEL,
     DEDUP_THRESHOLD_IDENTICAL,
     DEDUP_THRESHOLD_SIMILAR,
+    INGEST_PARSER,
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,
@@ -286,6 +287,9 @@ DEFAULTS: dict[str, Any] = {
     "notes": {
         "file": "NOTES.md",
     },
+    "ingest": {
+        "parser": "docling",
+    },
 }
 
 # ── Env var mapping ──────────────────────────────────────────────────────
@@ -307,6 +311,7 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_IN_PLACE_SOURCES: "KNOX_IN_PLACE_SOURCES",
     COMPILE_LINT: "KNOX_LINT",
     COMPILE_PAGE_KIND: "KNOX_PAGE_KIND",
+    INGEST_PARSER: "KNOX_INGEST_PARSER",
     COMPILE_BUDGET_CONCEPTS_PER_BATCH: "KNOX_BUDGET_CONCEPTS_PER_BATCH",
     COMPILE_BUDGET_WICER_MAX_ITERATIONS: "KNOX_BUDGET_WICER_MAX_ITERATIONS",
     COMPILE_BUDGET_MIN_CONTENT_LENGTH: "KNOX_BUDGET_MIN_CONTENT_LENGTH",

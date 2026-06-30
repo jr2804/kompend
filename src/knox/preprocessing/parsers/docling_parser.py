@@ -18,7 +18,12 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from knox.core.config import PdfConfig
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
-from knox.preprocessing.parsers.base import BaseParser, FileExtension
+from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
+from knox.preprocessing.parsers.base import (
+    IMAGE_SCALE_DEFAULT,
+    BaseParser,
+    FileExtension,
+)
 
 logger = get_logger(__name__)
 
@@ -32,9 +37,6 @@ _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "CodeItem": ElementType.CODE,
     "ListItem": ElementType.LIST_ITEM,
 }
-
-DPI_DEFAULT: float = 200.0
-IMAGE_SCALE_DEFAULT: float = DPI_DEFAULT / 72.0  # ≈ 200 DPI for Docling image extraction
 
 
 class DoclingParser(BaseParser):
@@ -379,3 +381,15 @@ class DoclingParser(BaseParser):
             if 0 <= row < num_rows and 0 <= col < num_cols:
                 grid[row][col] = text
         return grid
+
+
+def _factory(options: ParserBuildOptions) -> DoclingParser:
+    return DoclingParser(
+        image_mode=options.image_mode,
+        images_dir=options.images_dir,
+        pdf_config=options.pdf_config,
+        images_scale=options.images_scale,
+    )
+
+
+register_backend("docling", _factory, parser_cls=DoclingParser)

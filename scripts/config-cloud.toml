@@ -6,35 +6,6 @@
 # Usage:
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml
 
-# ── LLM settings ────────────────────────────────────────────────────────
-[compile.llm]
-#default_model      = "ollama-cloud/deepseek-v4-flash"
-default_model      = "ollama-cloud/qwen3.5"
-#default_model      = "opencode-zen/deepseek-v4-flash-free"
-#default_model      = "opencode-zen/gpt-5.4-nano"
-#default_model      = "openrouter/openrouter/free"
-#default_model      = "claudin-io/claudinio"
-#api_key            = "$CLAUDINIO_API_KEY"
-vlm_model          = "ollama/glm-ocr"
-timeout            = 300.0
-#context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show
-
-fallback_max_retries = 3
-
-# ── Embedding ───────────────────────────────────────────────────────────
-[compile.embedding]
-model = "litellm:ollama/granite-embedding:278m"
-dim = 768
-
-# ── Output ──────────────────────────────────────────────────────────────
-[compile.output]
-flavor = "obsidian"
-max_related_links = 15
-
-# Compiler backend: graph | wicer (iterative compile-evaluate-refine loop)
-[compile]
-compiler = "wicer"
-
 # ── Paths ───────────────────────────────────────────────────────────────
 [paths]
 sources_dir = "sources"
@@ -42,12 +13,76 @@ output_dir  = "wiki"
 cache_dir   = ".knox/cache"
 state_dir   = ".knox"
 
+# ── Ingestion ────────────────────────────────────────────────────────────
+# Backend(s) for parsing sources. A single name ("docling") or a
+# comma-separated priority list — first backend supporting a file's
+# format wins. "liteparse,docling" = fast liteparse for PDF/office,
+# docling for HTML/EPUB/TEX/MD/CSV it doesn't handle, pandoc (auto)
+# for legacy text formats. Run `knox doctor` to list available backends.
+# CLI: --parser | Env: KNOX_INGEST_PARSER
+
+[ingest]
+parser = "liteparse"
+
+# ── LLM settings ────────────────────────────────────────────────────────
+[compile.llm]
+# some cheap LLMs/VLMs to try:
+default_model      = "ollama-cloud/deepseek-v4-flash"
+#default_model      = "ollama-cloud/qwen3.5"
+#default_model      = "opencode-zen/deepseek-v4-flash-free"
+#default_model      = "opencode-zen/gpt-5.4-nano"
+#default_model      = "openrouter/openrouter/free"
+
+vlm_model          = "ollama-cloud/gemma4:cloud"
+timeout            = 300.0
+#context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show
+
+fallback_max_retries = 3
+
+# LLM communication data format: json (default) | toon | ison
+# Compact formats reduce input token count by 30-70%
+# data_format = "json"
+
+# ── Embedding ───────────────────────────────────────────────────────────
+[compile.embedding]
+model = "litellm:ollama/granite-embedding:278m"
+
+# ── Output ──────────────────────────────────────────────────────────────
+[compile.output]
+flavor = "obsidian"
+max_related_links = 15
+
+# ── Query settings ───────────────────────────────────────────────────────
+[query]
+# format = "text"  # text | json | toon | ison
+
+# ── Compile settings ────────────────────────────────────────────────────
+[compile]
+format = "markdown"
+compiler = "wicer"
+image_mode = "file"
+# VLM pre-filter thresholds (bytes / pixels)
+# vlm_min_image_bytes = 2048
+# vlm_min_image_dimension = 64
+# in_place_sources = false
+# page_kind = "concept"
+
 # ── Budget (cloud model has huge context, relax safety rails) ────────────
 [compile.budget]
-chunk_size_max     = 524288     # up to 512K chars for ~1M ctx cloud model
+concepts_per_batch = 8
+verify_min_ngram = 3
+wicer_max_iterations = 3
+min_content_length = 50
+min_concept_sources = 2
+max_concept_pages = 50
+chunk_size_min = 2048
+chunk_size_max = 524288     # up to 512K chars for ~1M ctx cloud model
 extract_output_max = 16384
-gen_output_max     = 32768
-lint_output_max    = 16384
+gen_output_max = 32768
+verify_output_max = 4096
+lint_output_max = 16384
+summary_max_content_chars = 8000
+summary_target_chars = 600
 
 # ── Lint (all structural rules enabled for demo) ───────────────────────
 [lint]
@@ -74,6 +109,10 @@ reranker.top_k = 20
 hyde.enabled = true
 contextual.enabled = true
 contextual.model = ""
+
+# ── Trust settings ──────────────────────────────────────────────────────
+[trust]
+# user_tracking = true
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]

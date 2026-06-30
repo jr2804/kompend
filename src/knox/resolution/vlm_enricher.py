@@ -65,6 +65,18 @@ class VLMEnricher(BaseResolver):
         if ElementType.IMAGE not in resolved.chunk.element_types:
             return resolved
 
+        description = resolved.chunk.metadata.get("description")
+        if description:
+            resolved.entities.append(
+                {
+                    "name": f"parser_caption_{resolved.chunk.id}",
+                    "type": "image_description",
+                    "context": str(description),
+                }
+            )
+            resolved.metadata["figure_enriched"] = True
+            return resolved
+
         image_path = resolved.chunk.metadata.get("image_path") or resolved.metadata.get("image_path")
 
         if not image_path:

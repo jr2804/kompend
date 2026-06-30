@@ -76,7 +76,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 |---------|---------|-----------|
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
 | `knox compile <files>` | Compile sources into wiki | `--start-at-tier`, `--llm-default-model`, `--vlm-model`, `--embed-model`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--provenance`, `--private`, `--synthesize/--no-synthesize`, `--index/--no-index`, `--url`, `--url-file`, `--set key=val` (config-only values: format, flavor, compiler, image_mode, budgets, timeouts) |
-| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--set key=val` |
+| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--set key=val` |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
 
@@ -262,6 +262,7 @@ Key config keys:
 | `compile.format` | `markdown` | Output format (markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
+| `ingest.parser` | `docling` | Ingestion backend, or comma-separated priority list (docling, liteparse, pandoc; first match wins) |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |

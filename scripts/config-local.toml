@@ -6,8 +6,27 @@
 # Usage:
 #   .\scripts\build-wiki.ps1 scripts\config-local.toml
 
+# ── Paths ───────────────────────────────────────────────────────────────
+[paths]
+sources_dir = "sources"
+output_dir = "wiki"
+cache_dir = ".knox/cache"
+state_dir = ".knox"
+
+# ── Ingestion ────────────────────────────────────────────────────────────
+# Backend(s) for parsing sources. A single name ("docling") or a
+# comma-separated priority list — first backend supporting a file's
+# format wins. "liteparse,docling" = fast liteparse for PDF/office,
+# docling for HTML/EPUB/TEX/MD/CSV it doesn't handle, pandoc (auto)
+# for legacy text formats. Run `knox doctor` to list available backends.
+# CLI: --parser | Env: KNOX_INGEST_PARSER
+
+[ingest]
+parser = "liteparse,docling"
+
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
+# some local models to try with 8 GB VRAM (or more):
 #default_model = "ollama/lfm2.5"
 default_model = "ollama/hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_0"
 #default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
@@ -19,33 +38,50 @@ timeout = 600.0
 
 fallback_max_retries = 2
 
+# LLM communication data format: json (default) | toon | ison
+# Compact formats reduce input token count by 30-70%
+# data_format = "json"
+
 # ── Embedding ───────────────────────────────────────────────────────────
 [compile.embedding]
 model = "litellm:ollama/granite-embedding:278m"
-dim = 768
 
 # ── Output ──────────────────────────────────────────────────────────────
 [compile.output]
 flavor = "obsidian"
 max_related_links = 15
 
-# Compiler backend: graph | wicer (iterative compile-evaluate-refine loop)
-[compile]
-compiler = "wicer"
+# ── Query settings ───────────────────────────────────────────────────────
+[query]
+# format = "text"  # text | json | toon | ison
 
-# ── Paths ───────────────────────────────────────────────────────────────
-[paths]
-sources_dir = "sources"
-output_dir = "wiki"
-cache_dir = ".knox/cache"
-state_dir = ".knox"
+# ── Compile settings ────────────────────────────────────────────────────
+[compile]
+format = "markdown"
+compiler = "wicer"
+image_mode = "file"
+# VLM pre-filter thresholds (bytes / pixels)
+# vlm_min_image_bytes = 2048
+# vlm_min_image_dimension = 64
+# in_place_sources = false
+# page_kind = "concept"
 
 # ── Budget (128K ctx — stricter ceilings) ───────────────────────────────
 [compile.budget]
+concepts_per_batch = 4
+verify_min_ngram = 3
+wicer_max_iterations = 3
+min_content_length = 50
+min_concept_sources = 2
+max_concept_pages = 50
+chunk_size_min = 2048
 chunk_size_max = 131072          # full 128K ctx
 extract_output_max = 16384
 gen_output_max = 32768
+verify_output_max = 4096
 lint_output_max = 16384
+summary_max_content_chars = 8000
+summary_target_chars = 600
 
 # ── Lint (all structural rules enabled for demo) ───────────────────────
 [lint]
@@ -59,6 +95,10 @@ enabled = [
     "stale-page",
     "source-not-found",
 ]
+
+# ── Trust settings ──────────────────────────────────────────────────────
+[trust]
+# user_tracking = true
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]

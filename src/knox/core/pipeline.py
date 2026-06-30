@@ -60,8 +60,8 @@ from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.downloaders.base import BaseDownloader
-from knox.preprocessing.parsers.base import BaseParser
-from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
+from knox.preprocessing.parsers.base import ParserRouter
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
@@ -97,7 +97,7 @@ class WikiPipeline:
         self,
         config: PipelineConfig,
         downloader: BaseDownloader | None = None,
-        parser: BaseParser | None = None,
+        router: ParserRouter | None = None,
         chunker: HierarchicalChunker | None = None,
         resolver: BaseResolver | None = None,
         compiler: BaseCompiler | None = None,
@@ -108,7 +108,7 @@ class WikiPipeline:
     ) -> None:
         self.config = config
         self.downloader = downloader
-        self.parser = parser
+        self.router = router
         self.chunker = chunker
         self.resolver = resolver
         self.compiler = compiler
@@ -557,10 +557,14 @@ class WikiPipeline:
                     parsed = self._load_cache(source_file)
 
             if parsed is None:
-                if not self.parser:
+                if self.router is None:
                     return None
                 try:
-                    parsed = self.parser.parse(source_file)
+                    selected = self.router.route(source_file)
+                    if selected is None:
+                        logger.warning("No parser backend for %s, skipping", source_file)
+                        return None
+                    parsed = selected.parse(source_file)
                     _ = len(parsed.elements)
                 except Exception:
                     logger.exception("Failed to parse %s", source_file)
@@ -921,7 +925,8 @@ def build_pipeline(
     """Shared factory used by both CLI and MCP.
 
     Constructs a WikiPipeline with default components:
-    - DoclingParser (lazy-fallback)
+    - Parser chain selected by ``config.parser`` (comma-separated backend names;
+      default ``"docling"``; first matching backend per file wins)
     - HierarchicalChunker
     - Compiler selected by ``config.compiler``:
       - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
@@ -940,12 +945,15 @@ def build_pipeline(
         msg = f"Unknown output format {config.output.format!r}. Available: {available}"
         raise ValueError(msg)
 
-    parser = None
-    try:
-        images_dir = config.paths.images_dir
-        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf, images_dir=images_dir, images_scale=config.images_scale)
-    except Exception as exc:
-        logger.warning("DoclingParser not available: %s", exc, exc_info=True)
+    router = build_default_router(
+        ParserBuildOptions(
+            images_dir=config.paths.images_dir,
+            image_mode=config.image_mode,
+            images_scale=config.images_scale,
+            pdf_config=config.pdf,
+        ),
+        names=config.parser,
+    )
 
     # T0 (index) and T1 (parse) run without an LLM — `knox ingest`
     # stops here. T2 (chunk) and beyond need the LLM for context-window
@@ -998,7 +1006,7 @@ def build_pipeline(
 
     return WikiPipeline(
         config=config,
-        parser=parser,
+        router=router,
         chunker=HierarchicalChunker(
             context_window=chunker_context_window,
             chunk_size_min=config.budget.chunk_size_min,
