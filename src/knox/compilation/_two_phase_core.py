@@ -188,13 +188,16 @@ def _merge_node(
     merged_title = existing.title or incoming.title
 
     # Merge provenance
-    existing_prov = set(existing.metadata.get("provenance", []) or [])
-    incoming_prov = set(incoming.metadata.get("provenance", []) or [])
+    # ponytail: LLM output may return dicts/non-strings in provenance/related
+    # (e.g. {"chunk": ...} under timeout stress); coerce to str so the set
+    # dedup never hits "unhashable type: 'dict'".
+    existing_prov = {str(x) for x in (existing.metadata.get("provenance") or [])}
+    incoming_prov = {str(x) for x in (incoming.metadata.get("provenance") or [])}
     merged_prov = sorted(existing_prov | incoming_prov)
 
     # Merge related
-    existing_rel = set(existing.metadata.get("related", []) or [])
-    incoming_rel = set(incoming.metadata.get("related", []) or [])
+    existing_rel = {str(x) for x in (existing.metadata.get("related") or [])}
+    incoming_rel = {str(x) for x in (incoming.metadata.get("related") or [])}
     merged_rel = sorted(existing_rel | incoming_rel)
 
     return WikiNode(

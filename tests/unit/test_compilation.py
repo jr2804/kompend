@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.compilation import GraphCompiler, WiCERCompiler
+from knox.compilation._two_phase_core import _merge_node
 from knox.compilation.base import BaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
@@ -150,6 +151,31 @@ class TestGraphCompiler:
         assert "Content for chunk 0" in wiki.nodes[0].content
         assert "Content for chunk 1" in wiki.nodes[0].content
         assert "Content for chunk 2" in wiki.nodes[0].content
+
+    def test_merge_node_dict_valued_provenance_no_crash(self) -> None:
+        """Regression: _merge_node must not crash when provenance/related hold
+        dicts (malformed LLM output). Previously raised 'unhashable type: dict'.
+        """
+        a = WikiNode(
+            id="neural-net",
+            title="Neural Net",
+            content="c1",
+            node_type="concept",
+            source_chunks=[],
+            metadata={"provenance": [{"chunk": "c1", "quote": "x"}], "related": [{"id": "r1"}]},
+        )
+        b = WikiNode(
+            id="neural-net",
+            title="Neural Net",
+            content="c2",
+            node_type="concept",
+            source_chunks=[],
+            metadata={"provenance": [{"chunk": "c2"}, {"chunk": "c1", "quote": "x"}]},
+        )
+        merged = _merge_node(a, b)  # must not raise
+        # dedup: c1 in both -> 2 unique
+        assert len(merged.metadata["provenance"]) == 2
+        assert len(merged.metadata["related"]) == 1
 
     def test_entities_create_cross_section_edges(self) -> None:
         chunks = _make_diverse_chunks()
