@@ -22,9 +22,10 @@ each document.
 download → parse → DEDUP → chunk → resolve → compile → output
 ```
 
-1. Each document is parsed to text (regardless of original format).
-2. All documents in the current ingest batch are fingerprinted (embedding
-   vectors and/or MinHash signatures).
+1. Each document is parsed to text and cached (regardless of original format).
+2. In a separate pass after all files are parsed, the batch is fingerprinted
+   (embedding vectors and/or MinHash signatures). This avoids GPU memory
+   contention between GPU-bound parsers and the embedding model.
 3. A single batch comparison runs — each new document is compared against
    all previously ingested documents **and** against other documents in the
    same batch. Comparisons are visible as a progress bar during ingestion:

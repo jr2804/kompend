@@ -23,7 +23,6 @@ from rich.progress import (
     TaskID,
     TextColumn,
     TimeElapsedColumn,
-    TimeRemainingColumn,
 )
 from rich.table import Column
 from rich.text import Text
@@ -69,6 +68,34 @@ def _make_progress_console(force: bool) -> Console:
 
 
 # ── Rich progress tracker ───────────────────────────────────────────────
+
+
+class _EtaColumn(ProgressColumn):
+    """ETA column using direct elapsed/completed math instead of Rich's speed estimation.
+
+    Rich's built-in ``TimeRemainingColumn`` relies on an internal ``_progress``
+    deque that can fall back to ``-:--:--`` when speed samples are sparse or
+    the task is recreated between phases.  This column calculates remaining
+    time directly from ``completed / time_elapsed``, which is always
+    well-defined once at least one item is done.
+    """
+
+    def render(self, task: Task) -> Text:
+        if task.total is None or task.completed <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        elapsed = task.elapsed
+        if not elapsed or elapsed <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        speed = task.completed / elapsed
+        remaining = (task.total - task.completed) / speed
+        if remaining <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        hours = int(remaining // 3600)
+        minutes = int((remaining % 3600) // 60)
+        seconds = int(remaining % 60)
+        if hours:
+            return Text(f"{hours}:{minutes:02d}:{seconds:02d}", style="progress.remaining")
+        return Text(f"{minutes}:{seconds:02d}", style="progress.remaining")
 
 
 class _PercentageColumn(ProgressColumn):
@@ -119,11 +146,11 @@ class FileProgressTracker:
             TextColumn("[progress.description]{task.description}", table_column=Column(no_wrap=True)),
             BarColumn(bar_width=None),
             _PercentageColumn(),
-            TimeRemainingColumn(),
+            _EtaColumn(),
             TimeElapsedColumn(),
             console=self.console,
             transient=False,
-            refresh_per_second=10,
+            refresh_per_second=2,
         )
         self._progress.start()
         self._overall_task = self._progress.add_task(

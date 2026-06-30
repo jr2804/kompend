@@ -346,9 +346,17 @@ def ingest_cmd(
     )
     tracker.start()
 
+    phase = 0
+
     def _progress(current: int, total: int, detail: str) -> None:
+        nonlocal phase
         if detail == "done":
             tracker.update_progress(total, "Ingest complete")
+        elif detail.startswith("embedding "):
+            if phase == 0:
+                phase = 1
+                tracker.reset_for_phase(total, f"Embedding {total} document(s)")
+            tracker.update_progress(current, f"[{current + 1}/{total}] {detail}")
         else:
             tracker.update_progress(current, f"[{current + 1}/{total}] {detail}")
 

@@ -162,11 +162,16 @@ By default, `.gitignore` in the source directory is respected. Set
 
 ### Progress bars
 
-When stdout is a TTY, `knox compile` shows rich progress bars:
+When stdout is a TTY, both `knox ingest` and `knox compile` show rich progress
+bars:
 
 - **Across-file**: `Parsing sources [45/50] ████████████████░░░░ 90% 0:02:34`
-- **Within-file**: Pipeline steps per file (Download, Parse, Chunk, Resolve,
-  Compile, Write)
+- **Within-file** (compile only): Pipeline steps per file (Download, Parse,
+  Chunk, Resolve, Compile, Write)
+
+When dedup is enabled, `knox ingest` runs two progress phases — a parse pass
+followed by a separate embedding pass — so GPU-bound parsers and the embedding
+model don't compete for GPU memory.
 
 Use `--no-progress` to disable, or `--progress` to force enable.
 

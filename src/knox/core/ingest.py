@@ -41,6 +41,25 @@ def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
     return text or source_file.read_text(errors="replace")
 
 
+def _extract_text_from_cached(json_path: Path) -> str:
+    """Extract plain text from a cached parsed JSON document.
+
+    Concatenates string-type element content. Falls back to reading the
+    cached file's raw bytes when no elements are found.
+    """
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.debug("Failed to read cached %s", json_path.name, exc_info=True)
+        return json_path.read_text(errors="replace")
+    text = ""
+    for element in data.get("elements", []):
+        content = element.get("content")
+        if isinstance(content, str) and content.strip():
+            text += content + "\n\n"
+    return text or json_path.read_text(errors="replace")
+
+
 @dataclass(frozen=True, slots=True)
 class IngestResult:
     """Outcome of an ingestion pass."""
@@ -75,13 +94,18 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     file is not re-parsed.
 
     When *config* contains ``dedup.enabled = True``, content-level duplicate
-    detection runs alongside extraction. Fingerprints (including embedding
-    network calls) are computed per-document during the parse loop — if the
-    embedding model is misconfigured, the error is fatal and aborts ingest
-    immediately. Similarity comparison runs at end of ingest using the
-    pre-computed fingerprints. Documents identified as ``identical`` are
-    counted in ``dedup_skipped`` (they are still cached, but flagged for
-    the compile pipeline to skip).
+    detection runs in two passes:
+
+    1. **Parse pass** (GPU-bound parsers, one model at a time): every file
+       is routed to a parser and the structured document is cached.
+    2. **Embedding pass** (dedup only, GPU if configured): fingerprints
+       (including embedding network calls) are computed from cached JSON
+       documents. If the embedding model is misconfigured or the provider
+       is unreachable, the error is fatal and aborts ingest immediately.
+
+    Similarity comparison (pure CPU — no network calls) runs at end of
+    ingest using the pre-computed fingerprints. Documents identified as
+    ``identical`` are counted in ``dedup_skipped``.
 
     Args:
         files: Source files to ingest (already resolved/copied).
@@ -111,10 +135,9 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
     count = cached = skipped = failed = 0
 
-    # ── Dedup orchestrator (created once, used per-document) ────────
-    # When enabled, fingerprints (including embedding network calls) are
-    # computed DURING extraction — not deferred to the end. This makes
-    # embedding errors fatal and attributable to the specific document.
+    # ── Dedup orchestrator (created once, used in pass 2) ──────────
+    # Fingerprints are computed AFTER all files are parsed so that GPU-bound
+    # parsers and the embedding model don't compete for GPU memory.
     dedup_enabled = bool((config or {}).get("dedup.enabled"))
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
@@ -157,15 +180,19 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         count += 1
         state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
 
-        # ── Compute dedup fingerprint NOW (during extraction) ────────
-        # Embedding network calls happen here. If the model is misconfigured
-        # or the provider is unreachable, the exception propagates — the
-        # ingest ABORTS with a clear per-document error. This is intentional:
-        # dedup was explicitly enabled, so silent degradation is worse than
-        # crashing.
-        if dedup_orch is not None:
+    # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
+    # Fingerprints are computed AFTER all files are parsed so that GPU-bound
+    # parsers (Docling) and the embedding model don't compete for GPU memory.
+    # The embedding model loads once, fingerprints all documents, then unloads.
+    if dedup_orch is not None:
+        for idx, source_file in enumerate(files):
+            if progress_fn is not None:
+                progress_fn(idx, total, f"embedding {source_file.name}")
             slug = source_file.stem
-            text = _extract_text_for_dedup(doc, source_file)
+            cached_file = cache_dir / f"{slug}.json"
+            if not cached_file.exists():
+                continue
+            text = _extract_text_from_cached(cached_file)
             dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
 
     # ── Content-level duplicate comparison (end of ingest) ──────────
