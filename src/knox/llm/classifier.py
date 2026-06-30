@@ -101,6 +101,11 @@ def classify_litellm_error(exc: BaseException, *, model: str | None = None) -> L
     name = type(exc).__name__
     message = str(exc) or name
 
+    # 'not found' in the message is a configuration error (wrong model name,
+    # missing API endpoint) — fail fast rather than retry endlessly.
+    if 'not found' in message.lower():
+        return _make(message, ConfigurationError, model, exc)
+
     # Resolve the target category from exception name first, then status code.
     category: type[LLMError]
     if name in _AMBIGUOUS_NAMES:
