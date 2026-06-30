@@ -71,7 +71,7 @@ Write-Host "  Model:  $LLMModel" -ForegroundColor DarkGray
 Write-Host "  Embed:  $($EmbedModel)" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
-$InputFiles = Join-Path $ProjectRoot "tests/data/sources"
+$InputFiles = Join-Path $ProjectRoot "tests/data/sources/*.pdf"
 $UrlFile    = Join-Path $ProjectRoot "tests/data/sources/urls.txt"
 
 # ── Clean ──────────────────────────────────────────────────────────────
@@ -182,12 +182,13 @@ if (-not $WhatIf) {
 Write-Host ""
 Write-Host "=== Stage 2b: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
 $Batch2Dir  = Join-Path $ProjectRoot "tests/data/batch2"
+$Batch2Pdf  = Join-Path $ProjectRoot "tests/data/batch2/*.pdf"
 $Batch2Urls = Join-Path $Batch2Dir "urls.txt"
 $Ingest2Args = @(
     "uv", "run", "knox",
     "--wiki-dir",    $OutputPath,
     "ingest",
-    $Batch2Dir,
+    $Batch2Pdf,
     "--url-file",    $Batch2Urls,
     "--workers",     "1"
 )

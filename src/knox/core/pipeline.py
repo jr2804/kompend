@@ -312,9 +312,15 @@ class WikiPipeline:
         The ``config.input_files`` list is only used by the ingest
         command to copy files into the source directory — it does
         *not* scope which files the pipeline processes.
+
+        Excludes ``urls.txt`` — it is a URL list processed via
+        ``--url-file``, not a document to parse.
         """
         for ext in ("*.pdf", "*.docx", "*.doc", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
-            yield from self.config.source_dir.rglob(ext)
+            for f in self.config.source_dir.rglob(ext):
+                if f.name == "urls.txt":
+                    continue
+                yield f
 
     def list_tiers(self) -> list[dict[str, Any]]:
         """Return the available tiers with their current persisted state.
