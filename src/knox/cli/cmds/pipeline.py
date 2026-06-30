@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -274,7 +275,10 @@ def compile_cmd(
                 parts.append(f"  cause: {exc.cause}")
             get_err_console().print("\n".join(parts))
         else:
+            # Unexpected bug — the one-line message hides the cause. Show the
+            # full trace so the root cause (file, line, call) is diagnosable.
             get_err_console().print(f"Error: {exc}")
+            get_err_console().print(traceback.format_exc())
         raise typer.Exit(1) from exc
 
 

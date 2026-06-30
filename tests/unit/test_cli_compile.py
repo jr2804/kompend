@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from typer.testing import CliRunner
+
 from knox.cli._shared import build_cli_overrides as _build_cli_overrides
+from knox.cli.app import app
 from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline import build_pipeline
@@ -131,3 +135,28 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
     # Image chunks must all be at the end, contiguous
     types = pipeline.resolver.resolved_types  # type: ignore[attr-defined]
     assert types == [ElementType.TEXT, ElementType.TEXT, ElementType.TEXT, ElementType.IMAGE, ElementType.IMAGE]
+
+
+def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unexpected (non-LLMError) exceptions print a full traceback, not just a message.
+
+    Regression for the 'unhashable type: dict' crash: the generic except
+    branch previously printed only `Error: {exc}`, hiding the call site.
+    """
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "note.md").write_text("# Test\ncontent")
+
+    class _BoomPipeline:
+        def run(self, progress_callback: object | None = None) -> None:
+            raise RuntimeError("synthetic boom")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("knox.cli.cmds.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["compile"])
+
+    assert result.exit_code == 1
+    assert "Error: synthetic boom" in result.output
+    assert "Traceback (most recent call last)" in result.output
