@@ -906,7 +906,7 @@ def build_pipeline(
     parser = None
     try:
         images_dir = config.paths.images_dir
-        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf, images_dir=images_dir)
+        parser = DoclingParser(image_mode=config.image_mode, pdf_config=config.pdf, images_dir=images_dir, images_scale=config.images_scale)
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 
@@ -1011,7 +1011,13 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
                 _api_key=config.llm.api_key,
             )
             vlm_client.usage = llm_client.usage
-            resolvers.append(VLMEnricher(client=vlm_client))
+            resolvers.append(
+                VLMEnricher(
+                    client=vlm_client,
+                    min_image_bytes=config.vlm_min_image_bytes,
+                    min_image_dimension=config.vlm_min_image_dimension,
+                )
+            )
             logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
         except Exception as exc:
             logger.debug("VLMEnricher not available: %s", exc, exc_info=True)

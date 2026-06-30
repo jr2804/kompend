@@ -1,14 +1,17 @@
 """VLM-based image caption enricher for KNOX Tier 3.
 
-Analyses IMAGE chunks and adds descriptive captions as entities. All
-LLM calls go through the shared :class:`knox.llm.LLMClient` so VLM
-failover and observability work the same way as text models.
+Analyses IMAGE chunks and adds descriptive captions as entities. Each
+image is evaluated by the VLM for informativeness — logos, icons,
+decorative elements, and blank images are skipped automatically.
+All LLM calls go through the shared :class:`knox.llm.LLMClient`.
 """
 
 from __future__ import annotations
 
 import base64
 from pathlib import Path
+
+from PIL import Image
 
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient
@@ -44,16 +47,20 @@ class VLMEnricher(BaseResolver):
         self,
         client: LLMClient | None = None,
         role: str = "vlm",
+        min_image_bytes: int = 2048,
+        min_image_dimension: int = 64,
     ) -> None:
-        self._client = client  # None is OK — enrich() handles it gracefully
+        self._client = client
         self._role = role
+        self._min_bytes = min_image_bytes
+        self._min_dim = min_image_dimension
 
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """BaseResolver interface: wrap chunk then enrich."""
         resolved = ResolvedChunk(chunk=chunk)
         return self.enrich(resolved)
 
-    def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:
+    def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:  # noqa: PLR0911
         """Add VLM-generated captions to IMAGE chunks. Never raises."""
         if ElementType.IMAGE not in resolved.chunk.element_types:
             return resolved
@@ -71,10 +78,29 @@ class VLMEnricher(BaseResolver):
             )
             return resolved
 
+        ctx = resolved.chunk.heading_context or ""
+        caption_text = resolved.chunk.metadata.get("caption", "")
+        context_parts = [f"Section: {ctx}"] if ctx else []
+        if caption_text:
+            context_parts.append(f"Caption: {caption_text}")
+        context_hint = " | ".join(context_parts) if context_parts else ""
+
+        skip, reason = self._should_skip(image_path)
+        if skip:
+            logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
+            resolved.entities.append(
+                {
+                    "name": "vlm_filtered",
+                    "type": "image_description",
+                    "context": f"Image filtered (decorative/too small): {reason}",
+                }
+            )
+            resolved.metadata["vlm_filtered"] = True
+            return resolved
+
         try:
-            caption = self._generate_caption(image_path)
-        except FileNotFoundError as exc:
-            logger.warning("VLM image not found for chunk %s: %s", resolved.chunk.id, exc, exc_info=True)
+            caption = self._generate_caption(image_path, context_hint=context_hint)
+        except FileNotFoundError:
             resolved.entities.append(
                 {
                     "name": "vlm_error",
@@ -83,7 +109,6 @@ class VLMEnricher(BaseResolver):
                 }
             )
             return resolved
-
         if caption is None:
             resolved.entities.append(
                 {
@@ -94,6 +119,16 @@ class VLMEnricher(BaseResolver):
             )
             return resolved
 
+        if caption.strip().upper().startswith("SKIP"):
+            resolved.entities.append(
+                {
+                    "name": "vlm_skipped",
+                    "type": "image_description",
+                    "context": caption,
+                }
+            )
+            resolved.metadata["vlm_skipped"] = True
+            return resolved
         resolved.entities.append(
             {
                 "name": f"vlm_caption_{resolved.chunk.id}",
@@ -104,12 +139,39 @@ class VLMEnricher(BaseResolver):
         resolved.metadata["vlm_enriched"] = True
         return resolved
 
+    def _should_skip(self, image_path: str | Path) -> tuple[bool, str]:
+        """Cheap pre-filter: return (skip, reason) without calling the VLM.
+
+        Filters tiny/decorative images (logos, icons, spacers, bullets) via
+        file size and pixel dimensions. These are the bulk of extraction
+        noise and would otherwise each consume a slow VLM call.
+        """
+        p = Path(image_path)
+        if not p.is_file():
+            return True, "image file missing"
+        size = p.stat().st_size
+        if size < self._min_bytes:
+            return True, f"too small ({size} bytes < {self._min_bytes})"
+        try:
+            with Image.open(p) as img:
+                w, h = img.size
+        except Exception as exc:
+            logger.debug("Could not read dimensions for %s: %s — allowing VLM call", p, exc)
+            return False, ""
+        if w < self._min_dim or h < self._min_dim:
+            return True, f"too small ({w}×{h} < {self._min_dim}px)"
+        return False, ""
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _generate_caption(self, image_ref: str | Path) -> str | None:
+    def _generate_caption(self, image_ref: str | Path, context_hint: str = "") -> str | None:
         """Run the VLM on *image_ref* and return a text caption.
+
+        *context_hint* is prepended to the user message (e.g. section heading,
+        page number, document caption) so the VLM can evaluate the image in
+        context.
 
         Returns ``None`` when no LLM client is configured or all
         models in the failover chain failed. Raises
@@ -128,12 +190,18 @@ class VLMEnricher(BaseResolver):
         b64 = base64.b64encode(raw_bytes).decode("utf-8")
         mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
 
+        prompt = (f"[Context: {context_hint}] " if context_hint else "") + (
+            "Describe this image in one sentence. If it is a logo, icon, decorative "
+            "element, background graphic, or contains no substantive information, "
+            "respond with just SKIP."
+        )
+
         result = self._client.try_complete(
             messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Describe this image in one sentence."},
+                        {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
                     ],
                 },

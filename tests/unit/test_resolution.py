@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from PIL import Image
+
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.failover import CallDiagnostics
@@ -62,14 +64,14 @@ class TestVLMEnricher:
         assert "no image path" in descs[0]["context"].lower()
 
     def test_image_chunk_missing_file_records_error(self, tmp_path: Path) -> None:
-        """Image path pointing to a non-existent file → error entity, no LLM call."""
+        """Image path pointing to a non-existent file → filtered entity, no LLM call."""
         client = _make_client()
-        enricher = VLMEnricher(client=client)
+        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
         chunk = _image_chunk(image_path=str(tmp_path / "missing.png"))
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
-        assert "not found" in descs[0]["context"].lower()
+        assert "missing" in descs[0]["context"].lower()
         client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
     def test_caption_generated_when_client_succeeds(self, tmp_path: Path) -> None:
@@ -82,7 +84,7 @@ class TestVLMEnricher:
             diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
         )
         client = _make_client(try_complete_return=result)
-        enricher = VLMEnricher(client=client)
+        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
         resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
@@ -94,7 +96,7 @@ class TestVLMEnricher:
         png_path.write_bytes(b"PNG mock data")
 
         client = _make_client(try_complete_return=None)
-        enricher = VLMEnricher(client=client)
+        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
         resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
@@ -105,10 +107,50 @@ class TestVLMEnricher:
         png_path.write_bytes(b"PNG mock data")
 
         client = _make_client(try_complete_return=None)
-        enricher = VLMEnricher(client=client, role="custom.vlm")
+        enricher = VLMEnricher(client=client, role="custom.vlm", min_image_bytes=0, min_image_dimension=0)
         enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
         call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
         assert call_kwargs["role"] == "custom.vlm"
+
+    def test_pre_filter_skips_tiny_image_no_vlm_call(self, tmp_path: Path) -> None:
+        """Image below byte threshold is filtered before any VLM call."""
+        tiny = tmp_path / "tiny.png"
+        # 8×8 PNG — well below default 64px and 2048 bytes
+        Image.new("RGB", (8, 8)).save(tiny)
+        result = LLMResult(
+            content="should not be called",
+            json_data=None,
+            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
+        )
+        client = _make_client(try_complete_return=result)
+        enricher = VLMEnricher(client=client)  # default thresholds
+        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(tiny))))
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(descs) == 1
+        assert "filtered" in descs[0]["context"].lower()
+        assert resolved.metadata.get("vlm_filtered") is True
+        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_pre_filter_allows_large_image(self, tmp_path: Path) -> None:
+        """Image above thresholds reaches the VLM."""
+        big = tmp_path / "big.png"
+        # Large + noisy (non-compressible) so it exceeds the 2048-byte floor
+        img = Image.new("RGB", (200, 200))
+        img.putdata([(x ^ y, (x * y) % 255, (x + y) % 255) for y in range(200) for x in range(200)])
+        img.save(big)
+        assert big.stat().st_size >= 2048, f"test image too small: {big.stat().st_size}"
+        result = LLMResult(
+            content="A red square.",
+            json_data=None,
+            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
+        )
+        client = _make_client(try_complete_return=result)
+        enricher = VLMEnricher(client=client)  # default thresholds
+        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(big))))
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(descs) == 1
+        assert descs[0]["context"] == "A red square."
+        assert resolved.metadata.get("vlm_filtered") is None
 
 
 class TestVLMEnricherIntegration:
@@ -120,7 +162,7 @@ class TestVLMEnricherIntegration:
         png_path.write_bytes(b"PNG")
 
         client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-        enricher = VLMEnricher(client=client)
+        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
 
         mock_response = MagicMock()
         mock_message = MagicMock(content="caption text")

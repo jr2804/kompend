@@ -17,6 +17,8 @@ Config files use TOML. Example ``knox.toml``::
     format = "markdown"
     chunk_size = 1024
     image_mode = "file"
+    vlm_min_image_bytes = 2048
+    vlm_min_image_dimension = 64
     mode = "full"
     workers = 1
     two_phase = true
@@ -154,6 +156,8 @@ DEFAULTS: dict[str, Any] = {
         "compiler": "graph",
         "chunk_size": 1024,  # legacy fallback only — chunk target derived from context window
         "image_mode": "file",
+        "vlm_min_image_bytes": 2048,
+        "vlm_min_image_dimension": 64,
         "mode": "full",
         "workers": 1,
         "no_cache": False,
@@ -242,6 +246,9 @@ DEFAULTS: dict[str, Any] = {
     "trust": {
         "privacy_filter": True,
         "user_tracking": True,
+    },
+    "query": {
+        "format": "text",
     },
     "search": {
         "expansion": {

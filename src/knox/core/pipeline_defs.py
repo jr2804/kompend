@@ -82,6 +82,8 @@ from knox.core.config.keys import (
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_PATH,
+    COMPILE_VLM_MIN_IMAGE_BYTES,
+    COMPILE_VLM_MIN_IMAGE_DIMENSION,
     COMPILE_WORKERS,
     PATHS_WIKI_DIR,
     TRUST_PRIVACY_FILTER,
@@ -170,6 +172,8 @@ class PipelineConfig:
     embedding: EmbeddingConfig
     base_dir: Path | None = None  # None → output_dir.parent; .knox lives here
     image_mode: ImageMode = ImageMode.FILE
+    vlm_min_image_bytes: int = 2048
+    vlm_min_image_dimension: int = 64
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = base_dir/.knox/cache
@@ -188,6 +192,7 @@ class PipelineConfig:
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
+    images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -291,6 +296,8 @@ class PipelineConfig:
             source_dir=source_dir,
             output_dir=output_dir,
             image_mode=ImageMode(cfg.get(COMPILE_IMAGE_MODE, ImageMode.FILE)),
+            vlm_min_image_bytes=cfg.get(COMPILE_VLM_MIN_IMAGE_BYTES, 2048),
+            vlm_min_image_dimension=cfg.get(COMPILE_VLM_MIN_IMAGE_DIMENSION, 64),
             online_sources=[],
             input_files=input_files,
             cache_dir=cfg.get(COMPILE_CACHE_DIR),
