@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated
 
 import typer
+
+from knox.core.config._configs import QueryFormat
+
+
+class SearchMode(StrEnum):
+    WIKI = "wiki"
+    RAW = "raw"
+    HYBRID = "hybrid"
+    GRAPH = "graph"
+
 
 # ── Q17 query command ──────────────────────────────────────────────────
 
@@ -33,11 +44,11 @@ QueryRaw = Annotated[
     ),
 ]
 
-QueryFormat = Annotated[
-    str,
+QueryFormatOption = Annotated[
+    QueryFormat | None,
     typer.Option(
         "--format",
-        help="Output format: text (default) or json.",
+        help="Output format for agents: text (default), json, toon, ison. Defaults to query.format from config.",
     ),
 ]
 
@@ -50,7 +61,7 @@ QueryNoClassify = Annotated[
 ]
 
 QuerySearchMode = Annotated[
-    str,
+    SearchMode,
     typer.Option(
         "--search-mode",
         "--scope",

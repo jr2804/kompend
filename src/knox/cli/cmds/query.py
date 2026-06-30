@@ -13,7 +13,7 @@ from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
     QueryAdaptive,
-    QueryFormat,
+    QueryFormatOption,
     QueryNoClassify,
     QueryRaw,
     QueryRemember,
@@ -21,12 +21,15 @@ from knox.cli.args import (
     QueryText,
     QueryTopK,
 )
+from knox.cli.args.query import SearchMode
 from knox.core.config import resolve_config
+from knox.core.config._configs import LlmDataFormat, QueryFormat
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
+    QUERY_FORMAT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
     SEARCH_EXPANSION_ENABLED,
@@ -41,6 +44,7 @@ from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
+from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
@@ -52,9 +56,9 @@ from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 logger = get_logger(__name__)
 
 
-def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN401
-    """Format query result as JSON string."""
-    output = {
+def _structured_answer(synthesis: Any) -> dict[str, Any]:  # noqa: ANN401
+    """Build the structured ``{answer, citations}`` payload for agent output."""
+    return {
         "answer": synthesis.answer,
         "citations": [
             {
@@ -66,7 +70,31 @@ def format_json_output(synthesis: Any, results: list[Any]) -> str:  # noqa: ANN4
             for c in synthesis.citations
         ],
     }
-    return json.dumps(output, indent=2)
+
+
+def _encode_structured(payload: Any, fmt: QueryFormat) -> str:  # noqa: ANN401
+    """Encode a structured payload as json/toon/ison for agent consumers."""
+    if fmt == QueryFormat.JSON:
+        return json.dumps(payload, indent=2)
+    # ISON is table-oriented and drops scalar string fields — wrap the answer
+    # in a single-row table so it survives encoding.
+    if fmt == QueryFormat.ISON:
+        payload = {"answer": [{"text": payload["answer"]}], "citations": payload["citations"]}
+    return encode_for_llm(payload, LlmDataFormat(fmt.value))
+
+
+def _encode_raw_results(results: list[Any], fmt: QueryFormat) -> str:
+    """Build the raw-results payload and encode it for agent consumers."""
+    payload = [
+        {
+            "article": r.title,
+            "source": r.source_file,
+            "snippet": r.snippet,
+            "score": round(r.score, 3),
+        }
+        for r in results
+    ]
+    return _encode_structured(payload, fmt)
 
 
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
@@ -100,28 +128,20 @@ def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
         return None
 
 
-def _print_raw_results(results: list[Any], format: str) -> None:
-    if format == "json":
-        output = [
-            {
-                "article": r.title,
-                "source": r.source_file,
-                "snippet": r.snippet,
-                "score": round(r.score, 3),
-            }
-            for r in results
-        ]
-        get_console().print(json.dumps(output, indent=2))
-    else:
+def _print_raw_results(results: list[Any], format: QueryFormat) -> None:
+    if format == QueryFormat.TEXT:
         for r in results:
             get_console().print(f"  [{r.score:.3f}] {r.title}")
             if r.source_file:
                 get_console().print(f"        Source: {r.source_file}")
             get_console().print(f"        {r.snippet}")
             get_console().print("")
+        return
+
+    get_console().print(_encode_raw_results(results, format))
 
 
-def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
+def _classify_intent(query: str, no_classify: bool, format: QueryFormat) -> bool:
     """Run intent classification and respond directly if classified.
 
     Returns True if the classifier produced a response (caller should return).
@@ -132,18 +152,10 @@ def _classify_intent(query: str, no_classify: bool, format: str) -> bool:
     result = classify(query)
     if result.response is None:
         return False
-    if format == "json":
-        get_console().print(
-            json.dumps(
-                {
-                    "intent": result.intent.value,
-                    "response": result.response,
-                },
-                indent=2,
-            )
-        )
-    else:
+    if format == QueryFormat.TEXT:
         get_console().print(result.response)
+    else:
+        get_console().print(_encode_structured({"intent": result.intent.value, "response": result.response}, format))
     return True
 
 
@@ -156,16 +168,16 @@ def _execute_query_search(
 ) -> tuple[list[Any], bool]:
     """Dispatch to the requested search mode and return results + raw flag."""
     raw = False
-    expand_graph = search_mode == "graph"
-    mode = "hybrid" if search_mode == "graph" else search_mode
+    expand_graph = search_mode == SearchMode.GRAPH
+    mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 
-    if mode == "raw":
+    if mode == SearchMode.RAW:
         if sources_dir is None:
             get_err_console().print("No sources directory found. Use --sources-dir to specify.")
             raise typer.Exit(1)
         results = retriever.search_raw(query, sources_dir, top_k=top_k)
         raw = True
-    elif mode == "hybrid":
+    elif mode == SearchMode.HYBRID:
         results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
     else:
         results = retriever.search_wiki(query, top_k=top_k)
@@ -229,7 +241,7 @@ def _handle_adaptive_search(
         vector_store=vector_store,
         sources_dir=sources_dir,
     )
-    mode = search_mode if search_mode != "hybrid" else None
+    mode = search_mode if search_mode != SearchMode.HYBRID else None
     results = retriever.search(query, top_k=top_k, mode=mode)
     return results, False
 
@@ -256,7 +268,7 @@ def _handle_enhanced_search(
     )
 
     if has_enhanced:
-        expand_graph = search_mode == "graph"
+        expand_graph = search_mode == SearchMode.GRAPH
         results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
         return results
 
@@ -266,7 +278,7 @@ def _handle_enhanced_search(
 def _synthesize_and_output(
     query: str,
     results: list[Any],
-    format: str,
+    format: QueryFormat,
     has_enhanced: bool,
     enhanced: EnhancedRetriever | None,
     wiki: CompiledWiki,
@@ -285,12 +297,10 @@ def _synthesize_and_output(
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")
-        _print_raw_results(results, "text")
+        _print_raw_results(results, QueryFormat.TEXT)
         raise typer.Exit(1)
 
-    if format == "json":
-        get_console().print(format_json_output(synthesis, results))
-    else:
+    if format == QueryFormat.TEXT:
         get_console().print(synthesis.answer)
         get_console().print("")
         get_console().print("Sources:")
@@ -298,6 +308,8 @@ def _synthesize_and_output(
         for i, c in enumerate(synthesis.citations, 1):
             source_str: str = c.get("source") or "wiki"
             get_console().print(f"  [{i}] {c['article']} ({source_str})", markup=False)
+    else:
+        get_console().print(_encode_structured(_structured_answer(synthesis), format))
 
     if remember:
         _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
@@ -309,10 +321,10 @@ def query_cmd(
     query: QueryText,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
-    format: QueryFormat = "text",
+    format: QueryFormatOption = None,
     config: ConfigPath = None,
     no_classify: QueryNoClassify = False,
-    search_mode: QuerySearchMode = "hybrid",
+    search_mode: QuerySearchMode = SearchMode.HYBRID,
     adaptive: QueryAdaptive = False,
     remember: QueryRemember = False,
 ) -> None:
@@ -330,6 +342,8 @@ def query_cmd(
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(wiki_dir=wiki_dir_override, no_user_tracking=no_user_tracking)
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    if format is None:
+        format = QueryFormat(cfg.get(QUERY_FORMAT, QueryFormat.TEXT.value))
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     load_hooks()
 
@@ -381,7 +395,7 @@ def query_cmd(
 
     if llm_client is None:
         get_err_console().print("Warning: No LLM configured. Showing raw context instead.")
-        _print_raw_results(results, "text")
+        _print_raw_results(results, QueryFormat.TEXT)
         return
 
     enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client) if has_enhanced else None

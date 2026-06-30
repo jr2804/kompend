@@ -37,6 +37,11 @@ chunk_size = 1024
 # Image handling: file (extract to disk) | base64 (inline)
 image_mode = "file"
 
+# VLM caption pre-filter: images below these thresholds (bytes / pixels) are
+# skipped as decorative noise (logos, icons, spacers) without a VLM call.
+# vlm_min_image_bytes = 2048
+# vlm_min_image_dimension = 64
+
 # Pipeline start tier: index | chunk | resolve | compile | output
 # start_at_tier = "index"
 
@@ -337,6 +342,15 @@ history_size = 20
 # to each chunk before embedding. Improves both compilation and query.
 # contextual.enabled = false
 # contextual.model = ""
+
+# ── Query settings ───────────────────────────────────────────────────────
+# Default output format for `knox query`. Override per-run with --format.
+# text = human-readable prose (default)
+# json = structured {answer, citations}, pretty-printed
+# toon / ison = compact structured encodings for LLM/agent consumers
+#   (30-70% fewer tokens than json)
+[query]
+# format = "text"
 
 # ── Event hooks ─────────────────────────────────────────────────────────
 # Register Python callables that fire on pipeline events.

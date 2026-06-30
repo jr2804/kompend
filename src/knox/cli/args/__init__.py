@@ -107,13 +107,14 @@ from .pipeline import (
 # Query command
 from .query import (
     QueryAdaptive,
-    QueryFormat,
+    QueryFormatOption,
     QueryNoClassify,
     QueryRaw,
     QueryRemember,
     QuerySearchMode,
     QueryText,
     QueryTopK,
+    SearchMode,
 )
 
 __all__ = [
@@ -189,7 +190,7 @@ __all__ = [
     "Provenance",
     # Query
     "QueryAdaptive",
-    "QueryFormat",
+    "QueryFormatOption",
     "QueryNoClassify",
     "QueryRaw",
     "QueryRemember",
@@ -198,6 +199,7 @@ __all__ = [
     "QueryTopK",
     "Recursive",
     "ReviewMode",
+    "SearchMode",
     "ServeHost",
     "ServeOpen",
     "ServePort",

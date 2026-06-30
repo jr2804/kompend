@@ -45,6 +45,21 @@ class LlmDataFormat(StrEnum):
     ISON = "ison"
 
 
+class QueryFormat(StrEnum):
+    """Output format for the ``query`` command.
+
+    ``text`` is human-readable prose. ``json``/``toon``/``ison`` are
+    structured encodings of ``{answer, citations}`` for LLM/agent
+    consumers; ``toon``/``ison`` reuse :class:`LlmDataFormat` encoders
+    for token efficiency. Default configurable via ``query.format``.
+    """
+
+    TEXT = "text"
+    JSON = "json"
+    TOON = "toon"
+    ISON = "ison"
+
+
 @dataclass
 class LLMConfig:
     """Configuration for LLM models, timeouts, and fallback behavior."""
@@ -144,6 +159,7 @@ class PdfConfig:
 
     When a PDF exceeds *max_pages_before_chunking*, Docling processes it in
     overlapping page-range segments to keep ONNX/OCR memory bounded.
+
     """
 
     max_pages_before_chunking: int = 50
