@@ -218,11 +218,14 @@ class TwoPhaseCompiler(BaseCompiler):
         # Per-source extraction timing + summary stats (for log / metadata).
         self._extraction_stats: list[dict[str, Any]] = []
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
-            self._report(source_idx, num_sources, f"extracting [{source_idx}/{num_sources}]")
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
             src_start = time.monotonic()
 
             # Build hierarchical text from tree when available.
+            total_chars = sum(len(rc.chunk.text or "") for rc in source_chunks)
+            source_name = Path(source).name
+            self._report(source_idx, num_sources, f"extracting [{source_idx}/{num_sources}] {source_name} ({total_chars} chars)")
+
             tree = tree_by_source.get(source)
             texts = self._build_tree_texts(tree) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
 
