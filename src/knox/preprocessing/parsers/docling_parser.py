@@ -33,6 +33,9 @@ _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "ListItem": ElementType.LIST_ITEM,
 }
 
+DPI_DEFAULT: float = 200.0
+IMAGE_SCALE_DEFAULT: float = DPI_DEFAULT / 72.0  # ≈ 200 DPI for Docling image extraction
+
 
 class DoclingParser(BaseParser):
     """Parser using Docling for structure-preserving extraction from PDF/DOCX.
@@ -71,6 +74,7 @@ class DoclingParser(BaseParser):
         image_mode: str = "file",
         images_dir: Path | None = None,
         pdf_config: PdfConfig | None = None,
+        images_scale: float = IMAGE_SCALE_DEFAULT,
         **kwargs: Any,
     ) -> None:
         """Initialize the parser.
@@ -81,11 +85,15 @@ class DoclingParser(BaseParser):
                 to ``<source>_images/`` next to the source file.
             pdf_config: PDF processing thresholds. When ``None``, uses
                 :class:`PdfConfig` defaults.
+            images_scale: Docling image resolution multiplier. ``1.0`` = 72 DPI,
+                ``IMAGE_SCALE_DEFAULT`` ≈ 200 DPI (sharper). Higher values improve
+                VLM readability but increase file size.
             **kwargs: Accepted and ignored (BaseParser protocol compliance).
         """
         self.image_mode = image_mode
         self.images_dir = images_dir
         self._pdf_config = pdf_config or PdfConfig()
+        self.images_scale = images_scale
         self._converter: DocumentConverter | None = None
 
     def parse(self, source_file: Path) -> ParsedDocument:
@@ -268,7 +276,10 @@ class DoclingParser(BaseParser):
     def _get_converter(self) -> DocumentConverter:
         if self._converter is None:
             if self.image_mode in ("file", "base64"):
-                pipeline_opts = PdfPipelineOptions(generate_picture_images=True)
+                pipeline_opts = PdfPipelineOptions(
+                    generate_picture_images=True,
+                    images_scale=self.images_scale,
+                )
                 pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
                 self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
             else:

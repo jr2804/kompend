@@ -38,7 +38,7 @@ from knox.core.tier_state import (
     classify_compile_status,
 )
 from knox.provenance import annotate_wiki_with_provenance
-from knox.review import ReviewQueue, slugify
+from knox.review import ReviewQueue, ReviewStatus, slugify
 from knox.trust import (
     LIFECYCLE_DRAFT,
     LIFECYCLE_STALE,
@@ -656,7 +656,7 @@ class TestReviewQueue:
         queue.enqueue(node)
         approved = queue.approve("my-page")
         assert approved
-        assert approved[0].status == "approved"
+        assert approved[0].status == ReviewStatus.APPROVED
         assert (tmp_path / REVIEW_DIR / "my-page.approved.md").exists()
         assert not (tmp_path / REVIEW_DIR / "my-page.md").exists()
 
@@ -686,7 +686,7 @@ class TestReviewQueue:
         queue.enqueue(WikiNode(id="n1", title="A", content="x", node_type="section"))
         entries = queue.list_entries()
         assert len(entries) == 1
-        assert entries[0].status == "pending"
+        assert entries[0].status == ReviewStatus.PENDING
 
     def test_slugify(self) -> None:
         assert slugify("Hello, World!") == "hello-world"

@@ -51,7 +51,7 @@ from knox.lint.history import (
     save_lint_entry,
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
-from knox.lint.remediation import remediate, remediation_to_text
+from knox.lint.remediation import RemediationStatus, remediate, remediation_to_text
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console
@@ -413,7 +413,7 @@ def lint_remediate(
     )
 
     # Persist changes unless dry-run
-    applied_count = sum(1 for a in actions if a.status == "applied")
+    applied_count = sum(1 for a in actions if a.status == RemediationStatus.APPLIED)
     if applied_count > 0 and not dry_run:
         _write_wiki_cache(wiki, base_dir)
         get_console().print(f"Persisted {applied_count} remediation(s) to wiki cache.\n")

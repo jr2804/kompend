@@ -15,6 +15,7 @@ from knox.capture.capture import capture
 from knox.capture.crystallize import crystallize
 from knox.capture.learn import learn
 from knox.cli._shared import resolve_project_paths
+from knox.cli.args.query import SearchMode
 from knox.cli.cmds.status import collect_stats
 from knox.core.config import (
     EmbeddingConfig,
@@ -315,7 +316,7 @@ def query_wiki(
     wiki_dir: str = ".",
     top_k: int = 5,
     raw: bool = False,
-    search_mode: str = "hybrid",
+    search_mode: SearchMode = SearchMode.HYBRID,
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki."""
     cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
@@ -340,15 +341,15 @@ def query_wiki(
             vector_store=vector_store,
             sources_dir=sources_dir if sources_dir.exists() else None,
         )
-        expand_graph = search_mode == "graph"
-        mode = "hybrid" if search_mode == "graph" else search_mode
+        expand_graph = search_mode == SearchMode.GRAPH
+        mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 
-        if mode == "raw":
+        if mode == SearchMode.RAW:
             if not sources_dir.exists():
                 return {"status": "error", "message": "No sources directory found for raw search."}
             results = retriever.search_raw(query, sources_dir, top_k=top_k)
             return {"status": "ok", "results": results, "synthesis": None, "raw": True}
-        elif mode == "hybrid":
+        elif mode == SearchMode.HYBRID:
             results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
         else:
             results = retriever.search_wiki(query, top_k=top_k)

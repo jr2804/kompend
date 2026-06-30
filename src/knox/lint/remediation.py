@@ -17,6 +17,7 @@ intervention. Reported but not actioned.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,12 @@ _TIER3_CATEGORIES: frozenset[str] = frozenset(
 )
 
 
+class RemediationStatus(StrEnum):
+    APPLIED = "applied"
+    SKIPPED = "skipped"
+    RECOMMENDED = "recommended"
+
+
 @dataclass
 class RemediationAction:
     """A single remediation action applied, skipped, or recommended."""
@@ -63,7 +70,7 @@ class RemediationAction:
     tier: int  # 1, 2, or 3
     category: str
     description: str
-    status: str  # "applied", "skipped", "recommended"
+    status: RemediationStatus
     details: dict[str, Any] = field(default_factory=dict)
 
 
@@ -347,10 +354,10 @@ _TIER_LABELS: dict[int, str] = {
     3: "Tier 3 - Recommendations",
 }
 
-_STATUS_ICONS: dict[str, str] = {
-    "applied": "+",
-    "skipped": "~",
-    "recommended": "!",
+_STATUS_ICONS: dict[RemediationStatus, str] = {
+    RemediationStatus.APPLIED: "+",
+    RemediationStatus.SKIPPED: "~",
+    RemediationStatus.RECOMMENDED: "!",
 }
 
 
@@ -370,9 +377,9 @@ def remediation_to_text(actions: list[RemediationAction]) -> str:
         icon = _STATUS_ICONS.get(action.status, "?")
         lines.append(f"  {icon} {action.category}: {action.description}")
 
-    applied = sum(1 for a in actions if a.status == "applied")
-    skipped = sum(1 for a in actions if a.status == "skipped")
-    recommended = sum(1 for a in actions if a.status == "recommended")
+    applied = sum(1 for a in actions if a.status == RemediationStatus.APPLIED)
+    skipped = sum(1 for a in actions if a.status == RemediationStatus.SKIPPED)
+    recommended = sum(1 for a in actions if a.status == RemediationStatus.RECOMMENDED)
     lines.append("")
     lines.append(f"Summary: {applied} applied, {skipped} skipped, {recommended} recommended")
 

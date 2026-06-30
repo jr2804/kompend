@@ -18,17 +18,24 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 _CLARITY_LOW_THRESHOLD = 4
 _CLARITY_MODERATE_THRESHOLD = 6
 
 
+class GapPriority(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 @dataclass
 class GapRecommendation:
     """A single actionable recommendation derived from lint findings."""
 
-    priority: str  # "high" | "medium" | "low"
+    priority: GapPriority
     category: str
     finding: str
     action: str
@@ -50,7 +57,7 @@ def analyze_gaps(report_dict: dict[str, Any]) -> list[GapRecommendation]:
     recs.extend(_analyze_orphans(results))
     recs.extend(_analyze_contradictions(results))
 
-    priority_order = {"high": 0, "medium": 1, "low": 2}
+    priority_order = {GapPriority.HIGH: 0, GapPriority.MEDIUM: 1, GapPriority.LOW: 2}
     recs.sort(key=lambda r: priority_order.get(r.priority, 3))
     return recs
 
@@ -66,7 +73,7 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
     for rec in recs:
         if rec.priority != current_priority:
             current_priority = rec.priority
-            label = {"high": "HIGH", "medium": "MEDIUM", "low": "LOW"}.get(rec.priority, rec.priority.upper())
+            label = {GapPriority.HIGH: "HIGH", GapPriority.MEDIUM: "MEDIUM", GapPriority.LOW: "LOW"}.get(rec.priority, rec.priority.upper())
             lines.append(f"\n[{label}]")
 
         lines.append(f"  {rec.category}: {rec.finding}")
@@ -93,7 +100,7 @@ def _analyze_broken_wikilinks(results: list[dict[str, Any]]) -> list[GapRecommen
         pages = f" (referenced by {count} page{'s' if count != 1 else ''})" if count > 1 else ""
         recs.append(
             GapRecommendation(
-                priority="high",
+                priority=GapPriority.HIGH,
                 category="Missing topic",
                 finding=f"'{target}'{pages}",
                 action="Add a source document covering this topic.",
@@ -116,7 +123,7 @@ def _analyze_coverage_gaps(results: list[dict[str, Any]]) -> list[GapRecommendat
             finding += f" — {reason}"
         recs.append(
             GapRecommendation(
-                priority="medium",
+                priority=GapPriority.MEDIUM,
                 category="Coverage gap",
                 finding=finding,
                 action="Add or improve source material covering this concept.",
@@ -139,10 +146,10 @@ def _analyze_clarity(results: list[dict[str, Any]]) -> list[GapRecommendation]:
         feedback = details.get("feedback", r.get("message", ""))
 
         if score < _CLARITY_LOW_THRESHOLD:
-            priority = "high"
+            priority = GapPriority.HIGH
             action = "Source may be incomplete or parsing failed — check the original document."
         elif score < _CLARITY_MODERATE_THRESHOLD:
-            priority = "medium"
+            priority = GapPriority.MEDIUM
             action = "Content lacks depth or clarity — consider adding supplementary sources."
         else:
             continue
@@ -170,7 +177,7 @@ def _analyze_empty_pages(results: list[dict[str, Any]]) -> list[GapRecommendatio
         page_id = r.get("page_id", "unknown")
         recs.append(
             GapRecommendation(
-                priority="high",
+                priority=GapPriority.HIGH,
                 category="Empty page",
                 finding=f"Page '{page_id}' has no content",
                 action="Source file may be empty or unparseable — verify and re-ingest.",
@@ -186,7 +193,7 @@ def _analyze_orphans(results: list[dict[str, Any]]) -> list[GapRecommendation]:
     for page_id in orphan_ids:
         recs.append(
             GapRecommendation(
-                priority="low",
+                priority=GapPriority.LOW,
                 category="Isolated topic",
                 finding=f"Page '{page_id}' has no incoming links",
                 action="Add sources related to this topic to build cross-references.",
@@ -206,7 +213,7 @@ def _analyze_contradictions(results: list[dict[str, Any]]) -> list[GapRecommenda
         page_b = details.get("page_b_title", "?")
         recs.append(
             GapRecommendation(
-                priority="medium",
+                priority=GapPriority.MEDIUM,
                 category="Unresolved contradiction",
                 finding=f"'{page_a}' vs '{page_b}'",
                 action="Add an authoritative source to resolve the conflicting claims.",

@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, Final
 
 import litellm
@@ -66,6 +67,12 @@ class _StreamResult:
     ttft_s: float  # time from call start to first token
 
 
+class ContextSource(StrEnum):
+    LITELLM = "litellm"
+    OLLAMA = "ollama"
+    FALLBACK = "fallback"
+
+
 @dataclass(frozen=True)
 class ContextWindow:
     """Discovered context window limits for a model.
@@ -76,7 +83,7 @@ class ContextWindow:
 
     max_input: int
     max_output: int
-    source: str  # "litellm" | "ollama" | "fallback"
+    source: ContextSource
 
 
 @dataclass
@@ -177,7 +184,7 @@ def _discover_context_window(
                 max_input = info.get("max_input_tokens")
                 max_output = info.get("max_output_tokens")
                 if max_input is not None:
-                    source = "litellm"
+                    source = ContextSource.LITELLM
         except Exception:  # litellm raises bare Exception for unmapped models (best-effort probe)
             # Not fatal: discovery falls through to the Ollama/fallback paths.
             # No exc_info — litellm's message is self-explanatory and a
@@ -207,27 +214,27 @@ def _discover_context_window(
             # Ollama's num_ctx is the total context (input + output).
             if max_input is None or ollama_ctx < max_input:
                 max_input = ollama_ctx
-                source = "ollama"
+                source = ContextSource.OLLAMA
             if max_output is None or ollama_ctx < max_output:
                 max_output = ollama_ctx
-                source = "ollama"
+                source = ContextSource.OLLAMA
 
     # 3. Fallback only — clamp the fallback, never the discovered value.
     if max_input is None:
         max_input = max(num_ctx_min, min(fallback_max_input, num_ctx_max))
-        source = "fallback"
+        source = ContextSource.FALLBACK
     if max_output is None:
         max_output = max(num_ctx_min, min(fallback_max_output, num_ctx_max))
-        if source == "fallback":
+        if source == ContextSource.FALLBACK:
             pass  # already fallback
-        elif source != "fallback":
-            source = "fallback"
+        elif source != ContextSource.FALLBACK:
+            source = ContextSource.FALLBACK
 
     # 4. User-configured cap overrides discovered values.
     # When the fallback was used and a cap is set, the cap replaces
     # the fallback entirely (it can raise as well as lower).
     if context_window_cap is not None:
-        if source == "fallback":
+        if source == ContextSource.FALLBACK:
             max_input = context_window_cap
             max_output = context_window_cap
         else:

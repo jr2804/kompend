@@ -15,7 +15,7 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
-from knox.llm.client import ContextWindow
+from knox.llm.client import ContextSource, ContextWindow
 
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
@@ -363,18 +363,18 @@ class TestContextWindowClamp:
     """Chunk size must be clamped to [chunk_size_min, chunk_size_max] (knox-7sp)."""
 
     def test_large_context_clamped_to_max(self) -> None:
-        cw = ContextWindow(max_input=1_000_000, max_output=8192, source="litellm")
+        cw = ContextWindow(max_input=1_000_000, max_output=8192, source=ContextSource.LITELLM)
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 131072
 
     def test_small_context_respects_min(self) -> None:
-        cw = ContextWindow(max_input=8192, max_output=4096, source="litellm")
+        cw = ContextWindow(max_input=8192, max_output=4096, source=ContextSource.LITELLM)
         # Default reserve_tokens=8192 zeros out an 8K window → floored to chunk_size_min.
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 2048
 
     def test_mid_range_context_unclamped(self) -> None:
-        cw = ContextWindow(max_input=131072, max_output=8192, source="litellm")
+        cw = ContextWindow(max_input=131072, max_output=8192, source=ContextSource.LITELLM)
         # Default reserve_tokens=8192 → effective=122880, sits between min and max rails.
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048, chunk_size_max=131072)
         assert chunker._effective_max == 131072 - 8192

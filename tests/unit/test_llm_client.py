@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.llm.client import LLMClient, _discover_context_window, _query_ollama_num_ctx
+from knox.llm.client import ContextSource, LLMClient, _discover_context_window, _query_ollama_num_ctx
 from knox.llm.errors import ConfigurationError, PermanentError, TransientError
 
 
@@ -265,7 +265,7 @@ class TestContextWindowCap:
             cw = _discover_context_window("openai/gpt-4", context_window_cap=65536)
         assert cw.max_input == 65536
         assert cw.max_output == 65536
-        assert cw.source == "litellm"
+        assert cw.source == ContextSource.LITELLM
 
     def test_no_cap_uses_full_discovered(self) -> None:
         """Without cap, discovered values pass through unchanged."""

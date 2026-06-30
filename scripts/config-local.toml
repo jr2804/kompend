@@ -9,9 +9,11 @@
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
 #default_model = "ollama/lfm2.5"
+default_model = "ollama/hf.co/unsloth/Qwen3.5-2B-GGUF:Q4_0"
 #default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
-default_model = "ollama/gemma4:e4b"
-vlm_model     = "ollama/glm-ocr"
+#default_model = "ollama/gemma4:e4b"
+vlm_model     = "ollama/hf.co/LiquidAI/LFM2-VL-1.6B-GGUF:Q4_0"
+#vlm_model     = "ollama/glm-ocr"
 context_window_cap = 64000   # optional cap; auto-discovered from model by default
 timeout = 600.0
 

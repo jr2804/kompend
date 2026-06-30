@@ -18,6 +18,7 @@ import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +36,18 @@ def slugify(title: str) -> str:
     return result if result else "untitled"
 
 
+class ReviewStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 @dataclass
 class ReviewEntry:
     """A single review queue entry."""
 
     slug: str
-    status: str  # pending | approved | rejected
+    status: ReviewStatus
     title: str
     reason: str = ""
     source_node_id: str = ""
@@ -58,7 +65,7 @@ class ReviewEntry:
     def from_dict(cls, data: dict[str, Any]) -> ReviewEntry:
         return cls(
             slug=str(data.get("slug", "")),
-            status=str(data.get("status", "pending")),
+            status=ReviewStatus(str(data.get("status", "pending"))),
             title=str(data.get("title", "")),
             reason=str(data.get("reason", "")),
             source_node_id=str(data.get("source_node_id", "")),
@@ -147,6 +154,8 @@ class ReviewQueue:
 
     def list_entries(self, status: str | None = None) -> list[ReviewEntry]:
         """Return entries, optionally filtered by status."""
+        if status is not None and not isinstance(status, ReviewStatus):
+            status = ReviewStatus(status)
         return [e for e in self._load_state().values() if status is None or e.status == status]
 
     # ------------------------------------------------------------------
