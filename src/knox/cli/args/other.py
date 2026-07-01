@@ -21,8 +21,8 @@ LintFix = Annotated[
 LintLlm = Annotated[
     bool,
     typer.Option(
-        "--llm",
-        help="Enable LLM-powered lint rules (slow, expensive).",
+        "--llm/--no-llm",
+        help="Enable LLM-powered lint rules (default). --no-llm runs structural rules only.",
     ),
 ]
 
@@ -322,20 +322,5 @@ LlmRoleModel = Annotated[
             "Roles: resolve, compile, enrich, query."
         ),
         envvar=f"{APP_NAME_UPPERCASE}_LLM_ROLE_MODEL",
-    ),
-]
-
-LlmContextBudget = Annotated[
-    int | None,
-    typer.Option(
-        "--llm-context-budget",
-        help=(
-            "Max characters of page content sent to LLM in a single lint call. "
-            "When content exceeds this, a warning is logged and content is truncated. "
-            "Default: 100000 (roughly 25000 tokens). "
-            f"Env: {APP_NAME_UPPERCASE}_LLM_CONTEXT_BUDGET."
-        ),
-        min=1000,
-        envvar=f"{APP_NAME_UPPERCASE}_LLM_CONTEXT_BUDGET",
     ),
 ]
