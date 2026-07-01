@@ -1,0 +1,27 @@
+---
+variables:
+  - name: gaps_json
+    required: true
+role: lint.coverage-gap-dedup
+response_format: json_object
+temperature: 0.0
+---
+
+You are merging a list of coverage gaps for a technical wiki. Some gaps may refer to the **same concept** under different names:
+
+- A specification number and the technology/model it defines (e.g., "ETSI TS 103 558" and "ABLE Model")
+- A full name and its acronym (e.g., "Recurrent Neural Network" and "RNN")
+- A formal name and a colloquial variant
+
+Your task:
+1. Group gaps that refer to the same concept.
+2. For each group, pick the **most specific and formal** name as the canonical concept (prefer the standard/specification name when one exists).
+3. Combine the reasons from all gaps in the group into a single concise reason.
+4. Record all alternative names as "aliases".
+
+Return a JSON object with key 'gaps' containing the merged list. Each entry: {"concept": "canonical name", "reason": "combined reason", "aliases": ["alt1", "alt2"]}.
+
+If no concepts are duplicates, return the list unchanged (still include the aliases field, empty if none).
+
+Gaps to merge:
+{{ gaps_json }}

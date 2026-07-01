@@ -113,10 +113,14 @@ def remediate(
             dry_run=dry_run,
         )
         actions.extend(tier2_actions)
-        # Track which concepts were handled (applied or skipped) to exclude from tier 3
+        # Track which concepts tier 2 looked at (any status) to exclude from tier 3
         for a in tier2_actions:
-            if a.status in ("applied", "skipped"):
-                handled_concepts.add(a.description.lower())
+            concept = a.details.get("concept")
+            if concept:
+                handled_concepts.add(concept.lower().strip())
+            matched = a.details.get("matched_concept")
+            if matched:
+                handled_concepts.add(matched.lower().strip())
 
     # ── Tier 3: Recommendations ──
     # Collect targets already handled by tier 1 to avoid duplicate recommendations
@@ -242,7 +246,7 @@ def _remediate_coverage_gaps(
                     category="Coverage gap (no extraction match)",
                     description=f"'{gap}' — not found in cached extractions",
                     status="recommended",
-                    details={"action": "Add a source document covering this concept."},
+                    details={"action": "Add a source document covering this concept.", "concept": gap},
                 )
             )
             continue
@@ -259,7 +263,7 @@ def _remediate_coverage_gaps(
                     category="Coverage gap",
                     description=f"Would generate concept page for '{concept_name}'",
                     status="skipped",
-                    details={"sources": matched.get("sources", [])},
+                    details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
                 )
             )
             continue
@@ -272,6 +276,7 @@ def _remediate_coverage_gaps(
                     category="Coverage gap (LLM failed)",
                     description=f"Failed to generate page for '{concept_name}'",
                     status="skipped",
+                    details={"concept": concept_name},
                 )
             )
             continue
@@ -297,7 +302,7 @@ def _remediate_coverage_gaps(
                 category="Coverage gap",
                 description=f"Generated concept page '{concept_name}' from {len(matched.get('sources', []))} source(s)",
                 status="applied",
-                details={"sources": matched.get("sources", [])},
+                details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
             )
         )
 

@@ -7,6 +7,7 @@ default and only run when the user passes ``--llm``.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from knox.core.template_loader import get_template_loader
@@ -231,6 +232,12 @@ class CoverageGapRule(BaseLintRule):
             gaps = llm_result.json_data.get("gaps", [])
             if isinstance(gaps, list):
                 all_gaps.extend(gaps)
+
+        # Cross-batch dedup: merge concepts that refer to the same thing
+        # under different names (e.g., "ETSI TS 103 558" = "ABLE Model").
+        if len(all_gaps) > 1:
+            all_gaps = self._dedup_gaps(all_gaps)
+
         results: list[LintResult] = []
         if all_gaps:
             for gap in all_gaps:
@@ -240,12 +247,55 @@ class CoverageGapRule(BaseLintRule):
                         outcome=LintRuleOutcome.FAIL,
                         severity=Severity.WARNING,
                         message=f"{gap.get('concept', '')} — {gap.get('reason', '')}",
-                        details={"concept": gap.get("concept", ""), "reason": gap.get("reason", "")},
+                        details={
+                            "concept": gap.get("concept", ""),
+                            "reason": gap.get("reason", ""),
+                            "aliases": gap.get("aliases", []),
+                        },
                     )
                 )
         else:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
+
+    def _dedup_gaps(self, gaps: list[dict]) -> list[dict]:
+        """Merge semantically equivalent concepts via a single LLM pass.
+
+        Falls back to the original list on any error — never loses gaps.
+        Chunks if the list exceeds the page budget, then merges chunk results.
+        """
+        if len(gaps) <= 1:
+            return gaps
+        gaps_json = json.dumps(gaps, ensure_ascii=False)
+        if len(gaps_json) <= self.lint_page_budget:
+            return self._dedup_gaps_batch(gaps)
+        chunk_size = max(10, len(gaps) * self.lint_page_budget // (len(gaps_json) + 1))
+        merged: list[dict] = []
+        for i in range(0, len(gaps), chunk_size):
+            merged.extend(self._dedup_gaps_batch(gaps[i : i + chunk_size]))
+        if len(merged) > 1:
+            return self._dedup_gaps_batch(merged)
+        return merged
+
+    def _dedup_gaps_batch(self, gaps: list[dict]) -> list[dict]:
+        """Single LLM call to merge a gap list that fits in the context window."""
+        if len(gaps) <= 1:
+            return gaps
+        gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2)
+        prompt = _loader.render("lint/coverage-gap-dedup.md.j2", gaps_json=gaps_json)
+        try:
+            llm_result = self.llm_client.try_complete(
+                [{"role": "user", "content": prompt}],
+                role="lint.coverage-gap-dedup",
+                response_format=JSON_RESPONSE_FORMAT,
+            )
+        except Exception as exc:
+            logger.warning("coverage-gap dedup failed: %s", exc, exc_info=True)
+            return gaps
+        if llm_result is None or llm_result.json_data is None:
+            return gaps
+        merged = llm_result.json_data.get("gaps", [])
+        return merged if isinstance(merged, list) and merged else gaps
 
     def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
         return list(results)
