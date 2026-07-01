@@ -74,7 +74,6 @@ from knox.core.config.keys import (
     COMPILE_OUTPUT_FLAVOR,
     COMPILE_OUTPUT_FRONTMATTER,
     COMPILE_OUTPUT_RUMDL_CONFIG,
-    COMPILE_PAGE_KIND,
     COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
     COMPILE_PDF_PAGE_CHUNK_OVERLAP,
     COMPILE_PDF_PAGE_CHUNK_SIZE,
@@ -186,7 +185,6 @@ class PipelineConfig:
     tier_state_file: Path | None = None  # None = base_dir/.knox/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
-    page_kind: str | None = None  # Page kind for N9 schema-driven compilation (concept, entity, comparison, overview, custom); None = auto-detect
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
@@ -311,7 +309,6 @@ class PipelineConfig:
             tier_state_file=cfg.get(COMPILE_TIER_STATE_PATH),
             ignore_patterns=list(cfg.get("ignore.patterns", [])),
             respect_gitignore=cfg.get(COMPILE_RESPECT_GITIGNORE, True),
-            page_kind=cfg.get(COMPILE_PAGE_KIND),
             compiler=cfg.get(COMPILE_COMPILER, Compiler.GRAPH),
             privacy_filter=cfg.get(TRUST_PRIVACY_FILTER, True),
             parser=cfg.get(INGEST_PARSER, "docling"),

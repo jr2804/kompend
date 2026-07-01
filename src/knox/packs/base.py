@@ -42,9 +42,6 @@ class Pack:
     roles:
         Maps pipeline role → prompt template string. Roles not listed
         fall through to the default pack's prompts.
-    page_kinds:
-        Page kind definitions contributed by this pack (N9). Each entry
-        maps kind name → dict of kind config.
     dependencies:
         List of other pack names this pack depends on.
     metadata:
@@ -55,7 +52,6 @@ class Pack:
     description: str = ""
     version: str = "1.0.0"
     roles: dict[str, str] = field(default_factory=dict)
-    page_kinds: dict[str, dict[str, Any]] = field(default_factory=dict)
     dependencies: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -137,14 +133,6 @@ class PackRegistry:
             if role in pack.roles:
                 return pack.roles[role]
         return None
-
-    def page_kinds_for(self, pack_names: list[str] | None = None) -> dict[str, dict[str, Any]]:
-        """Aggregate page kind definitions from active packs."""
-        active = self._resolve_active(pack_names)
-        merged: dict[str, dict[str, Any]] = {}
-        for pack in active:
-            merged.update(pack.page_kinds)
-        return merged
 
     # ------------------------------------------------------------------
     # Internal
