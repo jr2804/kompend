@@ -42,8 +42,6 @@ from knox.core.config.keys import (
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
-from knox.core.hooks import clear_hooks, load_hooks_from_config
-
 # Silence noisy third-party loggers that flood CLI output with
 # model-loading chatter, empty-OCR warnings, and full ONNX/docling
 # traceback boxes.  CRITICAL suppresses everything below — these
@@ -62,16 +60,6 @@ logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 from knox.logging import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
-
-
-def load_hooks() -> None:
-    """Load event hooks from the resolved config into the global registry."""
-    clear_hooks()
-    try:
-        cfg = resolve_config()
-        load_hooks_from_config(cfg.raw)
-    except Exception:
-        logger.debug("Could not load hooks from config", exc_info=True)
 
 
 def resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:  # noqa: ANN401

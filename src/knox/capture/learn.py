@@ -5,7 +5,6 @@ from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug
-from knox.core.hooks import HookEvent, fire_hook
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,5 +38,4 @@ source: manual
 """
     filepath.write_text(frontmatter, encoding="utf-8")
     logger.info("Learned fact -> %s", filepath)
-    fire_hook(HookEvent.ON_CAPTURE, paths=[filepath], text=text)
     return filepath

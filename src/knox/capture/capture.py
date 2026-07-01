@@ -6,7 +6,6 @@ from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
-from knox.core.hooks import HookEvent, fire_hook
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.logging import get_logger
@@ -59,7 +58,6 @@ source: capture
         logger.info("Captured %s -> %s", item.kind, filepath)
         paths.append(filepath)
 
-    fire_hook(HookEvent.ON_CAPTURE, items=items, paths=paths)
     return paths
 
 

@@ -26,7 +26,6 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
 from knox.core.entity_registry import EntityRegistry
-from knox.core.hooks import HookEvent, fire_hook
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import (
     Chunk,
@@ -166,14 +165,6 @@ class WikiPipeline:
             self.config.stop_at_tier.value,
             self.config.source_dir,
         )
-        fire_hook(
-            HookEvent.PRE_COMPILE,
-            source_dir=str(self.config.source_dir),
-            output_dir=str(self.config.output_dir),
-            start_at_tier=self.config.start_at_tier.value,
-            stop_at_tier=self.config.stop_at_tier.value,
-        )
-
         self._validate_prerequisites()
 
         # --force: invalidate all caches before starting.
@@ -272,13 +263,7 @@ class WikiPipeline:
                 decay_threshold=self.config.memory_decay_threshold,
             )
 
-        logger.info("KNOX pipeline complete: %s -> %s", self.config.source_dir, self.config.output_dir)
-        fire_hook(
-            HookEvent.POST_COMPILE,
-            wiki=wiki,
-            output_dir=str(self.config.output_dir),
-            node_count=len(wiki.nodes),
-        )
+        logger.info("KNOX pipeline complete: %s -> %s (%d nodes)", self.config.source_dir, self.config.output_dir, len(wiki.nodes))
         return wiki
 
     def run_tier(self, tier: str) -> None:

@@ -21,7 +21,7 @@ import typer
 import yaml
 
 from knox.cli._pipeline_helpers import _write_wiki_cache
-from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
@@ -38,7 +38,6 @@ from knox.cli.args import (
     LlmDefaultModel,
 )
 from knox.core.config import resolve_config
-from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE, LOG_FILE
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
@@ -170,8 +169,6 @@ def lint_run(
     lint_start = time.monotonic()
     report = runner.run(wiki)
     lint_elapsed = time.monotonic() - lint_start
-    load_hooks()
-    fire_hook(HookEvent.ON_LINT, report=report, wiki=wiki)
 
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):

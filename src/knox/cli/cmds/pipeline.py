@@ -16,7 +16,7 @@ from knox.cli._pipeline_helpers import (
     _resolve_compile_inputs,
 )
 from knox.cli._progress import PipelineProgress
-from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -220,7 +220,6 @@ def compile_cmd(
     )
 
     pipeline = build_pipeline(pipeline_config)
-    load_hooks()
 
     if list_tiers:
         _print_tier_listing(pipeline)

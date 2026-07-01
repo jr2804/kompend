@@ -8,7 +8,7 @@ from typing import Any
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, load_hooks, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
@@ -39,7 +39,6 @@ from knox.core.config.keys import (
     SEARCH_RERANKER_MODEL,
     SEARCH_RERANKER_TOP_K,
 )
-from knox.core.hooks import HookEvent, fire_hook
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.user import resolve_actor
@@ -345,7 +344,6 @@ def query_cmd(
     if format is None:
         format = QueryFormat(cfg.get(QUERY_FORMAT, QueryFormat.TEXT.value))
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    load_hooks()
 
     if _classify_intent(query, no_classify, format):
         return
@@ -383,7 +381,6 @@ def query_cmd(
         if vector_store is not None:
             vector_store.close()
 
-    fire_hook(HookEvent.ON_QUERY, query=query, results=results, search_mode=search_mode)
 
     if not results:
         get_console().print("No relevant content found.")
