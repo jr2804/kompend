@@ -23,7 +23,7 @@ from typing import Any
 
 from slugify import slugify
 
-from knox.compilation.two_phase import ExtractionSet
+from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import get_template_loader
 from knox.lint.gap_analysis import analyze_gaps
@@ -227,17 +227,7 @@ def _remediate_coverage_gaps(
         logger.info("No cached extractions found — skipping coverage gap remediation")
         return []
 
-    ext_set = ExtractionSet(extractions=list(extraction_map.values()))
-    concept_pages_data = ext_set.concept_pages()
-    if not concept_pages_data:
-        return []
-
-    # Build normalized lookup: lowercased name -> concept data
-    concept_lookup: dict[str, dict[str, Any]] = {}
-    for cp in concept_pages_data:
-        name = cp.get("name", "")
-        if name:
-            concept_lookup[name.lower().strip()] = cp
+    concept_lookup = _build_concept_lookup(extraction_map)
 
     existing_ids = {n.id for n in wiki.nodes}
     existing_titles = {n.title.lower().strip() for n in wiki.nodes}
@@ -314,6 +304,50 @@ def _remediate_coverage_gaps(
     return actions
 
 
+def _build_concept_lookup(
+    extraction_map: dict[str, Extraction],
+) -> dict[str, dict[str, Any]]:
+    """Build a normalized concept lookup from cached extractions.
+
+    Indexes both LLM-extracted concepts and entities. Standards and references
+    (e.g. "ITU-T P.57") are typically extracted as entities, not concepts;
+    entity ``context`` serves as the definition. Concept data takes priority.
+    Each bucket also carries per-source document summaries (``Extraction.summary``)
+    scoped to the sources that actually mention the concept — richer seed
+    material for page generation than definitions alone.
+    """
+    ext_set = ExtractionSet(extractions=list(extraction_map.values()))
+    concept_lookup: dict[str, dict[str, Any]] = {}
+    for cp in ext_set.concept_pages():
+        name = cp.get("name", "")
+        if name:
+            concept_lookup[name.lower().strip()] = cp
+
+    for ext in extraction_map.values():
+        for ent in ext.entities:
+            name = ent.get("name", "").strip()
+            if not name:
+                continue
+            key = name.lower().strip()
+            bucket = concept_lookup.setdefault(key, {"name": name, "sources": [], "definitions": []})
+            if ext.source not in bucket["sources"]:
+                bucket["sources"].append(ext.source)
+            context = ent.get("context", "")
+            if context and context not in bucket["definitions"]:
+                bucket["definitions"].append(context)
+
+    summary_by_source: dict[str, str] = {ext.source: ext.summary for ext in extraction_map.values() if ext.summary}
+    for bucket in concept_lookup.values():
+        bucket_summaries: list[str] = []
+        for src in bucket.get("sources", []):
+            text = summary_by_source.get(src, "")
+            if text and text not in bucket_summaries:
+                bucket_summaries.append(text)
+        bucket["summaries"] = bucket_summaries
+
+    return concept_lookup
+
+
 def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str | None:
     """Use LLM to generate a wiki page for a concept from extraction data."""
     loader = get_template_loader()
@@ -322,6 +356,7 @@ def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str
         concept_name=concept_data.get("name", ""),
         definitions=concept_data.get("definitions", []),
         sources=concept_data.get("sources", []),
+        source_summaries=concept_data.get("summaries", []),
     )
     result = llm_client.try_complete(
         messages=[{"role": "user", "content": prompt}],

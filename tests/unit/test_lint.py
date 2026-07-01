@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
+from knox.compilation._two_phase_core import Extraction
 from knox.core.models import CompiledWiki, WikiNode
+from knox.lint import remediation as remediation_module
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
+from knox.lint.remediation import RemediationStatus, remediate
 from knox.lint.runner import LintRunner, _build_report, report_to_json, report_to_text
 from knox.lint.structural import (
     RULE_BY_NAME,
@@ -611,3 +617,159 @@ class TestContradictionDetectionRule:
         runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.SKIP and "LLM call failed" in r.message for r in report.results)
+
+
+# ── Coverage-gap remediation ────────────────────────────────────────────
+
+
+def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
+    client = MagicMock()
+    client.try_complete.return_value = LLMResult(
+        content=content,
+        json_data=None,
+        diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
+    )
+    return client
+
+
+def _gap_result(concept: str) -> dict[str, Any]:
+    return {"rule": "coverage-gap", "outcome": "fail", "message": f"{concept} — missing", "details": {"concept": concept}}
+
+
+class TestCoverageGapRemediation:
+    """Coverage-gap remediation — concept vs entity lookup, priority, tier-3 fallback."""
+
+    def test_concept_match_generates_page(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}])},
+        )
+        wiki = _make_wiki()
+        actions = remediate(wiki, {"results": [_gap_result("Active Noise Control")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=_mock_remediate_llm())
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        assert len(applied) == 1
+        assert "Active Noise Control" in applied[0].description
+        assert any(n.title == "Active Noise Control" for n in wiki.nodes)
+
+    def test_entity_match_generates_page(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Standard extracted as entity (not concept) should still generate a page."""
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {
+                "doc1": Extraction(
+                    source="doc1",
+                    entities=[{"name": "ITU-T P.57", "type": "Standard", "context": "Telephone transmission quality"}],
+                )
+            },
+        )
+        wiki = _make_wiki()
+        actions = remediate(wiki, {"results": [_gap_result("ITU-T P.57")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=_mock_remediate_llm())
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        assert len(applied) == 1
+        assert "ITU-T P.57" in applied[0].description
+        assert any(n.title == "ITU-T P.57" for n in wiki.nodes)
+
+    def test_no_match_yields_tier3_recommendation(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1")},
+        )
+        wiki = _make_wiki()
+        actions = remediate(wiki, {"results": [_gap_result("POLQA")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=_mock_remediate_llm())
+        tier3 = [a for a in actions if a.tier == 3 and "no extraction match" in a.category.lower()]
+        assert len(tier3) == 1
+
+    def test_concept_takes_priority_over_entity(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """When both a concept and entity exist for the same name, concept data is used."""
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {
+                "doc1": Extraction(
+                    source="doc1",
+                    concepts=[{"name": "ERP", "definition": "Equalization-based acoustic metric"}],
+                    entities=[{"name": "ERP", "type": "Metric", "context": "Entity-only context"}],
+                )
+            },
+        )
+        wiki = _make_wiki()
+        actions = remediate(wiki, {"results": [_gap_result("ERP")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=_mock_remediate_llm())
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        assert len(applied) == 1
+        assert "ERP" in applied[0].description
+
+    def test_dry_run_skips_generation(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Echo Cancellation", "definition": "DSP technique"}])},
+        )
+        wiki = _make_wiki()
+        actions = remediate(
+            wiki,
+            {"results": [_gap_result("Echo Cancellation")]},
+            base_dir=tmp_path,
+            sources_dir=tmp_path,
+            llm_client=_mock_remediate_llm(),
+            dry_run=True,
+        )
+        skipped = [a for a in actions if a.status == RemediationStatus.SKIPPED and a.tier == 2]
+        assert len(skipped) == 1
+        assert not any(n.title == "Echo Cancellation" for n in wiki.nodes)
+
+    def test_existing_page_not_regenerated(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Existing", "definition": "Already there"}])},
+        )
+        wiki = _make_wiki([_make_node("existing", "Existing", "pre-existing")])
+        actions = remediate(wiki, {"results": [_gap_result("Existing")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=_mock_remediate_llm())
+        assert not any(a.tier == 2 for a in actions)
+
+    def test_source_summary_seed_included_in_prompt(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Per-source document summary is passed to the LLM prompt as seed material."""
+        unique_summary = "SUMMARY_MARKER_ACTIVE_NOISE_CONTROL_DETAILS"
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {
+                "doc1": Extraction(
+                    source="doc1",
+                    summary=unique_summary,
+                    concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}],
+                )
+            },
+        )
+        client = _mock_remediate_llm()
+        wiki = _make_wiki()
+        remediate(wiki, {"results": [_gap_result("Active Noise Control")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=client)
+        prompt = client.try_complete.call_args.kwargs["messages"][0]["content"]
+        assert unique_summary in prompt
+
+    def test_only_relevant_source_summary_included(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Summary from a source not mentioning the concept is excluded."""
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {
+                "doc_relevant": Extraction(
+                    source="doc_relevant",
+                    summary="RELEVANT_SUMMARY_MARKER",
+                    concepts=[{"name": "ANC", "definition": "technique"}],
+                ),
+                "doc_other": Extraction(
+                    source="doc_other",
+                    summary="UNRELATED_SUMMARY_MARKER",
+                ),
+            },
+        )
+        client = _mock_remediate_llm()
+        wiki = _make_wiki()
+        remediate(wiki, {"results": [_gap_result("ANC")]}, base_dir=tmp_path, sources_dir=tmp_path, llm_client=client)
+        prompt = client.try_complete.call_args.kwargs["messages"][0]["content"]
+        assert "RELEVANT_SUMMARY_MARKER" in prompt
+        assert "UNRELATED_SUMMARY_MARKER" not in prompt

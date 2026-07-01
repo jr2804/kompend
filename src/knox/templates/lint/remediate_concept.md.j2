@@ -6,20 +6,33 @@ variables:
     required: true
   - name: sources
     required: true
+  - name: source_summaries
+    required: false
 role: lint.remediate-concept
 response_format: text
 temperature: 0.3
 ---
 
-You are generating a wiki page for a concept that was identified as missing from a knowledge base. Using the provided definitions extracted from source documents, write a clear, informative wiki page in Markdown.
+You are generating a wiki page for a concept that was identified as missing from a knowledge base. Using the provided source material extracted from source documents, write a clear, informative wiki page in Markdown.
 
 Concept: {{ concept_name }}
 
-Definitions from sources:
+{% if source_summaries %}
+Source document summaries (primary material — use these as the main basis for the page):
+{% for summary in source_summaries %}
+
+---
+{{ summary }}
+{% endfor %}
+
+{% endif %}
+{% if definitions %}
+Concise definitions (anchor the precise meaning of the concept):
 {% for def in definitions %}
 - {{ def }}
 {% endfor %}
 
+{% endif %}
 Source documents:
 {% for src in sources %}
 - {{ src }}
@@ -30,4 +43,4 @@ Write a wiki page with:
 - Key aspects, properties, or characteristics
 - Relevant relationships to other concepts (use [[wikilinks]] where applicable)
 
-Output only the Markdown content — no preamble, no code fences.
+Synthesize primarily from the source summaries when available; use the concise definitions to keep the meaning precise. Do not invent facts beyond the provided material. Output only the Markdown content — no preamble, no code fences.
