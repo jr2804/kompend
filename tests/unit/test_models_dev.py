@@ -11,7 +11,7 @@ from knox.llm import models_dev
 
 class TestResolveModelLimits:
     def test_known_litellm_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """litellm knows gpt-4o → returns its limits."""
+        """Litellm knows gpt-4o → returns its limits."""
         mock_info = MagicMock(return_value={"max_input_tokens": 128_000, "max_output_tokens": 16_384})
         monkeypatch.setattr(models_dev.litellm, "get_model_info", mock_info)
         limits = models_dev.resolve_model_limits("openai/gpt-4o")

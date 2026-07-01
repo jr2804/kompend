@@ -7,7 +7,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import (
     LIFECYCLE_ARCHIVED,
@@ -141,7 +140,12 @@ class LifecycleStore:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(
             json.dumps(
-                {"entries": {k: {"node_id": v.node_id, "state": v.state, "last_transition": v.last_transition, "review_notes": v.review_notes} for k, v in state.entries.items()}},
+                {
+                    "entries": {
+                        k: {"node_id": v.node_id, "state": v.state, "last_transition": v.last_transition, "review_notes": v.review_notes}
+                        for k, v in state.entries.items()
+                    }
+                },
                 indent=2,
                 default=str,
             ),

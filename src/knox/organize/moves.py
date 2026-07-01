@@ -20,9 +20,11 @@ _CITATION_RE = re.compile(r"\^\[([^\]\n:]+?):(\d+)-(\d+)\]")
 
 # ── Data ────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class FileMove:
     """One planned or executed file move (paths relative to sources_dir)."""
+
     old: str
     new: str
 
@@ -30,6 +32,7 @@ class FileMove:
 @dataclass(frozen=True)
 class LinkRemap:
     """old_filename -> new_filename mapping for wiki link updates."""
+
     mapping: dict[str, str]
 
     def get(self, old: str) -> str | None:
@@ -37,6 +40,7 @@ class LinkRemap:
 
 
 # ── File operations ─────────────────────────────────────────────────
+
 
 def flatten_sources(sources_dir: Path) -> list[FileMove]:
     """Move every nested file to the top level of sources_dir."""
@@ -121,6 +125,7 @@ def _move_node(target_dir: Path, node: CategoryNode, *, prefix: str) -> list[Fil
 
 
 # ── Link updates ────────────────────────────────────────────────────
+
 
 def build_link_remap(moves: list[tuple[str, str]]) -> LinkRemap:
     """Reduce (old_rel, new_rel) moves to a filename-level remap."""

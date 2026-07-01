@@ -52,7 +52,7 @@ def resolve_model_limits(
 
     # Fallback: known local/embedding models
     for key, limits in _FALLBACK.items():
-        if key == lookup or key == base:
+        if key in (lookup, base):
             return limits
 
     return None

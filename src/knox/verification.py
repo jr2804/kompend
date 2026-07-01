@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
 
 from knox.core.config._core import DEFAULTS
 from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
@@ -122,7 +121,11 @@ def verify_node(
             result = client.try_complete(messages=messages, role="verify", response_format=JSON_RESPONSE_FORMAT)
             if result and result.json_data:
                 data = result.json_data
-                results.append(ClaimVerification(node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))))
+                results.append(
+                    ClaimVerification(
+                        node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))
+                    )
+                )
                 continue
 
         # Fallback: substring matching

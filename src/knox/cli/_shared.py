@@ -11,7 +11,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from knox.core.config import resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
@@ -42,6 +41,7 @@ from knox.core.config.keys import (
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
+
 # Silence noisy third-party loggers that flood CLI output with
 # model-loading chatter, empty-OCR warnings, and full ONNX/docling
 # traceback boxes.  CRITICAL suppresses everything below — these
