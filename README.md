@@ -154,7 +154,7 @@ Full option reference: `knox <command> --help`
 | `knox organize` | LLM-categorize files in `sources/` into a hierarchical tree and move them |
 | **Query & Search** | |
 | `knox query "..."` | Ask a natural-language question against the wiki |
-| `knox provenance SLUG` | Show source-to-article provenance for a page |
+| `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox memory add/search/synthesize` | Manage query memory and context synthesis |
 | **Quality** | |
 | `knox lint run/history/prune` | Lint wiki, query past runs, or prune history (`--fix`, `--llm`, `--rule`, `--threshold`) |
@@ -243,7 +243,7 @@ Quick reference:
 | Model context adaptation | [`docs/guides/model-context.md`](./docs/guides/model-context.md) |
 | Lint | [`docs/guides/lint.md`](./docs/guides/lint.md) |
 | Review queue | [`docs/guides/review.md`](./docs/guides/review.md) |
-| Provenance | [`docs/guides/provenance.md`](./docs/guides/provenance.md) |
+| Tracing | [`docs/guides/trace.md`](./docs/guides/trace.md) |
 | Query & memory | [`docs/guides/query-memory.md`](./docs/guides/query-memory.md) |
 | Output formats | [`docs/guides/output.md`](./docs/guides/output.md) |
 | Wiki structure | [`docs/guides/wiki-structure.md`](./docs/guides/wiki-structure.md) |

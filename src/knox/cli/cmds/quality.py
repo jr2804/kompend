@@ -1,4 +1,4 @@
-"""Doctor, status, list-parsers, and provenance diagnostic commands."""
+"""Doctor, status, list-parsers, and trace (provenance) diagnostic commands."""
 
 from __future__ import annotations
 
@@ -112,21 +112,27 @@ def list_parsers_cmd(
         get_console().print(f"  • {p['name']} ({ptype})  [{exts}]", markup=False)
 
 
-# ── provenance ──────────────────────────────────────────────────────────
+# ── trace (provenance) ──────────────────────────────────────────────────
 
 
-@app.command(name="provenance")
-def provenance_cmd(
+@app.command(name="trace")
+def trace_cmd(
     ctx: typer.Context,
-    page_slug: str = typer.Argument(..., help="Page slug or title to show provenance for."),
+    page_slugs: list[str] = typer.Argument(None, help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."),  # noqa: B008
     with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
     json_output: JsonOutput = False,
 ) -> None:
-    """Show source-to-article provenance for a compiled wiki page.
+    """Trace compiled wiki page(s) back to their source chunks.
+
+    Without a slug, lists every page in the compiled wiki with its slug
+    and source count — use this to discover which slugs exist before tracing.
+    Pass multiple slugs to trace several pages at once.
 
     Example:
-        knox provenance self-attention
-        knox provenance self-attention --with-content
+        knox trace                      # list all pages and their slugs
+        knox trace self-attention       # show sources for one page
+        knox trace self-attention bert  # show sources for multiple pages
+        knox trace self-attention --with-content
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
@@ -142,23 +148,73 @@ def provenance_cmd(
         get_err_console().print("Could not load compiled wiki metadata.")
         raise typer.Exit(1)
 
-    nodes = [n for n in wiki.nodes if n.id == page_slug or n.title.lower() == page_slug.lower()]
-    if not nodes:
-        get_err_console().print(f"Page '{page_slug}' not found in compiled wiki.")
-        raise typer.Exit(1)
+    slugs = page_slugs or []
 
-    node = nodes[0]
-    source_chunks = node.source_chunks or []
-
-    if json_output:
-        data = {"page": node.title, "slug": node.id, "sources": source_chunks}
-        json.dump(data, sys.stdout, indent=2)
-        sys.stdout.write("\n")
+    # No slug — list all pages with their slugs and source counts
+    if not slugs:
+        pages = sorted(
+            ((n.id, n.title, len(n.source_chunks or [])) for n in wiki.nodes),
+            key=lambda p: p[0],
+        )
+        if json_output:
+            json.dump(
+                [{"slug": s, "title": t, "sources": c} for s, t, c in pages],
+                sys.stdout,
+                indent=2,
+            )
+            sys.stdout.write("\n")
+            return
+        get_console().print(f"{len(pages)} page(s) in compiled wiki:\n")
+        for slug, title, count in pages:
+            get_console().print(f"  {slug:<40} ({count} sources)  {title}")
         return
 
-    get_console().print(f"# {node.title}\n")
-    if source_chunks:
-        for chunk_id in source_chunks:
-            get_console().print(f"  Source: {chunk_id}")
+    # Resolve each requested slug to its node, preserving order, deduping.
+    seen_slugs: set[str] = set()
+    matched: list = []
+    missing: list[str] = []
+    for slug in slugs:
+        key = slug.lower()
+        if key in seen_slugs:
+            continue
+        seen_slugs.add(key)
+        nodes = [n for n in wiki.nodes if n.id == slug or n.title.lower() == key]
+        if nodes:
+            matched.append(nodes[0])
+        else:
+            missing.append(slug)
+
+    if json_output:
+        # Single slug → one object for backward-friendly parsing;
+        # multiple slugs → array of objects.
+        entries = [{"page": n.title, "slug": n.id, "sources": n.source_chunks or []} for n in matched]
+        data = entries[0] if len(entries) == 1 else entries
+        json.dump(data, sys.stdout, indent=2)
+        sys.stdout.write("\n")
     else:
-        get_console().print("  (no provenance tracked)")
+        for node in matched:
+            source_chunks = node.source_chunks or []
+            get_console().print(f"# {node.title}\n")
+            if source_chunks:
+                for chunk_id in source_chunks:
+                    get_console().print(f"  Source: {chunk_id}")
+            else:
+                get_console().print("  (no sources tracked)")
+            get_console().print("")
+
+    for slug in missing:
+        get_err_console().print(f"Page '{slug}' not found in compiled wiki.")
+    if missing:
+        raise typer.Exit(1)
+
+
+# Hidden alias: old name still works, not shown in --help
+@app.command(name="provenance", hidden=True)
+def provenance_cmd(
+    ctx: typer.Context,
+    page_slugs: list[str] = typer.Argument(None, help="Page slug(s) or title(s) to trace."),  # noqa: B008
+    with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
+    json_output: JsonOutput = False,
+) -> None:
+    """[Deprecated alias] Use 'knox trace' instead."""
+    trace_cmd(ctx, page_slugs, with_content, json_output)

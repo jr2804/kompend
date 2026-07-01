@@ -86,7 +86,7 @@ nav:
     - LLM Configuration: guides/llm-config.md
     - Model Context Adaptation: guides/model-context.md
     - Output: guides/output.md
-    - Provenance: guides/provenance.md
+    - Tracing: guides/trace.md
     - Review: guides/review.md
     - Trust: guides/trust.md
     - Wiki Structure: guides/wiki-structure.md

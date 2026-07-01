@@ -1,19 +1,39 @@
-# Provenance Guide
+# Tracing Pages to Sources
 
 KNOX tracks which source files and line ranges each wiki page was compiled from.
-This is called **provenance** — the ability to trace a claim or concept back
-to its source document.
+The `trace` command traces a compiled page back to its source chunks — so you
+can verify where a claim or concept came from.
 
-## The provenance command
+## Listing pages
+
+You need a page's slug to trace it. Run `trace` with no argument to list every
+page in the compiled wiki with its slug and source count:
 
 ```bash
-knox provenance <page-slug> [--with-content] [--json]
+$ knox trace
+
+3 page(s) in compiled wiki:
+
+  self-attention                           (3 sources)  Self-Attention
+  transformer                              (2 sources)  Transformer Architecture
+  bert                                     (1 source)   BERT
 ```
 
-### Basic usage
+Copy any slug from the first column to trace that page.
+
+## Tracing a page
 
 ```bash
-$ knox provenance self-attention
+knox trace <page-slug>... [--with-content] [--json]
+```
+
+Pass one slug to trace a single page, or several to trace multiple pages
+at once (useful for agents and batch inspection):
+
+### Single page
+
+```bash
+$ knox trace self-attention
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -21,10 +41,23 @@ $ knox provenance self-attention
   Source: bert.pdf (lines 7-15)
 ```
 
+### Multiple pages
+
+```bash
+$ knox trace self-attention bert
+
+# Self-Attention
+  Source: attention.pdf (lines 42-58)
+  Source: bert.pdf (lines 7-15)
+
+# BERT
+  Source: bert.pdf (lines 1-40)
+```
+
 ### With content snippets
 
 ```bash
-$ knox provenance self-attention --with-content
+$ knox trace self-attention --with-content
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -36,7 +69,7 @@ $ knox provenance self-attention --with-content
 ### Machine-readable output
 
 ```bash
-$ knox provenance self-attention --json
+$ knox trace self-attention --json
 {
   "page": "Self-Attention",
   "slug": "self-attention",
@@ -47,9 +80,12 @@ $ knox provenance self-attention --json
 }
 ```
 
-## How provenance works
+With multiple slugs, `--json` returns an **array** of objects (one per
+slug); with a single slug it returns a single object for easier parsing.
 
-Provenance data comes from `SourceChunk` references tracked during compilation.
+## How tracing works
+
+Trace data comes from `SourceChunk` references tracked during compilation.
 When a chunker splits a document, each chunk carries an ID like:
 
 ```text
@@ -75,7 +111,7 @@ class WikiNode:
     # ["attention.pdf:42-58", "transformer.pdf:123-130"]
 ```
 
-## Integrating provenance in your workflow
+## Integrating tracing in your workflow
 
 ### During development
 
@@ -83,8 +119,9 @@ class WikiNode:
 # Compile with provenance tracking
 knox compile docs/ --provenance
 
-# Later, trace any page
-knox provenance transformer
+# List pages, then trace any one
+knox trace
+knox trace transformer
 ```
 
 ### In scripts
@@ -103,9 +140,14 @@ for node in wiki.nodes:
 
 ## Limitations
 
-- Provenance is only as granular as chunking allows. Without line-number
+- Tracing is only as granular as chunking allows. Without line-number
   tracking (Q16, future), chunk IDs may point to whole-file ranges.
 - The `--provenance` flag must be passed to `compile` — it is off by default
   to reduce metadata size.
 - External parser output (JSON protocol) must include the `source` field for
-  provenance to work.
+  tracing to work.
+
+## Compatibility
+
+The old `knox provenance <slug>` command still works as a hidden alias for
+`knox trace`, but is deprecated and not shown in `--help`.

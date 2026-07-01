@@ -16,7 +16,7 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox lint history` | Show past lint runs and score trends |
 | `knox lint prune` | Remove old lint history entries |
 | `knox review` | Manage the review queue |
-| `knox provenance` | Show provenance for a wiki page |
+| `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox capture` | Extract knowledge items from free text |
 | `knox learn` | Store a fact verbatim as a source |
 | `knox crystallize` | Synthesize captured notes into wiki pages |
