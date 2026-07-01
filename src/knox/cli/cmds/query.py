@@ -26,9 +26,6 @@ from knox.core.config import resolve_config
 from knox.core.config._configs import LlmDataFormat, QueryFormat
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_ROLE_MODELS,
     QUERY_FORMAT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
@@ -99,15 +96,7 @@ def _encode_raw_results(results: list[Any], fmt: QueryFormat) -> str:
 def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
     """Build an LLMClient from config if a default model is set."""
     cfg = resolve_config(config_path=config)
-    default_model: str | None = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
-    if not default_model:
-        return None
-
-    return LLMClient(
-        default_model=default_model,
-        fallback_chain=list(cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])),
-        role_models=dict(cfg.get(COMPILE_LLM_ROLE_MODELS, {})),
-    )
+    return LLMClient.from_config(cfg)
 
 
 def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
@@ -380,7 +369,6 @@ def query_cmd(
     finally:
         if vector_store is not None:
             vector_store.close()
-
 
     if not results:
         get_console().print("No relevant content found.")

@@ -28,7 +28,7 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline import build_pipeline
@@ -184,8 +184,7 @@ def wiki_capture(
 
     try:
         cfg = resolve_config()
-        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
-        llm_client = LLMClient(default_model=default_model)
+        llm_client = LLMClient.from_config(cfg)
     except Exception:
         llm_client = None
 
@@ -361,9 +360,8 @@ def query_wiki(
         result_dicts = [dataclasses.asdict(r) for r in results] if results else []
         return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
-    llm_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
     try:
-        llm_client = LLMClient(default_model=llm_model) if llm_model else None
+        llm_client = LLMClient.from_config(cfg)
     except Exception:
         llm_client = None
 
@@ -414,9 +412,8 @@ def wiki_crystallize(
         cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
         sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-        llm_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         try:
-            llm_client = LLMClient(default_model=llm_model) if llm_model else None
+            llm_client = LLMClient.from_config(cfg)
         except Exception:
             llm_client = None
 

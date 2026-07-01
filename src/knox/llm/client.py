@@ -18,11 +18,16 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import litellm
 
 import knox.llm.providers  # noqa: F401 — registers custom providers on import
+from knox.core.config.keys import (
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_FALLBACK_CHAIN,
+    COMPILE_LLM_ROLE_MODELS,
+)
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 from knox.llm.format import (
@@ -295,6 +300,12 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     # Most restrictive wins when both are set.
     candidates = [c for c in (env_ctx, per_model) if c is not None]
     return min(candidates) if candidates else None
+
+
+class _ConfigLike(Protocol):
+    """Minimal config interface (ResolvedConfig or plain dict)."""
+
+    def get(self, key: str, default: Any = None) -> Any: ...
 
 
 @dataclass
@@ -643,3 +654,27 @@ class LLMClient:
             "degradation_rate": round(self.failure_count / total, 3) if total > 0 else 0.0,
             "recent_failures": self.degraded_calls[-20:],
         }
+
+    @classmethod
+    def from_config(
+        cls,
+        cfg: _ConfigLike,
+        *,
+        default_model: str | None = None,
+        timeout: float | None = None,
+    ) -> LLMClient | None:
+        """Build from resolved config, or ``None`` when no model is set.
+
+        ``default_model`` (e.g. a ``--llm-default-model`` CLI flag) overrides
+        ``compile.llm.default_model`` from config.  Fallback chain and
+        per-role models are read from config when present.
+        """
+        model = default_model or cfg.get(COMPILE_LLM_DEFAULT_MODEL)
+        if not model:
+            return None
+        return cls(
+            default_model=model,
+            fallback_chain=list(cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])),
+            role_models=dict(cfg.get(COMPILE_LLM_ROLE_MODELS, {})),
+            timeout=timeout,
+        )

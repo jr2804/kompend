@@ -338,3 +338,40 @@ class TestModelsDevStep:
         assert cw.max_input == 8192
         assert cw.max_output == 4096
         assert "not found" in caplog.text
+
+
+class TestFromConfig:
+    """LLMClient.from_config() — config-driven factory."""
+
+    def test_returns_none_when_no_model(self) -> None:
+        assert LLMClient.from_config({}) is None
+
+    def test_uses_config_default_model(self) -> None:
+        client = LLMClient.from_config({"compile.llm.default_model": "ollama/test"})
+        assert client is not None
+        assert client.default_model == "ollama/test"
+
+    def test_explicit_override_wins(self) -> None:
+        cfg = {"compile.llm.default_model": "ollama/config-model"}
+        client = LLMClient.from_config(cfg, default_model="ollama/cli-override")
+        assert client is not None
+        assert client.default_model == "ollama/cli-override"
+
+    def test_reads_fallback_chain_and_role_models(self) -> None:
+        cfg = {
+            "compile.llm.default_model": "ollama/test",
+            "compile.llm.fallback_chain": ["ollama/fb1", "ollama/fb2"],
+            "compile.llm.role_models": {"resolve": ["ollama/r1"]},
+        }
+        client = LLMClient.from_config(cfg)
+        assert client is not None
+        assert client.fallback_chain == ["ollama/fb1", "ollama/fb2"]
+        assert client.role_models == {"resolve": ["ollama/r1"]}
+
+    def test_timeout_passed_through(self) -> None:
+        client = LLMClient.from_config(
+            {"compile.llm.default_model": "ollama/test"},
+            timeout=42.0,
+        )
+        assert client is not None
+        assert client.timeout == 42.0

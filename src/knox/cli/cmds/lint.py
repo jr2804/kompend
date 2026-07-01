@@ -148,15 +148,12 @@ def lint_run(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    llm_client = None
-    if llm or _uses_llm_rule(rule):
-        if not llm_default_model:
-            get_err_console().print(
-                "LLM-powered lint rules require --llm-default-model (e.g. --llm-default-model openai/gpt-4o).",
-            )
-            raise typer.Exit(1)
-
-        llm_client = LLMClient(default_model=llm_default_model)
+    llm_client = LLMClient.from_config(cfg, default_model=llm_default_model)
+    if (llm or _uses_llm_rule(rule)) and llm_client is None:
+        get_err_console().print(
+            "LLM-powered lint rules require a model. Set compile.llm.default_model in config or pass --llm-default-model (e.g. openai/gpt-4o).",
+        )
+        raise typer.Exit(1)
 
     runner = LintRunner(
         rules=list(rule) if rule else None,
@@ -189,7 +186,7 @@ def lint_run(
             health_score=report.health_score,
             rule_summary=rule_summary,
             fixes_applied=fixes_applied or None,
-            llm_model=llm_default_model,
+            llm_model=llm_client.default_model if llm_client else None,
             llm_usage=llm_client.usage.to_dict() if llm_client else None,
         ),
     )
@@ -198,7 +195,7 @@ def lint_run(
     llm_meta: dict | None = None
     if llm_client:
         llm_meta = {
-            "model": llm_default_model,
+            "model": llm_client.default_model,
             "usage": llm_client.usage.to_dict(),
         }
 
@@ -363,7 +360,8 @@ def lint_remediate(
     * **Tier 2** (LLM-generated): coverage gaps filled from cached extractions.
     * **Tier 3** (recommendations): issues needing new sources or manual review.
 
-    Tier 2 requires ``--llm-default-model``. Without it, only tier 1 runs
+    Tier 2 uses ``compile.llm.default_model`` from config (or
+    ``--llm-default-model``).  Without a model, only tier 1 runs
     and tier 2/3 are reported as recommendations.
 
     Examples:
@@ -394,9 +392,7 @@ def lint_remediate(
         raise typer.Exit(1)
 
     # Set up LLM client for tier 2
-    llm_client = None
-    if llm_default_model:
-        llm_client = LLMClient(default_model=llm_default_model)
+    llm_client = LLMClient.from_config(cfg, default_model=llm_default_model)
 
     sources_dir_path = sources_dir if sources_dir.exists() else None
 
