@@ -788,6 +788,52 @@ class TestCoverageGapRemediation:
         assert len(tier2) == 1
         assert len(tier3_coverage) == 0
 
+    def test_remediate_writes_md_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Generated concept pages are written as .md into output_dir."""
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}])},
+        )
+        output_dir = tmp_path / "wiki"
+        wiki = _make_wiki()
+        remediate(
+            wiki,
+            {"results": [_gap_result("Active Noise Control")]},
+            base_dir=tmp_path,
+            sources_dir=tmp_path,
+            output_dir=output_dir,
+            llm_client=_mock_remediate_llm(),
+        )
+        md = output_dir / "active-noise-control.md"
+        assert md.exists()
+        assert "title: Active Noise Control" in md.read_text(encoding="utf-8")
+
+    def test_ghost_node_regenerated_not_skipped(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A lint-remediation ghost node (no .md) is regenerated, not silently skipped."""
+        monkeypatch.setattr(
+            remediation_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "POLQA", "definition": "Speech quality metric"}])},
+        )
+        ghost = _make_node("polqa", "POLQA", "stale", metadata={"source": "lint-remediation"})
+        wiki = _make_wiki([ghost])
+        output_dir = tmp_path / "wiki"
+        actions = remediate(
+            wiki,
+            {"results": [_gap_result("POLQA")]},
+            base_dir=tmp_path,
+            sources_dir=tmp_path,
+            output_dir=output_dir,
+            llm_client=_mock_remediate_llm("fresh content"),
+        )
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        assert len(applied) == 1
+        polqa_nodes = [n for n in wiki.nodes if n.id == "polqa"]
+        assert len(polqa_nodes) == 1
+        assert polqa_nodes[0].content == "fresh content"
+        assert (output_dir / "polqa.md").exists()
+
 
 class TestCoverageGapRuleDedup:
     """Cross-batch dedup of semantically equivalent coverage gaps."""
@@ -798,17 +844,21 @@ class TestCoverageGapRuleDedup:
         client.try_complete.side_effect = [
             LLMResult(
                 content="",
-                json_data={"gaps": [
-                    {"concept": "ETSI TS 103 558", "reason": "not discussed"},
-                    {"concept": "ABLE Model", "reason": "never mentioned"},
-                ]},
+                json_data={
+                    "gaps": [
+                        {"concept": "ETSI TS 103 558", "reason": "not discussed"},
+                        {"concept": "ABLE Model", "reason": "never mentioned"},
+                    ]
+                },
                 diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
             LLMResult(
                 content="",
-                json_data={"gaps": [
-                    {"concept": "ETSI TS 103 558", "reason": "not discussed", "aliases": ["ABLE Model"]},
-                ]},
+                json_data={
+                    "gaps": [
+                        {"concept": "ETSI TS 103 558", "reason": "not discussed", "aliases": ["ABLE Model"]},
+                    ]
+                },
                 diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
         ]
@@ -825,10 +875,12 @@ class TestCoverageGapRuleDedup:
         client.try_complete.side_effect = [
             LLMResult(
                 content="",
-                json_data={"gaps": [
-                    {"concept": "Concept A", "reason": "missing"},
-                    {"concept": "Concept B", "reason": "absent"},
-                ]},
+                json_data={
+                    "gaps": [
+                        {"concept": "Concept A", "reason": "missing"},
+                        {"concept": "Concept B", "reason": "absent"},
+                    ]
+                },
                 diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
             None,
@@ -837,3 +889,38 @@ class TestCoverageGapRuleDedup:
         report = runner.run(wiki)
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 2
+
+
+class TestCoverageGapSuppression:
+    """Deterministic suppression of gaps whose page already exists (cross-batch false positives)."""
+
+    def test_existing_page_gap_suppressed(self) -> None:
+        wiki = _make_wiki([_make_node("leap-model", "LEAP Model", "content about LEAP")])
+        client = MagicMock()
+        client.try_complete.side_effect = [
+            LLMResult(
+                content="",
+                json_data={
+                    "gaps": [
+                        {"concept": "LEAP Model", "reason": "not discussed"},
+                        {"concept": "Truly Missing", "reason": "absent"},
+                    ]
+                },
+                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
+            ),
+            LLMResult(
+                content="",
+                json_data={
+                    "gaps": [
+                        {"concept": "LEAP Model", "reason": "not discussed"},
+                        {"concept": "Truly Missing", "reason": "absent"},
+                    ]
+                },
+                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
+            ),
+        ]
+        runner = LintRunner(rules=["coverage-gap"], llm_client=client)
+        report = runner.run(wiki)
+        fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(fails) == 1
+        assert fails[0].details["concept"] == "Truly Missing"

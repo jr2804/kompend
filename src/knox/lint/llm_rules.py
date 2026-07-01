@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from slugify import slugify
+
 from knox.core.template_loader import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.llm.client import JSON_RESPONSE_FORMAT
@@ -238,6 +240,12 @@ class CoverageGapRule(BaseLintRule):
         if len(all_gaps) > 1:
             all_gaps = self._dedup_gaps(all_gaps)
 
+        # Suppress false positives: the batched LLM can't see pages outside
+        # its own batch, so it flags concepts whose page already exists. Drop
+        # any gap matching the full wiki page inventory (deterministic, no LLM).
+        if all_gaps:
+            all_gaps = self._suppress_existing_gaps(all_gaps, wiki)
+
         results: list[LintResult] = []
         if all_gaps:
             for gap in all_gaps:
@@ -257,6 +265,9 @@ class CoverageGapRule(BaseLintRule):
         else:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
+
+    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+        return list(results)
 
     def _dedup_gaps(self, gaps: list[dict]) -> list[dict]:
         """Merge semantically equivalent concepts via a single LLM pass.
@@ -297,8 +308,33 @@ class CoverageGapRule(BaseLintRule):
         merged = llm_result.json_data.get("gaps", [])
         return merged if isinstance(merged, list) and merged else gaps
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        return list(results)
+    @staticmethod
+    def _suppress_existing_gaps(gaps: list[dict], wiki: Any) -> list[dict]:
+        """Drop gaps whose concept already has a wiki page.
+
+        The detection LLM sees only one batch at a time, so it flags any
+        concept referenced in batch *N* whose page lives in batch *M*. This
+        deterministic pass checks every surviving gap against the full wiki
+        inventory — every node id, slugified title, and raw title — and drops
+        matches. Gap ``aliases`` are checked too.
+        """
+        existing: set[str] = set()
+        for node in wiki.nodes:
+            existing.add(str(node.id).lower().strip())
+            title = (getattr(node, "title", "") or "").lower().strip()
+            if title:
+                existing.add(title)
+                existing.add(slugify(title))
+        kept: list[dict] = []
+        for gap in gaps:
+            names = [gap.get("concept", ""), *(gap.get("aliases") or [])]
+            if any(n and (slugify(n) in existing or n.lower().strip() in existing) for n in names):
+                continue
+            kept.append(gap)
+        suppressed = len(gaps) - len(kept)
+        if suppressed:
+            logger.info("coverage-gap suppression dropped %d false positive(s) matching existing pages", suppressed)
+        return kept
 
 
 # ── Rule 12: contradiction-detection ────────────────────────────────────

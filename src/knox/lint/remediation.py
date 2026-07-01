@@ -29,6 +29,7 @@ from knox.core.template_loader import get_template_loader
 from knox.lint.gap_analysis import analyze_gaps
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
+from knox.output.renderer import render_frontmatter
 
 logger = get_logger(__name__)
 
@@ -80,6 +81,7 @@ def remediate(
     *,
     base_dir: Path | None = None,
     sources_dir: Path | None = None,
+    output_dir: Path | None = None,
     llm_client: Any | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
@@ -90,6 +92,9 @@ def remediate(
         report_dict: The ``report`` sub-dict from ``lint_history.jsonl``.
         base_dir: Project root. Required for tier 2.
         sources_dir: Sources directory. Required for tier 2.
+        output_dir: Wiki output directory. Tier-2 generated concept pages are
+            written here as ``.md`` files so they are visible to the user and
+            survive a re-organize. When ``None``, pages only update the cache.
         llm_client: LLM client for tier 2. If ``None``, tier 2 is skipped.
         dry_run: If ``True``, report what would be done without modifying.
 
@@ -110,6 +115,7 @@ def remediate(
             llm_client=llm_client,
             base_dir=base_dir,
             sources_dir=sources_dir,
+            output_dir=output_dir,
             dry_run=dry_run,
         )
         actions.extend(tier2_actions)
@@ -212,6 +218,7 @@ def _remediate_coverage_gaps(
     llm_client: Any,
     base_dir: Path,
     sources_dir: Path,
+    output_dir: Path | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Generate concept pages for coverage gaps using cached extractions."""
@@ -233,8 +240,16 @@ def _remediate_coverage_gaps(
 
     concept_lookup = _build_concept_lookup(extraction_map)
 
-    existing_ids = {n.id for n in wiki.nodes}
-    existing_titles = {n.title.lower().strip() for n in wiki.nodes}
+    # Existence check must ignore prior lint-remediation "ghost" nodes
+    # (generated nodes never written to .md) so they get regenerated rather
+    # than silently skipped. Real (compiled) nodes always count; .md files on
+    # disk count too when output_dir is provided.
+    real_nodes = [n for n in wiki.nodes if n.metadata.get("source") != "lint-remediation"]
+    existing_ids = {n.id for n in real_nodes}
+    existing_titles = {n.title.lower().strip() for n in real_nodes}
+    if output_dir is not None and output_dir.is_dir():
+        existing_ids |= {f.stem for f in output_dir.glob("*.md")}
+    node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
 
     for gap in gap_concepts:
@@ -281,20 +296,25 @@ def _remediate_coverage_gaps(
             )
             continue
 
-        wiki.nodes.append(
-            WikiNode(
-                id=page_id,
-                title=concept_name,
-                content=content,
-                node_type="concept",
-                metadata={
-                    "source": "lint-remediation",
-                    "generated_from": matched.get("sources", []),
-                },
-            )
+        node = WikiNode(
+            id=page_id,
+            title=concept_name,
+            content=content,
+            node_type="concept",
+            metadata={
+                "source": "lint-remediation",
+                "generated_from": matched.get("sources", []),
+            },
         )
+        # Replace a same-id ghost node in place; otherwise append.
+        if page_id in node_index:
+            wiki.nodes[node_index[page_id]] = node
+        else:
+            node_index[page_id] = len(wiki.nodes)
+            wiki.nodes.append(node)
         existing_ids.add(page_id)
         existing_titles.add(concept_name.lower().strip())
+        _write_concept_page(output_dir, page_id, concept_name, content)
 
         actions.append(
             RemediationAction(
@@ -351,6 +371,19 @@ def _build_concept_lookup(
         bucket["summaries"] = bucket_summaries
 
     return concept_lookup
+
+
+def _write_concept_page(output_dir: Path | None, page_id: str, title: str, content: str) -> None:
+    """Write a generated concept page as a ``.md`` file next to compiled output.
+
+    No-op when ``output_dir`` is ``None``. The page gets a ``title`` frontmatter
+    block matching the compiled-wiki page format.
+    """
+    if output_dir is None:
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    body = render_frontmatter({"title": title}) + content
+    (output_dir / f"{page_id}.md").write_text(body, encoding="utf-8")
 
 
 def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str | None:
