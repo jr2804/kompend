@@ -126,7 +126,7 @@ def write_cmd(
 
     body_parts: list[str] = []
     if source:
-        source_files = resolve_files(*source)
+        source_files = resolve_files(*source, sources_dir=_sources_dir)
         for sf in source_files:
             try:
                 content = sf.read_text(encoding="utf-8", errors="replace")[:2000]

@@ -42,6 +42,7 @@ def resolve_files(
     recursive: bool = False,
     ignore_patterns: list[str] | None = None,
     respect_gitignore: bool = True,
+    sources_dir: Path | None = None,
 ) -> list[Path]:
     """Expand a mix of file paths, glob patterns, and scan_dir paths into concrete files.
 
@@ -50,6 +51,8 @@ def resolve_files(
         recursive: If True, descend into subdirectories.
         ignore_patterns: Glob patterns for files to exclude.
         respect_gitignore: If True, read ``.gitignore`` from source dir.
+        sources_dir: When set, bare filenames not found at CWD are searched
+            recursively under this directory.
 
     Returns:
         Deduplicated, sorted list of existing file paths with supported extensions.
@@ -70,7 +73,7 @@ def resolve_files(
                     _add(match, seen, results)
             continue
 
-        # Existing file
+        # Existing file (absolute, relative, or CWD-relative)
         if candidate_file.is_file():
             if _is_supported(candidate_file):
                 _add(candidate_file, seen, results)
@@ -80,6 +83,16 @@ def resolve_files(
         if candidate_file.is_dir():
             _scan_dir(candidate_file, recursive, seen, results)
             continue
+
+        # Bare filename not found at CWD — search sources_dir recursively
+        if sources_dir is not None and "/" not in raw_pattern and "\\" not in raw_pattern:
+            found = False
+            for match in sorted(sources_dir.rglob(candidate_file.name)):
+                if match.is_file() and _is_supported(match):
+                    _add(match, seen, results)
+                    found = True
+            if found:
+                continue
 
         # Neither file nor dir nor glob — skip silently.
         # (Could be a typo or an unsupported file that was passed explicitly.)
