@@ -231,14 +231,6 @@ def test_trace_no_wiki() -> None:
     assert result.exit_code == 1
 
 
-def test_trace_provenance_alias_no_wiki() -> None:
-    """Legacy 'provenance' alias still works and routes to trace."""
-    runner = CliRunner()
-    result = runner.invoke(app, ["provenance", "test-page"])
-    assert result.exit_code != 0
-    assert result.exit_code == 1
-
-
 def test_trace_multiple_slugs_accepted() -> None:
     """Knox trace accepts multiple positional slugs (variadic)."""
     runner = CliRunner()

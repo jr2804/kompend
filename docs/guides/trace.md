@@ -146,8 +146,3 @@ for node in wiki.nodes:
   to reduce metadata size.
 - External parser output (JSON protocol) must include the `source` field for
   tracing to work.
-
-## Compatibility
-
-The old `knox provenance <slug>` command still works as a hidden alias for
-`knox trace`, but is deprecated and not shown in `--help`.

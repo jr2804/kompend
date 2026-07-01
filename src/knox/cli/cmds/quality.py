@@ -206,15 +206,3 @@ def trace_cmd(
         get_err_console().print(f"Page '{slug}' not found in compiled wiki.")
     if missing:
         raise typer.Exit(1)
-
-
-# Hidden alias: old name still works, not shown in --help
-@app.command(name="provenance", hidden=True)
-def provenance_cmd(
-    ctx: typer.Context,
-    page_slugs: list[str] = typer.Argument(None, help="Page slug(s) or title(s) to trace."),  # noqa: B008
-    with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
-    json_output: JsonOutput = False,
-) -> None:
-    """[Deprecated alias] Use 'knox trace' instead."""
-    trace_cmd(ctx, page_slugs, with_content, json_output)
