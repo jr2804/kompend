@@ -239,7 +239,7 @@ class CoverageGapRule(BaseLintRule):
                         rule=self.name,
                         outcome=LintRuleOutcome.FAIL,
                         severity=Severity.WARNING,
-                        message=f"Coverage gap: {gap.get('concept', '')} — {gap.get('reason', '')}",
+                        message=f"{gap.get('concept', '')} — {gap.get('reason', '')}",
                         details={"concept": gap.get("concept", ""), "reason": gap.get("reason", "")},
                     )
                 )
