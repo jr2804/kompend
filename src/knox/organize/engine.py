@@ -29,8 +29,7 @@ from knox.organize.categorize import (
     propose_categories,
     validate_tree,
 )
-from knox.organize.links import LinkRemap, build_link_remap, update_wiki_links
-from knox.organize.move import FileMove, flatten_sources, materialize_tree, move_files
+from knox.organize.moves import FileMove, LinkRemap, build_link_remap, flatten_sources, materialize_tree, move_files, update_wiki_links
 
 logger = get_logger(__name__)
 

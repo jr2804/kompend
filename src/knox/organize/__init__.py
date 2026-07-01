@@ -20,8 +20,7 @@ from knox.organize.categorize import (
     validate_tree,
 )
 from knox.organize.engine import OrganizeResult, organize_sources
-from knox.organize.links import build_link_remap, update_wiki_links
-from knox.organize.move import flatten_sources, materialize_tree, move_files
+from knox.organize.moves import build_link_remap, flatten_sources, materialize_tree, move_files, update_wiki_links
 
 __all__ = [
     "CategoryNode",

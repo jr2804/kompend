@@ -1,4 +1,4 @@
-"""Q21 output trust: privacy redaction, private flag, lifecycle states."""
+"""Privacy redaction, private flag, lifecycle states for compiled output."""
 
 from __future__ import annotations
 
@@ -22,8 +22,6 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Patterns used by the privacy filter. Conservative on purpose — false
-# positives (over-redaction) are safer than false negatives.
 _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
     re.compile(r"ghp_[A-Za-z0-9]{20,}"),
@@ -31,17 +29,14 @@ _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),  # US SSN
-    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),  # email
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
 )
-_PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"  # noqa: S105 — sentinel token, not a credential
+_PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"
 
 
 def filter_sensitive(text: str) -> tuple[str, int]:
-    """Strip known secret/PII patterns from *text*.
-
-    Returns the sanitised text and the number of substitutions.
-    """
+    """Strip secrets/PII, return (sanitised, count)."""
     if not text:
         return text, 0
     count = 0
@@ -52,15 +47,11 @@ def filter_sensitive(text: str) -> tuple[str, int]:
 
 
 def has_sensitive_content(text: str) -> bool:
-    """Return True if *text* matches any privacy pattern."""
     return any(pattern.search(text) for pattern in _PRIVACY_PATTERNS)
 
 
 def filter_wiki(wiki: CompiledWiki) -> tuple[CompiledWiki, int]:
-    """Apply :func:`filter_sensitive` to every node's content.
-
-    Returns the filtered wiki and the total number of substitutions.
-    """
+    """Apply filter_sensitive to every node. Returns (filtered, total_redactions)."""
     total = 0
     new_nodes: list[WikiNode] = []
     for node in wiki.nodes:
@@ -93,11 +84,7 @@ def filter_wiki(wiki: CompiledWiki) -> tuple[CompiledWiki, int]:
 
 
 def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
-    """Write a ``.knox/private.json`` index of private pages.
-
-    Private pages are excluded from default search/queries unless the
-    caller passes ``--include-private``.
-    """
+    """Write .knox/private.json index of private pages."""
     output_dir.mkdir(parents=True, exist_ok=True)
     private_index = VaultPaths(output_dir.parent).private_path
     private_index.parent.mkdir(parents=True, exist_ok=True)
@@ -110,50 +97,19 @@ def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
 
 @dataclass
 class LifecycleEntry:
-    """Lifecycle metadata for a single wiki page."""
-
     node_id: str
     state: str = LIFECYCLE_DRAFT
     last_transition: str = ""
     review_notes: str = ""
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "node_id": self.node_id,
-            "state": self.state,
-            "last_transition": self.last_transition,
-            "review_notes": self.review_notes,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> LifecycleEntry:
-        state = str(data.get("state", LIFECYCLE_DRAFT))
-        if state not in VALID_LIFECYCLE_STATES:
-            state = LIFECYCLE_DRAFT
-        return cls(
-            node_id=str(data.get("node_id", "")),
-            state=state,
-            last_transition=str(data.get("last_transition", "")),
-            review_notes=str(data.get("review_notes", "")),
-        )
-
 
 @dataclass
 class LifecycleState:
-    """The full lifecycle record for a wiki output directory."""
-
     entries: dict[str, LifecycleEntry] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"entries": {k: v.to_dict() for k, v in self.entries.items()}}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> LifecycleState:
-        return cls(entries={k: LifecycleEntry.from_dict(v) for k, v in data.get("entries", {}).items()})
 
 
 class LifecycleStore:
-    """JSON-backed store for per-page lifecycle state."""
+    """JSON-backed lifecycle store."""
 
     def __init__(self, state_file: Path) -> None:
         self.state_file = state_file
@@ -167,11 +123,30 @@ class LifecycleStore:
             return LifecycleState()
         if not isinstance(data, dict):
             return LifecycleState()
-        return LifecycleState.from_dict(data)
+        entries = data.get("entries", {})
+        return LifecycleState(
+            entries={
+                k: LifecycleEntry(
+                    node_id=entry.get("node_id", k),
+                    state=entry.get("state", LIFECYCLE_DRAFT),
+                    last_transition=entry.get("last_transition", ""),
+                    review_notes=entry.get("review_notes", ""),
+                )
+                for k, entry in entries.items()
+                if isinstance(entry, dict)
+            }
+        )
 
     def save(self, state: LifecycleState) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(json.dumps(state.to_dict(), indent=2, default=str), encoding="utf-8")
+        self.state_file.write_text(
+            json.dumps(
+                {"entries": {k: {"node_id": v.node_id, "state": v.state, "last_transition": v.last_transition, "review_notes": v.review_notes} for k, v in state.entries.items()}},
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
 
     def transition(
         self,
@@ -181,7 +156,6 @@ class LifecycleStore:
         notes: str = "",
     ) -> LifecycleEntry:
         """Move a page to a new lifecycle state."""
-        _ = self  # noqa: PLR6301 — instance method for future per-store config
         if new_state not in VALID_LIFECYCLE_STATES:
             msg = f"Invalid lifecycle state {new_state!r}. Valid: {VALID_LIFECYCLE_STATES}"
             raise ValueError(msg)
@@ -203,10 +177,7 @@ def mark_stale(
     stale_after_days: int = 90,
     now: datetime | None = None,
 ) -> int:
-    """Auto-mark pages as ``stale`` after the configured number of days.
-
-    Returns the number of entries that changed state.
-    """
+    """Auto-mark pages as stale after the configured days. Returns count changed."""
     now = now or datetime.now(UTC)
     changed = 0
     for entry in state.entries.values():
@@ -217,7 +188,6 @@ def mark_stale(
         try:
             last_dt = datetime.fromisoformat(entry.last_transition)
         except ValueError:
-            logger.warning("Skipping entry %s: malformed last_transition %r", entry.node_id, entry.last_transition)
             continue
         if now - last_dt >= timedelta(days=stale_after_days):
             entry.state = LIFECYCLE_STALE

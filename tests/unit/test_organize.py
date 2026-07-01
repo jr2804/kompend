@@ -34,7 +34,7 @@ from knox.organize import (
 )
 from knox.organize.categorize import _slugify_category, _tree_from_json
 from knox.organize.engine import resolve_organize_config
-from knox.organize.move import FileMove
+from knox.organize.moves import FileMove
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
