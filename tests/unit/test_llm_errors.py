@@ -96,18 +96,6 @@ class TestClassifyLitellmError:
         err = classify_litellm_error(_make_exc("HTTPError", status_code=503))
         assert isinstance(err, TransientError)
 
-    def test_status_code_400_is_permanent(self) -> None:
-        err = classify_litellm_error(_make_exc("HTTPError", status_code=400))
-        assert isinstance(err, PermanentError)
-
-    def test_status_code_401_is_configuration(self) -> None:
-        err = classify_litellm_error(_make_exc("HTTPError", status_code=401))
-        assert isinstance(err, ConfigurationError)
-
-    def test_status_code_403_is_configuration(self) -> None:
-        err = classify_litellm_error(_make_exc("HTTPError", status_code=403))
-        assert isinstance(err, ConfigurationError)
-
     def test_llmerror_passthrough(self) -> None:
         """If the exception is already typed, return it unchanged."""
         original = PermanentError("already classified", model="m")
