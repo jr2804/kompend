@@ -49,7 +49,7 @@ knox query "what is the main result?"
 - **Typed knowledge graph** — Entity relations with confidence (`uses`, `depends_on`, `contradicts`, …)
 - **Memory lifecycle** — Confidence decay, tier promotion (working→episodic→semantic→procedural), supersession
 - **Hybrid search** — FTS + vector + token-overlap fused with reciprocal rank fusion (RRF)
-- **Crystallize** — Synthesize captured notes into coherent wiki pages
+- **Distill** — Synthesize captured notes into coherent wiki pages
 - **Event hooks** — Pluggable callbacks at compile/capture/query/lint lifecycle points
 - **WiCER compilation** — Iterative compile-evaluate-refine loop for quality
 - **Multi-format output** — Markdown (incl. Obsidian vault), JSON, Typst
@@ -100,7 +100,7 @@ knox query "what is the main result?"
 
 - [Memory Lifecycle](concepts/memory-lifecycle.md) — Confidence, tiers, decay, supersession
 - [Query Memory](guides/query-memory.md) — Episodic memory, context synthesis, and MCP integration
-- [Crystallize](concepts/crystallize.md) — Captured notes → synthesized wiki pages
+- [Distill](concepts/distill.md) — Captured notes → synthesized wiki pages
 
 ### Integrations
 

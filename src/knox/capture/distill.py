@@ -1,8 +1,8 @@
-"""Crystallize captured notes into coherent wiki pages.
+"""Distill captured notes into coherent wiki pages.
 
 Reads raw captures from ``sources/_captured/``, groups them by tag, and uses an
 LLM to synthesize each group into a single well-structured markdown page written
-to ``sources/_crystallized/``.  When no LLM client is provided a deterministic
+to ``sources/_distilled/``.  When no LLM client is provided a deterministic
 concatenation fallback is used.
 """
 
@@ -34,12 +34,12 @@ class CapturedNote:
     captured_at: str = ""
 
 
-def crystallize(
+def distill(
     sources_dir: Path,
     *,
     llm_client: LLMClient | None = None,
 ) -> list[Path]:
-    """Crystallize all captured notes into synthesized wiki pages.
+    """Distill all captured notes into synthesized wiki pages.
 
     Args:
         sources_dir: Root sources directory (``sources/``).
@@ -47,7 +47,7 @@ def crystallize(
             merged deterministically without LLM call.
 
     Returns:
-        List of paths to the written crystallized pages.
+        List of paths to the written distilled pages.
     """
     captured_dir = sources_dir / "_captured"
     if not captured_dir.is_dir():
@@ -56,10 +56,10 @@ def crystallize(
 
     notes = _load_captured_notes(captured_dir)
     if not notes:
-        logger.info("No captured notes to crystallize")
+        logger.info("No captured notes to distill")
         return []
 
-    output_dir = sources_dir / "_crystallized"
+    output_dir = sources_dir / "_distilled"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     groups = _group_by_tag(notes)
@@ -70,9 +70,9 @@ def crystallize(
         page = _synthesize_with_llm(tag, group_notes, llm_client) if llm_client is not None else _synthesize_fallback(tag, group_notes)
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-        filepath = output_dir / f"crystallized-{timestamp}-{slug}.md"
+        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
         _write_page(filepath, page, source_files, timestamp)
-        logger.info("Crystallized %d notes -> %s", len(group_notes), filepath)
+        logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
 
     return written
@@ -149,7 +149,7 @@ def _synthesize_with_llm(
         for n in notes
     ]
     system_prompt = loader.render(
-        "capture/crystallize.md.j2",
+        "capture/distill.md.j2",
         notes=notes_data,
         group_tag=tag,
     )
@@ -160,7 +160,7 @@ def _synthesize_with_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        role="capture.crystallize",
+        role="capture.distill",
         response_format=JSON_RESPONSE_FORMAT,
         temperature=0.2,
     )
@@ -199,14 +199,14 @@ def _write_page(
     source_files: list[str],
     timestamp: str,
 ) -> None:
-    """Write a crystallized page with frontmatter."""
+    """Write a distilled page with frontmatter."""
     tag_lines = "\n".join(f"  - {t}" for t in page["tags"])
     source_lines = "\n".join(f"  - {s}" for s in source_files)
     frontmatter = (
         f"---\n"
-        f"type: crystallized\n"
+        f"type: distilled\n"
         f"title: {page['title']}\n"
-        f"crystallized_at: {timestamp}\n"
+        f"distilled_at: {timestamp}\n"
         f"tags:\n{tag_lines}\n"
         f"synthesized_from:\n{source_lines}\n"
         f"---\n\n"

@@ -116,9 +116,9 @@ After a full compile+synth, your output directory looks like:
 
 ```text
 project/
-├── sources/                 # Raw + captured + crystallized sources
+├── sources/                 # Raw + captured + distilled sources
 │   ├── _captured/           # capture/learn output
-│   └── _crystallized/       # crystallize output
+│   └── _distilled/          # distill output
 ├── wiki/                    # Compiled wiki (default: wiki/, resolved from --wiki-dir)
 │   ├── index.md             # TOC + stats (regenerated each compile)
 │   ├── log.md               # Activity journal (appended, never overwritten)

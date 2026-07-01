@@ -35,7 +35,7 @@ project root — **not** inside `wiki/`.
 │   └── ...                     # Compiled wiki pages
 ├── sources/
 │   ├── _captured/              # Captured notes (knox capture / knox learn)
-│   └── _crystallized/          # Synthesized wiki pages (knox crystallize)
+│   └── _distilled/             # Synthesized wiki pages (knox distill)
 ```
 
 ## What is stored and why

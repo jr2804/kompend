@@ -162,7 +162,7 @@ Full option reference: `knox <command> --help`
 | **Capture** | |
 | `knox capture "..."` | LLM-extract decisions, discoveries, corrections from text |
 | `knox learn "..."` | Store a single fact directly as a source file |
-| `knox crystallize` | Merge captured notes into coherent wiki pages via LLM |
+| `knox distill` | Merge captured notes into coherent wiki pages via LLM |
 | `knox write "TITLE"` | Create a one-shot wiki page from a title and optional sources |
 | **Packs & Servers** | |
 | `knox pack-list` | List installed contribution packs |

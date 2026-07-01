@@ -1,16 +1,16 @@
-"""Capture, learn, crystallize, and write commands."""
+"""Capture, learn, distill, and write commands."""
 
 from __future__ import annotations
 
 import typer
 
 from knox.capture.capture import capture
-from knox.capture.crystallize import crystallize
+from knox.capture.distill import distill
 from knox.capture.learn import learn
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
-from knox.cli.args import CaptureText, Frontmatter, LearnTags, LearnText
+from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console
@@ -22,14 +22,18 @@ from knox.output.models import Document
 def capture_cmd(
     ctx: typer.Context,
     text: CaptureText,
+    tag: Tags = None,
 ) -> None:
-    """Extract knowledge items from text and save as source files.
+    """Extract knowledge items from text via LLM; save each as a source file.
 
-    Uses LLM to extract decisions, discoveries, corrections, and references
-    from conversation text or notes. Results are written to sources/_captured/.
+    Sends the text to an LLM, which pulls out decisions, discoveries,
+    corrections, references, and notes — one file per extracted item.
+    This is the LLM-extraction counterpart to 'learn' (which stores text
+    verbatim without an LLM). Results are written to sources/_captured/.
 
     Examples:
         knox capture "We decided to use QKV projections with RoPE"
+        knox capture "Discussion about layer norm placement" --tag architecture --tag training
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
@@ -40,7 +44,7 @@ def capture_cmd(
     except Exception:
         llm_client = None
 
-    paths = capture(text, sources_dir=sources_dir, llm_client=llm_client)
+    paths = capture(text, sources_dir=sources_dir, llm_client=llm_client, tags=tag)
     get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / '_captured'}")
     for p in paths:
         get_console().print(f"  {p.name}")
@@ -50,12 +54,14 @@ def capture_cmd(
 def learn_cmd(
     ctx: typer.Context,
     text: LearnText,
-    tag: LearnTags = None,
+    tag: Tags = None,
 ) -> None:
-    """Store a single fact directly as a source file.
+    """Store a single fact verbatim as a source file — no LLM involved.
 
-    Unlike 'capture', this stores the text verbatim without LLM extraction.
-    Results are written to sources/_captured/.
+    The text is written exactly as given (with optional tags) to
+    sources/_captured/. Use this when you already know the fact you want
+    recorded; use 'capture' when you want an LLM to pull items out of
+    free-form text.
 
     Examples:
         knox learn "The transformer uses d_model=512 and h=8"
@@ -69,19 +75,19 @@ def learn_cmd(
     get_console().print(f"Learned fact -> {path.name}")
 
 
-@app.command(name="crystallize")
-def crystallize_cmd(
+@app.command(name="distill")
+def distill_cmd(
     ctx: typer.Context,
 ) -> None:
-    """Synthesize captured notes into coherent wiki pages.
+    """Merge captured notes into coherent wiki pages via LLM.
 
     Reads all notes from sources/_captured/, groups them by tag, and uses an
     LLM to merge each group into a single well-structured page written to
-    sources/_crystallized/. Run 'knox compile' afterwards to incorporate
-    the crystallized pages into the wiki.
+    sources/_distilled/. Run 'knox compile' afterwards to incorporate
+    the distilled pages into the wiki.
 
     Examples:
-        knox crystallize
+        knox distill
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
@@ -92,11 +98,11 @@ def crystallize_cmd(
     except Exception:
         llm_client = None
 
-    paths = crystallize(sources_dir, llm_client=llm_client)
+    paths = distill(sources_dir, llm_client=llm_client)
     if not paths:
-        get_console().print("No captured notes found to crystallize.")
+        get_console().print("No captured notes found to distill.")
         return
-    get_console().print(f"Crystallized {len(paths)} page(s) to {sources_dir / '_crystallized'}")
+    get_console().print(f"Distilled {len(paths)} page(s) to {sources_dir / '_distilled'}")
     for p in paths:
         get_console().print(f"  {p.name}")
 

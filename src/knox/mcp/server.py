@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from knox.capture.capture import capture
-from knox.capture.crystallize import crystallize
+from knox.capture.distill import distill
 from knox.capture.learn import learn
 from knox.cli._shared import resolve_project_paths
 from knox.cli.args.query import SearchMode
@@ -173,11 +173,13 @@ def compile_wiki(
 def wiki_capture(
     text: str,
     sources_dir: str = "./sources",
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Extract knowledge items from text and save as source files.
 
     Uses LLM to extract decisions, discoveries, corrections, and references
-    from conversation text. Results are written to sources/_captured/.
+    from conversation text. Optional tags are attached to each item as a
+    baseline (the LLM may add more). Results are written to sources/_captured/.
     """
     source_dir = Path(sources_dir)
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -189,7 +191,7 @@ def wiki_capture(
         llm_client = None
 
     try:
-        paths = capture(text, sources_dir=source_dir, llm_client=llm_client)
+        paths = capture(text, sources_dir=source_dir, llm_client=llm_client, tags=tags)
         return {
             "status": "ok",
             "count": len(paths),
@@ -403,8 +405,8 @@ def wiki_status(
         return {"status": "error", "message": str(exc)}
 
 
-@server.tool(name="wiki_crystallize")
-def wiki_crystallize(
+@server.tool(name="wiki_distill")
+def wiki_distill(
     wiki_dir: str = ".",
 ) -> dict[str, Any]:
     """Synthesize captured notes into coherent wiki pages."""
@@ -417,7 +419,7 @@ def wiki_crystallize(
         except Exception:
             llm_client = None
 
-        paths = crystallize(sources_dir, llm_client=llm_client)
+        paths = distill(sources_dir, llm_client=llm_client)
         return {
             "status": "ok",
             "count": len(paths),

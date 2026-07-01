@@ -60,7 +60,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 ├── .knox/              ← internal state (cache, vectors, search db, memory)
 ├── sources/            ← source documents (PDF, DOCX, markdown, URLs)
 │   ├── _captured/      ← knowledge items extracted from conversation
-│   ├── _crystallized/  ← LLM-synthesized wiki pages
+│   ├── _distilled/     ← LLM-synthesized wiki pages
 │   └── _memory/        ← system context (auto-generated from memory)
 └── wiki/               ← compiled output
     ├── wiki.md         ← main wiki document (first compile)
@@ -85,9 +85,11 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
 | `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--llm-default-model` |
-| `knox capture <text>` | Extract knowledge items from conversation text | — |
-| `knox learn <text>` | Store a fact verbatim | — |
-| `knox crystallize` | Synthesize captured notes into full wiki pages via LLM | — |
+| `knox trace [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
+| `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
+| `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
+| `knox write <TITLE>` | Create a one-shot wiki page from a title and optional sources | `--source` (repeatable, bare filename searched in sources/), `--frontmatter` |
+| `knox distill` | Synthesize captured notes into full wiki pages via LLM | — |
 
 ### Memory
 
@@ -152,9 +154,9 @@ Run `knox mcp` to start an MCP server on stdio transport. All MCP tools return `
 | `compile_wiki` | Compile sources into wiki | `sources_dir: str`, `output: str = "./output"`, `output_format: str = "markdown"`, `compiler: str = "graph"`, `urls: list[str] \| None`, `vlm_model: str = ""`, `image_mode: str = "file"` |
 | `query_wiki` | Ask a question against the wiki | `query: str`, `wiki_dir: str = "."`, `remember: bool = False`, `search_mode: str = "hybrid"`, `top_k: int = 10` |
 | `wiki_status` | Show wiki statistics | `wiki_dir: str = "."` |
-| `wiki_capture` | Extract knowledge from conversation | `text: str`, `sources_dir: str` |
+| `wiki_capture` | Extract knowledge from conversation | `text: str`, `sources_dir: str`, `tags: list[str] \| None` |
 | `wiki_learn` | Store a fact verbatim | `text: str`, `sources_dir: str` |
-| `wiki_crystallize` | Synthesize captured notes into pages | `wiki_dir: str` |
+| `wiki_distill` | Synthesize captured notes into pages | `wiki_dir: str` |
 | `memory_add` | Add query/answer to memory | `query: str`, `answer: str`, `feedback: str \| None`, `wiki_dir: str = "."` |
 | `memory_search` | Search memory | `query: str`, `top_k: int = 5`, `wiki_dir: str = "."` |
 | `memory_synthesize` | Generate system context from memory | `wiki_dir: str = "."`, `limit: int \| None` |
@@ -187,7 +189,7 @@ Run `knox mcp` to start an MCP server on stdio transport. All MCP tools return `
 ```text
 1. During a chat, periodically call wiki_capture(text=last_turns, sources_dir="./sources")
    to extract decisions, corrections, and discoveries into _captured/ notes
-2. After enough captures, call wiki_crystallize(wiki_dir=".") to synthesize
+2. After enough captures, call wiki_distill(wiki_dir=".") to synthesize
    captured notes into full wiki pages via LLM
 3. Re-compile with compile_wiki to integrate the new pages
 ```

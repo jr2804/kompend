@@ -17,9 +17,9 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox lint prune` | Remove old lint history entries |
 | `knox review` | Manage the review queue |
 | `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
-| `knox capture` | Extract knowledge items from free text |
-| `knox learn` | Store a fact verbatim as a source |
-| `knox crystallize` | Synthesize captured notes into wiki pages |
+| `knox capture` | LLM-extract knowledge items from free text (`--tag`) |
+| `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`) |
+| `knox distill` | Merge captured notes into wiki pages |
 | `knox write` | Write or overwrite a wiki page from source |
 | `knox pack-list` | List available content packs |
 | `knox pack-install` | Install a content pack |
@@ -268,15 +268,15 @@ knox capture "We decided to use QKV projections with RoPE"
 knox learn "The transformer uses d_model=512 and h=8" --tag attention
 ```
 
-## `knox crystallize`
+## `knox distill`
 
-Synthesize captured notes from `sources/_captured/` into coherent wiki pages. Notes are grouped by tag and merged (LLM-powered or deterministic fallback). Output goes to `sources/_crystallized/`.
+Synthesize captured notes from `sources/_captured/` into coherent wiki pages. Notes are grouped by tag and merged (LLM-powered or deterministic fallback). Output goes to `sources/_distilled/`.
 
 ```bash
 # Merge all captured notes into synthesized pages
-knox crystallize
+knox distill
 
-# Then compile to incorporate crystallized pages
+# Then compile to incorporate distilled pages
 knox compile
 ```
 

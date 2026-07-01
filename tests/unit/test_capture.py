@@ -1,15 +1,19 @@
-"""Tests for the capture and crystallize modules."""
+"""Tests for the capture and distill modules."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from knox.capture.crystallize import (
+from knox.capture.capture import (
+    _merge_tags,
+    capture,
+)
+from knox.capture.distill import (
     CapturedNote,
     _group_by_tag,
     _parse_frontmatter,
-    crystallize,
+    distill,
 )
 
 
@@ -53,17 +57,17 @@ class TestGroupByTag:
         assert len(groups["general"]) == 1
 
 
-class TestCrystallize:
+class TestDistill:
     def test_missing_captured_dir_returns_empty(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir()
-        result = crystallize(sources_dir)
+        result = distill(sources_dir)
         assert result == []
 
     def test_empty_captured_dir_returns_empty(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "sources"
         (sources_dir / "_captured").mkdir(parents=True)
-        result = crystallize(sources_dir)
+        result = distill(sources_dir)
         assert result == []
 
     def test_fallback_without_llm(self, tmp_path: Path) -> None:
@@ -79,10 +83,10 @@ class TestCrystallize:
             encoding="utf-8",
         )
 
-        paths = crystallize(sources_dir)
+        paths = distill(sources_dir)
         assert len(paths) == 1
         output = paths[0].read_text(encoding="utf-8")
-        assert "type: crystallized" in output
+        assert "type: distilled" in output
         assert "Decision A" in output
         assert "Discovery B" in output
         assert "note-1.md" in output
@@ -106,7 +110,7 @@ class TestCrystallize:
         mock_client = MagicMock()
         mock_client.try_complete.return_value = mock_result
 
-        paths = crystallize(sources_dir, llm_client=mock_client)
+        paths = distill(sources_dir, llm_client=mock_client)
         assert len(paths) == 1
         output = paths[0].read_text(encoding="utf-8")
         assert "Synthesized ML Page" in output
@@ -128,7 +132,7 @@ class TestCrystallize:
         mock_client = MagicMock()
         mock_client.try_complete.return_value = mock_result
 
-        paths = crystallize(sources_dir, llm_client=mock_client)
+        paths = distill(sources_dir, llm_client=mock_client)
         assert len(paths) == 1
         output = paths[0].read_text(encoding="utf-8")
         assert "Content A" in output
@@ -143,5 +147,26 @@ class TestCrystallize:
                 encoding="utf-8",
             )
 
-        paths = crystallize(sources_dir)
+        paths = distill(sources_dir)
         assert len(paths) == 2
+
+
+class TestCapture:
+    def test_no_llm_applies_user_tags(self, tmp_path: Path) -> None:
+        paths = capture(
+            "The transformer uses d_model=512",
+            sources_dir=tmp_path,
+            llm_client=None,
+            tags=["architecture", "decoder"],
+        )
+        assert len(paths) == 1
+        content = paths[0].read_text(encoding="utf-8")
+        assert "architecture" in content
+        assert "decoder" in content
+
+    def test_merge_tags_user_first_dedup(self) -> None:
+        merged = _merge_tags(["alpha", "Beta"], ["beta", "gamma"])
+        assert merged == ["alpha", "Beta", "gamma"]
+
+    def test_merge_tags_empty(self) -> None:
+        assert _merge_tags([], []) == []

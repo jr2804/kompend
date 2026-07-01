@@ -26,12 +26,18 @@ def capture(
     *,
     sources_dir: Path,
     llm_client: LLMClient | None = None,
+    tags: list[str] | None = None,
 ) -> list[Path]:
     sources_dir.mkdir(parents=True, exist_ok=True)
     captured_dir = sources_dir / "_captured"
     captured_dir.mkdir(parents=True, exist_ok=True)
 
-    items = _extract_with_llm(text, llm_client) if llm_client is not None else [CapturedItem(kind="note", title=make_title(text), content=text)]
+    user_tags = list(tags or [])
+    items = (
+        _extract_with_llm(text, llm_client, user_tags)
+        if llm_client is not None
+        else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
+    )
 
     paths: list[Path] = []
     timestamp = datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
@@ -61,10 +67,11 @@ source: capture
     return paths
 
 
-def _extract_with_llm(text: str, llm_client: LLMClient) -> list[CapturedItem]:
+def _extract_with_llm(text: str, llm_client: LLMClient, user_tags: list[str]) -> list[CapturedItem]:
     loader = get_template_loader()
     system_prompt = loader.render("capture/capture_system.md.j2")
-    user_prompt = f"Extract knowledge items from this text:\n\n{text}"
+    tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
+    user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
 
     result = llm_client.complete(
         messages=[
@@ -94,6 +101,18 @@ def _extract_with_llm(text: str, llm_client: LLMClient) -> list[CapturedItem]:
         tags = raw.get("tags", [])
         if not isinstance(tags, list):
             tags = []
-        items.append(CapturedItem(kind=kind, title=title, content=content, tags=tags))
+        items.append(CapturedItem(kind=kind, title=title, content=content, tags=_merge_tags(user_tags, tags)))
 
-    return items if items else [CapturedItem(kind="note", title=make_title(text), content=text)]
+    return items if items else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
+
+
+def _merge_tags(user_tags: list[str], llm_tags: list[str]) -> list[str]:
+    """User tags first, then LLM tags, deduplicated (case-insensitive), order preserved."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for t in [*user_tags, *llm_tags]:
+        key = t.lower()
+        if key not in seen:
+            seen.add(key)
+            merged.append(t)
+    return merged

@@ -160,11 +160,11 @@ LearnText = Annotated[
     ),
 ]
 
-LearnTags = Annotated[
+Tags = Annotated[
     list[str] | None,
     typer.Option(
         "--tag",
-        help="Tags to attach to the learned fact (repeatable).",
+        help="Tags to attach (repeatable).",
     ),
 ]
 

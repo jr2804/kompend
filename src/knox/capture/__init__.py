@@ -1,4 +1,4 @@
-"""Knowledge capture subsystem — ingestion, crystallization, and learning."""
+"""Knowledge capture subsystem — ingestion, distillation, and learning."""
 
 from typing import Final
 
