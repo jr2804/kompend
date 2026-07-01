@@ -34,8 +34,6 @@ from knox.cli.args import (
     LintPruneAgeDays,
     LintPruneKeep,
     LintRule,
-    LlmContextBudget,
-    LlmDefaultModel,
 )
 from knox.core.config import resolve_config
 from knox.core.models import CompiledWiki, load_cached_wiki
@@ -116,11 +114,9 @@ def _persist_lint_fixes(
 def lint_run(
     ctx: typer.Context,
     fix: LintFix = False,
-    llm: LintLlm = False,
+    llm: LintLlm = True,
     rule: LintRule = None,
     json_output: JsonOutput = False,
-    llm_default_model: LlmDefaultModel = None,
-    llm_context_budget: LlmContextBudget = None,
     config: ConfigPath = None,
 ) -> None:
     """Run structural (and optionally LLM-powered) lint rules.
@@ -129,9 +125,14 @@ def lint_run(
     ``.knox/lint_history.jsonl`` for later querying via
     ``knox lint history``.
 
+    LLM-powered rules are on by default; the model comes from
+    ``compile.llm.default_model`` in config. Use ``--no-llm`` for
+    structural rules only. When LLM is on but no model is configured,
+    LLM rules are skipped with a note (structural rules still run).
+
     Examples:
-        knox lint run                       # structural rules only
-        knox lint run --llm                 # structural + LLM rules
+        knox lint run                       # structural + LLM rules (default)
+        knox lint run --no-llm              # structural rules only
         knox lint run --fix                 # auto-fix what's possible
         knox lint run --rule broken-wikilinks --rule orphan-page
     """
@@ -148,18 +149,22 @@ def lint_run(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    llm_client = LLMClient.from_config(cfg, default_model=llm_default_model)
-    if (llm or _uses_llm_rule(rule)) and llm_client is None:
+    llm_client = LLMClient.from_config(cfg)
+    if _uses_llm_rule(rule) and llm_client is None:
         get_err_console().print(
-            "LLM-powered lint rules require a model. Set compile.llm.default_model in config or pass --llm-default-model (e.g. openai/gpt-4o).",
+            "LLM-powered lint rules require a model. Set compile.llm.default_model in config (e.g. openai/gpt-4o).",
         )
         raise typer.Exit(1)
+    if llm and llm_client is None:
+        get_console().print(
+            "No LLM model configured (compile.llm.default_model); running structural rules only. Use --no-llm to silence this note.",
+        )
+        llm = False
 
     runner = LintRunner(
         rules=list(rule) if rule else None,
         enable_llm=llm,
         llm_client=llm_client,
-        lint_page_budget=llm_context_budget,
         fix=fix,
         sources_dir=sources_dir_str,
     )
@@ -203,7 +208,6 @@ def lint_run(
         "rules": list(rule) if rule else None,
         "enable_llm": llm,
         "fix": fix,
-        "llm_context_budget": llm_context_budget,
     }
     entry = entry_from_report(
         report,
@@ -348,7 +352,6 @@ def lint_gaps(
 def lint_remediate(
     ctx: typer.Context,
     dry_run: LintDryRun = False,
-    llm_default_model: LlmDefaultModel = None,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
 ) -> None:
@@ -360,14 +363,13 @@ def lint_remediate(
     * **Tier 2** (LLM-generated): coverage gaps filled from cached extractions.
     * **Tier 3** (recommendations): issues needing new sources or manual review.
 
-    Tier 2 uses ``compile.llm.default_model`` from config (or
-    ``--llm-default-model``).  Without a model, only tier 1 runs
-    and tier 2/3 are reported as recommendations.
+    Tier 2 uses ``compile.llm.default_model`` from config. Without a
+    configured model, only tier 1 runs and tier 2/3 are reported as
+    recommendations.
 
     Examples:
-        knox lint remediate                          # tier 1 only
+        knox lint remediate                          # tier 1 (+ tier 2 if model configured)
         knox lint remediate --dry-run                # preview all tiers
-        knox lint remediate --llm-default-model ollama/llama3.2
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(
@@ -392,7 +394,7 @@ def lint_remediate(
         raise typer.Exit(1)
 
     # Set up LLM client for tier 2
-    llm_client = LLMClient.from_config(cfg, default_model=llm_default_model)
+    llm_client = LLMClient.from_config(cfg)
 
     sources_dir_path = sources_dir if sources_dir.exists() else None
 
@@ -401,6 +403,7 @@ def lint_remediate(
         report_dict,
         base_dir=base_dir,
         sources_dir=sources_dir_path,
+        output_dir=output_dir,
         llm_client=llm_client,
         dry_run=dry_run,
     )
