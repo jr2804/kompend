@@ -75,6 +75,7 @@ ORGANIZE_COLLAPSE_SINGLE_FILE: Final[str] = "organize.collapse_single_file"
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"
 COMPILE_EMBEDDING_PROVIDER: Final[str] = "compile.embedding.provider"
 COMPILE_EMBEDDING_BATCH_SIZE: Final[str] = "compile.embedding.batch_size"
+COMPILE_EMBEDDING_DIM: Final[str] = "compile.embedding.dim"
 
 # ── compile.budget sub-section ──
 COMPILE_BUDGET_CONCEPTS_PER_BATCH: Final[str] = "compile.budget.concepts_per_batch"

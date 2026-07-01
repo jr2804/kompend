@@ -226,6 +226,8 @@ timeout = 120.0
 
 # Embedding batch size (number of texts to embed per API call)
 # batch_size = 10
+# Embedding dimension (must match the embedding model's output).
+# dim = 384
 
 # ── Output settings ─────────────────────────────────────────────────────
 

@@ -220,6 +220,7 @@ DEFAULTS: dict[str, Any] = {
         "embedding": {
             "model": None,
             "batch_size": 10,
+            "dim": 384,
         },
     },
     "lint": {
