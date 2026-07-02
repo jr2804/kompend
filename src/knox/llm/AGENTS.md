@@ -74,10 +74,13 @@ missing): litellm static tables → Ollama runtime `/api/show` →
 
 `models_dev.py` is the step that resolves **custom-provider models** (e.g.
 Ollama Cloud) absent from litellm's static DB. It fetches the
-`models.dev/catalog.json` once per process (in-memory cache) and matches
-provider-local entries first, then global lab entries by stem. Network
-failures are caught narrowly (`httpx.HTTPError, ValueError`) and logged at
-DEBUG — the caller falls through to its fallback path. Never raises.
+`models.dev/catalog.json` and caches it in-memory (per process) **and** on
+disk (`~/.config/knox/cache/models-dev-catalog.json`, shared across
+invocations, 7-day TTL). Matching: exact key → provider-local stem →
+normalized base + size fuzzy match. Force-refresh: `KNOX_MODELS_CACHE_TTL=0`
+or call `refresh_catalog()`. Network failures are caught narrowly
+(`httpx.HTTPError, ValueError`) and logged at DEBUG — the caller falls
+through to its fallback path. Never raises.
 
 ## Verification
 
