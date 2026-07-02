@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.search.retriever import HybridRetriever, SearchResult, _extract_snippet
+from knox.llm.client import ContextSource, ContextWindow, LLMResult
+from knox.llm.failover import CallDiagnostics
+from knox.search.retriever import HybridRetriever, SearchResult, TokenOverlapRetriever, _extract_snippet
 
 
 class TestExtractSnippet:
@@ -169,3 +171,74 @@ class TestHybridRetriever:
             ],
             toc=[],
         )
+
+
+class _FakeLLMClient:
+    """Captures complete() kwargs for synthesis tests."""
+
+    def __init__(self, max_output: int = 4096) -> None:
+        self.context_window = ContextWindow(max_input=8192, max_output=max_output, source=ContextSource.FALLBACK)
+        self.last_kwargs: dict[str, Any] = {}
+        self.last_messages: list[dict[str, Any]] = []
+
+    def complete(self, messages: list[dict[str, Any]], **kwargs: Any) -> LLMResult:  # noqa: ANN401
+        self.last_messages = messages
+        self.last_kwargs = kwargs
+        return LLMResult(
+            content="synthesized answer",
+            json_data=None,
+            diagnostics=CallDiagnostics(model_used="test-model", attempts=1, total_latency_s=0.0),
+        )
+
+
+class TestSynthesizeVerbosity:
+    """Verbosity drives template wording and max_tokens budget."""
+
+    def test_passes_max_tokens_to_complete(self) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+
+        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=800)
+
+        assert fake.last_kwargs.get("max_tokens") == 800
+        assert fake.last_kwargs.get("role") == "search"
+
+    def test_omits_max_tokens_when_none(self) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+
+        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=None)
+
+        assert "max_tokens" not in fake.last_kwargs
+
+    def test_brief_verbosity_renders_brief_instruction(self) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+
+        retriever.synthesize("q", [], llm_client=fake, verbosity="brief", max_tokens=100)
+
+        system_prompt = fake.last_messages[0]["content"]
+        assert "concise" in system_prompt.lower()
+
+    def test_comprehensive_verbosity_renders_comprehensive_instruction(self) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+
+        retriever.synthesize("q", [], llm_client=fake, verbosity="comprehensive", max_tokens=100)
+
+        system_prompt = fake.last_messages[0]["content"]
+        assert "comprehensive" in system_prompt.lower()
+
+    def test_standard_verbosity_renders_balanced_instruction(self) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+
+        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=100)
+
+        system_prompt = fake.last_messages[0]["content"]
+        assert "balanced" in system_prompt.lower()

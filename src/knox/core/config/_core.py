@@ -129,6 +129,10 @@ from knox.core.config.keys import (
     SEARCH_RERANKER_ENABLED,
     SEARCH_RERANKER_MODEL,
     SEARCH_RERANKER_TOP_K,
+    SEARCH_SYNTHESIS_TOKENS_BRIEF,
+    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
+    SEARCH_SYNTHESIS_TOKENS_STANDARD,
+    SEARCH_SYNTHESIS_VERBOSITY,
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
@@ -266,6 +270,14 @@ DEFAULTS: dict[str, Any] = {
             "enabled": False,
             "model": "",
         },
+        "synthesis": {
+            "verbosity": "standard",
+            "tokens": {
+                "brief": 300,
+                "standard": 800,
+                "comprehensive": 2000,
+            },
+        },
     },
     "organize": {
         "max_depth": 3,
@@ -354,6 +366,10 @@ _ENV_MAP: dict[str, str] = {
     SEARCH_HYDE_ENABLED: "KNOX_SEARCH_HYDE_ENABLED",
     SEARCH_CONTEXTUAL_ENABLED: "KNOX_SEARCH_CONTEXTUAL_ENABLED",
     SEARCH_CONTEXTUAL_MODEL: "KNOX_SEARCH_CONTEXTUAL_MODEL",
+    SEARCH_SYNTHESIS_VERBOSITY: "KNOX_SEARCH_SYNTHESIS_VERBOSITY",
+    SEARCH_SYNTHESIS_TOKENS_BRIEF: "KNOX_SEARCH_SYNTHESIS_TOKENS_BRIEF",
+    SEARCH_SYNTHESIS_TOKENS_STANDARD: "KNOX_SEARCH_SYNTHESIS_TOKENS_STANDARD",
+    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: "KNOX_SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE",
     "eval.threshold": "KNOX_EVAL_THRESHOLD",
     "notes.file": "KNOX_NOTES_FILE",
     ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",

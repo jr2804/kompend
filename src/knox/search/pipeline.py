@@ -149,10 +149,19 @@ class EnhancedRetriever:
         self,
         query: str,
         results: list[SearchResult],
+        *,
+        verbosity: str = "standard",
+        max_tokens: int | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         synthesizer = TokenOverlapRetriever(self._wiki)
-        synthesis = synthesizer.synthesize(query, results, llm_client=self._llm_client)
+        synthesis = synthesizer.synthesize(
+            query,
+            results,
+            llm_client=self._llm_client,
+            verbosity=verbosity,
+            max_tokens=max_tokens,
+        )
         return synthesis
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────

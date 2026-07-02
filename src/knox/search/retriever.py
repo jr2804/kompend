@@ -126,6 +126,9 @@ class TokenOverlapRetriever:
         query: str,
         results: list[SearchResult],
         llm_client: LLMClient | None = None,
+        *,
+        verbosity: str = "standard",
+        max_tokens: int | None = None,
     ) -> SynthesisResult:
         if llm_client is None:
             citations: list[dict[str, Any]] = []
@@ -152,6 +155,7 @@ class TokenOverlapRetriever:
         system_prompt: str = self._template_loader.render(
             "query/synthesize_system.md.j2",
             context=context_text,
+            verbosity=verbosity,
         )
 
         messages: list[dict[str, Any]] = [
@@ -159,7 +163,10 @@ class TokenOverlapRetriever:
             {"role": "user", "content": query},
         ]
 
-        result = llm_client.complete(messages, role="search")
+        complete_kwargs: dict[str, Any] = {"role": "search"}
+        if max_tokens is not None:
+            complete_kwargs["max_tokens"] = max_tokens
+        result = llm_client.complete(messages, **complete_kwargs)
         answer: str = result.content
 
         citations_out: list[dict[str, Any]] = []

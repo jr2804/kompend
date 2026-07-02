@@ -177,3 +177,11 @@ hyde.enabled = true
 # to each chunk before embedding. Improves both compilation and query.
 contextual.enabled = true
 contextual.model = ""
+
+# Synthesis verbosity: brief | standard | comprehensive (override per-run
+# with `knox query --verbosity`). Token budgets are clamped to the model's
+# max_output.
+synthesis.verbosity = "standard"
+synthesis.tokens.brief = 300
+synthesis.tokens.standard = 800
+synthesis.tokens.comprehensive = 2000

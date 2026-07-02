@@ -60,6 +60,19 @@ class QueryFormat(StrEnum):
     ISON = "ison"
 
 
+class Verbosity(StrEnum):
+    """Synthesis verbosity for the ``query`` command.
+
+    Drives both the synthesis system prompt wording and the
+    ``max_tokens`` budget for the synthesis LLM call. Defaults to
+    ``standard``; configurable via ``search.synthesis.verbosity``.
+    """
+
+    BRIEF = "brief"
+    STANDARD = "standard"
+    COMPREHENSIVE = "comprehensive"
+
+
 @dataclass
 class LLMConfig:
     """Configuration for LLM models, timeouts, and fallback behavior."""

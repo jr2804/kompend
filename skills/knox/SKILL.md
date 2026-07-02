@@ -84,7 +84,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--llm-default-model` |
+| `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--llm-default-model` |
 | `knox trace [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
 | `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
 | `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |

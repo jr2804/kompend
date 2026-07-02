@@ -114,6 +114,7 @@ from .query import (
     QuerySearchMode,
     QueryText,
     QueryTopK,
+    QueryVerbosity,
     SearchMode,
 )
 
@@ -196,6 +197,7 @@ __all__ = [
     "QuerySearchMode",
     "QueryText",
     "QueryTopK",
+    "QueryVerbosity",
     "Recursive",
     "ReviewMode",
     "SearchMode",

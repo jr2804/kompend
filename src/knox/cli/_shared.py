@@ -38,6 +38,7 @@ from knox.core.config.keys import (
     PATHS_SOURCES_DIR,
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
+    SEARCH_SYNTHESIS_VERBOSITY,
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
@@ -101,6 +102,7 @@ def build_cli_overrides(
     in_place_sources: bool | None = None,
     no_user_tracking: bool | None = None,
     parser: str | None = None,
+    synthesis_verbosity: str | None = None,
     cli_set: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a flat dotted-key dict of non-None CLI overrides.
@@ -123,6 +125,7 @@ def build_cli_overrides(
         (COMPILE_LLM_VLM_MODEL, vlm_model),
         (COMPILE_EMBEDDING_MODEL, embed_model),
         (INGEST_PARSER, parser),
+        (SEARCH_SYNTHESIS_VERBOSITY, synthesis_verbosity),
     ]
     for key, val in _simple:
         if val is not None:

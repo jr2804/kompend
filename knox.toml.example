@@ -351,6 +351,17 @@ history_size = 20
 # contextual.enabled = false
 # contextual.model = ""
 
+# Synthesis verbosity: controls the length and depth of `knox query` answers.
+#   brief         = a few sentences, essential point only (~300 tokens)
+#   standard      = balanced, useful length (~800 tokens, default)
+#   comprehensive = thorough, covers all relevant aspects (~2000 tokens)
+# Token budgets are clamped to the model's max_output so small models are
+# never asked for more than they can produce.
+# synthesis.verbosity = "standard"
+# synthesis.tokens.brief = 300
+# synthesis.tokens.standard = 800
+# synthesis.tokens.comprehensive = 2000
+
 # ── Query settings ───────────────────────────────────────────────────────
 # Default output format for `knox query`. Override per-run with --format.
 # text = human-readable prose (default)

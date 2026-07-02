@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from knox.core.config._configs import QueryFormat
+from knox.core.config._configs import QueryFormat, Verbosity
 
 
 class SearchMode(StrEnum):
@@ -82,5 +82,13 @@ QueryRemember = Annotated[
     typer.Option(
         "--remember",
         help="Save this query and synthesized answer to the memory store.",
+    ),
+]
+
+QueryVerbosity = Annotated[
+    Verbosity | None,
+    typer.Option(
+        "--verbosity",
+        help="Answer verbosity: brief, standard, or comprehensive. Defaults to search.synthesis.verbosity from config.",
     ),
 ]

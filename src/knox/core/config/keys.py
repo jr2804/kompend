@@ -129,6 +129,10 @@ SEARCH_RERANKER_TOP_K: Final[str] = "search.reranker.top_k"
 SEARCH_HYDE_ENABLED: Final[str] = "search.hyde.enabled"
 SEARCH_CONTEXTUAL_ENABLED: Final[str] = "search.contextual.enabled"
 SEARCH_CONTEXTUAL_MODEL: Final[str] = "search.contextual.model"
+SEARCH_SYNTHESIS_VERBOSITY: Final[str] = "search.synthesis.verbosity"
+SEARCH_SYNTHESIS_TOKENS_BRIEF: Final[str] = "search.synthesis.tokens.brief"
+SEARCH_SYNTHESIS_TOKENS_STANDARD: Final[str] = "search.synthesis.tokens.standard"
+SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.comprehensive"
 
 # ── query section ──
 QUERY_FORMAT: Final[str] = "query.format"

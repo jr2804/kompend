@@ -255,6 +255,7 @@ knox query [OPTIONS] QUESTION
 | `--format` | `text` | Output format: `text` or `json` |
 | `--raw` | — | Return raw context chunks without LLM synthesis |
 | `--no-classify` | — | Skip intent classification |
+| `--verbosity` | `standard` | Answer verbosity: `brief`, `standard`, or `comprehensive` |
 
 ## `knox capture` and `knox learn`
 

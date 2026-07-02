@@ -2,6 +2,8 @@
 variables:
   - name: context
     required: true
+  - name: verbosity
+    required: false
 role: search
 response_format: text
 temperature: 0.0
@@ -21,3 +23,10 @@ Context:
 ---
 
 Answer the question based on the context above. Draw on all relevant sources, synthesize the key aspects, and briefly explain what each cited reference contributes so the reader understands why it was selected for further reading.
+{% if verbosity == "brief" %}
+Keep the answer concise: a few sentences, only the essential point. Cite at most the two most relevant sources.
+{% elif verbosity == "comprehensive" %}
+Provide a comprehensive answer: cover all relevant aspects from the context, explain how each cited source contributes, and note any caveats or gaps in the available information. Aim for a thorough, well-structured response.
+{% else %}
+Aim for a balanced, standard-length answer: enough detail to be useful, without unnecessary length.
+{% endif %}

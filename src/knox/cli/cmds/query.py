@@ -20,10 +20,11 @@ from knox.cli.args import (
     QuerySearchMode,
     QueryText,
     QueryTopK,
+    QueryVerbosity,
 )
 from knox.cli.args.query import SearchMode
 from knox.core.config import resolve_config
-from knox.core.config._configs import LlmDataFormat, QueryFormat
+from knox.core.config._configs import LlmDataFormat, QueryFormat, Verbosity
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     QUERY_FORMAT,
@@ -35,6 +36,10 @@ from knox.core.config.keys import (
     SEARCH_RERANKER_ENABLED,
     SEARCH_RERANKER_MODEL,
     SEARCH_RERANKER_TOP_K,
+    SEARCH_SYNTHESIS_TOKENS_BRIEF,
+    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
+    SEARCH_SYNTHESIS_TOKENS_STANDARD,
+    SEARCH_SYNTHESIS_VERBOSITY,
 )
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
@@ -50,6 +55,12 @@ from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
 
 logger = get_logger(__name__)
+
+_SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
+    Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
+    Verbosity.STANDARD.value: SEARCH_SYNTHESIS_TOKENS_STANDARD,
+    Verbosity.COMPREHENSIVE.value: SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
+}
 
 
 def _structured_answer(synthesis: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -276,12 +287,24 @@ def _synthesize_and_output(
     cfg: Any,
 ) -> None:
     """Synthesize results and output the answer."""
+    verbosity: str = cfg.get(SEARCH_SYNTHESIS_VERBOSITY, Verbosity.STANDARD.value)
+    token_key = _SYNTHESIS_TOKEN_KEYS.get(verbosity, SEARCH_SYNTHESIS_TOKENS_STANDARD)
+    target_tokens: int = cfg.get(token_key, 800)
+    cw = llm_client.context_window if llm_client is not None else None
+    max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
+
     try:
         if has_enhanced and enhanced is not None:
-            synthesis = enhanced.synthesize(query, results)
+            synthesis = enhanced.synthesize(query, results, verbosity=verbosity, max_tokens=max_tokens)
         else:
             synthesizer = TokenOverlapRetriever(wiki)
-            synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
+            synthesis = synthesizer.synthesize(
+                query,
+                results,
+                llm_client=llm_client,
+                verbosity=verbosity,
+                max_tokens=max_tokens,
+            )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")
@@ -315,6 +338,7 @@ def query_cmd(
     search_mode: QuerySearchMode = SearchMode.HYBRID,
     adaptive: QueryAdaptive = False,
     remember: QueryRemember = False,
+    verbosity: QueryVerbosity = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki.
 
@@ -325,10 +349,17 @@ def query_cmd(
     Enhanced RAG features (multi-query expansion, CRAG,
     neural re-ranker, HyDE) are configurable via knox.toml under [search].
     All default to disabled.
+
+    ``--verbosity`` controls answer length (brief|standard|comprehensive);
+    token budgets per level are configurable under ``[search.synthesis]``.
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
-    cli_overrides = build_cli_overrides(wiki_dir=wiki_dir_override, no_user_tracking=no_user_tracking)
+    cli_overrides = build_cli_overrides(
+        wiki_dir=wiki_dir_override,
+        no_user_tracking=no_user_tracking,
+        synthesis_verbosity=verbosity.value if verbosity is not None else None,
+    )
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     if format is None:
         format = QueryFormat(cfg.get(QUERY_FORMAT, QueryFormat.TEXT.value))
