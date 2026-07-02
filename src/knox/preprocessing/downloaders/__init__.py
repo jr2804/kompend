@@ -6,10 +6,22 @@ from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.downloaders.crawler import WebCrawler
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.downloaders.url_resolver import (
+    ArxivPdfResolver,
+    BaseUrlResolver,
+    ResolvedUrl,
+    UrlResolverChain,
+    WikipediaPdfResolver,
+)
 
 __all__ = [
+    "ArxivPdfResolver",
     "BaseDownloader",
+    "BaseUrlResolver",
     "DuplicateDetector",
     "HTTPDownloader",
+    "ResolvedUrl",
+    "UrlResolverChain",
     "WebCrawler",
+    "WikipediaPdfResolver",
 ]

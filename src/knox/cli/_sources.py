@@ -6,6 +6,7 @@ scan_dir, and URL downloading — shared by both `parse` and `compile`.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.downloaders.url_resolver import UrlResolverChain
 from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
@@ -167,6 +169,10 @@ def download_urls(
 
     Uses a DuplicateDetector to skip URLs that have already been downloaded.
     The detector database is stored in ``base_dir/.knox/downloaded.json``.
+
+    URLs are first passed through :class:`UrlResolverChain` so that
+    recognised sites (Wikipedia, arXiv, …) are rewritten to better
+    download endpoints (PDF API, direct PDF, …) before fetching.
     """
     if not urls:
         return []
@@ -174,11 +180,32 @@ def download_urls(
     sources_dir.mkdir(parents=True, exist_ok=True)
     resolved_base_dir = base_dir if base_dir is not None else sources_dir.parent
     detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_path)
-    downloader = HTTPDownloader(detector=detector)
+    resolver_chain = UrlResolverChain()
     results: list[Path] = []
     for url in urls:
-        downloaded_file = downloader.download(url, sources_dir)
+        # Resolve: Wikipedia → PDF API, arXiv → direct PDF, etc.
+        resolved = resolver_chain.resolve(url)
+
+        # Dedup at the *original* URL level so the same Wikipedia
+        # article isn't re-downloaded on every pipeline run.
+        if detector.is_duplicate(resolved.original_url):
+            logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
+            continue
+
+        downloader = HTTPDownloader(detector=detector)
+        downloaded_file = downloader.download(resolved.download_url, sources_dir)
         if downloaded_file:
+            # Track the original URL for future dedup.
+            content = downloaded_file.read_bytes()
+            content_hash = hashlib.sha256(content).hexdigest()
+            detector.mark_downloaded(resolved.original_url, content_hash)
+            if resolved.original_url != resolved.download_url:
+                logger.info(
+                    "Resolved %s → %s → %s",
+                    resolved.original_url,
+                    resolved.source_label or "?",
+                    downloaded_file.name,
+                )
             results.append(downloaded_file)
     return results
 
