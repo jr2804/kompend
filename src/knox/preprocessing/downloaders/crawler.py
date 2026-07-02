@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from crawl4ai import AsyncWebCrawler
+from crawl4ai import AsyncWebCrawler, BrowserConfig
 
 from knox.logging import get_logger
 from knox.preprocessing.downloaders.base import BaseDownloader
@@ -19,10 +19,21 @@ logger = get_logger(__name__)
 
 
 class WebCrawler(BaseDownloader):
-    """Crawl documentation sites and articles, save as markdown."""
+    """Crawl documentation sites and articles, save as markdown.
 
-    def __init__(self, detector: DuplicateDetector | None = None) -> None:
+    Args:
+        detector: Optional DuplicateDetector for URL dedup.
+        stealth: When True, enable playwright-stealth in the underlying
+            browser to bypass Cloudflare / basic bot detection. Default True.
+    """
+
+    def __init__(
+        self,
+        detector: DuplicateDetector | None = None,
+        stealth: bool = True,
+    ) -> None:
         self._detector = detector
+        self._stealth = stealth
 
     def download(self, url: str, target_dir: Path) -> Path | None:
         """Synchronous wrapper: crawl URL, extract main content as markdown, save."""
@@ -68,7 +79,8 @@ class WebCrawler(BaseDownloader):
 
         logger.info("Crawling %s -> %s", url, target_file)
 
-        async with AsyncWebCrawler() as crawler:
+        browser_config = BrowserConfig(headless=True, enable_stealth=self._stealth)
+        async with AsyncWebCrawler(config=browser_config) as crawler:
             result = await crawler.arun(url)
             content = getattr(result, "markdown", None)
             if not content:

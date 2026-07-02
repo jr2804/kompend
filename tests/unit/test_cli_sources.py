@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from knox.cli._sources import (
+    _looks_like_html_url,
     _unique_path,
     ensure_in_sources,
     get_supported_extensions,
@@ -230,3 +233,53 @@ class TestUniquePath:
         (tmp_path / "doc_2.pdf").write_text("2")
         result = _unique_path(target_file)
         assert result.name == "doc_3.pdf"
+
+
+# ── URL routing (_looks_like_html_url) ──────────────────────────────────
+
+
+class TestLooksLikeHtmlUrl:
+    """Verify the URL → downloader routing heuristic.
+
+    HTML-looking URLs go to the browser-based WebCrawler; everything
+    else (PDF, DOCX, …) goes to the direct HTTPDownloader.
+    """
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com",
+            "https://example.com/",
+            "https://example.com/page",
+            "https://example.com/a/b/",
+            "https://example.com/page.html",
+            "https://example.com/page.htm",
+            "https://example.com/article.aspx",
+            "https://example.com/article.aspx?id=42",
+            "https://example.com/index.php",
+            "https://example.com/servlet.jsp",
+            "https://example.com/cgi-bin/x.cgi",
+        ],
+    )
+    def test_html_urls_routed_to_browser(self, url: str) -> None:
+        assert _looks_like_html_url(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com/doc.pdf",
+            "https://example.com/paper.pdf?token=abc",
+            "https://example.com/report.docx",
+            "https://example.com/old.doc",
+            "https://example.com/slides.pptx",
+            "https://example.com/sheet.xlsx",
+            "https://example.com/book.epub",
+            "https://example.com/data.json",
+            "https://example.com/archive.zip",
+            "https://example.com/img.png",
+            "https://example.com/api/rest_v1/page/pdf/Foo",  # Wikipedia PDF API
+            "https://arxiv.org/pdf/2401.00001.pdf",
+        ],
+    )
+    def test_binary_urls_routed_to_http(self, url: str) -> None:
+        assert _looks_like_html_url(url) is False

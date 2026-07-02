@@ -110,6 +110,7 @@ from knox.core.config.keys import (
     DEDUP_MODEL,
     DEDUP_THRESHOLD_IDENTICAL,
     DEDUP_THRESHOLD_SIMILAR,
+    DOWNLOADER_STEALTH,
     INGEST_PARSER,
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
@@ -301,6 +302,9 @@ DEFAULTS: dict[str, Any] = {
     "ingest": {
         "parser": "docling",
     },
+    "downloader": {
+        "stealth": True,
+    },
 }
 
 # ── Env var mapping ──────────────────────────────────────────────────────
@@ -322,6 +326,7 @@ _ENV_MAP: dict[str, str] = {
     COMPILE_IN_PLACE_SOURCES: "KNOX_IN_PLACE_SOURCES",
     COMPILE_LINT: "KNOX_LINT",
     INGEST_PARSER: "KNOX_INGEST_PARSER",
+    DOWNLOADER_STEALTH: "KNOX_DOWNLOADER_STEALTH",
     COMPILE_BUDGET_CONCEPTS_PER_BATCH: "KNOX_BUDGET_CONCEPTS_PER_BATCH",
     COMPILE_BUDGET_WICER_MAX_ITERATIONS: "KNOX_BUDGET_WICER_MAX_ITERATIONS",
     COMPILE_BUDGET_MIN_CONTENT_LENGTH: "KNOX_BUDGET_MIN_CONTENT_LENGTH",

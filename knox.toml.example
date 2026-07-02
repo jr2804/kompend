@@ -32,6 +32,19 @@ file = "NOTES.md"
 [ingest]
 # parser = "docling"
 
+# ── Downloader settings ─────────────────────────────────────────────────
+# Controls how URLs are fetched. URLs whose path looks like HTML (no
+# extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the
+# browser-based WebCrawler (crawl4ai); everything else (PDF, DOCX, …)
+# goes through the direct HTTPDownloader (urllib).
+# Env: KNOX_DOWNLOADER_STEALTH
+
+[downloader]
+# Enable stealth mode in the browser-based WebCrawler (playwright-stealth).
+# Default ON — bypasses Cloudflare / basic bot detection on HTML pages.
+# No effect on the direct HTTPDownloader path used for PDF/binary URLs.
+# stealth = true
+
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]

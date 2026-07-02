@@ -9,10 +9,12 @@ from __future__ import annotations
 import hashlib
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 from knox.cli._ignore import filter_files
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
+from knox.preprocessing.downloaders.crawler import WebCrawler
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.downloaders.url_resolver import UrlResolverChain
@@ -20,6 +22,29 @@ from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
 logger = get_logger(__name__)
+
+
+# URL path suffixes whose content is essentially always HTML / a server-rendered
+# page. URLs with these (or no extension) go through the browser-based
+# WebCrawler; everything else (.pdf, .docx, …) goes through HTTPDownloader.
+_HTML_PATH_SUFFIXES: frozenset[str] = frozenset(
+    {"", ".html", ".htm", ".aspx", ".asp", ".php", ".jsp", ".cgi", ".jspx"}
+)
+
+# Path segments that mark a URL as binary regardless of extension (e.g. the
+# Wikipedia REST API serves ``/api/rest_v1/page/pdf/<Title>`` with no .pdf
+# suffix — without this, the heuristic misroutes it to the browser).
+_BINARY_PATH_SEGMENTS: frozenset[str] = frozenset({"/pdf/"})
+
+
+def _looks_like_html_url(url: str) -> bool:
+    """Heuristic: does *url*'s path suggest server-rendered HTML?"""
+    path = urlparse(url).path.lower()
+    if not path or path.endswith("/"):
+        return True
+    if any(seg in path for seg in _BINARY_PATH_SEGMENTS):
+        return False
+    return Path(path).suffix in _HTML_PATH_SUFFIXES
 
 
 # ── Extension helpers ───────────────────────────────────────────────────
@@ -164,6 +189,7 @@ def download_urls(
     sources_dir: Path,
     *,
     base_dir: Path | None = None,
+    stealth: bool = True,
 ) -> list[Path]:
     """Download URLs into *sources_dir*, return paths of successful downloads.
 
@@ -173,6 +199,26 @@ def download_urls(
     URLs are first passed through :class:`UrlResolverChain` so that
     recognised sites (Wikipedia, arXiv, …) are rewritten to better
     download endpoints (PDF API, direct PDF, …) before fetching.
+
+    Routing:
+
+    - URLs that look like HTML pages (no extension, ``.html``, ``.aspx``,
+      ``.php``, …) go through :class:`WebCrawler` (crawl4ai, browser-based,
+      markdown extraction, stealth-enabled by default).
+    - Everything else (``.pdf``, ``.docx``, …) goes through
+      :class:`HTTPDownloader` (urllib, direct bytes).
+
+    Args:
+        urls: URLs to download.
+        sources_dir: Target directory for downloaded files.
+        base_dir: Vault root used to locate ``.knox/downloaded.json``.
+            When ``None``, defaults to ``sources_dir.parent``.
+        stealth: When True, enable playwright-stealth in the browser-based
+            WebCrawler. Default ON — bypasses Cloudflare / basic bot
+            detection. Set via ``downloader.stealth`` config.
+
+    Returns:
+        Paths of successfully downloaded files (may be shorter than *urls*).
     """
     if not urls:
         return []
@@ -181,6 +227,8 @@ def download_urls(
     resolved_base_dir = base_dir if base_dir is not None else sources_dir.parent
     detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_path)
     resolver_chain = UrlResolverChain()
+    http_downloader = HTTPDownloader(detector=detector)
+    web_crawler = WebCrawler(detector=detector, stealth=stealth)
     results: list[Path] = []
     for url in urls:
         # Resolve: Wikipedia → PDF API, arXiv → direct PDF, etc.
@@ -192,7 +240,11 @@ def download_urls(
             logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
             continue
 
-        downloader = HTTPDownloader(detector=detector)
+        downloader = (
+            web_crawler
+            if _looks_like_html_url(resolved.download_url)
+            else http_downloader
+        )
         downloaded_file = downloader.download(resolved.download_url, sources_dir)
         if downloaded_file:
             # Track the original URL for future dedup.

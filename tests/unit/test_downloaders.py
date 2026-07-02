@@ -356,6 +356,39 @@ class TestWebCrawler:
 
         assert len(results) == 2
 
+    def test_stealth_flag_passed_to_browserconfig(self, tmp_path: Path) -> None:
+        """The stealth flag must reach crawl4ai's BrowserConfig."""
+        pytest.importorskip("crawl4ai")
+
+        captured_configs: list[Any] = []
+
+        class _FakeAsyncWebCrawler:
+            def __init__(self, config: Any = None, **_kwargs: Any) -> None:
+                captured_configs.append(config)
+
+            async def __aenter__(self) -> _FakeAsyncWebCrawler:
+                return self
+
+            async def __aexit__(self, *_args: Any) -> None:
+                pass
+
+            async def arun(self, _url: str) -> MagicMock:
+                m = MagicMock()
+                m.markdown = "# x"
+                return m
+
+        with patch(
+            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            _FakeAsyncWebCrawler,
+        ):
+            WebCrawler(stealth=True).download("https://docs.example.com", tmp_path)
+            WebCrawler(stealth=False).download("https://docs.example.com", tmp_path)
+
+        assert len(captured_configs) == 2
+        assert captured_configs[0].enable_stealth is True
+        assert captured_configs[1].enable_stealth is False
+        assert captured_configs[0].headless is True
+
 
 # ---------------------------------------------------------------------------
 # DuplicateDetector
