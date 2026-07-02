@@ -1,4 +1,4 @@
-# build-wiki.ps1 — Build the demo wiki for A/B model comparison
+# build-wiki.ps1 --- Build the demo wiki for A/B model comparison
 #
 # Prerequisites:
 #   - Ollama running with models pulled (see config files for model list)
@@ -31,7 +31,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ── Sync environment (ensure latest source is installed) ────────────────
+# ------ Sync environment (ensure latest source is installed) ------------------------------------------------
 Write-Host "=== Syncing environment (uv sync) ===" -ForegroundColor Cyan
 $ProjectRoot = $PSScriptRoot | Split-Path -Parent
 
@@ -43,11 +43,11 @@ if (-not $Preview) {
     }
 }
 
-# ── Validate config ─────────────────────────────────────────────────────
+# ------ Validate config ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 $ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
-# ── Read build settings from config ─────────────────────────────────────
+# ------ Read build settings from config ---------------------------------------------------------------------------------------------------------------
 # We parse the TOML to extract model settings. Since PowerShell
 # doesn't have native TOML support, we use a simple regex approach for
 # the specific keys we need.
@@ -113,12 +113,12 @@ $Batch2Dir = Join-Path $ProjectRoot "tests/data/batch2"
 $Batch2Pdf = Join-Path $ProjectRoot "tests/data/batch2/*.pdf"
 $Batch2Urls = Join-Path $Batch2Dir "urls.txt"
 
-# ── Clean ──────────────────────────────────────────────────────────────
+# ------ Clean ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # --force --keep-cache on knox init handles directory reset + cache
 # preservation. The cache-skip logic in ingest already skips unchanged
 # files (hash-based). No manual cache clearing needed.
 
-# ── Stage 0: Init (scaffold project structure) ─────────────────────────
+# ------ Stage 0: Init (scaffold project structure) ---------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 0: Initialize project ===" -ForegroundColor Cyan
 $InitArgs = @(
@@ -142,7 +142,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Stage 0b: Persist model settings in wiki config ───────────────────
+# ------ Stage 0b: Persist model settings in wiki config ---------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 0b: Configure models (knox config set) ===" -ForegroundColor Cyan
 
@@ -167,7 +167,7 @@ Invoke-ConfigSet "compile.llm.default_model" $EffectiveLLMModel
 Invoke-ConfigSet "compile.llm.vlm_model" $EffectiveVLMModel
 Invoke-ConfigSet "compile.embedding.model" $EffectiveEmbedModel
 
-# ── Stage 1: Ingest (T0+T1: download + parse) ────────────────────────
+# ------ Stage 1: Ingest (T0+T1: download + parse) ------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 1: Ingest (download + parse) ===" -ForegroundColor Cyan
 $IngestArgs = @(
@@ -195,7 +195,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Stage 1b: Validate LLM provider ──────────────────────────────────
+# ------ Stage 1b: Validate LLM provider ------------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 1b: Validate LLM provider ===" -ForegroundColor Cyan
 $DoctorArgs = @(
@@ -211,11 +211,11 @@ Write-Host ""
 if (-not $Preview) {
     & $DoctorArgs[0] $DoctorArgs[1..($DoctorArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "knox doctor reported issues — continuing build"
+        Write-Warning "knox doctor reported issues --- continuing build"
     }
 }
 
-# ── Stage 2: Compile (T2+T3+T4+T5: chunk + resolve + compile + output) ─
+# ------ Stage 2: Compile (T2+T3+T4+T5: chunk + resolve + compile + output) ---
 Write-Host ""
 Write-Host "=== Stage 2: Compile (index + chunk + resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
@@ -237,7 +237,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Stage 2b: Ingest batch 2 (incremental sources) ──────────────────
+# ------ Stage 2b: Ingest batch 2 (incremental sources) ------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 2b: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
 
@@ -262,7 +262,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Stage 2c: Re-compile with batch 2 content ────────────────────────
+# ------ Stage 2c: Re-compile with batch 2 content ------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 2c: Re-compile (with batch 2 content) ===" -ForegroundColor Cyan
 $Compile2Args = @(
@@ -284,7 +284,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Lint (Structural + LLM rules, saves to lint_history.jsonl) ─────────
+# ------ Lint (Structural + LLM rules, saves to lint_history.jsonl) ---------------------------
 Write-Host ""
 Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
@@ -305,7 +305,7 @@ if (-not $Preview) {
     }
 }
 
-# ── Gap Analysis (source recommendations from lint results) ───────────
+# ------ Gap Analysis (source recommendations from lint results) ---------------------------------
 Write-Host ""
 Write-Host "=== Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
 $GapsArgs = @(
@@ -319,10 +319,10 @@ Write-Host ""
 
 if (-not $Preview) {
     & $GapsArgs[0] $GapsArgs[1..($GapsArgs.Length - 1)]
-    # gaps exits 0 regardless — it's informational
+    # gaps exits 0 regardless --- it's informational
 }
 
-# ── Remediate (auto-fix + LLM-generated concept pages) ────────────────
+# ------ Remediate (auto-fix + LLM-generated concept pages) ------------------------------------------------
 Write-Host ""
 Write-Host "=== Remediate (auto-fix + concept generation) ===" -ForegroundColor Cyan
 $RemediateArgs = @(
@@ -338,7 +338,7 @@ if (-not $Preview) {
     & $RemediateArgs[0] $RemediateArgs[1..($RemediateArgs.Length - 1)]
 }
 
-# ── Lint History (trend across builds) ────────────────────────────────
+# ------ Lint History (trend across builds) ------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Lint History (trend) ===" -ForegroundColor Cyan
 $HistoryArgs = @(
@@ -355,17 +355,25 @@ if (-not $Preview) {
     & $HistoryArgs[0] $HistoryArgs[1..($HistoryArgs.Length - 1)]
 }
 
-# ── Load demo content from TOML (learn/capture/write/query phrases) ────
+# ------ Load demo content from TOML (learn/capture/write/query phrases) ------------
 $DemoContentFile = Join-Path $PSScriptRoot "demo-content.toml"
 $DemoContent = $null
 if (Test-Path $DemoContentFile) {
     $json = & uv run python -c "import json, sys, tomllib; print(json.dumps(tomllib.load(open(sys.argv[1], 'rb'))))" $DemoContentFile
     $DemoContent = $json | ConvertFrom-Json
 } else {
-    Write-Host "  No demo-content.toml found — skipping capture/query stages" -ForegroundColor DarkGray
+    Write-Host "  No demo-content.toml found --- skipping capture/query stages" -ForegroundColor DarkGray
 }
 
-# ── Stage 3: Capture workflow demo (learn + capture + write) ─────────
+# ------ Helper: format a command line for display, quoting args with spaces ------
+function Format-CmdDisplay {
+    param([string[]]$CmdArgs)
+    return ($CmdArgs | ForEach-Object {
+        if ($_ -match '\s') { "'$_'" } else { $_ }
+    }) -join ' '
+}
+
+# ------ Stage 3: Capture workflow demo (learn + capture + write) ---------------------------
 if ($DemoContent) {
     Write-Host ""
     Write-Host "=== Stage 3: Capture workflow demo ===" -ForegroundColor Cyan
@@ -380,12 +388,12 @@ if ($DemoContent) {
                 }
             }
             Write-Host ""
-            Write-Host ($cmd -join " ") -ForegroundColor DarkGray
+            Write-Host (Format-CmdDisplay $cmd) -ForegroundColor DarkGray
             Write-Host ""
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox learn failed (exit $LASTEXITCODE) — continuing"
+                    Write-Warning "knox learn failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
@@ -396,12 +404,12 @@ if ($DemoContent) {
         foreach ($item in $DemoContent.capture) {
             $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "capture", $item.text)
             Write-Host ""
-            Write-Host ($cmd -join " ") -ForegroundColor DarkGray
+            Write-Host (Format-CmdDisplay $cmd) -ForegroundColor DarkGray
             Write-Host ""
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox capture failed (exit $LASTEXITCODE) — continuing"
+                    Write-Warning "knox capture failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
@@ -425,21 +433,21 @@ if ($DemoContent) {
             }
             if ($resolvedCount -gt 0) {
                 Write-Host ""
-                Write-Host ($writeArgs -join " ") -ForegroundColor DarkGray
+                Write-Host (Format-CmdDisplay $writeArgs) -ForegroundColor DarkGray
                 Write-Host ""
                 if (-not $Preview) {
                     & $writeArgs[0] $writeArgs[1..($writeArgs.Length - 1)]
                     if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "knox write failed (exit $LASTEXITCODE) — continuing"
+                        Write-Warning "knox write failed (exit $LASTEXITCODE) --- continuing"
                     }
                 }
             } else {
-                Write-Host "  Skipping 'knox write' — no source files resolved" -ForegroundColor DarkGray
+                Write-Host "  Skipping 'knox write' --- no source files resolved" -ForegroundColor DarkGray
             }
         }
     }
 
-    # ── Stage 4: Query demo (RAG queries) ──────────────────────────────
+    # ------ Stage 4: Query demo (RAG queries) ------------------------------------------------------------------------------------------
     if ($DemoContent.query) {
         Write-Host ""
         Write-Host "=== Stage 4: Query demo ===" -ForegroundColor Cyan
@@ -447,19 +455,19 @@ if ($DemoContent) {
         foreach ($item in $DemoContent.query) {
             $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "query", $item.question)
             Write-Host ""
-            Write-Host ($cmd -join " ") -ForegroundColor DarkGray
+            Write-Host (Format-CmdDisplay $cmd) -ForegroundColor DarkGray
             Write-Host ""
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox query failed (exit $LASTEXITCODE) — continuing"
+                    Write-Warning "knox query failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
     }
 }
 
-# ── Stage 5: Status + Trace (diagnostics) ──────────────────────────────
+# ------ Stage 5: Status + Trace (diagnostics) ------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 5: Status + Trace ===" -ForegroundColor Cyan
 
@@ -487,7 +495,7 @@ if (-not $Preview) {
     & $TraceArgs[0] $TraceArgs[1..($TraceArgs.Length - 1)]
 }
 
-# ── Stage 6: Organize (dry-run source categorisation) ──────────────────
+# ------ Stage 6: Organize (dry-run source categorisation) ------------------------------------------------------
 Write-Host ""
 Write-Host "=== Stage 6: Organize (dry-run) ===" -ForegroundColor Cyan
 $OrganizeArgs = @(
@@ -502,11 +510,11 @@ Write-Host ""
 if (-not $Preview) {
     & $OrganizeArgs[0] $OrganizeArgs[1..($OrganizeArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "knox organize failed (exit $LASTEXITCODE) — continuing"
+        Write-Warning "knox organize failed (exit $LASTEXITCODE) --- continuing"
     }
 }
 
-# ── Done ───────────────────────────────────────────────────────────────
+# ------ Done ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green
 if (-not $Preview -and (Test-Path $OutputPath)) {
