@@ -15,7 +15,7 @@ from knox.organize.categorize import CategoryNode, CategoryTree
 
 logger = get_logger(__name__)
 
-_CITATION_RE = re.compile(r"\^?\[([^\]\n:]+?):(\d+)-(\d+)\]")
+_CITATION_RE = re.compile(r"\[([^\]\n:]+?):(\d+)-(\d+)\]")
 
 
 # ── Data ────────────────────────────────────────────────────────────

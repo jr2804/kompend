@@ -509,7 +509,7 @@ def _tree_from_dict(d: dict[str, Any]) -> ChunkTree:
 # ── Provenance ────────────────────────────────────────────────────────────
 
 
-_CITATION_RE = re.compile(r"\^?\[([^\]]+?):(\d+)-(\d+)\]")
+_CITATION_RE = re.compile(r"\[([^\]]+?):(\d+)-(\d+)\]")
 
 LIFECYCLE_DRAFT = "draft"
 LIFECYCLE_REVIEWED = "reviewed"
