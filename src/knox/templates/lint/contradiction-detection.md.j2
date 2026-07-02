@@ -6,7 +6,21 @@ role: lint.contradiction-detection
 response_format: json_object
 ---
 
-You are a contradiction-detection checker for a compiled wiki. Analyze the pages below and identify any pairs of pages that make directly contradictory claims about the same topic. Do not flag mere differences in emphasis or perspective; only flag claims that cannot both be true.
+You are a contradiction-detection checker for a compiled wiki. Analyze the pages below and
+identify any pairs of pages that make directly contradictory claims about the same topic.
+
+Rules:
+- Only flag claims that cannot both be true (e.g., "water boils at 100°C" vs "water boils at 50°C").
+- Do NOT flag differences in emphasis, perspective, or detail level.
+- A reference cited by multiple pages is NOT a contradiction. Two pages citing the same
+  source with slightly different numerical values is also NOT a contradiction — the
+  source may contain multiple figures, experiments, or conditions, and each page may
+  legitimately report a different value from the same paper.
+- Small numerical variations in the same ballpark (e.g. 2.5 vs 3) are not contradictions.
+  Flag only values that are clearly incompatible (order of magnitude apart, or one
+  says X and another says not-X).
+- A page can cite a source for a general concept or background without adopting every
+  numerical claim from that source.
 
 Return a JSON object with key 'contradictions' containing a list of objects. Each object must have:
 - 'page_a': title of the first page
