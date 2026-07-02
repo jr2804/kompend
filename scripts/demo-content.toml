@@ -1,0 +1,37 @@
+# demo-content.toml — Demo phrases/questions for build-wiki.ps1 stages 3-4
+#
+# Edit this file to change what learn/capture/write/query demo against.
+# Arrays are supported — add as many [[learn]] / [[capture]] / [[write]] /
+# [[query]] blocks as needed.
+
+# ── learn: factoids the LLM should memorize ─────────────────────────────
+
+[[learn]]
+text = "perceived listening effort is obtained by an opinion-based subjective test (there is no right/wrong), while speech intelligibility is measured on test subjects (there is a right/wrong answer)"
+tags = ["listening effort", "speech intelligibility"]
+
+[[learn]]
+text = "perceived listening effort and speech quality are somewhat orthogonal attributes but are also always correlated."
+tags = ["listening effort", "speech quality"]
+
+# ── capture: decisions/notes to extract action items from ───────────────
+
+[[capture]]
+text = "We decided to look rather into perceived listening effort rather than speech intelligibility."
+
+# ── write: pages to generate from specific source files ─────────────────
+
+[[write]]
+title = "Artificial Ears & Head-and-Torso-simulators"
+sources = [
+    "T-REC-P.57-202106-I!!PDF-E.pdf",
+    "T-REC-P.58-202303-I!!PDF-E.pdf",
+]
+
+# ── query: RAG questions to test retrieval ──────────────────────────────
+
+[[query]]
+question = "What is the difference between listening effort and speech intelligibility?"
+
+[[query]]
+question = "Which test equipment is needed to measure listening effort and/or speech intelligibility as objectively as possible?"

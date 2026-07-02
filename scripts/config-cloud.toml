@@ -7,7 +7,12 @@
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml
 
 # ── Paths ───────────────────────────────────────────────────────────────
+# All paths are relative to the wiki root (directory containing
+# `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
 [paths]
+# Root directory for resolving all relative paths. When unset, uses
+# the directory containing this config file, or the value of --wiki-dir.
+# wiki_dir = "."
 sources_dir = "sources"
 output_dir  = "wiki"
 cache_dir   = ".knox/cache"
@@ -26,6 +31,7 @@ parser = "liteparse"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
+# Primary model in litellm format ("provider/model")
 # some cheap LLMs/VLMs to try:
 default_model      = "ollama-cloud/deepseek-v4-flash"
 #default_model      = "ollama-cloud/qwen3.5"
@@ -33,33 +39,56 @@ default_model      = "ollama-cloud/deepseek-v4-flash"
 #default_model      = "opencode-zen/gpt-5.4-nano"
 #default_model      = "openrouter/openrouter/free"
 
-vlm_model          = "ollama-cloud/gemma4:cloud"
-timeout            = 300.0
+# Vision model for captioning IMAGE chunks during resolution.
+# When set, VLMEnricher is added to the resolver chain.
+vlm_model          = "ollama-cloud/gemma4:31b"
 #context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show
 
+# Transient-error retries before advancing to next fallback model
 fallback_max_retries = 3
 
 # LLM communication data format: json (default) | toon | ison
 # Compact formats reduce input token count by 30-70%
-# data_format = "json"
+data_format = "ison"
+
+# LLM call timeout
+timeout            = 300.0
 
 # ── Embedding ───────────────────────────────────────────────────────────
 [compile.embedding]
+# Embedding model for semantic search / RAG.
+# Two options:
+#   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
+#   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
+# Leave commented to disable vector indexing.
 model = "litellm:ollama/granite-embedding:278m"
 
 # ── Output ──────────────────────────────────────────────────────────────
 [compile.output]
+# Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
+# Set to auto-detect when omitted.
 flavor = "obsidian"
+# Max related-links per page in vault mode (0 = unlimited)
 max_related_links = 15
 
 # ── Query settings ───────────────────────────────────────────────────────
 [query]
-# format = "text"  # text | json | toon | ison
+# Default output format for `knox query`. Override per-run with --format.
+# text = human-readable prose (default)
+# json = structured {answer, citations}, pretty-printed
+# toon / ison = compact structured encodings for LLM/agent consumers
+#   (30-70% fewer tokens than json)
+# format = "text"
 
 # ── Compile settings ────────────────────────────────────────────────────
 [compile]
+# Output format: markdown | json | typst
 format = "markdown"
+
+# Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
 compiler = "wicer"
+
+# Image handling: file (extract to disk) | base64 (inline)
 image_mode = "file"
 # VLM pre-filter thresholds (bytes / pixels)
 # vlm_min_image_bytes = 2048
@@ -86,6 +115,7 @@ summary_target_chars = 600
 
 # ── Lint (all structural rules enabled for demo) ───────────────────────
 [lint]
+# Rules to run (null = all structural rules)
 enabled = [
     "broken-wikilinks",
     "missing-frontmatter",
@@ -98,15 +128,31 @@ enabled = [
 ]
 
 # ── Search / RAG enhancements (optional plug-in steps) ─────────────────
+# Enhanced retrieval pipeline features. All default to disabled.
+# Each is an optional plug-in step — enable only what you need.
 [search]
+# Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
+# retrieve independently for each, then merge via RRF.
 expansion.enabled = true
 expansion.variants = 3
+
+# CRAG (Corrective RAG): LLM grades each retrieved chunk for relevance.
+# Chunks below threshold are dropped before synthesis.
 crag.enabled = true
 crag.threshold = 0.3
+
+# Neural re-ranker: cross-encoder re-ranks top-K candidates by true
+# query-passage relevance. Requires sentence-transformers.
 reranker.enabled = true
 reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 reranker.top_k = 20
+
+# HyDE (Hypothetical Document Embeddings): for sparse queries, generate
+# a hypothetical answer first, then use its embedding for retrieval.
 hyde.enabled = true
+
+# Contextual Retrieval: during T2 chunking, prepend situating context
+# to each chunk before embedding. Improves both compilation and query.
 contextual.enabled = true
 contextual.model = ""
 
@@ -116,9 +162,15 @@ contextual.model = ""
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]
+# Enable duplicate detection during ingestion
 enabled = true
+# Matcher backends: embedding, minhash, or both
 matchers = "embedding,minhash"
+# Similarity threshold for treating documents as near-identical
 threshold_identical = 0.95
+# Similarity threshold for flagging documents as similar
 threshold_similar = 0.80
+# Embedding model override; empty string falls back to compile.embedding.model
 # model = ""
+# MinHash LSH threshold used by the minhash matcher
 minhash_lsh_threshold = 0.8
