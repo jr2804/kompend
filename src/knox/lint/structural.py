@@ -18,7 +18,6 @@ from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _HEADING_RE = re.compile(r"^(#{1,6})\s", re.MULTILINE)
-_CITATION_RE = re.compile(r"\[source:([^\]]+)\]")
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
