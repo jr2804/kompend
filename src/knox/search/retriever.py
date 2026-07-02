@@ -151,7 +151,6 @@ class TokenOverlapRetriever:
         context_text: str = "\n".join(context_lines)
         system_prompt: str = self._template_loader.render(
             "query/synthesize_system.md.j2",
-            query=query,
             context=context_text,
         )
 
