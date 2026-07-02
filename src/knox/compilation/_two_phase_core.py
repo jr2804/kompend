@@ -290,8 +290,13 @@ def _try_litellm_json(
     model: str,
     system: str | None = None,
     timeout: float | None = None,
+    call_stats: list[tuple[int, int]] | None = None,
 ) -> Any | None:
-    """Call litellm completion and return parsed JSON, or None on failure."""
+    """Call litellm completion and return parsed JSON, or None on failure.
+
+    If *call_stats* is provided, ``(prompt_tokens, completion_tokens)`` is
+    appended to it on each successful LLM response.
+    """
     start = time.monotonic()
     try:
         messages: list[dict[str, str]] = []
@@ -320,6 +325,8 @@ def _try_litellm_json(
                 ct = 0
             tt = pt + ct
             tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
+            if call_stats is not None:
+                call_stats.append((pt, ct))
             logger.info(
                 "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
                 model,

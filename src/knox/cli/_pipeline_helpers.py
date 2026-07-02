@@ -289,6 +289,40 @@ def _cli_build_vector_index(
         get_err_console().print("Warning: no nodes indexed — vector index skipped")
 
 
+def _print_compile_summary(wiki: CompiledWiki) -> None:
+    """Print a one-line compilation summary with timing and LLM usage."""
+    meta = wiki.metadata
+    parts = [f"{len(wiki.nodes)} page(s)"]
+
+    chunk_count = meta.get("chunk_count", 0)
+    if chunk_count:
+        parts.append(f"{chunk_count} chunk(s)")
+
+    dur_s = meta.get("compile_duration_s")
+    if dur_s is not None:
+        parts.append(f"{dur_s:.0f}s")
+
+    src_stats = meta.get("extraction_stats")
+    if src_stats:
+        parts.append(f"{len(src_stats)} source(s)")
+
+    llm_calls = meta.get("llm_calls")
+    if llm_calls:
+        pt = meta.get("llm_prompt_tokens", 0)
+        ct = meta.get("llm_completion_tokens", 0)
+        parts.append(f"{llm_calls} LLM call(s) ({pt}+{ct}={pt + ct} token(s))")
+
+    wicer_iters = meta.get("wicer_iterations")
+    if wicer_iters:
+        wicer_refs = meta.get("wicer_refinements", 0)
+        parts.append(f"WiCER {wicer_iters} iter(s), {wicer_refs} refinement(s)")
+        wc = meta.get("wicer_llm_calls")
+        if wc:
+            parts.append(f"+{wc} probe/eval call(s)")
+
+    get_console().print(f"Compiled: {', '.join(parts)}")
+
+
 def _post_compile_actions(
     *,
     wiki: CompiledWiki,
@@ -310,6 +344,7 @@ def _post_compile_actions(
     """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
     base_dir = pipeline_config.resolved_base_dir()
     _write_wiki_cache(wiki, base_dir)
+    _print_compile_summary(wiki)
 
     if review and not bypass_review:
         _send_to_review_queue(wiki, base_dir)

@@ -14,6 +14,7 @@ crashes on a single bad provider.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Final
 
 from knox.compilation._two_phase_core import _tokens_to_chars
@@ -132,6 +133,8 @@ class WiCERCompiler(BaseCompiler):
                 },
             )
 
+        compile_start = time.monotonic()
+
         # F_cumulative — facts that MUST appear in W_{t+1} (CEGAR refinement).
         cumulative_pinned: list[str] = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
 
@@ -143,8 +146,15 @@ class WiCERCompiler(BaseCompiler):
         # are visible (otherwise the bar has nothing real to count).
         self._compiler.on_progress = self.on_progress
 
+        blind_start = time.monotonic()
         wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned or None)
         self._report(num_sources, num_sources, "blind compilation done")
+        logger.info(
+            "WiCER: blind compile done in %.1fs (%d nodes, %d edges)",
+            time.monotonic() - blind_start,
+            len(wiki.nodes),
+            len(wiki.edges),
+        )
         iteration_info: dict[str, Any] = {
             "wicer_iterations": 0,
             "wicer_refinements": 0,
@@ -154,10 +164,12 @@ class WiCERCompiler(BaseCompiler):
         }
 
         for attempt in range(self.max_iterations):
+            iter_start = time.monotonic()
+
             self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — generating probes")
             probes = self._generate_probes(wiki, chunks)
             if not probes:
-                logger.info("WiCER: no probes generated, ending loop")
+                logger.info("WiCER: no probes generated, ending loop at iteration %d (%.1fs)", attempt + 1, time.monotonic() - iter_start)
                 break
             iteration_info["wicer_probes_generated"] += len(probes)
 
@@ -168,14 +180,24 @@ class WiCERCompiler(BaseCompiler):
             iteration_info["wicer_probes_passed"] += passed
 
             if not failures:
-                logger.info("WiCER: all probes passed at iteration %d", attempt + 1)
+                logger.info(
+                    "WiCER: iter %d/%d done in %.1fs — %d probes, all passed → converged",
+                    attempt + 1, self.max_iterations,
+                    time.monotonic() - iter_start,
+                    len(probes),
+                )
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
             self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — diagnosing {len(failures)} failures")
             new_facts = self._diagnose(failures)
             if not new_facts:
-                logger.info("WiCER: no critical facts extracted, ending loop")
+                logger.info(
+                    "WiCER: iter %d/%d done in %.1fs — %d probes, %d passed, %d failed, no new facts",
+                    attempt + 1, self.max_iterations,
+                    time.monotonic() - iter_start,
+                    len(probes), passed, len(failures),
+                )
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
@@ -184,19 +206,60 @@ class WiCERCompiler(BaseCompiler):
             cumulative_pinned = list(dict.fromkeys(cumulative_pinned + [f.strip() for f in new_facts if f and f.strip()]))
             added = len(cumulative_pinned) - before
             if added == 0:
-                logger.info("WiCER: all diagnosed facts already pinned, ending loop")
+                logger.info(
+                    "WiCER: iter %d/%d done in %.1fs — all %d fact(s) already pinned, ending loop",
+                    attempt + 1, self.max_iterations,
+                    time.monotonic() - iter_start,
+                    len(cumulative_pinned),
+                )
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
 
+            recompile_start = time.monotonic()
             self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — recompiling with {len(cumulative_pinned)} pinned fact(s)")
             wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned)
+            recompile_elapsed = time.monotonic() - recompile_start
             iteration_info["wicer_refinements"] += 1
             iteration_info["wicer_iterations"] = attempt + 1
             iteration_info["wicer_pinned_facts"] = len(cumulative_pinned)
+
+            logger.info(
+                "WiCER: iter %d/%d done in %.1fs — "
+                "probes=%d, passed=%d, failed=%d, new_facts=%d, recompile=%.1fs, pinned=%d",
+                attempt + 1, self.max_iterations,
+                time.monotonic() - iter_start,
+                len(probes), passed, len(failures),
+                added, recompile_elapsed, len(cumulative_pinned),
+            )
         else:
             iteration_info["wicer_iterations"] = self.max_iterations
 
+        total_elapsed = time.monotonic() - compile_start
         wiki.metadata.update(iteration_info)
+
+        if self._client:
+            usage = self._client.usage
+            logger.info(
+                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, "
+                "%d client LLM call(s), %d prompt + %d completion tokens",
+                iteration_info["wicer_iterations"],
+                iteration_info["wicer_refinements"],
+                total_elapsed,
+                usage.call_count,
+                usage.prompt_tokens,
+                usage.completion_tokens,
+            )
+            wiki.metadata["wicer_llm_calls"] = usage.call_count
+            wiki.metadata["wicer_llm_prompt_tokens"] = usage.prompt_tokens
+            wiki.metadata["wicer_llm_completion_tokens"] = usage.completion_tokens
+        else:
+            logger.info(
+                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total",
+                iteration_info["wicer_iterations"],
+                iteration_info["wicer_refinements"],
+                total_elapsed,
+            )
+        wiki.metadata["compile_duration_s"] = round(total_elapsed, 1)
         return wiki
 
     # ------------------------------------------------------------------

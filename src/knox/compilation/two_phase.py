@@ -135,17 +135,37 @@ class TwoPhaseCompiler(BaseCompiler):
         generation cache key so a refined call cannot serve a stale wiki
         from a prior iteration.
         """
+        compile_start = time.monotonic()
+        self._llm_stats: list[tuple[int, int]] = []
+
         if not chunks:
             return CompiledWiki(
                 nodes=[],
                 edges=[],
                 toc=[],
-                metadata={"chunk_count": 0, "two_phase": True},
+                metadata={"chunk_count": 0, "two_phase": True, "llm_calls": 0},
             )
 
         num_sources = len({str(rc.chunk.source_file or "unknown") for rc in chunks})
         self._report(0, num_sources, "Compiling wiki…")
+
+        extract_start = time.monotonic()
         extractions = self.extract(chunks, trees=trees)
+        extract_elapsed = time.monotonic() - extract_start
+
+        if self._extraction_stats:
+            src_times = [s["duration_s"] for s in self._extraction_stats if "duration_s" in s]
+            avg_src = sum(src_times) / len(src_times) if src_times else 0.0
+            logger.info(
+                "TwoPhase: extract phase done — %d source(s) in %.1fs (avg %.1fs), "
+                "%d LLM call(s), %d prompt + %d completion tokens",
+                len(src_times),
+                extract_elapsed,
+                avg_src,
+                len(self._llm_stats),
+                sum(pt for pt, _ in self._llm_stats),
+                sum(ct for _, ct in self._llm_stats),
+            )
 
         # Generation cache: keyed by all extractions + model + gen config
         # + pinned facts (refined compilations must miss prior cache).
@@ -154,19 +174,50 @@ class TwoPhaseCompiler(BaseCompiler):
             cached = self._cache_store.get("generate", gen_deps)
             if cached is not None:
                 logger.info(
-                    "TwoPhase: generation cache hit (%d nodes, %d edges)",
+                    "TwoPhase: generation cache hit (%d nodes, %d edges) — "
+                    "took %.1fs total",
                     len(cached.nodes),
                     len(cached.edges),
+                    time.monotonic() - compile_start,
                 )
                 if getattr(self, "_extraction_stats", None):
                     cached.metadata["extraction_stats"] = self._extraction_stats
+                cached.metadata["llm_calls"] = len(self._llm_stats)
                 return cached
 
         # Progress is reported inside generate() per batch×segment.
         self._generation_fallbacks = 0
+        gen_start = time.monotonic()
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+        gen_elapsed = time.monotonic() - gen_start
+
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats
+
+        # Store metadata.
+        total_prompt = sum(pt for pt, _ in self._llm_stats)
+        total_comp = sum(ct for _, ct in self._llm_stats)
+        wiki.metadata["llm_calls"] = len(self._llm_stats)
+        wiki.metadata["llm_prompt_tokens"] = total_prompt
+        wiki.metadata["llm_completion_tokens"] = total_comp
+        wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
+
+        total_elapsed = time.monotonic() - compile_start
+        chunk_count = wiki.metadata.get("chunk_count", 0)
+        node_count = len(wiki.nodes)
+        logger.info(
+            "TwoPhase: compile done — %d source(s) \u2192 %d concept(s) in %.1fs "
+            "(extract %.1fs, generate %.1fs), %d LLM call(s), "
+            "%d prompt + %d completion tokens",
+            num_sources,
+            node_count,
+            total_elapsed,
+            extract_elapsed,
+            gen_elapsed,
+            len(self._llm_stats),
+            total_prompt,
+            total_comp,
+        )
 
         if not self._config.no_cache and self._generation_fallbacks == 0:
             self._cache_store.set("generate", gen_deps, wiki)
@@ -190,6 +241,7 @@ class TwoPhaseCompiler(BaseCompiler):
         dropped.  Results from each batch are merged into a single
         :class:`Extraction` per source.
         """
+        self._llm_stats: list[tuple[int, int]] = []
         extractions = ExtractionSet()
         # Group chunks by source file so each source is extracted once.
         by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
@@ -435,6 +487,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     system=generation_system,
                     model=self._model,
                     timeout=self._timeout,
+                    call_stats=self._llm_stats,
                 )
 
                 if not isinstance(data, dict):
@@ -527,6 +580,7 @@ class TwoPhaseCompiler(BaseCompiler):
             system=extraction_system,
             model=self._model,
             timeout=self._timeout,
+            call_stats=self._llm_stats,
         )
         if isinstance(data, dict):
             result = Extraction(
