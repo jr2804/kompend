@@ -1,4 +1,4 @@
-"""N4 claim-level provenance: ``^[source.pdf:42-58]`` citations.
+"""N4 claim-level provenance: ``[source.pdf:42-58]`` citations.
 
 Provenance lives in two places:
 

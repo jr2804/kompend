@@ -509,7 +509,7 @@ def _tree_from_dict(d: dict[str, Any]) -> ChunkTree:
 # ── Provenance ────────────────────────────────────────────────────────────
 
 
-_CITATION_RE = re.compile(r"\^\[([^\]]+?):(\d+)-(\d+)\]")
+_CITATION_RE = re.compile(r"\[([^\]]+?):(\d+)-(\d+)\]")
 
 LIFECYCLE_DRAFT = "draft"
 LIFECYCLE_REVIEWED = "reviewed"
@@ -528,7 +528,7 @@ VALID_LIFECYCLE_STATES: tuple[str, ...] = (
 
 @dataclass
 class Citation:
-    """A single ``^[source:start-end]`` citation."""
+    """A single ``[source:start-end]`` citation."""
 
     source: str
     start: int
@@ -536,11 +536,11 @@ class Citation:
     context: str = ""
 
     def to_marker(self) -> str:
-        return f"^[{self.source}:{self.start}-{self.end}]"
+        return f"[{self.source}:{self.start}-{self.end}]"
 
 
 def extract_citations(text: str) -> list[Citation]:
-    """Parse all ``^[source:42-58]`` citations in *text*."""
+    """Parse all ``[source:42-58]`` citations in *text*."""
     out: list[Citation] = []
     for match in _CITATION_RE.finditer(text):
         out.append(

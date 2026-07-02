@@ -199,7 +199,7 @@ Provenance = Annotated[
     bool | None,
     typer.Option(
         "--provenance/--no-provenance",
-        help="Emit claim-level ^[source:42-58] citations in generated pages.",
+        help="Emit claim-level [source:42-58] citations in generated pages.",
     ),
 ]
 

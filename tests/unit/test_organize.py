@@ -435,7 +435,7 @@ class TestUpdateWikiLinks:
         wiki.mkdir()
         page = wiki / "concept.md"
         page.write_text(
-            "Some claim ^[old.md:1-2] here.\nAnother ^[old.md:5-7] ref.",
+            "Some claim [old.md:1-2] here.\nAnother [old.md:5-7] ref.",
             encoding="utf-8",
         )
 
@@ -443,7 +443,7 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["wiki_files"] == 2
-        assert page.read_text(encoding="utf-8") == ("Some claim ^[new.md:1-2] here.\nAnother ^[new.md:5-7] ref.")
+        assert page.read_text(encoding="utf-8") == ("Some claim [new.md:1-2] here.\nAnother [new.md:5-7] ref.")
 
     def test_updates_provenance(self, tmp_path: Path) -> None:
         prov_dir = tmp_path / KNOX_DIR / "provenance"
@@ -454,7 +454,7 @@ class TestUpdateWikiLinks:
                 {
                     "node_id": "node",
                     "title": "T",
-                    "citations": ["^[old.md:1-2]"],
+                    "citations": ["[old.md:1-2]"],
                 },
             ),
             encoding="utf-8",
@@ -468,7 +468,7 @@ class TestUpdateWikiLinks:
 
         assert counts["provenance_files"] == 1
         data = json.loads(prov_file.read_text(encoding="utf-8"))
-        assert data["citations"] == ["^[new.md:1-2]"]
+        assert data["citations"] == ["[new.md:1-2]"]
 
     def test_updates_wiki_node_metadata(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"

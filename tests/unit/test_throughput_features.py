@@ -699,10 +699,10 @@ class TestReviewQueue:
 
 
 class TestExtractCitations:
-    """extract_citations parses ^[source:42-58] markers."""
+    """extract_citations parses [source:42-58] markers."""
 
     def test_single_citation(self) -> None:
-        text = "Some claim. ^[paper.pdf:42-58]"
+        text = "Some claim. [paper.pdf:42-58]"
         out = extract_citations(text)
         assert len(out) == 1
         assert out[0].source == "paper.pdf"
@@ -710,7 +710,7 @@ class TestExtractCitations:
         assert out[0].end == 58
 
     def test_multiple_citations(self) -> None:
-        text = "First. ^[a.pdf:1-3] Second. ^[b.pdf:5-9]"
+        text = "First. [a.pdf:1-3] Second. [b.pdf:5-9]"
         out = extract_citations(text)
         assert len(out) == 2
         assert [c.source for c in out] == ["a.pdf", "b.pdf"]
@@ -757,7 +757,7 @@ class TestAnnotateWikiWithProvenance:
         record_path = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
         assert record_path.exists()
         record = json.loads(record_path.read_text(encoding="utf-8"))
-        assert record["citations"] == ["^[a.pdf:1-3]"]
+        assert record["citations"] == ["[a.pdf:1-3]"]
 
 
 # ===========================================================================

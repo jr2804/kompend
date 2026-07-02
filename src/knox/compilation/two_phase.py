@@ -5,7 +5,7 @@ and collect a structured payload of {summary, entities, concepts, tags}.
 
 Phase 2 (generate): merge same-named entities/concepts across sources,
 then ask the LLM to generate one page per unique entity/concept. Each
-page carries ``^[source.pdf:42-58]`` provenance citations per N4.
+page carries ``[source.pdf:42-58]`` provenance citations per N4.
 
 When the LLM call fails, the compiler falls back to the underlying
 ``base`` compiler (typically :class:`GraphCompiler`) so the pipeline

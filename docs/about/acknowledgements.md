@@ -30,7 +30,7 @@ decisions. Many thanks to their creators and contributors.
 |------|------------|-------------|
 | **Two-phase compile** | Extract all entities/concepts first, then generate pages. Enables cross-source merging and order-independence. | **Planned (Q20/N3).** Core architecture decision. |
 | **Eval harness** | Production-grade health score: citation coverage, freshness, link integrity, style guide conformance. CI thresholds. | **Planned (N2).** Quality measurement from the start. |
-| **Claim-level provenance** | Line-range citations `^[source.md:42-58]` embedded in every claim. Lint validates citations. | **Planned (Q16/N4).** Trust foundation. |
+| **Claim-level provenance** | Line-range citations `[source.md:42-58]` embedded in every claim. Lint validates citations. | **Planned (Q16/N4).** Trust foundation. |
 | **Review queue** | `compile --review` stages changes for human approval. Approve/reject/lock per page. | **Planned (N8).** Human-in-the-loop. |
 | **Schema layer** | Page kinds (concept, entity, comparison, overview) with per-kind compile rules and templates. | **Planned (N9).** Structured compilation. |
 | **Per-concept prompt budget** | Fair-share truncation at 200K chars. Prevents one topic from starving others in context window. | **Planned (N10).** Scale safeguard. |
@@ -127,7 +127,7 @@ Across all 11 investigated projects, the following patterns emerge:
 | Config file with env-var/flags override chain | sage-wiki, notebooklm-flow | Q15 |
 | `ignore:` patterns for source scanning | sage-wiki, every project | Q19 |
 | Two-phase compile (extract → generate) | atomicstrata | Q20 |
-| Claim-level provenance: `^[source.md:42-58]` | atomicstrata | Q16 |
+| Claim-level provenance: `[source.md:42-58]` | atomicstrata | Q16 |
 | Review queue: `compile --review` → approve/reject | atomicstrata | N8 |
 | Eval harness with health score + regression tracking | atomicstrata | N2 |
 | 3-way query scope (Wiki / Raw / Hybrid) | NiharShrotri | Q17 enhancement |

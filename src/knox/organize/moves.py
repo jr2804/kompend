@@ -15,7 +15,7 @@ from knox.organize.categorize import CategoryNode, CategoryTree
 
 logger = get_logger(__name__)
 
-_CITATION_RE = re.compile(r"\^\[([^\]\n:]+?):(\d+)-(\d+)\]")
+_CITATION_RE = re.compile(r"\[([^\]\n:]+?):(\d+)-(\d+)\]")
 
 
 # ── Data ────────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ def _rewrite_citations(filepath: Path, remap: LinkRemap) -> int:
         s = m.group(1)
         if (n := remap.get(s)) and n != s:
             edits += 1
-            return f"^[{n}:{m.group(2)}-{m.group(3)}]"
+            return f"[{n}:{m.group(2)}-{m.group(3)}]"
         return m.group(0)
 
     updated = _CITATION_RE.sub(_replacer, text)
@@ -194,7 +194,7 @@ def _rewrite_provenance(filepath: Path, remap: LinkRemap) -> int:
         m = _CITATION_RE.match(marker)
         if not m or not (new := remap.get(m.group(1))):
             continue
-        citations[i] = f"^[{new}:{m.group(2)}-{m.group(3)}]"
+        citations[i] = f"[{new}:{m.group(2)}-{m.group(3)}]"
         edits += 1
     if edits:
         filepath.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")

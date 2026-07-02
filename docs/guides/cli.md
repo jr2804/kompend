@@ -303,7 +303,7 @@ When applied, `knox organize` first flattens nested files in `sources/` (with
 moves each file into its assigned category, and rewrites wiki links that
 reference the old paths. Updated locations:
 
-- Inline `^[filename:start-end]` citations in `wiki/**/*.md`
+- Inline `[filename:start-end]` citations in `wiki/**/*.md`
 - `.knox/provenance/*.json` per-node citation records
 - `metadata.source_file` in `.knox/last_wiki.json`
 - `source_path` in `.knox/compile_state.json`
