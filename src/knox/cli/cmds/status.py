@@ -41,19 +41,20 @@ def collect_stats(
 
     wiki_exists = False
 
-    # Article stats
+    # Article stats — scan per-page .md files (one file per page since N9)
     if output_dir and output_dir.exists():
-        wiki_file = output_dir / "wiki.md"
-        wiki_exists = wiki_file.exists()
-        if wiki_exists:
-            text = wiki_file.read_text(encoding="utf-8")
-            word_count = len(text.split())
-            stats["articles"]["count"] = text.count("\n#")  # approx page count
-            stats["articles"]["total_words"] = word_count
-
-            # Last compile timestamp (from mtime of wiki.md)
-            mtime = wiki_file.stat().st_mtime
-            stats["last_compile"] = datetime.fromtimestamp(mtime).isoformat()
+        page_files = [f for f in output_dir.glob("*.md") if f.name != INDEX_FILE]
+        wiki_exists = bool(page_files)
+        if page_files:
+            total_words = 0
+            latest_mtime = 0.0
+            for pf in page_files:
+                total_words += len(pf.read_text(encoding="utf-8").split())
+                latest_mtime = max(latest_mtime, pf.stat().st_mtime)
+            stats["articles"]["count"] = len(page_files)
+            stats["articles"]["total_words"] = total_words
+            if latest_mtime:
+                stats["last_compile"] = datetime.fromtimestamp(latest_mtime).isoformat()
 
         # Check for index.md / log.md (N11)
         index_file = output_dir / INDEX_FILE

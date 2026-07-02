@@ -138,14 +138,10 @@ def trace_cmd(
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
     _sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     base_dir = output_dir.parent
-    wiki_file = output_dir / "wiki.md"
-    if not wiki_file.exists():
-        get_err_console().print(f"No compiled wiki found at {wiki_file}. Run 'knox compile' first.")
-        raise typer.Exit(1)
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
-        get_err_console().print("Could not load compiled wiki metadata.")
+        get_err_console().print("No compiled wiki found. Run 'knox compile' first.")
         raise typer.Exit(1)
 
     slugs = page_slugs or []
