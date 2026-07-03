@@ -1116,13 +1116,15 @@ class TestTwoPhaseConceptSalvageAndFallback:
         still yields concept pages (was: empty -> silent fallback).
         """
         ext_set = ExtractionSet()
-        ext_set.add(Extraction(
-            source="src.pdf",
-            concepts=[
-                {"concept": "Phoneme Posteriorgram", "definition": "A dense representation."},
-                {"title": "Better-Ear Listening", "definition": "Attending to the better ear."},
-            ],
-        ))
+        ext_set.add(
+            Extraction(
+                source="src.pdf",
+                concepts=[
+                    {"concept": "Phoneme Posteriorgram", "definition": "A dense representation."},
+                    {"title": "Better-Ear Listening", "definition": "Attending to the better ear."},
+                ],
+            )
+        )
         pages = ext_set.concept_pages()
         names = {p["name"] for p in pages}
         assert "Phoneme Posteriorgram" in names
@@ -1134,15 +1136,19 @@ class TestTwoPhaseConceptSalvageAndFallback:
         raw per-heading node_N chunk-group dump.
         """
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."),
-            llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"),
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
         )
         compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
         ext_set = ExtractionSet()
-        ext_set.add(Extraction(
-            source="src.pdf",
-            concepts=[{"name": "Listening Effort", "definition": "The effort to understand speech."}],
-        ))
+        ext_set.add(
+            Extraction(
+                source="src.pdf",
+                concepts=[{"name": "Listening Effort", "definition": "The effort to understand speech."}],
+            )
+        )
         chunks = _make_chunks(count=3, heading="Some Heading")
         wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="forced test")
         assert wiki.metadata["fallback"] is True
@@ -1157,8 +1163,10 @@ class TestTwoPhaseConceptSalvageAndFallback:
         cross-cutting concept pages / overviews, still no raw node_N dump.
         """
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."),
-            llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"),
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig("model", "vlm"),
+            embedding=EmbeddingConfig("model"),
         )
         compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
         ext_set = ExtractionSet()  # empty -> no concept definitions
@@ -1171,6 +1179,32 @@ class TestTwoPhaseConceptSalvageAndFallback:
 class TestVlmArtifactFiltering:
     """knox-ary0: vlm_filtered/vlm_skipped must never become concept pages."""
 
+    def test_vlm_markers_not_in_graph_concept_pages(self) -> None:
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
+        wiki = compiler.compile(self._make_vlm_chunks())
+        concept_titles = {n.title for n in wiki.nodes if n.metadata.get("cross_cutting")}
+        assert "vlm_filtered" not in concept_titles
+        assert "vlm_skipped" not in concept_titles
+        assert "Real Entity" in concept_titles
+
+    def test_vlm_markers_not_in_extraction_concept_pages(self) -> None:
+        ext_set = ExtractionSet()
+        ext_set.add(
+            Extraction(
+                source="src.pdf",
+                concepts=[
+                    {"name": "vlm_filtered", "definition": "Internal marker."},
+                    {"name": "vlm_skipped", "definition": "Internal marker."},
+                    {"name": "Listening Effort", "definition": "Real concept."},
+                ],
+            )
+        )
+        pages = ext_set.concept_pages()
+        names = {p["name"] for p in pages}
+        assert "vlm_filtered" not in names
+        assert "vlm_skipped" not in names
+        assert "Listening Effort" in names
+
     def _make_vlm_chunks(self) -> list[ResolvedChunk]:
         """Two chunks from different sources both carrying vlm_filtered entity."""
         c1 = ResolvedChunk(
@@ -1182,27 +1216,3 @@ class TestVlmArtifactFiltering:
             entities=[{"name": "vlm_skipped", "type": "Term"}, {"name": "Real Entity", "type": "Term"}],
         )
         return [c1, c2]
-
-    def test_vlm_markers_not_in_graph_concept_pages(self) -> None:
-        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
-        wiki = compiler.compile(self._make_vlm_chunks())
-        concept_titles = {n.title for n in wiki.nodes if n.metadata.get("cross_cutting")}
-        assert "vlm_filtered" not in concept_titles
-        assert "vlm_skipped" not in concept_titles
-        assert "Real Entity" in concept_titles
-
-    def test_vlm_markers_not_in_extraction_concept_pages(self) -> None:
-        ext_set = ExtractionSet()
-        ext_set.add(Extraction(
-            source="src.pdf",
-            concepts=[
-                {"name": "vlm_filtered", "definition": "Internal marker."},
-                {"name": "vlm_skipped", "definition": "Internal marker."},
-                {"name": "Listening Effort", "definition": "Real concept."},
-            ],
-        ))
-        pages = ext_set.concept_pages()
-        names = {p["name"] for p in pages}
-        assert "vlm_filtered" not in names
-        assert "vlm_skipped" not in names
-        assert "Listening Effort" in names

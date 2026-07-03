@@ -226,9 +226,7 @@ class GraphCompiler(BaseCompiler):
 
     # Internal names injected by VLMEnricher for bookkeeping. These must
     # never become concept pages or cross-reference edges in the output.
-    _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset(
-        {"vlm_filtered", "vlm_skipped", "vlm_error"}
-    )
+    _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
     @staticmethod
     def _build_entity_edges(

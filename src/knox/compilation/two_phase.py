@@ -157,8 +157,7 @@ class TwoPhaseCompiler(BaseCompiler):
             src_times = [s["duration_s"] for s in self._extraction_stats if "duration_s" in s]
             avg_src = sum(src_times) / len(src_times) if src_times else 0.0
             logger.info(
-                "TwoPhase: extract phase done — %d source(s) in %.1fs (avg %.1fs), "
-                "%d LLM call(s), %d prompt + %d completion tokens",
+                "TwoPhase: extract phase done — %d source(s) in %.1fs (avg %.1fs), %d LLM call(s), %d prompt + %d completion tokens",
                 len(src_times),
                 extract_elapsed,
                 avg_src,
@@ -174,8 +173,7 @@ class TwoPhaseCompiler(BaseCompiler):
             cached = self._cache_store.get("generate", gen_deps)
             if cached is not None:
                 logger.info(
-                    "TwoPhase: generation cache hit (%d nodes, %d edges) — "
-                    "took %.1fs total",
+                    "TwoPhase: generation cache hit (%d nodes, %d edges) — took %.1fs total",
                     len(cached.nodes),
                     len(cached.edges),
                     time.monotonic() - compile_start,

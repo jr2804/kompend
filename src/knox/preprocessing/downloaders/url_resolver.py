@@ -63,8 +63,7 @@ class BaseUrlResolver(ABC):
     """
 
     @abstractmethod
-    def resolve(self, url: str) -> ResolvedUrl | None:
-        ...
+    def resolve(self, url: str) -> ResolvedUrl | None: ...
 
 
 # ── Built-in resolvers ──────────────────────────────────────────────────
@@ -92,9 +91,7 @@ class WikipediaPdfResolver(BaseUrlResolver):
         title = m.group(2)
         # Strip URL fragment (#section) — PDF renders the whole article.
         title = title.split("#")[0]
-        download_url = (
-            f"https://{lang}.wikipedia.org/api/rest_v1/page/pdf/{title}"
-        )
+        download_url = f"https://{lang}.wikipedia.org/api/rest_v1/page/pdf/{title}"
         return ResolvedUrl(
             original_url=url,
             download_url=download_url,

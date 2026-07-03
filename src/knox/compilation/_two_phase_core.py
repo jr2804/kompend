@@ -252,9 +252,7 @@ _CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 
 # Internal names injected by VLMEnricher for bookkeeping — must never
 # become concept pages.
-_RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset(
-    {"vlm_filtered", "vlm_skipped", "vlm_error"}
-)
+_RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
 
 def _concept_name(concept: dict[str, Any]) -> str:

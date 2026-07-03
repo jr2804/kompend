@@ -182,7 +182,8 @@ class WiCERCompiler(BaseCompiler):
             if not failures:
                 logger.info(
                     "WiCER: iter %d/%d done in %.1fs — %d probes, all passed → converged",
-                    attempt + 1, self.max_iterations,
+                    attempt + 1,
+                    self.max_iterations,
                     time.monotonic() - iter_start,
                     len(probes),
                 )
@@ -194,9 +195,12 @@ class WiCERCompiler(BaseCompiler):
             if not new_facts:
                 logger.info(
                     "WiCER: iter %d/%d done in %.1fs — %d probes, %d passed, %d failed, no new facts",
-                    attempt + 1, self.max_iterations,
+                    attempt + 1,
+                    self.max_iterations,
                     time.monotonic() - iter_start,
-                    len(probes), passed, len(failures),
+                    len(probes),
+                    passed,
+                    len(failures),
                 )
                 iteration_info["wicer_iterations"] = attempt + 1
                 break
@@ -208,7 +212,8 @@ class WiCERCompiler(BaseCompiler):
             if added == 0:
                 logger.info(
                     "WiCER: iter %d/%d done in %.1fs — all %d fact(s) already pinned, ending loop",
-                    attempt + 1, self.max_iterations,
+                    attempt + 1,
+                    self.max_iterations,
                     time.monotonic() - iter_start,
                     len(cumulative_pinned),
                 )
@@ -224,12 +229,16 @@ class WiCERCompiler(BaseCompiler):
             iteration_info["wicer_pinned_facts"] = len(cumulative_pinned)
 
             logger.info(
-                "WiCER: iter %d/%d done in %.1fs — "
-                "probes=%d, passed=%d, failed=%d, new_facts=%d, recompile=%.1fs, pinned=%d",
-                attempt + 1, self.max_iterations,
+                "WiCER: iter %d/%d done in %.1fs — probes=%d, passed=%d, failed=%d, new_facts=%d, recompile=%.1fs, pinned=%d",
+                attempt + 1,
+                self.max_iterations,
                 time.monotonic() - iter_start,
-                len(probes), passed, len(failures),
-                added, recompile_elapsed, len(cumulative_pinned),
+                len(probes),
+                passed,
+                len(failures),
+                added,
+                recompile_elapsed,
+                len(cumulative_pinned),
             )
         else:
             iteration_info["wicer_iterations"] = self.max_iterations
@@ -240,8 +249,7 @@ class WiCERCompiler(BaseCompiler):
         if self._client:
             usage = self._client.usage
             logger.info(
-                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, "
-                "%d client LLM call(s), %d prompt + %d completion tokens",
+                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, %d client LLM call(s), %d prompt + %d completion tokens",
                 iteration_info["wicer_iterations"],
                 iteration_info["wicer_refinements"],
                 total_elapsed,
