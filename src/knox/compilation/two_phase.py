@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -41,7 +43,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.cache_store import CacheStore
+from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
 from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
@@ -185,9 +187,14 @@ class TwoPhaseCompiler(BaseCompiler):
 
         # Progress is reported inside generate() per batch×segment.
         self._generation_fallbacks = 0
+        self._active_gen_deps = gen_deps
         gen_start = time.monotonic()
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
         gen_elapsed = time.monotonic() - gen_start
+
+        # Generation completed (success or fallback). Remove checkpoint so the
+        # next compile starts fresh (or uses the generation cache).
+        self._delete_gen_checkpoint(gen_deps)
 
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats
@@ -404,13 +411,33 @@ class TwoPhaseCompiler(BaseCompiler):
         if gen_total > 0:
             self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
 
+        # Load generation checkpoint so interrupted runs can resume.
+        checkpoint = self._load_gen_checkpoint(self._active_gen_deps)
+        if checkpoint is not None:
+            ck_nodes, ck_slug_to_idx, ck_completed, ck_fallbacks = checkpoint
+            self._generation_fallbacks = ck_fallbacks
+            logger.info(
+                "TwoPhase: generation checkpoint loaded \u2014 %d batch(es) already done, %d node(s)",
+                len(ck_completed),
+                len(ck_nodes),
+            )
+        else:
+            ck_nodes, ck_slug_to_idx, ck_completed = [], {}, set()
+
         nodes, slug_to_idx = self._generate_all_pages(
             concepts,
             source_segments,
             generation_system,
             all_images,
             pinned_facts=pinned_clean,
+            initial_nodes=ck_nodes,
+            initial_slug_to_idx=ck_slug_to_idx,
+            completed_batches=ck_completed,
         )
+
+        # Generation finished (success or partial). Delete checkpoint always
+        # so the next run uses the generation cache or starts fresh.
+        self._delete_gen_checkpoint(self._active_gen_deps)
 
         if not nodes:
             self._generation_fallbacks += 1
@@ -464,10 +491,21 @@ class TwoPhaseCompiler(BaseCompiler):
         all_images: list[dict[str, Any]],
         *,
         pinned_facts: list[str],
+        initial_nodes: list[WikiNode] | None = None,
+        initial_slug_to_idx: dict[str, int] | None = None,
+        completed_batches: set[int] | None = None,
     ) -> tuple[list[WikiNode], dict[str, int]]:
-        """Generate (or fallback-generate) one node per concept/segment pair."""
-        nodes: list[WikiNode] = []
-        slug_to_idx: dict[str, int] = {}
+        """Generate (or fallback-generate) one node per concept/segment pair.
+
+        When *initial_nodes* / *initial_slug_to_idx* / *completed_batches*
+        are provided (from a generation checkpoint), completed batches are
+        skipped and the accumulated node state is carried forward. A
+        checkpoint is written to disk after every batch so an interrupted
+        run can resume from the last completed batch.
+        """
+        nodes: list[WikiNode] = list(initial_nodes or [])
+        slug_to_idx: dict[str, int] = dict(initial_slug_to_idx or {})
+        completed: set[int] = set(completed_batches or [])
 
         num_concepts = len(concepts)
         num_segments = len(source_segments)
@@ -489,6 +527,9 @@ class TwoPhaseCompiler(BaseCompiler):
         MAX_FAILED = 3
 
         for batch_start in range(0, num_concepts, batch_size):
+            if batch_start in completed:
+                gen_progress_step += 1  # approximate: one tick per skipped batch
+                continue
             batch = concepts[batch_start : batch_start + batch_size]
             failed_count = 0
 
@@ -585,6 +626,12 @@ class TwoPhaseCompiler(BaseCompiler):
                 # the fallback from segment 0 already captured its definition.
                 break
 
+            # Checkpoint after each completed batch so interrupted runs can resume.
+            completed.add(batch_start)
+            self._save_gen_checkpoint(
+                self._active_gen_deps, nodes, slug_to_idx, completed, self._generation_fallbacks,
+            )
+
         self._report(gen_progress_total, gen_progress_total, "generating complete")
         return nodes, slug_to_idx
 
@@ -643,6 +690,91 @@ class TwoPhaseCompiler(BaseCompiler):
             "concepts_per_batch": str(budget.concepts_per_batch),
             "pinned_facts": pin_hash,
         }
+
+    # -- generation checkpoint (resume after crash) ------------------------
+
+    def _gen_checkpoint_dir(self) -> Path:
+        """Directory for per-batch generation checkpoint files."""
+        return self._config.paths.cache_dir / "gen_checkpoint"
+
+    def _gen_checkpoint_path(self, gen_deps: dict[str, str]) -> Path:
+        """On-disk path for the generation checkpoint."""
+        return self._gen_checkpoint_dir() / f"{make_cache_key(gen_deps)}.json"
+
+    def _load_gen_checkpoint(  # noqa: PLR0911
+        self,
+        gen_deps: dict[str, str],
+    ) -> tuple[list[WikiNode], dict[str, int], set[int], int] | None:
+        """Load a generation checkpoint if it exists and deps match.
+
+        Returns ``(nodes, slug_to_idx, completed_batches, generation_fallbacks)``
+        or ``None`` when the checkpoint is absent, stale, or malformed.
+        """
+        if self._config.no_cache:
+            return None
+        path = self._gen_checkpoint_path(gen_deps)
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.debug("Generation checkpoint read error -- ignoring", exc_info=True)
+            return None
+        # Validate dependency hashes match current gen_deps.
+        stored_deps = raw.get("deps", {})
+        if stored_deps != gen_deps:
+            logger.debug("Generation checkpoint deps mismatch -- ignoring")
+            return None
+        try:
+            nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]
+        except Exception:
+            logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
+            return None
+        slug_to_idx: dict[str, int] = dict(raw.get("slug_to_idx", {}))
+        completed: set[int] = set(raw.get("completed_batches", []))
+        fallbacks: int = int(raw.get("generation_fallbacks", 0))
+        return nodes, slug_to_idx, completed, fallbacks
+
+    def _save_gen_checkpoint(
+        self,
+        gen_deps: dict[str, str],
+        nodes: list[WikiNode],
+        slug_to_idx: dict[str, int],
+        completed_batches: set[int],
+        generation_fallbacks: int,
+    ) -> None:
+        """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
+        if self._config.no_cache:
+            return
+        path = self._gen_checkpoint_path(gen_deps)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "deps": gen_deps,
+            "completed_batches": sorted(completed_batches),
+            "nodes": [_encode_json(n) for n in nodes],
+            "slug_to_idx": dict(slug_to_idx),
+            "generation_fallbacks": generation_fallbacks,
+        }
+        try:
+            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(entry, f)
+            os.replace(tmp, path)
+            logger.debug("Generation checkpoint saved: %s", path)
+        except OSError:
+            logger.debug("Generation checkpoint write failed -- ignoring", exc_info=True)
+
+    def _delete_gen_checkpoint(self, gen_deps: dict[str, str]) -> None:
+        """Remove generation checkpoint file."""
+        if self._config.no_cache:
+            return
+        path = self._gen_checkpoint_path(gen_deps)
+        try:
+            if path.exists():
+                path.unlink()
+                logger.debug("Generation checkpoint deleted: %s", path)
+        except OSError:
+            logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
 
     def _fallback_compile(
         self,
