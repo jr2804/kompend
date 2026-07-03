@@ -13,3 +13,7 @@ https://pub.dega-akustik.de/DAGA_2017/data/articles/000153.pdf
 https://pub.dega-akustik.de/DAGA_2019/data/articles/000256.pdf
 https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
 https://www.isca-archive.org/interspeech_2022/robach22_interspeech.pdf
+# a LaTeX source for PandocParser
+https://arxiv.org/src/2405.17364
+# a HTML source for ArxivHtmlResolver
+https://arxiv.org/html/2506.04495v1
