@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import tarfile
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -45,6 +47,70 @@ def _looks_like_html_url(url: str) -> bool:
     if any(seg in path for seg in _BINARY_PATH_SEGMENTS):
         return False
     return Path(path).suffix in _HTML_PATH_SUFFIXES
+
+
+# Priority order for picking a file from an extracted archive.
+_ARCHIVE_EXTRACT_PRIORITY: tuple[str, ...] = (
+    ".tex", ".md", ".rst", ".txt", ".html", ".htm",
+    ".pdf", ".docx", ".epub",
+)
+
+
+def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
+    """Expand a tar.gz / .gz / .zip archive and return the best inner file.
+
+    Walks members in name order and returns the first file whose extension
+    matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
+    Returns None when the path is not a recognised archive.
+    """
+    name_lower = archive_path.name.lower()
+    suffix = archive_path.suffix.lower()
+    is_tar = suffix in (".tar", ".tgz") or name_lower.endswith(".tar.gz") or name_lower.endswith(".tar.bz2")
+    is_gz  = suffix == ".gz" and not is_tar
+    is_zip = suffix == ".zip"
+    if not (is_tar or is_gz or is_zip):
+        return None
+
+    ext_priority = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
+
+    try:
+        if is_zip:
+            with zipfile.ZipFile(archive_path) as zfile:
+                best_name, best_p = None, len(ext_priority)
+                for nm in zfile.namelist():
+                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
+                    if p < best_p:
+                        best_p, best_name = p, nm
+                if best_name is None:
+                    return None
+                dest = dest_dir / Path(best_name).name
+                dest.write_bytes(zfile.read(best_name))
+        else:
+            mode = "r:gz" if (is_gz or name_lower.endswith(".tar.gz")) else "r:*"
+            with tarfile.open(archive_path, mode=mode) as tf:
+                best_member, best_p = None, len(ext_priority)
+                for member in tf.getmembers():
+                    if not member.isfile():
+                        continue
+                    p = ext_priority.get(Path(member.name).suffix.lower(), len(ext_priority))
+                    if p < best_p:
+                        best_p, best_member = p, member
+                if best_member is None:
+                    return None
+                fobj = tf.extractfile(best_member)
+                if fobj is None:
+                    return None
+                extracted_name = Path(best_member.name).name
+                dest = dest_dir / extracted_name
+                dest.write_bytes(fobj.read())
+
+        archive_path.unlink()
+        logger.info("Extracted %s from archive -> %s", dest.name, archive_path.name)
+        return dest
+    except Exception as exc:
+        logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
+        return None
+
 
 
 # ── Extension helpers ───────────────────────────────────────────────────
@@ -241,12 +307,15 @@ def download_urls(
             continue
 
         downloader = (
-            web_crawler
-            if _looks_like_html_url(resolved.download_url)
-            else http_downloader
+            http_downloader
+            if resolved.prefer_http or not _looks_like_html_url(resolved.download_url)
+            else web_crawler
         )
         downloaded_file = downloader.download(resolved.download_url, sources_dir)
         if downloaded_file:
+            # Expand archives (.tar.gz, .gz, .zip) to find the first
+            # parseable document inside them.
+            downloaded_file = _extract_archive(downloaded_file, sources_dir) or downloaded_file
             # Track the original URL for future dedup.
             content = downloaded_file.read_bytes()
             content_hash = hashlib.sha256(content).hexdigest()

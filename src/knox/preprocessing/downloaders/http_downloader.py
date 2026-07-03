@@ -26,6 +26,10 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
     "application/msword": ".doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     "application/epub+zip": ".epub",
+    "application/x-tar": ".tar.gz",
+    "application/gzip": ".tar.gz",
+    "application/x-gzip": ".tar.gz",
+    "application/x-eprint-tar": ".tar.gz",
 }
 
 # FileExtension values the pipeline already recognizes.
@@ -49,6 +53,9 @@ _KNOWN_EXTENSIONS: frozenset[str] = frozenset(
         ".jpeg",
         ".gif",
         ".webp",
+        ".tar.gz",
+        ".gz",
+        ".zip",
     }
 )
 
@@ -60,7 +67,7 @@ class HTTPDownloader(BaseDownloader):
         self.timeout = timeout
         self._detector = detector
 
-    def download(self, url: str, target_dir: Path) -> Path | None:
+    def download(self, url: str, target_dir: Path) -> Path | None:  # noqa: PLR0911
         parsed = urlparse(url)
         if parsed.scheme not in self._ALLOWED_SCHEMES:
             logger.warning("Blocked URL with disallowed scheme: %s", url)
@@ -165,7 +172,7 @@ class HTTPDownloader(BaseDownloader):
         return target_dir / file_name, file_name
 
     @staticmethod
-    def _pick_extension(file_name: str, content_type: str | None) -> str:
+    def _pick_extension(file_name: str, content_type: str | None) -> str:  # noqa: PLR0911
         """Return the best file extension for a downloaded file.
 
         If the existing suffix is already a known parser extension, keep it.

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
+import io
+import tarfile
+from pathlib import Path
 
+from knox.cli._sources import _extract_archive
 from knox.preprocessing.downloaders.url_resolver import (
+    ArxivHtmlResolver,
     ArxivPdfResolver,
+    ArxivSourceResolver,
     ResolvedUrl,
     UrlResolverChain,
     WikipediaPdfResolver,
@@ -107,3 +112,83 @@ class TestUrlResolverChain:
         r = chain.resolve("https://en.wikipedia.org/wiki/Foo")
         assert r.original_url == r.download_url
         assert r.source_label is None
+
+
+class TestArxivHtmlResolver:
+    def test_resolves_html_url(self) -> None:
+        r = ArxivHtmlResolver().resolve("https://arxiv.org/html/2405.17364v1")
+        assert r is not None
+        assert r.prefer_http is True
+        assert r.content_type == "text/html"
+        assert r.source_label == "arxiv-html"
+
+    def test_rejects_abs_url(self) -> None:
+        assert ArxivHtmlResolver().resolve("https://arxiv.org/abs/2405.17364") is None
+
+    def test_in_default_chain(self) -> None:
+        chain = UrlResolverChain()
+        r = chain.resolve("https://arxiv.org/html/2405.17364v1")
+        assert r is not None
+        assert r.prefer_http is True
+
+
+class TestArxivSourceResolver:
+    def test_resolves_src_url(self) -> None:
+        r = ArxivSourceResolver().resolve("https://arxiv.org/src/2405.17364")
+        assert r is not None
+        assert r.prefer_http is True
+        assert r.source_label == "arxiv-src"
+
+    def test_rejects_abs_url(self) -> None:
+        assert ArxivSourceResolver().resolve("https://arxiv.org/abs/2405.17364") is None
+
+    def test_in_default_chain(self) -> None:
+        chain = UrlResolverChain()
+        r = chain.resolve("https://arxiv.org/src/2405.17364")
+        assert r is not None
+        assert r.prefer_http is True
+
+
+class TestExtractArchive:
+    """Unit tests for _extract_archive — no network needed."""
+
+    def test_extracts_tex_from_targz(self, tmp_path: Path) -> None:
+
+
+        # Build an in-memory tar.gz with a .tex member.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            tex_content = b"\\documentclass{article}\begin{document}Hello.\\end{document}"
+            info = tarfile.TarInfo(name="ms.tex")
+            info.size = len(tex_content)
+            tf.addfile(info, io.BytesIO(tex_content))
+        archive = tmp_path / "paper.tar.gz"
+        archive.write_bytes(buf.getvalue())
+
+        extracted = _extract_archive(archive, tmp_path)
+        assert extracted is not None
+        assert extracted.suffix == ".tex"
+        assert extracted.read_bytes() == tex_content
+        assert not archive.exists()  # archive cleaned up
+
+    def test_prefers_tex_over_txt(self, tmp_path: Path) -> None:
+
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            for name, data in [("readme.txt", b"readme"), ("paper.tex", b"\tex")]:
+                info = tarfile.TarInfo(name=name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        archive = tmp_path / "src.tar.gz"
+        archive.write_bytes(buf.getvalue())
+
+        extracted = _extract_archive(archive, tmp_path)
+        assert extracted is not None
+        assert extracted.suffix == ".tex"
+
+    def test_returns_none_for_non_archive(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.7")
+        assert _extract_archive(pdf, tmp_path) is None
+        assert pdf.exists()  # untouched

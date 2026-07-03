@@ -14,13 +14,10 @@ instance to the default list in :class:`UrlResolverChain`.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +36,19 @@ class ResolvedUrl:
                        (``None`` = auto-detect from HTTP response).
         source_label:  Human-readable label for provenance
                        (e.g. ``"wikipedia"``, ``"arxiv"``).
+        prefer_http:   When ``True``, bypass the HTML-URL heuristic and
+                       always use :class:`HTTPDownloader` instead of
+                       the browser-based ``WebCrawler``. Set this when the
+                       URL looks like an HTML page but the resolver has
+                       already arranged a direct binary or raw-HTML download
+                       (e.g. ``arxiv.org/html/``, ``arxiv.org/src/``).
     """
 
     original_url: str
     download_url: str
     content_type: str | None = None
     source_label: str | None = None
+    prefer_http: bool = False
 
 
 # ── Resolver base ───────────────────────────────────────────────────────
@@ -125,6 +129,63 @@ class ArxivPdfResolver(BaseUrlResolver):
         )
 
 
+class ArxivHtmlResolver(BaseUrlResolver):
+    """Resolve ``arxiv.org/html/<id>[v<n>]`` → raw HTML download.
+
+    The HTML version of arXiv papers is served directly from
+    ``arxiv.org/html/`` and is readable without JavaScript.  We force
+    ``prefer_http=True`` so the URL is fetched with :class:`HTTPDownloader`
+    instead of the browser-based ``WebCrawler``, then routed to
+    :class:`WebPageParser` (trafilatura) via its ``.html`` extension.
+    """
+
+    _ARXIV_HTML_RE = re.compile(
+        r"^https?://arxiv\.org/html/([\w./-]+?)$",
+        re.IGNORECASE,
+    )
+
+    def resolve(self, url: str) -> ResolvedUrl | None:
+        m = self._ARXIV_HTML_RE.match(url)
+        if not m:
+            return None
+        return ResolvedUrl(
+            original_url=url,
+            download_url=url,
+            content_type="text/html",
+            source_label="arxiv-html",
+            prefer_http=True,
+        )
+
+
+class ArxivSourceResolver(BaseUrlResolver):
+    """Resolve ``arxiv.org/src/<id>`` → force HTTP download of the source tarball.
+
+    The ``/src/`` endpoint serves a gzip-compressed tar containing the LaTeX
+    source.  The URL has no extension so the HTML heuristic would send it to
+    the browser crawler.  Setting ``prefer_http=True`` forces
+    :class:`HTTPDownloader` to fetch the binary stream and save it under its
+    correct extension (``.tar.gz``), after which the archive-extraction step
+    in ``download_urls()`` finds the ``.tex`` file for :class:`PandocParser`.
+    """
+
+    _ARXIV_SRC_RE = re.compile(
+        r"^https?://arxiv\.org/src/([\w./-]+?)$",
+        re.IGNORECASE,
+    )
+
+    def resolve(self, url: str) -> ResolvedUrl | None:
+        m = self._ARXIV_SRC_RE.match(url)
+        if not m:
+            return None
+        return ResolvedUrl(
+            original_url=url,
+            download_url=url,
+            content_type="application/x-tar",
+            source_label="arxiv-src",
+            prefer_http=True,
+        )
+
+
 class HackerNewsResolver(BaseUrlResolver):
     """Resolve ``news.ycombinator.com/item?id=NNNNN`` → text-based API.
 
@@ -165,7 +226,9 @@ class UrlResolverChain:
 
         1. :class:`WikipediaPdfResolver`
         2. :class:`ArxivPdfResolver`
-        3. (passthrough — original URL returned as-is)
+        3. :class:`ArxivHtmlResolver`
+        4. :class:`ArxivSourceResolver`
+        5. (passthrough — original URL returned as-is)
         """
         self._resolvers: list[BaseUrlResolver]
         if resolvers is not None:
@@ -174,6 +237,8 @@ class UrlResolverChain:
             self._resolvers = [
                 WikipediaPdfResolver(),
                 ArxivPdfResolver(),
+                ArxivHtmlResolver(),
+                ArxivSourceResolver(),
             ]
 
     def resolve(self, url: str) -> ResolvedUrl:
