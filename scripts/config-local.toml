@@ -27,7 +27,7 @@ state_dir = ".knox"
 # CLI: --parser | Env: KNOX_INGEST_PARSER
 
 [ingest]
-parser = "liteparse,docling"
+parser = "web,liteparse,docling"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]

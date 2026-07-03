@@ -25,12 +25,17 @@ file = "NOTES.md"
 # ── Ingestion settings ──────────────────────────────────────────────────
 # Backend(s) used to parse source documents into structured elements.
 # A single name ("docling") or a comma-separated priority list
-# ("liteparse,docling") — the first backend supporting a file's format wins.
+# ("web,liteparse,docling") — the first backend supporting a file's format wins.
+# Backends:
+#   web       — trafilatura HTML parser (clean Markdown from web pages; requires trafilatura)
+#   liteparse — fast PDF/office parser (recommended for PDF)
+#   docling   — high-accuracy PDF/EPUB/HTML fallback
+#   pandoc    — legacy text formats (RST, LaTeX, ODT, …)
 # Run `knox doctor` to list available backends.
 # CLI: --parser | Env: KNOX_INGEST_PARSER
 
 [ingest]
-# parser = "docling"
+# parser = "web,liteparse,docling"
 
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
