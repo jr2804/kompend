@@ -26,6 +26,7 @@ from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
+from knox.preprocessing.parsers.web_parser import WebPageParser
 
 
 def test_builtin_backends_registered() -> None:
@@ -154,12 +155,9 @@ class TestWebPageParser:
     """knox-4sq5: WebPageParser registered as 'web' backend, handles .html."""
 
     def test_web_backend_registered(self) -> None:
-        assert "web" in get_registered_parsers()[0]["name"] or any(
-            p["name"] == "web" for p in get_registered_parsers()
-        )
+        assert "web" in get_registered_parsers()[0]["name"] or any(p["name"] == "web" for p in get_registered_parsers())
 
     def test_web_routes_html_before_docling(self) -> None:
-        from knox.preprocessing.parsers.web_parser import WebPageParser  # noqa: PLC0415
         router = build_default_router(names="web,liteparse,docling")
         assert isinstance(router.route(Path("page.html")), WebPageParser)
         # PDF still goes to liteparse.
@@ -169,11 +167,10 @@ class TestWebPageParser:
         """WebPageParser extracts clean text, not raw HTML tags."""
         html_file = tmp_path / "test.html"
         html_file.write_text(
-            "<html><body><h1>Attention Mechanisms</h1>"
-            "<p>Self-attention allows models to relate positions.</p></body></html>",
+            "<html><body><h1>Attention Mechanisms</h1><p>Self-attention allows models to relate positions.</p></body></html>",
             encoding="utf-8",
         )
-        from knox.preprocessing.parsers.web_parser import WebPageParser  # noqa: PLC0415
+
         parser = WebPageParser()
         doc = parser.parse(html_file)
         assert isinstance(doc, ParsedDocument)
@@ -184,7 +181,6 @@ class TestWebPageParser:
         assert "<p>" not in all_text
 
     def test_web_parser_can_parse_html_only(self, tmp_path: Path) -> None:
-        from knox.preprocessing.parsers.web_parser import WebPageParser  # noqa: PLC0415
         parser = WebPageParser()
         assert parser.can_parse(Path("page.html"))
         assert parser.can_parse(Path("page.HTML"))

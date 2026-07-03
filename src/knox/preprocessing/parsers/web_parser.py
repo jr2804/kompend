@@ -6,15 +6,14 @@ docling for general web pages (F1: 0.958 vs docling's noisy output).
 Use by including ``"web"`` in the parser list, before ``"docling"``::
 
     parser = "web,liteparse,docling"
-
-When trafilatura is not installed the parser raises ``ImportError`` with
-a clear install instruction so the registry can skip it gracefully.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
+import trafilatura
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
@@ -35,9 +34,7 @@ class WebPageParser(BaseParser):
     Falls back to raw text extraction if trafilatura returns nothing.
     """
 
-    supported_extensions: frozenset[FileExtension] = frozenset(
-        {FileExtension.HTML}
-    )
+    supported_extensions: frozenset[FileExtension] = frozenset({FileExtension.HTML})
 
     def __init__(self, *, include_tables: bool = True, include_links: bool = False) -> None:
         """
@@ -55,8 +52,6 @@ class WebPageParser(BaseParser):
         return file_path.suffix.lower() in {".html", ".htm"}
 
     def parse(self, file_path: Path, **kwargs: Any) -> ParsedDocument:  # noqa: ARG002
-        import trafilatura  # noqa: PLC0415
-
         html = file_path.read_text(encoding="utf-8", errors="replace")
 
         # trafilatura's markdown output preserves headings, paragraphs,
@@ -107,20 +102,24 @@ def _markdown_to_elements(markdown: str, source_file: Path) -> list[DocumentElem
             # Count heading level from leading #
             level = len(block) - len(block.lstrip("#"))
             text = block.lstrip("#").strip()
-            elements.append(DocumentElement(
-                type=ElementType.HEADING,
-                content=text,
-                reading_order=order,
-                heading_level=level,
-                source_file=source_file,
-            ))
+            elements.append(
+                DocumentElement(
+                    type=ElementType.HEADING,
+                    content=text,
+                    reading_order=order,
+                    heading_level=level,
+                    source_file=source_file,
+                )
+            )
         else:
-            elements.append(DocumentElement(
-                type=ElementType.TEXT,
-                content=block,
-                reading_order=order,
-                source_file=source_file,
-            ))
+            elements.append(
+                DocumentElement(
+                    type=ElementType.TEXT,
+                    content=block,
+                    reading_order=order,
+                    source_file=source_file,
+                )
+            )
         order += 1
     return elements
 
@@ -129,8 +128,4 @@ def _factory(options: ParserBuildOptions) -> WebPageParser:  # noqa: ARG001
     return WebPageParser()
 
 
-try:
-    import trafilatura as _trafilatura_check  # noqa: F401
-    register_backend("web", _factory, parser_cls=WebPageParser)
-except ImportError:
-    pass  # trafilatura not installed; "web" backend unavailable
+register_backend("web", _factory, parser_cls=WebPageParser)

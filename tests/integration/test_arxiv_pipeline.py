@@ -61,11 +61,7 @@ requires_network = pytest.mark.skipif(
 
 def _all_text(doc: ParsedDocument) -> str:
     """Concatenate all string-content elements."""
-    return " ".join(
-        e.content
-        for e in doc.elements
-        if isinstance(e.content, str) and e.content.strip()
-    )
+    return " ".join(e.content for e in doc.elements if isinstance(e.content, str) and e.content.strip())
 
 
 # ── Scenario 1: PDF via ArxivPdfResolver ────────────────────────────────
@@ -123,9 +119,6 @@ def test_arxiv_html_resolver_flags_prefer_http(tmp_path: Path) -> None:
 @requires_network
 def test_arxiv_html_downloads_as_html_and_parses_with_trafilatura(tmp_path: Path) -> None:
     """ArxivHtmlResolver + HTTPDownloader + WebPageParser produces clean text."""
-    pytest.importorskip("trafilatura")
-
-
     chain = UrlResolverChain()
     resolved = chain.resolve(ARXIV_HTML_URL)
     assert resolved.prefer_http is True, "ArxivHtmlResolver should set prefer_http"
@@ -137,9 +130,7 @@ def test_arxiv_html_downloads_as_html_and_parses_with_trafilatura(tmp_path: Path
 
     router = build_default_router(options=ParserBuildOptions(), names="web,liteparse,docling")
     parser = router.route(html_path)
-    assert isinstance(parser, WebPageParser), (
-        f"Expected WebPageParser for .html, got {type(parser).__name__}"
-    )
+    assert isinstance(parser, WebPageParser), f"Expected WebPageParser for .html, got {type(parser).__name__}"
 
     doc = parser.parse(html_path)
     assert isinstance(doc, ParsedDocument)
@@ -177,15 +168,11 @@ def test_arxiv_source_downloads_tarball_then_extracts_tex(tmp_path: Path) -> Non
 
     # Archive should be recognisable (tar.gz or similar).
     name_lower = archive_path.name.lower()
-    assert any(name_lower.endswith(s) for s in (".tar.gz", ".gz", ".tar", ".tgz")), (
-        f"Expected a tar.gz file, got {archive_path.name}"
-    )
+    assert any(name_lower.endswith(s) for s in (".tar.gz", ".gz", ".tar", ".tgz")), f"Expected a tar.gz file, got {archive_path.name}"
 
     extracted = _extract_archive(archive_path, tmp_path)
     assert extracted is not None, "_extract_archive should find a .tex file"
-    assert extracted.suffix.lower() == ".tex", (
-        f"Expected a .tex file, extracted {extracted.name}"
-    )
+    assert extracted.suffix.lower() == ".tex", f"Expected a .tex file, extracted {extracted.name}"
     assert not archive_path.exists(), "Original archive should be removed after extraction"
     logger.info("Extracted: %s (%d bytes)", extracted.name, extracted.stat().st_size)
 
@@ -208,9 +195,7 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     # (docling also handles .tex and wins when listed first)
     router = build_default_router(options=ParserBuildOptions(), names="pandoc")
     parser = router.route(extracted)
-    assert isinstance(parser, PandocParser), (
-        f"Expected PandocParser for .tex with pandoc-only router, got {type(parser).__name__}"
-    )
+    assert isinstance(parser, PandocParser), f"Expected PandocParser for .tex with pandoc-only router, got {type(parser).__name__}"
 
     doc = parser.parse(extracted)
     assert isinstance(doc, ParsedDocument)

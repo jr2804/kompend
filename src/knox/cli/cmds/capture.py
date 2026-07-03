@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import litellm
 import typer
 
 from knox.capture.capture import capture
@@ -240,9 +241,7 @@ def _synthesize_write_page(
         return _fallback_write_body(source_texts, references_section)
 
     # Build a concise prompt combining all source texts.
-    source_block = "\n\n".join(
-        f"### {stem}\n\n{text[:4000]}" for stem, text in source_texts
-    )
+    source_block = "\n\n".join(f"### {stem}\n\n{text[:4000]}" for stem, text in source_texts)
     prompt = (
         f"Write a comprehensive wiki page titled '{page_title}'.\n"
         f"Synthesise the sources below into coherent, continuous prose.\n"
@@ -251,8 +250,6 @@ def _synthesize_write_page(
         f"{source_block}"
     )
     try:
-        import litellm  # noqa: PLC0415
-
         response = litellm.completion(
             model=model,
             messages=[{"role": "user", "content": prompt}],

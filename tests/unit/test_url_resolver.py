@@ -6,7 +6,7 @@ import io
 import tarfile
 from pathlib import Path
 
-import pytest
+import py7zr
 
 from knox.cli._sources import _extract_archive
 from knox.preprocessing.downloaders.url_resolver import (
@@ -182,10 +182,6 @@ class TestExtractArchive7z:
     """7z support via py7zr."""
 
     def test_extracts_tex_from_7z(self, tmp_path: Path) -> None:
-        try:
-            import py7zr  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("py7zr not installed")
         tex_content = b"\\documentclass{article}\begin{document}Hello 7z.\\end{document}"
         archive = tmp_path / "paper.7z"
         with py7zr.SevenZipFile(archive, mode="w") as szf:
