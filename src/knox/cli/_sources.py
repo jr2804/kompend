@@ -387,8 +387,12 @@ def download_urls(
             logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
             continue
 
-        downloader = http_downloader if resolved.prefer_http or not _looks_like_html_url(resolved.download_url) else web_crawler
+        use_crawler = not resolved.prefer_http and _looks_like_html_url(resolved.download_url)
+        downloader = web_crawler if use_crawler else http_downloader
         downloaded_file = downloader.download(resolved.download_url, sources_dir)
+        # If web crawler is unavailable/failed, fall back to HTTPDownloader.
+        if downloaded_file is None and use_crawler:
+            downloaded_file = http_downloader.download(resolved.download_url, sources_dir)
         if downloaded_file:
             # Expand archives (.tar.gz, .gz, .zip) to find the first
             # parseable document inside them.

@@ -10,12 +10,22 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig
+from crawl4ai.utils import get_chromium_path
 
 from knox.logging import get_logger
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 
 logger = get_logger(__name__)
+
+
+def _chromium_available() -> bool:
+    """Return True if the Playwright Chromium binary exists on disk."""
+    try:
+        path = asyncio.run(get_chromium_path("chromium"))
+        return bool(path and Path(path).exists())
+    except Exception:
+        return False
 
 
 class WebCrawler(BaseDownloader):
@@ -34,9 +44,18 @@ class WebCrawler(BaseDownloader):
     ) -> None:
         self._detector = detector
         self._stealth = stealth
+        self._available = _chromium_available()
+        if not self._available:
+            logger.warning(
+                "Playwright Chromium is not installed. "
+                "HTML/web URLs will fall back to HTTPDownloader. "
+                "Run 'playwright install chromium' to enable the web crawler."
+            )
 
     def download(self, url: str, target_dir: Path) -> Path | None:
         """Synchronous wrapper: crawl URL, extract main content as markdown, save."""
+        if not self._available:
+            return None  # caller falls back to HTTPDownloader
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
