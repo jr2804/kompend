@@ -250,6 +250,12 @@ class Extraction:
 
 _CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 
+# Internal names injected by VLMEnricher for bookkeeping — must never
+# become concept pages.
+_RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset(
+    {"vlm_filtered", "vlm_skipped", "vlm_error"}
+)
+
 
 def _concept_name(concept: dict[str, Any]) -> str:
     """Salvage a concept name, tolerating schema drift.
@@ -288,7 +294,7 @@ class ExtractionSet:
         for ext in self.extractions:
             for concept in ext.concepts:
                 name = _concept_name(concept)
-                if not name:
+                if not name or name in _RESERVED_CONCEPT_NAMES or name.startswith("vlm_"):
                     continue
                 bucket = merged.setdefault(name, {"name": name, "sources": [], "definitions": []})
                 bucket["sources"].append(ext.source)

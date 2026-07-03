@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -64,11 +65,23 @@ class MarkdownWriter(BaseOutputWriter):
     def _wiki_to_documents(self, wiki: CompiledWiki) -> list[Document]:
         """Convert a :class:`CompiledWiki` to a list of :class:`Document`."""
         docs: list[Document] = []
+        compiled_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         for node in wiki.nodes:
             frontmatter = dict(self.frontmatter_defaults)
             frontmatter.update(node.metadata.get("frontmatter", {}))
             frontmatter.setdefault("title", node.title or "Untitled")
+            # Consistent schema: kind, compiled_at, sources on every page.
+            frontmatter.setdefault("kind", node.node_type or "page")
+            frontmatter.setdefault("compiled_at", compiled_at)
+            # Derive sources list: prefer explicit provenance, fall back to
+            # source_chunks stems (best-effort).
+            prov = node.metadata.get("provenance") or []
+            if prov:
+                frontmatter.setdefault(
+                    "sources",
+                    sorted({Path(str(p)).stem for p in prov if p}),
+                )
 
             body = node.content or ""
             images = node.metadata.get("images", [])

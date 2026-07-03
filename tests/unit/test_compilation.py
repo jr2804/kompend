@@ -1166,3 +1166,43 @@ class TestTwoPhaseConceptSalvageAndFallback:
         wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="no concepts")
         assert wiki.metadata["fallback"] is True
         assert all(not n.id.startswith("node_") for n in wiki.nodes)
+
+
+class TestVlmArtifactFiltering:
+    """knox-ary0: vlm_filtered/vlm_skipped must never become concept pages."""
+
+    def _make_vlm_chunks(self) -> list[ResolvedChunk]:
+        """Two chunks from different sources both carrying vlm_filtered entity."""
+        c1 = ResolvedChunk(
+            chunk=_chunk("Some text.", heading="Intro", chunk_id="c1", source_file=Path("a.pdf")),
+            entities=[{"name": "vlm_filtered", "type": "Term"}, {"name": "Real Entity", "type": "Term"}],
+        )
+        c2 = ResolvedChunk(
+            chunk=_chunk("More text.", heading="Intro", chunk_id="c2", source_file=Path("b.pdf")),
+            entities=[{"name": "vlm_skipped", "type": "Term"}, {"name": "Real Entity", "type": "Term"}],
+        )
+        return [c1, c2]
+
+    def test_vlm_markers_not_in_graph_concept_pages(self) -> None:
+        compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=50)
+        wiki = compiler.compile(self._make_vlm_chunks())
+        concept_titles = {n.title for n in wiki.nodes if n.metadata.get("cross_cutting")}
+        assert "vlm_filtered" not in concept_titles
+        assert "vlm_skipped" not in concept_titles
+        assert "Real Entity" in concept_titles
+
+    def test_vlm_markers_not_in_extraction_concept_pages(self) -> None:
+        ext_set = ExtractionSet()
+        ext_set.add(Extraction(
+            source="src.pdf",
+            concepts=[
+                {"name": "vlm_filtered", "definition": "Internal marker."},
+                {"name": "vlm_skipped", "definition": "Internal marker."},
+                {"name": "Listening Effort", "definition": "Real concept."},
+            ],
+        ))
+        pages = ext_set.concept_pages()
+        names = {p["name"] for p in pages}
+        assert "vlm_filtered" not in names
+        assert "vlm_skipped" not in names
+        assert "Listening Effort" in names

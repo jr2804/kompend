@@ -274,7 +274,7 @@ class TestSubfolderLayout:
 
 
 class TestFrontmatterEmission:
-    """knox-wgt.1: Every compiled page must have YAML frontmatter with title."""
+    """knox-wgt.1 + knox-rxod: Every compiled page must have YAML frontmatter."""
 
     def test_vault_pages_have_title_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         """Each .md file in vault mode starts with frontmatter containing title."""
@@ -288,6 +288,39 @@ class TestFrontmatterEmission:
             content = page_path.read_text(encoding="utf-8")
             assert content.startswith("---\n"), f"{slug}.md missing frontmatter"
             assert "title:" in content.split("---\n")[1]
+
+    def test_vault_pages_have_kind_and_compiled_at(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        """knox-rxod: every compiled page carries kind and compiled_at."""
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, temp_output)
+
+        for node in sample_wiki.nodes:
+            folder = MarkdownWriter._folder_for_kind(node.node_type)
+            page_path = (temp_output / folder / f"{node.id}.md") if folder else (temp_output / f"{node.id}.md")
+            fm_block = page_path.read_text(encoding="utf-8").split("---\n")[1]
+            assert "kind:" in fm_block, f"{node.id}.md missing kind"
+            assert "compiled_at:" in fm_block, f"{node.id}.md missing compiled_at"
+
+    def test_vault_pages_sources_from_provenance(self, temp_output: Path) -> None:
+        """knox-rxod: sources field is derived from node provenance."""
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="c1",
+                    title="Concept",
+                    content="Body.",
+                    node_type="concept",
+                    metadata={"provenance": ["sources/paper_a.pdf", "sources/paper_b.pdf"]},
+                )
+            ],
+            edges=[],
+            toc=[],
+        )
+        MarkdownWriter(vault_mode=True).write(wiki, temp_output)
+        content = (temp_output / "concepts" / "c1.md").read_text(encoding="utf-8")
+        assert "sources:" in content
+        assert "paper_a" in content
+        assert "paper_b" in content
 
     def test_index_has_title_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         """index.md also has frontmatter with the wiki title."""

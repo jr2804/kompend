@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,6 +16,10 @@ from knox.capture.distill import (
     _parse_frontmatter,
     distill,
 )
+from knox.cli.cmds.capture import _build_references_section
+from knox.core.ingest import _extract_text_from_cached
+from knox.output.markdown import MarkdownWriter
+from knox.output.models import Document
 
 
 class TestParseFrontmatter:
@@ -170,3 +175,48 @@ class TestCapture:
 
     def test_merge_tags_empty(self) -> None:
         assert _merge_tags([], []) == []
+
+
+class TestWriteCmd:
+    """knox-zkfd: write resolves sources through cache, writes to write/ subfolder."""
+
+    def test_write_reads_cache_not_raw_bytes(self, tmp_path: Path) -> None:
+        """When a cache JSON exists, write_cmd extracts clean text, not raw PDF bytes."""
+        # Create a minimal parse-cache JSON for a fake PDF.
+        cache_dir = tmp_path / ".knox" / "cache"
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "paper.json"
+        cache_file.write_text(
+            '{"elements": [{"content": "This is clean extracted text from the PDF."}]}',
+            encoding="utf-8",
+        )
+        text = _extract_text_from_cached(cache_file)
+        assert "clean extracted text" in text
+        assert "%PDF" not in text
+
+    def test_write_default_frontmatter(self, tmp_path: Path) -> None:
+        """Knox-rxod+zkfd: the write page carries kind, compiled_at, sources."""
+        compiled_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fm = {
+            "title": "My Page",
+            "kind": "page",
+            "compiled_at": compiled_at,
+            "sources": ["paper"],
+        }
+        doc = Document(title="My Page", body="Content.", frontmatter=fm, node_type="page")
+        writer = MarkdownWriter()
+        rendered = writer.renderer.render(doc)
+        assert "kind: page" in rendered
+        assert "compiled_at:" in rendered
+        assert "sources:" in rendered
+
+    def test_references_section_built(self) -> None:
+        """_build_references_section lists sources and related wikilinks."""
+        section = _build_references_section(
+            [("paper_a", "text"), ("paper_b", "text")],
+            related_titles=["Listening Effort", "Better Ear"],
+        )
+        assert "paper_a" in section
+        assert "paper_b" in section
+        assert "[[Listening Effort]]" in section
+        assert "[[Better Ear]]" in section

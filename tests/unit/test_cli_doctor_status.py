@@ -248,7 +248,7 @@ def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert result.exit_code in (0, 1)
     if result.exit_code == 0:
         assert "Written" in result.stdout
-        result_path = tmp_path / "wiki" / "test-article.md"
+        result_path = tmp_path / "wiki" / "write" / "test-article.md"
         assert result_path.exists()
         content = result_path.read_text(encoding="utf-8")
         assert "lang: en" in content

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from knox.compilation.base import BaseCompiler
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
@@ -224,6 +224,12 @@ class GraphCompiler(BaseCompiler):
             groups[GraphCompiler._group_key(rc)].append(rc)
         return groups
 
+    # Internal names injected by VLMEnricher for bookkeeping. These must
+    # never become concept pages or cross-reference edges in the output.
+    _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset(
+        {"vlm_filtered", "vlm_skipped", "vlm_error"}
+    )
+
     @staticmethod
     def _build_entity_edges(
         chunks: list[ResolvedChunk],
@@ -241,7 +247,8 @@ class GraphCompiler(BaseCompiler):
                 continue
             for ent in rc.entities:
                 name = ent.get("name", "") if isinstance(ent, dict) else str(ent)
-                if name:
+                # Skip VLM bookkeeping names so they never become concept pages.
+                if name and name not in GraphCompiler._RESERVED_ENTITY_NAMES and not name.startswith("vlm_"):
                     entity_location[name].add(node_idx)
 
         for name, node_indices in entity_location.items():
