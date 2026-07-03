@@ -9,7 +9,6 @@ bun = "latest"
 "ruff" = "latest"
 "ty" = "latest"
 "rumdl" = "latest"
-"pipx:mdformat" = {version = "latest", uvx = "true", uvx_args = "--with mdformat-frontmatter"}
 "pipx:undersort" = "latest"
 "pipx:codespell" = "latest"
 
@@ -20,9 +19,9 @@ ripgrep = "latest"
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 
-"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
-
-"npm:vitepress" = "latest"
+# not usable for code (use codegraph instead):
+#"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
+"github:colbymchenry/codegraph" = "latest"
 
 [settings.npm]
 package_manager = "bun"
