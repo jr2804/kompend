@@ -18,10 +18,21 @@ class MarkdownWriter(BaseOutputWriter):
     Two output modes:
     - **Vault mode** (default): One ``.md`` file per wiki node with
       ``[[wikilinks]]`` between related pages and an ``index.md`` TOC.
+      Synthesized concept pages are organized under ``concepts/``; the
+      overview and index stay at the vault root.
     - **Single-file mode**: Legacy ``wiki.md`` containing all nodes as sections.
     """
 
     name: ClassVar[str] = "markdown"
+
+    # node_type -> subfolder under the vault root. Kinds not listed here
+    # (overview, procedure, section, unknown) stay at the root so the
+    # layout never splits a type the compiler didn't anticipate.
+    _KIND_FOLDERS: ClassVar[dict[str, str]] = {
+        "concept": "concepts",
+        "comparison": "concepts",
+        "entity": "concepts",
+    }
 
     def __init__(
         self,
@@ -71,6 +82,7 @@ class MarkdownWriter(BaseOutputWriter):
                 heading_level=node.metadata.get("heading_level", 1),
                 source_chunks=node.source_chunks,
                 page_slug=node.id,
+                node_type=node.node_type,
             )
             docs.append(doc)
 
@@ -81,16 +93,23 @@ class MarkdownWriter(BaseOutputWriter):
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
         """Write each document as a separate ``.md`` file, plus ``index.md``."""
         # Clear stale compile output so the on-disk vault exactly reflects the
-        # current CompiledWiki. Non-recursive (root ``*.md`` only) preserves
-        # user-authored subfolders (e.g. ``_distilled/``, ``write/``).
-        # ``index.md`` is regenerated below.
+        # current CompiledWiki. Root ``*.md`` plus generated subfolders are
+        # removed; user-authored subfolders (``_distilled/``, ``write/``) stay.
         for stale in output_dir.glob("*.md"):
             stale.unlink()
+        for folder in set(self._KIND_FOLDERS.values()):
+            sub = output_dir / folder
+            if sub.is_dir():
+                for stale in sub.glob("*.md"):
+                    stale.unlink()
         node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
 
         related_edges = self._build_related_edges(wiki.edges, node_map)
 
         for doc in docs:
+            folder = self._folder_for_kind(doc.node_type)
+            target_dir = output_dir / folder if folder else output_dir
+            target_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{doc.page_slug or 'untitled'}.md"
             rendered = self.renderer.render(doc)
 
@@ -103,10 +122,15 @@ class MarkdownWriter(BaseOutputWriter):
                         annotation += f" — confidence {confidence:.2f}"
                     rendered += f"- [[{title}]]{annotation}\n"
 
-            (output_dir / filename).write_text(rendered, encoding="utf-8")
+            (target_dir / filename).write_text(rendered, encoding="utf-8")
 
         self._write_index(docs, output_dir, wiki)
         return output_dir / INDEX_FILE
+
+    @classmethod
+    def _folder_for_kind(cls, node_type: str) -> str:
+        """Return the subfolder for a page kind, or '' to stay at the root."""
+        return cls._KIND_FOLDERS.get(node_type, "")
 
     @staticmethod
     def _embed_images(body: str, images: list[dict[str, Any]]) -> str:

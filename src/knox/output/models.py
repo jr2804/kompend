@@ -38,3 +38,7 @@ class Document:
 
     page_slug: str = ""
     """URL-friendly slug for cross-referencing and file naming."""
+
+    node_type: str = ""
+    """Compiler-assigned kind (concept/overview/comparison/entity/...).
+    Used to route the page into a subfolder in vault mode."""

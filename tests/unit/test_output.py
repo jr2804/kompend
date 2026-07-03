@@ -116,8 +116,9 @@ class TestMarkdownWriter:
 
         assert result_path == temp_output / "index.md"
         assert result_path.exists()
+        # overview/section/procedure stay at root; concept goes to concepts/.
         assert (temp_output / "intro.md").exists()
-        assert (temp_output / "concept-1.md").exists()
+        assert (temp_output / "concepts" / "concept-1.md").exists()
         assert (temp_output / "procedure-1.md").exists()
 
     def test_vault_mode_index_contains_wikilinks(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
@@ -176,8 +177,8 @@ class TestMarkdownWriter:
         result_path = writer.write(wiki, tmp_path)
 
         assert result_path == tmp_path / "index.md"
-        assert (tmp_path / "test.md").exists()
-        content = (tmp_path / "test.md").read_text(encoding="utf-8")
+        assert (tmp_path / "concepts" / "test.md").exists()
+        content = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
         assert "# Test Page" in content
         assert "Hello." in content
         assert "## Related" not in content
@@ -190,15 +191,28 @@ class TestStaleFileClearing:
         writer = MarkdownWriter(vault_mode=True)
         # First compile writes node files + index.md.
         writer.write(sample_wiki, tmp_path)
-        stale_node = tmp_path / "old-page.md"
-        stale_node.write_text("# Stale\n\nfrom a previous run", encoding="utf-8")
-        assert stale_node.exists()
+        stale_root = tmp_path / "old-page.md"
+        stale_root.write_text("# Stale\n\nfrom a previous run", encoding="utf-8")
+        assert stale_root.exists()
 
-        # Recompile: stale root .md must be gone, current nodes present.
+        # Recompile: stale root .md gone, current nodes present at their routes.
         writer.write(sample_wiki, tmp_path)
-        assert not stale_node.exists()
+        assert not stale_root.exists()
         assert (tmp_path / "intro.md").exists()
-        assert (tmp_path / "concept-1.md").exists()
+        assert (tmp_path / "concepts" / "concept-1.md").exists()
+
+    def test_vault_clears_stale_concept_subfolder(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        """knox-r2kp: recompile also clears stale .md in the concepts/ subfolder."""
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(sample_wiki, tmp_path)
+        concepts_dir = tmp_path / "concepts"
+        stale_concept = concepts_dir / "old-concept.md"
+        stale_concept.write_text("# Stale concept", encoding="utf-8")
+
+        writer.write(sample_wiki, tmp_path)
+
+        assert not stale_concept.exists()
+        assert (concepts_dir / "concept-1.md").exists()
 
     def test_vault_preserves_user_subfolder(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
         writer = MarkdownWriter(vault_mode=True)
@@ -214,6 +228,51 @@ class TestStaleFileClearing:
         assert (tmp_path / "intro.md").exists()
 
 
+class TestSubfolderLayout:
+    """knox-r2kp: synthesized pages route into subfolders by kind; root and
+    non-synthesized kinds stay at the vault root; index links still resolve.
+    """
+
+    def test_concepts_routed_to_concepts_folder(self, tmp_path: Path) -> None:
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="c1", title="Concept A", content="Body.", node_type="concept"),
+                WikiNode(id="c2", title="Concept B", content="Body.", node_type="comparison"),
+                WikiNode(id="c3", title="Term X", content="Body.", node_type="entity"),
+            ],
+            edges=[],
+            toc=[],
+            metadata={"title": "Test"},
+        )
+        MarkdownWriter(vault_mode=True).write(wiki, tmp_path)
+        assert (tmp_path / "concepts" / "c1.md").exists()
+        assert (tmp_path / "concepts" / "c2.md").exists()
+        assert (tmp_path / "concepts" / "c3.md").exists()
+
+    def test_overview_and_unknown_kinds_stay_at_root(self, tmp_path: Path) -> None:
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="ov", title="Overview", content="Body.", node_type="overview"),
+                WikiNode(id="sec", title="Section", content="Body.", node_type="section"),
+            ],
+            edges=[],
+            toc=[],
+            metadata={"title": "Test"},
+        )
+        MarkdownWriter(vault_mode=True).write(wiki, tmp_path)
+        assert (tmp_path / "ov.md").exists()
+        assert (tmp_path / "sec.md").exists()
+        assert not (tmp_path / "concepts").exists()
+
+    def test_index_lists_all_pages_regardless_of_folder(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        MarkdownWriter(vault_mode=True).write(sample_wiki, temp_output)
+        index = (temp_output / "index.md").read_text(encoding="utf-8")
+        # Wikilinks use titles/slugs, which resolve across folders in Obsidian.
+        assert "[[Introduction" in index
+        assert "concept-1" in index
+        assert "procedure-1" in index
+
+
 class TestFrontmatterEmission:
     """knox-wgt.1: Every compiled page must have YAML frontmatter with title."""
 
@@ -224,7 +283,9 @@ class TestFrontmatterEmission:
 
         for node in sample_wiki.nodes:
             slug = node.id
-            content = (temp_output / f"{slug}.md").read_text(encoding="utf-8")
+            folder = MarkdownWriter._folder_for_kind(node.node_type)
+            page_path = (temp_output / folder / f"{slug}.md") if folder else (temp_output / f"{slug}.md")
+            content = page_path.read_text(encoding="utf-8")
             assert content.startswith("---\n"), f"{slug}.md missing frontmatter"
             assert "title:" in content.split("---\n")[1]
 
