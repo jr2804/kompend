@@ -6,7 +6,7 @@ import io
 import tarfile
 from pathlib import Path
 
-import py7zr
+import pytest
 
 from knox.cli._sources import _extract_archive
 from knox.preprocessing.downloaders.url_resolver import (
@@ -23,49 +23,33 @@ class TestWikipediaPdfResolver:
     resolver = WikipediaPdfResolver()
 
     def test_resolves_wikipedia_url(self) -> None:
-        r = self.resolver.resolve(
-            "https://en.wikipedia.org/wiki/Speech_recognition"
-        )
+        r = self.resolver.resolve("https://en.wikipedia.org/wiki/Speech_recognition")
         assert r is not None
-        assert r.download_url == (
-            "https://en.wikipedia.org/api/rest_v1/page/pdf/"
-            "Speech_recognition"
-        )
+        assert r.download_url == ("https://en.wikipedia.org/api/rest_v1/page/pdf/Speech_recognition")
         assert r.content_type == "application/pdf"
         assert r.source_label == "wikipedia"
-        assert r.original_url == (
-            "https://en.wikipedia.org/wiki/Speech_recognition"
-        )
+        assert r.original_url == ("https://en.wikipedia.org/wiki/Speech_recognition")
 
     def test_resolves_with_fragment(self) -> None:
-        r = self.resolver.resolve(
-            "https://en.wikipedia.org/wiki/Speech_recognition#History"
-        )
+        r = self.resolver.resolve("https://en.wikipedia.org/wiki/Speech_recognition#History")
         assert r is not None
         assert "#History" not in r.download_url
 
     def test_resolves_language_variant(self) -> None:
-        r = self.resolver.resolve(
-            "https://de.wikipedia.org/wiki/Spracherkennung"
-        )
+        r = self.resolver.resolve("https://de.wikipedia.org/wiki/Spracherkennung")
         assert r is not None
         assert "de.wikipedia.org" in r.download_url
         assert "Spracherkennung" in r.download_url
 
     def test_resolves_simple_wikipedia(self) -> None:
-        r = self.resolver.resolve(
-            "https://simple.wikipedia.org/wiki/Earth"
-        )
+        r = self.resolver.resolve("https://simple.wikipedia.org/wiki/Earth")
         assert r is not None
         assert "simple.wikipedia.org" in r.download_url
         assert "Earth" in r.download_url
 
     def test_rejects_non_wikipedia(self) -> None:
         assert self.resolver.resolve("https://example.com/page") is None
-        assert (
-            self.resolver.resolve("https://wikipedia.org/wiki/Foo")
-            is None
-        )
+        assert self.resolver.resolve("https://wikipedia.org/wiki/Foo") is None
 
 
 class TestArxivPdfResolver:
@@ -156,7 +140,6 @@ class TestExtractArchive:
 
     def test_extracts_tex_from_targz(self, tmp_path: Path) -> None:
 
-
         # Build an in-memory tar.gz with a .tex member.
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
@@ -174,7 +157,6 @@ class TestExtractArchive:
         assert not archive.exists()  # archive cleaned up
 
     def test_prefers_tex_over_txt(self, tmp_path: Path) -> None:
-
 
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
@@ -200,6 +182,10 @@ class TestExtractArchive7z:
     """7z support via py7zr."""
 
     def test_extracts_tex_from_7z(self, tmp_path: Path) -> None:
+        try:
+            import py7zr  # noqa: PLC0415
+        except ImportError:
+            pytest.skip("py7zr not installed")
         tex_content = b"\\documentclass{article}\begin{document}Hello 7z.\\end{document}"
         archive = tmp_path / "paper.7z"
         with py7zr.SevenZipFile(archive, mode="w") as szf:
@@ -210,7 +196,16 @@ class TestExtractArchive7z:
         assert extracted.read_bytes() == tex_content
         assert not archive.exists()
 
-    def test_returns_none_for_unsupported(self, tmp_path: Path) -> None:
+    def test_rar_suffix_is_recognised(self, tmp_path: Path) -> None:
+        """_extract_archive attempts .rar (bad content -> None, not silent passthrough)."""
         f = tmp_path / "file.rar"
-        f.write_bytes(b"Rar!")
-        assert _extract_archive(f, tmp_path) is None
+        f.write_bytes(b"not a real rar")
+        result = _extract_archive(f, tmp_path)
+        assert result is None  # bad content, but suffix was recognised (unrar tried)
+
+    def test_returns_none_for_truly_unsupported(self, tmp_path: Path) -> None:
+        """Extensions with no extractor return None immediately."""
+        for ext in (".cab", ".exe", ".dmg"):
+            f = tmp_path / f"file{ext}"
+            f.write_bytes(b"binary")
+            assert _extract_archive(f, tmp_path) is None, f"{ext} should be unsupported"

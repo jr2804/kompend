@@ -32,9 +32,7 @@ logger = get_logger(__name__)
 # URL path suffixes whose content is essentially always HTML / a server-rendered
 # page. URLs with these (or no extension) go through the browser-based
 # WebCrawler; everything else (.pdf, .docx, …) goes through HTTPDownloader.
-_HTML_PATH_SUFFIXES: frozenset[str] = frozenset(
-    {"", ".html", ".htm", ".aspx", ".asp", ".php", ".jsp", ".cgi", ".jspx"}
-)
+_HTML_PATH_SUFFIXES: frozenset[str] = frozenset({"", ".html", ".htm", ".aspx", ".asp", ".php", ".jsp", ".cgi", ".jspx"})
 
 # Path segments that mark a URL as binary regardless of extension (e.g. the
 # Wikipedia REST API serves ``/api/rest_v1/page/pdf/<Title>`` with no .pdf
@@ -54,8 +52,15 @@ def _looks_like_html_url(url: str) -> bool:
 
 # Priority order for picking a file from an extracted archive.
 _ARCHIVE_EXTRACT_PRIORITY: tuple[str, ...] = (
-    ".tex", ".md", ".rst", ".txt", ".html", ".htm",
-    ".pdf", ".docx", ".epub",
+    ".tex",
+    ".md",
+    ".rst",
+    ".txt",
+    ".html",
+    ".htm",
+    ".pdf",
+    ".docx",
+    ".epub",
 )
 
 
@@ -74,7 +79,9 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
 
     - ``.7z``
 
-    Not supported (no stdlib or available module): ``.rar``.
+    Supported with ``unrar2-cffi`` (listed as a dependency):
+
+    - ``.rar``
 
     Walks members in name order and returns the first file whose extension
     matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
@@ -89,7 +96,8 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
     is_xz = suffix in (".xz", ".lzma") and not is_tar
     is_zip = suffix == ".zip"
     is_7z = suffix == ".7z"
-    if not (is_tar or is_gz or is_bz2 or is_xz or is_zip or is_7z):
+    is_rar = suffix == ".rar"
+    if not (is_tar or is_gz or is_bz2 or is_xz or is_zip or is_7z or is_rar):
         return None
 
     ext_priority = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
@@ -97,6 +105,7 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
     try:
         if is_7z:
             import py7zr  # noqa: PLC0415  # optional dep
+
             with py7zr.SevenZipFile(archive_path, mode="r") as szf:
                 all_files = szf.getnames()
                 best_name, best_p = None, len(ext_priority)
@@ -125,6 +134,21 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
                     return None
                 dest = dest_dir / Path(best_name).name
                 dest.write_bytes(zfile.read(best_name))
+        elif is_rar:
+            from unrar.cffi import rarfile  # noqa: PLC0415
+
+            if not rarfile.is_rarfile(archive_path):
+                return None
+            with rarfile.RarFile(archive_path) as rf:
+                best_name, best_p = None, len(ext_priority)
+                for nm in rf.namelist():
+                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
+                    if p < best_p:
+                        best_p, best_name = p, nm
+                if best_name is None:
+                    return None
+                dest = dest_dir / Path(best_name).name
+                dest.write_bytes(rf.read(best_name))
         elif is_gz:
             # Single-file gzip: the inner filename is archive_path without .gz.
             inner_name = Path(archive_path.stem).name
@@ -169,7 +193,6 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
     except Exception as exc:
         logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
         return None
-
 
 
 # ── Extension helpers ───────────────────────────────────────────────────
@@ -365,11 +388,7 @@ def download_urls(
             logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
             continue
 
-        downloader = (
-            http_downloader
-            if resolved.prefer_http or not _looks_like_html_url(resolved.download_url)
-            else web_crawler
-        )
+        downloader = http_downloader if resolved.prefer_http or not _looks_like_html_url(resolved.download_url) else web_crawler
         downloaded_file = downloader.download(resolved.download_url, sources_dir)
         if downloaded_file:
             # Expand archives (.tar.gz, .gz, .zip) to find the first

@@ -32,6 +32,8 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
     "application/x-eprint-tar": ".tar.gz",
     "application/x-bzip2": ".tar.bz2",
     "application/x-xz": ".tar.xz",
+    "application/x-rar-compressed": ".rar",
+    "application/vnd.rar": ".rar",
     "application/x-7z-compressed": ".7z",
     "application/zip": ".zip",
 }
@@ -63,6 +65,7 @@ _KNOWN_EXTENSIONS: frozenset[str] = frozenset(
         ".7z",
         ".bz2",
         ".xz",
+        ".rar",
     }
 )
 
