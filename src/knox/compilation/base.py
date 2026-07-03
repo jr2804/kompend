@@ -120,6 +120,28 @@ class BaseCompiler(ABC):
         return kept
 
     @staticmethod
+    def dedup_content_duplicate_nodes(nodes: list[WikiNode]) -> list[WikiNode]:
+        """Drop nodes whose normalized body duplicates an earlier node's.
+
+        Catches the case where extraction surfaces one concept under
+        singular/plural or reordered titles and the generator emits
+        identical content for both (e.g. ``phoneme-posteriorgram`` /
+        ``phoneme-posteriorgrams``). Exact-body match only — no fuzzy
+        heuristic, so no false merges of genuinely distinct concepts.
+        """
+        seen: set[str] = set()
+        kept: list[WikiNode] = []
+        for node in nodes:
+            key = " ".join((node.content or "").split()).lower()
+            if not key or key not in seen:
+                if key:
+                    seen.add(key)
+                kept.append(node)
+            else:
+                logger.debug("Deduped content-duplicate node '%s'", node.title)
+        return kept
+
+    @staticmethod
     def deduplicate_group_text(group_chunks: list[ResolvedChunk]) -> str:
         """Merge chunks for one heading group, removing repeated paragraphs.
 

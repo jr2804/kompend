@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.compilation import GraphCompiler, WiCERCompiler
-from knox.compilation._two_phase_core import _merge_node
+from knox.compilation._two_phase_core import Extraction, ExtractionSet, _merge_node
 from knox.compilation.base import BaseCompiler
+from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
@@ -1025,6 +1026,24 @@ class TestEmptyNodeFiltering:
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].title == "Real Section"
 
+    def test_dedup_content_duplicate_nodes_drops_identical_body(self) -> None:
+        """knox-h7bm: singular/plural pages with identical content collapse to one."""
+        body = "Phoneme posteriorgrams are dense representations of phoneme probabilities."
+        nodes = [
+            WikiNode(id="phoneme-posteriorgram", title="Phoneme Posteriorgram", content=body, node_type="concept"),
+            WikiNode(id="phoneme-posteriorgrams", title="Phoneme Posteriorgrams", content=body, node_type="concept"),
+        ]
+        kept = BaseCompiler.dedup_content_duplicate_nodes(nodes)
+        assert len(kept) == 1
+
+    def test_dedup_content_duplicate_nodes_keeps_distinct_bodies(self) -> None:
+        nodes = [
+            WikiNode(id="a", title="A", content="Alpha concept body.", node_type="concept"),
+            WikiNode(id="b", title="B", content="Beta concept body.", node_type="concept"),
+        ]
+        kept = BaseCompiler.dedup_content_duplicate_nodes(nodes)
+        assert len(kept) == 2
+
 
 class TestDeduplication:
     def test_repeated_heading_prefix_collapsed(self) -> None:
@@ -1087,3 +1106,63 @@ class TestDeduplication:
 
     def test_deduplicate_group_text_empty(self) -> None:
         assert BaseCompiler.deduplicate_group_text([]) == ""
+
+
+class TestTwoPhaseConceptSalvageAndFallback:
+    """knox-nbbx (concept-name salvage) + knox-sh05 (non-destructive fallback)."""
+
+    def test_concept_pages_salvages_name_from_alt_keys(self) -> None:
+        """knox-nbbx: extraction that returns 'concept'/'title' instead of 'name'
+        still yields concept pages (was: empty -> silent fallback).
+        """
+        ext_set = ExtractionSet()
+        ext_set.add(Extraction(
+            source="src.pdf",
+            concepts=[
+                {"concept": "Phoneme Posteriorgram", "definition": "A dense representation."},
+                {"title": "Better-Ear Listening", "definition": "Attending to the better ear."},
+            ],
+        ))
+        pages = ext_set.concept_pages()
+        names = {p["name"] for p in pages}
+        assert "Phoneme Posteriorgram" in names
+        assert "Better-Ear Listening" in names
+        assert all(p.get("definitions") for p in pages)
+
+    def test_fallback_emits_concept_definitions_not_raw_chunks(self) -> None:
+        """knox-sh05: fallback returns extracted concept definitions, never the
+        raw per-heading node_N chunk-group dump.
+        """
+        config = PipelineConfig(
+            source_dir=Path("."), output_dir=Path("."),
+            llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"),
+        )
+        compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+        ext_set = ExtractionSet()
+        ext_set.add(Extraction(
+            source="src.pdf",
+            concepts=[{"name": "Listening Effort", "definition": "The effort to understand speech."}],
+        ))
+        chunks = _make_chunks(count=3, heading="Some Heading")
+        wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="forced test")
+        assert wiki.metadata["fallback"] is True
+        assert wiki.metadata["fallback_reason"] == "forced test"
+        # No raw chunk-group node_N ids leaked into the fallback wiki.
+        assert all(not n.id.startswith("node_") for n in wiki.nodes)
+        # The extracted concept definition is present.
+        assert any(n.title == "Listening Effort" for n in wiki.nodes)
+
+    def test_fallback_no_concepts_uses_graph_concept_pages_only(self) -> None:
+        """knox-sh05: with no extracted concepts, fallback keeps GraphCompiler
+        cross-cutting concept pages / overviews, still no raw node_N dump.
+        """
+        config = PipelineConfig(
+            source_dir=Path("."), output_dir=Path("."),
+            llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"),
+        )
+        compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+        ext_set = ExtractionSet()  # empty -> no concept definitions
+        chunks = _make_chunks(count=2, heading="Overview")
+        wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="no concepts")
+        assert wiki.metadata["fallback"] is True
+        assert all(not n.id.startswith("node_") for n in wiki.nodes)

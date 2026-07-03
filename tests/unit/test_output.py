@@ -183,6 +183,37 @@ class TestMarkdownWriter:
         assert "## Related" not in content
 
 
+class TestStaleFileClearing:
+    """knox-h7bm: a recompile must not leave stale files from a prior run."""
+
+    def test_vault_clears_stale_root_markdown(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        # First compile writes node files + index.md.
+        writer.write(sample_wiki, tmp_path)
+        stale_node = tmp_path / "old-page.md"
+        stale_node.write_text("# Stale\n\nfrom a previous run", encoding="utf-8")
+        assert stale_node.exists()
+
+        # Recompile: stale root .md must be gone, current nodes present.
+        writer.write(sample_wiki, tmp_path)
+        assert not stale_node.exists()
+        assert (tmp_path / "intro.md").exists()
+        assert (tmp_path / "concept-1.md").exists()
+
+    def test_vault_preserves_user_subfolder(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True)
+        # Non-recursive clear must leave subfolders (e.g. _distilled/) intact.
+        distilled_dir = tmp_path / "_distilled"
+        distilled_dir.mkdir(parents=True)
+        distilled_file = distilled_dir / "note.md"
+        distilled_file.write_text("# User note", encoding="utf-8")
+
+        writer.write(sample_wiki, tmp_path)
+
+        assert distilled_file.exists()
+        assert (tmp_path / "intro.md").exists()
+
+
 class TestFrontmatterEmission:
     """knox-wgt.1: Every compiled page must have YAML frontmatter with title."""
 

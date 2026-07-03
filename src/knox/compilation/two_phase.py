@@ -203,7 +203,7 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 
         total_elapsed = time.monotonic() - compile_start
-        chunk_count = wiki.metadata.get("chunk_count", 0)
+        wiki.metadata.get("chunk_count", 0)
         node_count = len(wiki.nodes)
         logger.info(
             "TwoPhase: compile done — %d source(s) \u2192 %d concept(s) in %.1fs "
@@ -351,9 +351,29 @@ class TwoPhaseCompiler(BaseCompiler):
         page content (WiCER refinement input).
         """
         concepts = extractions.concept_pages()
-        if not concepts:
-            # Nothing to merge — fall back to the base compiler.
-            return self._fallback_compile(chunks, trees=trees)
+        if concepts:
+            logger.info(
+                "TwoPhase: %d concept(s) ready for generation (sample: %s)",
+                len(concepts),
+                [c["name"] for c in concepts[:3]],
+            )
+        else:
+            # Diagnose: what keys did extraction actually return? Pinpoints
+            # schema drift vs. genuinely empty extraction in one log line.
+            sample_keys: set[str] = set()
+            for ext in extractions.extractions:
+                for c in ext.concepts:
+                    sample_keys.update(c.keys())
+            logger.warning(
+                "TwoPhase: concept_pages() empty \u2014 extraction concept keys: %s",
+                sorted(sample_keys) or "(no concepts returned)",
+            )
+            return self._fallback_compile(
+                chunks,
+                trees=trees,
+                extractions=extractions,
+                reason="no concepts extracted (see extraction concept keys above)",
+            )
 
         # Collect images from IMAGE chunks for embedding in output
         all_images = _extract_images_from_chunks(chunks)
@@ -396,7 +416,12 @@ class TwoPhaseCompiler(BaseCompiler):
 
         if not nodes:
             self._generation_fallbacks += 1
-            return self._fallback_compile(chunks, trees=trees)
+            return self._fallback_compile(
+                chunks,
+                trees=trees,
+                extractions=extractions,
+                reason="generation produced no pages (all LLM calls failed)",
+            )
 
         self.disambiguate_duplicate_titles(nodes, chunks)
         nodes = self.filter_empty_nodes(
@@ -406,8 +431,13 @@ class TwoPhaseCompiler(BaseCompiler):
 
         if not nodes:
             self._generation_fallbacks += 1
-            return self._fallback_compile(chunks)
+            return self._fallback_compile(
+                chunks,
+                extractions=extractions,
+                reason="all generated pages filtered as empty",
+            )
 
+        nodes = self.dedup_content_duplicate_nodes(nodes)
         edges = self._build_edges(nodes, extractions)
         quality = _compute_quality_score(nodes, edges)
 
@@ -616,23 +646,85 @@ class TwoPhaseCompiler(BaseCompiler):
             "pinned_facts": pin_hash,
         }
 
-    def _fallback_compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> CompiledWiki:
-        if self._base is not None:
-            wiki = self._base.compile(chunks, trees=trees)
-            return CompiledWiki(
-                nodes=list(wiki.nodes),
-                edges=list(wiki.edges),
-                toc=list(wiki.toc),
-                quality_score=wiki.quality_score,
-                iteration=wiki.iteration,
-                metadata={**wiki.metadata, "two_phase": True, "fallback": True},
-            )
-        # Last-resort empty wiki.
+    def _fallback_compile(
+        self,
+        chunks: list[ResolvedChunk],
+        *,
+        trees: list[ChunkTree] | None = None,
+        extractions: ExtractionSet | None = None,
+        reason: str = "synthesis unavailable",
+    ) -> CompiledWiki:
+        """Non-destructive generation fallback.
+
+        Never dumps raw per-chunk ``node_N`` groups (the 900-file problem).
+        Prefers real concept definitions from the extractions; if those are
+        empty, uses only the GraphCompiler's aggregated cross-cutting concept
+        pages, then source overviews as a last resort. Always warns.
+        """
+        logger.warning("TwoPhase: generation fallback \u2014 %s", reason)
+        nodes: list[WikiNode] = []
+
+        # 1. Real concept definitions extracted in phase 1 (no LLM synthesis).
+        if extractions is not None:
+            for concept in extractions.concept_pages():
+                name = concept.get("name", "").strip()
+                if not name:
+                    continue
+                defs = concept.get("definitions") or []
+                body = "\n\n".join(d for d in defs if d) or f"*{name}*"
+                nodes.append(
+                    WikiNode(
+                        id=_slugify(name),
+                        title=name,
+                        content=body,
+                        node_type="concept",
+                        source_chunks=[],
+                        metadata={
+                            "provenance": list(concept.get("sources", []) or []),
+                            "two_phase": True,
+                            "fallback": True,
+                            "frontmatter": {"title": name, "kind": "concept"},
+                        },
+                    ),
+                )
+
+        # 2. GraphCompiler aggregated concept pages only (cross-cutting),
+        #    then source overviews as a last-resort summary. Never the raw
+        #    per-heading ``node_N`` chunk-group dump.
+        if not nodes and self._base is not None:
+            graph_wiki = self._base.compile(chunks, trees=trees)
+            nodes = [n for n in graph_wiki.nodes if n.metadata.get("cross_cutting")]
+            if not nodes:
+                nodes = [n for n in graph_wiki.nodes if n.node_type == "overview"]
+            # Re-id to title-based slugs so these never read as the raw
+            # per-chunk ``node_N`` dump, regardless of source.
+            seen_ids: set[str] = set()
+            for n in nodes:
+                base = _slugify(n.title) or n.id
+                nid, i = base, 2
+                while nid in seen_ids:
+                    nid = f"{base}-{i}"
+                    i += 1
+                n.id = nid
+                seen_ids.add(nid)
+                n.metadata["two_phase"] = True
+                n.metadata["fallback"] = True
+
+        logger.warning(
+            "TwoPhase: fallback emitted %d page(s) instead of a synthesized wiki",
+            len(nodes),
+        )
         return CompiledWiki(
-            nodes=[],
+            nodes=nodes,
             edges=[],
-            toc=[],
-            metadata={"chunk_count": len(chunks), "two_phase": True, "fallback": True},
+            toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes],
+            metadata={
+                "chunk_count": len(chunks),
+                "two_phase": True,
+                "fallback": True,
+                "fallback_reason": reason,
+                "node_count": len(nodes),
+            },
         )
 
     @staticmethod

@@ -80,6 +80,12 @@ class MarkdownWriter(BaseOutputWriter):
 
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
         """Write each document as a separate ``.md`` file, plus ``index.md``."""
+        # Clear stale compile output so the on-disk vault exactly reflects the
+        # current CompiledWiki. Non-recursive (root ``*.md`` only) preserves
+        # user-authored subfolders (e.g. ``_distilled/``, ``write/``).
+        # ``index.md`` is regenerated below.
+        for stale in output_dir.glob("*.md"):
+            stale.unlink()
         node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
 
         related_edges = self._build_related_edges(wiki.edges, node_map)

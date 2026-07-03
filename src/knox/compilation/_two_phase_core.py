@@ -248,6 +248,23 @@ class Extraction:
         )
 
 
+_CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
+
+
+def _concept_name(concept: dict[str, Any]) -> str:
+    """Salvage a concept name, tolerating schema drift.
+
+    The extraction prompt asks for ``name``; LLMs sometimes return
+    ``concept``/``title``/``term`` instead. Without salvage, concept_pages()
+    returns empty and generation silently falls back.
+    """
+    for key in _CONCEPT_NAME_KEYS:
+        val = str(concept.get(key, "")).strip()
+        if val:
+            return val
+    return ""
+
+
 @dataclass
 class ExtractionSet:
     """All extractions across the corpus."""
@@ -261,17 +278,23 @@ class ExtractionSet:
         """Return merged concept dicts with provenance per source.
 
         Output schema: ``{name, definition, sources: [str], definitions: [str]}``
+
+        Concept names are salvaged tolerantly: the extraction prompt asks for
+        ``name``, but LLMs sometimes return ``concept``/``title``/``term``.
+        Without salvage, an otherwise-good extraction yields zero concept pages
+        and the whole generation phase silently falls back.
         """
         merged: dict[str, dict[str, Any]] = {}
         for ext in self.extractions:
             for concept in ext.concepts:
-                name = concept.get("name", "").strip()
+                name = _concept_name(concept)
                 if not name:
                     continue
                 bucket = merged.setdefault(name, {"name": name, "sources": [], "definitions": []})
                 bucket["sources"].append(ext.source)
-                if concept.get("definition"):
-                    bucket["definitions"].append(concept["definition"])
+                definition = concept.get("definition") or concept.get("importance") or concept.get("description")
+                if definition:
+                    bucket["definitions"].append(definition)
         return list(merged.values())
 
     def entity_index(self) -> dict[str, list[str]]:

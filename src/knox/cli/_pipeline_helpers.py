@@ -322,6 +322,14 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
 
     get_console().print(f"Compiled: {', '.join(parts)}")
 
+    if meta.get("fallback"):
+        reason = meta.get("fallback_reason", "synthesis unavailable")
+        get_err_console().print(
+            f"Warning: compile fell back ({reason}) \u2014 pages are raw concept "
+            f"definitions / source summaries, not LLM-synthesized. Re-run after "
+            f"addressing the fallback to get synthesized pages."
+        )
+
 
 def _post_compile_actions(
     *,
