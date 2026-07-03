@@ -30,6 +30,10 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
     "application/gzip": ".tar.gz",
     "application/x-gzip": ".tar.gz",
     "application/x-eprint-tar": ".tar.gz",
+    "application/x-bzip2": ".tar.bz2",
+    "application/x-xz": ".tar.xz",
+    "application/x-7z-compressed": ".7z",
+    "application/zip": ".zip",
 }
 
 # FileExtension values the pipeline already recognizes.
@@ -56,6 +60,9 @@ _KNOWN_EXTENSIONS: frozenset[str] = frozenset(
         ".tar.gz",
         ".gz",
         ".zip",
+        ".7z",
+        ".bz2",
+        ".xz",
     }
 )
 

@@ -6,7 +6,10 @@ scan_dir, and URL downloading — shared by both `parse` and `compile`.
 
 from __future__ import annotations
 
+import bz2
+import gzip
 import hashlib
+import lzma
 import shutil
 import tarfile
 import zipfile
@@ -56,8 +59,22 @@ _ARCHIVE_EXTRACT_PRIORITY: tuple[str, ...] = (
 )
 
 
-def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
-    """Expand a tar.gz / .gz / .zip archive and return the best inner file.
+def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa: PLR0911,PLR0912,PLR0915
+    """Expand a compressed archive and return the best inner file.
+
+    Supported formats (stdlib only, no extra dependencies):
+
+    - ``.tar``, ``.tar.gz`` / ``.tgz``, ``.tar.bz2``, ``.tar.xz`` / ``.tar.lzma``
+    - ``.gz`` (single-file gzip)
+    - ``.bz2`` (single-file bzip2)
+    - ``.xz`` / ``.lzma`` (single-file LZMA)
+    - ``.zip``
+
+    Supported with ``py7zr`` (optional but listed as a dependency):
+
+    - ``.7z``
+
+    Not supported (no stdlib or available module): ``.rar``.
 
     Walks members in name order and returns the first file whose extension
     matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
@@ -65,16 +82,39 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
     """
     name_lower = archive_path.name.lower()
     suffix = archive_path.suffix.lower()
-    is_tar = suffix in (".tar", ".tgz") or name_lower.endswith(".tar.gz") or name_lower.endswith(".tar.bz2")
-    is_gz  = suffix == ".gz" and not is_tar
+    _TAR_ENDINGS = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar")
+    is_tar = suffix in {".tar", ".tgz"} or any(name_lower.endswith(e) for e in _TAR_ENDINGS)
+    is_gz = suffix == ".gz" and not is_tar
+    is_bz2 = suffix == ".bz2" and not is_tar
+    is_xz = suffix in (".xz", ".lzma") and not is_tar
     is_zip = suffix == ".zip"
-    if not (is_tar or is_gz or is_zip):
+    is_7z = suffix == ".7z"
+    if not (is_tar or is_gz or is_bz2 or is_xz or is_zip or is_7z):
         return None
 
     ext_priority = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
 
     try:
-        if is_zip:
+        if is_7z:
+            import py7zr  # noqa: PLC0415  # optional dep
+            with py7zr.SevenZipFile(archive_path, mode="r") as szf:
+                all_files = szf.getnames()
+                best_name, best_p = None, len(ext_priority)
+                for nm in all_files:
+                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
+                    if p < best_p:
+                        best_p, best_name = p, nm
+                if best_name is None:
+                    return None
+                szf.extract(targets=[best_name], path=dest_dir)
+                # py7zr extracts with full sub-path; find the file.
+                dest = dest_dir / Path(best_name).name
+                if not dest.exists():
+                    # fell back to sub-path layout
+                    dest = next(dest_dir.rglob(Path(best_name).name), None)
+                    if dest is None:
+                        return None
+        elif is_zip:
             with zipfile.ZipFile(archive_path) as zfile:
                 best_name, best_p = None, len(ext_priority)
                 for nm in zfile.namelist():
@@ -85,9 +125,22 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
                     return None
                 dest = dest_dir / Path(best_name).name
                 dest.write_bytes(zfile.read(best_name))
+        elif is_gz:
+            # Single-file gzip: the inner filename is archive_path without .gz.
+            inner_name = Path(archive_path.stem).name
+            dest = dest_dir / inner_name
+            dest.write_bytes(gzip.decompress(archive_path.read_bytes()))
+        elif is_bz2:
+            inner_name = Path(archive_path.stem).name
+            dest = dest_dir / inner_name
+            dest.write_bytes(bz2.decompress(archive_path.read_bytes()))
+        elif is_xz:
+            inner_name = Path(archive_path.stem).name
+            dest = dest_dir / inner_name
+            dest.write_bytes(lzma.decompress(archive_path.read_bytes()))
         else:
-            mode = "r:gz" if (is_gz or name_lower.endswith(".tar.gz")) else "r:*"
-            with tarfile.open(archive_path, mode=mode) as tf:
+            # tar family: auto-detect compression.
+            with tarfile.open(archive_path, mode="r:*") as tf:
                 best_member, best_p = None, len(ext_priority)
                 for member in tf.getmembers():
                     if not member.isfile():
@@ -103,6 +156,12 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
                 extracted_name = Path(best_member.name).name
                 dest = dest_dir / extracted_name
                 dest.write_bytes(fobj.read())
+
+        # Check if the extracted file passes the priority filter (single-file decompression
+        # preserves the stem extension; skip if it's not parseable).
+        if (is_gz or is_bz2 or is_xz) and ext_priority.get(dest.suffix.lower(), len(ext_priority)) >= len(ext_priority):
+            dest.unlink(missing_ok=True)
+            return None
 
         archive_path.unlink()
         logger.info("Extracted %s from archive -> %s", dest.name, archive_path.name)

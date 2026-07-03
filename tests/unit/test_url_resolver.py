@@ -6,6 +6,8 @@ import io
 import tarfile
 from pathlib import Path
 
+import py7zr
+
 from knox.cli._sources import _extract_archive
 from knox.preprocessing.downloaders.url_resolver import (
     ArxivHtmlResolver,
@@ -192,3 +194,23 @@ class TestExtractArchive:
         pdf.write_bytes(b"%PDF-1.7")
         assert _extract_archive(pdf, tmp_path) is None
         assert pdf.exists()  # untouched
+
+
+class TestExtractArchive7z:
+    """7z support via py7zr."""
+
+    def test_extracts_tex_from_7z(self, tmp_path: Path) -> None:
+        tex_content = b"\\documentclass{article}\begin{document}Hello 7z.\\end{document}"
+        archive = tmp_path / "paper.7z"
+        with py7zr.SevenZipFile(archive, mode="w") as szf:
+            szf.writef(io.BytesIO(tex_content), "ms.tex")
+        extracted = _extract_archive(archive, tmp_path)
+        assert extracted is not None
+        assert extracted.suffix == ".tex"
+        assert extracted.read_bytes() == tex_content
+        assert not archive.exists()
+
+    def test_returns_none_for_unsupported(self, tmp_path: Path) -> None:
+        f = tmp_path / "file.rar"
+        f.write_bytes(b"Rar!")
+        assert _extract_archive(f, tmp_path) is None
