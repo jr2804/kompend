@@ -16,6 +16,9 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+import py7zr
+from unrar.cffi import rarfile
+
 from knox.cli._ignore import filter_files
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
@@ -104,8 +107,6 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
 
     try:
         if is_7z:
-            import py7zr  # noqa: PLC0415  # optional dep
-
             with py7zr.SevenZipFile(archive_path, mode="r") as szf:
                 all_files = szf.getnames()
                 best_name, best_p = None, len(ext_priority)
@@ -135,8 +136,6 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
                 dest = dest_dir / Path(best_name).name
                 dest.write_bytes(zfile.read(best_name))
         elif is_rar:
-            from unrar.cffi import rarfile  # noqa: PLC0415
-
             if not rarfile.is_rarfile(archive_path):
                 return None
             with rarfile.RarFile(archive_path) as rf:
