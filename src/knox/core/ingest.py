@@ -24,6 +24,32 @@ logger = get_logger(__name__)
 
 ProgressFn = Callable[[int, int, str], None]
 
+# Length of the content-hash suffix appended to parse-cache filenames.
+# 8 hex chars (32 bits) plus the stem prefix makes collisions astronomically
+# unlikely within a single corpus while keeping filenames human-readable.
+_CACHE_HASH_LEN = 8
+
+
+def _content_hash(source_file: Path) -> str:
+    """SHA-256 prefix of file contents, used to discriminate same-stem files."""
+    return hashlib.sha256(source_file.read_bytes()).hexdigest()[:_CACHE_HASH_LEN]
+
+
+def parse_cache_name(source_file: Path) -> str:
+    """Content-discriminated parse-cache filename for *source_file*.
+
+    Format: ``<stem>-<content-hash-prefix>.json``. Two files with the same
+    stem but different content get different cache entries; the same file
+    moved to a different subdirectory keeps its entry (content unchanged).
+    """
+    return f"{source_file.stem}-{_content_hash(source_file)}.json"
+
+
+def parse_cache_glob(stem: str) -> str:
+    """Glob pattern matching any parse-cache entry for files named ``<stem>``."""
+    return f"{stem}-*.json"
+
+
 
 def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
     """Extract plain text from a parsed document for dedup fingerprinting.
@@ -85,7 +111,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     """Parse every file and cache the structured documents.
 
     Each file is routed to a parser, parsed into a :class:`Document`, and
-    serialised to ``base_dir/.knox/cache/<stem>.json``.
+    serialised to ``base_dir/.knox/cache/<stem>-<hash>.json``.
     Tier-1 state is recorded so ``knox compile --start-at-tier chunk`` can
     verify prerequisites.
 
@@ -146,12 +172,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         if progress_fn is not None:
             progress_fn(idx, total, source_file.name)
 
-        # Cache key is the file stem — stable even when raw file bytes
-        # change (e.g. URL downloads with dynamic HTML). One entry per
-        # source file; re-parsing overwrites, never orphans.
+        # Cache key is stem + content-hash prefix: collision-proof across
+        # same-stem files (e.g. numbered proceedings papers) yet stable when a
+        # file is moved by `knox organize`. One entry per distinct content.
         # NOTE: the cache check MUST run before parser.parse() — Docling
         # extraction is expensive and must not repeat for cached files.
-        out_file = cache_dir / f"{source_file.stem}.json"
+        out_file = cache_dir / parse_cache_name(source_file)
 
         if not no_cache and out_file.exists():
             logger.info("Skipping %s — already cached", source_file.name)
@@ -189,7 +215,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             if progress_fn is not None:
                 progress_fn(idx, total, f"embedding {source_file.name}")
             slug = source_file.stem
-            cached_file = cache_dir / f"{slug}.json"
+            cached_file = cache_dir / parse_cache_name(source_file)
             if not cached_file.exists():
                 continue
             text = _extract_text_from_cached(cached_file)

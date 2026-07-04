@@ -18,7 +18,7 @@ from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
-from knox.core.ingest import _extract_text_from_cached
+from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.paths import VaultPaths
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console, get_logger
@@ -148,9 +148,11 @@ def write_cmd(
         source_files = resolve_files(*source, sources_dir=_sources_dir)
         for sf in source_files:
             stem = sf.stem
-            cached = VaultPaths(base_dir).cache_dir / f"{stem}.json"
+            # Parse cache is now content-discriminated: glob for any entry.
+            matches = sorted(VaultPaths(base_dir).cache_dir.glob(parse_cache_glob(stem)))
+            cached = matches[0] if matches else None
             try:
-                text = _extract_text_from_cached(cached) if cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
+                text = _extract_text_from_cached(cached) if cached and cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
                 source_texts.append((stem, text.strip()))
             except Exception as exc:
                 get_err_console().print(f"Warning: could not read {sf}: {exc}")

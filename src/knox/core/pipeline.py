@@ -26,6 +26,7 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
 from knox.core.entity_registry import EntityRegistry
+from knox.core.ingest import parse_cache_name
 from knox.core.memory import update_memory_for_compile
 from knox.core.models import (
     Chunk,
@@ -874,8 +875,8 @@ class WikiPipeline:
 
     @staticmethod
     def _cache_key(source_file: Path) -> str:
-        """Stem-based cache key — one entry per source file, never orphans."""
-        return source_file.stem
+        """Content-discriminated cache key — collision-proof across same-stem files."""
+        return parse_cache_name(source_file).removesuffix(".json")
 
 
 def build_llm_client(config: PipelineConfig) -> LLMClient:

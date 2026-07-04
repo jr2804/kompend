@@ -19,7 +19,7 @@ project root — **not** inside `wiki/`.
 │   ├── search.db               # FTS5 full-text index for hybrid search
 │   ├── memory.json             # Memory lifecycle store (confidence/tiers)
 │   ├── cache/                  # Parse result cache
-│   │   ├── a1b2c3d4.json       # Per-source parsed document
+│   │   ├── paper-a1b2c3d4.json # Per-source parsed document (<stem>-<content-hash>)
 │   │   └── ...
 │   ├── vectors/                # Zvec vector index (RAG)
 │   ├── review/                 # Review queue entries
@@ -46,7 +46,7 @@ project root — **not** inside `wiki/`.
 | `compile_state.json` | Per-file tier progress (parsed, chunked, etc.) | < 50 KB | Project-local | `TierStateStore` |
 | `search.db` | SQLite FTS5 index over compiled wiki pages | < 10 MB | Project-local | Compile with `--index` (on by default) |
 | `memory.json` | Memory lifecycle: confidence, tiers, supersession | < 100 KB | Project-local | `update_memory_for_compile` |
-| `cache/*.json` | Cached `ParsedDocument` per source file (hash-keyed) | 100 KB – 100 MB | Project-local | Pipeline parse tier |
+| `cache/*.json` | Cached `ParsedDocument` per source file (`<stem>-<hash>.json`, content-addressed) | 100 KB – 100 MB | Project-local | Pipeline parse tier |
 | `vectors/` | Zvec embedded vector database for semantic search | 1 – 100 MB | Project-local | `ZvecWikiStore` |
 | `review/*.json` | Wiki nodes pending human review | < 100 KB | Project-local | `ReviewQueue` |
 | `provenance/*.json` | Per-node citation/cross-ref data | < 500 KB | Project-local | `annotate_wiki_with_provenance` |
