@@ -336,7 +336,7 @@ def download_urls(
     sources_dir: Path,
     *,
     base_dir: Path | None = None,
-    stealth: bool = True,
+    undetected: bool = True,
 ) -> list[Path]:
     """Download URLs into *sources_dir*, return paths of successful downloads.
 
@@ -360,9 +360,9 @@ def download_urls(
         sources_dir: Target directory for downloaded files.
         base_dir: Vault root used to locate ``.knox/downloaded.json``.
             When ``None``, defaults to ``sources_dir.parent``.
-        stealth: When True, enable playwright-stealth in the browser-based
-            WebCrawler. Default ON — bypasses Cloudflare / basic bot
-            detection. Set via ``downloader.stealth`` config.
+        undetected: When True (default), use Patchright undetected-browser
+            mode with a real Edge/Chrome for stronger bot-protection bypass.
+            Set via ``downloader.undetected`` config.
 
     Returns:
         Paths of successfully downloaded files (may be shorter than *urls*).
@@ -375,7 +375,7 @@ def download_urls(
     detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_path)
     resolver_chain = UrlResolverChain()
     http_downloader = HTTPDownloader(detector=detector)
-    web_crawler = WebCrawler(detector=detector, stealth=stealth)
+    web_crawler = WebCrawler(detector=detector, undetected=undetected)
     results: list[Path] = []
     for url in urls:
         # Resolve: Wikipedia → PDF API, arXiv → direct PDF, etc.

@@ -146,7 +146,7 @@ def _resolve_compile_inputs(
     ignore: Ignore,
     *,
     in_place: bool = False,
-    stealth: bool = True,
+    undetected: bool = True,
 ) -> list[Path]:
     """Resolve file arguments and URLs into a deduplicated input file list.
 
@@ -163,7 +163,7 @@ def _resolve_compile_inputs(
 
     sources_dir.mkdir(parents=True, exist_ok=True)
     local_files = ensure_in_sources(resolved, sources_dir, in_place=in_place)
-    downloaded = download_urls(online_urls, sources_dir, base_dir=sources_dir.parent, stealth=stealth)
+    downloaded = download_urls(online_urls, sources_dir, base_dir=sources_dir.parent, undetected=undetected)
 
     all_input_files = list(dict.fromkeys(local_files + downloaded))
     if not all_input_files:

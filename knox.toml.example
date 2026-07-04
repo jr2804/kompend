@@ -42,13 +42,15 @@ file = "NOTES.md"
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the
 # browser-based WebCrawler (crawl4ai); everything else (PDF, DOCX, …)
 # goes through the direct HTTPDownloader (urllib).
-# Env: KNOX_DOWNLOADER_STEALTH
+# Env: KNOX_DOWNLOADER_UNDETECTED
 
 [downloader]
-# Enable stealth mode in the browser-based WebCrawler (playwright-stealth).
-# Default ON — bypasses Cloudflare / basic bot detection on HTML pages.
+# Undetected-browser mode (Patchright + real Edge/Chrome). Default ON.
+# Stronger Cloudflare / bot-protection bypass than stealth alone. Stealth
+# (playwright-stealth) is always enabled as the fallback. Falls back to
+# stealth automatically when no Edge/Chrome installation is found.
 # No effect on the direct HTTPDownloader path used for PDF/binary URLs.
-# stealth = true
+# undetected = true
 
 # ── Compile settings ────────────────────────────────────────────────────
 

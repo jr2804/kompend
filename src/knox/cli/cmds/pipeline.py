@@ -55,7 +55,7 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import coerce_config_value, resolve_config, validate_config_key
-from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, DOWNLOADER_STEALTH, INGEST_PARSER, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, DOWNLOADER_UNDETECTED, INGEST_PARSER, PATHS_WIKI_DIR
 from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
@@ -334,7 +334,7 @@ def ingest_cmd(
         recursive,
         ignore,
         in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
-        stealth=cfg.get(DOWNLOADER_STEALTH, True),
+        undetected=cfg.get(DOWNLOADER_UNDETECTED, True),
     )
     if not all_input_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")

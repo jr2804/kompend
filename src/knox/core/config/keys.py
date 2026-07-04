@@ -19,7 +19,7 @@ PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 INGEST_PARSER: Final[str] = "ingest.parser"
 
 # ── downloader section ──
-DOWNLOADER_STEALTH: Final[str] = "downloader.stealth"
+DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"
 
 # ── compile section (flat keys) ──
 COMPILE_SOURCES_DIR: Final[str] = "compile.sources_dir"
