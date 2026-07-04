@@ -97,6 +97,14 @@ def load_all_extractions(
         return {}
 
     sources_root = sources_dir.resolve()
+    # Index files currently on disk by basename so we survive moves (e.g.
+    # after `knox organize` relocates a file into a subdirectory): the cache
+    # stores the path the parser saw, which may be stale.
+    files_by_name: dict[str, Path] = {}
+    for path in sources_root.rglob("*"):
+        if path.is_file() and _is_within(path, sources_root):
+            files_by_name.setdefault(path.name, path)
+
     known: dict[str, Extraction] = {}
     for entry in sorted(extract_dir.glob("*.json")):
         try:
@@ -113,22 +121,34 @@ def load_all_extractions(
         ext = Extraction.from_dict(value)
         if not ext.summary:
             continue
-        candidate = Path(source)
-        # Cache stores whatever path the parser saw (often absolute). Resolve
-        # relative to sources_root and store the POSIX-relative form so it
-        # matches the keys produced by _files_without_summary() and gives the
-        # LLM a clean "filename" to echo back.
-        if not candidate.is_absolute():
-            candidate = sources_root / candidate
-        candidate = candidate.resolve()
-        if not candidate.is_file():
-            continue
-        if not _is_within(candidate, sources_root):
+        candidate = _resolve_cached_source(source, sources_root, files_by_name)
+        if candidate is None:
             continue
         rel = candidate.relative_to(sources_root).as_posix()
         known[rel] = ext
     logger.info("Loaded %d extractions with summaries for sources in %s", len(known), sources_dir)
     return known
+
+
+def _resolve_cached_source(source: str, sources_root: Path, files_by_name: dict[str, Path]) -> Path | None:
+    """Resolve a cached ``source`` path to a file currently under ``sources_root``.
+
+    Tries the stored path verbatim first (handles relative and absolute).
+    Falls back to a basename lookup so extractions survive file moves (e.g.
+    after `knox organize` puts a file in a subdirectory). Returns ``None``
+    when no matching file exists on disk.
+    """
+    candidate = Path(source)
+    if not candidate.is_absolute():
+        candidate = sources_root / candidate
+    try:
+        candidate = candidate.resolve()
+    except OSError:
+        candidate = Path(source)
+    if candidate.is_file() and _is_within(candidate, sources_root):
+        return candidate
+    # Stale path (file moved) — try by basename.
+    return files_by_name.get(Path(source).name)
 
 
 def _is_within(subject_path: Path, root_dir: Path) -> bool:
