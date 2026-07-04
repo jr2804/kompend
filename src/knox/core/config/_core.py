@@ -283,6 +283,7 @@ DEFAULTS: dict[str, Any] = {
     "organize": {
         "max_depth": 3,
         "min_subcategories": 2,
+        "min_files_per_category": 2,
         "collapse_single_file": True,
     },
     "ignore": {

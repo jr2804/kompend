@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from knox.cli.app import app
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig, resolve_config
 from knox.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
+    ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
 from knox.core.paths import KNOX_DIR, ORGANIZE_REPORT_FILE
@@ -183,7 +186,10 @@ class TestValidateTree:
                 ),
             ],
         )
-        validated = validate_tree(tree, OrganizeConfig(max_depth=2, min_subcategories=2))
+        validated = validate_tree(
+            tree,
+            OrganizeConfig(max_depth=2, min_subcategories=2, min_files_per_category=1),
+        )
         # b at depth 2, so its children collapse into b's files
         assert validated.categories[0].name == "a"
         b = validated.categories[0].subcategories[0]
@@ -238,6 +244,60 @@ class TestValidateTree:
             OrganizeConfig(max_depth=3, min_subcategories=2, collapse_single_file=False),
         )
         assert len(validated.categories[0].subcategories) == 1
+
+    def test_min_files_dissolves_sparse_leaf(self) -> None:
+        # A leaf category with fewer than min_files gets merged into its parent.
+        tree = CategoryTree(
+            categories=[
+                CategoryNode(
+                    name="parent",
+                    files=["p1.md", "p2.md"],
+                    subcategories=[
+                        CategoryNode(name="sparse", files=["lonely.md"]),
+                        CategoryNode(name="full", files=["a.md", "b.md"]),
+                    ],
+                ),
+            ],
+        )
+        validated = validate_tree(
+            tree,
+            OrganizeConfig(max_depth=3, min_subcategories=2, min_files_per_category=2),
+        )
+        names = {s.name for s in validated.categories[0].subcategories}
+        assert "full" in names  # kept (2 files)
+        assert "sparse" not in names  # dissolved (1 file < 2)
+        assert "lonely.md" in validated.categories[0].files  # promoted up
+
+    def test_min_files_top_level_goes_to_unfiled(self) -> None:
+        # A top-level leaf below the minimum has no parent — files go to unfiled.
+        tree = CategoryTree(
+            categories=[
+                CategoryNode(name="big", files=["a.md", "b.md", "c.md"]),
+                CategoryNode(name="tiny", files=["solo.md"]),
+            ],
+        )
+        validated = validate_tree(
+            tree,
+            OrganizeConfig(max_depth=3, min_subcategories=2, min_files_per_category=2),
+        )
+        names = {c.name for c in validated.categories}
+        assert "big" in names  # kept (3 files)
+        assert "tiny" not in names  # dissolved (1 file < 2)
+        assert "solo.md" in validated.unfiled
+
+    def test_min_files_clamped_to_corpus_size(self) -> None:
+        # A minimum larger than the total document count degrades gracefully:
+        # effective minimum is clamped, so a single all-encompassing category survives.
+        tree = CategoryTree(
+            categories=[CategoryNode(name="only", files=["a.md", "b.md"])],
+        )
+        validated = validate_tree(
+            tree,
+            OrganizeConfig(max_depth=3, min_subcategories=2, min_files_per_category=100),
+        )
+        # clamped to 2 → the 2-file category survives instead of dissolving
+        assert len(validated.categories) == 1
+        assert "a.md" in validated.categories[0].files
 
 
 # ── propose_categories ──────────────────────────────────────────────────
@@ -640,6 +700,7 @@ class TestOrganizeConfig:
         config = resolve_organize_config()
         assert config.max_depth == 3
         assert config.min_subcategories == 2
+        assert config.min_files_per_category == 2
         assert config.collapse_single_file is True
 
     def test_cli_override(self) -> None:
@@ -647,12 +708,22 @@ class TestOrganizeConfig:
             {
                 ORGANIZE_MAX_DEPTH: 4,
                 ORGANIZE_MIN_SUBCATEGORIES: 3,
+                ORGANIZE_MIN_FILES_PER_CATEGORY: 4,
                 ORGANIZE_COLLAPSE_SINGLE_FILE: False,
             },
         )
         assert config.max_depth == 4
         assert config.min_subcategories == 3
+        assert config.min_files_per_category == 4
         assert config.collapse_single_file is False
+
+    def test_min_files_below_one_rejected(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """min_files_per_category < 1 is invalid and must raise."""
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(ValueError, match="min_files_per_category"):
+            resolve_organize_config({ORGANIZE_MIN_FILES_PER_CATEGORY: 0})
+        with pytest.raises(ValueError, match="min_files_per_category"):
+            resolve_organize_config({ORGANIZE_MIN_FILES_PER_CATEGORY: -3})
 
     def test_env_override(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)

@@ -305,6 +305,11 @@ timeout = 120.0
 # Minimum sub-categories at any level; fewer promotes children up.
 # min_subcategories = 2
 
+# Minimum number of source files per leaf category; smaller leaves are
+# merged into their parent. Must be >= 1. Values larger than the document
+# count degrade gracefully to a near-flat layout.
+# min_files_per_category = 2
+
 # Collapse single-file sub-categories into the parent directory.
 # collapse_single_file = true
 

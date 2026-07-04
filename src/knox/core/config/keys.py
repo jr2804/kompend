@@ -72,6 +72,7 @@ COMPILE_PDF_PAGE_CHUNK_OVERLAP: Final[str] = "compile.pdf.page_chunk_overlap"
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"
 ORGANIZE_MIN_SUBCATEGORIES: Final[str] = "organize.min_subcategories"
+ORGANIZE_MIN_FILES_PER_CATEGORY: Final[str] = "organize.min_files_per_category"
 ORGANIZE_COLLAPSE_SINGLE_FILE: Final[str] = "organize.collapse_single_file"
 
 # ── compile.embedding sub-section ──

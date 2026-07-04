@@ -198,6 +198,7 @@ def propose_categories(
         "organize/categorize_system.md.j2",
         max_depth=config.max_depth,
         min_subcategories=config.min_subcategories,
+        min_files_per_category=config.min_files_per_category,
     )
     files_json = _build_files_payload(extractions)
     prompt = _loader.render(
@@ -294,19 +295,40 @@ def validate_tree(
     The transform is **non-destructive** for files: collapsing a single-file
     subcategory moves the file up to the parent rather than deleting it.
     """
+    total = len(tree.all_files())
+    # Clamp the per-category minimum to the corpus size so a value larger than
+    # the document count degrades gracefully (near-flat layout) instead of
+    # dissolving every category into unfiled.
+    effective_min = min(config.min_files_per_category, total) if total else 1
     validated = CategoryTree(unfiled=list(tree.unfiled))
     for cat in tree.categories:
-        validated.categories.append(_prune(cat, config, depth=1))
+        pruned = _prune(cat, config, depth=1, effective_min=effective_min)
+        # Top-level leaf with too few files → unfiled (no parent to promote to).
+        if not pruned.subcategories and len(pruned.files) < effective_min:
+            validated.unfiled.extend(pruned.all_files())
+        else:
+            validated.categories.append(pruned)
     return validated
 
 
-def _prune(node: CategoryNode, config: OrganizeConfig, *, depth: int) -> CategoryNode:
+def _prune(
+    node: CategoryNode,
+    config: OrganizeConfig,
+    *,
+    depth: int,
+    effective_min: int,
+) -> CategoryNode:
     name = _slugify_category(node.name)
     kept_subs: list[CategoryNode] = []
-    for child in node.subcategories:
-        kept_subs.append(_prune(child, config, depth=depth + 1))
-
     collapsed_files: list[str] = []
+    for child in node.subcategories:
+        pruned = _prune(child, config, depth=depth + 1, effective_min=effective_min)
+        # Under-populated leaf subcategory → dissolve, promote files to parent.
+        if not pruned.subcategories and len(pruned.files) < effective_min:
+            collapsed_files.extend(pruned.all_files())
+        else:
+            kept_subs.append(pruned)
+
     if depth >= config.max_depth:
         for child in kept_subs:
             collapsed_files.extend(child.all_files())

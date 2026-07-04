@@ -192,4 +192,5 @@ class OrganizeConfig:
 
     max_depth: int = 3
     min_subcategories: int = 2
+    min_files_per_category: int = 2
     collapse_single_file: bool = True

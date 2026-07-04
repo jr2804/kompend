@@ -4,6 +4,8 @@ variables:
     required: true
   - name: min_subcategories
     required: true
+  - name: min_files_per_category
+    required: true
 role: organize.categorize
 response_format: text
 ---
@@ -39,8 +41,8 @@ Rules:
 - Only add a subcategory level when a category has at least
   {{ min_subcategories }} distinct subcategories that group files by a
   shared sub-topic. One-off splits waste a level.
+- Every leaf category must contain at least {{ min_files_per_category }}
+  files. If a topic has fewer, merge it into the parent or a sibling rather
+  than creating a sparse single-document category.
 - Maximum nesting depth is {{ max_depth }} (top level is depth 1).
-- When a category would contain only one file, prefer keeping that file at
-  the parent level unless the single file is clearly unrelated to its
-  siblings.
 - Preserve the original filenames exactly — never rename.
