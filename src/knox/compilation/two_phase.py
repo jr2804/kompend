@@ -629,7 +629,11 @@ class TwoPhaseCompiler(BaseCompiler):
             # Checkpoint after each completed batch so interrupted runs can resume.
             completed.add(batch_start)
             self._save_gen_checkpoint(
-                self._active_gen_deps, nodes, slug_to_idx, completed, self._generation_fallbacks,
+                self._active_gen_deps,
+                nodes,
+                slug_to_idx,
+                completed,
+                self._generation_fallbacks,
             )
 
         self._report(gen_progress_total, gen_progress_total, "generating complete")

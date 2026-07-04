@@ -254,12 +254,6 @@ class TestHTTPDownloader:
 class TestWebCrawler:
     """Tests for WebCrawler."""
 
-    @pytest.fixture(autouse=True)
-    def _fake_chromium(self) -> None:
-        """Make WebCrawler think Chromium is installed in every test."""
-        with patch("knox.preprocessing.downloaders.crawler._chromium_available", return_value=True):
-            yield
-
     def test_crawl4ai_not_available_returns_none(self, tmp_path: Path) -> None:
         """When crawl4ai is missing, download returns None."""
         # crawl4ai is a hard dep, but we can simulate network failure
@@ -394,6 +388,12 @@ class TestWebCrawler:
         assert captured_configs[0].enable_stealth is True
         assert captured_configs[1].enable_stealth is False
         assert captured_configs[0].headless is True
+
+    @pytest.fixture(autouse=True)
+    def _fake_chromium(self) -> None:
+        """Make WebCrawler think Chromium is installed in every test."""
+        with patch("knox.preprocessing.downloaders.crawler._chromium_available", return_value=True):
+            yield
 
 
 # ---------------------------------------------------------------------------
