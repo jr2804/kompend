@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -46,6 +47,56 @@ JSON_RESPONSE_FORMAT: Final[dict[str, str]] = {"type": "json_object"}
 # reasoning_content (finish_reason="length", empty visible content). Each bump
 # multiplies the budget; a genuinely empty response still raises PermanentError.
 _REASONING_TRUNCATION_BUMPS: Final[int] = 3
+
+# Reasoning models that do not use a separate ``reasoning_content`` field
+# sometimes emit their chain-of-thought inline in the *content* field,
+# wrapped in an XML-like tag. Tag names vary by model — this list covers the
+# common ones. To support a new model's tag, add its name here (lowercase,
+# without angle brackets). Stripping happens centrally in :meth:`LLMClient.complete`
+# so every consumer (compile, query, organize, lint) gets clean content.
+_REASONING_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "think",
+        "thinking",
+        "reason",
+        "reasoning",
+        "thought",
+        "thoughts",
+        "reflection",
+        "analysis",
+        "scratchpad",
+    }
+)
+
+
+def _build_reasoning_strip_pattern() -> re.Pattern[str]:
+    """Compile one regex that strips any known reasoning tag.
+
+    Matches two shapes:
+    1. A *closed* block: ``<tag>...</tag>`` (the model finished thinking).
+    2. A *dangling* tag to end-of-string: ``<tag>...`` (``max_tokens`` cut off
+       mid-reasoning, so everything after the opening tag is truncated CoT).
+    """
+    alt = "|".join(re.escape(t) for t in sorted(_REASONING_TAGS))
+    # Closed block first (non-greedy), then a dangling open tag to EOL.
+    return re.compile(rf"<(?:{alt})>.*?</(?:{alt})>|<(?:{alt})>.*", re.DOTALL | re.IGNORECASE)
+
+
+_REASONING_RE: Final[re.Pattern[str]] = _build_reasoning_strip_pattern()
+
+
+def _strip_reasoning(content: str) -> str:
+    """Remove inline reasoning/thinking blocks from model *content*.
+
+    The separate ``reasoning_content`` field is already dropped at the stream
+    level; this handles models that wrap CoT in ``<think>…</think>`` (DeepSeek,
+    Qwen QwQ) or ``<reasoning>…</reasoning>`` etc. directly in the content.
+    Trailing whitespace left after a leading reasoning block is trimmed.
+    """
+    if not content:
+        return content
+    stripped = _REASONING_RE.sub("", content)
+    return stripped.strip() if stripped != content else content.strip()
 
 
 @dataclass(frozen=True)
@@ -522,7 +573,7 @@ class LLMClient:
         diagnostics = result.diagnostics
 
         total_latency = diagnostics.total_latency_s
-        content = sr.content
+        content = _strip_reasoning(sr.content)
 
         # Extract content (raise PermanentError on missing/empty content).
         if not content:
