@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import typer
 
@@ -18,7 +19,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,
 )
-from knox.core.models import load_cached_wiki
+from knox.core.models import MetadataField, load_cached_wiki
 from knox.logging import get_console, get_err_console
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 
@@ -112,6 +113,37 @@ def list_parsers_cmd(
         get_console().print(f"  • {p['name']} ({ptype})  [{exts}]", markup=False)
 
 
+# ── trace (provenance) ──────────────────────────────────────────────────────────────
+
+
+def _shorten(source: str, sources_dir: Path) -> str:
+    """Shorten an absolute source path to relative-POSIX or basename form."""
+    p = Path(source)
+    if not p.is_absolute():
+        return source
+    try:
+        return p.relative_to(sources_dir).as_posix()
+    except ValueError:
+        return p.name
+
+
+def _node_sources(node: object, sources_dir: Path) -> list[str]:
+    """Effective source list for a wiki node.
+
+    Prefers ``source_chunks`` (resolved chunk references, used by the
+    graph compiler). Falls back to ``metadata['provenance']`` (source-file
+    paths cited by the two-phase compiler, which does not track per-chunk
+    provenance). Absolute paths under ``sources_dir`` are shortened to
+    their relative form for readability.
+    """
+    chunks: list[str] = list(getattr(node, "source_chunks", None) or [])
+    if not chunks:
+        metadata = getattr(node, "metadata", None) or {}
+        prov = metadata.get(MetadataField.PROVENANCE) or []
+        chunks = [str(s) for s in prov if s]
+    return [_shorten(s, sources_dir) for s in chunks]
+
+
 # ── trace (provenance) ──────────────────────────────────────────────────
 
 
@@ -136,7 +168,7 @@ def trace_cmd(
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    _sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     base_dir = output_dir.parent
 
     wiki = load_cached_wiki(base_dir)
@@ -149,7 +181,7 @@ def trace_cmd(
     # No slug — list all pages with their slugs and source counts
     if not slugs:
         pages = sorted(
-            ((n.id, n.title, len(n.source_chunks or [])) for n in wiki.nodes),
+            ((n.id, n.title, len(_node_sources(n, sources_dir))) for n in wiki.nodes),
             key=lambda p: p[0],
         )
         if json_output:
@@ -183,17 +215,20 @@ def trace_cmd(
     if json_output:
         # Single slug → one object for backward-friendly parsing;
         # multiple slugs → array of objects.
-        entries = [{"page": n.title, "slug": n.id, "sources": n.source_chunks or []} for n in matched]
+        entries = [
+            {"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)}
+            for n in matched
+        ]
         data = entries[0] if len(entries) == 1 else entries
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
     else:
         for node in matched:
-            source_chunks = node.source_chunks or []
+            node_sources = _node_sources(node, sources_dir)
             get_console().print(f"# {node.title}\n")
-            if source_chunks:
-                for chunk_id in source_chunks:
-                    get_console().print(f"  Source: {chunk_id}")
+            if node_sources:
+                for src in node_sources:
+                    get_console().print(f"  Source: {src}")
             else:
                 get_console().print("  (no sources tracked)")
             get_console().print("")
