@@ -19,6 +19,10 @@ on:
 
 jobs:
   release:
+    # Skip release for chore commits explicitly marked [skip release]
+    # in any commit message of the push. Lets beads-sync, doc-only, and
+    # other non-functional changes land without spinning a calver tag.
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
     runs-on: codeberg-small
     timeout-minutes: 10
 
