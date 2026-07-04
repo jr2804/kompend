@@ -514,6 +514,39 @@ if (-not $Preview) {
     }
 }
 
+# ------ Stage 7: Final Lint Check (score after all remediation + write) ----------
+# Re-runs the linter read-only (no --fix) so the post-remediation score is
+# visible, then re-prints history to show the improvement trend including
+# this final run. New pages from `knox write` / concept generation are
+# re-evaluated here too.
+Write-Host ""
+Write-Host "=== Stage 7: Final Lint Check (post-remediation score) ===" -ForegroundColor Cyan
+$FinalLintArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "lint", "run",
+    "--llm"
+)
+
+Write-Host ""
+Write-Host ($FinalLintArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $Preview) {
+    & $FinalLintArgs[0] $FinalLintArgs[1..($FinalLintArgs.Length - 1)]
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Final lint reported issues (exit code $LASTEXITCODE)"
+    }
+}
+
+Write-Host ""
+Write-Host "=== Final Lint History (improvement trend) ===" -ForegroundColor Cyan
+Write-Host ($HistoryArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+if (-not $Preview) {
+    & $HistoryArgs[0] $HistoryArgs[1..($HistoryArgs.Length - 1)]
+}
+
 # ------ Done ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green
