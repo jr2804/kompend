@@ -42,7 +42,7 @@ from knox.core.config.keys import (
     SEARCH_SYNTHESIS_VERBOSITY,
 )
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
+from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.user import resolve_actor
 from knox.llm.client import LLMClient
 from knox.llm.format import encode_for_llm
@@ -63,13 +63,40 @@ _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
 }
 
 
-def _structured_answer(synthesis: Any) -> dict[str, Any]:  # noqa: ANN401
+def _is_captured_source(source_file: str | None) -> bool:
+    """Return True if *source_file* is a learn/capture note (``_captured/…``).
+
+    Captured notes remain in the wiki but are not authoritative sources, so
+    they are excluded from query citations.
+    """
+    return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
+
+
+def _node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
+    """Map every wiki node id → its ``node_type`` (the wiki sub-directory)."""
+    if wiki is None:
+        return {}
+    return {n.id: n.node_type for n in wiki.nodes}
+
+
+def _wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
+    """Build a relative path into the compiled wiki, e.g.
+    ``wiki/concepts/my-concept.md``. Returns ``None`` when the node is unknown.
+    """
+    if not article_id or article_id not in node_types:
+        return None
+    return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
+
+
+def _structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
     """Build the structured ``{answer, citations}`` payload for agent output."""
+    node_types = _node_type_index(wiki)
     return {
         "answer": synthesis.answer,
         "citations": [
             {
                 "article": c["article"],
+                "wiki_link": _wiki_link(c.get("article_id"), node_types),
                 "source": c.get("source"),
                 "snippet": c["snippet"],
                 "score": c["score"],
@@ -287,6 +314,13 @@ def _synthesize_and_output(
     cfg: Any,
 ) -> None:
     """Synthesize results and output the answer."""
+    # Exclude learn/capture notes from citations — they are not authoritative
+    # sources, so we drop them before synthesis (keeps citation numbering
+    # consistent). The notes remain in the wiki for browsing/compile.
+    results = [r for r in results if not _is_captured_source(r.source_file)]
+    if not results:
+        get_console().print("No relevant content found.")
+        raise typer.Exit(0)
     verbosity: str = cfg.get(SEARCH_SYNTHESIS_VERBOSITY, Verbosity.STANDARD.value)
     token_key = _SYNTHESIS_TOKEN_KEYS.get(verbosity, SEARCH_SYNTHESIS_TOKENS_STANDARD)
     target_tokens: int = cfg.get(token_key, 800)
@@ -315,12 +349,14 @@ def _synthesize_and_output(
         get_console().print(synthesis.answer)
         get_console().print("")
         get_console().print("Sources:")
+        node_types = _node_type_index(wiki)
         c: dict[str, Any]
         for i, c in enumerate(synthesis.citations, 1):
-            source_str: str = c.get("source") or "wiki"
-            get_console().print(f"  [{i}] {c['article']} ({source_str})", markup=False)
+            link = _wiki_link(c.get("article_id"), node_types)
+            ref = link or f"{DEFAULT_OUTPUT_DIR_NAME}/{c['article']}"
+            get_console().print(f"  [{i}] {c['article']} — {ref}", markup=False)
     else:
-        get_console().print(_encode_structured(_structured_answer(synthesis), format))
+        get_console().print(_encode_structured(_structured_answer(synthesis, wiki), format))
 
     if remember:
         _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))

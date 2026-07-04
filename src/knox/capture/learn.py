@@ -5,6 +5,7 @@ from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug
+from knox.core.paths import CAPTURED_SUBDIR
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +18,7 @@ def learn(
     tags: list[str] | None = None,
 ) -> Path:
     sources_dir.mkdir(parents=True, exist_ok=True)
-    captured_dir = sources_dir / "_captured"
+    captured_dir = sources_dir / CAPTURED_SUBDIR
     captured_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(UTC).strftime(TIMESTAMP_FORMAT)

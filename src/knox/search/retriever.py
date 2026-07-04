@@ -136,6 +136,7 @@ class TokenOverlapRetriever:
                 citations.append(
                     {
                         "article": r.title,
+                        "article_id": r.article_id,
                         "source": r.source_file,
                         "snippet": r.snippet,
                         "score": round(r.score, 3),
@@ -174,6 +175,7 @@ class TokenOverlapRetriever:
             citations_out.append(
                 {
                     "article": r.title,
+                    "article_id": r.article_id,
                     "source": r.source_file,
                     "snippet": r.snippet,
                     "score": round(r.score, 3),

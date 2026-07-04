@@ -16,6 +16,7 @@ import yaml
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
+from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.logging import get_logger
@@ -49,7 +50,7 @@ def distill(
     Returns:
         List of paths to the written distilled pages.
     """
-    captured_dir = sources_dir / "_captured"
+    captured_dir = sources_dir / CAPTURED_SUBDIR
     if not captured_dir.is_dir():
         logger.warning("No captured notes found at %s", captured_dir)
         return []

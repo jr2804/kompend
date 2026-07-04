@@ -32,6 +32,9 @@ from typing import Final
 # ── Hidden KNOX artifacts folder ────────────────────────────────────────
 KNOX_DIR: Final[str] = ".knox"
 
+# ── Capture (learn/capture inputs live under sources/<CAPTURED_SUBDIR>) ───
+CAPTURED_SUBDIR: Final[str] = "_captured"
+
 # ── Config ──────────────────────────────────────────────────────────────
 CONFIG_FILE: Final[str] = "config.toml"
 KNOX_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/{CONFIG_FILE}"

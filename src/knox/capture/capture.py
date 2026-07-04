@@ -6,6 +6,7 @@ from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
+from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.logging import get_logger
@@ -29,7 +30,7 @@ def capture(
     tags: list[str] | None = None,
 ) -> list[Path]:
     sources_dir.mkdir(parents=True, exist_ok=True)
-    captured_dir = sources_dir / "_captured"
+    captured_dir = sources_dir / CAPTURED_SUBDIR
     captured_dir.mkdir(parents=True, exist_ok=True)
 
     user_tags = list(tags or [])

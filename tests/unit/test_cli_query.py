@@ -35,7 +35,7 @@ def _synth() -> _Synth:
     return _Synth(
         answer="Neural nets approximate functions via layers.",
         citations=[
-            {"article": "Neural Networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
+            {"article": "Neural Networks", "article_id": "neural-networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
         ],
     )
 
@@ -44,8 +44,9 @@ class TestStructuredAnswer:
     def test_builds_answer_and_citations(self) -> None:
         payload = _structured_answer(_synth())
         assert payload["answer"] == "Neural nets approximate functions via layers."
+        # wiki_link is None when no wiki is supplied (node_type lookup unavailable)
         assert payload["citations"] == [
-            {"article": "Neural Networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
+            {"article": "Neural Networks", "wiki_link": None, "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
         ]
 
 
