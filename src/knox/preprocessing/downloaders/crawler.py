@@ -5,11 +5,15 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import hashlib
+import os
 import re
+import shutil
 from pathlib import Path
 from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig
+from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
+from crawl4ai.browser_adapter import UndetectedAdapter
 from crawl4ai.utils import get_chromium_path
 
 from knox.logging import get_logger
@@ -28,23 +32,76 @@ def _chromium_available() -> bool:
         return False
 
 
+def _detect_real_browser_channel() -> str | None:
+    """Return a Playwright ``channel`` name (``"chrome"`` or ``"msedge"``)
+    for a real installed browser, else ``None``.
+
+    Patchright (undetected mode) bypasses bot detection best with a *real*
+    browser binary rather than bundled chromium.
+    """
+    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+    pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+    # Windows: Chrome preferred, then Edge.
+    for exe in (
+        rf"{pf}\Google\Chrome\Application\chrome.exe",
+        rf"{pf86}\Google\Chrome\Application\chrome.exe",
+        rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+        rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+    ):
+        if Path(exe).exists():
+            return "chrome" if "Chrome" in exe else "msedge"
+    # macOS
+    for channel, app in (
+        ("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ("msedge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+    ):
+        if Path(app).exists():
+            return channel
+    # Linux: on PATH
+    for channel, cmd in (("chrome", "google-chrome"), ("msedge", "microsoft-edge")):
+        if shutil.which(cmd):
+            return channel
+    return None
+
+
 class WebCrawler(BaseDownloader):
     """Crawl documentation sites and articles, save as markdown.
 
+    Stealth mode (playwright-stealth) is always enabled. When *undetected* is
+    True (default) and a real Edge/Chrome is installed, Patchright
+    (undetected browser) is used instead for stronger Cloudflare /
+    bot-protection bypass.
+
     Args:
         detector: Optional DuplicateDetector for URL dedup.
-        stealth: When True, enable playwright-stealth in the underlying
-            browser to bypass Cloudflare / basic bot detection. Default True.
+        undetected: When True (default), use Patchright (undetected browser)
+            with a real Edge/Chrome installation. Falls back to stealth mode
+            automatically when no real browser is installed. Disable to
+            force stealth.
     """
 
     def __init__(
         self,
         detector: DuplicateDetector | None = None,
-        stealth: bool = True,
+        undetected: bool = True,
     ) -> None:
         self._detector = detector
-        self._stealth = stealth
-        self._available = _chromium_available()
+
+        channel = _detect_real_browser_channel() if undetected else None
+        if undetected and channel:
+            self._use_undetected = True
+            self._channel = channel
+            self._available = True  # real browser, no bundled chromium needed
+        else:
+            self._use_undetected = False
+            self._channel = None
+            self._available = _chromium_available()
+            if undetected:
+                logger.warning(
+                    "No Edge/Chrome installation found — falling back to "
+                    "stealth mode. Install Edge or Chrome for stronger "
+                    "bot-protection bypass (undetected mode)."
+                )
         if not self._available:
             logger.warning(
                 "Playwright Chromium is not installed. "
@@ -96,11 +153,34 @@ class WebCrawler(BaseDownloader):
                 return target_file
             logger.debug("URL %s was recorded but file missing, re-crawling", url)
 
-        logger.info("Crawling %s -> %s", url, target_file)
+        logger.info(
+            "Crawling %s -> %s (%s)",
+            url,
+            target_file,
+            "undetected" if self._use_undetected else "stealth",
+        )
 
-        browser_config = BrowserConfig(headless=True, enable_stealth=self._stealth)
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        browser_config = BrowserConfig(
+            headless=True,
+            enable_stealth=True,
+            chrome_channel=self._channel or "chromium",
+        )
+        crawler_kwargs: dict = {"config": browser_config}
+        if self._use_undetected:
+            crawler_kwargs["crawler_strategy"] = AsyncPlaywrightCrawlerStrategy(
+                browser_config=browser_config,
+                browser_adapter=UndetectedAdapter(),
+            )
+
+        async with AsyncWebCrawler(**crawler_kwargs) as crawler:
             result = await crawler.arun(url)
+            if not result.success:
+                logger.warning(
+                    "Crawl4AI blocked or failed for %s: %s",
+                    url,
+                    result.error_message or "(no error message)",
+                )
+                return None
             content = getattr(result, "markdown", None)
             if not content:
                 logger.warning("No markdown content extracted from %s", url)

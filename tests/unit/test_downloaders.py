@@ -356,15 +356,15 @@ class TestWebCrawler:
 
         assert len(results) == 2
 
-    def test_stealth_flag_passed_to_browserconfig(self, tmp_path: Path) -> None:
-        """The stealth flag must reach crawl4ai's BrowserConfig."""
+    def test_stealth_always_enabled(self, tmp_path: Path) -> None:
+        """Stealth is always on the BrowserConfig (undetected=False path)."""
         pytest.importorskip("crawl4ai")
 
-        captured_configs: list[Any] = []
+        captured: list[Any] = []
 
         class _FakeAsyncWebCrawler:
-            def __init__(self, config: Any = None, **_kwargs: Any) -> None:
-                captured_configs.append(config)
+            def __init__(self, config: Any = None, **kwargs: Any) -> None:
+                captured.append((config, kwargs))
 
             async def __aenter__(self) -> _FakeAsyncWebCrawler:
                 return self
@@ -375,24 +375,100 @@ class TestWebCrawler:
             async def arun(self, _url: str) -> MagicMock:
                 m = MagicMock()
                 m.markdown = "# x"
+                m.success = True
                 return m
 
         with patch(
             "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
             _FakeAsyncWebCrawler,
         ):
-            WebCrawler(stealth=True).download("https://docs.example.com", tmp_path)
-            WebCrawler(stealth=False).download("https://docs.example.com", tmp_path)
+            # undetected=False -> stealth fallback path
+            WebCrawler(undetected=False).download("https://docs.example.com", tmp_path)
 
-        assert len(captured_configs) == 2
-        assert captured_configs[0].enable_stealth is True
-        assert captured_configs[1].enable_stealth is False
-        assert captured_configs[0].headless is True
+        assert len(captured) == 1
+        assert captured[0][0].enable_stealth is True
+        assert captured[0][0].headless is True
+        assert "crawler_strategy" not in captured[0][1]
+
+    def test_undetected_passes_strategy(self, tmp_path: Path) -> None:
+        """Undetected mode passes a crawler_strategy + channel to AsyncWebCrawler."""
+        pytest.importorskip("crawl4ai")
+
+        captured: list[Any] = []
+
+        class _FakeAsyncWebCrawler:
+            def __init__(self, config: Any = None, **kwargs: Any) -> None:
+                captured.append((config, kwargs))
+
+            async def __aenter__(self) -> _FakeAsyncWebCrawler:
+                return self
+
+            async def __aexit__(self, *_args: Any) -> None:
+                pass
+
+            async def arun(self, _url: str) -> MagicMock:
+                m = MagicMock()
+                m.markdown = "# x"
+                m.success = True
+                return m
+
+        with (
+            patch(
+                "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+                _FakeAsyncWebCrawler,
+            ),
+            patch(
+                "knox.preprocessing.downloaders.crawler._detect_real_browser_channel",
+                return_value="msedge",
+            ),
+        ):
+            WebCrawler(undetected=True).download("https://docs.example.com", tmp_path)
+
+        assert len(captured) == 1
+        assert "crawler_strategy" in captured[0][1]
+        assert captured[0][0].chrome_channel == "msedge"
+
+    def test_undetected_falls_back_when_no_browser(self, tmp_path: Path) -> None:
+        """Undetected falls back to stealth when no real browser is found."""
+        pytest.importorskip("crawl4ai")
+
+        captured: list[Any] = []
+
+        class _FakeAsyncWebCrawler:
+            def __init__(self, config: Any = None, **kwargs: Any) -> None:
+                captured.append((config, kwargs))
+
+            async def __aenter__(self) -> _FakeAsyncWebCrawler:
+                return self
+
+            async def __aexit__(self, *_args: Any) -> None:
+                pass
+
+            async def arun(self, _url: str) -> MagicMock:
+                m = MagicMock()
+                m.markdown = "# x"
+                m.success = True
+                return m
+
+        with patch(
+            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            _FakeAsyncWebCrawler,
+        ):
+            # _detect_real_browser_channel returns None via autouse fixture
+            WebCrawler(undetected=True).download("https://docs.example.com", tmp_path)
+
+        assert len(captured) == 1
+        assert "crawler_strategy" not in captured[0][1]
 
     @pytest.fixture(autouse=True)
     def _fake_chromium(self) -> None:
-        """Make WebCrawler think Chromium is installed in every test."""
-        with patch("knox.preprocessing.downloaders.crawler._chromium_available", return_value=True):
+        """Make WebCrawler think Chromium is installed and no real browser
+        is present (stealth fallback) in every test, unless overridden.
+        """
+        with (
+            patch("knox.preprocessing.downloaders.crawler._chromium_available", return_value=True),
+            patch("knox.preprocessing.downloaders.crawler._detect_real_browser_channel", return_value=None),
+        ):
             yield
 
 
