@@ -215,10 +215,7 @@ def trace_cmd(
     if json_output:
         # Single slug → one object for backward-friendly parsing;
         # multiple slugs → array of objects.
-        entries = [
-            {"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)}
-            for n in matched
-        ]
+        entries = [{"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)} for n in matched]
         data = entries[0] if len(entries) == 1 else entries
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")

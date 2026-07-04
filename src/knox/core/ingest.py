@@ -50,7 +50,6 @@ def parse_cache_glob(stem: str) -> str:
     return f"{stem}-*.json"
 
 
-
 def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
     """Extract plain text from a parsed document for dedup fingerprinting.
 
