@@ -14,6 +14,8 @@ You are a scientific knowledge extractor. Analyse the source text below and retu
 - "findings": list of concrete results or claims — each object has "claim" (one sentence) and "evidence" (brief qualifier, e.g. "p<0.05", "Table 2", "subjective test N=40").
 - "tags": list of 5–10 short lowercase topic tags (e.g. "speech-intelligibility", "deep-learning", "listening-effort").
 
+If the source text is a bot-challenge, security-verification, CAPTCHA page (e.g. Cloudflare challenge), or consists primarily of parsing artifacts without substantive content, return an empty extraction: all lists empty, summary an empty string.
+
 Return only the JSON object, no markdown fences.
 
 Source text:
