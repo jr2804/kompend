@@ -113,12 +113,20 @@ def load_all_extractions(
         ext = Extraction.from_dict(value)
         if not ext.summary:
             continue
-        candidate = (sources_root / source).resolve()
+        candidate = Path(source)
+        # Cache stores whatever path the parser saw (often absolute). Resolve
+        # relative to sources_root and store the POSIX-relative form so it
+        # matches the keys produced by _files_without_summary() and gives the
+        # LLM a clean "filename" to echo back.
+        if not candidate.is_absolute():
+            candidate = sources_root / candidate
+        candidate = candidate.resolve()
         if not candidate.is_file():
             continue
         if not _is_within(candidate, sources_root):
             continue
-        known[source] = ext
+        rel = candidate.relative_to(sources_root).as_posix()
+        known[rel] = ext
     logger.info("Loaded %d extractions with summaries for sources in %s", len(known), sources_dir)
     return known
 
@@ -175,8 +183,6 @@ def propose_categories(
     prompt = _loader.render(
         "organize/categorize_prompt.md.j2",
         files_json=files_json,
-        max_depth=config.max_depth,
-        min_subcategories=config.min_subcategories,
     )
 
     result = llm_client.try_complete(
