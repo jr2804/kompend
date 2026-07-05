@@ -86,6 +86,7 @@ STATE_FILE: Final[str] = "state.json"
 
 # ── Lint history (append-only JSONL) ─────────────────────────────────────
 LINT_HISTORY_FILE: Final[str] = "lint_history.jsonl"
+RUNS_FILE: Final[str] = "runs.jsonl"
 
 # ── Organize (LLM-based file categorisation) ─────────────────────────────
 ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
@@ -273,6 +274,11 @@ class VaultPaths:
     def lint_history_path(self) -> Path:
         """Append-only JSONL log of lint runs."""
         return self.knox_dir / LINT_HISTORY_FILE
+
+    @property
+    def runs_path(self) -> Path:
+        """Append-only JSONL audit trail of every CLI command run."""
+        return self.knox_dir / RUNS_FILE
 
     # ── Files inside output_dir/ ────────────────────────────────────────
 

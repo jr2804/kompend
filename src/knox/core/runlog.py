@@ -1,0 +1,171 @@
+"""Append-only JSONL audit trail of every CLI command run.
+
+Each command writes a ``start`` line on entry and an ``end`` line on exit,
+linked by a short ``run_id``. Tailing ``.knox/runs.jsonl`` answers "did the
+build run through, and if not, where did it stop?":
+
+- an ``end`` line with ``status="ok"``  → command finished cleanly
+- an ``end`` line with ``status="error"`` → command crashed (error captured)
+- a ``start`` line with no matching ``end`` → process was killed / hung
+
+Entries are tiny (one JSON object per line); the file is pruned to a soft
+cap so ``.knox`` stays bounded.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from knox.core.paths import KNOX_DIR, RUNS_FILE
+from knox.core.timeutil import iso_local, now_local
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
+
+_SOFT_CAP_LINES = 1000
+_KEEP_LINES = 500
+
+
+@dataclass
+class RunHandle:
+    """Handle returned by :func:`log_run_start`, passed to :func:`log_run_end`."""
+
+    run_id: str
+    cmd: str
+    runs_path: Path
+    start_iso: str
+
+
+def resolve_state_dir() -> Path | None:
+    """Resolve the vault ``.knox`` dir for the current invocation.
+
+    Honours ``--wiki-dir`` / ``-w`` (CLI), then ``KNOX_WIKI_DIR`` (env),
+    then the current working directory. Returns ``None`` when no initialised
+    vault is found, so callers can no-op run logging (e.g. before ``knox init``).
+    """
+    wiki_dir: str | None = None
+    argv = sys.argv[1:]
+    for i, token in enumerate(argv):
+        if token in ("--wiki-dir", "-w") and i + 1 < len(argv):
+            wiki_dir = argv[i + 1]
+            break
+        if token.startswith("--wiki-dir="):
+            wiki_dir = token.split("=", 1)[1]
+            break
+    if wiki_dir is None:
+        wiki_dir = os.environ.get("KNOX_WIKI_DIR")
+    base = Path(wiki_dir) if wiki_dir else Path.cwd()
+    state_dir = base / KNOX_DIR
+    return state_dir if state_dir.is_dir() else None
+
+
+def _command_label() -> str:
+    """Human-readable command label, e.g. ``lint run`` or ``compile``.
+
+    Strips the global ``--wiki-dir`` flags so the label is just the command.
+    """
+    cleaned: list[str] = []
+    skip_next = False
+    for t in sys.argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if t in ("--wiki-dir", "-w"):
+            skip_next = True
+            continue
+        if t.startswith("--wiki-dir="):
+            continue
+        cleaned.append(t)
+    return " ".join(cleaned[:4]) or "(none)"
+
+
+def log_run_start() -> RunHandle | None:
+    """Append a ``start`` line for the current command. No-op without a vault."""
+    state_dir = resolve_state_dir()
+    if state_dir is None:
+        return None
+    runs_path = state_dir / RUNS_FILE
+    run_id = uuid.uuid4().hex[:8]
+    start_iso = iso_local()
+    try:
+        runs_path.parent.mkdir(parents=True, exist_ok=True)
+        with runs_path.open("a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "event": "start",
+                        "run_id": run_id,
+                        "cmd": _command_label(),
+                        "ts": start_iso,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError as exc:  # never let logging crash the command
+        logger.debug("run-log start write failed: %s", exc)
+        return None
+    _maybe_prune(runs_path)
+    return RunHandle(run_id=run_id, cmd=_command_label(), runs_path=runs_path, start_iso=start_iso)
+
+
+def log_run_end(
+    handle: RunHandle | None,
+    *,
+    status: str,
+    exit_code: int | None = None,
+    error: str | None = None,
+) -> None:
+    """Append the matching ``end`` line for a run started by :func:`log_run_start`."""
+    if handle is None:
+        return
+    duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
+    payload: dict[str, Any] = {
+        "event": "end",
+        "run_id": handle.run_id,
+        "cmd": handle.cmd,
+        "status": status,
+        "duration_s": round(duration, 2),
+        "ts": iso_local(),
+    }
+    if exit_code is not None:
+        payload["exit"] = exit_code
+    if error:
+        payload["error"] = error[:500]
+    try:
+        with handle.runs_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        logger.debug("run-log end write failed: %s", exc)
+
+
+def _parse_iso(iso: str) -> datetime:
+    """Parse an :func:`iso_local` timestamp back to an aware datetime."""
+    try:
+        return datetime.fromisoformat(iso)
+    except ValueError:
+        return now_local()
+
+
+def _maybe_prune(runs_path: Path) -> None:
+    """Trim the run log to the last ``_KEEP_LINES`` once it exceeds the cap."""
+    try:
+        line_count = sum(1 for _ in runs_path.open(encoding="utf-8"))
+    except OSError:
+        return
+    if line_count <= _SOFT_CAP_LINES:
+        return
+    try:
+        with runs_path.open(encoding="utf-8") as fh:
+            lines = fh.readlines()
+        with runs_path.open("w", encoding="utf-8") as fh:
+            fh.writelines(lines[-_KEEP_LINES:])
+    except OSError as exc:
+        logger.debug("run-log prune failed: %s", exc)

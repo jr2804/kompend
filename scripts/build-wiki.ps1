@@ -345,7 +345,8 @@ $HistoryArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
     "lint", "history",
-    "--last", "5"
+    "--last", "5",
+    "--trend"
 )
 
 Write-Host ($HistoryArgs -join " ") -ForegroundColor DarkGray

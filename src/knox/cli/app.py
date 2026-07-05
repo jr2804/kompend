@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from importlib.metadata import version
 
 import typer
 
+from knox.core.runlog import log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
 
 
@@ -61,7 +64,34 @@ def _callback(
 def main() -> None:
     """Entry point for the CLI application."""
     configure_logging()
-    app()
+    _configure_streams_utf8()
+    handle = log_run_start()
+    try:
+        app()
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        log_run_end(handle, status="ok" if code == 0 else "error", exit_code=code)
+        raise
+    except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
+        log_run_end(handle, status="error", error=repr(exc))
+        raise
+    log_run_end(handle, status="ok", exit_code=0)
+
+
+def _configure_streams_utf8() -> None:
+    """Reconfigure stdout/stderr to UTF-8 so Unicode output never crashes.
+
+    On Windows the default console codec (cp1252) cannot encode glyphs like
+    ``✓`` / ``✗`` used in lint/memory output, which crashed Rich's renderer
+    mid-flush and aborted the command before results were saved. Using
+    ``errors="replace"`` guarantees no crash even on legacy consoles.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(ValueError, OSError):
+                reconfigure(encoding="utf-8", errors="replace")
 
 
 from knox.cli.cmds import (  # noqa: E402
