@@ -64,3 +64,4 @@ sources/
 *.log
 mise.local.toml
 nul
+.cortexkit
