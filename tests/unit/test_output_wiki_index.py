@@ -68,8 +68,26 @@ class TestGenerateLogEntry:
                 "source_count": 2,
                 "source_names": ["a.pdf", "b.pdf"],
                 "extraction_stats": [
-                    {"source": "a.pdf", "duration_s": 12.3, "summary_words": 340, "entity_count": 12, "concept_count": 5, "tag_count": 3, "batches": 2},
-                    {"source": "b.pdf", "duration_s": 8.1, "summary_words": 0, "entity_count": 4, "concept_count": 2, "tag_count": 0, "batches": 1},
+                    {
+                        "source": "a.pdf",
+                        "summary": "Paper on attention mechanisms.",
+                        "duration_s": 12.3,
+                        "summary_words": 340,
+                        "entity_count": 12,
+                        "concept_count": 5,
+                        "tag_count": 3,
+                        "batches": 2,
+                    },
+                    {
+                        "source": "b.pdf",
+                        "summary": "",
+                        "duration_s": 8.1,
+                        "summary_words": 0,
+                        "entity_count": 4,
+                        "concept_count": 2,
+                        "tag_count": 0,
+                        "batches": 1,
+                    },
                 ],
             }
         )
@@ -84,6 +102,72 @@ class TestGenerateLogEntry:
         # total row present when >1 source
         assert "**total**" in entry
         assert "20.4s" in entry
+
+    def test_source_names_short_paths(self) -> None:
+        """Source table strips full paths to just filenames."""
+        wiki = _make_wiki(
+            metadata={
+                "source_count": 2,
+                "source_names": [
+                    "/home/user/project/sources/paper_a.pdf",
+                    "/home/user/project/sources/paper_b.pdf",
+                ],
+            }
+        )
+        entry = generate_log_entry(wiki)
+        assert "paper_a.pdf" in entry
+        assert "paper_b.pdf" in entry
+        # full paths must NOT appear
+        assert "/home/user" not in entry
+        assert "sources/" not in entry
+
+    def test_extraction_title_column(self) -> None:
+        """Extraction stats table shows summary text as title."""
+        wiki = _make_wiki(
+            metadata={
+                "source_count": 1,
+                "source_names": ["x.pdf"],
+                "extraction_stats": [
+                    {
+                        "source": "x.pdf",
+                        "summary": "Deep learning for NLP tasks.",
+                        "duration_s": 5.0,
+                        "summary_words": 10,
+                        "entity_count": 1,
+                        "concept_count": 1,
+                        "tag_count": 1,
+                        "batches": 1,
+                    },
+                ],
+            }
+        )
+        entry = generate_log_entry(wiki)
+        assert "Deep learning for NLP tasks." in entry
+
+    def test_source_list_title_from_extraction(self) -> None:
+        """Source list table picks up titles from extraction_stats."""
+        wiki = _make_wiki(
+            metadata={
+                "source_count": 3,
+                "source_names": ["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf", "f.pdf"],
+                "extraction_stats": [
+                    {
+                        "source": "a.pdf",
+                        "summary": "Alpha paper.",
+                        "duration_s": 1.0,
+                        "summary_words": 5,
+                        "entity_count": 1,
+                        "concept_count": 1,
+                        "tag_count": 1,
+                        "batches": 1,
+                    },
+                ],
+            }
+        )
+        entry = generate_log_entry(wiki)
+        # >5 sources triggers table format with Title column
+        assert "| Title |" in entry
+        assert "Alpha paper." in entry
 
 
 class TestPrependLog:

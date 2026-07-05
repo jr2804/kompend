@@ -291,6 +291,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._extraction_stats.append(
                     {
                         "source": source,
+                        "summary": "",
                         "duration_s": 0.0,
                         "summary_chars": 0,
                         "summary_words": 0,
@@ -326,6 +327,7 @@ class TwoPhaseCompiler(BaseCompiler):
             self._extraction_stats.append(
                 {
                     "source": source,
+                    "summary": merged.summary,
                     "duration_s": round(time.monotonic() - src_start, 1),
                     "summary_chars": len(merged.summary),
                     "summary_words": len(merged.summary.split()),

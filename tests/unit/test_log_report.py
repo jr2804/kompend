@@ -26,9 +26,7 @@ def _write_lint(state_dir: Path, entries: list[dict]) -> None:
 def _make_run(run_id: str, cmd: str, *, status: str | None = None, dur: float = 1.5) -> list[dict]:
     events = [{"event": "start", "run_id": run_id, "cmd": cmd, "ts": "2026-07-05T10:00:00+02:00"}]
     if status is not None:
-        events.append(
-            {"event": "end", "run_id": run_id, "cmd": cmd, "status": status, "duration_s": dur, "ts": "2026-07-05T10:00:01+02:00"}
-        )
+        events.append({"event": "end", "run_id": run_id, "cmd": cmd, "status": status, "duration_s": dur, "ts": "2026-07-05T10:00:01+02:00"})
     return events
 
 

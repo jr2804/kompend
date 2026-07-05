@@ -133,16 +133,38 @@ def _per_source_stats(wiki: CompiledWiki) -> list[dict[str, str | int]]:
     return result
 
 
-def _format_sources_table(sources: list[str]) -> list[str]:
-    """Format a source list as a markdown table or inline list.
+def _short_source(path: str) -> str:
+    """Strip a source path to just the filename (drop ``sources/`` prefix)."""
+    return Path(path).name
+
+
+def _display_title(text: str, max_chars: int = 80) -> str:
+    """Truncate summary text for table display (not content processing)."""
+    text = text.strip().replace("\n", " ").replace("|", "\\|")
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "…"
+
+
+def _format_sources_table(sources: list[str], titles: dict[str, str] | None = None) -> list[str]:
+    """Format a source list as a markdown table.
 
     No row cap: a comprehensive ingest list is more useful than a tidy log.
+    When *titles* is provided (a mapping of full source path → summary text),
+    a Title column is added showing the document's summary as a display title.
     """
+    if len(sources) <= 5 and not titles:
+        return [", ".join(f"`{_short_source(s)}`" for s in sources)]
     if len(sources) <= 5:
-        return [", ".join(f"`{s}`" for s in sources)]
-    lines = ["", "| # | Source |", "|---|--------|"]
+        lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
+        for i, src in enumerate(sources, 1):
+            title = _display_title((titles or {}).get(src, ""))
+            lines.append(f"| {i} | {_short_source(src)} | {title} |")
+        return lines
+    lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
     for i, src in enumerate(sources, 1):
-        lines.append(f"| {i} | {src} |")
+        title = _display_title((titles or {}).get(src, ""))
+        lines.append(f"| {i} | {_short_source(src)} | {title} |")
     return lines
 
 
@@ -161,6 +183,7 @@ def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
 
     One row per source: extraction time, summary length, and counts of
     entities/concepts/tags extracted plus the number of LLM batches needed.
+    The Title column shows the first ~80 chars of the extraction summary.
     """
     if not stats:
         return []
@@ -168,8 +191,8 @@ def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
         "",
         "**Extraction:**",
         "",
-        "| Source | Time | Summary | Entities | Concepts | Tags | Batches |",
-        "|--------|-----:|--------:|---------:|---------:|-----:|--------:|",
+        "| Source | Title | Time | Summary | Entities | Concepts | Tags | Batches |",
+        "|--------|-------|-----:|--------:|---------:|---------:|-----:|--------:|",
     ]
     total_time = 0.0
     total_words = 0
@@ -179,13 +202,14 @@ def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
         words = int(s.get("summary_words", 0))
         total_words += words
         summary_cell = f"{words}w" if words else "-"
+        title = _display_title(str(s.get("summary", "")))
         lines.append(
-            f"| {s.get('source', '?')} | {dur:.1f}s | {summary_cell} | "
+            f"| {_short_source(str(s.get('source', '?')))} | {title} | {dur:.1f}s | {summary_cell} | "
             f"{s.get('entity_count', 0)} | {s.get('concept_count', 0)} | "
             f"{s.get('tag_count', 0)} | {s.get('batches', 0)} |"
         )
     if len(stats) > 1:
-        lines.append(f"| **total** | **{total_time:.1f}s** | **{total_words}w** | | | | |")
+        lines.append(f"| **total** | | **{total_time:.1f}s** | **{total_words}w** | | | | |")
     return lines
 
 
@@ -255,15 +279,23 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  #
 
     # Source list and per-source stats
     source_names = wiki.metadata.get("source_names", [])
+    extraction_stats = wiki.metadata.get("extraction_stats")
+    # Build source→summary map so the source list table can show titles.
+    source_titles: dict[str, str] = {}
+    if extraction_stats:
+        for es in extraction_stats:
+            src = str(es.get("source", ""))
+            summary = str(es.get("summary", ""))
+            if src and summary:
+                source_titles[src] = summary
     if source_names:
         lines.append("")
-        lines.extend(_format_sources_table(source_names))
+        lines.extend(_format_sources_table(source_names, titles=source_titles or None))
 
     per_source = _per_source_stats(wiki)
     if per_source:
         lines.extend(_format_per_source_stats(per_source))
 
-    extraction_stats = wiki.metadata.get("extraction_stats")
     if extraction_stats:
         lines.extend(_format_extraction_stats(extraction_stats))
 
