@@ -11,7 +11,7 @@ from knox.output.wiki_index import (
     generate_log_entry,
     generate_overview,
     prepend_log,
-    write_index_and_log,
+    write_index,
 )
 
 
@@ -104,18 +104,16 @@ class TestPrependLog:
         assert text.index("second") < text.index("first")
 
 
-class TestWriteIndexAndLog:
-    def test_writes_both_files(self, tmp_path: Path) -> None:
+class TestWriteIndex:
+    def test_writes_index_file(self, tmp_path: Path) -> None:
         wiki = _make_wiki()
-        result = write_index_and_log(wiki, tmp_path)
+        result = write_index(wiki, tmp_path)
         assert "index" in result
-        assert "log" in result
         assert result["index"].exists()
-        assert result["log"].exists()
 
     def test_index_content(self, tmp_path: Path) -> None:
         wiki = _make_wiki()
-        write_index_and_log(wiki, tmp_path)
+        write_index(wiki, tmp_path)
         index_text = (tmp_path / "index.md").read_text(encoding="utf-8")
         assert "**Sources:**" in index_text
         assert "**Articles:**" in index_text

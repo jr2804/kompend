@@ -37,7 +37,7 @@ from knox.cli.args import (
 )
 from knox.core.config import resolve_config
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import LINT_HISTORY_FILE, LOG_FILE
+from knox.core.paths import LINT_HISTORY_FILE
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
     entry_from_report,
@@ -52,7 +52,6 @@ from knox.lint.remediation import RemediationStatus, remediate, remediation_to_t
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console
-from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 
 lint_app = typer.Typer(
     name="lint",
@@ -179,22 +178,7 @@ def lint_run(
 
     # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
     outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
-    rule_summary = " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
-
-    log_file = state_dir / LOG_FILE
-    prepend_log(
-        log_file,
-        generate_stage_log_entry(
-            stage="lint",
-            duration=lint_elapsed,
-            source_count=len(wiki.nodes),
-            health_score=report.health_score,
-            rule_summary=rule_summary,
-            fixes_applied=fixes_applied or None,
-            llm_model=llm_client.default_model if llm_client else None,
-            llm_usage=llm_client.usage.to_dict() if llm_client else None,
-        ),
-    )
+    " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
 
     # ── Persist to lint history ──────────────────────────────────────────
     llm_meta: dict | None = None

@@ -548,6 +548,27 @@ if (-not $Preview) {
     & $HistoryArgs[0] $HistoryArgs[1..($HistoryArgs.Length - 1)]
 }
 
+# ------ Stage 8: Pipeline Log (on-demand report: compile + runs + lint trend) ----
+# log.md is no longer auto-written; regenerate it on demand from the
+# structured stores (runs.jsonl, lint_history.jsonl, last_wiki.json) and
+# print the full report so the build ends with a complete picture.
+Write-Host ""
+Write-Host "=== Stage 8: Pipeline Log (regenerated report) ===" -ForegroundColor Cyan
+$LogArgs = @(
+    "uv", "run", "knox",
+    "--wiki-dir", $OutputPath,
+    "log",
+    "--last", "15"
+)
+
+Write-Host ""
+Write-Host ($LogArgs -join " ") -ForegroundColor DarkGray
+Write-Host ""
+
+if (-not $Preview) {
+    & $LogArgs[0] $LogArgs[1..($LogArgs.Length - 1)]
+}
+
 # ------ Done ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green

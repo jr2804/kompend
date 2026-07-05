@@ -64,7 +64,6 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
 from knox.llm.errors import LLMError
 from knox.logging import get_console, get_err_console, get_logger
-from knox.output.wiki_index import generate_stage_log_entry, prepend_log
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -376,7 +375,7 @@ def ingest_cmd(
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
         )
-        ingest_duration = time.monotonic() - ingest_start
+        time.monotonic() - ingest_start
     finally:
         tracker.finish()
 
@@ -390,15 +389,3 @@ def ingest_cmd(
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
     get_console().print(summary)
-
-    log_file = VaultPaths(base_dir).log_file
-    prepend_log(
-        log_file,
-        generate_stage_log_entry(
-            stage="ingest",
-            duration=ingest_duration,
-            source_count=result.count,
-            source_names=[f.stem for f in all_input_files],
-            chunk_count=result.count,
-        ),
-    )

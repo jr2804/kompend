@@ -7,6 +7,7 @@ This package organizes all CLI command definitions into logical modules:
 - doctor.py    → /knox doctor (health checks)
 - init.py      → /knox init (project initialization)
 - lint.py      → /knox lint (linting and validation)
+- log.py       → /knox log (regenerate pipeline log report)
 - memory.py    → /knox memory (memory/RAG operations)
 - organize.py  → /knox organize (wiki organization)
 - pack.py      → /knox pack (archive packing)
@@ -33,6 +34,7 @@ from knox.cli.cmds import config as config
 from knox.cli.cmds import doctor as doctor
 from knox.cli.cmds import init as init
 from knox.cli.cmds import lint as lint
+from knox.cli.cmds import log as log
 from knox.cli.cmds import memory as memory
 from knox.cli.cmds import organize as organize
 from knox.cli.cmds import pack as pack

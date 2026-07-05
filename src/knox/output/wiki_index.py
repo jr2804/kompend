@@ -381,13 +381,16 @@ def prepend_log(log_file: Path, entry: str) -> None:
     log_file.write_text(entry, encoding="utf-8")
 
 
-def write_index_and_log(
+def write_index(
     wiki: CompiledWiki,
     output_dir: Path,
     *,
     base_dir: Path | None = None,
 ) -> dict[str, Path]:
-    """Write ``index.md`` and ``log.md`` for a compiled wiki.
+    """Write ``index.md`` for a compiled wiki.
+
+    The human-readable pipeline log is no longer auto-written; regenerate it
+    on demand with ``knox log`` (or ``knox log --write``).
 
     Returns a dict of ``{name: path}`` for generated files.
     """
@@ -399,13 +402,7 @@ def write_index_and_log(
     index_content = generate_index(wiki)
     index_file.write_text(index_content, encoding="utf-8")
 
-    # log.md goes under .knox/ (single canonical pipeline log; matches ingest path)
-    log_file = VaultPaths(resolved_base).log_file
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    log_entry = generate_log_entry(wiki, stage="compile")
-    prepend_log(log_file, log_entry)
-
-    return {"index": index_file, "log": log_file}
+    return {"index": index_file}
 
 
 def generate_overview(

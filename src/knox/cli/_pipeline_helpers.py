@@ -27,7 +27,7 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
-from knox.output.wiki_index import write_index_and_log, write_overview
+from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
 from knox.review import ReviewQueue
@@ -373,9 +373,8 @@ def _post_compile_actions(
         else:
             _verify_claims(wiki, output_dir, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
 
-    generated = write_index_and_log(wiki, output_dir, base_dir=base_dir)
+    generated = write_index(wiki, output_dir, base_dir=base_dir)
     get_console().print(f"Index: {generated['index']}")
-    get_console().print(f"Log:   {generated['log']}")
 
     if synthesize:
         resolved_model = pipeline_config.llm.default_model

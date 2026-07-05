@@ -52,7 +52,7 @@ from knox.output.base import BaseOutputWriter
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
-from knox.output.wiki_index import write_index_and_log, write_overview
+from knox.output.wiki_index import write_index, write_overview
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
@@ -400,7 +400,7 @@ class TestTier5Output:
     def test_wiki_index_and_log(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """wiki_index module must generate index.md and log.md."""
         out_dir = tmp_path / "wiki_index"
-        result = write_index_and_log(graph_wiki, out_dir)
+        result = write_index(graph_wiki, out_dir)
 
         assert "index" in result
         assert result["index"].exists(), "index.md not created"
@@ -622,9 +622,8 @@ class TestFullPipelineE2E:
             flavor="obsidian",
         )
 
-        pages = write_index_and_log(wiki, out_dir)
+        pages = write_index(wiki, out_dir)
         assert pages["index"].exists()
-        assert pages["log"].exists()
 
         index_text = pages["index"].read_text(encoding="utf-8")
         assert str(len(wiki.nodes)) in index_text or "Articles" in index_text, "index.md does not mention the article count"
@@ -831,9 +830,8 @@ class TestGenerateExampleWiki:
         logger.info("Markdown vault: %d .md files", len(md_files))
 
         # index + log
-        pages = write_index_and_log(wiki, md_vault)
+        pages = write_index(wiki, md_vault)
         assert pages["index"].exists()
-        assert pages["log"].exists()
 
         # overview (LLM synthesis)
         overview_path = write_overview(

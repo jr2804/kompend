@@ -100,6 +100,7 @@ from knox.cli.cmds import (  # noqa: E402
     doctor,  # noqa: F401
     init,  # noqa: F401
     lint,  # noqa: F401
+    log,  # noqa: F401
     memory,  # noqa: F401
     organize,  # noqa: F401
     pack,  # noqa: F401
