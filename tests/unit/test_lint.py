@@ -618,6 +618,30 @@ class TestContradictionDetectionRule:
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.SKIP and "LLM call failed" in r.message for r in report.results)
 
+    def test_dedup_identical_pairs(self) -> None:
+        """LLM returning the same pair N times produces exactly one result."""
+        wiki = _make_wiki(
+            [
+                _make_node("n1", "Page A", "Auditory models required."),
+                _make_node("n2", "Page B", "No auditory models needed."),
+            ]
+        )
+        contradiction = {
+            "page_a": "Page A",
+            "page_b": "Page B",
+            "claim_a": "uses auditory models",
+            "claim_b": "avoids auditory models",
+            "explanation": "Mutually exclusive methodology",
+            "severity": "error",
+            "confidence": 0.95,
+        }
+        # LLM returns the same contradiction 5 times in one batch.
+        client = _mock_llm_client({"contradictions": [contradiction] * 5})
+        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        report = runner.run(wiki)
+        failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+
 
 # ── Coverage-gap remediation ────────────────────────────────────────────
 

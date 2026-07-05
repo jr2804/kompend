@@ -364,6 +364,7 @@ class ContradictionDetectionRule(BaseLintRule):
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="Need at least two pages to detect contradictions")]
 
         results: list[LintResult] = []
+        seen_pairs: set[frozenset[str]] = set()
 
         # Each batch contains multiple pages so the LLM can compare them.
         batch_size = max(2, self.lint_page_budget // 2000)
@@ -410,6 +411,13 @@ class ContradictionDetectionRule(BaseLintRule):
                     continue
 
                 severity = Severity.ERROR if str(contradiction.get("severity", "")).lower() == "error" else Severity.WARNING
+
+                # Deduplicate: skip if this page pair was already reported.
+                pair_key = frozenset({node_a.id, node_b.id})
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
                 results.append(
                     LintResult(
                         rule=self.name,
