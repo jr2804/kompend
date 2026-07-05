@@ -50,10 +50,126 @@ from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
+from knox.rag.zvec_store import _make_provider
 
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+# ── Concept name-embedding merge (Option C) ─────────────────────────────
+
+_CONCEPT_MERGE_THRESHOLD = 0.85
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two vectors (no numpy needed)."""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _merge_similar_concepts(
+    concepts: list[dict[str, Any]],
+    embedding_model: str,
+    *,
+    threshold: float = _CONCEPT_MERGE_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """Merge concept pages whose name embeddings are above *threshold*.
+
+    Uses the configured embedding provider (SentenceTransformer either
+    locally or via LiteLLM). Groups concepts greedily: for every pair
+    with cosine similarity >= threshold, sources and definitions are
+    unioned and the longest name is kept as canonical.
+
+    When the embedding provider fails (e.g. model not found), concepts
+    are returned unchanged and a warning is logged.
+    """
+    if not embedding_model or embedding_model == "hash":
+        return concepts
+
+    try:
+        provider = _make_provider(embedding_model, dim=None)
+    except Exception:
+        logger.warning(
+            "Embedding merge disabled: could not create provider for %s",
+            embedding_model,
+            exc_info=True,
+        )
+        return concepts
+
+    names = [c["name"] for c in concepts]
+    try:
+        vecs = [provider.embed(n) for n in names]
+    except Exception:
+        logger.warning("Embedding merge disabled: embedding call failed", exc_info=True)
+        return concepts
+
+    # Union-Find to group similar concepts.
+    n = len(concepts)
+    parent = list(range(n))
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(x: int, y: int) -> None:
+        rx, ry = _find(x), _find(y)
+        if rx < ry:
+            parent[ry] = rx
+        else:
+            parent[rx] = ry
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _cosine_similarity(vecs[i], vecs[j]) >= threshold:
+                _union(i, j)
+
+    # Group by leader.
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        leader = _find(i)
+        groups.setdefault(leader, []).append(i)
+
+    # Merge each multi-member group.
+    result: list[dict[str, Any]] = []
+    for leader, members in groups.items():
+        if len(members) == 1:
+            result.append(concepts[leader])
+            continue
+        merged: dict[str, Any] = {
+            "name": max((concepts[m]["name"] for m in members), key=len),
+            "sources": [],
+            "definitions": [],
+        }
+        seen_sources: set[str] = set()
+        seen_defs: set[str] = set()
+        for m in members:
+            for s in concepts[m].get("sources", []):
+                if s not in seen_sources:
+                    merged["sources"].append(s)
+                    seen_sources.add(s)
+            for d in concepts[m].get("definitions", []):
+                if d not in seen_defs:
+                    merged["definitions"].append(d)
+                    seen_defs.add(d)
+        result.append(merged)
+
+    merged_count = n - len(result)
+    if merged_count:
+        logger.info(
+            "Embedding merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
+            merged_count,
+            n,
+            len(result),
+            threshold,
+        )
+    return result
+
 
 # Re-export internal helpers for backward compatibility.
 __all__ = [
@@ -358,6 +474,13 @@ class TwoPhaseCompiler(BaseCompiler):
         page content (WiCER refinement input).
         """
         concepts = extractions.concept_pages()
+        # Embedding-based similarity merge (Option C) — merges concepts whose
+        # name embeddings are above a threshold, catching semantic duplicates
+        # that Option A (normalized-key) misses. Only runs when an embedding
+        # model is configured (not "hash").
+        embed_model = self._config.embedding.model
+        if embed_model and embed_model != "hash":
+            concepts = _merge_similar_concepts(concepts, embed_model)
         if concepts:
             logger.info(
                 "TwoPhase: %d concept(s) ready for generation (sample: %s)",

@@ -15,6 +15,8 @@ from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     TwoPhaseCompiler,
+    _cosine_similarity,
+    _merge_similar_concepts,
     _segment_sources,
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
@@ -582,7 +584,75 @@ class TestConceptPagesMerge:
         assert len(pages) == 2
 
 
-class TestSegmentSources:
+class TestCosineSimilarity:
+    """_cosine_similarity helper."""
+
+    def test_identical(self) -> None:
+        assert _cosine_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
+
+    def test_orthogonal(self) -> None:
+        assert _cosine_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
+
+    def test_similar(self) -> None:
+        sim = _cosine_similarity([1.0, 2.0, 3.0], [1.1, 2.1, 2.9])
+        assert sim > 0.99
+
+    def test_zero_vector(self) -> None:
+        assert _cosine_similarity([], []) == 0.0
+        assert _cosine_similarity([1.0], [0.0]) == 0.0
+
+
+class TestMergeSimilarConcepts:
+    """_merge_similar_concepts with mocked embedding provider."""
+
+    def test_skip_when_hash(self) -> None:
+        """'hash' model skips embedding merge."""
+        concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
+        result = _merge_similar_concepts(concepts, "hash")
+        assert result == concepts  # unchanged
+
+    def test_skip_when_empty_model(self) -> None:
+        result = _merge_similar_concepts([], "")
+        assert result == []
+
+    def test_provider_failure_returns_unchanged(self) -> None:
+        concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
+        result = _merge_similar_concepts(concepts, "nonexistent-model-xyz")
+        assert result == concepts
+
+    def test_merge_similar_names(self) -> None:
+        """Two concepts with semantically similar names get merged."""
+        concepts = [
+            {"name": "Posteriorgram", "sources": ["a.pdf"], "definitions": ["x"]},
+            {"name": "Phoneme Posteriorgram", "sources": ["b.pdf"], "definitions": ["y"]},
+        ]
+        with patch("knox.compilation.two_phase._make_provider") as mock_factory:
+            mock_provider = mock_factory.return_value
+            mock_provider.embed.side_effect = [
+                [1.0, 0.0, 0.0],  # "Posteriorgram"
+                [0.9, 0.1, 0.0],  # "Phoneme Posteriorgram" — very similar
+            ]
+            result = _merge_similar_concepts(concepts, "any")
+
+        assert len(result) == 1
+        # Longest name wins as canonical
+        assert result[0]["name"] == "Phoneme Posteriorgram"
+
+    def test_keep_distinct_concepts(self) -> None:
+        """Dissimilar names stay separate."""
+        concepts = [
+            {"name": "Listening Effort", "sources": ["a.pdf"], "definitions": ["x"]},
+            {"name": "Speech Intelligibility", "sources": ["b.pdf"], "definitions": ["y"]},
+        ]
+        with patch("knox.compilation.two_phase._make_provider") as mock_factory:
+            mock_provider = mock_factory.return_value
+            mock_provider.embed.side_effect = [
+                [1.0, 0.0, 0.0],  # "Listening Effort"
+                [0.0, 1.0, 0.0],  # "Speech Intelligibility" — orthogonal
+            ]
+            result = _merge_similar_concepts(concepts, "any")
+
+        assert len(result) == 2
     """Source segmentation — splits content without data loss."""
 
     def test_empty_sources_returns_empty(self) -> None:
