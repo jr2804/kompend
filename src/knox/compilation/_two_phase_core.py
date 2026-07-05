@@ -17,7 +17,7 @@ from slugify import slugify as _slugify_impl
 
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, salvage_json
+from knox.llm.client import JSON_RESPONSE_FORMAT, _strip_reasoning, salvage_json
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -410,6 +410,7 @@ def _try_litellm_json(
         else:
             logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
         content = response.choices[0].message.content
+        content = _strip_reasoning(content)
         if not content:
             return None
         parsed = salvage_json(content)
