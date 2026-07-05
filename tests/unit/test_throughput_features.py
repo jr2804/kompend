@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from knox.compilation._two_phase_core import _normalize_concept_key
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import (
     Extraction,
@@ -483,6 +484,102 @@ class TestExtractionData:
         )
         idx = ext.entity_index()
         assert idx["KNOX"] == ["a.pdf", "b.pdf"]
+
+
+class TestNormalizeConceptKey:
+    """Normalization for concept merge-key dedup (Option A)."""
+
+    def test_strip_acronym(self) -> None:
+
+        assert _normalize_concept_key("Deep Neural Networks (DNNs)") == "deep neural network"
+        assert _normalize_concept_key("Short-Time Objective Intelligibility (STOI)") == "short time objective intelligibility"
+        assert _normalize_concept_key("Binaural Unmasking (BU)") == "binaural unmasking"
+
+    def test_hyphen_to_space(self) -> None:
+
+        assert _normalize_concept_key("Short-Time") == "short time"
+
+    def test_case_fold(self) -> None:
+
+        assert _normalize_concept_key("Deep Neural Network") == "deep neural network"
+        assert _normalize_concept_key("Deep neural network") == "deep neural network"
+
+    def test_plural_collapse(self) -> None:
+
+        # -s → singular
+        assert _normalize_concept_key("Networks") == "network"
+        assert _normalize_concept_key("Posteriorgrams") == "posteriorgram"
+
+
+class TestConceptPagesMerge:
+    """concept_pages() merges variants via normalized key."""
+
+    def test_merge_acronym_variant(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(
+                    source="a.pdf",
+                    concepts=[{"name": "Deep Neural Network", "definition": "x"}],
+                ),
+                Extraction(
+                    source="b.pdf",
+                    concepts=[{"name": "Deep Neural Networks (DNNs)", "definition": "y"}],
+                ),
+            ]
+        )
+        pages = ext.concept_pages()
+        assert len(pages) == 1
+        assert pages[0]["name"] == "Deep Neural Networks (DNNs)"  # longest variant wins
+
+    def test_merge_case_diff(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(
+                    source="a.pdf",
+                    concepts=[{"name": "Automatic Speech Recognition (ASR)", "definition": "x"}],
+                ),
+                Extraction(
+                    source="b.pdf",
+                    concepts=[{"name": "Automatic speech recognition (ASR)", "definition": "y"}],
+                ),
+            ]
+        )
+        pages = ext.concept_pages()
+        assert len(pages) == 1
+        assert len(pages[0]["sources"]) == 2
+        assert len(pages[0]["definitions"]) == 2
+
+    def test_merge_hyphen_variant(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(
+                    source="a.pdf",
+                    concepts=[{"name": "Short-Time Objective Intelligibility (STOI)", "definition": "x"}],
+                ),
+                Extraction(
+                    source="b.pdf",
+                    concepts=[{"name": "Short Time Objective Intelligibility (STOI)", "definition": "y"}],
+                ),
+            ]
+        )
+        pages = ext.concept_pages()
+        assert len(pages) == 1
+
+    def test_distinct_concepts_not_merged(self) -> None:
+        ext = ExtractionSet(
+            extractions=[
+                Extraction(
+                    source="a.pdf",
+                    concepts=[{"name": "Listening Effort", "definition": "x"}],
+                ),
+                Extraction(
+                    source="b.pdf",
+                    concepts=[{"name": "Speech Intelligibility", "definition": "y"}],
+                ),
+            ]
+        )
+        pages = ext.concept_pages()
+        assert len(pages) == 2
 
 
 class TestSegmentSources:

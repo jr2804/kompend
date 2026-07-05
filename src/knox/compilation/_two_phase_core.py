@@ -6,6 +6,7 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -39,6 +40,39 @@ def _tokens_to_chars(tokens: int) -> int:
 def _chars_to_tokens(chars: int) -> int:
     """Convert character count to approximate token count."""
     return max(1, chars // _CHARS_PER_TOKEN)
+
+
+_ACRONYM_RE = re.compile(r"\s*\([^)]*[A-Z]{2,}[^)]*\)\s*$")
+
+
+def _normalize_concept_key(name: str) -> str:
+    """Normalize a concept name for merge-key deduplication.
+
+    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
+    and collapses English plurals on the last word (heuristic).
+    ``name`` is the output of :func:`_concept_name` so it is never empty.
+
+    Examples::
+
+        "Deep Neural Networks (DNNs)"  → "deep neural network"
+        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
+        "Deep neural network"  → "deep neural network"
+        "Phoneme posteriorgrams" → "phoneme posteriorgram"
+    """
+    text = _ACRONYM_RE.sub("", name)
+    text = text.replace("-", " ").lower().strip()
+    if not text:
+        return ""
+    words = text.split()
+    last = words[-1]
+    if len(last) > 3:
+        if last.endswith("ies"):
+            words[-1] = last[:-3] + "y"
+        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
+            words[-1] = last[:-2]
+        elif last.endswith("s") and not last.endswith("ss"):
+            words[-1] = last[:-1]
+    return " ".join(words).strip()
 
 
 def _slugify(text: str) -> str:
@@ -283,6 +317,8 @@ class ExtractionSet:
 
         Output schema: ``{name, definition, sources: [str], definitions: [str]}``
 
+        Concepts whose ``_normalize_concept_key`` collides are merged into one.
+        The canonical name is the longest variant (most descriptive).
         Concept names are salvaged tolerantly: the extraction prompt asks for
         ``name``, but LLMs sometimes return ``concept``/``title``/``term``.
         Without salvage, an otherwise-good extraction yields zero concept pages
@@ -294,7 +330,15 @@ class ExtractionSet:
                 name = _concept_name(concept)
                 if not name or name in _RESERVED_CONCEPT_NAMES or name.startswith("vlm_"):
                     continue
-                bucket = merged.setdefault(name, {"name": name, "sources": [], "definitions": []})
+                key = _normalize_concept_key(name)
+                if not key:
+                    continue
+                if key not in merged:
+                    merged[key] = {"name": name, "sources": [], "definitions": []}
+                # Keep most descriptive canonical name (longest).
+                elif len(name) > len(merged[key]["name"]):
+                    merged[key]["name"] = name
+                bucket = merged[key]
                 bucket["sources"].append(ext.source)
                 definition = concept.get("definition") or concept.get("importance") or concept.get("description")
                 if definition:
