@@ -5,7 +5,6 @@ for chronological logs.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -13,6 +12,7 @@ from typing import Any
 import zvec as _zvec
 
 from knox.core.paths import VaultPaths
+from knox.core.timeutil import iso_local
 from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
@@ -78,7 +78,7 @@ class MemoryStore:
         self._ensure_collection()
         if self._collection is None:
             raise RuntimeError("Memory collection is not initialized")
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = iso_local(timespec="microseconds")
 
         # Trigger embedding to ensure dim is resolved if using LiteLLM
         embedding = self._provider.embed(query)  # ty: ignore

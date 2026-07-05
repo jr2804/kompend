@@ -11,7 +11,7 @@ ponytail: single JSONL append, no dataclass wrapping. Use
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
 )
+from knox.core.timeutil import iso_local, now_local
 from knox.lint.runner import LintReport, report_to_dict
 
 # Config keys captured in the snapshot
@@ -49,7 +50,7 @@ def entry_from_report(
 ) -> dict[str, Any]:
     """Build a lint history dict from a lint run."""
     return {
-        "timestamp": timestamp or datetime.now(UTC).isoformat(timespec="seconds"),
+        "timestamp": timestamp or iso_local(),
         "duration_seconds": round(duration_seconds, 3),
         "options": dict(options),
         "llm": llm,
@@ -112,7 +113,7 @@ def prune_lint_history(
     surviving = entries
 
     if max_age_days is not None:
-        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+        cutoff = now_local() - timedelta(days=max_age_days)
         surviving = [e for e in surviving if _parse_timestamp(e["timestamp"]) >= cutoff]
 
     if keep_last is not None:

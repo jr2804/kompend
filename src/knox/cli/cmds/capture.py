@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +19,7 @@ from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
 from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.paths import VaultPaths
+from knox.core.timeutil import iso_local
 from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter
@@ -168,7 +168,7 @@ def write_cmd(
                 k, v = kv.split("=", 1)
                 fm[k.strip()] = v.strip()
 
-    compiled_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    compiled_at = iso_local()
     fm.setdefault("title", page_title)
     fm.setdefault("kind", "page")
     fm.setdefault("compiled_at", compiled_at)

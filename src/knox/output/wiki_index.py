@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +18,7 @@ from knox.core.cache_store import CacheStore
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.template_loader import get_template_loader
+from knox.core.timeutil import display_local, iso_local
 from knox.llm.client import LLMClient
 
 _loader = get_template_loader()
@@ -32,7 +32,7 @@ def generate_index(wiki: CompiledWiki) -> str:
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     article_count = len(wiki.nodes)
     total_words = sum(len(n.content.split()) for n in wiki.nodes)
-    last_compile = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    last_compile = display_local("%Y-%m-%d %H:%M")
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
 
     lines.append("## Summary\n")
@@ -228,7 +228,7 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  #
     stage:
         Pipeline stage identifier: ``"compile"``, ``"ingest"``, ``"lint"``, etc.
     """
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = iso_local()
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     article_count = len(wiki.nodes)
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
@@ -324,7 +324,7 @@ def generate_stage_log_entry(
     This is a lighter-weight entry that doesn't require a full
     :class:`CompiledWiki` object.
     """
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = iso_local()
 
     header_parts: list[str] = []
     if source_count:

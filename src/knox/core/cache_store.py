@@ -25,7 +25,6 @@ import shutil
 import tempfile
 from base64 import b64decode, b64encode
 from dataclasses import fields, is_dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -39,6 +38,7 @@ from knox.core.models import (
     ResolvedChunk,
     WikiNode,
 )
+from knox.core.timeutil import iso_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -199,7 +199,7 @@ class CacheStore:
             "layer": layer,
             "deps": deps,
             "value": value,
-            "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "created_at": iso_local(),
         }
 
         # Atomic write to avoid partial reads from concurrent workers.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from knox.core.models import (
@@ -17,6 +17,7 @@ from knox.core.models import (
     WikiNode,
 )
 from knox.core.paths import VaultPaths
+from knox.core.timeutil import iso_local, now_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -88,7 +89,7 @@ def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
     private_index = VaultPaths(output_dir.parent).private_path
     private_index.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "saved_at": iso_local(),
         "pages": [{"id": n.id, "title": n.title} for n in wiki.nodes],
     }
     private_index.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
@@ -163,7 +164,7 @@ class LifecycleStore:
         if new_state not in VALID_LIFECYCLE_STATES:
             msg = f"Invalid lifecycle state {new_state!r}. Valid: {VALID_LIFECYCLE_STATES}"
             raise ValueError(msg)
-        now = datetime.now(UTC).isoformat(timespec="seconds")
+        now = iso_local()
         existing = state.entries.get(node_id) or LifecycleEntry(node_id=node_id)
         entry = LifecycleEntry(
             node_id=node_id,
@@ -182,7 +183,7 @@ def mark_stale(
     now: datetime | None = None,
 ) -> int:
     """Auto-mark pages as stale after the configured days. Returns count changed."""
-    now = now or datetime.now(UTC)
+    now = now or now_local()
     changed = 0
     for entry in state.entries.values():
         if entry.state in (LIFECYCLE_STALE, LIFECYCLE_ARCHIVED):

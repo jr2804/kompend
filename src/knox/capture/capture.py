@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.template_loader import get_template_loader
+from knox.core.timeutil import display_local
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.logging import get_logger
 
@@ -41,7 +41,7 @@ def capture(
     )
 
     paths: list[Path] = []
-    timestamp = datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
+    timestamp = display_local(TIMESTAMP_FORMAT)
     for i, item in enumerate(items):
         slug = make_slug(item.title)
         filename = f"capture-{timestamp}-{i:02d}-{slug}.md"

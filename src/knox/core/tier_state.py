@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from knox.core.models import MetadataField
 from knox.core.pipeline_defs import TIER_LEVEL, Tier
+from knox.core.timeutil import iso_local, now_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -131,7 +132,7 @@ class TierStateStore:
         value is preserved; any string (including ``""``) overwrites it.
         """
         _ = self  # noqa: PLR6301 — kept as instance method for future per-store config
-        now = datetime.now(UTC).isoformat(timespec="seconds")
+        now = iso_local()
         existing = state.entries.get(stem)
         if existing is None:
             entry = SourceState(
@@ -163,7 +164,7 @@ class TierStateStore:
         if existing is None:
             return
         existing.search_hits += 1
-        existing.last_hit = datetime.now(UTC).isoformat(timespec="seconds")
+        existing.last_hit = iso_local()
         state.entries[stem] = existing
 
 
@@ -283,7 +284,7 @@ def auto_promote_demote(
 
     Returns the number of state entries that changed tier.
     """
-    now = now or datetime.now(UTC)
+    now = now or now_local()
     changed = 0
     for entry in state.entries.values():
         new_tier = entry.current_tier

@@ -17,7 +17,6 @@ import json
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -25,6 +24,7 @@ from typing import Any
 from slugify import slugify as _slugify_impl
 
 from knox.core.models import WikiNode
+from knox.core.timeutil import iso_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -188,7 +188,7 @@ class ReviewQueue:
     def _save_state(self, state: dict[str, ReviewEntry]) -> None:
         self.review_dir.mkdir(parents=True, exist_ok=True)
         payload = {
-            "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "saved_at": iso_local(),
             "entries": {k: v.to_dict() for k, v in state.items()},
         }
         self._state_path().write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")

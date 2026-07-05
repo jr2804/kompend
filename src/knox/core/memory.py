@@ -18,12 +18,13 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from knox.core.paths import VaultPaths
+from knox.core.timeutil import iso_local, now_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -52,16 +53,16 @@ class MemoryTier(StrEnum):
 
 
 def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return iso_local(timespec="microseconds")
 
 
 def _parse_iso(ts: str) -> datetime:
     if not ts:
-        return datetime.now(UTC)
+        return now_local()
     try:
         return datetime.fromisoformat(ts)
     except ValueError:
-        return datetime.now(UTC)
+        return now_local()
 
 
 def promote_tier(current: str, review_count: int) -> str:
@@ -103,7 +104,7 @@ class NodeState:
         half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
     ) -> float:
         """Exponential retention: ``confidence * exp(-elapsed / half_life)``."""
-        now_dt = now or datetime.now(UTC)
+        now_dt = now or now_local()
         last_review = _parse_iso(self.review_at)
         elapsed_days = max(0.0, (now_dt - last_review).total_seconds() / 86400.0)
         return self.confidence * math.exp(-elapsed_days / half_life_days)
