@@ -333,8 +333,8 @@ class WiCERCompiler(BaseCompiler):
             return []
 
         if self._client is None:
-            logger.debug("WiCER has no LLM client — using fallback probes")
-            return self._fallback_probes(combined)
+            logger.debug("WiCER has no LLM client — skipping probe generation")
+            return []
 
         result = self._client.try_complete(
             messages=[
@@ -349,7 +349,8 @@ class WiCERCompiler(BaseCompiler):
         if probes is not None:
             return probes
 
-        return self._fallback_probes(combined)
+        logger.warning("WiCER: probe generation returned no parseable results — skipping batch")
+        return []
 
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
         """Step B: evaluate wiki against probes using LLM-as-judge.
@@ -363,8 +364,8 @@ class WiCERCompiler(BaseCompiler):
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
         if self._client is None:
-            logger.debug("WiCER has no LLM client — using fallback evaluation")
-            return self._fallback_evaluate(wiki_text, probes)
+            logger.debug("WiCER has no LLM client — skipping evaluation")
+            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
         # Track probe correctness across segments — a probe passing in any
         # segment is considered passed.
@@ -397,13 +398,14 @@ class WiCERCompiler(BaseCompiler):
                             break
                         if not isinstance(r, dict):
                             continue
-                        if r.get("correct", False) or i not in probe_results:  # ty: ignore
-                            probe_results[i] = r  # ty: ignore
+                        if r.get("correct", False) or i not in probe_results:
+                            probe_results[i] = r
 
         if probe_results:
             return [probe_results.get(i, {"question": p.get("question", ""), "correct": False}) for i, p in enumerate(probes)]
 
-        return self._fallback_evaluate(wiki_text, probes)
+        logger.warning("WiCER: evaluation returned no results — marking all probes as unevaluated")
+        return [{"question": p.get("question", ""), "correct": False} for p in probes]
 
     def _diagnose(self, failures: list[dict]) -> list[str]:
         """Step C: extract critical facts from failures using LLM."""
@@ -453,7 +455,7 @@ class WiCERCompiler(BaseCompiler):
             try:
                 parsed = json.loads(result.content)
             except json.JSONDecodeError:
-                logger.warning("LLM returned malformed JSON for probes — using fallback")
+                logger.warning("LLM returned malformed JSON for probes — skipping")
                 return None
             if isinstance(parsed, list):
                 raw = parsed
@@ -479,35 +481,3 @@ class WiCERCompiler(BaseCompiler):
             elif isinstance(item, str) and item.strip():
                 probes.append({"question": item.strip()})
         return probes if probes else None
-
-    @staticmethod
-    def _fallback_probes(text: str) -> list[dict]:
-        """Generate simple fallback probes from text sentences."""
-        sentences = [s.strip() for s in text.replace("\n", " ").split(".") if len(s.strip()) > 20]
-        probes: list[dict] = []
-        for s in sentences[:5]:
-            probes.append(
-                {
-                    "question": f"What does the source say about: {s[:60]}...?",
-                    "answer": s[:200],
-                }
-            )
-        return probes
-
-    @staticmethod
-    def _fallback_evaluate(wiki_text: str, probes: list[dict]) -> list[dict]:
-        """Fallback evaluation using simple substring matching."""
-        results: list[dict] = []
-        wiki_lower = wiki_text.lower()
-        for p in probes:
-            answer = p.get("answer", "")
-            found = answer.lower()[:50] in wiki_lower if answer else False
-            results.append(
-                {
-                    "question": p.get("question", ""),
-                    "expected_answer": answer,
-                    "found_answer": answer if found else "",
-                    "correct": found,
-                }
-            )
-        return results

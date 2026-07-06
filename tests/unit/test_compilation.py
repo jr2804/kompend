@@ -657,10 +657,9 @@ class TestConceptPages:
 class TestWiCERCompilerUnavailable:
     """WiCERCompiler behaviour when the LLM is unavailable.
 
-    The autouse fixture forces ``try_complete`` to return ``None`` so
-    every WiCER step falls through to its deterministic heuristic
-    fallback. This keeps the unit tests fast and decoupled from any
-    real provider.
+    Without an LLM client, WiCER skips probe generation and evaluation
+    entirely — no heuristic fallbacks. The base compiler output is
+    returned as-is with zero WiCER iterations.
     """
 
     def test_empty_input(self) -> None:
@@ -674,8 +673,8 @@ class TestWiCERCompilerUnavailable:
         assert wiki.metadata["source_names"] == []
         assert wiki.metadata["wicer_iterations"] == 0
 
-    def test_fallback_blind_compilation_no_litellm(self) -> None:
-        """Without litellm, WiCER does a single blind compilation."""
+    def test_no_llm_skips_wicer(self) -> None:
+        """Without LLM, WiCER skips — base compiler output only, 0 iterations."""
         chunks = _make_chunks(count=2, heading="Test Section")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 3
@@ -683,17 +682,17 @@ class TestWiCERCompilerUnavailable:
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].title == "Test Section"
-        assert wiki.metadata["wicer_iterations"] > 0
+        assert wiki.metadata["wicer_iterations"] == 0
 
-    def test_fallback_probes_generated_from_text(self) -> None:
-        """Without LLM, fallback probes are generated from text."""
+    def test_no_llm_no_probes(self) -> None:
+        """Without LLM, no probes are generated (no heuristic fallback)."""
         chunks = _make_chunks(count=2, heading="Test")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
         assert isinstance(wiki, CompiledWiki)
-        assert len(wiki.nodes) >= 1
+        assert wiki.metadata["wicer_iterations"] == 0
 
     def test_no_crash_on_empty_chunks(self) -> None:
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
@@ -894,8 +893,8 @@ class TestWiCERCompilerWithMock:
         assert wiki.metadata["wicer_iterations"] == 1
         assert wiki.metadata["wicer_refinements"] == 0
 
-    def test_llm_failure_falls_back_gracefully(self) -> None:
-        """When the LLM client returns None, WiCER falls back to blind compilation."""
+    def test_llm_failure_skips_wicer(self) -> None:
+        """When the LLM client returns None, WiCER skips (0 iterations)."""
         chunks = _make_chunks(count=2, heading="Fallback")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         config.budget.wicer_max_iterations = 2
@@ -903,7 +902,7 @@ class TestWiCERCompilerWithMock:
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
             wiki = compiler.compile(chunks)
         assert len(wiki.nodes) >= 1
-        assert wiki.metadata["wicer_iterations"] > 0
+        assert wiki.metadata["wicer_iterations"] == 0
 
     def test_custom_base_compiler(self) -> None:
         """A custom BaseCompiler can be injected."""
@@ -1108,12 +1107,12 @@ class TestDeduplication:
         assert BaseCompiler.deduplicate_group_text([]) == ""
 
 
-class TestTwoPhaseConceptSalvageAndFallback:
-    """knox-nbbx (concept-name salvage) + knox-sh05 (non-destructive fallback)."""
+class TestTwoPhaseConceptSalvage:
+    """knox-nbbx (concept-name salvage) + generation failure handling."""
 
     def test_concept_pages_salvages_name_from_alt_keys(self) -> None:
         """knox-nbbx: extraction that returns 'concept'/'title' instead of 'name'
-        still yields concept pages (was: empty -> silent fallback).
+        still yields concept pages (was: empty -> silent error).
         """
         ext_set = ExtractionSet()
         ext_set.add(
@@ -1131,16 +1130,15 @@ class TestTwoPhaseConceptSalvageAndFallback:
         assert "Better-Ear Listening" in names
         assert all(p.get("definitions") for p in pages)
 
-    def test_fallback_emits_concept_definitions_not_raw_chunks(self) -> None:
-        """knox-sh05: fallback returns extracted concept definitions, never the
-        raw per-heading node_N chunk-group dump.
-        """
+    def test_generation_failure_raises_not_fallback(self) -> None:
+        """When generation LLM calls all fail, RuntimeError is raised — no degraded wiki."""
         config = PipelineConfig(
             source_dir=Path("."),
             output_dir=Path("."),
             llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            embedding=EmbeddingConfig("hash"),
         )
+        config.no_cache = True
         compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
         ext_set = ExtractionSet()
         ext_set.add(
@@ -1150,30 +1148,13 @@ class TestTwoPhaseConceptSalvageAndFallback:
             )
         )
         chunks = _make_chunks(count=3, heading="Some Heading")
-        wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="forced test")
-        assert wiki.metadata["fallback"] is True
-        assert wiki.metadata["fallback_reason"] == "forced test"
-        # No raw chunk-group node_N ids leaked into the fallback wiki.
-        assert all(not n.id.startswith("node_") for n in wiki.nodes)
-        # The extracted concept definition is present.
-        assert any(n.title == "Listening Effort" for n in wiki.nodes)
-
-    def test_fallback_no_concepts_uses_graph_concept_pages_only(self) -> None:
-        """knox-sh05: with no extracted concepts, fallback keeps GraphCompiler
-        cross-cutting concept pages / overviews, still no raw node_N dump.
-        """
-        config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
-        )
-        compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
-        ext_set = ExtractionSet()  # empty -> no concept definitions
-        chunks = _make_chunks(count=2, heading="Overview")
-        wiki = compiler._fallback_compile(chunks, extractions=ext_set, reason="no concepts")
-        assert wiki.metadata["fallback"] is True
-        assert all(not n.id.startswith("node_") for n in wiki.nodes)
+        # Extraction succeeds, generation returns empty (all calls fail)
+        with (
+            patch.object(compiler, "extract", return_value=ext_set),
+            patch("knox.compilation.two_phase._try_litellm_json", return_value=None),
+        ):
+            with pytest.raises(RuntimeError, match="generation failed"):
+                compiler.compile(chunks)
 
 
 class TestVlmArtifactFiltering:

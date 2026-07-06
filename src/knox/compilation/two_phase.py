@@ -33,7 +33,6 @@ from knox.compilation._two_phase_core import (
     _chars_to_tokens,
     _compute_quality_score,
     _extract_images_from_chunks,
-    _fallback_extraction,
     _merge_extractions,
     _segment_sources,
     _slugify,
@@ -92,19 +91,19 @@ def _merge_similar_concepts(
 
     try:
         provider = _make_provider(embedding_model, dim=None)
-    except Exception:
-        logger.warning(
-            "Embedding merge disabled: could not create provider for %s",
+    except Exception as exc:
+        logger.debug(
+            "Embedding merge disabled: could not create provider for %s: %s",
             embedding_model,
-            exc_info=True,
+            exc,
         )
         return concepts
 
     names = [c["name"] for c in concepts]
     try:
         vecs = [provider.embed(n) for n in names]
-    except Exception:
-        logger.warning("Embedding merge disabled: embedding call failed", exc_info=True)
+    except Exception as exc:
+        logger.debug("Embedding merge disabled: embedding call failed: %s", exc)
         return concepts
 
     # Union-Find to group similar concepts.
@@ -209,6 +208,8 @@ class TwoPhaseCompiler(BaseCompiler):
         self._config = config
         self._timeout = config.llm.timeout
         self._cache_store = CacheStore(config.paths.cache_dir)
+        self._llm_stats: list[tuple[int, int]] = []
+        self._extraction_stats: list[dict[str, Any]] = []
 
         # Reuse the client's discovered context window when available; only
         # discover independently as a fallback (e.g. no LLM client provided).
@@ -254,7 +255,6 @@ class TwoPhaseCompiler(BaseCompiler):
         from a prior iteration.
         """
         compile_start = time.monotonic()
-        self._llm_stats: list[tuple[int, int]] = []
 
         if not chunks:
             return CompiledWiki(
@@ -302,14 +302,13 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         # Progress is reported inside generate() per batch×segment.
-        self._generation_fallbacks = 0
         self._active_gen_deps = gen_deps
         gen_start = time.monotonic()
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
         gen_elapsed = time.monotonic() - gen_start
 
-        # Generation completed (success or fallback). Remove checkpoint so the
-        # next compile starts fresh (or uses the generation cache).
+        # Generation completed. Remove checkpoint so the next compile starts
+        # fresh (or uses the generation cache).
         self._delete_gen_checkpoint(gen_deps)
 
         if getattr(self, "_extraction_stats", None):
@@ -340,13 +339,8 @@ class TwoPhaseCompiler(BaseCompiler):
             total_comp,
         )
 
-        if not self._config.no_cache and self._generation_fallbacks == 0:
+        if not self._config.no_cache:
             self._cache_store.set("generate", gen_deps, wiki)
-        elif self._generation_fallbacks > 0:
-            logger.info(
-                "TwoPhase: %d generation fallback(s) — skipping cache so re-run re-generates",
-                self._generation_fallbacks,
-            )
         return wiki
 
     def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
@@ -362,7 +356,7 @@ class TwoPhaseCompiler(BaseCompiler):
         dropped.  Results from each batch are merged into a single
         :class:`Extraction` per source.
         """
-        self._llm_stats: list[tuple[int, int]] = []
+        self._llm_stats = []
         extractions = ExtractionSet()
         # Group chunks by source file so each source is extracted once.
         by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
@@ -389,7 +383,6 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         # Per-source extraction timing + summary stats (for log / metadata).
-        self._extraction_stats: list[dict[str, Any]] = []
         for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
             logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
             src_start = time.monotonic()
@@ -498,11 +491,9 @@ class TwoPhaseCompiler(BaseCompiler):
                 "TwoPhase: concept_pages() empty \u2014 extraction concept keys: %s",
                 sorted(sample_keys) or "(no concepts returned)",
             )
-            return self._fallback_compile(
-                chunks,
-                trees=trees,
-                extractions=extractions,
-                reason="no concepts extracted (see extraction concept keys above)",
+            raise RuntimeError(
+                "Two-phase generation failed: extraction returned no concepts. "
+                "Check LLM extraction output and document content."
             )
 
         # Collect images from IMAGE chunks for embedding in output
@@ -539,8 +530,7 @@ class TwoPhaseCompiler(BaseCompiler):
         # Load generation checkpoint so interrupted runs can resume.
         checkpoint = self._load_gen_checkpoint(self._active_gen_deps)
         if checkpoint is not None:
-            ck_nodes, ck_slug_to_idx, ck_completed, ck_fallbacks = checkpoint
-            self._generation_fallbacks = ck_fallbacks
+            ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
             logger.info(
                 "TwoPhase: generation checkpoint loaded \u2014 %d batch(es) already done, %d node(s)",
                 len(ck_completed),
@@ -565,12 +555,11 @@ class TwoPhaseCompiler(BaseCompiler):
         self._delete_gen_checkpoint(self._active_gen_deps)
 
         if not nodes:
-            self._generation_fallbacks += 1
-            return self._fallback_compile(
-                chunks,
-                trees=trees,
-                extractions=extractions,
-                reason="generation produced no pages — every page-synthesis LLM call failed (extraction succeeded)",
+            raise RuntimeError(
+                "Two-phase generation failed: every page-synthesis LLM call "
+                "returned invalid data. Extraction succeeded but no pages "
+                "could be generated. Check LLM backend availability and model "
+                "response format."
             )
 
         self.disambiguate_duplicate_titles(nodes, chunks)
@@ -580,11 +569,10 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         if not nodes:
-            self._generation_fallbacks += 1
-            return self._fallback_compile(
-                chunks,
-                extractions=extractions,
-                reason="all generated pages filtered as empty",
+            raise RuntimeError(
+                "Two-phase generation failed: all generated pages were empty "
+                "after filtering. Check LLM output quality and "
+                "budget.min_content_length config."
             )
 
         nodes = self.dedup_content_duplicate_nodes(nodes)
@@ -685,34 +673,12 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
 
                 if not isinstance(data, dict):
-                    self._generation_fallbacks += 1
                     logger.warning(
-                        "TwoPhase: LLM returned non-dict for batch %d-%d, segment %d — using fallback",
+                        "TwoPhase: LLM returned non-dict for batch %d-%d, segment %d — skipping",
                         batch_start,
                         batch_start + len(batch),
                         seg_idx,
                     )
-                    if seg_idx == 0:
-                        # Only create fallback nodes from the first segment
-                        # to avoid duplicates.
-                        for idx, concept in enumerate(batch):
-                            node_id = _slugify(concept.get("name", f"concept-{batch_start + idx}"))
-                            _upsert_node(
-                                WikiNode(
-                                    id=node_id,
-                                    title=concept.get("name", "Unknown"),
-                                    content=concept.get("definition", ""),
-                                    node_type="concept",
-                                    source_chunks=[],
-                                    metadata={
-                                        "provenance": concept.get("sources", []),
-                                        "two_phase": True,
-                                        "images": all_images,
-                                    },
-                                ),
-                                nodes,
-                                slug_to_idx,
-                            )
                     failed_count += 1
                     continue
 
@@ -758,7 +724,6 @@ class TwoPhaseCompiler(BaseCompiler):
                 nodes,
                 slug_to_idx,
                 completed,
-                self._generation_fallbacks,
             )
 
         self._report(gen_progress_total, gen_progress_total, "generating complete")
@@ -797,7 +762,10 @@ class TwoPhaseCompiler(BaseCompiler):
             if not self._config.no_cache:
                 self._cache_store.set("extract", extract_deps, result)
             return result
-        return _fallback_extraction(source, combined)
+        raise RuntimeError(
+            f"Two-phase extraction failed for source '{source}': LLM returned "
+            f"no parseable data. Check LLM backend availability."
+        )
 
     def _gen_cache_deps(self, extractions: ExtractionSet, *, pinned_facts: list[str] | None = None) -> dict[str, str]:
         """Compute dependency hashes for generation cache.
@@ -833,11 +801,11 @@ class TwoPhaseCompiler(BaseCompiler):
     def _load_gen_checkpoint(  # noqa: PLR0911
         self,
         gen_deps: dict[str, str],
-    ) -> tuple[list[WikiNode], dict[str, int], set[int], int] | None:
+    ) -> tuple[list[WikiNode], dict[str, int], set[int]] | None:
         """Load a generation checkpoint if it exists and deps match.
 
-        Returns ``(nodes, slug_to_idx, completed_batches, generation_fallbacks)``
-        or ``None`` when the checkpoint is absent, stale, or malformed.
+        Returns ``(nodes, slug_to_idx, completed_batches)`` or ``None``
+        when the checkpoint is absent, stale, or malformed.
         """
         if self._config.no_cache:
             return None
@@ -861,8 +829,7 @@ class TwoPhaseCompiler(BaseCompiler):
             return None
         slug_to_idx: dict[str, int] = dict(raw.get("slug_to_idx", {}))
         completed: set[int] = set(raw.get("completed_batches", []))
-        fallbacks: int = int(raw.get("generation_fallbacks", 0))
-        return nodes, slug_to_idx, completed, fallbacks
+        return nodes, slug_to_idx, completed
 
     def _save_gen_checkpoint(
         self,
@@ -870,7 +837,6 @@ class TwoPhaseCompiler(BaseCompiler):
         nodes: list[WikiNode],
         slug_to_idx: dict[str, int],
         completed_batches: set[int],
-        generation_fallbacks: int,
     ) -> None:
         """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
         if self._config.no_cache:
@@ -882,7 +848,6 @@ class TwoPhaseCompiler(BaseCompiler):
             "completed_batches": sorted(completed_batches),
             "nodes": [_encode_json(n) for n in nodes],
             "slug_to_idx": dict(slug_to_idx),
-            "generation_fallbacks": generation_fallbacks,
         }
         try:
             fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
@@ -904,94 +869,6 @@ class TwoPhaseCompiler(BaseCompiler):
                 logger.debug("Generation checkpoint deleted: %s", path)
         except OSError:
             logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
-
-    def _fallback_compile(
-        self,
-        chunks: list[ResolvedChunk],
-        *,
-        trees: list[ChunkTree] | None = None,
-        extractions: ExtractionSet | None = None,
-        reason: str = "synthesis unavailable",
-    ) -> CompiledWiki:
-        """Non-destructive generation fallback.
-
-        Never dumps raw per-chunk ``node_N`` groups (the 900-file problem).
-        Prefers real concept definitions from the extractions; if those are
-        empty, uses only the GraphCompiler's aggregated cross-cutting concept
-        pages, then source overviews as a last resort. Always warns.
-        """
-        logger.warning("TwoPhase: generation fallback \u2014 %s", reason)
-        nodes: list[WikiNode] = []
-
-        # 1. Real concept definitions extracted in phase 1 (no LLM synthesis).
-        if extractions is not None:
-            concepts = extractions.concept_pages()
-            # Apply embedding merge (Option C) in fallback path too —
-            # otherwise fallback pages duplicate semantic variants that
-            # the normalized-key merge (Option A) missed.
-            embed_model = self._config.embedding.model
-            if embed_model and embed_model != "hash":
-                concepts = _merge_similar_concepts(concepts, embed_model)
-            for concept in concepts:
-                name = concept.get("name", "").strip()
-                if not name:
-                    continue
-                defs = concept.get("definitions") or []
-                body = "\n\n".join(d for d in defs if d) or f"*{name}*"
-                nodes.append(
-                    WikiNode(
-                        id=_slugify(name),
-                        title=name,
-                        content=body,
-                        node_type="concept",
-                        source_chunks=[],
-                        metadata={
-                            "provenance": list(concept.get("sources", []) or []),
-                            "two_phase": True,
-                            "fallback": True,
-                            "frontmatter": {"title": name, "kind": "concept"},
-                        },
-                    ),
-                )
-
-        # 2. GraphCompiler aggregated concept pages only (cross-cutting),
-        #    then source overviews as a last-resort summary. Never the raw
-        #    per-heading ``node_N`` chunk-group dump.
-        if not nodes and self._base is not None:
-            graph_wiki = self._base.compile(chunks, trees=trees)
-            nodes = [n for n in graph_wiki.nodes if n.metadata.get("cross_cutting")]
-            if not nodes:
-                nodes = [n for n in graph_wiki.nodes if n.node_type == "overview"]
-            # Re-id to title-based slugs so these never read as the raw
-            # per-chunk ``node_N`` dump, regardless of source.
-            seen_ids: set[str] = set()
-            for n in nodes:
-                base = _slugify(n.title) or n.id
-                nid, i = base, 2
-                while nid in seen_ids:
-                    nid = f"{base}-{i}"
-                    i += 1
-                n.id = nid
-                seen_ids.add(nid)
-                n.metadata["two_phase"] = True
-                n.metadata["fallback"] = True
-
-        logger.warning(
-            "TwoPhase: fallback emitted %d page(s) instead of a synthesized wiki",
-            len(nodes),
-        )
-        return CompiledWiki(
-            nodes=nodes,
-            edges=[],
-            toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes],
-            metadata={
-                "chunk_count": len(chunks),
-                "two_phase": True,
-                "fallback": True,
-                "fallback_reason": reason,
-                "node_count": len(nodes),
-            },
-        )
 
     @staticmethod
     def _build_tree_texts(tree: ChunkTree) -> list[str]:

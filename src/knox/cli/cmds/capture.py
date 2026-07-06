@@ -240,7 +240,7 @@ def _synthesize_write_page(
     references_section = _build_references_section(source_texts, related_titles)
 
     if not model:
-        return _fallback_write_body(source_texts, references_section)
+        raise RuntimeError("No LLM model configured for write-page synthesis")
 
     # Build a concise prompt combining all source texts.
     source_block = "\n\n".join(f"### {stem}\n\n{text[:4000]}" for stem, text in source_texts)
@@ -262,19 +262,11 @@ def _synthesize_write_page(
         content = _strip_reasoning(content)
         if content.strip():
             return content.strip() + "\n\n" + references_section
-    except Exception:
-        logger.debug("LLM synthesis failed for write page, using fallback")
-
-    return _fallback_write_body(source_texts, references_section)
-
-
-def _fallback_write_body(
-    source_texts: list[tuple[str, str]],
-    references_section: str,
-) -> str:
-    """Plain text concatenation when LLM synthesis is unavailable."""
-    parts = [f"## {stem}\n\n{text[:3000]}" for stem, text in source_texts]
-    return "\n\n".join(parts) + "\n\n" + references_section
+        raise RuntimeError("LLM returned empty content for write page")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"LLM synthesis failed for write page: {exc}") from exc
 
 
 def _build_references_section(

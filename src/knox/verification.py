@@ -61,26 +61,6 @@ def _load_excerpt(source: str, sources_dir: Path) -> str:
     return ""
 
 
-def _fallback_verify(claim: str, excerpt: str, min_ngram: int = 3) -> ClaimVerification:
-    """Substring n-gram matching. Used when LLM is unavailable or excerpt is too long."""
-    if not excerpt:
-        return ClaimVerification("", claim, None, "unsupported", 0.0, "source not found")
-    tokens = claim.split()
-    excerpt_lower = excerpt.lower()
-    best = 0
-    for n in range(len(tokens), min_ngram - 1, -1):
-        for start in range(len(tokens) - n + 1):
-            if " ".join(tokens[start : start + n]).lower() in excerpt_lower and n > best:
-                best = n
-                break
-        if best:
-            break
-    if best:
-        coverage = best / len(tokens)
-        return ClaimVerification("", claim, None, "supported", round(0.3 + 0.4 * coverage, 2), f"substring match ({best}/{len(tokens)} words)")
-    return ClaimVerification("", claim, None, "unsupported", 0.2, "no substring match")
-
-
 def verify_node(
     node: WikiNode,
     sources_dir: Path,
@@ -103,36 +83,33 @@ def verify_node(
             results.append(ClaimVerification(node.id, claim, citation, "unsupported", 0.0, "source not found"))
             continue
 
-        # Try LLM, fall through to substring if excerpt is too long or LLM fails.
-        if len(excerpt) <= verify_budget:
-            verify_system = _loader.get_body("verification/verify_system.md.j2")
-            prompt = _loader.render(
-                "verification/verify_claim.md.j2",
-                claim=claim,
-                source=citation.source,
-                start=citation.start,
-                end=citation.end,
-                excerpt=excerpt,
-            )
-            messages: list[dict[str, str]] = []
-            if verify_system:
-                messages.append({"role": "system", "content": verify_system})
-            messages.append({"role": "user", "content": prompt})
-            result = client.try_complete(messages=messages, role="verify", response_format=JSON_RESPONSE_FORMAT)
-            if result and result.json_data:
-                data = result.json_data
-                results.append(
-                    ClaimVerification(
-                        node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))
-                    )
-                )
-                continue
+        if len(excerpt) > verify_budget:
+            results.append(ClaimVerification(node.id, claim, citation, "unverified", 0.0, f"excerpt too long ({len(excerpt)} > {verify_budget})"))
+            continue
 
-        # Fallback: substring matching
-        fv = _fallback_verify(claim, excerpt, min_ngram=min_ngram)
-        fv.node_id = node.id
-        fv.citation = citation
-        results.append(fv)
+        verify_system = _loader.get_body("verification/verify_system.md.j2")
+        prompt = _loader.render(
+            "verification/verify_claim.md.j2",
+            claim=claim,
+            source=citation.source,
+            start=citation.start,
+            end=citation.end,
+            excerpt=excerpt,
+        )
+        messages: list[dict[str, str]] = []
+        if verify_system:
+            messages.append({"role": "system", "content": verify_system})
+        messages.append({"role": "user", "content": prompt})
+        result = client.try_complete(messages=messages, role="verify", response_format=JSON_RESPONSE_FORMAT)
+        if result and result.json_data:
+            data = result.json_data
+            results.append(
+                ClaimVerification(
+                    node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))
+                )
+            )
+        else:
+            results.append(ClaimVerification(node.id, claim, citation, "unverified", 0.0, "LLM verification unavailable"))
     return results
 
 

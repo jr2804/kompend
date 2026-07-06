@@ -322,14 +322,6 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
 
     get_console().print(f"Compiled: {', '.join(parts)}")
 
-    if meta.get("fallback"):
-        reason = meta.get("fallback_reason", "synthesis unavailable")
-        get_err_console().print(
-            f"Warning: compile fell back ({reason}) \u2014 pages are raw concept "
-            f"definitions / source summaries, not LLM-synthesized. Re-run after "
-            f"addressing the fallback to get synthesized pages."
-        )
-
 
 def _run_overview_synthesis(
     *,
@@ -338,18 +330,7 @@ def _run_overview_synthesis(
     base_dir: Path,
     show_progress: bool | None,
 ) -> None:
-    """Generate overview.md via LLM synthesis.
-
-    Skipped when the compile fell back (LLM issues) — calling the same
-    broken backend again would hang or fail identically.
-    """
-    if wiki.metadata.get("fallback"):
-        get_err_console().print(
-            "Skipping overview synthesis: compile fell back (LLM issues) — "
-            "re-run after fixing the fallback to get an overview."
-        )
-        return
-
+    """Generate overview.md via LLM synthesis."""
     resolved_model = pipeline_config.llm.default_model
     synthesize_tracker = PipelineProgress.create(total_files=1, force_progress=show_progress)
     synthesize_tracker.start()

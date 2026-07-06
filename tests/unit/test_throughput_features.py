@@ -697,8 +697,8 @@ class TestTwoPhaseCompiler:
         assert wiki.metadata["two_phase"] is True
         assert wiki.nodes == []
 
-    def test_fallback_to_base(self) -> None:
-        """When extraction returns nothing, fall back to base compiler."""
+    def test_extraction_failure_raises(self) -> None:
+        """When extraction LLM fails, RuntimeError is raised — no degraded wiki."""
         base = GraphCompiler("model")
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
         compiler = TwoPhaseCompiler(config=config, base=base)
@@ -715,9 +715,9 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            mock.return_value = None  # LLM unavailable → empty extraction
-            wiki = compiler.compile(chunks)
-        assert wiki.metadata.get("two_phase") is True
+            mock.return_value = None  # LLM unavailable → extraction fails
+            with pytest.raises(RuntimeError, match="extraction failed"):
+                compiler.compile(chunks)
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
@@ -796,13 +796,16 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            # First call (extract) returns a summary; generation also mocked.
-            mock.return_value = {
-                "summary": "a summary",
-                "entities": [],
-                "concepts": [{"name": "attention", "definition": "y"}],
-                "tags": [],
-            }
+            # First call (extract) returns a summary; generation returns a page.
+            mock.side_effect = [
+                {
+                    "summary": "a summary",
+                    "entities": [],
+                    "concepts": [{"name": "attention", "definition": "y"}],
+                    "tags": [],
+                },
+                {"pages": [{"title": "Attention", "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory."}]},
+            ]
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
         stats = wiki.metadata["extraction_stats"]
@@ -1020,8 +1023,8 @@ class TestLifecycleStore:
 # ===========================================================================
 
 
-class TestVerificationFallback:
-    """verify_node / verify_wiki fallback behaviour."""
+class TestVerificationUnavailable:
+    """verify_node / verify_wiki behaviour when LLM is unavailable."""
 
     def test_claim_without_citation_unsupported(self, tmp_path: Path) -> None:
         node = WikiNode(
@@ -1044,7 +1047,8 @@ class TestVerificationFallback:
         result = verify_node(node, tmp_path, client=self._fake_client(), model="test/model")
         assert result[0].verdict == "unsupported"
 
-    def test_substring_fallback_match(self, tmp_path: Path) -> None:
+    def test_llm_unavailable_marks_unverified(self, tmp_path: Path) -> None:
+        """When LLM returns None, claim is 'unverified' — no substring matching."""
         sources = tmp_path / "sources"
         sources.mkdir()
         (sources / "a.pdf").write_text(
@@ -1058,8 +1062,8 @@ class TestVerificationFallback:
             node_type="section",
         )
         result = verify_node(node, sources, client=self._fake_client(), model="test/model")
-        assert result[0].verdict == "supported"
-        assert result[0].confidence > 0.5
+        assert result[0].verdict == "unverified"
+        assert result[0].confidence == 0.0
 
     def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
         output_dir = tmp_path / "wiki"

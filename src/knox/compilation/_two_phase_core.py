@@ -430,19 +430,6 @@ def _try_litellm_json(
         return None
 
 
-def _fallback_extraction(source: str, text: str) -> Extraction:
-    """Heuristic extraction when the LLM is unavailable."""
-    sentences = [s.strip() for s in text.replace("\n", " ").split(".") if len(s.strip()) > 10]
-    summary = sentences[0] if sentences else ""
-    return Extraction(
-        source=source,
-        summary=summary,
-        entities=[],
-        concepts=[{"name": "auto_concept", "definition": summary}] if summary else [],
-        tags=[],
-    )
-
-
 def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
     """Merge multiple batch extractions for the same source into one."""
     if not parts:
