@@ -65,3 +65,4 @@ sources/
 mise.local.toml
 nul
 .cortexkit
+.codegraph
