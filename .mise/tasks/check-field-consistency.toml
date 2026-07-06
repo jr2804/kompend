@@ -1,0 +1,2 @@
+description = "Detect bare-string literals used as cross-file contract keys (Antipattern 5)"
+run = "uv run python scripts/check_field_consistency.py"
