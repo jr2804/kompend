@@ -36,13 +36,6 @@ class TestConfigGet:
 
 
 class TestConfigSet:
-    def _init_vault(self, tmp_path: Path) -> Path:
-        """Create .knox/config.toml so config set targets a valid vault."""
-        cfg_dir = tmp_path / KNOX_DIR
-        cfg_dir.mkdir()
-        (cfg_dir / "config.toml").write_text("")
-        return cfg_dir
-
     def test_set_integer_in_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         self._init_vault(tmp_path)
@@ -92,6 +85,13 @@ class TestConfigSet:
         backup = config.with_suffix(config.suffix + ".bak")
         assert backup.is_file()
         assert "chunk_size_min = 4096" in backup.read_text(encoding="utf-8")
+
+    def _init_vault(self, tmp_path: Path) -> Path:
+        """Create .knox/config.toml so config set targets a valid vault."""
+        cfg_dir = tmp_path / KNOX_DIR
+        cfg_dir.mkdir()
+        (cfg_dir / "config.toml").write_text("")
+        return cfg_dir
 
 
 class TestConfigList:

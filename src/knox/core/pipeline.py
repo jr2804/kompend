@@ -135,28 +135,6 @@ class WikiPipeline:
         if hasattr(self, "_state"):
             self.state_store.save(self._state)
 
-    def _rel_path(self, path: Path) -> str:
-        """Convert absolute path to relative string for serialization."""
-        try:
-            return str(path.relative_to(self._base_dir))
-        except ValueError:
-            return str(path)
-
-    def _abs_path(self, path_str: str) -> Path:
-        """Reconstruct absolute path from potentially relative string."""
-        p = Path(path_str) if path_str else Path()
-        if p != Path() and not p.is_absolute():
-            return self._base_dir / p
-        return p
-
-    def _normalize_metadata_paths(self, metadata: dict[str, Any]) -> dict[str, Any]:
-        """Convert known absolute path values in metadata to relative."""
-        if MetadataField.SOURCE_FILE in metadata:
-            meta = dict(metadata)
-            meta[MetadataField.SOURCE_FILE] = self._rel_path(Path(meta[MetadataField.SOURCE_FILE]))
-            return meta
-        return metadata
-
     def start_level(self) -> int:
         """Numeric level of the first tier to run."""
         return TIER_LEVEL[self.config.start_at_tier]
@@ -189,6 +167,21 @@ class WikiPipeline:
             self.config.stop_at_tier.value,
             self.config.source_dir,
         )
+
+        # Auto-resume: when start_at_tier is at default (index) and a previous
+        # run exists, jump to the tier where progress stopped. Use --force to
+        # re-run from scratch, or --start-at-tier index to override.
+        if self.config.start_at_tier == Tier.INDEX and not self.config.force:
+            auto_tier = self._detect_resume_tier()
+            if auto_tier is not None:
+                min_tier = min(e.current_tier for e in self.state.entries.values())
+                logger.info(
+                    "Auto-resume: previous run detected (sources at tier %d). Resuming at tier '%s'. Use --start-at-tier index or --force for full re-run.",
+                    min_tier,
+                    auto_tier.value,
+                )
+                self.config.start_at_tier = auto_tier
+
         self._validate_prerequisites()
 
         # --force: invalidate all caches before starting.
@@ -364,6 +357,46 @@ class WikiPipeline:
                 "description": f"sample sources: {[e.stem for e in sample]}",
             },
         ]
+
+    def _rel_path(self, path: Path) -> str:
+        """Convert absolute path to relative string for serialization."""
+        try:
+            return str(path.relative_to(self._base_dir))
+        except ValueError:
+            return str(path)
+
+    def _abs_path(self, path_str: str) -> Path:
+        """Reconstruct absolute path from potentially relative string."""
+        p = Path(path_str) if path_str else Path()
+        if p != Path() and not p.is_absolute():
+            return self._base_dir / p
+        return p
+
+    def _normalize_metadata_paths(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Convert known absolute path values in metadata to relative."""
+        if MetadataField.SOURCE_FILE in metadata:
+            meta = dict(metadata)
+            meta[MetadataField.SOURCE_FILE] = self._rel_path(Path(meta[MetadataField.SOURCE_FILE]))
+            return meta
+        return metadata
+
+    def _detect_resume_tier(self) -> Tier | None:
+        """Check compile_state.json for previous progress.
+
+        Returns the tier to resume at, or ``None`` if no previous run
+        exists or all sources are at tier 0 (no meaningful progress).
+        """
+        state = self.state
+        if not state.entries:
+            return None
+        min_tier = min(e.current_tier for e in state.entries.values())
+        if min_tier < 1:
+            return None
+        resume_level = min_tier + 1
+        for tier, level in TIER_LEVEL.items():
+            if level == resume_level:
+                return tier
+        return None
 
     def _should_run(self, tier: Tier) -> bool:
         """Check whether ``tier`` falls within [start, stop]."""

@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import litellm
+from pydantic import BaseModel
 from slugify import slugify as _slugify_impl
 
+from knox.compilation.schema import LLMOutputError
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, _strip_reasoning, salvage_json
@@ -356,15 +358,25 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(
+def _try_litellm_json(  # noqa: PLR0915
     prompt: str,
     model: str,
     system: str | None = None,
     timeout: float | None = None,
     call_stats: list[tuple[int, int]] | None = None,
     max_tokens: int | None = None,
-) -> Any | None:
-    """Call litellm completion and return parsed JSON, or None on failure.
+    response_model: type[BaseModel] | None = None,
+) -> dict[str, Any]:
+    """Call litellm completion and return parsed JSON as a dict.
+
+    When *response_model* is provided, it is passed as ``response_format``
+    to litellm, which translates it to the provider-native structured-output
+    format (json_schema for OpenAI/Ollama, etc.).
+
+    Raises:
+        LLMOutputError: If the model returns empty, unparseable, or
+            schema-invalid output.  The model is considered not suitable
+            for compilation — no fallback.
 
     If *call_stats* is provided, ``(prompt_tokens, completion_tokens)`` is
     appended to it on each successful LLM response.
@@ -378,9 +390,12 @@ def _try_litellm_json(
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "response_format": JSON_RESPONSE_FORMAT,
             "temperature": 0.0,
         }
+        if response_model is not None:
+            kwargs["response_format"] = response_model
+        else:
+            kwargs["response_format"] = JSON_RESPONSE_FORMAT
         if timeout is not None:
             kwargs["timeout"] = timeout
         if max_tokens is not None:
@@ -415,25 +430,24 @@ def _try_litellm_json(
         content = response.choices[0].message.content
         content = _strip_reasoning(content)
         if not content:
-            elapsed = time.monotonic() - start
-            logger.warning("LLM returned empty content for model=%s in=%.1fs", model, elapsed)
-            return None
+            raise LLMOutputError(
+                f"Model '{model}' returned empty content after {elapsed:.1f}s. "
+                "This model cannot produce structured JSON output and is not suitable for compilation."
+            )
         parsed = salvage_json(content)
         if parsed is None:
-            elapsed = time.monotonic() - start
             snippet = content[:300].replace("\n", "\\n")
-            logger.warning(
-                "LLM returned unparseable JSON for model=%s in=%.1fs — "
-                "response starts with: %s",
-                model,
-                elapsed,
-                snippet,
-            )
+            raise LLMOutputError(f"Model '{model}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
+        if not isinstance(parsed, dict):
+            raise LLMOutputError(f"Model '{model}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {str(parsed)[:200]}")
+        logger.debug("LLM parsed OK model=%s keys=%s", model, list(parsed.keys()))
         return parsed
+    except LLMOutputError:
+        raise
     except Exception as exc:
         elapsed = time.monotonic() - start
         logger.warning("LLM call failed for model=%s in=%.1fs — %s", model, elapsed, exc)
-        return None
+        return {}
 
 
 def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:

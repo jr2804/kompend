@@ -159,6 +159,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             return Path(str(p.relative_to(base_dir)))
         except ValueError:
             return p
+
     cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 

@@ -42,6 +42,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
+from knox.compilation.schema import ExtractionOutput, GenerationOutput, ValidationError
 from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
@@ -568,8 +569,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         if not nodes:
             logger.warning(
-                "TwoPhase: generation skipped — 0 of %d concept(s) synthesized. "
-                "All LLM calls returned invalid data.",
+                "TwoPhase: generation skipped — 0 of %d concept(s) synthesized. All LLM calls returned invalid data.",
                 len(concepts),
             )
             return CompiledWiki(
@@ -594,8 +594,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         if not nodes:
             logger.warning(
-                "TwoPhase: generation produced 0 pages after filtering "
-                "(min_content_length=%d). Check LLM output quality.",
+                "TwoPhase: generation produced 0 pages after filtering (min_content_length=%d). Check LLM output quality.",
                 self._config.budget.min_content_length,
             )
             return CompiledWiki(
@@ -707,11 +706,12 @@ class TwoPhaseCompiler(BaseCompiler):
                     timeout=self._timeout,
                     call_stats=self._llm_stats,
                     max_tokens=min(self._context_window.max_output, self._budget.gen_output_max),
+                    response_model=GenerationOutput,
                 )
 
-                if not isinstance(data, dict):
+                if not data:
                     logger.warning(
-                        "TwoPhase: LLM returned non-dict for batch %d-%d, segment %d — skipping",
+                        "TwoPhase: LLM returned no data for batch %d-%d, segment %d — skipping",
                         batch_start,
                         batch_start + len(batch),
                         seg_idx,
@@ -719,25 +719,35 @@ class TwoPhaseCompiler(BaseCompiler):
                     failed_count += 1
                     continue
 
-                for idx, page in enumerate(data.get("pages", [])):
-                    if not isinstance(page, dict):
-                        continue
+                try:
+                    gen_output = GenerationOutput.model_validate(data)
+                except ValidationError:
+                    logger.warning(
+                        "TwoPhase: generation output failed schema validation for batch %d-%d, segment %d — skipping",
+                        batch_start,
+                        batch_start + len(batch),
+                        seg_idx,
+                    )
+                    failed_count += 1
+                    continue
+
+                for idx, page in enumerate(gen_output.pages):
                     # Always derive slug from title for consistency — ignore LLM slug
-                    node_id = _slugify(str(page.get("title", f"concept-{batch_start + idx}")))
+                    node_id = _slugify(page.title or f"concept-{batch_start + idx}")
                     _upsert_node(
                         WikiNode(
                             id=node_id,
-                            title=str(page.get("title", f"Concept {batch_start + idx}")),
-                            content=str(page.get("content", "")),
+                            title=page.title or f"Concept {batch_start + idx}",
+                            content=page.content,
                             node_type="concept",
                             source_chunks=[],
                             metadata={
-                                MetadataField.PROVENANCE: list(page.get("provenance", []) or []),  # nocheck — LLM output key
-                                "related": list(page.get("related", []) or []),
+                                MetadataField.PROVENANCE: page.provenance,
+                                "related": page.related,
                                 "two_phase": True,
                                 "images": all_images,
                                 "frontmatter": {
-                                    "title": str(page.get("title", f"Concept {batch_start + idx}")),
+                                    "title": page.title or f"Concept {batch_start + idx}",
                                 },
                             },
                         ),
@@ -792,14 +802,23 @@ class TwoPhaseCompiler(BaseCompiler):
             timeout=self._timeout,
             call_stats=self._llm_stats,
             max_tokens=min(self._context_window.max_output, self._budget.extract_output_max),
+            response_model=ExtractionOutput,
         )
-        if isinstance(data, dict):
+        if data:
+            try:
+                validated = ExtractionOutput.model_validate(data)
+            except ValidationError:
+                logger.warning(
+                    "TwoPhase: extraction output failed schema validation for '%s' — skipping",
+                    source,
+                )
+                return None
             result = Extraction(
                 source=source,
-                summary=str(data.get("summary", "")),
-                entities=[dict(e) for e in data.get("entities", []) if isinstance(e, dict)],
-                concepts=[dict(c) for c in data.get("concepts", []) if isinstance(c, dict)],
-                tags=[str(t) for t in data.get("tags", []) if t],
+                summary=validated.summary,
+                entities=[e.model_dump() for e in validated.entities],
+                concepts=[c.model_dump() for c in validated.concepts],
+                tags=validated.tags,
             )
             if not self._config.no_cache:
                 self._cache_store.set("extract", extract_deps, result)

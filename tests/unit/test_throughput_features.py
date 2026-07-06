@@ -10,7 +10,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from knox.compilation._two_phase_core import _normalize_concept_key
-from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -662,6 +661,7 @@ class TestMergeSimilarConcepts:
             result = _merge_similar_concepts(concepts, "any")
 
         assert len(result) == 2
+
     """Source segmentation — splits content without data loss."""
 
     def test_empty_sources_returns_empty(self) -> None:
@@ -806,7 +806,14 @@ class TestTwoPhaseCompiler:
                     "concepts": [{"name": "attention", "definition": "y"}],
                     "tags": [],
                 },
-                {"pages": [{"title": "Attention", "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory."}]},
+                {
+                    "pages": [
+                        {
+                            "title": "Attention",
+                            "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory.",
+                        }
+                    ]
+                },
             ]
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
