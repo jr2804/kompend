@@ -51,7 +51,7 @@ def entry_from_report(
     """Build a lint history dict from a lint run."""
     return {
         "timestamp": timestamp or iso_local(),
-        "duration_seconds": round(duration_seconds, 3),
+        "duration_seconds": round(duration_seconds, 3),  # nocheck — lint-history schema, not WikiField
         "options": dict(options),
         "llm": llm,
         "config_snapshot": _build_config_snapshot(config),

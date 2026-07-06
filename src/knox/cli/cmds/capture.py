@@ -18,6 +18,7 @@ from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
 from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
+from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
 from knox.core.timeutil import iso_local
 from knox.llm.client import LLMClient, _strip_reasoning
@@ -213,8 +214,8 @@ def _load_related_titles(
     try:
         data: dict[str, Any] = json.loads(wiki_cache.read_text(encoding="utf-8"))
         source_stems = {s for s, _ in source_texts}
-        for node in data.get("nodes", []):
-            prov = node.get("metadata", {}).get("provenance") or []
+        for node in data.get(WikiField.NODES, []):
+            prov = node.get("metadata", {}).get(MetadataField.PROVENANCE) or []
             node_sources = {Path(str(p)).stem for p in prov if p}
             if node_sources & source_stems:
                 related.append(str(node.get("title", "")))

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from knox.llm.client import LLMClient
 from knox.logging import get_logger
 from knox.resolution.base import BaseResolver
@@ -77,7 +77,7 @@ class VLMEnricher(BaseResolver):
             resolved.metadata["figure_enriched"] = True
             return resolved
 
-        image_path = resolved.chunk.metadata.get("image_path") or resolved.metadata.get("image_path")
+        image_path = resolved.chunk.metadata.get(MetadataField.IMAGE_PATH) or resolved.metadata.get(MetadataField.IMAGE_PATH)
 
         if not image_path:
             logger.debug("No image_path in metadata for chunk %s — adding placeholder", resolved.chunk.id)

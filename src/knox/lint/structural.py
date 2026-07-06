@@ -350,7 +350,7 @@ class StalePageRule(BaseLintRule):
                                 severity=Severity.WARNING,
                                 message=f"Source file not found for page '{node.title}': {source_file}",
                                 page_id=node.id,
-                                details={"source_file": str(source_file)},
+                                details={MetadataField.SOURCE_FILE: str(source_file)},
                             )
                         )
 
@@ -428,7 +428,7 @@ class SourceNotFoundRule(BaseLintRule):
                         severity=Severity.ERROR,
                         message=f"Source file missing for page '{node.title}': {source_file}",
                         page_id=node.id,
-                        details={"source_file": str(source_file)},
+                        details={MetadataField.SOURCE_FILE: str(source_file)},
                     )
                 )
         if not results:

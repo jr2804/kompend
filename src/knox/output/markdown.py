@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import INDEX_FILE
 from knox.core.timeutil import iso_local
 from knox.output.base import BaseOutputWriter
@@ -76,7 +76,7 @@ class MarkdownWriter(BaseOutputWriter):
             frontmatter.setdefault("compiled_at", compiled_at)
             # Derive sources list: prefer explicit provenance, fall back to
             # source_chunks stems (best-effort).
-            prov = node.metadata.get("provenance") or []
+            prov = node.metadata.get(MetadataField.PROVENANCE) or []
             if prov:
                 frontmatter.setdefault(
                     "sources",

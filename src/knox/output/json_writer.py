@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import ClassVar
 
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, WikiField
 from knox.output.base import BaseOutputWriter
 
 
@@ -20,11 +20,11 @@ class JsonWriter(BaseOutputWriter):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
-            "edges": wiki.edges,
-            "toc": wiki.toc,
-            "quality_score": wiki.quality_score,
-            "iteration": wiki.iteration,
+            WikiField.NODES: [dataclasses.asdict(n) for n in wiki.nodes],
+            WikiField.EDGES: wiki.edges,
+            WikiField.TOC: wiki.toc,
+            WikiField.QUALITY_SCORE: wiki.quality_score,
+            WikiField.ITERATION: wiki.iteration,
             "metadata": wiki.metadata,
         }
 

@@ -18,7 +18,7 @@ from typing import Any
 
 from liteparse import LiteParse
 
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import (
@@ -264,14 +264,14 @@ def _build_image_element(
     if image_mode == "base64":
         data_uri = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
         content = data_uri
-        meta: dict[str, Any] = {"image_base64": data_uri, "image_mode": "base64"}
+        meta: dict[str, Any] = {MetadataField.IMAGE_BASE64: data_uri, "image_mode": "base64"}
     else:
         target_dir = images_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         out_path = target_dir / f"{source_file.stem}_img_{image.id}.{fmt}"
         out_path.write_bytes(raw)
         content = str(out_path)
-        meta = {"image_path": str(out_path), "image_mode": "file"}
+        meta = {MetadataField.IMAGE_PATH: str(out_path), "image_mode": "file"}
 
     if alt_text:
         meta["alt_text"] = alt_text

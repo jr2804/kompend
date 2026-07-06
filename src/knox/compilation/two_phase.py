@@ -43,7 +43,7 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
@@ -261,7 +261,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 nodes=[],
                 edges=[],
                 toc=[],
-                metadata={"chunk_count": 0, "two_phase": True, "llm_calls": 0},
+                metadata={WikiField.CHUNK_COUNT: 0, "two_phase": True, "llm_calls": 0},
             )
 
         num_sources = len({str(rc.chunk.source_file or "unknown") for rc in chunks})
@@ -323,7 +323,7 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 
         total_elapsed = time.monotonic() - compile_start
-        wiki.metadata.get("chunk_count", 0)
+        wiki.metadata.get(WikiField.CHUNK_COUNT, 0)
         node_count = len(wiki.nodes)
         logger.info(
             "TwoPhase: compile done — %d source(s) \u2192 %d concept(s) in %.1fs "
@@ -499,7 +499,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 edges=[],
                 toc=[],
                 metadata={
-                    "chunk_count": len(chunks),
+                    WikiField.CHUNK_COUNT: len(chunks),
                     "two_phase": True,
                     "generation_skipped": True,
                     "concepts_available": 0,
@@ -577,7 +577,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 edges=[],
                 toc=[],
                 metadata={
-                    "chunk_count": len(chunks),
+                    WikiField.CHUNK_COUNT: len(chunks),
                     "two_phase": True,
                     "generation_skipped": True,
                     "concepts_available": len(concepts),
@@ -603,7 +603,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 edges=[],
                 toc=[],
                 metadata={
-                    "chunk_count": len(chunks),
+                    WikiField.CHUNK_COUNT: len(chunks),
                     "two_phase": True,
                     "generation_skipped": True,
                     "skip_reason": "all pages filtered as empty",
@@ -622,7 +622,7 @@ class TwoPhaseCompiler(BaseCompiler):
             toc=toc,
             quality_score=quality,
             metadata={
-                "chunk_count": len(chunks),
+                WikiField.CHUNK_COUNT: len(chunks),
                 "node_count": len(nodes),
                 "edge_count": len(edges),
                 "two_phase": True,
@@ -732,7 +732,7 @@ class TwoPhaseCompiler(BaseCompiler):
                             node_type="concept",
                             source_chunks=[],
                             metadata={
-                                "provenance": list(page.get("provenance", []) or []),
+                                MetadataField.PROVENANCE: list(page.get("provenance", []) or []),  # nocheck — LLM output key
                                 "related": list(page.get("related", []) or []),
                                 "two_phase": True,
                                 "images": all_images,
@@ -866,7 +866,7 @@ class TwoPhaseCompiler(BaseCompiler):
             logger.debug("Generation checkpoint deps mismatch -- ignoring")
             return None
         try:
-            nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]
+            nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]  # nocheck — checkpoint schema
         except Exception:
             logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
             return None
@@ -889,7 +889,7 @@ class TwoPhaseCompiler(BaseCompiler):
         entry = {
             "deps": gen_deps,
             "completed_batches": sorted(completed_batches),
-            "nodes": [_encode_json(n) for n in nodes],
+            "nodes": [_encode_json(n) for n in nodes],  # nocheck — checkpoint schema
             "slug_to_idx": dict(slug_to_idx),
         }
         try:

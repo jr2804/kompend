@@ -65,23 +65,21 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
         "MemoryField",
         ["memory/store.py", "memory/__init__.py", "cli/cmds/memory.py"],
     ),
-    # FTS SQL schema — module-local to search/ + its retriever readers.
+    # FTS SQL schema — the contract is module-local to index.py (CREATE TABLE / INSERT / SELECT).
+    # Retrievers build unrelated dicts with generic keys ("content", "title", "id") that
+    # collide with chat-message and hit-dict shapes, so we do NOT police consumer files.
     (
         "knox.search.index",
         "FtsField",
-        ["search/index.py", "search/retriever.py", "search/adaptive_retriever.py"],
+        ["search/index.py"],
     ),
-    # zvec collection schema — module-local to rag/ + its retriever readers.
+    # zvec collection schema — module-local to zvec_store.py (the DDL contract).
+    # Retrievers read hit dicts but also build unrelated dicts with "title" keys,
+    # so consumer files are not policed.
     (
         "knox.rag.zvec_store",
         "ZvecField",
-        [
-            "rag/zvec_store.py",
-            "rag/__init__.py",
-            "search/retriever.py",
-            "search/adaptive_retriever.py",
-            "compilation/wicer.py",
-        ],
+        ["rag/zvec_store.py", "rag/__init__.py"],
     ),
 ]
 
@@ -101,6 +99,13 @@ ALLOWLIST_SUFFIXES: list[str] = [
 # These collide with ordinary English words too often to enforce reliably.
 VALUE_DENYLIST: frozenset[str] = frozenset(
     {
+        # Overloaded across unrelated contracts in this codebase:
+        #   "source" = metadata-source OR edge-dict source-node OR query result
+        #   "metadata" = CompiledWiki container OR parser-config OR node-meta
+        # Policing the bare literal catches too many unrelated contracts.
+        # The enum members remain available for explicit use at known sites.
+        "source",
+        "metadata",
         # ElementType / common words
         "text",
         "code",
@@ -228,18 +233,24 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
             for key_node in node.keys:
                 if key_node is None:  # ** unpacking
                     continue
+                if _line_has_nocheck(key_node.lineno, lines):
+                    continue
                 val = _string_node_value(key_node)
                 if val is not None:
                     for q in matches(val):
                         out.append(_make_violation(path, key_node, val, q, lines))
         # Case 2: subscript with string arg — d["source"]
         elif isinstance(node, ast.Subscript):
+            if _line_has_nocheck(node.lineno, lines):
+                continue
             val = _string_node_value(node.slice)
             if val is not None:
                 for q in matches(val):
                     out.append(_make_violation(path, node, val, q, lines))
         # Case 3: .get("source", ...) call
         elif isinstance(node, ast.Call):
+            if _line_has_nocheck(node.lineno, lines):
+                continue
             func = node.func
             if (
                 isinstance(func, ast.Attribute)
@@ -252,6 +263,17 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
                         out.append(_make_violation(path, node, val, q, lines))
 
     return out
+
+
+def _line_has_nocheck(line_no: int, lines: list[str]) -> bool:
+    """True if the source line carries a ``# nocheck`` comment.
+
+    Used to exempt lines that legitimately parse an external schema
+    (LLM JSON output, checkpoint files, MCP protocol payloads).
+    """
+    if 1 <= line_no <= len(lines):
+        return "# nocheck" in lines[line_no - 1]
+    return False
 
 
 def _make_violation(

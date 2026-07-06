@@ -44,14 +44,14 @@ def _source_of(node: dict[str, Any]) -> str:
 def _load_wiki() -> dict[str, Any]:
     cache = VaultPaths(_PROJECT_DIR).wiki_cache_path
     if not cache.exists():
-        return {"nodes": [], "edges": [], "toc": [], "quality_score": 0.0, "node_count": 0}
+        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, "node_count": 0}
     try:
         data = json.loads(cache.read_text(encoding="utf-8"))
-        data["node_count"] = len(data.get("nodes", []))
+        data["node_count"] = len(data.get(WikiField.NODES, []))
         return data
     except Exception as exc:
         logger.warning("Failed to load wiki cache: %s", exc, exc_info=True)
-        return {"nodes": [], "edges": [], "toc": [], "quality_score": 0.0, "node_count": 0}
+        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, "node_count": 0}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -59,7 +59,7 @@ async def dashboard() -> str:
     wiki = _load_wiki()
     nodes = wiki.get(WikiField.NODES, [])
     edges = wiki.get(WikiField.EDGES, [])
-    toc = wiki.get("toc", [])
+    toc = wiki.get(WikiField.TOC, [])
     source_count = len({_source_of(n) for n in nodes if _source_of(n)})
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -103,7 +103,7 @@ async def dashboard() -> str:
     <div class="card"><h3>Wiki Pages</h3><div class="value">{wiki["node_count"]}</div></div>
     <div class="card"><h3>Sources</h3><div class="value">{source_count}</div></div>
     <div class="card"><h3>Cross-References</h3><div class="value">{len(edges)}</div></div>
-    <div class="card"><h3>Quality Score</h3><div class="value">{wiki.get("quality_score", 0):.0%}</div></div>
+    <div class="card"><h3>Quality Score</h3><div class="value">{wiki.get(WikiField.QUALITY_SCORE, 0):.0%}</div></div>
     <div class="card"><h3>TOC Entries</h3><div class="value">{len(toc)}</div></div>
   </div>
   <div class="section">

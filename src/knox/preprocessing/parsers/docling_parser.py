@@ -16,7 +16,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from knox.core.config import PdfConfig
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import (
@@ -229,9 +229,9 @@ class DoclingParser(BaseParser):
                     "image_mode": self.image_mode,
                 }
                 if self.image_mode == "file" and content and not content.startswith("["):
-                    img_meta["image_path"] = content
+                    img_meta[MetadataField.IMAGE_PATH] = content
                 elif self.image_mode == "base64" and content.startswith("data:"):
-                    img_meta["image_base64"] = content
+                    img_meta[MetadataField.IMAGE_BASE64] = content
                 captions = getattr(item, "captions", [])
                 if captions:
                     img_meta["caption"] = str(captions[0])

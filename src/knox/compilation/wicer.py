@@ -20,7 +20,7 @@ from typing import Any, Final
 from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
@@ -126,9 +126,9 @@ class WiCERCompiler(BaseCompiler):
                 edges=[],
                 toc=[],
                 metadata={
-                    "chunk_count": 0,
-                    "source_count": 0,
-                    "source_names": [],
+                    WikiField.CHUNK_COUNT: 0,
+                    MetadataField.SOURCE_COUNT: 0,
+                    MetadataField.SOURCE_NAMES: [],
                     "wicer_iterations": 0,
                 },
             )

@@ -462,7 +462,7 @@ class WikiPipeline:
         path = self._compiled_wiki_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "nodes": [
+            WikiField.NODES: [
                 {
                     "id": n.id,
                     "title": n.title,
@@ -473,10 +473,10 @@ class WikiPipeline:
                 }
                 for n in wiki.nodes
             ],
-            "edges": wiki.edges,
-            "toc": wiki.toc,
-            "quality_score": wiki.quality_score,
-            "iteration": wiki.iteration,
+            WikiField.EDGES: wiki.edges,
+            WikiField.TOC: wiki.toc,
+            WikiField.QUALITY_SCORE: wiki.quality_score,
+            WikiField.ITERATION: wiki.iteration,
             "metadata": wiki.metadata,
         }
         path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
@@ -677,7 +677,7 @@ class WikiPipeline:
                     type=ElementType(el["type"]),
                     content=el["content"],
                     page=el.get("page"),
-                    reading_order=el.get("reading_order"),
+                    reading_order=el.get(MetadataField.READING_ORDER),
                     heading_level=el.get("heading_level"),
                     metadata=el.get("metadata", {}),
                 )
@@ -715,7 +715,7 @@ class WikiPipeline:
                         "type": str(el.type),
                         "content": str(el.content) if not isinstance(el.content, list) else el.content,
                         "page": el.page,
-                        "reading_order": el.reading_order,
+                        MetadataField.READING_ORDER: el.reading_order,
                         "heading_level": el.heading_level,
                         "metadata": el.metadata,
                     }

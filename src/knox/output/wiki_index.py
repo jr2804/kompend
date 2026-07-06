@@ -257,8 +257,8 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  #
     article_count = len(wiki.nodes)
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
     llm_model = wiki.metadata.get(WikiField.LLM_MODEL)
-    tier_timings = wiki.metadata.get("tier_timings", {})
-    llm_usage = wiki.metadata.get("llm_usage", {})
+    tier_timings = wiki.metadata.get(WikiField.TIER_TIMINGS, {})
+    llm_usage = wiki.metadata.get(WikiField.LLM_USAGE, {})
 
     header_parts: list[str] = []
     if stage == "compile":
@@ -278,7 +278,7 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  #
         lines[-1] += f" | {header_suffix}"
 
     # Source list and per-source stats
-    source_names = wiki.metadata.get("source_names", [])
+    source_names = wiki.metadata.get(MetadataField.SOURCE_NAMES, [])
     extraction_stats = wiki.metadata.get("extraction_stats")
     # Build source→summary map so the source list table can show titles.
     source_titles: dict[str, str] = {}

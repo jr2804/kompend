@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from knox.compilation.base import BaseCompiler
-from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -75,9 +75,9 @@ class GraphCompiler(BaseCompiler):
                 edges=[],
                 toc=[],
                 metadata={
-                    "chunk_count": 0,
-                    "source_count": 0,
-                    "source_names": [],
+                    WikiField.CHUNK_COUNT: 0,
+                    MetadataField.SOURCE_COUNT: 0,
+                    MetadataField.SOURCE_NAMES: [],
                     "model": self.model,
                     "kinds": [],
                 },
@@ -121,9 +121,9 @@ class GraphCompiler(BaseCompiler):
             edges=edges,
             toc=toc,
             metadata={
-                "chunk_count": len(chunks),
-                "source_count": source_count,
-                "source_names": source_names,
+                WikiField.CHUNK_COUNT: len(chunks),
+                MetadataField.SOURCE_COUNT: source_count,
+                MetadataField.SOURCE_NAMES: source_names,
                 "node_count": len(nodes),
                 "edge_count": len(edges),
                 "model": self.model,
@@ -154,9 +154,9 @@ class GraphCompiler(BaseCompiler):
                 node_type=kind,
                 source_chunks=source_ids,
                 metadata={
-                    "heading_context": heading,
-                    "source_file": source,
-                    "chunk_count": len(group_chunks),
+                    MetadataField.HEADING_CONTEXT: heading,
+                    MetadataField.SOURCE_FILE: source,
+                    WikiField.CHUNK_COUNT: len(group_chunks),
                     "frontmatter": {"kind": kind},
                 },
             )
@@ -401,7 +401,7 @@ class GraphCompiler(BaseCompiler):
                 source_chunks=[],
                 metadata={
                     "cross_cutting": True,
-                    "source_count": len(sources),
+                    MetadataField.SOURCE_COUNT: len(sources),
                     "referenced_nodes": [nodes[idx].id for idx in sorted(node_indices)],
                     "frontmatter": {"kind": "concept"},
                 },

@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from knox.core.models import MetadataField
 from knox.core.paths import VaultPaths
 from knox.core.tier_state import TierStateStore
 from knox.logging import get_logger
@@ -206,7 +207,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             continue
 
         data = asdict(doc)
-        data["source_file"] = str(_rel_path(Path(data["source_file"])))
+        data[MetadataField.SOURCE_FILE] = str(_rel_path(Path(data[MetadataField.SOURCE_FILE])))
         out_file.write_text(
             json.dumps(data, indent=2, default=str),
             encoding="utf-8",

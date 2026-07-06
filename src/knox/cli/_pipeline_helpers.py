@@ -22,7 +22,7 @@ from knox.cli.args import (
     Recursive,
     UrlFile,
 )
-from knox.core.models import CompiledWiki, MetadataField
+from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
@@ -206,11 +206,11 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
         nodes_dicts.append(nd)
 
     data = {
-        "nodes": nodes_dicts,
-        "edges": list(wiki.edges),
-        "toc": list(wiki.toc),
-        "quality_score": wiki.quality_score,
-        "iteration": wiki.iteration,
+        WikiField.NODES: nodes_dicts,
+        WikiField.EDGES: list(wiki.edges),
+        WikiField.TOC: list(wiki.toc),
+        WikiField.QUALITY_SCORE: wiki.quality_score,
+        WikiField.ITERATION: wiki.iteration,
         "metadata": dict(wiki.metadata),
     }
     cache_file.write_text(json.dumps(data, default=str, indent=2), encoding="utf-8")
@@ -311,7 +311,7 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
     meta = wiki.metadata
     parts = [f"{len(wiki.nodes)} page(s)"]
 
-    chunk_count = meta.get("chunk_count", 0)
+    chunk_count = meta.get(WikiField.CHUNK_COUNT, 0)
     if chunk_count:
         parts.append(f"{chunk_count} chunk(s)")
 
