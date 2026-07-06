@@ -115,7 +115,8 @@ class WikiPipeline:
         self.output_writer = output_writer
         self.llm_client = llm_client
         self.summarizer = summarizer
-        self.state_store = state_store or TierStateStore(self._default_state_path())
+        self._base_dir = config.resolved_base_dir()
+        self.state_store = state_store or TierStateStore(self._default_state_path(), self._base_dir)
         self._progress_callback: ProgressCallback | None = None
         self._cache_store = CacheStore(self._cache_dir())
         self._tier_timings: dict[str, float] = {}
@@ -133,6 +134,28 @@ class WikiPipeline:
         """Persist any in-memory state mutations."""
         if hasattr(self, "_state"):
             self.state_store.save(self._state)
+
+    def _rel_path(self, path: Path) -> str:
+        """Convert absolute path to relative string for serialization."""
+        try:
+            return str(path.relative_to(self._base_dir))
+        except ValueError:
+            return str(path)
+
+    def _abs_path(self, path_str: str) -> Path:
+        """Reconstruct absolute path from potentially relative string."""
+        p = Path(path_str) if path_str else Path()
+        if p != Path() and not p.is_absolute():
+            return self._base_dir / p
+        return p
+
+    def _normalize_metadata_paths(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Convert known absolute path values in metadata to relative."""
+        if MetadataField.SOURCE_FILE in metadata:
+            meta = dict(metadata)
+            meta[MetadataField.SOURCE_FILE] = self._rel_path(Path(meta[MetadataField.SOURCE_FILE]))
+            return meta
+        return metadata
 
     def start_level(self) -> int:
         """Numeric level of the first tier to run."""
@@ -403,7 +426,7 @@ class WikiPipeline:
             except OSError:
                 logger.warning("Could not read %s for tier-state hashing — skipping", source_file, exc_info=True)
                 continue
-            self.state_store.record(state, stem, source_file, content_hash, tier=tier)
+            self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=tier)
         self.state_store.save(state)
 
     def _run_index_tier(self) -> None:
@@ -446,7 +469,7 @@ class WikiPipeline:
                     "content": n.content,
                     "node_type": n.node_type,
                     "source_chunks": n.source_chunks or [],
-                    "metadata": n.metadata,
+                    "metadata": self._normalize_metadata_paths(n.metadata),
                 }
                 for n in wiki.nodes
             ],
@@ -587,7 +610,7 @@ class WikiPipeline:
                 cached = self._cache_store.get("chunk", chunk_deps)
                 if cached is not None:
                     if content_hash:
-                        self.state_store.record(state, stem, source_file, content_hash, tier=1)
+                        self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
                     tree = tree_from_dict(cached)
                     self._apply_tags_to_tree(tree, source_file)
                     return tree
@@ -597,7 +620,7 @@ class WikiPipeline:
             self._apply_tags_to_tree(tree, source_file)
 
             if content_hash:
-                self.state_store.record(state, stem, source_file, content_hash, tier=1)
+                self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
                 chunk_deps = {
                     "source": content_hash,
                     "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
@@ -661,7 +684,7 @@ class WikiPipeline:
                 for el in data.get("elements", [])
             ]
             return ParsedDocument(
-                source_file=Path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
+                source_file=self._abs_path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
                 elements=elements,
                 title=data.get("title", ""),
                 author=data.get("author", ""),
@@ -681,7 +704,7 @@ class WikiPipeline:
         cache_path = cache_dir / f"{self._cache_key(source_file)}.json"
         try:
             data = {
-                str(MetadataField.SOURCE_FILE): str(doc.source_file),
+                str(MetadataField.SOURCE_FILE): self._rel_path(doc.source_file),
                 "title": doc.title,
                 "author": doc.author,
                 "language": doc.language,

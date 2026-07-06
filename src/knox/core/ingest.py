@@ -152,6 +152,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     """
     total = len(files)
     paths = VaultPaths(base_dir)
+
+    def _rel_path(p: Path) -> Path:
+        try:
+            return Path(str(p.relative_to(base_dir)))
+        except ValueError:
+            return p
     cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -182,7 +188,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
-            state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+            content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+            state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
             continue
 
         parser = router.route(source_file)
@@ -198,12 +205,15 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             failed += 1
             continue
 
+        data = asdict(doc)
+        data["source_file"] = str(_rel_path(Path(data["source_file"])))
         out_file.write_text(
-            json.dumps(asdict(doc), indent=2, default=str),
+            json.dumps(data, indent=2, default=str),
             encoding="utf-8",
         )
         count += 1
-        state_store.record(state, source_file.stem, source_file, hashlib.sha256(source_file.read_bytes()).hexdigest(), tier=1, ingested_by=ingested_by)
+        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+        state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
 
     # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
     # Fingerprints are computed AFTER all files are parsed so that GPU-bound

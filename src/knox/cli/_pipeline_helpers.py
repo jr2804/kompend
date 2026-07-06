@@ -10,6 +10,7 @@ import json
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -21,7 +22,7 @@ from knox.cli.args import (
     Recursive,
     UrlFile,
 )
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
@@ -188,8 +189,24 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     cache_file = paths.wiki_cache_path
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
+    def _rel_path(p: str) -> str:
+        try:
+            return str(Path(p).relative_to(base_dir))
+        except ValueError:
+            return p
+
+    nodes_dicts: list[dict[str, Any]] = []
+    for n in wiki.nodes:
+        nd = dataclasses.asdict(n)
+        meta = nd.get("metadata", {})
+        if MetadataField.SOURCE_FILE in meta:
+            meta = dict(meta)
+            meta[MetadataField.SOURCE_FILE] = _rel_path(meta[MetadataField.SOURCE_FILE])
+            nd["metadata"] = meta
+        nodes_dicts.append(nd)
+
     data = {
-        "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
+        "nodes": nodes_dicts,
         "edges": list(wiki.edges),
         "toc": list(wiki.toc),
         "quality_score": wiki.quality_score,

@@ -92,8 +92,9 @@ class TierStateStore:
         File to read/write. Created lazily on first save.
     """
 
-    def __init__(self, state_file: Path) -> None:
+    def __init__(self, state_file: Path, base_dir: Path | None = None) -> None:
         self.state_file = state_file
+        self._base_dir = base_dir
 
     def load(self) -> TierState:
         """Read the state file.
