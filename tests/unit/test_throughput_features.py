@@ -697,11 +697,11 @@ class TestTwoPhaseCompiler:
         assert wiki.metadata["two_phase"] is True
         assert wiki.nodes == []
 
-    def test_extraction_failure_raises(self) -> None:
-        """When extraction LLM fails, RuntimeError is raised — no degraded wiki."""
-        base = GraphCompiler("model")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
-        compiler = TwoPhaseCompiler(config=config, base=base)
+    def test_extraction_failure_skips_source(self) -> None:
+        """When extraction LLM fails for a source, the source is skipped — pipeline continues."""
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("hash"))
+        config.no_cache = True
+        compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(
                 chunk=Chunk(
@@ -715,9 +715,11 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            mock.return_value = None  # LLM unavailable → extraction fails
-            with pytest.raises(RuntimeError, match="extraction failed"):
-                compiler.compile(chunks)
+            mock.return_value = None  # LLM unavailable → extraction returns None
+            wiki = compiler.compile(chunks)
+        # Extraction failed → no concepts → generation has nothing → empty wiki
+        assert wiki.metadata.get("generation_skipped") is True
+        assert len(wiki.nodes) == 0
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))

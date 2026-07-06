@@ -362,6 +362,7 @@ def _try_litellm_json(
     system: str | None = None,
     timeout: float | None = None,
     call_stats: list[tuple[int, int]] | None = None,
+    max_tokens: int | None = None,
 ) -> Any | None:
     """Call litellm completion and return parsed JSON, or None on failure.
 
@@ -382,6 +383,8 @@ def _try_litellm_json(
         }
         if timeout is not None:
             kwargs["timeout"] = timeout
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
         response = litellm.completion(**kwargs)
         elapsed = time.monotonic() - start
         usage = getattr(response, "usage", None)
@@ -412,16 +415,19 @@ def _try_litellm_json(
         content = response.choices[0].message.content
         content = _strip_reasoning(content)
         if not content:
+            elapsed = time.monotonic() - start
+            logger.warning("LLM returned empty content for model=%s in=%.1fs", model, elapsed)
             return None
         parsed = salvage_json(content)
         if parsed is None:
             elapsed = time.monotonic() - start
-            # ponytail: JSON parse failure is non-fatal — the caller falls
-            # back gracefully. A full traceback box looks like a crash.
+            snippet = content[:300].replace("\n", "\\n")
             logger.warning(
-                "LLM returned unparseable JSON for model=%s in=%.1fs — using fallback",
+                "LLM returned unparseable JSON for model=%s in=%.1fs — "
+                "response starts with: %s",
                 model,
                 elapsed,
+                snippet,
             )
         return parsed
     except Exception as exc:

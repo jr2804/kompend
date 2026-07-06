@@ -1130,8 +1130,8 @@ class TestTwoPhaseConceptSalvage:
         assert "Better-Ear Listening" in names
         assert all(p.get("definitions") for p in pages)
 
-    def test_generation_failure_raises_not_fallback(self) -> None:
-        """When generation LLM calls all fail, RuntimeError is raised — no degraded wiki."""
+    def test_generation_failure_skips_not_crashes(self) -> None:
+        """When generation LLM calls all fail, compile finishes with 0 pages — no crash, no fillers."""
         config = PipelineConfig(
             source_dir=Path("."),
             output_dir=Path("."),
@@ -1153,8 +1153,10 @@ class TestTwoPhaseConceptSalvage:
             patch.object(compiler, "extract", return_value=ext_set),
             patch("knox.compilation.two_phase._try_litellm_json", return_value=None),
         ):
-            with pytest.raises(RuntimeError, match="generation failed"):
-                compiler.compile(chunks)
+            wiki = compiler.compile(chunks)
+        assert wiki.metadata.get("generation_skipped") is True
+        assert wiki.metadata.get("concepts_available", 0) > 0
+        assert len(wiki.nodes) == 0
 
 
 class TestVlmArtifactFiltering:

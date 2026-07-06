@@ -415,7 +415,7 @@ class TwoPhaseCompiler(BaseCompiler):
             # Batch texts into budget-sized groups so nothing is dropped.
             batch_parts: list[str] = []
             batch_len = 0
-            batch_extractions: list[Extraction] = []
+            batch_extractions: list[Extraction | None] = []
 
             for text in texts:
                 if batch_len + len(text) > extract_char_budget and batch_parts:
@@ -430,8 +430,11 @@ class TwoPhaseCompiler(BaseCompiler):
                 combined = "\n\n".join(batch_parts)
                 batch_extractions.append(self._extract_one(source, combined, extraction_system))
 
-            # Merge all batch extractions for this source.
-            merged = _merge_extractions(source, batch_extractions)
+            # Merge all batch extractions for this source (skip failed batches).
+            valid = [e for e in batch_extractions if e is not None]
+            if not valid:
+                logger.warning("TwoPhase: all extraction batches failed for '%s' — skipped", source)
+            merged = _merge_extractions(source, valid)
             extractions.add(merged)
             self._extraction_stats.append(
                 {
@@ -491,9 +494,18 @@ class TwoPhaseCompiler(BaseCompiler):
                 "TwoPhase: concept_pages() empty \u2014 extraction concept keys: %s",
                 sorted(sample_keys) or "(no concepts returned)",
             )
-            raise RuntimeError(
-                "Two-phase generation failed: extraction returned no concepts. "
-                "Check LLM extraction output and document content."
+            return CompiledWiki(
+                nodes=[],
+                edges=[],
+                toc=[],
+                metadata={
+                    "chunk_count": len(chunks),
+                    "two_phase": True,
+                    "generation_skipped": True,
+                    "concepts_available": 0,
+                    "skip_reason": "extraction returned no concepts",
+                    "node_count": 0,
+                },
             )
 
         # Collect images from IMAGE chunks for embedding in output
@@ -555,11 +567,23 @@ class TwoPhaseCompiler(BaseCompiler):
         self._delete_gen_checkpoint(self._active_gen_deps)
 
         if not nodes:
-            raise RuntimeError(
-                "Two-phase generation failed: every page-synthesis LLM call "
-                "returned invalid data. Extraction succeeded but no pages "
-                "could be generated. Check LLM backend availability and model "
-                "response format."
+            logger.warning(
+                "TwoPhase: generation skipped — 0 of %d concept(s) synthesized. "
+                "All LLM calls returned invalid data.",
+                len(concepts),
+            )
+            return CompiledWiki(
+                nodes=[],
+                edges=[],
+                toc=[],
+                metadata={
+                    "chunk_count": len(chunks),
+                    "two_phase": True,
+                    "generation_skipped": True,
+                    "concepts_available": len(concepts),
+                    "skip_reason": "all LLM calls returned invalid data",
+                    "node_count": 0,
+                },
             )
 
         self.disambiguate_duplicate_titles(nodes, chunks)
@@ -569,10 +593,22 @@ class TwoPhaseCompiler(BaseCompiler):
         )
 
         if not nodes:
-            raise RuntimeError(
-                "Two-phase generation failed: all generated pages were empty "
-                "after filtering. Check LLM output quality and "
-                "budget.min_content_length config."
+            logger.warning(
+                "TwoPhase: generation produced 0 pages after filtering "
+                "(min_content_length=%d). Check LLM output quality.",
+                self._config.budget.min_content_length,
+            )
+            return CompiledWiki(
+                nodes=[],
+                edges=[],
+                toc=[],
+                metadata={
+                    "chunk_count": len(chunks),
+                    "two_phase": True,
+                    "generation_skipped": True,
+                    "skip_reason": "all pages filtered as empty",
+                    "node_count": 0,
+                },
             )
 
         nodes = self.dedup_content_duplicate_nodes(nodes)
@@ -670,6 +706,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     model=self._model,
                     timeout=self._timeout,
                     call_stats=self._llm_stats,
+                    max_tokens=min(self._context_window.max_output, self._budget.gen_output_max),
                 )
 
                 if not isinstance(data, dict):
@@ -729,8 +766,12 @@ class TwoPhaseCompiler(BaseCompiler):
         self._report(gen_progress_total, gen_progress_total, "generating complete")
         return nodes, slug_to_idx
 
-    def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction:
-        """Run a single extraction LLM call with cache (Tier 3 Phase 1)."""
+    def _extract_one(self, source: str, combined: str, extraction_system: str) -> Extraction | None:
+        """Run a single extraction LLM call with cache (Tier 3 Phase 1).
+
+        Returns ``None`` when the LLM returns no parseable data — the caller
+        skips the source and continues with the remaining ones.
+        """
         budget = self._budget
         extract_deps = {
             "source_text": hashlib.sha256(combined.encode()).hexdigest(),
@@ -750,6 +791,7 @@ class TwoPhaseCompiler(BaseCompiler):
             model=self._model,
             timeout=self._timeout,
             call_stats=self._llm_stats,
+            max_tokens=min(self._context_window.max_output, self._budget.extract_output_max),
         )
         if isinstance(data, dict):
             result = Extraction(
@@ -762,10 +804,11 @@ class TwoPhaseCompiler(BaseCompiler):
             if not self._config.no_cache:
                 self._cache_store.set("extract", extract_deps, result)
             return result
-        raise RuntimeError(
-            f"Two-phase extraction failed for source '{source}': LLM returned "
-            f"no parseable data. Check LLM backend availability."
+        logger.warning(
+            "TwoPhase: extraction skipped for source '%s' — LLM returned no parseable data",
+            source,
         )
+        return None
 
     def _gen_cache_deps(self, extractions: ExtractionSet, *, pinned_facts: list[str] | None = None) -> dict[str, str]:
         """Compute dependency hashes for generation cache.
