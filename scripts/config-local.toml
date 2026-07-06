@@ -33,19 +33,20 @@ parser = "web,liteparse,docling"
 [compile.llm]
 # Primary model in litellm format ("provider/model")
 # some local models to try with 8 GB VRAM (or more):
-#default_model = "ollama/lfm2.5"
+default_model = "ollama/lfm2.5"
+#default_model = "ollama/hf.co/unsloth/Qwen3.5-2B-MTP-GGUF:UD-Q8_K_XL"
 #default_model = "ollama/hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_0"
-#default_model = "ollama/hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q4_K_M "
-default_model = "ollama/gemma4:e4b"
+#default_model = "ollama/hf.co/khazarai/Qwen3.5-2B-Qwen3.6-plus-Distilled-GGUF:Q8_0"
+#default_model = "ollama/gemma4:e4b"
 
 # Vision model for captioning IMAGE chunks during resolution.
 # When set, VLMEnricher is added to the resolver chain.
-#vlm_model     = "ollama/hf.co/LiquidAI/LFM2-VL-1.6B-GGUF:Q4_0"
-vlm_model     = "ollama/gemma4:e4b"
+vlm_model     = "ollama/hf.co/LiquidAI/LFM2-VL-1.6B-GGUF:Q4_0"
+#vlm_model     = "ollama/gemma4:e4b"
 
 # User-configured cap on discovered context window (tokens).
 # None = no cap (use full discovered window).
-context_window_cap = 128000   # optional cap; auto-discovered from model by default
+context_window_cap = 192000   # optional cap; auto-discovered from model by default
 
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 2
