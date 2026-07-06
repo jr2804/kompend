@@ -356,27 +356,6 @@ class ExtractionSet:
         return dict(out)
 
 
-def _log_completion(response: Any, elapsed: float, model: str, call_stats: list[tuple[int, int]] | None = None) -> None:
-    """Log LLM completion stats and append to call_stats if provided."""
-    usage = getattr(response, "usage", None)
-    if usage is not None:
-        try:
-            pt = int(getattr(usage, "prompt_tokens", 0) or 0)
-        except (TypeError, ValueError):
-            pt = 0
-        try:
-            ct = int(getattr(usage, "completion_tokens", 0) or 0)
-        except (TypeError, ValueError):
-            ct = 0
-        tt = pt + ct
-        tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
-        if call_stats is not None:
-            call_stats.append((pt, ct))
-        logger.info("LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s", model, elapsed, pt, ct, tt, tps)
-    else:
-        logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
-
-
 def _try_litellm_json(
     prompt: str,
     model: str,
@@ -408,29 +387,37 @@ def _try_litellm_json(
             kwargs["max_tokens"] = max_tokens
         response = litellm.completion(**kwargs)
         elapsed = time.monotonic() - start
-        _log_completion(response, elapsed, model, call_stats)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            try:
+                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                pt = 0
+            try:
+                ct = int(getattr(usage, "completion_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                ct = 0
+            tt = pt + ct
+            tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
+            if call_stats is not None:
+                call_stats.append((pt, ct))
+            logger.info(
+                "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
+                model,
+                elapsed,
+                pt,
+                ct,
+                tt,
+                tps,
+            )
+        else:
+            logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
         content = response.choices[0].message.content
         content = _strip_reasoning(content)
         if not content:
-            # Retry without response_format — some Ollama GGUF models
-            # return empty with json_object mode but work without it.
-            logger.warning(
-                "LLM returned empty content for model=%s in=%.1fs — retrying without json_object format",
-                model,
-                elapsed,
-            )
-            kwargs.pop("response_format", None)
-            start = time.monotonic()
-            response = litellm.completion(**kwargs)
             elapsed = time.monotonic() - start
-            content = response.choices[0].message.content
-            content = _strip_reasoning(content)
-            if not content:
-                elapsed = time.monotonic() - start
-                logger.warning("LLM returned empty content for model=%s in=%.1fs (retry)", model, elapsed)
-                return None
-            _log_completion(response, elapsed, model, call_stats)
-            logger.info("LLM ok model=%s in=%.1fs (json_object retry)", model, elapsed)
+            logger.warning("LLM returned empty content for model=%s in=%.1fs", model, elapsed)
+            return None
         parsed = salvage_json(content)
         if parsed is None:
             elapsed = time.monotonic() - start
