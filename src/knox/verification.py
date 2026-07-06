@@ -17,6 +17,7 @@ from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
 from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -100,7 +101,7 @@ def verify_node(
         if verify_system:
             messages.append({"role": "system", "content": verify_system})
         messages.append({"role": "user", "content": prompt})
-        result = client.try_complete(messages=messages, role="verify", response_format=JSON_RESPONSE_FORMAT)
+        result = client.try_complete(messages=messages, role=LLMRole.VERIFY, response_format=JSON_RESPONSE_FORMAT)
         if result and result.json_data:
             data = result.json_data
             results.append(

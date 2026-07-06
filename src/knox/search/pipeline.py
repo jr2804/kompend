@@ -34,6 +34,7 @@ except ImportError:
     _CrossEncoder = None  # type: ignore[assignment]
     _HAS_SENTENCE_TRANSFORMERS = False
 
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -178,7 +179,7 @@ class EnhancedRetriever:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query},
                 ],
-                role="search.expand",
+                role=LLMRole.SEARCH_EXPAND,
                 response_format=JSON_RESPONSE_FORMAT,
                 temperature=0.0,
             )
@@ -206,7 +207,7 @@ class EnhancedRetriever:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query},
                 ],
-                role="search.hyde",
+                role=LLMRole.SEARCH_HYDE,
                 temperature=0.7,
             )
             hyde_text = result.content.strip()
@@ -304,7 +305,7 @@ class EnhancedRetriever:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query},
                 ],
-                role="search.crag",
+                role=LLMRole.SEARCH_CRAG,
                 response_format=JSON_RESPONSE_FORMAT,
                 temperature=0.0,
             )

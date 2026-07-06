@@ -25,6 +25,7 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.format import encode_for_llm, structured_return_instruction
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -341,7 +342,7 @@ class WiCERCompiler(BaseCompiler):
                 {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
                 {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined)},
             ],
-            role="wicer.probe",
+            role=LLMRole.WICER_PROBE,
             response_format=JSON_RESPONSE_FORMAT,
         )
 
@@ -386,7 +387,7 @@ class WiCERCompiler(BaseCompiler):
                         ),
                     },
                 ],
-                role="wicer.judge",
+                role=LLMRole.WICER_JUDGE,
                 response_format=JSON_RESPONSE_FORMAT,
             )
 
@@ -427,7 +428,7 @@ class WiCERCompiler(BaseCompiler):
                     ),
                 },
             ],
-            role="wicer.refine",
+            role=LLMRole.WICER_REFINE,
             response_format=JSON_RESPONSE_FORMAT,
         )
 

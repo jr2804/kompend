@@ -35,6 +35,7 @@ from knox.core.models import (
     StructuredTable,
 )
 from knox.core.template_loader import get_template_loader
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 if TYPE_CHECKING:
@@ -143,7 +144,7 @@ class NodeSummarizer:
         """Call LLM via the node-summary template."""
         prompt = self._loader.render(_TEMPLATE, content=content, heading_path=heading_path)
         meta = self._loader.get_meta(_TEMPLATE)
-        role = meta.role or "default"
+        role = meta.role or LLMRole.DEFAULT
 
         llm = self._llm
         if llm is None:

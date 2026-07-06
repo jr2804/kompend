@@ -21,6 +21,7 @@ from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -211,7 +212,7 @@ def propose_categories(
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        role="organize.categorize",
+        role=LLMRole.ORGANIZE_CATEGORIZE,
         response_format={"type": "json_object"},
         temperature=0.0,
     )

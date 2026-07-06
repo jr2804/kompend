@@ -19,7 +19,9 @@ from slugify import slugify as _slugify_impl
 from knox.compilation.schema import LLMOutputError
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, _strip_reasoning, salvage_json
+from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient, _strip_reasoning, salvage_json
+from knox.llm.errors import PermanentError
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -366,8 +368,19 @@ def _try_litellm_json(  # noqa: PLR0915
     call_stats: list[tuple[int, int]] | None = None,
     max_tokens: int | None = None,
     response_model: type[BaseModel] | None = None,
+    llm_client: LLMClient | None = None,
+    role: str = LLMRole.DEFAULT,
 ) -> dict[str, Any]:
-    """Call litellm completion and return parsed JSON as a dict.
+    """Call the LLM and return parsed JSON as a dict.
+
+    When *llm_client* is provided, routes through :meth:`LLMClient.complete`
+    so the call benefits from custom-provider dispatch, the failover chain,
+    and the reasoning-truncation retry (bumps ``max_tokens`` when a reasoning
+    model burns the budget on ``reasoning_content``). This is the path used
+    by the real compilation pipeline.
+
+    When no client is given, falls back to a direct ``litellm.completion()``
+    call (used by tests and callers without a client).
 
     When *response_model* is provided, it is passed as ``response_format``
     to litellm, which translates it to the provider-native structured-output
@@ -376,71 +389,89 @@ def _try_litellm_json(  # noqa: PLR0915
     Raises:
         LLMOutputError: If the model returns empty, unparseable, or
             schema-invalid output.  The model is considered not suitable
-            for compilation — no fallback.
+            for compilation — no fallback, no retry.
 
     If *call_stats* is provided, ``(prompt_tokens, completion_tokens)`` is
     appended to it on each successful LLM response.
     """
+    response_format = response_model if response_model is not None else JSON_RESPONSE_FORMAT
+    messages: list[dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
     start = time.monotonic()
     try:
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-        }
-        if response_model is not None:
-            kwargs["response_format"] = response_model
+        if llm_client is not None:
+            try:
+                result = llm_client.complete(
+                    messages,
+                    role=role,
+                    response_format=response_format,
+                    max_tokens=max_tokens,
+                )
+            except PermanentError as exc:
+                # The client exhausted its reasoning-truncation retries and the
+                # model still produced empty content — it cannot do structured
+                # output. Preserve the fatal compile-abort semantic.
+                raise LLMOutputError(str(exc)) from exc
+            content = result.content
+            pt, ct = result.prompt_tokens, result.completion_tokens
+            model_used = result.diagnostics.model_used or model
         else:
-            kwargs["response_format"] = JSON_RESPONSE_FORMAT
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
-        response = litellm.completion(**kwargs)
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.0,
+                "response_format": response_format,
+            }
+            if timeout is not None:
+                kwargs["timeout"] = timeout
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+            response = litellm.completion(**kwargs)
+            content = response.choices[0].message.content
+            content = _strip_reasoning(content)
+            usage = getattr(response, "usage", None)
+            pt = ct = 0
+            if usage is not None:
+                try:
+                    pt = int(getattr(usage, "prompt_tokens", 0) or 0)
+                except (TypeError, ValueError):
+                    pt = 0
+                try:
+                    ct = int(getattr(usage, "completion_tokens", 0) or 0)
+                except (TypeError, ValueError):
+                    ct = 0
+            model_used = model
+
         elapsed = time.monotonic() - start
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            try:
-                pt = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                pt = 0
-            try:
-                ct = int(getattr(usage, "completion_tokens", 0) or 0)
-            except (TypeError, ValueError):
-                ct = 0
-            tt = pt + ct
-            tps = f"{tt / elapsed:.1f}" if elapsed > 0 else "?"
-            if call_stats is not None:
-                call_stats.append((pt, ct))
-            logger.info(
-                "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
-                model,
-                elapsed,
-                pt,
-                ct,
-                tt,
-                tps,
-            )
-        else:
-            logger.info("LLM ok model=%s in=%.1fs (no token info)", model, elapsed)
-        content = response.choices[0].message.content
-        content = _strip_reasoning(content)
+        tt = pt + ct
+        if call_stats is not None and (pt or ct):
+            call_stats.append((pt, ct))
+        tps = f"{tt / elapsed:.1f}" if elapsed > 0 and tt else "?"
+        logger.info(
+            "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
+            model_used,
+            elapsed,
+            pt,
+            ct,
+            tt,
+            tps,
+        )
+
         if not content:
             raise LLMOutputError(
-                f"Model '{model}' returned empty content after {elapsed:.1f}s. "
+                f"Model '{model_used}' returned empty content after {elapsed:.1f}s. "
                 "This model cannot produce structured JSON output and is not suitable for compilation."
             )
         parsed = salvage_json(content)
         if parsed is None:
             snippet = content[:300].replace("\n", "\\n")
-            raise LLMOutputError(f"Model '{model}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
+            raise LLMOutputError(f"Model '{model_used}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
         if not isinstance(parsed, dict):
-            raise LLMOutputError(f"Model '{model}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {str(parsed)[:200]}")
-        logger.debug("LLM parsed OK model=%s keys=%s", model, list(parsed.keys()))
+            raise LLMOutputError(f"Model '{model_used}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {str(parsed)[:200]}")
+        logger.debug("LLM parsed OK model=%s keys=%s", model_used, list(parsed.keys()))
         return parsed
     except LLMOutputError:
         raise

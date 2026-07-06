@@ -25,7 +25,7 @@ from knox.core.config._configs import LlmDataFormat
 # ── JSON salvage (re-exported; callers import salvage_json from here) ────
 
 
-def salvage_json(content: str) -> Any | None:
+def salvage_json(content: str) -> Any | None:  # noqa: PLR0911
     """Best-effort parse of JSON that small LLMs may truncate or malform.
 
     Tries, in order:
@@ -44,6 +44,26 @@ def salvage_json(content: str) -> Any | None:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
+
+    # Small models often emit raw control chars (newlines, tabs) inside JSON
+    # string values, which is invalid JSON. Sanitize those (only inside string
+    # literals — structural whitespace is preserved) and retry before the
+    # heavier truncation-recovery strategies.
+    sanitized = _sanitize_string_control_chars(content)
+    if sanitized != content:
+        try:
+            return json.loads(sanitized)
+        except json.JSONDecodeError:
+            content = sanitized
+
+    # Leading prose before the JSON (e.g. "Sure, here is the JSON: {...}"):
+    # parse from the first object/array token.
+    first_obj = _find_first_json_token(content)
+    if first_obj > 0:
+        tail = content[first_obj:]
+        salvaged = salvage_json(tail)
+        if salvaged is not None:
+            return salvaged
 
     if content.startswith("```"):
         inner = content.split("\n", 1)[-1] if "\n" in content else content[3:]
@@ -70,6 +90,53 @@ def salvage_json(content: str) -> Any | None:
         pass
 
     return None
+
+
+def _find_first_json_token(s: str) -> int:
+    """Index of the first ``{`` or ``[`` in *s*, or ``-1`` if none.
+
+    Used to skip leading prose (``"Here is the JSON: {...}"``). Returns 0 when
+    *s* already starts with a JSON token so callers can guard against no-op
+    recursion.
+    """
+    brace = s.find("{")
+    bracket = s.find("[")
+    candidates = [i for i in (brace, bracket) if i >= 0]
+    return min(candidates) if candidates else -1
+
+
+def _sanitize_string_control_chars(s: str) -> str:
+    r"""Escape raw control chars (0x00–0x1F) that appear *inside* JSON strings.
+
+    Structural whitespace between tokens is preserved. Small models often
+    emit literal newlines/tabs inside string values, which is invalid JSON;
+    this rewrites them to their escaped forms (``\n``, ``\t``, …) so
+    ``json.loads`` accepts them.
+    """
+    _ESCAPE = {0x08: "\\b", 0x09: "\\t", 0x0A: "\\n", 0x0C: "\\f", 0x0D: "\\r"}
+    out: list[str] = []
+    in_string = False
+    escape = False
+    for ch in s:
+        if escape:
+            out.append(ch)
+            escape = False
+            continue
+        if ch == "\\":
+            out.append(ch)
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            out.append(ch)
+            continue
+        if in_string:
+            o = ord(ch)
+            if o < 0x20:
+                out.append(_ESCAPE.get(o, f"\\u{o:04x}"))
+                continue
+        out.append(ch)
+    return "".join(out)
 
 
 def _close_truncated_json(s: str) -> str | None:
@@ -100,6 +167,10 @@ def _close_truncated_json(s: str) -> str | None:
         return None
     s = s.rstrip()
     if s.endswith(","):
+        s = s[:-1]
+    if escape:
+        # Truncated mid-escape (e.g. trailing backslash): drop the incomplete
+        # escape so the appended close-quote isn't turned into an escaped quote.
         s = s[:-1]
     if in_string:
         s += '"'

@@ -49,6 +49,7 @@ from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
 from knox.llm.format import encode_for_llm
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.rag.zvec_store import _make_provider
 
@@ -211,6 +212,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
         self._extraction_stats: list[dict[str, Any]] = []
+        self._llm_client = llm_client
 
         # Reuse the client's discovered context window when available; only
         # discover independently as a fallback (e.g. no LLM client provided).
@@ -707,6 +709,8 @@ class TwoPhaseCompiler(BaseCompiler):
                     call_stats=self._llm_stats,
                     max_tokens=min(self._context_window.max_output, self._budget.gen_output_max),
                     response_model=GenerationOutput,
+                    llm_client=self._llm_client,
+                    role=LLMRole.COMPILE_GENERATE,
                 )
 
                 if not data:
@@ -803,6 +807,8 @@ class TwoPhaseCompiler(BaseCompiler):
             call_stats=self._llm_stats,
             max_tokens=min(self._context_window.max_output, self._budget.extract_output_max),
             response_model=ExtractionOutput,
+            llm_client=self._llm_client,
+            role=LLMRole.COMPILE_EXTRACT,
         )
         if data:
             try:

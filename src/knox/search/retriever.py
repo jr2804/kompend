@@ -10,6 +10,7 @@ from rank_bm25 import BM25Okapi
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 from knox.search.index import FtsField, build_chunk_index, search_fts
@@ -104,7 +105,7 @@ class TokenOverlapRetriever:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query},
                 ],
-                role="search.expand",
+                role=LLMRole.SEARCH_EXPAND,
                 response_format=JSON_RESPONSE_FORMAT,
                 temperature=0.0,
             )

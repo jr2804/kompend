@@ -83,6 +83,17 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
     ),
 ]
 
+# Keyword-argument contracts: keyword name -> enum class name. A bare string
+# literal passed as this keyword is a violation regardless of value — it must
+# reference the enum member (e.g. ``role=LLMRole.COMPILE_EXTRACT``, never
+# ``role="compile.extract"``). Unlike field-name contracts this is
+# name-based, so generic English words cause no false positives. These are
+# NOT added to ENFORCED_ENUMS to avoid repo-wide value-matching false
+# positives on common words ("default", "doctor", "verify", …).
+KEYWORD_ARG_ENUMS: dict[str, str] = {
+    "role": "LLMRole",
+}
+
 # Global allowlist — files where bare literals are legitimate regardless of
 # which enum matched: the enum-defining modules themselves, TOML-schema dicts
 # (keys ARE the documented config schema), LLM-output parsers (keys must match
@@ -204,7 +215,9 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
         return []
     # Which enums apply to this file (per their consumer scoping)?
     applicable = [e for e in entries if e.applies_to(path)]
-    if not applicable:
+    # Keyword-arg contracts (e.g. role="...") apply repo-wide, so we still
+    # scan even when no field-name enum is applicable to this file.
+    if not applicable and not KEYWORD_ARG_ENUMS:
         return []
     try:
         source = path.read_text(encoding="utf-8", errors="replace")
@@ -261,6 +274,17 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
                 if val is not None:
                     for q in matches(val):
                         out.append(_make_violation(path, node, val, q, lines))
+            # Case 4: keyword-argument contract (e.g. role="...") — any bare
+            # string literal is wrong; it must reference the enum member.
+            for kw in node.keywords:
+                if kw.arg in KEYWORD_ARG_ENUMS and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    if _line_has_nocheck(kw.value.lineno, lines):
+                        continue
+                    enum_cls = KEYWORD_ARG_ENUMS[kw.arg]
+                    val = kw.value.value
+                    out.append(
+                        _make_violation(path, kw.value, val, f"{enum_cls}.<{val}>", lines)
+                    )
 
     return out
 

@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import Any, Final, Protocol
 
 import litellm
+from pydantic import BaseModel
 
 import knox.llm.providers  # noqa: F401 — registers custom providers on import
 from knox.core.config.keys import (
@@ -35,6 +36,7 @@ from knox.llm.format import (
     salvage_json,  # noqa: F401 — re-exported; callers import from here
 )
 from knox.llm.models_dev import resolve_model_limits
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 litellm.suppress_debug_info = True  # suppress stdout noise on exceptions
@@ -112,6 +114,8 @@ class LLMResult:
     content: str
     json_data: dict[str, Any] | None
     diagnostics: CallDiagnostics
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -462,8 +466,8 @@ class LLMClient:
         self,
         messages: list[dict[str, Any]],
         *,
-        role: str = "default",
-        response_format: dict[str, str] | None = None,
+        role: str = LLMRole.DEFAULT,
+        response_format: dict[str, str] | type[BaseModel] | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> LLMResult:
@@ -591,7 +595,7 @@ class LLMClient:
             )
 
         json_data: dict[str, Any] | None = None
-        if response_format is not None and response_format.get("type") == "json_object":
+        if isinstance(response_format, dict) and response_format.get("type") == "json_object":
             parsed = salvage_json(content)
             if parsed is None:
                 msg = f"LLM returned invalid JSON (model={diagnostics.model_used!r}, role={role!r})"
@@ -649,14 +653,16 @@ class LLMClient:
             content=content,
             json_data=json_data,
             diagnostics=diagnostics,
+            prompt_tokens=sr.prompt_tokens,
+            completion_tokens=sr.completion_tokens,
         )
 
     def try_complete(
         self,
         messages: list[dict[str, Any]],
         *,
-        role: str = "default",
-        response_format: dict[str, str] | None = None,
+        role: str = LLMRole.DEFAULT,
+        response_format: dict[str, str] | type[BaseModel] | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
     ) -> LLMResult | None:

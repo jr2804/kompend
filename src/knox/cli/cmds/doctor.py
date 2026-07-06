@@ -12,6 +12,7 @@ from pathlib import Path
 import litellm
 
 from knox.llm.client import LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
 
@@ -74,7 +75,7 @@ def _ping_model(model: str | None, label: str) -> CheckResult:
         client = LLMClient(default_model=model)
         result = client.try_complete(
             [{"role": "user", "content": "Respond with exactly one word: ok"}],
-            role="doctor",
+            role=LLMRole.DOCTOR,
             # Reasoning models (e.g. deepseek-v4-flash) emit reasoning_content
             # before the answer; a tiny budget is consumed by thinking and the
             # visible content stays empty -> false negative on connectivity.

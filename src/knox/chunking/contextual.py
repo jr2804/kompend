@@ -19,6 +19,7 @@ from __future__ import annotations
 from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -105,7 +106,7 @@ class ContextualEnricher:
                     {"role": "system", "content": rendered},
                     {"role": "user", "content": f"Generate context for the chunk at: {heading_path}"},
                 ],
-                role="chunking.contextual",
+                role=LLMRole.CHUNKING_CONTEXTUAL,
                 temperature=0.0,
                 max_tokens=150,
             )

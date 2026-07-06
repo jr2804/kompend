@@ -20,6 +20,7 @@ from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.template_loader import get_template_loader
 from knox.core.timeutil import display_local, iso_local
 from knox.llm.client import LLMClient
+from knox.llm.roles import LLMRole
 
 _loader = get_template_loader()
 
@@ -482,7 +483,7 @@ def generate_overview(
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
         result = client.complete(
-            role="synthesize",
+            role=LLMRole.SYNTHESIZE,
             messages=[{"role": "user", "content": prompt}],
         )
         if result.content:
@@ -502,7 +503,7 @@ def generate_overview(
     combined = "\n\n".join(partials)
     prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
     result = client.complete(
-        role="synthesize",
+        role=LLMRole.SYNTHESIZE,
         messages=[{"role": "user", "content": prompt}],
     )
     if progress_callback:

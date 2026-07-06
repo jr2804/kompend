@@ -15,6 +15,7 @@ from slugify import slugify
 from knox.core.template_loader import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.llm.client import JSON_RESPONSE_FORMAT
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,7 +57,7 @@ class FactualConsistencyRule(BaseLintRule):
                 try:
                     llm_result = self.llm_client.try_complete(
                         [{"role": "user", "content": prompt}],
-                        role="lint.factual-consistency",
+                        role=LLMRole.LINT_FACTUAL_CONSISTENCY,
                         response_format=JSON_RESPONSE_FORMAT,
                     )
                 except Exception as exc:
@@ -133,7 +134,7 @@ class ClarityScoreRule(BaseLintRule):
                 try:
                     llm_result = self.llm_client.try_complete(
                         [{"role": "user", "content": prompt}],
-                        role="lint.clarity-score",
+                        role=LLMRole.LINT_CLARITY_SCORE,
                         response_format=JSON_RESPONSE_FORMAT,
                     )
                 except Exception as exc:
@@ -221,7 +222,7 @@ class CoverageGapRule(BaseLintRule):
             try:
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
-                    role="lint.coverage-gap",
+                    role=LLMRole.LINT_COVERAGE_GAP,
                     response_format=JSON_RESPONSE_FORMAT,
                 )
             except Exception as exc:
@@ -297,7 +298,7 @@ class CoverageGapRule(BaseLintRule):
         try:
             llm_result = self.llm_client.try_complete(
                 [{"role": "user", "content": prompt}],
-                role="lint.coverage-gap-dedup",
+                role=LLMRole.LINT_COVERAGE_GAP_DEDUP,
                 response_format=JSON_RESPONSE_FORMAT,
             )
         except Exception as exc:
@@ -379,7 +380,7 @@ class ContradictionDetectionRule(BaseLintRule):
             try:
                 llm_result = self.llm_client.try_complete(
                     [{"role": "user", "content": prompt}],
-                    role="lint.contradiction-detection",
+                    role=LLMRole.LINT_CONTRADICTION,
                     response_format=JSON_RESPONSE_FORMAT,
                 )
             except Exception as exc:

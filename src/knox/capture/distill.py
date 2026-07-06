@@ -19,6 +19,7 @@ from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.template_loader import get_template_loader
 from knox.core.timeutil import display_local
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -161,7 +162,7 @@ def _synthesize_with_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        role="capture.distill",
+        role=LLMRole.CAPTURE_DISTILL,
         response_format=JSON_RESPONSE_FORMAT,
         temperature=0.2,
     )

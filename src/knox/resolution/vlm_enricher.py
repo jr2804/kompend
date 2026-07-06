@@ -15,6 +15,7 @@ from PIL import Image
 
 from knox.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from knox.llm.client import LLMClient
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.resolution.base import BaseResolver
 
@@ -46,7 +47,7 @@ class VLMEnricher(BaseResolver):
     def __init__(
         self,
         client: LLMClient | None = None,
-        role: str = "vlm",
+        role: str = LLMRole.VLM,
         min_image_bytes: int = 2048,
         min_image_dimension: int = 64,
     ) -> None:

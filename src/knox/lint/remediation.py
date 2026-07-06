@@ -27,6 +27,7 @@ from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.template_loader import get_template_loader
 from knox.lint.gap_analysis import analyze_gaps
+from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
 from knox.output.renderer import render_frontmatter
@@ -398,7 +399,7 @@ def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str
     )
     result = llm_client.try_complete(
         messages=[{"role": "user", "content": prompt}],
-        role="lint.remediate-concept",
+        role=LLMRole.LINT_REMEDIATE_CONCEPT,
     )
     if result is None or not result.content:
         return None
