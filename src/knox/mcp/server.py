@@ -458,7 +458,12 @@ def config_set(
     except ValueError as exc:
         return {"status": "error", "message": str(exc)}
 
-    config_file = get_global_config_path(create=True) if global_ else get_project_config_path(create=True)
+    if global_:
+        config_file = get_global_config_path(create=True)
+    else:
+        config_file = get_project_config_path(create=False)
+        if not config_file.exists():
+            return {"status": "error", "message": "Not in a KNOX vault — run `knox init` first or use `--global`"}
     try:
         set_config_file_value(config_file, key, coerced)
         return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}

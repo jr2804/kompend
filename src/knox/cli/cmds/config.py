@@ -58,7 +58,13 @@ def config_set(
         get_err_console().print(f"error: {exc}")
         raise typer.Exit(code=1) from exc
 
-    path = get_global_config_path(create=True) if global_ else get_project_config_path(create=True)
+    if global_:
+        path = get_global_config_path(create=True)
+    else:
+        path = get_project_config_path()
+        if not path.exists():
+            get_err_console().print("error: not in a KNOX vault — run `knox init` first or use `--global`")
+            raise typer.Exit(code=1)
 
     try:
         set_config_file_value(path, key, coerced)
@@ -85,7 +91,7 @@ def config_path(
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_path(create=False) if global_ else get_project_config_path(create=False)
+    path = get_global_config_path(create=False) if global_ else get_project_config_path()
     get_console().print(str(path), soft_wrap=True)
 
 

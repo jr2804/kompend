@@ -971,21 +971,18 @@ def coerce_config_value(value: str, key: str) -> Any:
     return _coerce_generic(value)
 
 
-def get_project_config_path(start_dir: Path | None = None, *, create: bool = False) -> Path:
+def get_project_config_path(start_dir: Path | None = None) -> Path:
     """Return the project config file path used by ``knox config set``.
 
-    Prefers ``.knox/config.toml`` over ``knox.toml``. If no project config
-    exists and *create* is ``True``, returns ``<start_dir>/.knox/config.toml``
-    and creates the parent directory.
+    Prefers ``.knox/config.toml`` over ``knox.toml``. When no project config
+    exists, returns the expected path ``<start_dir>/.knox/config.toml``
+    without creating it — callers must check existence.
     """
     current = (start_dir or Path.cwd()).resolve()
     found = find_project_config(current)
     if found is not None:
         return found
-    target = VaultPaths(current).config_path
-    if create:
-        target.parent.mkdir(parents=True, exist_ok=True)
-    return target
+    return VaultPaths(current).config_path
 
 
 def get_global_config_path(*, create: bool = False) -> Path:

@@ -628,10 +628,10 @@ class TestGetProjectConfigPath:
         (tmp_path / "knox.toml").write_text("")
         assert get_project_config_path(start_dir=tmp_path) == dot_knox_file
 
-    def test_creates_dot_knox_when_missing(self, tmp_path: Any) -> None:
-        path = get_project_config_path(start_dir=tmp_path, create=True)
+    def test_returns_path_without_creating_dir(self, tmp_path: Any) -> None:
+        path = get_project_config_path(start_dir=tmp_path)
         assert path == tmp_path / KNOX_DIR / "config.toml"
-        assert path.parent.is_dir()
+        assert not path.parent.exists()
 
 
 class TestGetGlobalConfigPath:
