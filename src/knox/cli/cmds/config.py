@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -16,6 +17,7 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.logging import get_console, get_err_console
 
 config_app = typer.Typer(
@@ -26,8 +28,15 @@ config_app = typer.Typer(
 app.add_typer(config_app)
 
 
+def _resolve_wiki_dir(ctx: typer.Context) -> Path | None:
+    """Resolve --wiki-dir from callback context, if set."""
+    raw = ctx.obj.get("wiki_dir") if ctx.obj else None
+    return Path(raw).resolve() if raw else None
+
+
 @config_app.command("get", help="Print a resolved config value.")
 def config_get(
+    ctx: typer.Context,
     key: ConfigKeyArg,
     global_: ConfigGlobalOpt = False,
 ) -> None:
@@ -36,13 +45,19 @@ def config_get(
         get_err_console().print(f"error: unknown config key: {key}")
         raise typer.Exit(code=1)
 
-    cfg = resolve_config()
+    overrides = {}
+    wiki_dir = _resolve_wiki_dir(ctx)
+    if wiki_dir:
+        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+
+    cfg = resolve_config(cli_overrides=overrides)
     value = cfg.get(key)
     get_console().print(_format_value(value))
 
 
 @config_app.command("set", help="Set a config value.")
 def config_set(
+    ctx: typer.Context,
     key: ConfigKeyArg,
     value: ConfigValueArg,
     global_: ConfigGlobalOpt = False,
@@ -61,7 +76,8 @@ def config_set(
     if global_:
         path = get_global_config_path(create=True)
     else:
-        path = get_project_config_path()
+        wiki_dir = _resolve_wiki_dir(ctx)
+        path = get_project_config_path(start_dir=wiki_dir)
         if not path.exists():
             get_err_console().print("error: not in a KNOX vault — run `knox init` first or use `--global`")
             raise typer.Exit(code=1)
@@ -77,10 +93,16 @@ def config_set(
 
 @config_app.command("list", help="List all resolved config values with provenance.")
 def config_list(
+    ctx: typer.Context,
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print every resolved config key, value, and source."""
-    cfg = resolve_config()
+    overrides = {}
+    wiki_dir = _resolve_wiki_dir(ctx)
+    if wiki_dir:
+        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+
+    cfg = resolve_config(cli_overrides=overrides)
     for key, value in sorted(cfg.flat().items()):
         source = cfg.source_of(key)
         get_console().print(f"{key} = {_format_value(value)}  # {source}")
@@ -88,10 +110,11 @@ def config_list(
 
 @config_app.command("path", help="Show the config file path.")
 def config_path(
+    ctx: typer.Context,
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_path(create=False) if global_ else get_project_config_path()
+    path = get_global_config_path(create=False) if global_ else get_project_config_path(start_dir=_resolve_wiki_dir(ctx))
     get_console().print(str(path), soft_wrap=True)
 
 

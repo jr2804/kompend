@@ -36,8 +36,16 @@ class TestConfigGet:
 
 
 class TestConfigSet:
+    def _init_vault(self, tmp_path: Path) -> Path:
+        """Create .knox/config.toml so config set targets a valid vault."""
+        cfg_dir = tmp_path / KNOX_DIR
+        cfg_dir.mkdir()
+        (cfg_dir / "config.toml").write_text("")
+        return cfg_dir
+
     def test_set_integer_in_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
+        self._init_vault(tmp_path)
         result = runner.invoke(app, ["config", "set", "compile.budget.chunk_size_min", "4096"])
         assert result.exit_code == 0, result.stdout
         assert "set compile.budget.chunk_size_min = 4096" in result.stdout
@@ -45,6 +53,7 @@ class TestConfigSet:
 
     def test_set_boolean(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
+        self._init_vault(tmp_path)
         result = runner.invoke(app, ["config", "set", "compile.no_cache", "true"])
         assert result.exit_code == 0
         text = (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
@@ -52,6 +61,7 @@ class TestConfigSet:
 
     def test_set_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
+        self._init_vault(tmp_path)
         result = runner.invoke(app, ["config", "set", "compile.llm.fallback_chain", "a, b, c"])
         assert result.exit_code == 0
         text = (tmp_path / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
