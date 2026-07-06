@@ -42,7 +42,7 @@ def _chars_to_tokens(chars: int) -> int:
     return max(1, chars // _CHARS_PER_TOKEN)
 
 
-_ACRONYM_RE = re.compile(r"\s*\([^)]*[A-Z]{2,}[^)]*\)\s*$")
+_ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
 
 
 def _normalize_concept_key(name: str) -> str:

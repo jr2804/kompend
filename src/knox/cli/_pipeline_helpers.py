@@ -331,6 +331,55 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
         )
 
 
+def _run_overview_synthesis(
+    *,
+    wiki: CompiledWiki,
+    pipeline_config: PipelineConfig,
+    base_dir: Path,
+    show_progress: bool | None,
+) -> None:
+    """Generate overview.md via LLM synthesis.
+
+    Skipped when the compile fell back (LLM issues) — calling the same
+    broken backend again would hang or fail identically.
+    """
+    if wiki.metadata.get("fallback"):
+        get_err_console().print(
+            "Skipping overview synthesis: compile fell back (LLM issues) — "
+            "re-run after fixing the fallback to get an overview."
+        )
+        return
+
+    resolved_model = pipeline_config.llm.default_model
+    synthesize_tracker = PipelineProgress.create(total_files=1, force_progress=show_progress)
+    synthesize_tracker.start()
+
+    def _synth_cb(current: int, total: int) -> None:
+        if current == 0:
+            synthesize_tracker.reset_for_phase(total, "Synthesizing overview…")
+        else:
+            synthesize_tracker.update_progress(current, f"[{current}/{total}] Synthesizing overview…")
+
+    try:
+        overview_path = write_overview(
+            wiki,
+            base_dir,
+            model=resolved_model,
+            overview_budget=pipeline_config.budget.overview_output_max * 4,
+            timeout=pipeline_config.llm.timeout,
+            progress_callback=_synth_cb if synthesize_tracker.enabled else None,
+        )
+    except Exception as exc:
+        synthesize_tracker.finish()
+        get_err_console().print(f"Overview generation failed: {exc}")
+        return
+    synthesize_tracker.finish()
+    if overview_path:
+        get_console().print(f"Overview: {overview_path}")
+    else:
+        get_err_console().print("Overview generation skipped (no content to summarise).")
+
+
 def _post_compile_actions(
     *,
     wiki: CompiledWiki,
@@ -377,37 +426,12 @@ def _post_compile_actions(
     get_console().print(f"Index: {generated['index']}")
 
     if synthesize:
-        resolved_model = pipeline_config.llm.default_model
-
-        synthesize_tracker = PipelineProgress.create(total_files=1, force_progress=show_progress)
-        synthesize_tracker.start()
-
-        def _synth_cb(current: int, total: int) -> None:
-            if current == 0:
-                synthesize_tracker.reset_for_phase(total, "Synthesizing overview…")
-            else:
-                synthesize_tracker.update_progress(current, f"[{current}/{total}] Synthesizing overview…")
-
-        try:
-            overview_path = write_overview(
-                wiki,
-                base_dir,
-                model=resolved_model,
-                overview_budget=pipeline_config.budget.overview_output_max * 4,
-                timeout=pipeline_config.llm.timeout,
-                progress_callback=_synth_cb if synthesize_tracker.enabled else None,
-            )
-        except Exception as exc:
-            # Overview is optional — catch at this boundary and report the real
-            # error instead of aborting a successful compile.
-            synthesize_tracker.finish()
-            get_err_console().print(f"Overview generation failed: {exc}")
-            return
-        synthesize_tracker.finish()
-        if overview_path:
-            get_console().print(f"Overview: {overview_path}")
-        else:
-            get_err_console().print("Overview generation skipped (no content to summarise).")
+        _run_overview_synthesis(
+            wiki=wiki,
+            pipeline_config=pipeline_config,
+            base_dir=base_dir,
+            show_progress=show_progress,
+        )
 
     if index_store:
         search_db_path = VaultPaths(base_dir).search_db_path

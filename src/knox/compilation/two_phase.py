@@ -570,7 +570,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 chunks,
                 trees=trees,
                 extractions=extractions,
-                reason="generation produced no pages (all LLM calls failed)",
+                reason="generation produced no pages — every page-synthesis LLM call failed (extraction succeeded)",
             )
 
         self.disambiguate_duplicate_titles(nodes, chunks)
@@ -925,7 +925,14 @@ class TwoPhaseCompiler(BaseCompiler):
 
         # 1. Real concept definitions extracted in phase 1 (no LLM synthesis).
         if extractions is not None:
-            for concept in extractions.concept_pages():
+            concepts = extractions.concept_pages()
+            # Apply embedding merge (Option C) in fallback path too —
+            # otherwise fallback pages duplicate semantic variants that
+            # the normalized-key merge (Option A) missed.
+            embed_model = self._config.embedding.model
+            if embed_model and embed_model != "hash":
+                concepts = _merge_similar_concepts(concepts, embed_model)
+            for concept in concepts:
                 name = concept.get("name", "").strip()
                 if not name:
                     continue

@@ -497,6 +497,15 @@ class TestNormalizeConceptKey:
         assert _normalize_concept_key("Short-Time Objective Intelligibility (STOI)") == "short time objective intelligibility"
         assert _normalize_concept_key("Binaural Unmasking (BU)") == "binaural unmasking"
 
+    def test_strip_mixed_case_acronym(self) -> None:
+
+        assert _normalize_concept_key("Mean Temporal Distance (M-Measure)") == "mean temporal distance"
+        assert _normalize_concept_key("Mean Temporal Distance (MTD)") == "mean temporal distance"
+
+    def test_keep_year_in_parens(self) -> None:
+
+        assert _normalize_concept_key("ITU-T P.58 (2023)") == "itu t p.58 (2023)"
+
     def test_hyphen_to_space(self) -> None:
 
         assert _normalize_concept_key("Short-Time") == "short time"
