@@ -502,8 +502,7 @@ Write-Host "=== Stage 6: Organize (dry-run) ===" -ForegroundColor Cyan
 $OrganizeArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "organize",
-    "--dry-run"
+    "organize"
 )
 Write-Host ""
 Write-Host ($OrganizeArgs -join " ") -ForegroundColor DarkGray
