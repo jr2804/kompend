@@ -84,8 +84,8 @@ window), resolving entities and relations, compiling into wiki pages, and
 writing Markdown to `wiki/`. You need a configured LLM for this step.
 
 ```bash
-knox compile --llm-default-model ollama/llama3.1:8b
-knox compile --compiler wicer --verify --synthesize
+knox compile --set compile.llm.default_model=ollama/llama3.1:8b
+knox compile --verify --synthesize
 ```
 
 ### 4. Query the compiled wiki
@@ -157,7 +157,7 @@ Full option reference: `knox <command> --help`
 | `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox memory add/search/synthesize` | Manage query memory and context synthesis |
 | **Quality** | |
-| `knox lint run/history/prune` | Lint wiki, query past runs, or prune history (`--fix`, `--llm`, `--rule`, `--threshold`) |
+| `knox lint run/history/prune` | Lint wiki, query past runs, or prune history (`--fix`, `--llm`, `--rule`) |
 | `knox review list/approve/reject/lock/unlock` | Manage the review queue for compiled pages |
 | **Capture** | |
 | `knox capture "..."` | LLM-extract decisions, discoveries, corrections from text |
@@ -199,7 +199,6 @@ Raw Sources → T1: Pre-Processing → T2: Chunking → T3: Resolution → T4: C
 |---|---|
 | **RAG / Search** | `HybridRetriever` fuses FTS + vector + token-overlap + raw sources via reciprocal rank fusion. Two embedding providers: `litellm:` prefix → LiteLLM, no prefix → sentence-transformers. |
 | **Memory Lifecycle** | Confidence decay, tier promotion (working → episodic → semantic → procedural), supersession detection, and stale-page lint integration. Configurable half-life and decay threshold. |
-| **Event Hooks** | `PRE_COMPILE`, `POST_COMPILE`, `ON_CAPTURE`, `ON_QUERY`, `ON_LINT` hooks — configurable via `[hooks]` in `knox.toml`. |
 | **Review Queue** | Route compiled pages through approve/reject/lock workflow before publishing. |
 | **MCP Server** | Stdio server exposing `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` tools to Claude Code, Cursor, and other MCP-compatible clients. |
 | **Configuration** | 5-layer precedence: CLI args > env (`KNOX_*`) > project hierarchy (`.knox/config.toml` + `knox.toml`, walks up) > global (`~/.config/knox/config.toml`) > defaults. |

@@ -252,7 +252,7 @@ knox query [OPTIONS] QUESTION
 |------|---------|-------------|
 | `--top-k` | `5` | Number of context chunks to retrieve |
 | `--scope` | `hybrid` | Search scope: `wiki`, `raw`, or `hybrid` |
-| `--format` | `text` | Output format: `text` or `json` |
+| `--format` | `text` | Output format: `text`, `json`, `toon`, or `ison` |
 | `--raw` | — | Return raw context chunks without LLM synthesis |
 | `--no-classify` | — | Skip intent classification |
 | `--verbosity` | `standard` | Answer verbosity: `brief`, `standard`, or `comprehensive` |
@@ -361,23 +361,3 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys.
 | `KNOX_NOTES_FILE` | `notes.file` | User notes filename |
 | `KNOX_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |
 | `KNOX_RELATION_CONFIDENCE_THRESHOLD` | `compile.relation_confidence_threshold` | Minimum confidence for relations |
-
-## Event Hooks
-
-KNOX fires hooks at key pipeline events. Register callbacks in `knox.toml` under `[hooks]` using `module:attribute` syntax:
-
-```toml
-[hooks]
-post_compile = ["mypkg.hooks:auto_lint"]
-on_capture = ["mypkg.hooks:notify"]
-```
-
-| Event | Fired by | Context data |
-|-------|----------|-------------|
-| `pre_compile` | `compile` | `source_dir`, `output_dir`, `mode` |
-| `post_compile` | `compile` | `wiki`, `output_dir`, `node_count` |
-| `on_capture` | `capture`, `learn` | `paths`, `sources_dir` |
-| `on_query` | `query` | `query`, `results`, `scope` |
-| `on_lint` | `lint` | `report`, `wiki` |
-
-Callbacks receive a `HookContext` with `.event` and `.data`. Exceptions in callbacks are swallowed and logged so they never break the pipeline.

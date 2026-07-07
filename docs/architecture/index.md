@@ -6,140 +6,34 @@ KNOX decouples **parsing** from **compilation** and adds layers that existing fr
 
 ## 5-Tier Architecture
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           RAW SOURCES                                   │
-│  PDF  DOCX  XLSX  PPTX  EPUB  MD  TXT  images  URLs (files)  URLs (web) │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 1: PRE-PROCESSING (Parser-Agnostic Router)                      │
-│  ┌─────────────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ DoclingParser       │  │ PandocParser │  │ Web Crawler          │  │
-│  │ │ 14 formats:       │  │ │ Legacy:     │  │ │ crawl4ai            │  │
-│  │ │ PDF, DOCX, PPTX,  │  │ │ .doc, .odt,│  │ │ for web docs        │  │
-│  │ │ HTML, MD, EPUB,   │  │ │ .rst, .rtf │  │ │ (markdown output)   │  │
-│  │ │ TEX, CSV, XLSX,   │  │ │ plus .txt  │  │ │                    │  │
-│  │ │ ADOC, EML, MSG    │  │ │ (text fall-│  │ │                    │  │
-│  │ │ Extracts: tables, │  │ │ back via   │  │ │                    │  │
-│  │ │ figures, formulas,│  │ │ binaryornot)│  │ │                    │  │
-│  │ │ LaTeX, headings,  │  │ │            │  │ │                    │  │
-│  │ │ reading order     │  │ │            │  │ │                    │  │
-│  │ └─────────────────────┘  └──────────────┘  └──────────────────────┘  │
-│  │                                                                      │
-│  │  Strategy per format:                                                │
-│  │  ├─ PDF, DOCX, PPTX, HTML, MD, EPUB, TEX, CSV, XLSX → DoclingParser │
-│  │  ├─ DOC, ODT, RST, RTF → PandocParser (legacy formats)              │
-│  │  ├─ TXT → PandocParser (treated as markdown)                        │
-│  │  ├─ unknown text → PandocParser via binaryornot detection           │
-│  │  ├─ images → resolution tier (VLMEnricher with --vlm-model)         │
-│  │  └─ URLs → HTTPDownloader OR WebCrawler                             │
-│  └──────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Output: Markdown (.md) + Structured JSON sidecar (.knox.json)          │
-│  ─ Tables as schemas (list[list[str]] + cell types)                     │
-│  ─ Figures with captions, bounding boxes, extracted PNG                 │
-│  ─ Equations as LaTeX source + base64 image fallback                      │
-│  ─ Heading hierarchy preserved with level metadata                        │
-│  ─ Reading order index per element                                        │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 2: CHUNKING (Hierarchical ChunkTree)                              │
-│  ┌──────────────────────────────────────────────────────────────┐      │
-│  │  Step 1: Walk elements in reading order                     │      │
-│  │  ├─ HEADING level N → open/close internal ChunkNode at depth N│    │
-│  │  │  Tables/figures/equations/code: NEVER SPLIT (atomic)       │      │
-│  │  │  Text runs → split via RecursiveChunker if > token_budget │      │
-│  │  └─ Heading path preserved as tuple on every node             │      │
-│  │                                                             │      │
-│  │  Step 2: Build ChunkTree (not flat list)                    │      │
-│  │  ├─ Internal nodes: heading sections with summary            │      │
-│  │  ├─ Leaf nodes: prose chunks or structured data              │      │
-│  │  ├─ Structured leaves carry typed records                    │      │
-│  │  │  (StructuredTable, StructuredEquation, StructuredFigure)  │      │
-│  │  └─ Token counts computed bottom-up                          │      │
-│  │                                                             │      │
-│  │  Step 3: Adaptive strategy by (doc_size, context_window)    │      │
-│  │  ├─ SINGLE_PASS: doc fits in CW → root + leaves only        │      │
-│  │  ├─ TWO_LEVEL: doc ≤10×CW → root + section nodes + leaves   │      │
-│  │  └─ MULTI_RESOLUTION: doc >>10×CW → full depth tree         │      │
-│  └──────────────────────────────────────────────────────────────┘      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 3: RESOLUTION (Entity Registry + VLM)                            │
-│  ┌──────────────────┐  ┌─────────────────┐                              │
-│  │ EntityRegistry   │  │ VLMEnricher     │                              │
-│  │ │ programmatic   │  │ │ analyze        │                              │
-│  │ │ acronym/def    │  │ │ extracted figs │                              │
-│  │ │ extraction     │  │ │ via vision LLM │                              │
-│  │ │ dedup by       │  │ └─────────────────┘                              │
-│  │ │ canonical name │  └──────────────────┘                              │
-│  │ └──────────────────┘                                                  │
-│  │                                                                      │
-│  │  CrossReferenceChecker (no LLM):                                     │
-│  │  ├─ check_definitions: flag entities defined differently              │
-│  │  ├─ check_references: flag unresolved section/table/figure refs      │
-│  │  └─ check_table_consistency: flag contradicting table values         │
-│  └──────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 4: COMPILATION (Model-Agnostic, WiCER Loop)                     │
-│  ┌──────────────────────────────────────────────────────────────┐      │
-│  │  Uses ChunkTree hierarchy: internal node summaries feed LLM   │      │
-│  │  extraction; structured leaves feed directly (no LLM needed)  │      │
-│  │                                                             │      │
-│  │  +──────────────────────────────+                          │      │
-│  │  │  Step A: BLIND COMPILATION   │                          │      │
-│  │  │  ├─ litellm for provider abstraction                      │      │
-│  │  │  ├─ Model selection: config-driven, fallback chain     │      │
-│  │  │  ├─ Fallback to remote (deepseek, openrouter, etc.)     │      │
-│  │  │  ├─ Multimodal: feed figures to vision LLM              │      │
-│  │  │  └─ Output: compiled wiki W₀                            │      │
-│  │  +──────────────────────────────+                          │      │
-│  │              │                                             │      │
-│  │  +───────────▼───────────+                                  │      │
-│  │  │  Step B: EVALUATION     │                               │      │
-│  │  │  ├─ Probe Q&A per source document                      │      │
-│  │  │  ├─ Score answers from W₀ (LLM-as-judge)               │      │
-│  │  │  ├─ Identify score-1 failures (catastrophic loss)     │      │
-│  │  │  └─ Report: per-source quality + fact loss              │      │
-│  │  +──────────────────────────+                               │      │
-│  │              │                                             │      │
-│  │  +───────────▼───────────+                                  │      │
-│  │  │  Step C: DIAGNOSIS      │                               │      │
-│  │  │  ├─ For each failure: trace lost facts to source       │      │
-│  │  │  ├─ Extract critical facts as "preserve" items          │      │
-│  │  │  └─ Score: generic pinning (+0.16) vs targeted (+0.95) │      │
-│  │  +──────────────────────────+                               │      │
-│  │              │                                             │      │
-│  │  +───────────▼───────────+                                  │      │
-│  │  │  Step D: REFINE         │                               │      │
-│  │  │  ├─ Re-compile with pinned facts as "must-include"      │      │
-│  │  │  ├─ Repeat until convergence or max iterations           │      │
-│  │  │  └─ Final output: W_final (quality ~80% recovered)     │      │
-│  │  +──────────────────────────+                               │      │
-│  │              │                                             │      │
-│  │              └──────────────────────────────────────► (repeat)   │
-│  └─────────────────────────────────────────────────────────────────────┘
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 5: OUTPUT (Multi-Target)                                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐│
-│  │ Markdown     │  │ JSON Graph   │  │ Typst/PDF    │  │ MCP Server  ││
-│  │ (Obsidian)   │  │ (SQLite)     │  │ (Academic)   │  │ (for agents)││
-│  │ └────────────┘  │ └────────────┘  │ └────────────┘  │ └───────────┘│
-│  └─────────────────────────────────┘                                    │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef storage fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+
+    SRC[Raw Sources<br/>PDF / DOCX / PPTX / EPUB / MD / TXT / URLs]
+    T1[Tier 1<br/>Pre-Processing<br/>Docling / Pandoc / Web Crawler]
+    T2[Tier 2<br/>Chunking<br/>Hierarchical ChunkTree]
+    T3[Tier 3<br/>Resolution<br/>EntityRegistry + VLMEnricher]
+    T4[Tier 4<br/>Compilation<br/>Graph / TwoPhase / WiCER]
+    T5[Tier 5<br/>Output<br/>Markdown / JSON / Typst / MCP]
+    CACHE[Cache<br/>.knox/cache/]
+    IDX[Index<br/>FTS + zvec vectors]
+
+    SRC --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T4 -.-> CACHE
+    T5 -.-> IDX
+
+    class SRC source
+    class T1,T2,T3,T4,T5 process
+    class T5 output
+    class CACHE,IDX storage
 ```
 
 ## Data Models

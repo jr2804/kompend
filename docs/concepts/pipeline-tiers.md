@@ -14,6 +14,10 @@ testable, and has a clear `Base` interface.
 
 ``` mermaid
 flowchart LR
+    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
     PDF[PDF] --> Docling[DoclingParser]
     DOCX[DOCX] --> Docling
     DOCX2[DOCX] --> Pandoc[PandocParser]
@@ -27,6 +31,10 @@ flowchart LR
     Pandoc --> PD
     HTTP --> PD
     Crawler --> PD
+
+    class PDF,DOCX,DOCX2,PPTX,EPUB,MD,URL,URL2 source
+    class Docling,Pandoc,HTTP,Crawler process
+    class PD output
 ```
 
 **Key classes:**
@@ -76,11 +84,19 @@ flowchart LR
 
 ``` mermaid
 flowchart LR
+    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
     Trees[list[ChunkTree]] --> Registry[EntityRegistry<br>scan_tree]
     Trees --> VLM[VLMEnricher<br>per-leaf]
     Registry --> Checker[CrossReferenceChecker]
     Checker --> Xref[CrossReferenceResult]
     VLM --> RC[list[ResolvedChunk]]
+
+    class Trees input
+    class Registry,VLM,Checker process
+    class Xref,RC output
 ```
 
 **Key classes:**
@@ -105,12 +121,22 @@ relations are inferred during compilation from shared entities.
 
 ``` mermaid
 flowchart LR
+    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef decision fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
     RC[list[ResolvedChunk]] --> Compile[Blind Compilation]
     Compile --> Evaluate[Probe Q&A]
     Evaluate --> Diagnose[Diagnose Failures]
     Diagnose --> Refine[Refine with Pinned Facts]
     Refine --> Compile
     Refine --> Wiki[CompiledWiki]
+
+    class RC input
+    class Compile,Evaluate,Diagnose,Refine process
+    class Evaluate decision
+    class Wiki output
 ```
 
 **Key classes:**
