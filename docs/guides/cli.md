@@ -259,7 +259,11 @@ knox query [OPTIONS] QUESTION
 
 ## `knox capture` and `knox learn`
 
-Quickly persist notes, facts, or conversation snippets as source files in `sources/_captured/`.
+Quickly persist notes, facts, or conversation snippets as **source material**
+for future compilation. Files land in `sources/_captured/` — they are *inputs*
+that the next `knox compile` will parse, chunk, and resolve like any other
+source. See [Wiki structure: input vs output](wiki-structure.md#input-vs-output-where-files-land)
+for why captures go under `sources/` rather than `wiki/`.
 
 ```bash
 # LLM extraction into one or more knowledge items
@@ -271,7 +275,11 @@ knox learn "The transformer uses d_model=512 and h=8" --tag attention
 
 ## `knox distill`
 
-Synthesize captured notes from `sources/_captured/` into coherent wiki pages. Notes are grouped by tag and merged (LLM-powered or deterministic fallback). Output goes to `sources/_distilled/`.
+Synthesize captured notes from `sources/_captured/` into coherent wiki pages.
+Notes are grouped by tag and merged (LLM-powered or deterministic fallback).
+Output goes to `sources/_distilled/` — like `capture`/`learn`, distilled pages
+are still *inputs* that the next `knox compile` will fold into the compiled
+wiki.
 
 ```bash
 # Merge all captured notes into synthesized pages
@@ -280,6 +288,32 @@ knox distill
 # Then compile to incorporate distilled pages
 knox compile
 ```
+
+## `knox write`
+
+Write or overwrite a single **finished wiki page** from one or more sources.
+Unlike `capture`/`learn`/`distill` (which produce *input* material under
+`sources/`), `write` produces a *publication artifact*: output lands directly
+in `wiki/write/`, outside the compile pipeline. The page is synthesized from
+the cached parse of each `--source` file (continuous prose via LLM, with a
+concatenation fallback) and written with default frontmatter
+(`title`, `kind=page`, `compiled_at`, `sources`).
+
+```bash
+# Write a page from one source
+knox write "Attention Mechanism" --source sources/paper.pdf
+
+# Write from multiple sources with extra frontmatter
+knox write "Transformers" --source a.pdf --source b.docx \
+  --frontmatter kind=concept status=draft
+
+# Scaffold a placeholder page (no sources -> body is a pending marker)
+knox write "TODO: fill this in"
+```
+
+Because `write` output is not a source, it is **not** re-parsed on subsequent
+compiles — it persists as-is under `wiki/write/` until overwritten by another
+`write`.
 
 ## `knox organize`
 
