@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from knox.core.models import MetadataField, WikiField
-from knox.core.paths import VaultPaths
+from knox.core.paths import VaultPaths, is_protected_source
 from knox.logging import get_logger
 from knox.organize.categorize import CategoryNode, CategoryTree
 
@@ -50,6 +50,8 @@ def flatten_sources(sources_dir: Path) -> list[FileMove]:
     moves: list[FileMove] = []
     for path in sorted(sources_dir.rglob("*")):
         if not path.is_file() or path.parent == sources_dir:
+            continue
+        if is_protected_source(path, sources_dir):
             continue
         rel = path.relative_to(sources_dir)
         target = _unique_target(sources_dir, path.name)

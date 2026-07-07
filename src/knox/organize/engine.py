@@ -20,7 +20,7 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
-from knox.core.paths import VaultPaths
+from knox.core.paths import VaultPaths, is_protected_source
 from knox.llm.client import LLMClient
 from knox.logging import get_logger
 from knox.organize.categorize import (
@@ -150,6 +150,8 @@ def _files_without_summary(sources_dir: Path, extractions: dict[str, object]) ->
     missing: list[str] = []
     for path in sorted(sources_dir.rglob("*")):
         if not path.is_file():
+            continue
+        if is_protected_source(path, sources_dir):
             continue
         # Path must live under sources_dir; skip symlinked escapes otherwise.
         if not path.is_relative_to(sources_dir):

@@ -139,16 +139,18 @@ The directory split reflects the pipeline's directionality — `sources/` is
 where *inputs to be processed* live, `wiki/` is where *finished artifacts*
 land:
 
-| Command | Lands in | Role |
-|---------|----------|------|
-| `capture`, `learn` | `sources/_captured/` | Raw input — the next `compile` parses, chunks, and resolves these like any other source |
-| `distill` | `sources/_distilled/` | Input — distilled pages are folded into the compiled wiki by the next `compile` |
-| `compile` | `wiki/` | Output — finished compiled wiki pages |
-| `write` | `wiki/write/` | Output — a finished publication page synthesized from cached sources; **not** re-parsed on subsequent compiles |
+| Command | Lands in | Role | Organize? |
+|---------|----------|------|-----------|
+| `capture`, `learn` | `sources/_captured/` | Raw input — the next `compile` parses, chunks, and resolves these like any other source | 🚫 Protected — organize leaves them in place |
+| `distill` | `sources/_distilled/` | Input — distilled pages are folded into the compiled wiki by the next `compile` | 🚫 Protected — organize leaves them in place |
+| `compile` | `wiki/` | Output — finished compiled wiki pages | — |
+| `write` | `wiki/write/` | Output — a finished publication page synthesized from cached sources; **not** re-parsed on subsequent compiles | — |
 
 Crossing the two would break the pipeline contract: a captured note in
 `wiki/` would never be compiled (`compile` scans `sources/`, not `wiki/`),
 and a written page in `sources/` would be pointlessly re-processed through
-parse → chunk → resolve → compile on every run.
+parse → chunk → resolve → compile on every run. `knox organize` treats
+`_captured/` and `_distilled/` as protected tool-managed zones — it never
+flattens or relocates them.
 
 ```text

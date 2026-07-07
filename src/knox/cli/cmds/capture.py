@@ -19,7 +19,7 @@ from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
 from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.models import MetadataField, WikiField
-from knox.core.paths import VaultPaths
+from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.timeutil import iso_local
 from knox.llm.client import LLMClient, _strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
@@ -56,7 +56,7 @@ def capture_cmd(
         llm_client = None
 
     paths = capture(text, sources_dir=sources_dir, llm_client=llm_client, tags=tag)
-    get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / '_captured'}")
+    get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / CAPTURED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
 
@@ -113,7 +113,7 @@ def distill_cmd(
     if not paths:
         get_console().print("No captured notes found to distill.")
         return
-    get_console().print(f"Distilled {len(paths)} page(s) to {sources_dir / '_distilled'}")
+    get_console().print(f"Distilled {len(paths)} page(s) to {sources_dir / DISTILLED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
 

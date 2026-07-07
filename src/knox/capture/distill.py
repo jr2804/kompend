@@ -15,7 +15,7 @@ import yaml
 
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
-from knox.core.paths import CAPTURED_SUBDIR
+from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
 from knox.core.template_loader import get_template_loader
 from knox.core.timeutil import display_local
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
@@ -61,7 +61,7 @@ def distill(
         logger.info("No captured notes to distill")
         return []
 
-    output_dir = sources_dir / "_distilled"
+    output_dir = sources_dir / DISTILLED_SUBDIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     groups = _group_by_tag(notes)

@@ -18,7 +18,7 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
-from knox.core.paths import KNOX_DIR, ORGANIZE_REPORT_FILE
+from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
 from knox.llm.client import LLMClient, LLMResult
 from knox.llm.failover import CallDiagnostics
 from knox.organize import (
@@ -70,7 +70,9 @@ def _write_extraction(base_dir: Path, source: str, summary: str = "test summary"
         "deps": {},
         "value": {"source": source, "summary": summary, "entities": [], "concepts": [], "tags": []},
     }
-    (cache / f"{source}.json").write_text(json.dumps(entry), encoding="utf-8")
+    out = cache / f"{source}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(entry), encoding="utf-8")
 
 
 # ── Slug helper ──────────────────────────────────────────────────────────
@@ -165,6 +167,22 @@ class TestLoadExtractions:
 
         result = load_all_extractions(base, sources)
         assert result == {}
+
+    def test_skips_protected_extractions(self, tmp_path: Path) -> None:
+        base = tmp_path
+        sources = base / "sources"
+        (sources / CAPTURED_SUBDIR).mkdir(parents=True)
+        (sources / CAPTURED_SUBDIR / "a.md").write_text("a")
+        (sources / "b.md").write_text("b")
+        # Extraction cache entry for a file in _captured/
+        _write_extraction(base, f"{CAPTURED_SUBDIR}/a.md", "captured note")
+        # Normal extraction
+        _write_extraction(base, "b.md", "normal source")
+
+        result = load_all_extractions(base, sources)
+        # Protected file excluded; normal file included
+        assert f"{CAPTURED_SUBDIR}/a.md" not in result
+        assert "b.md" in result
 
 
 # ── validate_tree ───────────────────────────────────────────────────────
@@ -394,6 +412,27 @@ class TestFlattenSources:
 
     def test_missing_dir(self, tmp_path: Path) -> None:
         assert flatten_sources(tmp_path / "nope") == []
+
+    def test_skips_protected_subdirs(self, tmp_path: Path) -> None:
+        sources = tmp_path / "sources"
+        (sources / CAPTURED_SUBDIR).mkdir(parents=True)
+        (sources / DISTILLED_SUBDIR).mkdir(parents=True)
+        (sources / "sub").mkdir()
+        (sources / CAPTURED_SUBDIR / "a.md").write_text("a")
+        (sources / DISTILLED_SUBDIR / "b.md").write_text("b")
+        (sources / "sub" / "c.md").write_text("c")
+
+        moves = flatten_sources(sources)
+
+        # Protected files stay in place
+        assert (sources / CAPTURED_SUBDIR / "a.md").is_file()
+        assert (sources / DISTILLED_SUBDIR / "b.md").is_file()
+        # Normal nested file was flattened
+        assert (sources / "c.md").is_file()
+        assert not (sources / "sub" / "c.md").exists()
+        # Only the normal file appears in the move list
+        assert len(moves) == 1
+        assert moves[0].old == "sub/c.md"
 
 
 class TestMaterializeTree:

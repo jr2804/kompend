@@ -32,8 +32,14 @@ from typing import Final
 # ── Hidden KNOX artifacts folder ────────────────────────────────────────
 KNOX_DIR: Final[str] = ".knox"
 
-# ── Capture (learn/capture inputs live under sources/<CAPTURED_SUBDIR>) ───
+# ── Capture (learn/capture/distill inputs live under sources/<subdir>) ──
 CAPTURED_SUBDIR: Final[str] = "_captured"
+DISTILLED_SUBDIR: Final[str] = "_distilled"
+# Subdirectories under sources/ that `knox organize` must NEVER flatten or
+# relocate. These are tool-managed input zones, not topically-categorized
+# material. Compile still processes them (they are legitimate sources);
+# organize leaves them in place.
+PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, DISTILLED_SUBDIR})
 
 # ── Config ──────────────────────────────────────────────────────────────
 CONFIG_FILE: Final[str] = "config.toml"
@@ -316,3 +322,17 @@ class VaultPaths:
             self.vectors_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
+
+
+def is_protected_source(path: Path, sources_dir: Path) -> bool:
+    """True if *path* lives under a protected tool-managed subdir of *sources_dir*.
+
+    Files in ``sources/_captured/`` or ``sources/_distilled/`` are inputs produced
+    by ``capture``/``learn``/``distill``. ``organize`` must never flatten or
+    relocate them — they are left in place. Compile still processes them.
+    """
+    try:
+        rel = path.resolve().relative_to(sources_dir.resolve())
+    except ValueError:
+        return False
+    return any(part in PROTECTED_SOURCE_SUBDIRS for part in rel.parts[:-1])

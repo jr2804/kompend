@@ -18,7 +18,7 @@ from pathlib import Path
 
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig
-from knox.core.paths import VaultPaths
+from knox.core.paths import VaultPaths, is_protected_source
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient
 from knox.llm.roles import LLMRole
@@ -104,6 +104,8 @@ def load_all_extractions(
     files_by_name: dict[str, Path] = {}
     for path in sources_root.rglob("*"):
         if path.is_file() and _is_within(path, sources_root):
+            if is_protected_source(path, sources_root):
+                continue
             files_by_name.setdefault(path.name, path)
 
     known: dict[str, Extraction] = {}
@@ -124,6 +126,8 @@ def load_all_extractions(
             continue
         candidate = _resolve_cached_source(source, sources_root, files_by_name)
         if candidate is None:
+            continue
+        if is_protected_source(candidate, sources_root):
             continue
         rel = candidate.relative_to(sources_root).as_posix()
         known[rel] = ext
