@@ -14,8 +14,7 @@ file is part of the public configuration contract.
 
 from __future__ import annotations
 
-from dataclasses import MISSING, dataclass, field
-from dataclasses import fields as dc_fields
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -25,7 +24,6 @@ from knox.core.config import (
     EmbeddingConfig,
     ImageMode,
     LLMConfig,
-    LlmDataFormat,
     OutputConfig,
     OutputFormat,
     PdfConfig,
@@ -185,24 +183,17 @@ class PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
 
         def _kwargs_for(cls: type, section: str) -> dict[str, Any]:
-            """Build constructor kwargs for a dataclass from a config section.
+            """Build constructor kwargs for a pydantic model from a config section.
 
-            Reads each field's value from ``cfg`` via ``f"{section}.{field_name}"`",
-            falling back to the dataclass's own default when the key is absent.
-            Coerces enum-typed defaults to their constructor on read.
+            Only includes keys present (non-None) in the resolved config.
+            Pydantic uses field defaults for absent keys and handles type
+            coercion (str-to-enum, str-to-Path) during construction.
             """
             out: dict[str, Any] = {}
-            for f in dc_fields(cls):
-                key = f"{section}.{f.name}"
-                if cfg.get(key) is not None:
-                    val = cfg.get(key)
-                elif f.default is not MISSING:
-                    val = f.default
-                elif f.default_factory is not MISSING:  # type: ignore[comparison-overlap]
-                    val = f.default_factory()
-                else:
-                    continue
-                out[f.name] = val
+            for name in cls.model_fields:
+                val = cfg.get(f"{section}.{name}")
+                if val is not None:
+                    out[name] = val
             return out
 
         default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
@@ -214,9 +205,7 @@ class PipelineConfig:
                 f"--set {COMPILE_LLM_DEFAULT_MODEL}=... on the command line."
             )
         llm_kwargs = _kwargs_for(LLMConfig, "compile.llm")
-        # Coerce string data_format to enum; sanitize role_models values.
-        if "data_format" in llm_kwargs and not isinstance(llm_kwargs["data_format"], LlmDataFormat):
-            llm_kwargs["data_format"] = LlmDataFormat(llm_kwargs["data_format"])
+        # Sanitize role_models values (pydantic handles enum/Path coercion)
         role_models_raw = llm_kwargs.pop("role_models", {})
         if isinstance(role_models_raw, dict):
             llm_kwargs["role_models"] = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()}
@@ -226,13 +215,7 @@ class PipelineConfig:
 
         budget_config = BudgetConfig(**_kwargs_for(BudgetConfig, "compile.budget"))
 
-        output_kwargs = _kwargs_for(OutputConfig, "compile.output")
-        if "format" in output_kwargs and not isinstance(output_kwargs["format"], OutputFormat):
-            output_kwargs["format"] = OutputFormat(output_kwargs["format"])
-        if isinstance(output_kwargs.get("rumdl_config"), str):
-            output_kwargs["rumdl_config"] = Path(output_kwargs["rumdl_config"])
-        output_config = OutputConfig(**output_kwargs)
-
+        output_config = OutputConfig(**_kwargs_for(OutputConfig, "compile.output"))
         embedding_config = EmbeddingConfig(**_kwargs_for(EmbeddingConfig, "compile.embedding"))
         pdf_config = PdfConfig(**_kwargs_for(PdfConfig, "compile.pdf"))
 

@@ -171,8 +171,8 @@ class TestPipelineNotesInjection:
         return PipelineConfig(
             source_dir=tmp_path / "sources",
             output_dir=tmp_path / "wiki",
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
             notes_file=notes_file,
             start_at_tier=Tier.INDEX,
             stop_at_tier=Tier.INDEX,

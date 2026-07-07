@@ -1,11 +1,38 @@
-"""Sub-config dataclasses for KNOX."""
+"""Pydantic config models for KNOX.
+
+Single source of truth for the config schema: each field carries its type,
+default, and optional env-var alias in one declaration. ``DEFAULTS`` and
+``_ENV_MAP`` in ``_core.py`` are auto-generated from these models.
+
+The six sub-configs used by ``PipelineConfig`` (``LLMConfig``, ``BudgetConfig``,
+``OutputConfig``, ``EmbeddingConfig``, ``PdfConfig``, ``OrganizeConfig``) double
+as runtime types — they are constructed in ``from_resolved()`` and held as
+fields on ``PipelineConfig``.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from knox.core.paths import CACHE_DIR, KNOX_DIR
+
+
+class _KnoxBaseModel(BaseModel):
+    """Base for all config models.
+
+    ``populate_by_name=True`` allows construction via field name (e.g.
+    ``LLMConfig(default_model="x")``) even when a ``validation_alias`` is set
+    (e.g. ``"KNOX_LLM_DEFAULT_MODEL"``).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
+# ── Enums ────────────────────────────────────────────────────────────────
 
 
 class ImageMode(StrEnum):
@@ -73,28 +100,29 @@ class Verbosity(StrEnum):
     COMPREHENSIVE = "comprehensive"
 
 
-@dataclass
-class LLMConfig:
+# ── Compile sub-configs ──────────────────────────────────────────────────
+
+
+class LLMConfig(_KnoxBaseModel):
     """Configuration for LLM models, timeouts, and fallback behavior."""
 
-    default_model: str | None = None
-    vlm_model: str | None = None
-    fallback_chain: list[str] = field(default_factory=list)
-    fallback_max_retries: int = 2
-    timeout: float = 120.0
-    fallback_max_input: int = 32768
-    fallback_max_output: int = 4096
-    num_ctx_min: int = 2048
-    num_ctx_max: int = 131072
-    context_window_cap: int | None = None
-    role_models: dict[str, str] = field(default_factory=dict)
+    default_model: str | None = Field(default=None, validation_alias="KNOX_LLM_DEFAULT_MODEL")
+    vlm_model: str | None = Field(default=None, validation_alias="KNOX_VLM_MODEL")
+    fallback_chain: list[str] = Field(default_factory=list, validation_alias="KNOX_LLM_FALLBACK_CHAIN")
+    fallback_max_retries: int = Field(default=2, validation_alias="KNOX_LLM_FALLBACK_MAX_RETRIES")
+    timeout: float = Field(default=120.0, validation_alias="KNOX_LLM_TIMEOUT")
+    fallback_max_input: int = Field(default=32768, validation_alias="KNOX_LLM_FALLBACK_MAX_INPUT")
+    fallback_max_output: int = Field(default=4096, validation_alias="KNOX_LLM_FALLBACK_MAX_OUTPUT")
+    num_ctx_min: int = Field(default=2048, validation_alias="KNOX_LLM_NUM_CTX_MIN")
+    num_ctx_max: int = Field(default=131072, validation_alias="KNOX_LLM_NUM_CTX_MAX")
+    context_window_cap: int | None = Field(default=None, validation_alias="KNOX_LLM_CONTEXT_WINDOW_CAP")
+    role_models: dict[str, str] = Field(default_factory=dict)
     api_base: str | None = None
     api_key: str | None = None
-    data_format: LlmDataFormat = LlmDataFormat.JSON
+    data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
 
 
-@dataclass
-class BudgetConfig:
+class BudgetConfig(_KnoxBaseModel):
     """Token budgets and structural limits for LLM operations.
 
     Sizing strategy:
@@ -105,92 +133,242 @@ class BudgetConfig:
       implemented and has been removed.
     """
 
-    # Structural controls (not token budgets)
-    concepts_per_batch: int = 8
+    concepts_per_batch: int = Field(default=8, validation_alias="KNOX_BUDGET_CONCEPTS_PER_BATCH")
     verify_min_ngram: int = 3
-    wicer_max_iterations: int = 3
-    min_content_length: int = 50
-    min_concept_sources: int = 2
-    max_concept_pages: int = 50
-
-    # Chunk sizing safety rails (tokens)
-    chunk_size_min: int = 2048
-    chunk_size_max: int = 131072
-
-    # Extraction output reserve (tokens, absolute)
-    extract_output_max: int = 8192
-
-    # Generation output: per-concept ceiling (expansion, not compression)
-    gen_output_max: int = 16384
-
-    # Overview input batch size (×4 → chars) and verification excerpt slice
-    # size (×4 → chars).  Named ``*_output_max`` for historical reasons; both
-    # are consumed as input-chunking budgets, not LLM ``max_tokens`` caps.
-    overview_output_max: int = 4096
+    wicer_max_iterations: int = Field(default=3, validation_alias="KNOX_BUDGET_WICER_MAX_ITERATIONS")
+    min_content_length: int = Field(default=50, validation_alias="KNOX_BUDGET_MIN_CONTENT_LENGTH")
+    min_concept_sources: int = Field(default=2, validation_alias="KNOX_BUDGET_MIN_CONCEPT_SOURCES")
+    max_concept_pages: int = Field(default=50, validation_alias="KNOX_BUDGET_MAX_CONCEPT_PAGES")
+    chunk_size_min: int = Field(default=2048, validation_alias="KNOX_BUDGET_CHUNK_SIZE_MIN")
+    chunk_size_max: int = Field(default=131072, validation_alias="KNOX_BUDGET_CHUNK_SIZE_MAX")
+    extract_output_max: int = Field(default=8192, validation_alias="KNOX_BUDGET_EXTRACT_OUTPUT_MAX")
+    gen_output_max: int = Field(default=16384, validation_alias="KNOX_BUDGET_GEN_OUTPUT_MAX")
+    overview_output_max: int = Field(default=4096, validation_alias="KNOX_BUDGET_OVERVIEW_OUTPUT_MAX")
     verify_output_max: int = 4096
-
-    # Lint output reserve (tokens, absolute) — currently unused, retained for
-    # forthcoming lint-LLM integration.
     lint_output_max: int = 8192
-
-    # WiCER probe/eval output reserves (tokens, absolute)
     wicer_probe_output_max: int = 4096
     wicer_eval_output_max: int = 4096
-
-    # Node summarization (Phase 2 — hierarchical chunk tree summaries)
     summary_max_content_chars: int = 8000
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
 
 
-@dataclass
-class OutputConfig:
+class OutputConfig(_KnoxBaseModel):
     """Configuration for output formatting and rendering."""
 
-    format: OutputFormat = OutputFormat.MARKDOWN
-    flavor: str | None = None
-    frontmatter: dict[str, Any] = field(default_factory=dict)
-    rumdl_config: Path | None = None
-    max_related_links: int = 15
+    format: OutputFormat = Field(default=OutputFormat.MARKDOWN, validation_alias="KNOX_FORMAT")
+    flavor: str | None = Field(default=None, validation_alias="KNOX_OUTPUT_FLAVOR")
+    frontmatter: dict[str, Any] = Field(default_factory=dict)
+    rumdl_config: Path | None = Field(default=None, validation_alias="KNOX_RUMDL_CONFIG")
+    max_related_links: int = Field(default=15, validation_alias="KNOX_OUTPUT_MAX_RELATED_LINKS")
 
 
-@dataclass
-class EmbeddingConfig:
+class EmbeddingConfig(_KnoxBaseModel):
     """Configuration for embedding models.
 
-    Dimensions are auto-detected from the model at runtime — never hardcoded.
+    Dimensions are auto-detected from the model at runtime — ``dim`` is a
+    fallback used by the dedup orchestrator when the provider hasn't been
+    instantiated yet.
     """
 
-    model: str | None = None
-    batch_size: int = 10
+    model: str | None = Field(default=None, validation_alias="KNOX_EMBEDDING_MODEL")
+    batch_size: int = Field(default=10, validation_alias="KNOX_EMBEDDING_BATCH_SIZE")
+    dim: int = 384
 
 
-@dataclass
-class PdfConfig:
+class PdfConfig(_KnoxBaseModel):
     """Configuration for PDF parsing to prevent OOM on large scanned PDFs.
 
     When a PDF exceeds *max_pages_before_chunking*, Docling processes it in
     overlapping page-range segments to keep ONNX/OCR memory bounded.
-
     """
 
-    max_pages_before_chunking: int = 50
-    page_chunk_size: int = 30
-    page_chunk_overlap: int = 5
+    max_pages_before_chunking: int = Field(default=50, validation_alias="KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING")
+    page_chunk_size: int = Field(default=30, validation_alias="KNOX_PDF_PAGE_CHUNK_SIZE")
+    page_chunk_overlap: int = Field(default=5, validation_alias="KNOX_PDF_PAGE_CHUNK_OVERLAP")
 
 
-@dataclass
-class OrganizeConfig:
-    """Configuration for ``knox organize`` LLM-based file categorization.
+# ── Other section configs ────────────────────────────────────────────────
 
-    The command reads existing extraction summaries from a prior compilation
-    and asks the LLM to propose a hierarchical directory tree for the
-    ``sources/`` folder. Files are then moved into the new structure and
-    wiki links are updated to match the new paths.
-    """
 
-    max_depth: int = 3
-    min_subcategories: int = 2
+class PathsConfig(_KnoxBaseModel):
+    """Vault path overrides (all optional — resolved from base_dir at runtime)."""
+
+    wiki_dir: str | None = Field(default=None, validation_alias="KNOX_WIKI_DIR")
+    sources_dir: str = Field(default="sources", validation_alias="KNOX_SOURCES_DIR")
+    output_dir: str = Field(default="wiki", validation_alias="KNOX_OUTPUT_DIR")
+    cache_dir: str = Field(default=CACHE_DIR, validation_alias="KNOX_CACHE_DIR")
+    state_dir: str = Field(default=KNOX_DIR, validation_alias="KNOX_STATE_DIR")
+
+
+class LintConfig(_KnoxBaseModel):
+    """Lint configuration. ``enabled=None`` means all structural rules."""
+
+    enabled: list[str] | None = None
+
+
+class EvalConfig(_KnoxBaseModel):
+    """Evaluation configuration."""
+
+    threshold: float | None = Field(default=None, validation_alias="KNOX_EVAL_THRESHOLD")
+    history_size: int = 20
+
+
+class DedupConfig(_KnoxBaseModel):
+    """Deduplication configuration (opt-in by default)."""
+
+    enabled: bool = Field(default=False, validation_alias="KNOX_DEDUP_ENABLED")
+    matchers: str = Field(default="embedding,minhash", validation_alias="KNOX_DEDUP_MATCHERS")
+    threshold_identical: float = Field(default=0.95, validation_alias="KNOX_DEDUP_THRESHOLD_IDENTICAL")
+    threshold_similar: float = Field(default=0.80, validation_alias="KNOX_DEDUP_THRESHOLD_SIMILAR")
+    model: str = Field(default="", validation_alias="KNOX_DEDUP_MODEL")
+    minhash_lsh_threshold: float = Field(default=0.8, validation_alias="KNOX_DEDUP_MINHASH_LSH_THRESHOLD")
+
+
+class TrustConfig(_KnoxBaseModel):
+    """Privacy and trust configuration."""
+
+    privacy_filter: bool = Field(default=True, validation_alias="KNOX_PRIVACY_FILTER")
+    user_tracking: bool = Field(default=True, validation_alias="KNOX_USER_TRACKING")
+
+
+class QueryConfig(_KnoxBaseModel):
+    """Query command configuration."""
+
+    format: QueryFormat = QueryFormat.TEXT
+
+
+class SearchExpansionConfig(_KnoxBaseModel):
+    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_EXPANSION_ENABLED")
+    variants: int = Field(default=3, validation_alias="KNOX_SEARCH_EXPANSION_VARIANTS")
+
+
+class SearchCragConfig(_KnoxBaseModel):
+    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_CRAG_ENABLED")
+    threshold: float = Field(default=0.3, validation_alias="KNOX_SEARCH_CRAG_THRESHOLD")
+
+
+class SearchRerankerConfig(_KnoxBaseModel):
+    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_RERANKER_ENABLED")
+    model: str = Field(default="cross-encoder/ms-marco-MiniLM-L-6-v2", validation_alias="KNOX_SEARCH_RERANKER_MODEL")
+    top_k: int = Field(default=20, validation_alias="KNOX_SEARCH_RERANKER_TOP_K")
+
+
+class SearchHydeConfig(_KnoxBaseModel):
+    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_HYDE_ENABLED")
+
+
+class SearchContextualConfig(_KnoxBaseModel):
+    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_CONTEXTUAL_ENABLED")
+    model: str = Field(default="", validation_alias="KNOX_SEARCH_CONTEXTUAL_MODEL")
+
+
+class SearchSynthesisTokensConfig(_KnoxBaseModel):
+    brief: int = Field(default=300, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_BRIEF")
+    standard: int = Field(default=800, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_STANDARD")
+    comprehensive: int = Field(default=2000, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE")
+
+
+class SearchSynthesisConfig(_KnoxBaseModel):
+    verbosity: Verbosity = Field(default=Verbosity.STANDARD, validation_alias="KNOX_SEARCH_SYNTHESIS_VERBOSITY")
+    tokens: SearchSynthesisTokensConfig = Field(default_factory=SearchSynthesisTokensConfig)
+
+
+class SearchConfig(_KnoxBaseModel):
+    expansion: SearchExpansionConfig = Field(default_factory=SearchExpansionConfig)
+    crag: SearchCragConfig = Field(default_factory=SearchCragConfig)
+    reranker: SearchRerankerConfig = Field(default_factory=SearchRerankerConfig)
+    hyde: SearchHydeConfig = Field(default_factory=SearchHydeConfig)
+    contextual: SearchContextualConfig = Field(default_factory=SearchContextualConfig)
+    synthesis: SearchSynthesisConfig = Field(default_factory=SearchSynthesisConfig)
+
+
+class OrganizeConfig(_KnoxBaseModel):
+    """Configuration for ``knox organize`` LLM-based file categorization."""
+
+    max_depth: int = Field(default=3, validation_alias="KNOX_ORGANIZE_MAX_DEPTH")
+    min_subcategories: int = Field(default=2, validation_alias="KNOX_ORGANIZE_MIN_SUBCATEGORIES")
     min_files_per_category: int = 2
-    collapse_single_file: bool = True
+    collapse_single_file: bool = Field(default=True, validation_alias="KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE")
+
+
+class IgnoreConfig(_KnoxBaseModel):
+    patterns: list[str] = Field(default_factory=list)
+
+
+class NotesConfig(_KnoxBaseModel):
+    file: str = Field(default="NOTES.md", validation_alias="KNOX_NOTES_FILE")
+
+
+class IngestConfig(_KnoxBaseModel):
+    parser: str = Field(default="docling", validation_alias="KNOX_INGEST_PARSER")
+
+
+class DownloaderConfig(_KnoxBaseModel):
+    undetected: bool = Field(default=True, validation_alias="KNOX_DOWNLOADER_UNDETECTED")
+
+
+# ── Compile section (top-level flags + nested sub-configs) ──────────────
+
+
+class CompileConfig(_KnoxBaseModel):
+    """Compile section: top-level flags and nested sub-configs."""
+
+    # Hidden duplicates of paths.* (kept for backward compat, stripped from scaffold)
+    sources_dir: str = "sources"
+    output_dir: str = "wiki"
+
+    compiler: str = "graph"
+    image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias="KNOX_IMAGE_MODE")
+    vlm_min_image_bytes: int = 2048
+    vlm_min_image_dimension: int = 64
+    mode: str = "full"
+    workers: int = Field(default=1, validation_alias="KNOX_WORKERS")
+    no_cache: bool = Field(default=False, validation_alias="KNOX_NO_CACHE")
+    force: bool = Field(default=False, validation_alias="KNOX_FORCE")
+    in_place_sources: bool = Field(default=False, validation_alias="KNOX_IN_PLACE_SOURCES")
+    memory_enabled: bool = Field(default=True, validation_alias="KNOX_MEMORY_ENABLED")
+    memory_half_life_days: float = Field(default=90.0, validation_alias="KNOX_MEMORY_HALF_LIFE_DAYS")
+    memory_decay_threshold: float = Field(default=0.3, validation_alias="KNOX_MEMORY_DECAY_THRESHOLD")
+    review: bool = False
+    bypass_review: bool = False
+    provenance: bool = False
+    private: bool = False
+    verify: bool = True
+    synthesize: bool = True
+    index: bool = True
+    lint: bool = Field(default=False, validation_alias="KNOX_LINT")
+
+    # Nested sub-configs
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
+    pdf: PdfConfig = Field(default_factory=PdfConfig)
+    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+
+
+# ── Root config ──────────────────────────────────────────────────────────
+
+
+class KnoxConfig(_KnoxBaseModel):
+    """Root config model — single source of truth for DEFAULTS and _ENV_MAP.
+
+    ``DEFAULTS = KnoxConfig().model_dump()`` and ``_ENV_MAP`` is auto-generated
+    by walking the model's ``validation_alias`` fields.
+    """
+
+    compile: CompileConfig = Field(default_factory=CompileConfig)
+    lint: LintConfig = Field(default_factory=LintConfig)
+    eval: EvalConfig = Field(default_factory=EvalConfig)
+    dedup: DedupConfig = Field(default_factory=DedupConfig)
+    trust: TrustConfig = Field(default_factory=TrustConfig)
+    query: QueryConfig = Field(default_factory=QueryConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
+    organize: OrganizeConfig = Field(default_factory=OrganizeConfig)
+    ignore: IgnoreConfig = Field(default_factory=IgnoreConfig)
+    hooks: dict[str, Any] = Field(default_factory=dict)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
+    notes: NotesConfig = Field(default_factory=NotesConfig)
+    ingest: IngestConfig = Field(default_factory=IngestConfig)
+    downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)

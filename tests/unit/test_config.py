@@ -610,7 +610,7 @@ class TestCoerceConfigValue:
         assert coerce_config_value(" true ", "compile.no_cache") is True
 
     def test_coerce_boolean_invalid_raises(self) -> None:
-        with pytest.raises(ValueError, match="expected boolean"):
+        with pytest.raises(ValueError, match="cannot coerce"):
             coerce_config_value("maybe", "compile.no_cache")
 
 

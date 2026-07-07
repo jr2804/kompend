@@ -84,8 +84,8 @@ class TestTierLevelRanges:
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         for tier in Tier:
@@ -95,8 +95,8 @@ class TestTierLevelRanges:
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
             start_at_tier=Tier.OUTPUT,
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
@@ -398,12 +398,12 @@ class TestWikiPipelineTiered:
     """WikiPipeline.run() and run_tier() with tier range filtering."""
 
     def test_pipeline_config_defaults(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         assert config.start_at_tier == "index"
         assert config.stop_at_tier == "output"
 
     def test_start_level_default(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         assert pipeline.start_level() == 0
         assert pipeline.stop_level() == 4
@@ -412,8 +412,8 @@ class TestWikiPipelineTiered:
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
             start_at_tier=Tier.OUTPUT,
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
@@ -424,8 +424,8 @@ class TestWikiPipelineTiered:
         config = PipelineConfig(
             source_dir=Path("s"),
             output_dir=Path("o"),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("model"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
             start_at_tier=Tier.RESOLVE,
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
@@ -433,13 +433,13 @@ class TestWikiPipelineTiered:
             pipeline._validate_prerequisites()
 
     def test_run_tier_unknown_raises(self) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         with pytest.raises(ValueError, match="Unknown tier"):
             pipeline.run_tier("nonsense")
 
     def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
-        config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path, llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("s"), output_dir=tmp_path, llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         pipeline = WikiPipeline(
             config=config,
             state_store=TierStateStore(tmp_path / STATE_FILE),
@@ -691,7 +691,7 @@ class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 
     def test_empty_input(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         compiler = TwoPhaseCompiler(config=config)
         wiki = compiler.compile([])
         assert wiki.metadata["two_phase"] is True
@@ -699,7 +699,7 @@ class TestTwoPhaseCompiler:
 
     def test_extraction_failure_skips_source(self) -> None:
         """When extraction LLM fails for a source, the source is skipped — pipeline continues."""
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("hash"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="hash"))
         config.no_cache = True
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
@@ -722,7 +722,7 @@ class TestTwoPhaseCompiler:
         assert len(wiki.nodes) == 0
 
     def test_extract_returns_extractions(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(
@@ -748,7 +748,7 @@ class TestTwoPhaseCompiler:
         assert ext.extractions[0].concepts[0]["name"] == "attention"
 
     def test_extract_populates_extraction_stats(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(
@@ -783,7 +783,7 @@ class TestTwoPhaseCompiler:
         assert s["batches"] == 1
 
     def test_compile_writes_extraction_stats_to_metadata(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(

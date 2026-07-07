@@ -663,7 +663,7 @@ class TestWiCERCompilerUnavailable:
     """
 
     def test_empty_input(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile([])
@@ -676,7 +676,7 @@ class TestWiCERCompilerUnavailable:
     def test_no_llm_skips_wicer(self) -> None:
         """Without LLM, WiCER skips — base compiler output only, 0 iterations."""
         chunks = _make_chunks(count=2, heading="Test Section")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
@@ -687,7 +687,7 @@ class TestWiCERCompilerUnavailable:
     def test_no_llm_no_probes(self) -> None:
         """Without LLM, no probes are generated (no heuristic fallback)."""
         chunks = _make_chunks(count=2, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
@@ -695,7 +695,7 @@ class TestWiCERCompilerUnavailable:
         assert wiki.metadata["wicer_iterations"] == 0
 
     def test_no_crash_on_empty_chunks(self) -> None:
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile([])
@@ -730,7 +730,7 @@ class TestWiCERCompilerUnavailable:
                 )
 
         chunks = _make_chunks(count=1, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 0
         rec = _RecordingCompiler()
         compiler = WiCERCompiler(config=config, base_compiler=rec)
@@ -769,7 +769,7 @@ class TestWiCERCompilerUnavailable:
                 )
 
         chunks = _make_chunks(count=1, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 0
         compiler = WiCERCompiler(config=config, base_compiler=_RecordingCompiler())
 
@@ -834,7 +834,7 @@ class TestWiCERCompilerWithMock:
 
         mock_llm.side_effect = respond
         chunks = _make_chunks(count=2, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
@@ -862,7 +862,7 @@ class TestWiCERCompilerWithMock:
             ),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 1
         config.budget.min_content_length = 0
         compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
@@ -886,7 +886,7 @@ class TestWiCERCompilerWithMock:
             ),
         ]
         chunks = _make_chunks(count=1, heading="Test")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config, llm_client=_make_test_client())
         wiki = compiler.compile(chunks)
@@ -896,7 +896,7 @@ class TestWiCERCompilerWithMock:
     def test_llm_failure_skips_wicer(self) -> None:
         """When the LLM client returns None, WiCER skips (0 iterations)."""
         chunks = _make_chunks(count=2, heading="Fallback")
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 2
         compiler = WiCERCompiler(config=config)
         with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
@@ -923,7 +923,7 @@ class TestWiCERCompilerWithMock:
                     metadata={"custom": True},
                 )
 
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config, base_compiler=DummyCompiler())
         c = _chunk(text="test", heading="H")
@@ -957,7 +957,7 @@ class TestWiCERWithGraphCompiler:
 
     def test_compiles_multi_section_doc(self) -> None:
         chunks = _make_diverse_chunks()
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config)
         wiki = compiler.compile(chunks)
@@ -967,7 +967,7 @@ class TestWiCERWithGraphCompiler:
 
     def test_default_initializer(self) -> None:
         """WiCERCompiler() creates a GraphCompiler internally."""
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config)
         assert compiler._compiler is not None
@@ -1135,8 +1135,8 @@ class TestTwoPhaseConceptSalvage:
         config = PipelineConfig(
             source_dir=Path("."),
             output_dir=Path("."),
-            llm=LLMConfig("model", "vlm"),
-            embedding=EmbeddingConfig("hash"),
+            llm=LLMConfig(default_model="model", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="hash"),
         )
         config.no_cache = True
         compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))

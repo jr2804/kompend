@@ -52,101 +52,32 @@ import copy
 import os
 import re
 import tomllib
-from collections.abc import Callable
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, get_origin
 
 import tomli_w
-from pydantic import Field, create_model
+from pydantic import BaseModel, Field, TypeAdapter, create_model
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from knox.core.config._configs import (
-    BudgetConfig,
-    EmbeddingConfig,
-    LLMConfig,
-    OrganizeConfig,
-    OutputConfig,
-    PdfConfig,
+    KnoxConfig,
 )
 from knox.core.config.keys import (
-    COMPILE_BUDGET_CHUNK_SIZE_MAX,
-    COMPILE_BUDGET_CHUNK_SIZE_MIN,
-    COMPILE_BUDGET_CONCEPTS_PER_BATCH,
-    COMPILE_BUDGET_EXTRACT_OUTPUT_MAX,
-    COMPILE_BUDGET_GEN_OUTPUT_MAX,
-    COMPILE_BUDGET_MAX_CONCEPT_PAGES,
-    COMPILE_BUDGET_MIN_CONCEPT_SOURCES,
-    COMPILE_BUDGET_MIN_CONTENT_LENGTH,
-    COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX,
-    COMPILE_BUDGET_WICER_MAX_ITERATIONS,
-    COMPILE_EMBEDDING_BATCH_SIZE,
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_FORCE,
-    COMPILE_FORMAT,
-    COMPILE_IMAGE_MODE,
-    COMPILE_IN_PLACE_SOURCES,
-    COMPILE_LINT,
-    COMPILE_LLM_CONTEXT_WINDOW_CAP,
-    COMPILE_LLM_DATA_FORMAT,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_FALLBACK_MAX_INPUT,
-    COMPILE_LLM_FALLBACK_MAX_OUTPUT,
-    COMPILE_LLM_FALLBACK_MAX_RETRIES,
-    COMPILE_LLM_NUM_CTX_MAX,
-    COMPILE_LLM_NUM_CTX_MIN,
-    COMPILE_LLM_TIMEOUT,
-    COMPILE_LLM_VLM_MODEL,
-    COMPILE_MEMORY_DECAY_THRESHOLD,
-    COMPILE_MEMORY_ENABLED,
-    COMPILE_MEMORY_HALF_LIFE_DAYS,
-    COMPILE_NO_CACHE,
+    COMPILE_CACHE_DIR,
     COMPILE_OUTPUT_DIR,
-    COMPILE_OUTPUT_FLAVOR,
-    COMPILE_OUTPUT_MAX_RELATED_LINKS,
-    COMPILE_OUTPUT_RUMDL_CONFIG,
-    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
-    COMPILE_PDF_PAGE_CHUNK_OVERLAP,
-    COMPILE_PDF_PAGE_CHUNK_SIZE,
+    COMPILE_RESPECT_GITIGNORE,
     COMPILE_SOURCES_DIR,
     COMPILE_START_AT_TIER,
-    COMPILE_WORKERS,
-    DEDUP_ENABLED,
-    DEDUP_MATCHERS,
-    DEDUP_MINHASH_LSH_THRESHOLD,
-    DEDUP_MODEL,
-    DEDUP_THRESHOLD_IDENTICAL,
-    DEDUP_THRESHOLD_SIMILAR,
-    DOWNLOADER_UNDETECTED,
-    INGEST_PARSER,
-    ORGANIZE_COLLAPSE_SINGLE_FILE,
-    ORGANIZE_MAX_DEPTH,
-    ORGANIZE_MIN_SUBCATEGORIES,
-    PATHS_CACHE_DIR,
+    COMPILE_STOP_AT_TIER,
+    COMPILE_TIER_STATE_PATH,
     PATHS_OUTPUT_DIR,
     PATHS_SOURCES_DIR,
-    PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
-    SEARCH_CONTEXTUAL_ENABLED,
-    SEARCH_CONTEXTUAL_MODEL,
-    SEARCH_CRAG_ENABLED,
-    SEARCH_CRAG_THRESHOLD,
-    SEARCH_EXPANSION_ENABLED,
-    SEARCH_EXPANSION_VARIANTS,
-    SEARCH_HYDE_ENABLED,
-    SEARCH_RERANKER_ENABLED,
-    SEARCH_RERANKER_MODEL,
-    SEARCH_RERANKER_TOP_K,
-    SEARCH_SYNTHESIS_TOKENS_BRIEF,
-    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
-    SEARCH_SYNTHESIS_TOKENS_STANDARD,
-    SEARCH_SYNTHESIS_VERBOSITY,
-    TRUST_PRIVACY_FILTER,
-    TRUST_USER_TRACKING,
 )
-from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE, VaultPaths
+from knox.core.paths import CONFIG_FILE, KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -223,213 +154,55 @@ _PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE)
 _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 
-# ── Built-in defaults ───────────────────────────────────────────────────
+# ── Built-in defaults (auto-generated from KnoxConfig) ──────────────────
 
-def _dc_defaults(cls: type) -> dict[str, Any]:
-    """Serialize a dataclass's field defaults to a plain dict.
+def _build_defaults() -> dict[str, Any]:
+    """Generate DEFAULTS from the :class:`KnoxConfig` schema model.
 
-    Enums are reduced to their ``.value`` so the result is TOML-serializable
-    and matches the string form users write in config files. Fields whose
-    default is ``None`` are included as ``None`` (config resolution treats
-    ``None`` as "unset, fall back to next layer").
+    ``model_dump()`` produces a nested dict where StrEnum members are
+    serialized as their ``.value`` (string), ``Path`` objects as ``Path``,
+    and ``None`` stays ``None``. This is the single source of truth —
+    no hand-written DEFAULTS dict to keep in sync.
     """
-    out: dict[str, Any] = {}
-    for f in fields(cls):
-        if f.default is not MISSING:
-            val = f.default
-        elif f.default_factory is not MISSING:  # type: ignore[comparison-overlap]
-            val = f.default_factory()
-        else:
-            continue
-        out[f.name] = val.value if hasattr(val, "value") else val
-    return out
+    return KnoxConfig().model_dump()
 
 
-DEFAULTS: dict[str, Any] = {
-    "compile": {
-        "sources_dir": "sources",
-        "output_dir": "wiki",
-        "compiler": "graph",
-        "image_mode": "file",
-        "vlm_min_image_bytes": 2048,
-        "vlm_min_image_dimension": 64,
-        "mode": "full",
-        "workers": 1,
-        "no_cache": False,
-        "force": False,
-        "in_place_sources": False,
-        "memory_enabled": True,
-        "memory_half_life_days": 90.0,
-        "memory_decay_threshold": 0.3,
-        "review": False,
-        "bypass_review": False,
-        "provenance": False,
-        "private": False,
-        "verify": True,
-        "synthesize": True,
-        "index": True,
-        "lint": False,
-        "budget": _dc_defaults(BudgetConfig),
-        "llm": _dc_defaults(LLMConfig),
-        "output": _dc_defaults(OutputConfig),
-        "pdf": _dc_defaults(PdfConfig),
-        "embedding": {**_dc_defaults(EmbeddingConfig), "dim": 384},
-    },
-    "lint": {
-        "enabled": None,  # None = all structural rules
-    },
-    "eval": {
-        "threshold": None,
-        "history_size": 20,
-    },
-    "dedup": {
-        "enabled": False,  # opt-in by default
-        "matchers": "embedding,minhash",
-        "threshold_identical": 0.95,
-        "threshold_similar": 0.80,
-        "model": "",  # empty = compile.embedding.model → all-MiniLM-L6-v2
-        "minhash_lsh_threshold": 0.8,
-    },
-    "trust": {
-        "privacy_filter": True,
-        "user_tracking": True,
-    },
-    "query": {
-        "format": "text",
-    },
-    "search": {
-        "expansion": {
-            "enabled": False,
-            "variants": 3,
-        },
-        "crag": {
-            "enabled": False,
-            "threshold": 0.3,
-        },
-        "reranker": {
-            "enabled": False,
-            "model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            "top_k": 20,
-        },
-        "hyde": {
-            "enabled": False,
-        },
-        "contextual": {
-            "enabled": False,
-            "model": "",
-        },
-        "synthesis": {
-            "verbosity": "standard",
-            "tokens": {
-                "brief": 300,
-                "standard": 800,
-                "comprehensive": 2000,
-            },
-        },
-    },
-    "organize": _dc_defaults(OrganizeConfig),
-    "ignore": {
-        "patterns": [],
-    },
-    "hooks": {},
-    "paths": {
-        "wiki_dir": None,
-        "sources_dir": "sources",
-        "output_dir": "wiki",
-        "cache_dir": CACHE_DIR,
-        "state_dir": KNOX_DIR,
-    },
-    "notes": {
-        "file": "NOTES.md",
-    },
-    "ingest": {
-        "parser": "docling",
-    },
-    "downloader": {
-        "undetected": True,
-    },
-}
+DEFAULTS: dict[str, Any] = _build_defaults()
 
-# ── Env var mapping ──────────────────────────────────────────────────────
-# Maps dotted config key → env var name.
-# Only keys that make sense as env overrides are listed.
 
-_ENV_MAP: dict[str, str] = {
-    PATHS_WIKI_DIR: "KNOX_WIKI_DIR",
-    PATHS_SOURCES_DIR: "KNOX_SOURCES_DIR",
-    PATHS_OUTPUT_DIR: "KNOX_OUTPUT_DIR",
-    PATHS_CACHE_DIR: "KNOX_CACHE_DIR",
-    PATHS_STATE_DIR: "KNOX_STATE_DIR",
-    COMPILE_FORMAT: "KNOX_FORMAT",
-    COMPILE_IMAGE_MODE: "KNOX_IMAGE_MODE",
-    COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
-    COMPILE_WORKERS: "KNOX_WORKERS",
-    COMPILE_NO_CACHE: "KNOX_NO_CACHE",
-    COMPILE_FORCE: "KNOX_FORCE",
-    COMPILE_IN_PLACE_SOURCES: "KNOX_IN_PLACE_SOURCES",
-    COMPILE_LINT: "KNOX_LINT",
-    INGEST_PARSER: "KNOX_INGEST_PARSER",
-    DOWNLOADER_UNDETECTED: "KNOX_DOWNLOADER_UNDETECTED",
-    COMPILE_BUDGET_CONCEPTS_PER_BATCH: "KNOX_BUDGET_CONCEPTS_PER_BATCH",
-    COMPILE_BUDGET_WICER_MAX_ITERATIONS: "KNOX_BUDGET_WICER_MAX_ITERATIONS",
-    COMPILE_BUDGET_MIN_CONTENT_LENGTH: "KNOX_BUDGET_MIN_CONTENT_LENGTH",
-    COMPILE_BUDGET_MIN_CONCEPT_SOURCES: "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
-    COMPILE_BUDGET_MAX_CONCEPT_PAGES: "KNOX_BUDGET_MAX_CONCEPT_PAGES",
-    COMPILE_BUDGET_CHUNK_SIZE_MIN: "KNOX_BUDGET_CHUNK_SIZE_MIN",
-    COMPILE_BUDGET_CHUNK_SIZE_MAX: "KNOX_BUDGET_CHUNK_SIZE_MAX",
-    COMPILE_BUDGET_EXTRACT_OUTPUT_MAX: "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
-    COMPILE_BUDGET_GEN_OUTPUT_MAX: "KNOX_BUDGET_GEN_OUTPUT_MAX",
-    COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX: "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
-    COMPILE_LLM_DEFAULT_MODEL: "KNOX_LLM_DEFAULT_MODEL",
-    COMPILE_LLM_VLM_MODEL: "KNOX_VLM_MODEL",
-    COMPILE_LLM_DATA_FORMAT: "KNOX_LLM_DATA_FORMAT",
-    COMPILE_MEMORY_ENABLED: "KNOX_MEMORY_ENABLED",
-    COMPILE_MEMORY_HALF_LIFE_DAYS: "KNOX_MEMORY_HALF_LIFE_DAYS",
-    COMPILE_MEMORY_DECAY_THRESHOLD: "KNOX_MEMORY_DECAY_THRESHOLD",
-    COMPILE_LLM_FALLBACK_CHAIN: "KNOX_LLM_FALLBACK_CHAIN",
-    COMPILE_LLM_FALLBACK_MAX_RETRIES: "KNOX_LLM_FALLBACK_MAX_RETRIES",
-    COMPILE_LLM_TIMEOUT: "KNOX_LLM_TIMEOUT",
-    COMPILE_LLM_FALLBACK_MAX_INPUT: "KNOX_LLM_FALLBACK_MAX_INPUT",
-    COMPILE_LLM_FALLBACK_MAX_OUTPUT: "KNOX_LLM_FALLBACK_MAX_OUTPUT",
-    COMPILE_LLM_NUM_CTX_MIN: "KNOX_LLM_NUM_CTX_MIN",
-    COMPILE_LLM_NUM_CTX_MAX: "KNOX_LLM_NUM_CTX_MAX",
-    COMPILE_LLM_CONTEXT_WINDOW_CAP: "KNOX_LLM_CONTEXT_WINDOW_CAP",
-    COMPILE_OUTPUT_FLAVOR: "KNOX_OUTPUT_FLAVOR",
-    COMPILE_OUTPUT_RUMDL_CONFIG: "KNOX_RUMDL_CONFIG",
-    COMPILE_OUTPUT_MAX_RELATED_LINKS: "KNOX_OUTPUT_MAX_RELATED_LINKS",
-    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
-    COMPILE_PDF_PAGE_CHUNK_SIZE: "KNOX_PDF_PAGE_CHUNK_SIZE",
-    COMPILE_PDF_PAGE_CHUNK_OVERLAP: "KNOX_PDF_PAGE_CHUNK_OVERLAP",
-    COMPILE_EMBEDDING_MODEL: "KNOX_EMBEDDING_MODEL",
-    COMPILE_EMBEDDING_BATCH_SIZE: "KNOX_EMBEDDING_BATCH_SIZE",
-    TRUST_PRIVACY_FILTER: "KNOX_PRIVACY_FILTER",
-    TRUST_USER_TRACKING: "KNOX_USER_TRACKING",
-    SEARCH_EXPANSION_ENABLED: "KNOX_SEARCH_EXPANSION_ENABLED",
-    SEARCH_EXPANSION_VARIANTS: "KNOX_SEARCH_EXPANSION_VARIANTS",
-    SEARCH_CRAG_ENABLED: "KNOX_SEARCH_CRAG_ENABLED",
-    SEARCH_CRAG_THRESHOLD: "KNOX_SEARCH_CRAG_THRESHOLD",
-    SEARCH_RERANKER_ENABLED: "KNOX_SEARCH_RERANKER_ENABLED",
-    SEARCH_RERANKER_MODEL: "KNOX_SEARCH_RERANKER_MODEL",
-    SEARCH_RERANKER_TOP_K: "KNOX_SEARCH_RERANKER_TOP_K",
-    SEARCH_HYDE_ENABLED: "KNOX_SEARCH_HYDE_ENABLED",
-    SEARCH_CONTEXTUAL_ENABLED: "KNOX_SEARCH_CONTEXTUAL_ENABLED",
-    SEARCH_CONTEXTUAL_MODEL: "KNOX_SEARCH_CONTEXTUAL_MODEL",
-    SEARCH_SYNTHESIS_VERBOSITY: "KNOX_SEARCH_SYNTHESIS_VERBOSITY",
-    SEARCH_SYNTHESIS_TOKENS_BRIEF: "KNOX_SEARCH_SYNTHESIS_TOKENS_BRIEF",
-    SEARCH_SYNTHESIS_TOKENS_STANDARD: "KNOX_SEARCH_SYNTHESIS_TOKENS_STANDARD",
-    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: "KNOX_SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE",
-    "eval.threshold": "KNOX_EVAL_THRESHOLD",
-    "notes.file": "KNOX_NOTES_FILE",
-    ORGANIZE_MAX_DEPTH: "KNOX_ORGANIZE_MAX_DEPTH",
-    ORGANIZE_MIN_SUBCATEGORIES: "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
-    ORGANIZE_COLLAPSE_SINGLE_FILE: "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
-    DEDUP_ENABLED: "KNOX_DEDUP_ENABLED",
-    DEDUP_THRESHOLD_IDENTICAL: "KNOX_DEDUP_THRESHOLD_IDENTICAL",
-    DEDUP_THRESHOLD_SIMILAR: "KNOX_DEDUP_THRESHOLD_SIMILAR",
-    DEDUP_MODEL: "KNOX_DEDUP_MODEL",
-    DEDUP_MATCHERS: "KNOX_DEDUP_MATCHERS",
-    DEDUP_MINHASH_LSH_THRESHOLD: "KNOX_DEDUP_MINHASH_LSH_THRESHOLD",
-}
+def _build_env_map() -> dict[str, str]:
+    """Auto-generate _ENV_MAP from :class:`KnoxConfig` validation aliases.
+
+    Walks the model's fields recursively. For each leaf field with a
+    ``validation_alias`` (a plain string), records ``(dotted_path, alias)``.
+    CLI-only env vars (keys not in DEFAULTS) are added manually.
+    """
+    env_map: dict[str, str] = {}
+
+    def _walk(cls: type[BaseModel], prefix: str = "") -> None:
+        for name, info in cls.model_fields.items():
+            dotted = f"{prefix}.{name}" if prefix else name
+            ann = info.annotation
+            if isinstance(ann, type) and issubclass(ann, BaseModel):
+                _walk(ann, dotted)
+            else:
+                alias = info.validation_alias
+                if isinstance(alias, str):
+                    env_map[dotted] = alias
+
+    _walk(KnoxConfig)
+    # CLI-only env vars (keys not in the config schema model)
+    env_map.update({
+        COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
+        COMPILE_STOP_AT_TIER: "KNOX_STOP_AT_TIER",
+        COMPILE_TIER_STATE_PATH: "KNOX_TIER_STATE_PATH",
+        COMPILE_CACHE_DIR: "KNOX_COMPILE_CACHE_DIR",
+        COMPILE_RESPECT_GITIGNORE: "KNOX_RESPECT_GITIGNORE",
+    })
+    return env_map
+
+
+_ENV_MAP: dict[str, str] = _build_env_map()
 
 
 # ── Deep merge ──────────────────────────────────────────────────────────
@@ -894,60 +667,50 @@ def validate_config_key(key: str) -> bool:
     return key in _flat_schema()
 
 
-_TRUE_VALUES = {"true", "1", "yes", "on"}
-_FALSE_VALUES = {"false", "0", "no", "off"}
-
-
-def _coerce_boolean(value: str, key: str) -> bool:
-    """Coerce *value* to a boolean, raising ValueError on ambiguity."""
-    lowered = value.lower()
-    if lowered in _TRUE_VALUES:
-        return True
-    if lowered in _FALSE_VALUES:
-        return False
-    raise ValueError(f"expected boolean for {key}")
-
-
-def _coerce_list(value: str) -> list[str]:
-    """Coerce *value* to a comma-separated list."""
-    return [] if value == "" else [v.strip() for v in value.split(",") if v.strip()]
-
-
-def _coerce_generic(value: str) -> int | float | str:
-    """Coerce *value* to int or float if possible, otherwise return as-is."""
-    with contextlib.suppress(ValueError):
-        return int(value)
-    with contextlib.suppress(ValueError):
-        return float(value)
-    return value
-
-
-_COERCE_HANDLERS: dict[type, Callable[[str, str], Any]] = {
-    bool: _coerce_boolean,
-    int: lambda v, _k: int(v),
-    float: lambda v, _k: float(v),
-    list: lambda v, _k: _coerce_list(v),
-}
+def _resolve_field_info(key: str) -> FieldInfo | None:
+    """Resolve a dotted config key to its pydantic FieldInfo in :class:`KnoxConfig`."""
+    parts = key.split(".")
+    cls: type[BaseModel] = KnoxConfig
+    for part in parts[:-1]:
+        info = cls.model_fields.get(part)
+        if info is None:
+            return None
+        ann = info.annotation
+        if not (isinstance(ann, type) and issubclass(ann, BaseModel)):
+            return None
+        cls = ann
+    return cls.model_fields.get(parts[-1])
 
 
 def coerce_config_value(value: str, key: str) -> Any:
-    """Coerce a CLI string to the type expected by ``DEFAULTS`` for *key*.
+    """Coerce a CLI string to the config schema type for *key*.
+
+    Uses the :class:`KnoxConfig` model's field type for coercion via
+    pydantic :class:`TypeAdapter`. List fields are split by comma (pydantic
+    does not split strings into lists automatically). Unknown keys fall
+    back to generic int/float/str coercion.
 
     Raises:
         ValueError: when *value* cannot be coerced to the expected type.
     """
     value = value.strip()
-    current = _get_dot(DEFAULTS, key)
-    handler = _COERCE_HANDLERS.get(type(current))
-    if handler is not None:
-        return handler(value, key)
+    field_info = _resolve_field_info(key)
+    if field_info is None:
+        with contextlib.suppress(ValueError):
+            return int(value)
+        with contextlib.suppress(ValueError):
+            return float(value)
+        return value
 
-    lowered = value.lower()
-    if lowered in _TRUE_VALUES:
-        return True
-    if lowered in _FALSE_VALUES:
-        return False
-    return _coerce_generic(value)
+    ann = field_info.annotation
+    # pydantic doesn't split comma-separated strings into lists
+    if get_origin(ann) is list:
+        return [v.strip() for v in value.split(",") if v.strip()]
+
+    try:
+        return TypeAdapter(ann).validate_python(value)
+    except Exception as e:
+        raise ValueError(f"cannot coerce {value!r} to {ann} for {key}") from e
 
 
 def get_project_config_path(start_dir: Path | None = None) -> Path:

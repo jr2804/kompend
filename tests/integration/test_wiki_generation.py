@@ -170,7 +170,7 @@ def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     if not resolved_chunks or not _OLLAMA_OK:
         return None
 
-    config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+    config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
     # prompt is no longer a fixed field — context window is discovered.
     # The chunk_size_min/max safety rails provide the equivalent.
     assert config.budget.chunk_size_min > 0
@@ -324,7 +324,7 @@ class TestTier4Compilation:
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
         llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(
             config=config,
@@ -662,7 +662,7 @@ class TestFullPipelineE2E:
         resolved = [ResolvedChunk(chunk=c) for c in all_chunks]
 
         # Tier 4
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         config.budget.wicer_max_iterations = wicer_iterations
         comp = WiCERCompiler(config=config, base_compiler=GraphCompiler("model"), llm_client=llm_client) if compiler == "wicer" else GraphCompiler("model")
 
@@ -785,7 +785,7 @@ class TestGenerateExampleWiki:
         logger.info("Resolution: wrapped %d raw chunks (LLMResolver skipped for speed)", len(resolved))
 
         # ── Tier 4: compile with TwoPhaseCompiler ────────────────────
-        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig("model", "vlm"), embedding=EmbeddingConfig("model"))
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
         assert config.budget.chunk_size_min > 0
         config.llm.default_model = LLM_MODEL
         config.llm.timeout = 120
