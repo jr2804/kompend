@@ -31,18 +31,19 @@ parser = "web,liteparse"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-# Primary model in litellm format ("provider/model")
-# some cheap LLMs/VLMs to try:
-default_model      = "ollama-cloud/deepseek-v4-flash"
-#default_model      = "ollama-cloud/qwen3.5"
-#default_model      = "opencode-zen/deepseek-v4-flash-free"
-#default_model      = "opencode-zen/gpt-5.4-nano"
-#default_model      = "openrouter/openrouter/free"
+# Primary model — set KNOX_LLM_DEFAULT_MODEL in your environment, or
+# uncomment and set a model below:
+default_model      = "${KNOX_CLOUD_LLM}"
+#default_model     = "ollama-cloud/deepseek-v4-flash"
+#default_model     = "ollama-cloud/qwen3.5"
+#default_model     = "opencode-zen/deepseek-v4-flash-free"
+#default_model     = "opencode-zen/gpt-5.4-nano"
+#default_model     = "openrouter/openrouter/free"
 
-# Vision model for captioning IMAGE chunks during resolution.
-# When set, VLMEnricher is added to the resolver chain.
-vlm_model          = "ollama-cloud/gemma4:31b"
-#context_window_cap = 1048576   # ~1M ctx; cloud API has no /api/show
+# Vision model for VLM captioning (optional — set KNOX_VLM_MODEL in env).
+vlm_model             = "${KNOX_CLOUD_VLM}"
+#vlm_model            = "ollama-cloud/gemma4:31b"
+#context_window_cap   = 1048576   # ~1M ctx; cloud API has no /api/show
 
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 3
@@ -57,11 +58,13 @@ timeout            = 300.0
 # ── Embedding ───────────────────────────────────────────────────────────
 [compile.embedding]
 # Embedding model for semantic search / RAG.
-# Two options:
+# Set KNOX_CLOUD_EMBEDDING in your environment, or uncomment and set below.
+# Two syntaxes:
 #   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Leave commented to disable vector indexing.
-model = "litellm:ollama/granite-embedding:278m"
+#model = "${KNOX_CLOUD_EMBEDDING}"
+#model = "litellm:ollama/granite-embedding:278m"
 
 # ── Output ──────────────────────────────────────────────────────────────
 [compile.output]

@@ -174,6 +174,7 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
             raise RuntimeError("synthetic boom")
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
     monkeypatch.setattr("knox.cli.cmds.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
 
     runner = CliRunner()

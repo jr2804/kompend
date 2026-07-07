@@ -28,10 +28,10 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import argparse
 import ast
 import importlib
+import json
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field

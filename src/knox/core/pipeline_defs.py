@@ -230,8 +230,16 @@ class PipelineConfig:
         if isinstance(rumdl_config_file, str):
             rumdl_config_file = Path(rumdl_config_file)
 
+        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
+        if not default_model or "${" in str(default_model):
+            raise ValueError(
+                f"{COMPILE_LLM_DEFAULT_MODEL} is not set — "
+                f"set ${{KNOX_LLM_DEFAULT_MODEL}} in the environment, "
+                f"add it to the TOML config file, or pass "
+                f"--set {COMPILE_LLM_DEFAULT_MODEL}=... on the command line."
+            )
         llm_config = LLMConfig(
-            default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
+            default_model=default_model,
             vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
             fallback_chain=llm_fallback_chain,
             fallback_max_retries=llm_fallback_max_retries,

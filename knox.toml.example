@@ -186,10 +186,11 @@ summary_chunk_threshold = 10
 
 [compile.llm]
 # Primary model in litellm format ("provider/model")
-default_model = "ollama/llama3.2"
+default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 
 # Vision model for captioning IMAGE chunks during resolution.
 # When set, VLMEnricher is added to the resolver chain.
+# vlm_model = "${KNOX_VLM_MODEL}"
 # vlm_model = "openai/gpt-4o"
 
 # Ordered fallback models tried when the primary fails
@@ -238,10 +239,12 @@ timeout = 120.0
 
 [compile.embedding]
 # Embedding model for semantic search / RAG.
+# Set KNOX_EMBEDDING_MODEL in your environment, or uncomment and set below.
 # Two options:
 #   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Leave commented to disable vector indexing.
+# model = "${KNOX_EMBEDDING_MODEL}"
 # model = "litellm:granite-embedding:278m"
 
 # Embedding batch size (number of texts to embed per API call)

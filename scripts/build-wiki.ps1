@@ -47,63 +47,34 @@ if (-not $Preview) {
 $ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
-# ------ Read build settings from config ---------------------------------------------------------------------------------------------------------------
-# We parse the TOML to extract model settings. Since PowerShell
-# doesn't have native TOML support, we use a simple regex approach for
-# the specific keys we need.
+# ------ Default models (per-config env-var overrides) ------------------------------------------------
+# Config files use config-specific env vars (${KNOX_LOCAL_LLM}, ${KNOX_CLOUD_LLM}, etc.)
+# that are expanded at load time. The script sets the right set based on which
+# config file is in use. The env vars ${KNOX_LLM_DEFAULT_MODEL} / ${KNOX_VLM_MODEL}
+# / ${KNOX_EMBEDDING_MODEL} at the _ENV_MAP layer (Layer 2) still work as a generic
+# override, but the config-specific vars are the recommended approach.
 
-function Get-ConfigSectionValue($Section, $Key) {
-    $lines = Get-Content $ConfigPath
-    $currentSection = ""
-    $escapedKey = [regex]::Escape($Key)
-    $quotedPattern = '^\s*' + $escapedKey + '\s*=\s*"(.+)"\s*(#.*)?$'
-    $unquotedPattern = '^\s*' + $escapedKey + '\s*=\s*([^#]+)'
+# Derive which config we are using
+$BaseName = [System.IO.Path]::GetFileNameWithoutExtension($ConfigFile)
+$IsLocalConfig = $BaseName -like "*local*"
 
-    foreach ($line in $lines) {
-        if ($line -match '^\s*\[(.+)\]\s*$') {
-            $currentSection = $matches[1].Trim()
-            continue
-        }
-
-        if ($currentSection -ne $Section) {
-            continue
-        }
-
-        if ($line -match $quotedPattern) {
-            return $matches[1].Trim()
-        }
-
-        if ($line -match $unquotedPattern) {
-            return $matches[1].Trim()
-        }
-    }
-
-    return $null
+# Prefer script parameter > existing env var > script default
+if ($IsLocalConfig) {
+    $env:KNOX_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
+    $env:KNOX_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
+    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "litellm:ollama/granite-embedding:278m" } else { $EmbedModel }
+} else {
+    $env:KNOX_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
+    $env:KNOX_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }
+    $env:KNOX_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_CLOUD_EMBEDDING  ?? "openai/text-embedding-3-large" }   else { $EmbedModel }
 }
-
-$ConfigLLMModel = Get-ConfigSectionValue "compile.llm" "default_model"
-$ConfigVLMModel = Get-ConfigSectionValue "compile.llm" "vlm_model"
-$ConfigEmbedModel = Get-ConfigSectionValue "compile.embedding" "model"
-
-$EffectiveLLMModel = if ([string]::IsNullOrWhiteSpace($LLMModel)) { $ConfigLLMModel } else { $LLMModel }
-$EffectiveVLMModel = if ([string]::IsNullOrWhiteSpace($VLMModel)) { $ConfigVLMModel } else { $VLMModel }
-$EffectiveEmbedModel = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $ConfigEmbedModel } else { $EmbedModel }
 
 # Derive output directory name from config filename:
 #   scripts\config-cloud.toml  →  demo-wiki-cloud
 #   scripts\config-local.toml   →  demo-wiki-local
-$BaseName = [System.IO.Path]::GetFileNameWithoutExtension($ConfigFile)
 $OutputName = $BaseName -replace "^config-", "demo-wiki-"
 $OutputPath = Join-Path $ProjectRoot $OutputName
 
-if (-not $EffectiveLLMModel) {
-    Write-Error "Config missing [compile.llm] default_model"
-    exit 1
-}
-
-Write-Host "  Model:  $EffectiveLLMModel" -ForegroundColor DarkGray
-Write-Host "  VLM:    $EffectiveVLMModel" -ForegroundColor DarkGray
-Write-Host "  Embed:  $EffectiveEmbedModel" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 $InputFiles = Join-Path $ProjectRoot "tests/data/sources/*.pdf"
@@ -141,31 +112,6 @@ if (-not $Preview) {
         exit $LASTEXITCODE
     }
 }
-
-# ------ Stage 0b: Persist model settings in wiki config ---------------------------------------------------------
-Write-Host ""
-Write-Host "=== Stage 0b: Configure models (knox config set) ===" -ForegroundColor Cyan
-
-function Invoke-ConfigSet($Key, $Value) {
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return
-    }
-
-    $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "config", "set", $Key, $Value)
-    Write-Host ($cmd -join " ") -ForegroundColor DarkGray
-
-    if (-not $Preview) {
-        & $cmd[0] $cmd[1..($cmd.Length - 1)]
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "knox config set failed with exit code $LASTEXITCODE"
-            exit $LASTEXITCODE
-        }
-    }
-}
-
-Invoke-ConfigSet "compile.llm.default_model" $EffectiveLLMModel
-Invoke-ConfigSet "compile.llm.vlm_model" $EffectiveVLMModel
-Invoke-ConfigSet "compile.embedding.model" $EffectiveEmbedModel
 
 # ------ Stage 1: Ingest (T0+T1: download + parse) ------------------------------------------------------------------------
 Write-Host ""

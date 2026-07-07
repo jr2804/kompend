@@ -53,6 +53,10 @@ class TestNotesConfig:
 class TestNotesFileResolution:
     """Verify ``PipelineConfig.notes_file`` is resolved correctly."""
 
+    @pytest.fixture(autouse=True)
+    def _set_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
+
     def test_notes_file_resolved_from_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
