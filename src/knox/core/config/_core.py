@@ -378,71 +378,52 @@ def _load_toml(toml_file: Path) -> dict[str, Any]:
 
 # ── Env settings model (cached singleton) ──
 
+# Env vars that carry comma-separated lists. These are stored as ``str``
+# in the settings model and split into lists in ``_read_env_vars``.
+# NOTE: ``KNOX_LINT`` is intentionally listed here even though its schema
+# field (``compile.lint``) is a bool — the list form targets ``lint.enabled``.
+_ENV_LIST_VARS: frozenset[str] = frozenset({
+    "KNOX_LLM_FALLBACK_CHAIN",
+    "KNOX_LINT",
+    "KNOX_DEDUP_MATCHERS",
+    "KNOX_SEARCH_EXPANSION_VARIANTS",
+})
+
+
+def _classify_env_field(ann: Any) -> tuple[Any, Any]:
+    """Map a pydantic field annotation to a (type, default) tuple for the env model.
+
+    List fields are kept as ``str`` (split later in ``_read_env_vars``).
+    """
+    if get_origin(ann) is list:
+        return (str | None, Field(None))
+    if ann is bool:
+        return (bool | None, Field(None))
+    if ann is float:
+        return (float | None, Field(None))
+    if ann is int:
+        return (int | None, Field(None))
+    return (str | None, Field(None))
+
 
 @cache
 def _get_env_settings_model() -> BaseSettings:
     """Build pydantic-settings model dynamically from _ENV_MAP.
 
-    Returns a cached singleton so the model class is only created once.
+    Field types are derived from the :class:`KnoxConfig` schema so adding a
+    new config key with a typed annotation automatically gets the right env
+    coercion — no manual ``if/elif`` ladder to keep in sync. Returns a cached
+    singleton so the model class is only created once.
     """
     _KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
     for _env_name in _ENV_MAP.values():
         _fn = _env_name.removeprefix("KNOX_").lower()
-        # Comma-separated lists (stored as str, split in _read_env_vars)
-        if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
+        if _env_name in _ENV_LIST_VARS:
             _KnoxEnvFields[_fn] = (str | None, Field(None))
-        # Booleans
-        elif _env_name.endswith("_ENABLED") or _env_name in (
-            "KNOX_NO_CACHE",
-            "KNOX_FORCE",
-            "KNOX_IN_PLACE_SOURCES",
-            "KNOX_MEMORY_ENABLED",
-            "KNOX_PRIVACY_FILTER",
-            "KNOX_USER_TRACKING",
-            "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
-            "KNOX_DEDUP_ENABLED",
-        ):
-            _KnoxEnvFields[_fn] = (bool | None, Field(None))
-        # Numeric: check float patterns first, then int
-        elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
-            _KnoxEnvFields[_fn] = (float | None, Field(None))
-        elif _env_name in (
-            "KNOX_WORKERS",
-            "KNOX_LINT_THRESHOLD",
-            "KNOX_SEARCH_RERANKER_TOP_K",
-            "KNOX_SEARCH_CRAG_THRESHOLD",
-            "KNOX_EVAL_THRESHOLD",
-            "KNOX_ORGANIZE_MAX_DEPTH",
-            "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
-            "KNOX_EMBEDDING_BATCH_SIZE",
-            "KNOX_LLM_NUM_CTX_MIN",
-            "KNOX_LLM_NUM_CTX_MAX",
-            "KNOX_LLM_FALLBACK_MAX_RETRIES",
-            "KNOX_BUDGET_CONCEPTS_PER_BATCH",
-            "KNOX_BUDGET_WICER_MAX_ITERATIONS",
-            "KNOX_BUDGET_MIN_CONTENT_LENGTH",
-            "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
-            "KNOX_BUDGET_MAX_CONCEPT_PAGES",
-            "KNOX_BUDGET_CHUNK_SIZE_MIN",
-            "KNOX_BUDGET_CHUNK_SIZE_MAX",
-            "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
-            "KNOX_BUDGET_GEN_OUTPUT_MAX",
-            "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
-            "KNOX_LLM_CONTEXT_WINDOW_CAP",
-            "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
-            "KNOX_PDF_PAGE_CHUNK_SIZE",
-            "KNOX_PDF_PAGE_CHUNK_OVERLAP",
-            "KNOX_DEDUP_THRESHOLD_IDENTICAL",
-            "KNOX_DEDUP_THRESHOLD_SIMILAR",
-            "KNOX_LLM_TIMEOUT",
-            "KNOX_LLM_FALLBACK_MAX_INPUT",
-            "KNOX_LLM_FALLBACK_MAX_OUTPUT",
-            "KNOX_MEMORY_HALF_LIFE_DAYS",
-            "KNOX_MEMORY_DECAY_THRESHOLD",
-        ):
-            _KnoxEnvFields[_fn] = (int | None, Field(None))
-        else:
-            _KnoxEnvFields[_fn] = (str | None, Field(None))
+            continue
+        _field_info = _resolve_field_info(_env_map_key_for(_env_name))
+        _ann = _field_info.annotation if _field_info is not None else None
+        _KnoxEnvFields[_fn] = _classify_env_field(_ann)
 
     return create_model(
         "_KnoxEnvSettings",
@@ -450,6 +431,14 @@ def _get_env_settings_model() -> BaseSettings:
         __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
         **_KnoxEnvFields,
     )
+
+
+def _env_map_key_for(env_name: str) -> str:
+    """Return the dotted config key for an env var name (reverse _ENV_MAP lookup)."""
+    for _key, _name in _ENV_MAP.items():
+        if _name == env_name:
+            return _key
+    return ""
 
 
 def _read_env_vars() -> dict[str, Any]:
@@ -464,7 +453,7 @@ def _read_env_vars() -> dict[str, Any]:
             if isinstance(value, str):
                 value = value.strip()
             # Comma-separated list fields
-            if env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
+            if env_name in _ENV_LIST_VARS:
                 if isinstance(value, str):
                     value = [v.strip() for v in value.split(",") if v.strip()]
                 elif isinstance(value, list):
@@ -485,19 +474,23 @@ def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
     return keys
 
 
-def _merge_layer(
-    base: dict[str, Any],
+def _apply_layer(
+    result: dict[str, Any],
     layer: dict[str, Any],
     provenance: dict[str, ConfigSource],
     source: ConfigSource,
 ) -> dict[str, Any]:
-    """Merge a layer into base, recording provenance for new/changed keys."""
-    result = _deep_merge(base, layer)
-    # Record provenance for keys this layer contributed
+    """Merge *layer* into *result* and stamp provenance for its keys.
+
+    Used by every precedence layer (defaults, global, project, env, cli) so
+    the merge + provenance bookkeeping stays in one place. Only non-``None``
+    leaf values from *layer* claim provenance — ``None`` means "unset".
+    """
+    merged = _deep_merge(result, layer)
     for key in _flat_keys(layer):
         if _get_dot(layer, key) is not None:
             provenance[key] = source
-    return result
+    return merged
 
 
 def _merge_project_configs(
@@ -594,7 +587,7 @@ def resolve_config(
     if global_path is not None:
         global_data = _load_toml(global_path)
         if global_data:
-            result = _merge_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
+            result = _apply_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
     # Layer 3: project config.
     # Precedence for locating the project config file:
@@ -610,7 +603,7 @@ def resolve_config(
         if project_dir.is_file():
             project_data = _load_toml(project_dir)
             if project_data:
-                result = _merge_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
+                result = _apply_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
         else:
             logger.warning("Config file not found: %s", config_path)
     else:
@@ -627,21 +620,13 @@ def resolve_config(
     env_data = _read_env_vars()
     if env_data:
         # Record per-key provenance with specific env var names
-        env_result = _deep_merge(result, env_data)
-        for key in _flat_keys(env_data):
-            env_name = _ENV_MAP.get(key, "KNOX_*")
-            provenance[key] = ConfigSource("env", env_name)
-        result = env_result
+        result = _apply_layer(result, env_data, provenance, ConfigSource("env", "KNOX_*"))
 
     # Layer 1: CLI overrides
     cli = cli_overrides or {}
     if cli:
         cli_nested = _nest_flat(cli)
-        cli_result = _deep_merge(result, cli_nested)
-        for key in cli:
-            if cli[key] is not None:
-                provenance[key] = ConfigSource("cli")
-        result = cli_result
+        result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
 
     _resolve_paths(result, provenance)
 
