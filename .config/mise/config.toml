@@ -22,7 +22,6 @@ ripgrep = "latest"
 # not usable for code (use codegraph instead):
 #"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
 "github:colbymchenry/codegraph" = "latest"
-"pipx:ssort" = "latest"
 
 [settings.npm]
 package_manager = "bun"
