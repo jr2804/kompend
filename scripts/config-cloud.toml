@@ -31,7 +31,7 @@ parser = "web,liteparse"
 
 # ── LLM settings ────────────────────────────────────────────────────────
 [compile.llm]
-# Primary model — set KNOX_LLM_DEFAULT_MODEL in your environment, or
+# Primary model — set KNOX_CLOUD_LLM in your environment, or
 # uncomment and set a model below:
 default_model      = "${KNOX_CLOUD_LLM}"
 #default_model     = "ollama-cloud/deepseek-v4-flash"
@@ -40,10 +40,10 @@ default_model      = "${KNOX_CLOUD_LLM}"
 #default_model     = "opencode-zen/gpt-5.4-nano"
 #default_model     = "openrouter/openrouter/free"
 
-# Vision model for VLM captioning (optional — set KNOX_VLM_MODEL in env).
+# Vision model for VLM captioning (optional — set KNOX_CLOUD_VLM in env).
 vlm_model             = "${KNOX_CLOUD_VLM}"
 #vlm_model            = "ollama-cloud/gemma4:31b"
-#context_window_cap   = 1048576   # ~1M ctx; cloud API has no /api/show
+context_window_cap   = "${KNOX_CLOUD_CTX_CAP}"   # optional cap; auto-discovered from model by default
 
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 3
@@ -63,7 +63,7 @@ timeout            = 300.0
 #   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Leave commented to disable vector indexing.
-#model = "${KNOX_CLOUD_EMBEDDING}"
+model = "${KNOX_CLOUD_EMBEDDING}"
 #model = "litellm:ollama/granite-embedding:278m"
 
 # ── Output ──────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ min_content_length = 50
 min_concept_sources = 2
 max_concept_pages = 50
 chunk_size_min = 2048
-chunk_size_max = 524288     # up to 512K chars for ~1M ctx cloud model
+chunk_size_max = "${KNOX_CLOUD_CTX_CAP}"
 extract_output_max = 16384
 gen_output_max = 32768
 verify_output_max = 4096

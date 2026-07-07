@@ -54,6 +54,7 @@ import re
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -141,6 +142,72 @@ from knox.core.paths import CACHE_DIR, CONFIG_FILE, KNOX_CONFIG_FILE, KNOX_DIR, 
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ConfigSource:
+    """Tracks where each config value came from."""
+
+    path: str  # "default", "global", "project", "env", "cli"
+    location: str = ""  # file path or env var name
+
+    def __str__(self) -> str:
+        if self.location:
+            return f"{self.path} ({self.location})"
+        return self.path
+
+
+# ── Dot-path access ─────────────────────────────────────────────────────
+
+
+def _get_dot(data: dict[str, Any], key: str, default: Any = None) -> Any:
+    """Retrieve a dotted key from a nested dict."""
+    parts = key.split(".")
+    current: Any = data
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return default
+    return current if current is not None else default
+
+
+@dataclass
+class ResolvedConfig:
+    """Fully merged configuration with provenance tracking.
+
+    Layers are applied in order: defaults → global → project → env → cli.
+    Each value carries a :class:`ConfigSource` so ``knox config show``
+    can report where it came from.
+    """
+
+    raw: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, ConfigSource] = field(default_factory=dict)
+    project_config_file: Path | None = None
+    project_config_paths: list[Path] = field(default_factory=list)
+    global_config_file: Path | None = None
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a dotted key from the resolved config."""
+        return _get_dot(self.raw, key, default)
+
+    def source_of(self, key: str) -> ConfigSource:
+        """Return where a specific key's value came from."""
+        return self.provenance.get(key, ConfigSource("default"))
+
+    def _flatten(self, data: dict[str, Any], prefix: str, out: dict[str, Any]) -> None:
+        for key, value in data.items():
+            full = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                self._flatten(value, full, out)
+            else:
+                out[full] = value
+
+    def flat(self) -> dict[str, Any]:
+        """Return a flat dotted-key dict of all values."""
+        result: dict[str, Any] = {}
+        self._flatten(self.raw, "", result)
+        return result
 
 # ── File paths ───────────────────────────────────────────────────────────
 
@@ -409,29 +476,6 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return result
 
 
-def _nest_flat(flat: dict[str, Any]) -> dict[str, Any]:
-    """Convert a flat dotted-key dict to a nested dict."""
-    result: dict[str, Any] = {}
-    for key, value in flat.items():
-        _set_dot(result, key, value)
-    return result
-
-
-# ── Dot-path access ─────────────────────────────────────────────────────
-
-
-def _get_dot(data: dict[str, Any], key: str, default: Any = None) -> Any:
-    """Retrieve a dotted key from a nested dict."""
-    parts = key.split(".")
-    current: Any = data
-    for part in parts:
-        if isinstance(current, dict):
-            current = current.get(part)
-        else:
-            return default
-    return current if current is not None else default
-
-
 def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
     """Set a dotted key in a nested dict, creating intermediate dicts."""
     parts = key.split(".")
@@ -441,6 +485,14 @@ def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
             current[part] = {}
         current = current[part]
     current[parts[-1]] = value
+
+
+def _nest_flat(flat: dict[str, Any]) -> dict[str, Any]:
+    """Convert a flat dotted-key dict to a nested dict."""
+    result: dict[str, Any] = {}
+    for key, value in flat.items():
+        _set_dot(result, key, value)
+    return result
 
 
 # ── Config file discovery ───────────────────────────────────────────────
@@ -524,14 +576,14 @@ def _expand_env_vars(value: str) -> str:
 
     Unknown variables are left as-is. This is applied to string values
     when loading TOML config files so users can reference env vars like
-    ``$HOME`` in path settings.
+    ``$HOME`` or ``${KNOX_CLOUD_LLM}`` in path/model settings.
     """
 
     def _replace(match: re.Match) -> str:
-        var = match.group(1) or match.group(2) or ""
+        var = match.group(2) or match.group(1) or ""
         return os.environ.get(var, match.group(0))
 
-    return re.sub(r"\$([A-Z_][A-Z0-9_]*|\{[A-Z_][A-Z0-9_]*\})|\$\{(\w+)", _replace, value)
+    return re.sub(r"\$(\w+)|\$\{(\w+)\}", _replace, value)
 
 
 def _expand_env_vars_recursive(data: Any) -> Any:
@@ -576,79 +628,85 @@ def _load_toml(toml_file: Path) -> dict[str, Any]:
 
 # ── Env var layer ───────────────────────────────────────────────────────
 
+# ── Env settings model (cached singleton) ──
 
-# Build pydantic-settings model dynamically from _ENV_MAP.
-# Field names are KNOX_* suffixes lowercased; types inferred from patterns.
-_KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
-for _env_name in _ENV_MAP.values():
-    _fn = _env_name.removeprefix("KNOX_").lower()
-    # Comma-separated lists (stored as str, split in _read_env_vars)
-    if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
-        _KnoxEnvFields[_fn] = (str | None, Field(None))
-    # Booleans
-    elif _env_name.endswith("_ENABLED") or _env_name in (
-        "KNOX_NO_CACHE",
-        "KNOX_FORCE",
-        "KNOX_IN_PLACE_SOURCES",
-        "KNOX_MEMORY_ENABLED",
-        "KNOX_PRIVACY_FILTER",
-        "KNOX_USER_TRACKING",
-        "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
-        "KNOX_DEDUP_ENABLED",
-    ):
-        _KnoxEnvFields[_fn] = (bool | None, Field(None))
-    # Numeric: check float patterns first, then int
-    elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
-        _KnoxEnvFields[_fn] = (float | None, Field(None))
-    elif _env_name in (
-        "KNOX_WORKERS",
-        "KNOX_LINT_THRESHOLD",
-        "KNOX_SEARCH_RERANKER_TOP_K",
-        "KNOX_SEARCH_CRAG_THRESHOLD",
-        "KNOX_EVAL_THRESHOLD",
-        "KNOX_ORGANIZE_MAX_DEPTH",
-        "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
-        "KNOX_EMBEDDING_BATCH_SIZE",
-        "KNOX_LLM_NUM_CTX_MIN",
-        "KNOX_LLM_NUM_CTX_MAX",
-        "KNOX_LLM_FALLBACK_MAX_RETRIES",
-        "KNOX_BUDGET_CONCEPTS_PER_BATCH",
-        "KNOX_BUDGET_WICER_MAX_ITERATIONS",
-        "KNOX_BUDGET_MIN_CONTENT_LENGTH",
-        "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
-        "KNOX_BUDGET_MAX_CONCEPT_PAGES",
-        "KNOX_BUDGET_CHUNK_SIZE_MIN",
-        "KNOX_BUDGET_CHUNK_SIZE_MAX",
-        "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
-        "KNOX_BUDGET_GEN_OUTPUT_MAX",
-        "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
-        "KNOX_LLM_CONTEXT_WINDOW_CAP",
-        "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
-        "KNOX_PDF_PAGE_CHUNK_SIZE",
-        "KNOX_PDF_PAGE_CHUNK_OVERLAP",
-        "KNOX_DEDUP_THRESHOLD_IDENTICAL",
-        "KNOX_DEDUP_THRESHOLD_SIMILAR",
-        "KNOX_LLM_TIMEOUT",
-        "KNOX_LLM_FALLBACK_MAX_INPUT",
-        "KNOX_LLM_FALLBACK_MAX_OUTPUT",
-        "KNOX_MEMORY_HALF_LIFE_DAYS",
-        "KNOX_MEMORY_DECAY_THRESHOLD",
-    ):
-        _KnoxEnvFields[_fn] = (int | None, Field(None))
-    else:
-        _KnoxEnvFields[_fn] = (str | None, Field(None))
 
-_KnoxEnvSettingsModel = create_model(
-    "_KnoxEnvSettings",
-    __base__=BaseSettings,
-    __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
-    **_KnoxEnvFields,
-)
+@cache
+def _get_env_settings_model() -> BaseSettings:
+    """Build pydantic-settings model dynamically from _ENV_MAP.
+
+    Returns a cached singleton so the model class is only created once.
+    """
+    _KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
+    for _env_name in _ENV_MAP.values():
+        _fn = _env_name.removeprefix("KNOX_").lower()
+        # Comma-separated lists (stored as str, split in _read_env_vars)
+        if _env_name in ("KNOX_LLM_FALLBACK_CHAIN", "KNOX_LINT", "KNOX_DEDUP_MATCHERS", "KNOX_SEARCH_EXPANSION_VARIANTS"):
+            _KnoxEnvFields[_fn] = (str | None, Field(None))
+        # Booleans
+        elif _env_name.endswith("_ENABLED") or _env_name in (
+            "KNOX_NO_CACHE",
+            "KNOX_FORCE",
+            "KNOX_IN_PLACE_SOURCES",
+            "KNOX_MEMORY_ENABLED",
+            "KNOX_PRIVACY_FILTER",
+            "KNOX_USER_TRACKING",
+            "KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE",
+            "KNOX_DEDUP_ENABLED",
+        ):
+            _KnoxEnvFields[_fn] = (bool | None, Field(None))
+        # Numeric: check float patterns first, then int
+        elif "_THRESHOLD" in _env_name or "_HALF_LIFE_" in _env_name or "_DECAY_" in _env_name:
+            _KnoxEnvFields[_fn] = (float | None, Field(None))
+        elif _env_name in (
+            "KNOX_WORKERS",
+            "KNOX_LINT_THRESHOLD",
+            "KNOX_SEARCH_RERANKER_TOP_K",
+            "KNOX_SEARCH_CRAG_THRESHOLD",
+            "KNOX_EVAL_THRESHOLD",
+            "KNOX_ORGANIZE_MAX_DEPTH",
+            "KNOX_ORGANIZE_MIN_SUBCATEGORIES",
+            "KNOX_EMBEDDING_BATCH_SIZE",
+            "KNOX_LLM_NUM_CTX_MIN",
+            "KNOX_LLM_NUM_CTX_MAX",
+            "KNOX_LLM_FALLBACK_MAX_RETRIES",
+            "KNOX_BUDGET_CONCEPTS_PER_BATCH",
+            "KNOX_BUDGET_WICER_MAX_ITERATIONS",
+            "KNOX_BUDGET_MIN_CONTENT_LENGTH",
+            "KNOX_BUDGET_MIN_CONCEPT_SOURCES",
+            "KNOX_BUDGET_MAX_CONCEPT_PAGES",
+            "KNOX_BUDGET_CHUNK_SIZE_MIN",
+            "KNOX_BUDGET_CHUNK_SIZE_MAX",
+            "KNOX_BUDGET_EXTRACT_OUTPUT_MAX",
+            "KNOX_BUDGET_GEN_OUTPUT_MAX",
+            "KNOX_BUDGET_OVERVIEW_OUTPUT_MAX",
+            "KNOX_LLM_CONTEXT_WINDOW_CAP",
+            "KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING",
+            "KNOX_PDF_PAGE_CHUNK_SIZE",
+            "KNOX_PDF_PAGE_CHUNK_OVERLAP",
+            "KNOX_DEDUP_THRESHOLD_IDENTICAL",
+            "KNOX_DEDUP_THRESHOLD_SIMILAR",
+            "KNOX_LLM_TIMEOUT",
+            "KNOX_LLM_FALLBACK_MAX_INPUT",
+            "KNOX_LLM_FALLBACK_MAX_OUTPUT",
+            "KNOX_MEMORY_HALF_LIFE_DAYS",
+            "KNOX_MEMORY_DECAY_THRESHOLD",
+        ):
+            _KnoxEnvFields[_fn] = (int | None, Field(None))
+        else:
+            _KnoxEnvFields[_fn] = (str | None, Field(None))
+
+    return create_model(
+        "_KnoxEnvSettings",
+        __base__=BaseSettings,
+        __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
+        **_KnoxEnvFields,
+    )
 
 
 def _read_env_vars() -> dict[str, Any]:
     """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
-    settings = _KnoxEnvSettingsModel()
+    settings = _get_env_settings_model()()
     result: dict[str, Any] = {}
     for dotted_key, env_name in _ENV_MAP.items():
         field_name = env_name.removeprefix("KNOX_").lower()
@@ -667,58 +725,16 @@ def _read_env_vars() -> dict[str, Any]:
     return result
 
 
-# ── ResolvedConfig ──────────────────────────────────────────────────────
-
-
-@dataclass
-class ConfigSource:
-    """Tracks where each config value came from."""
-
-    path: str  # "default", "global", "project", "env", "cli"
-    location: str = ""  # file path or env var name
-
-    def __str__(self) -> str:
-        if self.location:
-            return f"{self.path} ({self.location})"
-        return self.path
-
-
-@dataclass
-class ResolvedConfig:
-    """Fully merged configuration with provenance tracking.
-
-    Layers are applied in order: defaults → global → project → env → cli.
-    Each value carries a :class:`ConfigSource` so ``knox config show``
-    can report where it came from.
-    """
-
-    raw: dict[str, Any] = field(default_factory=dict)
-    provenance: dict[str, ConfigSource] = field(default_factory=dict)
-    project_config_file: Path | None = None
-    project_config_paths: list[Path] = field(default_factory=list)
-    global_config_file: Path | None = None
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Get a dotted key from the resolved config."""
-        return _get_dot(self.raw, key, default)
-
-    def source_of(self, key: str) -> ConfigSource:
-        """Return where a specific key's value came from."""
-        return self.provenance.get(key, ConfigSource("default"))
-
-    def flat(self) -> dict[str, Any]:
-        """Return a flat dotted-key dict of all values."""
-        result: dict[str, Any] = {}
-        self._flatten(self.raw, "", result)
-        return result
-
-    def _flatten(self, data: dict[str, Any], prefix: str, out: dict[str, Any]) -> None:
-        for key, value in data.items():
-            full = f"{prefix}.{key}" if prefix else key
-            if isinstance(value, dict):
-                self._flatten(value, full, out)
-            else:
-                out[full] = value
+def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
+    """Return all dotted keys in a nested dict."""
+    keys: list[str] = []
+    for key, value in data.items():
+        full = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            keys.extend(_flat_keys(value, full))
+        else:
+            keys.append(full)
+    return keys
 
 
 def _merge_layer(
@@ -752,18 +768,6 @@ def _merge_project_configs(
             prov[key] = ConfigSource("project", str(config_file))
         merged = _deep_merge(merged, file_data)
     return merged, prov
-
-
-def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
-    """Return all dotted keys in a nested dict."""
-    keys: list[str] = []
-    for key, value in data.items():
-        full = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict):
-            keys.extend(_flat_keys(value, full))
-        else:
-            keys.append(full)
-    return keys
 
 
 def _resolve_paths(
