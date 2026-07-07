@@ -14,13 +14,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
-from knox.core.models import CrossReferenceIssue, StructuredEquation, StructuredTable
+from knox.core.models import ChunkTree, CrossReferenceIssue, StructuredEquation, StructuredTable
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from knox.core.models import ChunkTree
 
 logger = get_logger(__name__)
 

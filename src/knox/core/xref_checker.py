@@ -12,10 +12,10 @@ Checks:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
 
 from knox.core.entity_registry import EntityRegistry
 from knox.core.models import (
+    ChunkTree,
     CrossReferenceIssue,
     CrossReferenceResult,
     StructuredEquation,
@@ -23,9 +23,6 @@ from knox.core.models import (
     StructuredTable,
 )
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from knox.core.models import ChunkTree
 
 logger = get_logger(__name__)
 

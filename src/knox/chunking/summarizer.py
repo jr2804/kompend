@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import TYPE_CHECKING
 
 from knox.core.models import (
     ChunkNode,
@@ -34,13 +33,11 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
+from knox.core.cache_store import CacheStore
 from knox.core.template_loader import get_template_loader
+from knox.llm.client import LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from knox.core.cache_store import CacheStore
-    from knox.llm.client import LLMClient
 
 logger = get_logger(__name__)
 
