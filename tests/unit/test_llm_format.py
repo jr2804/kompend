@@ -14,10 +14,10 @@ class TestSalvageValid:
         assert salvage_json("   ") is None
 
     def test_fenced_json(self) -> None:
-        assert salvage_json("```json\n{\"a\": 1}\n```") == {"a": 1}
+        assert salvage_json('```json\n{"a": 1}\n```') == {"a": 1}
 
     def test_leading_prose_then_json(self) -> None:
-        assert salvage_json("Here you go:\n{\"a\": 1}") == {"a": 1}
+        assert salvage_json('Here you go:\n{"a": 1}') == {"a": 1}
 
 
 class TestSalvageRawControlChars:

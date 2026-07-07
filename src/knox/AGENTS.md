@@ -344,7 +344,7 @@ JSON field from an upstream SDK) are that API's contract, not ours to rename —
 they are read as literals. When in doubt whether a key is ours, ask: did we
 define the schema that produces it? If yes, it is ours and must be a symbol.
 
-#### Enforcement — `scripts/check_field_consistency.py`
+### Enforcement — `scripts/check_field_consistency.py`
 
 An AST scanner enforces this antipattern at CI time. Run it with
 `mise run check-field-consistency` (or

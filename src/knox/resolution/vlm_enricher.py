@@ -180,26 +180,6 @@ class VLMEnricher(BaseResolver):
             return True, f"too small ({w}×{h} < {self._min_dim}px)"
         return False, ""
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_context_hint(chunk: Chunk) -> str:
-        """Assemble the textual context sent to the VLM alongside the image.
-
-        Returns ``"Section: <heading> | Caption: <caption>"`` with whichever
-        parts are present; ``""`` when neither is available.
-        """
-        parts: list[str] = []
-        heading = chunk.heading_context or ""
-        if heading:
-            parts.append(f"Section: {heading}")
-        caption = chunk.metadata.get("caption", "")
-        if caption:
-            parts.append(f"Caption: {caption}")
-        return " | ".join(parts)
-
     def _generate_caption(self, image_ref: str | Path, context_hint: str = "") -> str | None:
         """Run the VLM on *image_ref* and return a text caption.
 
@@ -241,3 +221,23 @@ class VLMEnricher(BaseResolver):
         if result is None:
             return None
         return result.content
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_context_hint(chunk: Chunk) -> str:
+        """Assemble the textual context sent to the VLM alongside the image.
+
+        Returns ``"Section: <heading> | Caption: <caption>"`` with whichever
+        parts are present; ``""`` when neither is available.
+        """
+        parts: list[str] = []
+        heading = chunk.heading_context or ""
+        if heading:
+            parts.append(f"Section: {heading}")
+        caption = chunk.metadata.get("caption", "")
+        if caption:
+            parts.append(f"Caption: {caption}")
+        return " | ".join(parts)
