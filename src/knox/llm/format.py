@@ -42,7 +42,9 @@ def salvage_json(content: str) -> Any | None:  # noqa: PLR0911
 
     try:
         return json.loads(content)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
+        # RecursionError: pathological deeply-nested content blows stdlib
+        # json's recursive-descent parser — treat as unparseable, fall through.
         pass
 
     # Small models often emit raw control chars (newlines, tabs) inside JSON
@@ -53,7 +55,7 @@ def salvage_json(content: str) -> Any | None:  # noqa: PLR0911
     if sanitized != content:
         try:
             return json.loads(sanitized)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             content = sanitized
 
     # Leading prose before the JSON (e.g. "Sure, here is the JSON: {...}"):
@@ -72,21 +74,21 @@ def salvage_json(content: str) -> Any | None:  # noqa: PLR0911
             inner = inner[:-3].strip()
         try:
             return json.loads(inner)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             content = inner
 
     closed = _close_truncated_json(content)
     if closed is not None:
         try:
             return json.loads(closed)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             pass
 
     try:
         decoder = json.JSONDecoder()
         obj, _end = decoder.raw_decode(content)
         return obj
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         pass
 
     return None

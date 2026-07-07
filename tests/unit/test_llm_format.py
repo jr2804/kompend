@@ -64,3 +64,20 @@ class TestSalvageTruncation:
 
     def test_unparseable_returns_none(self) -> None:
         assert salvage_json("just prose, no json at all here") is None
+
+
+class TestSalvageRecursionGuard:
+    def test_deeply_nested_does_not_leak_recursionerror(self) -> None:
+        """Pathological nesting must not crash the pipeline via RecursionError.
+
+        Models occasionally emit runaway nested brackets/braces; stdlib json's
+        recursive-descent parser raises RecursionError on sufficiently deep
+        input. salvage_json must absorb it so the call degrades gracefully
+        (None -> PermanentError -> skip) instead of propagating up through
+        complete() and crashing the whole compile.
+        """
+        deep = "[" * 5000 + "]" * 5000  # trips json's parser on CPython 3.13
+        # Contract: never leak RecursionError. None if json tripped (caught),
+        # the structure if json handled it — either is fine, the point is no crash.
+        result = salvage_json(deep)
+        assert result is None or isinstance(result, list)

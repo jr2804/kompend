@@ -103,7 +103,7 @@ class WiCERCompiler(BaseCompiler):
     # Public API
     # ------------------------------------------------------------------
 
-    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:
+    def compile(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:  # noqa: PLR0915
         """Run the WiCER iterative-compilation loop.
 
         Implements Algorithm 1 from arXiv:2605.07068v1:
@@ -455,7 +455,7 @@ class WiCERCompiler(BaseCompiler):
         if result.json_data is None:
             try:
                 parsed = json.loads(result.content)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 logger.warning("LLM returned malformed JSON for probes — skipping")
                 return None
             if isinstance(parsed, list):
