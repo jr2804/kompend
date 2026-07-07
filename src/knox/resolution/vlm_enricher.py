@@ -44,6 +44,16 @@ class VLMEnricher(BaseResolver):
     :class:`Chunk` into a :class:`ResolvedChunk` before enriching.
     """
 
+    # VLM receives exactly: the image bytes + the textual context assembled
+    # by _build_context_hint (at most: section heading + original caption)
+    # + the instruction below. No other corpus context (sibling paragraphs,
+    # figure references, document overview) is passed — see knox-q399.
+    _VLM_PROMPT_INSTRUCTION = (
+        "Describe this image in one sentence. If it is a logo, icon, decorative "
+        "element, background graphic, or contains no substantive information, "
+        "respond with just SKIP."
+    )
+
     def __init__(
         self,
         client: LLMClient | None = None,
@@ -91,12 +101,7 @@ class VLMEnricher(BaseResolver):
             )
             return resolved
 
-        ctx = resolved.chunk.heading_context or ""
-        caption_text = resolved.chunk.metadata.get("caption", "")
-        context_parts = [f"Section: {ctx}"] if ctx else []
-        if caption_text:
-            context_parts.append(f"Caption: {caption_text}")
-        context_hint = " | ".join(context_parts) if context_parts else ""
+        context_hint = self._build_context_hint(resolved.chunk)
 
         skip, reason = self._should_skip(image_path)
         if skip:
@@ -179,6 +184,22 @@ class VLMEnricher(BaseResolver):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_context_hint(chunk: Chunk) -> str:
+        """Assemble the textual context sent to the VLM alongside the image.
+
+        Returns ``"Section: <heading> | Caption: <caption>"`` with whichever
+        parts are present; ``""`` when neither is available.
+        """
+        parts: list[str] = []
+        heading = chunk.heading_context or ""
+        if heading:
+            parts.append(f"Section: {heading}")
+        caption = chunk.metadata.get("caption", "")
+        if caption:
+            parts.append(f"Caption: {caption}")
+        return " | ".join(parts)
+
     def _generate_caption(self, image_ref: str | Path, context_hint: str = "") -> str | None:
         """Run the VLM on *image_ref* and return a text caption.
 
@@ -203,11 +224,7 @@ class VLMEnricher(BaseResolver):
         b64 = base64.b64encode(raw_bytes).decode("utf-8")
         mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
 
-        prompt = (f"[Context: {context_hint}] " if context_hint else "") + (
-            "Describe this image in one sentence. If it is a logo, icon, decorative "
-            "element, background graphic, or contains no substantive information, "
-            "respond with just SKIP."
-        )
+        prompt = (f"[Context: {context_hint}] " if context_hint else "") + self._VLM_PROMPT_INSTRUCTION
 
         result = self._client.try_complete(
             messages=[
