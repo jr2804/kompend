@@ -13,6 +13,8 @@
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 "pipx:beads-mcp" = "latest"
+"pipx:repowise" = "latest"
+"github:1broseidon/ketch" = "latest"
 
 
 [tasks.add-mcp-servers]
@@ -31,4 +33,6 @@ run = [
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck --args --mcp vibecheck',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n aislop --args -y --args aislop-mcp npx',
 	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads beads-mcp',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n repowise --args mcp --args . repowise',
+	'bun x add-mcp -y -a {{usage.ai_agent}} -n ketch --args mcp --args serve ketch',
 ]
