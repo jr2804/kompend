@@ -344,6 +344,33 @@ JSON field from an upstream SDK) are that API's contract, not ours to rename —
 they are read as literals. When in doubt whether a key is ours, ask: did we
 define the schema that produces it? If yes, it is ours and must be a symbol.
 
+#### Enforcement — `scripts/check_field_consistency.py`
+
+An AST scanner enforces this antipattern at CI time. Run it with
+`mise run check-field-consistency` (or
+`uv run python scripts/check_field_consistency.py`). It exits non-zero on any
+bare-string literal used as a dict key, subscript, or ``.get()`` argument
+that matches a member value of a policed StrEnum (currently ``MetadataField``,
+``WikiField``, ``MemoryField``, plus the module-local ``FtsField``/``ZvecField``
+scoped to their own modules). The scan is **0 violations** and must stay there.
+
+Notes for working with the checker:
+
+- **Per-enum consumer scoping.** ``MetadataField``/``WikiField`` apply
+  repo-wide; ``FtsField``/``ZvecField`` apply only to their defining modules
+  (their members — ``"content"``, ``"title"``, ``"id"`` — are too generic to
+  police across unrelated dicts like chat-message payloads).
+- **Generic values are in a denylist.** ``"source"`` and ``"metadata"`` are
+  overloaded across unrelated contracts (edge dicts, parser config, stats) and
+  are not policed as bare literals — the enum members remain for explicit use.
+- **`# nocheck` per-line opt-out.** When a bare literal legitimately parses an
+  external schema (LLM JSON output, checkpoint files, lint-history records),
+  append ``# nocheck`` to the line with a short reason. Use sparingly — every
+  ``nocheck`` is an unpoliced contract and should be reviewed.
+- When you **add a new StrEnum** of contract keys, register it in
+  ``ENFORCED_ENUMS`` in the script (with the right consumer scope) so it is
+  policed going forward.
+
 ### Summary
 
 | Pattern | Forbidden | Correct approach |
