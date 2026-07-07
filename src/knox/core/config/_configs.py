@@ -77,12 +77,12 @@ class Verbosity(StrEnum):
 class LLMConfig:
     """Configuration for LLM models, timeouts, and fallback behavior."""
 
-    default_model: str
-    vlm_model: str
+    default_model: str | None = None
+    vlm_model: str | None = None
     fallback_chain: list[str] = field(default_factory=list)
     fallback_max_retries: int = 2
     timeout: float = 120.0
-    fallback_max_input: int = 8192
+    fallback_max_input: int = 32768
     fallback_max_output: int = 4096
     num_ctx_min: int = 2048
     num_ctx_max: int = 131072
@@ -162,7 +162,7 @@ class EmbeddingConfig:
     Dimensions are auto-detected from the model at runtime — never hardcoded.
     """
 
-    model: str
+    model: str | None = None
     batch_size: int = 10
 
 

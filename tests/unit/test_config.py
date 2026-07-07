@@ -106,8 +106,8 @@ class TestFlatKeys:
         assert sorted(_flat_keys(data)) == ["a", "b"]
 
     def test_nested_dict(self) -> None:
-        data = {"compile": {"budget": {"chunk_size_min": 512}, "format": "md"}}
-        assert sorted(_flat_keys(data)) == ["compile.budget.chunk_size_min", "compile.format"]
+        data = {"compile": {"budget": {"chunk_size_min": 512}, "output": {"format": "md"}}}
+        assert sorted(_flat_keys(data)) == ["compile.budget.chunk_size_min", "compile.output.format"]
 
     def test_deeply_nested(self) -> None:
         data = {"a": {"b": {"c": 1}}}
@@ -212,7 +212,7 @@ class TestResolveConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 2048
-        assert cfg.get("compile.format") == "markdown"
+        assert cfg.get("compile.output.format") == "markdown"
         assert cfg.get("compile.llm.fallback_max_retries") == 2
         assert cfg.get("compile.llm.vlm_model") is None
 
@@ -222,7 +222,7 @@ class TestResolveConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 128
-        assert cfg.get("compile.format") == "markdown"  # still default
+        assert cfg.get("compile.output.format") == "markdown"  # still default
 
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
@@ -301,11 +301,11 @@ class TestResolveConfig:
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("KNOX_WORKERS", "4")
-        cfg = resolve_config(cli_overrides={"compile.format": "json"})
+        cfg = resolve_config(cli_overrides={"compile.output.format": "json"})
 
         assert "project" in str(cfg.source_of("compile.budget.chunk_size_min"))
         assert "env" in str(cfg.source_of("compile.workers"))
-        assert "cli" in str(cfg.source_of("compile.format"))
+        assert "cli" in str(cfg.source_of("compile.output.format"))
         assert "default" in str(cfg.source_of("compile.image_mode"))
 
     def test_global_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
@@ -727,9 +727,9 @@ class TestGenerateScaffoldConfig:
 
 class TestExtractTomlKeys:
     def test_simple_keys(self) -> None:
-        text = '[compile.budget]\nchunk_size_min = 1024\n[compile]\nformat = "markdown"\n'
+        text = '[compile.budget]\nchunk_size_min = 1024\n[compile.output]\nformat = "markdown"\n'
         keys = extract_toml_keys(text)
-        assert "compile.format" in keys
+        assert "compile.output.format" in keys
         assert "compile.budget.chunk_size_min" in keys
 
     def test_nested_sections(self) -> None:
@@ -745,9 +745,9 @@ class TestExtractTomlKeys:
         assert "compile.no_cache" in keys
 
     def test_dotted_key_at_root(self) -> None:
-        text = 'compile.format = "markdown"\n'
+        text = 'compile.output.format = "markdown"\n'
         keys = extract_toml_keys(text)
-        assert "compile.format" in keys
+        assert "compile.output.format" in keys
 
 
 class TestKnoxDotExampleSync:

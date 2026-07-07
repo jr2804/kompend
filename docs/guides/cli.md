@@ -84,7 +84,7 @@ knox config COMMAND [OPTIONS]
 
 | Command | Description |
 |------|-------------|
-| `get <key>` | Print resolved value for a dotted config key (e.g. `compile.format`) |
+| `get <key>` | Print resolved value for a dotted config key (e.g. `compile.output.format`) |
 | `set <key> <value>` | Write a key to project config (or `--global` for global config) |
 | `list` | Print all resolved config keys with provenance |
 | `path` | Print the config file path (or `--global`) |

@@ -53,7 +53,7 @@ import os
 import re
 import tomllib
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -62,6 +62,14 @@ import tomli_w
 from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from knox.core.config._configs import (
+    BudgetConfig,
+    EmbeddingConfig,
+    LLMConfig,
+    OrganizeConfig,
+    OutputConfig,
+    PdfConfig,
+)
 from knox.core.config.keys import (
     COMPILE_BUDGET_CHUNK_SIZE_MAX,
     COMPILE_BUDGET_CHUNK_SIZE_MIN,
@@ -217,11 +225,30 @@ _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 
 # ── Built-in defaults ───────────────────────────────────────────────────
 
+def _dc_defaults(cls: type) -> dict[str, Any]:
+    """Serialize a dataclass's field defaults to a plain dict.
+
+    Enums are reduced to their ``.value`` so the result is TOML-serializable
+    and matches the string form users write in config files. Fields whose
+    default is ``None`` are included as ``None`` (config resolution treats
+    ``None`` as "unset, fall back to next layer").
+    """
+    out: dict[str, Any] = {}
+    for f in fields(cls):
+        if f.default is not MISSING:
+            val = f.default
+        elif f.default_factory is not MISSING:  # type: ignore[comparison-overlap]
+            val = f.default_factory()
+        else:
+            continue
+        out[f.name] = val.value if hasattr(val, "value") else val
+    return out
+
+
 DEFAULTS: dict[str, Any] = {
     "compile": {
         "sources_dir": "sources",
         "output_dir": "wiki",
-        "format": "markdown",
         "compiler": "graph",
         "image_mode": "file",
         "vlm_min_image_bytes": 2048,
@@ -242,58 +269,11 @@ DEFAULTS: dict[str, Any] = {
         "synthesize": True,
         "index": True,
         "lint": False,
-        "budget": {
-            "concepts_per_batch": 8,
-            "verify_min_ngram": 3,
-            "wicer_max_iterations": 3,
-            "min_content_length": 50,
-            "min_concept_sources": 2,
-            "max_concept_pages": 50,
-            "chunk_size_min": 2048,
-            "chunk_size_max": 131072,
-            "extract_output_max": 8192,
-            "gen_output_max": 16384,
-            "overview_output_max": 4096,
-            "verify_output_max": 4096,
-            "lint_output_max": 8192,
-            "wicer_probe_output_max": 4096,
-            "wicer_eval_output_max": 4096,
-            "summary_max_content_chars": 8000,
-            "summary_target_chars": 600,
-            "summary_skip_single_child": True,
-            "summary_chunk_threshold": 10,
-        },
-        "llm": {
-            "default_model": None,
-            "vlm_model": None,
-            "fallback_chain": [],
-            "fallback_max_retries": 2,
-            "timeout": 120.0,
-            "fallback_max_input": 32768,
-            "fallback_max_output": 4096,
-            "num_ctx_min": 2048,
-            "num_ctx_max": 131072,
-            "context_window_cap": None,
-            "api_base": None,
-            "api_key": None,
-            "data_format": "json",
-        },
-        "output": {
-            "flavor": None,
-            "frontmatter": {},
-            "rumdl_config": None,
-            "max_related_links": 15,
-        },
-        "pdf": {
-            "max_pages_before_chunking": 50,
-            "page_chunk_size": 30,
-            "page_chunk_overlap": 5,
-        },
-        "embedding": {
-            "model": None,
-            "batch_size": 10,
-            "dim": 384,
-        },
+        "budget": _dc_defaults(BudgetConfig),
+        "llm": _dc_defaults(LLMConfig),
+        "output": _dc_defaults(OutputConfig),
+        "pdf": _dc_defaults(PdfConfig),
+        "embedding": {**_dc_defaults(EmbeddingConfig), "dim": 384},
     },
     "lint": {
         "enabled": None,  # None = all structural rules
@@ -347,12 +327,7 @@ DEFAULTS: dict[str, Any] = {
             },
         },
     },
-    "organize": {
-        "max_depth": 3,
-        "min_subcategories": 2,
-        "min_files_per_category": 2,
-        "collapse_single_file": True,
-    },
+    "organize": _dc_defaults(OrganizeConfig),
     "ignore": {
         "patterns": [],
     },

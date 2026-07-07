@@ -73,7 +73,7 @@ Built-in defaults ship with the package. Inspect them via `knox config list`.
 ### `knox config get`
 
 ```bash
-knox config get compile.format
+knox config get compile.output.format
 knox config get paths.wiki_dir
 ```
 
@@ -83,7 +83,7 @@ Prints the resolved value, respecting all 5 layers.
 
 ```bash
 # Write to project config (.knox/config.toml)
-knox config set compile.format json
+knox config set compile.output.format json
 knox config set compile.chunk_size 1024
 
 # Write to global config

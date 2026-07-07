@@ -9,7 +9,7 @@ Open-WebUI can consume both.
 ### 1. Compile a wiki with vector index
 
 ```bash
-knox config set compile.format json
+knox config set compile.output.format json
 knox compile ./sources
 ```
 

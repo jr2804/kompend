@@ -14,9 +14,11 @@ file is part of the public configuration contract.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field
+from dataclasses import fields as dc_fields
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from knox.core.config import (
     BudgetConfig,
@@ -30,53 +32,15 @@ from knox.core.config import (
     ResolvedConfig,
 )
 from knox.core.config.keys import (
-    COMPILE_BUDGET_CHUNK_SIZE_MAX,
-    COMPILE_BUDGET_CHUNK_SIZE_MIN,
-    COMPILE_BUDGET_CONCEPTS_PER_BATCH,
-    COMPILE_BUDGET_EXTRACT_OUTPUT_MAX,
-    COMPILE_BUDGET_GEN_OUTPUT_MAX,
-    COMPILE_BUDGET_LINT_OUTPUT_MAX,
-    COMPILE_BUDGET_MAX_CONCEPT_PAGES,
-    COMPILE_BUDGET_MIN_CONCEPT_SOURCES,
-    COMPILE_BUDGET_MIN_CONTENT_LENGTH,
-    COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX,
-    COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD,
-    COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS,
-    COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD,
-    COMPILE_BUDGET_SUMMARY_TARGET_CHARS,
-    COMPILE_BUDGET_VERIFY_MIN_NGRAM,
-    COMPILE_BUDGET_VERIFY_OUTPUT_MAX,
-    COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX,
-    COMPILE_BUDGET_WICER_MAX_ITERATIONS,
-    COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX,
     COMPILE_CACHE_DIR,
     COMPILE_COMPILER,
-    COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
-    COMPILE_FORMAT,
     COMPILE_IMAGE_MODE,
-    COMPILE_LLM_CONTEXT_WINDOW_CAP,
-    COMPILE_LLM_DATA_FORMAT,
     COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_FALLBACK_MAX_INPUT,
-    COMPILE_LLM_FALLBACK_MAX_OUTPUT,
-    COMPILE_LLM_FALLBACK_MAX_RETRIES,
-    COMPILE_LLM_NUM_CTX_MAX,
-    COMPILE_LLM_NUM_CTX_MIN,
-    COMPILE_LLM_ROLE_MODELS,
-    COMPILE_LLM_TIMEOUT,
-    COMPILE_LLM_VLM_MODEL,
     COMPILE_MEMORY_DECAY_THRESHOLD,
     COMPILE_MEMORY_ENABLED,
     COMPILE_MEMORY_HALF_LIFE_DAYS,
     COMPILE_NO_CACHE,
-    COMPILE_OUTPUT_FLAVOR,
-    COMPILE_OUTPUT_FRONTMATTER,
-    COMPILE_OUTPUT_RUMDL_CONFIG,
-    COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING,
-    COMPILE_PDF_PAGE_CHUNK_OVERLAP,
-    COMPILE_PDF_PAGE_CHUNK_SIZE,
     COMPILE_RESPECT_GITIGNORE,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
@@ -219,16 +183,27 @@ class PipelineConfig:
     @classmethod
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
-        llm_fallback_chain = cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])
-        llm_fallback_max_retries = cfg.get(COMPILE_LLM_FALLBACK_MAX_RETRIES, 2)
-        cfg.get(COMPILE_LLM_DEFAULT_MODEL)
-        role_models_raw = cfg.get(COMPILE_LLM_ROLE_MODELS, {})
-        role_models = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()} if isinstance(role_models_raw, dict) else {}
 
-        frontmatter_defaults = dict(cfg.get(COMPILE_OUTPUT_FRONTMATTER, {}))
-        rumdl_config_file = cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG)
-        if isinstance(rumdl_config_file, str):
-            rumdl_config_file = Path(rumdl_config_file)
+        def _kwargs_for(cls: type, section: str) -> dict[str, Any]:
+            """Build constructor kwargs for a dataclass from a config section.
+
+            Reads each field's value from ``cfg`` via ``f"{section}.{field_name}"`",
+            falling back to the dataclass's own default when the key is absent.
+            Coerces enum-typed defaults to their constructor on read.
+            """
+            out: dict[str, Any] = {}
+            for f in dc_fields(cls):
+                key = f"{section}.{f.name}"
+                if cfg.get(key) is not None:
+                    val = cfg.get(key)
+                elif f.default is not MISSING:
+                    val = f.default
+                elif f.default_factory is not MISSING:  # type: ignore[comparison-overlap]
+                    val = f.default_factory()
+                else:
+                    continue
+                out[f.name] = val
+            return out
 
         default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         if not default_model or "${" in str(default_model):
@@ -238,59 +213,28 @@ class PipelineConfig:
                 f"add it to the TOML config file, or pass "
                 f"--set {COMPILE_LLM_DEFAULT_MODEL}=... on the command line."
             )
-        llm_config = LLMConfig(
-            default_model=default_model,
-            vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
-            fallback_chain=llm_fallback_chain,
-            fallback_max_retries=llm_fallback_max_retries,
-            timeout=cfg.get(COMPILE_LLM_TIMEOUT, 120.0),
-            fallback_max_input=cfg.get(COMPILE_LLM_FALLBACK_MAX_INPUT, 8192),
-            fallback_max_output=cfg.get(COMPILE_LLM_FALLBACK_MAX_OUTPUT, 4096),
-            num_ctx_min=cfg.get(COMPILE_LLM_NUM_CTX_MIN, 2048),
-            num_ctx_max=cfg.get(COMPILE_LLM_NUM_CTX_MAX, 131072),
-            context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP),
-            role_models=role_models,
-            data_format=LlmDataFormat(cfg.get(COMPILE_LLM_DATA_FORMAT, "json")),
-        )
+        llm_kwargs = _kwargs_for(LLMConfig, "compile.llm")
+        # Coerce string data_format to enum; sanitize role_models values.
+        if "data_format" in llm_kwargs and not isinstance(llm_kwargs["data_format"], LlmDataFormat):
+            llm_kwargs["data_format"] = LlmDataFormat(llm_kwargs["data_format"])
+        role_models_raw = llm_kwargs.pop("role_models", {})
+        if isinstance(role_models_raw, dict):
+            llm_kwargs["role_models"] = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()}
+        else:
+            llm_kwargs["role_models"] = {}
+        llm_config = LLMConfig(**llm_kwargs)
 
-        budget_config = BudgetConfig(
-            concepts_per_batch=cfg.get(COMPILE_BUDGET_CONCEPTS_PER_BATCH, BudgetConfig().concepts_per_batch),
-            verify_min_ngram=cfg.get(COMPILE_BUDGET_VERIFY_MIN_NGRAM, BudgetConfig().verify_min_ngram),
-            wicer_max_iterations=cfg.get(COMPILE_BUDGET_WICER_MAX_ITERATIONS, BudgetConfig().wicer_max_iterations),
-            min_content_length=cfg.get(COMPILE_BUDGET_MIN_CONTENT_LENGTH, BudgetConfig().min_content_length),
-            min_concept_sources=cfg.get(COMPILE_BUDGET_MIN_CONCEPT_SOURCES, BudgetConfig().min_concept_sources),
-            max_concept_pages=cfg.get(COMPILE_BUDGET_MAX_CONCEPT_PAGES, BudgetConfig().max_concept_pages),
-            chunk_size_min=cfg.get(COMPILE_BUDGET_CHUNK_SIZE_MIN, BudgetConfig().chunk_size_min),
-            chunk_size_max=cfg.get(COMPILE_BUDGET_CHUNK_SIZE_MAX, BudgetConfig().chunk_size_max),
-            extract_output_max=cfg.get(COMPILE_BUDGET_EXTRACT_OUTPUT_MAX, BudgetConfig().extract_output_max),
-            gen_output_max=cfg.get(COMPILE_BUDGET_GEN_OUTPUT_MAX, BudgetConfig().gen_output_max),
-            overview_output_max=cfg.get(COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX, BudgetConfig().overview_output_max),
-            verify_output_max=cfg.get(COMPILE_BUDGET_VERIFY_OUTPUT_MAX, BudgetConfig().verify_output_max),
-            lint_output_max=cfg.get(COMPILE_BUDGET_LINT_OUTPUT_MAX, BudgetConfig().lint_output_max),
-            wicer_probe_output_max=cfg.get(COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX, BudgetConfig().wicer_probe_output_max),
-            wicer_eval_output_max=cfg.get(COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX, BudgetConfig().wicer_eval_output_max),
-            summary_max_content_chars=cfg.get(COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS, BudgetConfig().summary_max_content_chars),
-            summary_target_chars=cfg.get(COMPILE_BUDGET_SUMMARY_TARGET_CHARS, BudgetConfig().summary_target_chars),
-            summary_skip_single_child=cfg.get(COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD, BudgetConfig().summary_skip_single_child),
-            summary_chunk_threshold=cfg.get(COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD, BudgetConfig().summary_chunk_threshold),
-        )
+        budget_config = BudgetConfig(**_kwargs_for(BudgetConfig, "compile.budget"))
 
-        output_config = OutputConfig(
-            format=cfg.get(COMPILE_FORMAT, OutputConfig().format),
-            flavor=cfg.get(COMPILE_OUTPUT_FLAVOR, OutputConfig().flavor),
-            frontmatter=frontmatter_defaults,
-            rumdl_config=rumdl_config_file,
-        )
+        output_kwargs = _kwargs_for(OutputConfig, "compile.output")
+        if "format" in output_kwargs and not isinstance(output_kwargs["format"], OutputFormat):
+            output_kwargs["format"] = OutputFormat(output_kwargs["format"])
+        if isinstance(output_kwargs.get("rumdl_config"), str):
+            output_kwargs["rumdl_config"] = Path(output_kwargs["rumdl_config"])
+        output_config = OutputConfig(**output_kwargs)
 
-        embedding_config = EmbeddingConfig(
-            model=cfg.get(COMPILE_EMBEDDING_MODEL),
-        )
-
-        pdf_config = PdfConfig(
-            max_pages_before_chunking=cfg.get(COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING, PdfConfig().max_pages_before_chunking),
-            page_chunk_size=cfg.get(COMPILE_PDF_PAGE_CHUNK_SIZE, PdfConfig().page_chunk_size),
-            page_chunk_overlap=cfg.get(COMPILE_PDF_PAGE_CHUNK_OVERLAP, PdfConfig().page_chunk_overlap),
-        )
+        embedding_config = EmbeddingConfig(**_kwargs_for(EmbeddingConfig, "compile.embedding"))
+        pdf_config = PdfConfig(**_kwargs_for(PdfConfig, "compile.pdf"))
 
         # Resolve notes file path relative to wiki_dir
         notes_file_name = cfg.get("notes.file", "NOTES.md")

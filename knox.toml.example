@@ -55,9 +55,6 @@ file = "NOTES.md"
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]
-# Output format: markdown | json | typst
-format = "markdown"
-
 # Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
 compiler = "graph"
 
@@ -255,6 +252,9 @@ timeout = 120.0
 # ── Output settings ─────────────────────────────────────────────────────
 
 [compile.output]
+# Output format: markdown | json | typst
+format = "markdown"
+
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
 # Set to auto-detect when omitted.
 # flavor = "obsidian"

@@ -261,7 +261,7 @@ Key config keys:
 | `compile.llm.default_model` | `""` | LLM for compilation/querying |
 | `compile.llm.vlm_model` | `""` | VLM for image captioning |
 | `compile.embedding.model` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-| `compile.format` | `markdown` | Output format (markdown, json, typst) |
+| `compile.output.format` | `markdown` | Output format (markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
 | `ingest.parser` | `docling` | Ingestion backend, or comma-separated priority list (docling, liteparse, pandoc; first match wins) |
