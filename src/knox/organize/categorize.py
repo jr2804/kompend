@@ -78,6 +78,23 @@ class CategoryTree:
             out.extend(cat.all_files())
         return out
 
+    def remap_files(self, mapping: dict[str, str]) -> None:
+        """Rewrite every file path in-place using ``mapping`` (old -> new).
+
+        Called after ``flatten_sources`` so the tree's file paths reflect
+        the post-flatten top-level locations.
+        """
+        self.unfiled = [mapping.get(f, f) for f in self.unfiled]
+        for cat in self.categories:
+            _remap_node(cat, mapping)
+
+
+def _remap_node(node: CategoryNode, mapping: dict[str, str]) -> None:
+    """Recursively rewrite file paths in ``node`` using ``mapping``."""
+    node.files = [mapping.get(f, f) for f in node.files]
+    for child in node.subcategories:
+        _remap_node(child, mapping)
+
 
 def load_all_extractions(
     base_dir: Path,

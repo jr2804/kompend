@@ -434,6 +434,67 @@ class TestFlattenSources:
         assert len(moves) == 1
         assert moves[0].old == "sub/c.md"
 
+    def test_remap_files_after_flatten(self, tmp_path: Path) -> None:
+        """Regression: tree file paths must be rewritten after flatten_sources.
+
+        Previously the flatten return value was discarded, so move_files
+        looked for pre-flatten paths (e.g. 'sub/foo.pdf') and warned
+        'File in tree but missing on disk'.
+        """
+        sources = tmp_path / "sources"
+        (sources / "sub").mkdir(parents=True)
+        (sources / "sub" / "foo.pdf").write_text("x")
+        (sources / "sub" / "bar.pdf").write_text("y")
+
+        # Simulate the engine flow: build tree from pre-flatten paths, then
+        # flatten, then remap.
+        tree = CategoryTree(
+            categories=[
+                CategoryNode(name="papers", files=["sub/foo.pdf", "sub/bar.pdf"]),
+            ],
+        )
+        flat_moves = flatten_sources(sources)
+        flatten_remap = {m.old: m.new for m in flat_moves}
+        assert flatten_remap == {"sub/foo.pdf": "foo.pdf", "sub/bar.pdf": "bar.pdf"}
+        tree.remap_files(flatten_remap)
+
+        # Tree now references post-flatten top-level paths
+        assert tree.categories[0].files == ["foo.pdf", "bar.pdf"]
+
+    def test_move_files_with_nested_subcategories(self, tmp_path: Path) -> None:
+        """Regression: subcategory recursion must resolve src from sources_dir,
+        not from the parent category dir.
+
+        Previously _move_node used ``target_dir.parent`` to resolve the source
+        path. For nested categories that resolved to ``sources/cat/sub/file``
+        instead of ``sources/file``, causing every subcategory file to warn
+        'File in tree but missing on disk'.
+        """
+        sources = tmp_path / "sources"
+        sources.mkdir()
+        for name in ["a.pdf", "b.pdf", "c.pdf"]:
+            (sources / name).write_text("x")
+
+        tree = CategoryTree(
+            categories=[
+                CategoryNode(
+                    name="cat",
+                    subcategories=[
+                        CategoryNode(name="sub", files=["a.pdf", "b.pdf"]),
+                    ],
+                ),
+            ],
+        )
+
+        moves = move_files(sources, tree)
+
+        moved_names = {m.new for m in moves}
+        assert "cat/sub/a.pdf" in moved_names
+        assert "cat/sub/b.pdf" in moved_names
+        assert (sources / "cat" / "sub" / "a.pdf").is_file()
+        assert (sources / "cat" / "sub" / "b.pdf").is_file()
+        assert not (sources / "a.pdf").exists()
+
 
 class TestMaterializeTree:
     def test_creates_dirs(self, tmp_path: Path) -> None:

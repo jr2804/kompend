@@ -125,7 +125,10 @@ def organize_sources(
             files_without_summary=files_without_summary,
         )
 
-    _ = flatten_sources(sources_dir)
+    flat_moves = flatten_sources(sources_dir)
+    flatten_remap = {m.old: m.new for m in flat_moves}
+    if flatten_remap:
+        validated.remap_files(flatten_remap)
     materialize_tree(sources_dir, validated)
     moves = move_files(sources_dir, validated)
 

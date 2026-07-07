@@ -96,33 +96,33 @@ def move_files(sources_dir: Path, tree: CategoryTree) -> list[FileMove]:
     sources_dir = sources_dir.resolve()
     moves: list[FileMove] = []
     for cat in tree.categories:
-        moves.extend(_move_node(sources_dir / cat.name, cat, prefix=""))
+        moves.extend(_move_node(sources_dir, sources_dir / cat.name, cat, prefix=""))
     return moves
 
 
-def _move_node(target_dir: Path, node: CategoryNode, *, prefix: str) -> list[FileMove]:
+def _move_node(sources_dir: Path, target_dir: Path, node: CategoryNode, *, prefix: str) -> list[FileMove]:
     moves: list[FileMove] = []
     for filename in node.files:
-        src = target_dir.parent / filename
+        src = sources_dir / filename
         if not src.is_file():
             logger.warning("File in tree but missing on disk: %s", filename)
             continue
         new_rel = f"{prefix}{node.name}/{filename}" if prefix else f"{node.name}/{filename}"
-        new_abs = target_dir.parent / new_rel
+        new_abs = sources_dir / new_rel
         if new_abs.exists() and new_abs.resolve() != src.resolve():
             p = Path(filename)
             for idx in range(2, 10_000):
                 candidate = f"{p.stem}-{idx}{p.suffix}"
                 candidate_rel = f"{prefix}{node.name}/{candidate}" if prefix else f"{node.name}/{candidate}"
-                if not (target_dir.parent / candidate_rel).exists():
-                    new_rel, new_abs = candidate_rel, target_dir.parent / candidate_rel
+                if not (sources_dir / candidate_rel).exists():
+                    new_rel, new_abs = candidate_rel, sources_dir / candidate_rel
                     break
         new_abs.parent.mkdir(parents=True, exist_ok=True)
         if new_abs.resolve() != src.resolve():
             shutil.move(str(src), str(new_abs))
         moves.append(FileMove(old=filename, new=new_rel))
     for child in node.subcategories:
-        moves.extend(_move_node(target_dir / child.name, child, prefix=f"{prefix}{node.name}/" if prefix else f"{node.name}/"))
+        moves.extend(_move_node(sources_dir, target_dir / child.name, child, prefix=f"{prefix}{node.name}/" if prefix else f"{node.name}/"))
     return moves
 
 
