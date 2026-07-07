@@ -28,6 +28,7 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import argparse
 import ast
 import importlib
@@ -358,7 +359,6 @@ def main() -> int:
         all_violations.extend(scan_file(f, entries))
 
     if args.json:
-        import json  # noqa: PLC0415  # heavy stdlib pull, only needed in JSON mode
 
         payload = [
             {
