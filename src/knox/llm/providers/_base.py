@@ -1,7 +1,7 @@
 """Shared base for thin litellm providers that wrap an OpenAI-compatible API.
 
 Most custom providers in KNOX follow the same pattern: accept a custom
-model prefix (``claudin-io/``, ``ollama-cloud/``, ``opencode-zen/``,
+model prefix (``claudinio/``, ``ollama-cloud/``, ``opencode-zen/``,
 ``opencode-go/``), strip the prefix, then delegate to litellm with a
 different model prefix, ``api_base``, and ``api_key``.
 

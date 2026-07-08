@@ -1,7 +1,8 @@
 """Custom litellm provider for claudin.io (OpenAI-compatible API).
 
-``claudin-io/<model>`` routes to ``https://api.claudin.io/v1``
-(OpenAI-format requests; the SDK appends ``/chat/completions``).
+``claudinio/<model>`` (primary), ``claudin-io/<model>`` (alias) route
+both to ``https://api.claudin.io/v1`` (OpenAI-format requests; the SDK
+appends ``/chat/completions``).
 Model names like ``claudinio`` (balanced) or ``claudius`` (premium).
 """
 
@@ -16,8 +17,8 @@ _CLAUDIN_IO_API_KEY_ENV = "CLAUDINIO_API_KEY"
 
 
 class _ClaudinIOProvider(_CustomProvider):
-    """Routes ``claudin-io/<model>`` through the ``openai`` handler
-    at the claudin.io API endpoint.
+    """Routes ``claudinio/<model>`` (or ``claudin-io/<model>``)
+    through the ``openai`` handler at the claudin.io API endpoint.
     """
 
     BASE_URL = _CLAUDIN_IO_BASE_URL

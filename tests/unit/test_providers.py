@@ -23,7 +23,13 @@ class TestClaudinIOProvider:
     _TEST_MODEL = "test-model"
 
     def test_provider_registered_on_import(self) -> None:
-        """claudin-io provider should be auto-registered on import."""
+        """claudinio provider should be auto-registered on import."""
+        providers = [e for e in (litellm.custom_provider_map or []) if e.get("provider") == "claudinio"]
+        assert len(providers) == 1
+        assert providers[0]["custom_handler"] is not None
+
+    def test_provider_alias_registered(self) -> None:
+        """claudin-io alias should also be auto-registered."""
         providers = [e for e in (litellm.custom_provider_map or []) if e.get("provider") == "claudin-io"]
         assert len(providers) == 1
         assert providers[0]["custom_handler"] is not None
@@ -31,7 +37,7 @@ class TestClaudinIOProvider:
     def test_provider_model_format(self) -> None:
         """Provider should delegate with custom base URL, stripping prefix."""
         # _delegate_kwargs receives the full prefix/model string from the patched get_llm_provider
-        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {"temperature": 0.7})
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudinio/{self._TEST_MODEL}", {"temperature": 0.7})
         assert kwargs["model"] == f"openai/{self._TEST_MODEL}"
         assert kwargs["api_base"] == "https://api.claudin.io/v1"
         assert kwargs["temperature"] == 0.7
@@ -39,13 +45,13 @@ class TestClaudinIOProvider:
     def test_provider_uses_env_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Provider should use CLAUDINIO_API_KEY from environment."""
         monkeypatch.setenv("CLAUDINIO_API_KEY", "test-key-123")
-        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {})
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudinio/{self._TEST_MODEL}", {})
         assert kwargs["api_key"] == "test-key-123"
 
     def test_provider_no_api_key_when_env_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Provider should return empty string when env var not set."""
         monkeypatch.delenv("CLAUDINIO_API_KEY", raising=False)
-        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudin-io/{self._TEST_MODEL}", {})
+        kwargs = _ClaudinIOProvider._delegate_kwargs(f"claudinio/{self._TEST_MODEL}", {})
         assert kwargs["api_key"] == ""
 
     def test_completion_delegates_to_litellm(self) -> None:
@@ -346,6 +352,7 @@ class TestGetLlmProviderPatch:
         assert "opencode-zen" not in litellm.provider_list
         assert "opencode-go" not in litellm.provider_list
         assert "opencode" not in litellm.provider_list
+        assert "claudinio" not in litellm.provider_list
         assert "claudin-io" not in litellm.provider_list
         assert "ollama-cloud" not in litellm.provider_list
 
@@ -354,6 +361,8 @@ class TestGetLlmProviderPatch:
         assert "opencode-zen" in litellm._custom_providers
         assert "opencode-go" in litellm._custom_providers
         assert "opencode" in litellm._custom_providers
+        assert "claudinio" in litellm._custom_providers
+        assert "claudin-io" in litellm._custom_providers
 
     def test_bare_opencode_routes_to_dummy(self) -> None:
         """Bare opencode/ prefix returns correct provider (dummy)."""

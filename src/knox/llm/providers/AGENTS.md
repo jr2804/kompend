@@ -3,7 +3,7 @@
 ## Purpose
 
 Custom litellm provider implementations for KNOX. Each provider routes a custom
-prefix (e.g., `claudin-io/`, `ollama-cloud/`, `opencode-zen/`) to a third-party
+prefix (e.g., `claudinio/`, `ollama-cloud/`, `opencode-zen/`) to a third-party
 API through litellm's `CustomLLM` interface.
 
 ## Rules
@@ -23,6 +23,20 @@ Same rule applies to tests — use a constant like `_TEST_MODEL = "test-model"`.
    correct endpoint format. See `opencode.py` for the pattern.
 2. **Provider does NOT support model list**: accept whatever model name the
    user passes. Do NOT guess, hard-code, or maintain a static model list.
+
+### Provider prefix must match models.dev (when listed)
+
+KNOX discovers context windows from `models.dev/catalog.json` (see
+`src/knox/llm/models_dev.py`). When a provider is listed on models.dev,
+the registration prefix must match their provider name exactly — e.g.
+`claudinio/`, not `claudin-io/` — so the catalog matcher can resolve it.
+
+Note: only ~230 models are currently in `catalog.json` (the structured API).
+A provider can have a models.dev page without appearing in the catalog;
+context window then falls through to the configured `fallback_max_input`.
+
+Set `context_window_cap` or `fallback_max_input` in config when the
+fallback doesn't match your model's actual context window.
 
 ### Architecture patterns
 
@@ -58,6 +72,6 @@ Every provider must have tests in `tests/unit/test_providers.py` covering:
 | File | Contents |
 |------|----------|
 | `__init__.py` | Re-exports, `_register_custom_providers()`, auto-registration |
-| `claudin_io.py` | `_ClaudinIOProvider` — OpenAI-compat API at <https://api.claudin.io/v1> |
+| `claudin_io.py` | `_ClaudinIOProvider` — OpenAI-compat API at <https://api.claudin.io/v1> (prefix: `claudinio/`, alias: `claudin-io/`) |
 | `ollama_cloud.py` | `_OllamaCloudProvider` — Ollama cloud API |
 | `opencode.py` | `_OpenCodeProvider` base + `*ZenProvider`, `*GoProvider`, `*DummyProvider` |

@@ -9,12 +9,14 @@ some very obvious ones are still missing: Ollama Cloud, OpenCode Go/Zen.
 
 Registered providers
 --------------------
-``claudin-io``
+``claudinio``
     OpenAI-compatible API at https://api.claudin.io/v1/chat/completions.
 
     Example::
 
-        default_model = "claudin-io/claudinio"
+        default_model = "claudinio/claudinio"
+
+    ``claudin-io/<model>`` is accepted as an alias.
 
     Authentication: set ``CLAUDINIO_API_KEY`` in your environment.
 
@@ -100,7 +102,8 @@ def _register_custom_providers() -> None:
     Idempotent — safe to call multiple times.
     """
     providers: list[tuple[str, type[litellm.CustomLLM]]] = [
-        ("claudin-io", _ClaudinIOProvider),
+        ("claudinio", _ClaudinIOProvider),
+        ("claudin-io", _ClaudinIOProvider),  # alias
         ("ollama-cloud", _OllamaCloudProvider),
         ("opencode-zen", _OpenCodeZenProvider),
         ("opencode-go", _OpenCodeGoProvider),
