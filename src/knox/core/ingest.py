@@ -179,18 +179,16 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         if progress_fn is not None:
             progress_fn(idx, total, source_file.name)
 
-        # Cache key is stem + content-hash prefix: collision-proof across
-        # same-stem files (e.g. numbered proceedings papers) yet stable when a
-        # file is moved by `knox organize`. One entry per distinct content.
-        # NOTE: the cache check MUST run before parser.parse() — Docling
-        # extraction is expensive and must not repeat for cached files.
-        out_file = cache_dir / parse_cache_name(source_file)
+        # Compute content hash once, reuse for cache key AND state store.
+        # Avoids reading the entire file twice on cache-hit paths.
+        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+        cache_key = f"{source_file.stem}-{content_hash[:_CACHE_HASH_LEN]}.json"
+        out_file = cache_dir / cache_key
 
         if not no_cache and out_file.exists():
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
-            content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
             state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
             continue
 

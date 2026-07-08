@@ -7,6 +7,7 @@ scan_dir, and URL downloading — shared by both `parse` and `compile`.
 from __future__ import annotations
 
 import bz2
+import filecmp
 import gzip
 import hashlib
 import lzma
@@ -319,7 +320,7 @@ def ensure_in_sources(
             # Not inside sources_dir — copy it in
             target_file = sources_dir / input_file.name
             if target_file.exists():
-                if target_file.read_bytes() == resolved_input.read_bytes():
+                if filecmp.cmp(target_file, resolved_input, shallow=False):
                     logger.debug("Skipping %s — identical file exists in sources", input_file)
                     result.append(target_file)
                     continue
