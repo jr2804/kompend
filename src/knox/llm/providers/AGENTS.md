@@ -31,12 +31,12 @@ KNOX discovers context windows from `models.dev/catalog.json` (see
 the registration prefix must match their provider name exactly — e.g.
 `claudinio/`, not `claudin-io/` — so the catalog matcher can resolve it.
 
-Note: only ~230 models are currently in `catalog.json` (the structured API).
-A provider can have a models.dev page without appearing in the catalog;
-context window then falls through to the configured `fallback_max_input`.
-
-Set `context_window_cap` or `fallback_max_input` in config when the
-fallback doesn't match your model's actual context window.
+The catalog covers ~150+ providers and ~235 models at time of writing.
+If a provider is listed on models.dev, it is almost always in the catalog.
+When a model is NOT in the catalog (unlisted or very new), context window
+falls through to the configured `fallback_max_input`. Set
+`context_window_cap` or `fallback_max_input` in config when the fallback
+doesn't match your model's actual context window.
 
 ### Architecture patterns
 
