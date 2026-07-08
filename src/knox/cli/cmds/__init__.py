@@ -29,21 +29,34 @@ BACKWARD COMPATIBILITY:
 
 from __future__ import annotations
 
-from knox.cli.cmds import capture as capture
-from knox.cli.cmds import config as config
-from knox.cli.cmds import doctor as doctor
-from knox.cli.cmds import init as init
-from knox.cli.cmds import lint as lint
-from knox.cli.cmds import log as log
-from knox.cli.cmds import memory as memory
-from knox.cli.cmds import organize as organize
-from knox.cli.cmds import pack as pack
-from knox.cli.cmds import pipeline as pipeline
-from knox.cli.cmds import quality as quality
-from knox.cli.cmds import query as query
-from knox.cli.cmds import review as review
-from knox.cli.cmds import serve as serve
-from knox.cli.cmds import status as status
+import importlib
+from types import ModuleType
+
+_MODULE_NAMES: frozenset[str] = frozenset({
+    "capture",
+    "config",
+    "doctor",
+    "init",
+    "lint",
+    "log",
+    "memory",
+    "organize",
+    "pack",
+    "pipeline",
+    "quality",
+    "query",
+    "review",
+    "serve",
+    "status",
+})
+
+
+def __getattr__(name: str) -> ModuleType:
+    if name in _MODULE_NAMES:
+        return importlib.import_module(f"knox.cli.cmds.{name}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
 
 __all__ = [
     "capture",
@@ -51,6 +64,7 @@ __all__ = [
     "doctor",
     "init",
     "lint",
+    "log",
     "memory",
     "organize",
     "pack",
@@ -61,3 +75,8 @@ __all__ = [
     "serve",
     "status",
 ]
+
+
+def __dir__() -> list[str]:
+    """Include lazy module names in dir()."""
+    return sorted(_MODULE_NAMES)

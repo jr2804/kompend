@@ -63,6 +63,8 @@ ignore = [
 # Use of assert statements in tests is pytest default behavior
 # PLR6301: test methods on pytest classes don't need self
 "tests/**/*.py" = ["S101", "PLR6301"]
+# Lazy __getattr__: __all__ names are resolved at runtime, not statically
+"src/knox/cli/cmds/__init__.py" = ["F822"]
 
 [lint.pylint]
 max-locals = 20

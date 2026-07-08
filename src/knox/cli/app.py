@@ -1,8 +1,17 @@
-"""Typer CLI app for My Project."""
+"""Typer CLI app — lazy command registration for fast startup.
+
+Command modules are imported on-demand: only the module for the invoked
+subcommand is loaded, so ``knox --version`` or ``knox config get`` never
+pay the ~16 s cost of importing ``sentence_transformers`` or the ~3 s for
+``litellm``.  ``--help`` and bare ``knox`` (no args) still load everything
+because the full command tree must be visible.
+"""
 
 from __future__ import annotations
 
 import contextlib
+import importlib
+import os
 import sys
 from importlib.metadata import version
 
@@ -65,6 +74,7 @@ def main() -> None:
     """Entry point for the CLI application."""
     configure_logging()
     _configure_streams_utf8()
+    _register_for_argv(sys.argv[1:])
     handle = log_run_start()
     try:
         app()
@@ -94,20 +104,82 @@ def _configure_streams_utf8() -> None:
                 reconfigure(encoding="utf-8", errors="replace")
 
 
-from knox.cli.cmds import (  # noqa: E402
-    capture,  # noqa: F401
-    config,  # noqa: F401
-    doctor,  # noqa: F401
-    init,  # noqa: F401
-    lint,  # noqa: F401
-    log,  # noqa: F401
-    memory,  # noqa: F401
-    organize,  # noqa: F401
-    pack,  # noqa: F401
-    pipeline,  # noqa: F401
-    quality,  # noqa: F401
-    query,  # noqa: F401
-    review,  # noqa: F401
-    serve,  # noqa: F401
-    status,  # noqa: F401
-)
+# ── Lazy command registry ─────────────────────────────────────────────
+#
+# Maps subcommand name → module path.  Importing the module registers its
+# command(s) on ``app`` via the ``@app.command()`` decorator side effect.
+# Multiple subcommands can share one module (e.g. ``compile`` + ``ingest`` +
+# ``parse`` all live in ``pipeline.py``).
+#
+# Modules NOT listed here are never imported by the CLI — add new commands
+# here when they are created.
+
+_LAZY_MODULES: dict[str, str] = {
+    "capture": "knox.cli.cmds.capture",
+    "learn": "knox.cli.cmds.capture",
+    "distill": "knox.cli.cmds.capture",
+    "write": "knox.cli.cmds.capture",
+    "config": "knox.cli.cmds.config",
+    "doctor": "knox.cli.cmds.quality",
+    "status": "knox.cli.cmds.quality",
+    "list-parsers": "knox.cli.cmds.quality",
+    "trace": "knox.cli.cmds.quality",
+    "init": "knox.cli.cmds.init",
+    "lint": "knox.cli.cmds.lint",
+    "log": "knox.cli.cmds.log",
+    "memory": "knox.cli.cmds.memory",
+    "organize": "knox.cli.cmds.organize",
+    "pack-list": "knox.cli.cmds.pack",
+    "pack-install": "knox.cli.cmds.pack",
+    "parse": "knox.cli.cmds.pipeline",
+    "compile": "knox.cli.cmds.pipeline",
+    "ingest": "knox.cli.cmds.pipeline",
+    "query": "knox.cli.cmds.query",
+    "review": "knox.cli.cmds.review",
+    "mcp": "knox.cli.cmds.serve",
+    "serve": "knox.cli.cmds.serve",
+}
+
+
+def register_command(name: str) -> None:
+    """Import the module that registers *name*.  No-op if unknown or already loaded."""
+    module_path = _LAZY_MODULES.get(name)
+    if module_path is not None:
+        importlib.import_module(module_path)
+
+
+def register_all_commands() -> None:
+    """Import every command module (for ``--help``, bare ``knox``, shell completion)."""
+    for module_path in dict.fromkeys(_LAZY_MODULES.values()):
+        importlib.import_module(module_path)
+
+
+def _find_requested_command(argv: list[str]) -> str | None:
+    """Return the subcommand name from *argv*, or *None* if none is present.
+
+    Handles global flags before the subcommand (``knox --wiki-dir x compile``).
+    """
+    for arg in argv:
+        if arg in _LAZY_MODULES:
+            return arg
+    return None
+
+
+def _register_for_argv(argv: list[str]) -> None:
+    """Lazy-register commands based on the incoming argv.
+
+    * ``--help`` / ``-h`` / empty argv → load all (help must list every command).
+    * Shell-completion env vars (``*_COMPLETE``) → load all.
+    * A known subcommand → load only its module.
+    * Otherwise (global flags only, e.g. ``--version``) → load nothing.
+    """
+    if (
+        not argv
+        or argv[0] in ("--help", "-h")
+        or any(k.endswith("_COMPLETE") for k in os.environ)
+    ):
+        register_all_commands()
+        return
+    requested = _find_requested_command(argv)
+    if requested is not None:
+        register_command(requested)

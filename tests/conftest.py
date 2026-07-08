@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
+# Ensure all CLI command modules are registered before tests run.
+# ``knox.cli.app`` no longer imports command modules eagerly (lazy startup)
+# so tests that use ``runner.invoke(app, [...])`` need them registered.
+from knox.cli.app import register_all_commands
 from knox.rag.zvec_store import EmbeddingProvider
+
+register_all_commands()
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"

@@ -24,6 +24,26 @@ calls the right core function, and formats the output. Nothing more.
 - CLI-specific orchestration (resolve files, download URLs, copy to sources dir)
 - Thin wrapper helpers that delegate to core with a console print after
 
+### Lazy command registration
+
+Command modules are NOT imported eagerly at startup. `app.py` maintains a
+`_LAZY_MODULES` dict mapping command names to `(module_path, attribute_name)`.
+Only the module for the invoked command is imported (or all for `--help`).
+
+**Why:** eager imports pulled `sentence_transformers` (~16s) and `litellm` (~3s)
+into every `knox` invocation. With lazy registration, `knox --version` takes
+~1.5s instead of ~23s.
+
+**Two-layer lazy:** `app.py` lazy-imports command modules on first use, AND
+`cmds/__init__.py` uses `__getattr__` to avoid eagerly importing sibling
+modules when any single command is accessed.
+
+**Adding a new command:**
+1. Add `"name": ("knox.cli.cmds.module", "app")` to `_LAZY_MODULES` in `app.py`
+2. Add `"name"` to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
+3. Tests: `conftest.py` calls `register_all_commands()` at session start
+4. No other changes needed — the module is imported on first invocation
+
 ### What does NOT belong in `knox.cli`
 
 | Prohibited | Belongs in |
@@ -44,7 +64,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
 | File/Directory | Purpose |
 |---|---|
-| `app.py` | Typer app instance, version callback, command auto-import |
+| `app.py` | Typer app instance, version callback, **lazy command registration** |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
