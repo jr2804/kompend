@@ -275,6 +275,9 @@ Otherwise, stay in the main agent.
 - Keep PRs small and scoped to one concern.
 - Do not force-push to main/master.
 - Do not use `--no-verify` or `--no-gpg-sign`.
+- Every push to `main` triggers an auto-release (`calver` tag + Forgejo
+  release). Add `[skip release]` to the commit message to push without
+  releasing — use for doc-only, chore, or beads-sync commits.
 
 ### Completion
 
