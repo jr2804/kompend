@@ -170,6 +170,8 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     (sources / "note.md").write_text("# Test\ncontent")
 
     class _BoomPipeline:
+        llm_client = None
+
         def run(self, progress_callback: object | None = None) -> None:
             raise RuntimeError("synthetic boom")
 
