@@ -9,7 +9,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.compilation import GraphCompiler, WiCERCompiler
-from knox.compilation._two_phase_core import Extraction, ExtractionSet, _merge_node
+from knox.compilation._two_phase_core import (
+    _FAILURE_THRESHOLD_MIN,
+    Extraction,
+    ExtractionSet,
+    _BatchFailureTracker,
+    _merge_node,
+)
 from knox.compilation.base import BaseCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
@@ -1151,7 +1157,7 @@ class TestTwoPhaseConceptSalvage:
         # Extraction succeeds, generation returns empty (all calls fail)
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.two_phase._try_litellm_json", return_value=None),
+            patch("knox.compilation.two_phase._complete_validated_batch", return_value=(None, None)),
         ):
             wiki = compiler.compile(chunks)
         assert wiki.metadata.get("generation_skipped") is True
@@ -1199,3 +1205,30 @@ class TestVlmArtifactFiltering:
             entities=[{"name": "vlm_skipped", "type": "Term"}, {"name": "Real Entity", "type": "Term"}],
         )
         return [c1, c2]
+
+
+class TestBatchFailureTracker:
+    """_BatchFailureTracker: per-batch retry failure accounting → stop threshold."""
+
+    def test_below_minimum_does_not_stop(self) -> None:
+        tracker = _BatchFailureTracker()
+        # All fail but below the minimum sample size — must not stop (small compile)
+        for _ in range(_FAILURE_THRESHOLD_MIN - 1):
+            tracker.record(failed=True)
+        assert tracker.should_stop() is False
+
+    def test_clears_threshold_at_high_failure_rate(self) -> None:
+        tracker = _BatchFailureTracker()
+        # 6 batches, 4 failed (>50%) → stop
+        for failed in [True, True, False, True, True, False]:
+            tracker.record(failed=failed)
+        assert tracker.total == 6
+        assert tracker.failed == 4
+        assert tracker.should_stop() is True
+
+    def test_low_failure_rate_does_not_stop(self) -> None:
+        tracker = _BatchFailureTracker()
+        # 6 batches, 2 failed (33%) → under 50%, keep going
+        for failed in [True, True, False, False, False, False]:
+            tracker.record(failed=failed)
+        assert tracker.should_stop() is False

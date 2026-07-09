@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from knox.llm.format import salvage_json
 
 
@@ -81,3 +83,47 @@ class TestSalvageRecursionGuard:
         # the structure if json handled it — either is fine, the point is no crash.
         result = salvage_json(deep)
         assert result is None or isinstance(result, list)
+
+
+class TestSalvageSchemaGuided:
+    """Schema-guided repair completes truncated/missing-field JSON toward a model."""
+
+    @staticmethod
+    def _schema() -> type:
+        class Page(BaseModel):
+            title: str
+            content: str
+
+        class Out(BaseModel):
+            summary: str
+            pages: list[Page]
+
+        return Out
+
+    def test_truncated_completes_toward_schema(self) -> None:
+        Out = self._schema()
+        # truncated mid-value — schema salvage completes the structure
+        out = salvage_json('{"summary": "s", "pages": [{"title": "A", "content": "x', schema=Out)
+        assert out == {"summary": "s", "pages": [{"title": "A", "content": "x"}]}
+
+    def test_missing_field_filled_with_default(self) -> None:
+        Out = self._schema()
+        out = salvage_json('{"summary": "s"}', schema=Out)
+        assert out is not None
+        assert out["summary"] == "s"
+        assert out["pages"] == []  # salvage fills the missing list field
+
+    def test_wrong_field_name_falls_back_to_schemaless(self) -> None:
+        Out = self._schema()
+        # schema mode raises on wrong field names — must fall back, not crash
+        out = salvage_json('{"sumry": "s", "pages": []}', schema=Out)
+        assert out == {"sumry": "s", "pages": []}
+
+    def test_correct_json_unchanged_by_schema_mode(self) -> None:
+        Out = self._schema()
+        out = salvage_json('{"summary": "ok", "pages": [{"title": "A", "content": "c"}]}', schema=Out)
+        assert out == {"summary": "ok", "pages": [{"title": "A", "content": "c"}]}
+
+    def test_no_schema_backward_compatible(self) -> None:
+        # callers that pass no schema still work exactly as before
+        assert salvage_json('{"a": 1}') == {"a": 1}

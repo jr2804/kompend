@@ -10,10 +10,10 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 import litellm
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from slugify import slugify as _slugify_impl
 
 from knox.compilation.schema import LLMOutputError
@@ -29,6 +29,19 @@ logger = get_logger(__name__)
 _loader = get_template_loader()
 
 _CHARS_PER_TOKEN = 4  # Approximate for English text.
+
+# Bounded retry per batch before giving up — captures the non-determinism of
+# small models (the same prompt often succeeds on a fresh attempt). The
+# global failure tracker (_BatchFailureTracker) is what makes a
+# systematically broken model fail hard.
+_BATCH_RETRY_ATTEMPTS: Final[int] = 3
+# A model failing more than this fraction of batches (after retries) is
+# treated as not suitable for structured JSON compilation — compile stops
+# early and the partial result is preserved (flagged incomplete).
+_FAILURE_THRESHOLD_RATIO: Final[float] = 0.5
+# Minimum batches before the threshold can fire — one failure in two batches
+# shouldn't abort a small compile.
+_FAILURE_THRESHOLD_MIN: Final[int] = 5
 
 # Minimum input tokens per generation segment.  Prevents absurdly tiny segments
 # when the model's context window is unknown or the fallback max_input is small
@@ -465,7 +478,7 @@ def _try_litellm_json(  # noqa: PLR0915
                 f"Model '{model_used}' returned empty content after {elapsed:.1f}s. "
                 "This model cannot produce structured JSON output and is not suitable for compilation."
             )
-        parsed = salvage_json(content)
+        parsed = salvage_json(content, schema=response_model)
         if parsed is None:
             snippet = content[:300].replace("\n", "\\n")
             raise LLMOutputError(f"Model '{model_used}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
@@ -479,6 +492,101 @@ def _try_litellm_json(  # noqa: PLR0915
         elapsed = time.monotonic() - start
         logger.warning("LLM call failed for model=%s in=%.1fs — %s", model, elapsed, exc)
         return {}
+
+
+class _BatchFailureTracker:
+    """Counts successful/failed batches; signals an unsuitable model.
+
+    A model that fails too high a fraction of batches — even after per-batch
+    retries — is treated as not suitable for structured JSON compilation.
+    :meth:`should_stop` returns True once the failure rate exceeds
+    :data:`_FAILURE_THRESHOLD_RATIO` *and* enough batches have run for the
+    rate to be meaningful.
+    """
+
+    __slots__ = ("total", "failed", "_ratio", "_min_batches")
+
+    def __init__(
+        self,
+        *,
+        ratio: float = _FAILURE_THRESHOLD_RATIO,
+        min_batches: int = _FAILURE_THRESHOLD_MIN,
+    ) -> None:
+        self.total = 0
+        self.failed = 0
+        self._ratio = ratio
+        self._min_batches = min_batches
+
+    def record(self, *, failed: bool) -> None:
+        self.total += 1
+        if failed:
+            self.failed += 1
+
+    def should_stop(self) -> bool:
+        """True once the model's failure rate clears the stop threshold."""
+        return self.total >= self._min_batches and self.failed / self.total > self._ratio
+
+
+def _complete_validated_batch(
+    *,
+    prompt: str,
+    model: str,
+    response_model: type[BaseModel],
+    system: str | None = None,
+    timeout: float | None = None,
+    call_stats: list[tuple[int, int]] | None = None,
+    max_tokens: int | None = None,
+    llm_client: LLMClient | None = None,
+    role: str = LLMRole.DEFAULT,
+    attempts: int = _BATCH_RETRY_ATTEMPTS,
+) -> tuple[Any | None, dict[str, Any] | None]:
+    """Call the LLM, schema-repair, and validate; retry up to *attempts* times.
+
+    Each attempt runs :func:`_try_litellm_json` (schema-guided repair inside)
+    then validates the parsed dict against *response_model*. A failure —
+    empty content, unparseable JSON, or schema-invalid output — is retried on a
+    fresh LLM call, capturing the non-determinism of small models.
+
+    Returns ``(validated_model_instance, raw_dict)`` on success, or
+    ``(None, None)`` after every attempt fails. Never raises — the caller plus
+    a :class:`_BatchFailureTracker` decide when a model is unsuitable.
+    """
+    last_reason = "no attempts ran"
+    for attempt in range(1, attempts + 1):
+        try:
+            data = _try_litellm_json(
+                prompt,
+                model,
+                system=system,
+                timeout=timeout,
+                call_stats=call_stats,
+                max_tokens=max_tokens,
+                response_model=response_model,
+                llm_client=llm_client,
+                role=role,
+            )
+        except LLMOutputError as exc:
+            last_reason = str(exc)
+            logger.warning("LLM batch attempt %d/%d unparseable — %s", attempt, attempts, last_reason)
+            continue
+        if not data:
+            last_reason = "empty response"
+            logger.warning("LLM batch attempt %d/%d returned no data", attempt, attempts)
+            continue
+        try:
+            validated = response_model.model_validate(data)
+        except ValidationError as exc:
+            last_reason = f"schema invalid: {str(exc)[:200]}"
+            logger.warning(
+                "LLM batch attempt %d/%d failed schema validation — %s",
+                attempt,
+                attempts,
+                str(exc)[:200],
+            )
+            continue
+        return validated, data
+    logger.warning("LLM batch failed after %d attempt(s): %s", attempts, last_reason)
+    return None, None
 
 
 def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:

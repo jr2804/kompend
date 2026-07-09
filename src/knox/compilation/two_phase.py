@@ -30,19 +30,20 @@ from knox.compilation._two_phase_core import (
     _MIN_SEGMENT_TOKENS,
     Extraction,
     ExtractionSet,
+    _BatchFailureTracker,
     _chars_to_tokens,
+    _complete_validated_batch,
     _compute_quality_score,
     _extract_images_from_chunks,
     _merge_extractions,
     _segment_sources,
     _slugify,
     _tokens_to_chars,
-    _try_litellm_json,
     _upsert_node,
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.compilation.schema import ExtractionOutput, GenerationOutput, ValidationError
+from knox.compilation.schema import ExtractionOutput, GenerationOutput
 from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
@@ -213,6 +214,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._llm_stats: list[tuple[int, int]] = []
         self._extraction_stats: list[dict[str, Any]] = []
         self._llm_client = llm_client
+        self._batch_tracker = _BatchFailureTracker()
 
         # Reuse the client's discovered context window when available; only
         # discover independently as a fallback (e.g. no LLM client provided).
@@ -325,6 +327,14 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki.metadata["llm_completion_tokens"] = total_comp
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 
+        # Flag partial results when the failure threshold stopped compilation
+        # early. The successful batches are preserved in the wiki; the flag +
+        # counts let downstream tooling warn the user the result is incomplete.
+        if self._batch_tracker.should_stop() or self._batch_tracker.failed > 0:
+            wiki.metadata["compile_incomplete"] = self._batch_tracker.should_stop()
+            wiki.metadata["batch_failures"] = self._batch_tracker.failed
+            wiki.metadata["batch_total"] = self._batch_tracker.total
+
         total_elapsed = time.monotonic() - compile_start
         wiki.metadata.get(WikiField.CHUNK_COUNT, 0)
         node_count = len(wiki.nodes)
@@ -346,7 +356,7 @@ class TwoPhaseCompiler(BaseCompiler):
             self._cache_store.set("generate", gen_deps, wiki)
         return wiki
 
-    def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
+    def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:  # noqa: PLR0915
         """Phase 1: run the LLM in extraction mode for each source.
 
         When *trees* are provided, extraction input is built from the
@@ -419,6 +429,7 @@ class TwoPhaseCompiler(BaseCompiler):
             batch_parts: list[str] = []
             batch_len = 0
             batch_extractions: list[Extraction | None] = []
+            stop_requested = False
 
             for text in texts:
                 if batch_len + len(text) > extract_char_budget and batch_parts:
@@ -426,10 +437,13 @@ class TwoPhaseCompiler(BaseCompiler):
                     batch_extractions.append(self._extract_one(source, combined, extraction_system))
                     batch_parts = []
                     batch_len = 0
+                    if self._batch_tracker.should_stop():
+                        stop_requested = True
+                        break
                 batch_parts.append(text)
                 batch_len += len(text)
 
-            if batch_parts:
+            if not stop_requested and batch_parts:
                 combined = "\n\n".join(batch_parts)
                 batch_extractions.append(self._extract_one(source, combined, extraction_system))
 
@@ -452,6 +466,15 @@ class TwoPhaseCompiler(BaseCompiler):
                     "batches": len(batch_extractions),
                 }
             )
+            if self._batch_tracker.should_stop():
+                logger.error(
+                    "TwoPhase: stopping extraction early — %d/%d batches failed "
+                    "(model '%s' is not suitable for structured JSON output)",
+                    self._batch_tracker.failed,
+                    self._batch_tracker.total,
+                    self._model,
+                )
+                break
         return extractions
 
     def generate(  # noqa: PLR0915
@@ -701,38 +724,36 @@ class TwoPhaseCompiler(BaseCompiler):
                     content=content_block,
                     pinned_facts=pinned_facts,
                 )
-                data = _try_litellm_json(
-                    prompt,
-                    system=generation_system,
+                gen_output, _data = _complete_validated_batch(
+                    prompt=prompt,
                     model=self._model,
+                    response_model=GenerationOutput,
+                    system=generation_system,
                     timeout=self._timeout,
                     call_stats=self._llm_stats,
                     max_tokens=min(self._context_window.max_output, self._budget.gen_output_max),
-                    response_model=GenerationOutput,
                     llm_client=self._llm_client,
                     role=LLMRole.COMPILE_GENERATE,
                 )
+                self._batch_tracker.record(failed=gen_output is None)
 
-                if not data:
+                if gen_output is None:
                     logger.warning(
-                        "TwoPhase: LLM returned no data for batch %d-%d, segment %d — skipping",
+                        "TwoPhase: LLM returned no valid data for batch %d-%d, segment %d after retries — skipping",
                         batch_start,
                         batch_start + len(batch),
                         seg_idx,
                     )
                     failed_count += 1
-                    continue
-
-                try:
-                    gen_output = GenerationOutput.model_validate(data)
-                except ValidationError:
-                    logger.warning(
-                        "TwoPhase: generation output failed schema validation for batch %d-%d, segment %d — skipping",
-                        batch_start,
-                        batch_start + len(batch),
-                        seg_idx,
-                    )
-                    failed_count += 1
+                    if self._batch_tracker.should_stop():
+                        logger.error(
+                            "TwoPhase: stopping generation early — %d/%d batches failed "
+                            "(model '%s' is not suitable for structured JSON output)",
+                            self._batch_tracker.failed,
+                            self._batch_tracker.total,
+                            self._model,
+                        )
+                        return nodes, slug_to_idx
                     continue
 
                 for idx, page in enumerate(gen_output.pages):
@@ -799,41 +820,34 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-        data = _try_litellm_json(
-            prompt,
-            system=extraction_system,
+        validated, _data = _complete_validated_batch(
+            prompt=prompt,
             model=self._model,
+            response_model=ExtractionOutput,
+            system=extraction_system,
             timeout=self._timeout,
             call_stats=self._llm_stats,
             max_tokens=min(self._context_window.max_output, self._budget.extract_output_max),
-            response_model=ExtractionOutput,
             llm_client=self._llm_client,
             role=LLMRole.COMPILE_EXTRACT,
         )
-        if data:
-            try:
-                validated = ExtractionOutput.model_validate(data)
-            except ValidationError:
-                logger.warning(
-                    "TwoPhase: extraction output failed schema validation for '%s' — skipping",
-                    source,
-                )
-                return None
-            result = Extraction(
-                source=source,
-                summary=validated.summary,
-                entities=[e.model_dump() for e in validated.entities],
-                concepts=[c.model_dump() for c in validated.concepts],
-                tags=validated.tags,
+        self._batch_tracker.record(failed=validated is None)
+        if validated is None:
+            logger.warning(
+                "TwoPhase: extraction skipped for source '%s' — LLM returned no valid data after retries",
+                source,
             )
-            if not self._config.no_cache:
-                self._cache_store.set("extract", extract_deps, result)
-            return result
-        logger.warning(
-            "TwoPhase: extraction skipped for source '%s' — LLM returned no parseable data",
-            source,
+            return None
+        result = Extraction(
+            source=source,
+            summary=validated.summary,
+            entities=[e.model_dump() for e in validated.entities],
+            concepts=[c.model_dump() for c in validated.concepts],
+            tags=validated.tags,
         )
-        return None
+        if not self._config.no_cache:
+            self._cache_store.set("extract", extract_deps, result)
+        return result
 
     def _gen_cache_deps(self, extractions: ExtractionSet, *, pinned_facts: list[str] | None = None) -> dict[str, str]:
         """Compute dependency hashes for generation cache.

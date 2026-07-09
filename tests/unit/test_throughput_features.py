@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
-from knox.compilation._two_phase_core import _normalize_concept_key
+from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, _complete_validated_batch, _normalize_concept_key
+from knox.compilation.schema import ExtractionOutput
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -67,6 +69,24 @@ def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
         toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes or []],
         metadata={},
     )
+
+
+def _validated_side_effect(dicts: list) -> Callable:
+    """Mock ``_complete_validated_batch`` that validates each dict via response_model.
+
+    Each call returns ``(model.validate(dict), dict)``; a ``None`` entry yields
+    ``(None, None)`` (a failed batch). Mirrors the real helper's contract so
+    tests can supply raw LLM-output dicts without constructing models by hand.
+    """
+    it = iter(dicts)
+
+    def _impl(**kwargs: object) -> tuple[object | None, dict | None]:
+        data = next(it)
+        if data is None:
+            return None, None
+        return kwargs["response_model"].model_validate(data), data
+
+    return _impl
 
 
 # ===========================================================================
@@ -714,12 +734,54 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            mock.return_value = None  # LLM unavailable → extraction returns None
+        with patch("knox.compilation.two_phase._complete_validated_batch", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
         assert len(wiki.nodes) == 0
+
+    def test_extraction_retry_succeeds_after_failure(self) -> None:
+        """_complete_validated_batch retries: a failed attempt then a success."""
+        valid = {"summary": "ok", "entities": [], "concepts": [{"name": "x", "definition": "y"}], "tags": []}
+        # First low-level call returns empty ({}  → falsy → retry); second succeeds.
+        with patch("knox.compilation._two_phase_core._try_litellm_json", side_effect=[{}, valid]):
+            result, data = _complete_validated_batch(
+                prompt="p",
+                model="m",
+                response_model=ExtractionOutput,
+                attempts=3,
+            )
+        assert result is not None
+        assert isinstance(result, ExtractionOutput)
+        assert data == valid
+
+    def test_compile_flags_incomplete_on_high_failure_rate(self) -> None:
+        """When most batches fail (after retries), compile stops early and flags incomplete."""
+        config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="hash"))
+        config.no_cache = True
+        compiler = TwoPhaseCompiler(config=config)
+        # Enough distinct sources to clear the threshold minimum.
+        n_sources = _FAILURE_THRESHOLD_MIN + 1
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id=f"c{i}",
+                    text=f"text {i}",
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path(f"src{i}.pdf"),
+                )
+            )
+            for i in range(n_sources)
+        ]
+        # Every batch fails after retries.
+        with patch("knox.compilation.two_phase._complete_validated_batch", return_value=(None, None)):
+            wiki = compiler.compile(chunks)
+        # Threshold fired → flagged incomplete, failures recorded.
+        assert wiki.metadata.get("compile_incomplete") is True
+        assert wiki.metadata.get("batch_failures", 0) >= _FAILURE_THRESHOLD_MIN
+        assert wiki.metadata.get("batch_total", 0) >= _FAILURE_THRESHOLD_MIN
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model"))
@@ -736,13 +798,14 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            mock.return_value = {
+        with patch("knox.compilation.two_phase._complete_validated_batch", side_effect=_validated_side_effect([
+            {
                 "summary": "x",
                 "entities": [{"name": "KNOX", "type": "PROJECT"}],
                 "concepts": [{"name": "attention", "definition": "y"}],
                 "tags": ["ml"],
-            }
+            },
+        ])):
             ext = compiler.extract(chunks)
         assert ext.extractions[0].summary == "x"
         assert ext.extractions[0].concepts[0]["name"] == "attention"
@@ -762,13 +825,14 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
-            mock.return_value = {
+        with patch("knox.compilation.two_phase._complete_validated_batch", side_effect=_validated_side_effect([
+            {
                 "summary": "one two three four",
                 "entities": [{"name": "KNOX", "type": "PROJECT"}],
                 "concepts": [{"name": "attention", "definition": "y"}],
                 "tags": ["ml"],
-            }
+            },
+        ])):
             compiler.extract(chunks)
         stats = compiler._extraction_stats
         assert len(stats) == 1
@@ -797,24 +861,23 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._try_litellm_json") as mock:
+        with patch("knox.compilation.two_phase._complete_validated_batch", side_effect=_validated_side_effect([
             # First call (extract) returns a summary; generation returns a page.
-            mock.side_effect = [
-                {
-                    "summary": "a summary",
-                    "entities": [],
-                    "concepts": [{"name": "attention", "definition": "y"}],
-                    "tags": [],
-                },
-                {
-                    "pages": [
-                        {
-                            "title": "Attention",
-                            "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory.",
-                        }
-                    ]
-                },
-            ]
+            {
+                "summary": "a summary",
+                "entities": [],
+                "concepts": [{"name": "attention", "definition": "y"}],
+                "tags": [],
+            },
+            {
+                "pages": [
+                    {
+                        "title": "Attention",
+                        "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory.",
+                    }
+                ]
+            },
+        ])):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
         stats = wiki.metadata["extraction_stats"]
