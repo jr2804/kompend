@@ -14,7 +14,7 @@ base.py            BaseParser, FileExtension, ParserRouter, DPI/IMAGE_SCALE cons
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
 docling_parser.py  DoclingParser  (default backend; structure-preserving via Docling)
-pandoc_parser.py   PandocParser   (legacy formats + binaryornot text fallback)
+pandoc_parser.py   PandocParser   (legacy formats + LaTeX + binaryornot text fallback)
 liteparse_parser.py LiteParseParser (fast Rust-core parser; no figure enrichment)
 ```
 
@@ -22,10 +22,25 @@ liteparse_parser.py LiteParseParser (fast Rust-core parser; no figure enrichment
 (`ingest.parser` config key; `--parser` CLI flag on `ingest`/`parse`).
 `config.parser` is a comma-separated priority list (e.g. `"liteparse,docling"`):
 backends are registered in that order and the first one whose `can_parse()`
-matches a file wins. `pandoc` is always appended last (legacy formats +
+matches a file wins. `pandoc` is always appended last (legacy formats + LaTeX +
 universal text fallback), so formats no listed backend handles never regress.
 
 ## Rules
+
+### Pandoc backend — lazy binary, on-demand download
+
+`PandocParser` depends on `pypandoc` (NOT the `pandoc` PyPI package). The
+legacy `pandoc` package launched the pandoc binary at *import time*
+(`pandoc.configure(auto=True)` in `pandoc.types`), which crashed CLI startup
+on misconfigured systems (e.g. a mise shim that isn't a valid Win32 exe →
+`WinError 193`) and added startup latency even when pandoc wasn't used.
+
+`pypandoc` defers binary resolution to the first conversion call and never
+touches the binary at import. `parse()` calls `_ensure_pandoc_available()`
+once per process: a fast no-op when pandoc is on PATH, or an on-demand
+download (`pypandoc.ensure_pandoc_installed()`) when it's missing. The JSON
+AST (`pypandoc.convert_file(path, 'json')`) replaces the legacy typed-AST —
+blocks are classified by their `"t"` tag string instead of `isinstance`.
 
 ### Registration — cycle avoidance
 
