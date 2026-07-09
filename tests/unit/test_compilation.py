@@ -11,10 +11,12 @@ import pytest
 from knox.compilation import GraphCompiler, WiCERCompiler
 from knox.compilation._two_phase_core import (
     _FAILURE_THRESHOLD_MIN,
+    _SLUG_MAX_LENGTH,
     Extraction,
     ExtractionSet,
     _BatchFailureTracker,
     _merge_node,
+    _slugify,
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
@@ -1232,3 +1234,34 @@ class TestBatchFailureTracker:
         for failed in [True, True, False, False, False, False]:
             tracker.record(failed=failed)
         assert tracker.should_stop() is False
+
+
+class TestSlugifyLengthCap:
+    """_slugify caps overly-long titles to stay within filesystem limits.
+
+    Regression: the LLM sometimes emits a full sentence as a concept title,
+    which slugified to 300+ chars and crashed write_text with
+    ``OSError: [Errno 22] Invalid argument`` on Windows (255-char component limit).
+    """
+
+    def test_short_title_unchanged(self) -> None:
+        assert _slugify("Stochastic Gradient Descent") == "stochastic-gradient-descent"
+
+    def test_long_title_is_capped(self) -> None:
+        sentence = (
+            "The training was performed in up to 20 epochs, stopping when the "
+            "relative improvement was lower than 0.001. The starting learning "
+            "rate was 0.008, halving it every time the relative improvement was "
+            "lower than 0.01. These changes were the only modifications to an "
+            "otherwise vanilla stochastic gradient descent optimizer."
+        )
+        slug = _slugify(sentence)
+        assert len(slug) <= _SLUG_MAX_LENGTH
+        assert len(slug) > 0
+
+    def test_distinct_long_titles_get_distinct_slugs(self) -> None:
+        base = "word " * 50  # well over the cap
+        a = _slugify(base + " alpha ending")
+        b = _slugify(base + " beta ending")
+        # Same prefix, different long titles → different hash suffixes
+        assert a != b

@@ -6,6 +6,7 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from collections import defaultdict
@@ -29,6 +30,13 @@ logger = get_logger(__name__)
 _loader = get_template_loader()
 
 _CHARS_PER_TOKEN = 4  # Approximate for English text.
+
+# Maximum slug length. Windows limits a single path component to 255 chars;
+# the LLM sometimes emits a full sentence as a page title, which slugifies to
+# 300+ chars and crashes ``write_text`` with ``OSError: [Errno 22]``. Cap the
+# slug and suffix a short hash of the full slug so distinct long titles stay
+# distinct (avoids _upsert_node merging two different concepts into one).
+_SLUG_MAX_LENGTH: Final[int] = 80
 
 # Bounded retry per batch before giving up — captures the non-determinism of
 # small models (the same prompt often succeeds on a fresh attempt). The
@@ -93,8 +101,18 @@ def _normalize_concept_key(name: str) -> str:
 
 
 def _slugify(text: str) -> str:
-    """Convert a title to a lowercase hyphenated slug."""
-    return _slugify_impl(text) or "concept"
+    """Convert a title to a lowercase hyphenated slug (capped for filesystem safety).
+
+    When the slug exceeds :data:`_SLUG_MAX_LENGTH` (e.g. the LLM emitted a full
+    sentence as a concept title), it is truncated at a word boundary and a short
+    hash of the *full* slug is appended so two distinct long titles don't collide
+    (which would otherwise be merged by :func:`_upsert_node`).
+    """
+    slug = _slugify_impl(text) or "concept"
+    if len(slug) <= _SLUG_MAX_LENGTH:
+        return slug
+    truncated = slug[: _SLUG_MAX_LENGTH - 5].rstrip("-")
+    return f"{truncated}-{hashlib.sha256(slug.encode()).hexdigest()[:4]}"
 
 
 def _dedup_id(node_id: str, seen: set[str]) -> str:
