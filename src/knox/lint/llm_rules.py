@@ -92,9 +92,6 @@ class FactualConsistencyRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        return list(results)
-
 
 # ── Rule 10: clarity-score ──────────────────────────────────────────────
 
@@ -175,9 +172,6 @@ class ClarityScoreRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        return list(results)
 
 
 # ── Rule 11: coverage-gap ───────────────────────────────────────────────
@@ -266,9 +260,6 @@ class CoverageGapRule(BaseLintRule):
         else:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        return list(results)
 
     def _dedup_gaps(self, gaps: list[dict]) -> list[dict]:
         """Merge semantically equivalent concepts via a single LLM pass.
@@ -442,9 +433,6 @@ class ContradictionDetectionRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        return list(results)
 
 
 # ── Registry ────────────────────────────────────────────────────────────

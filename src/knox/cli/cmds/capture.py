@@ -243,7 +243,6 @@ def _synthesize_write_page(
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
 
-    # Build a concise prompt combining all source texts.
     source_block = "\n\n".join(f"### {stem}\n\n{text[:4000]}" for stem, text in source_texts)
     prompt = (
         f"Write a comprehensive wiki page titled '{page_title}'.\n"

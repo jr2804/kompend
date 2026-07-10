@@ -124,11 +124,8 @@ These live in `common.py` and are imported by multiple command modules:
 **Compile arguments** (`compile.py`):
 
 - `CompileFiles` — Input files/directories
-- `TargetFormat` — Output format (md, json, yaml)
-- `ImageMode` — Embed, extract, or reference images
 - `OnlineUrls` — Fetch and embed external URLs
 - `EmbedModel` — Embedding model name
-- `EmbedBatchSize` — Batch size for embedding
 
 **Query arguments** (`query.py`):
 

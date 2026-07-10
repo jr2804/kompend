@@ -200,10 +200,6 @@ class OrphanPageRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages are linked"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Cannot auto-fix orphans without knowing where to link from
-        return list(results)
-
 
 # ── Rule 4: duplicate-title ─────────────────────────────────────────────
 
@@ -238,10 +234,6 @@ class DuplicateTitleRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No duplicate titles"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Cannot auto-fix duplicate titles without domain knowledge
-        return list(results)
-
 
 # ── Rule 5: empty-page ──────────────────────────────────────────────────
 
@@ -269,10 +261,6 @@ class EmptyPageRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No empty pages"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Cannot auto-fix empty pages
-        return list(results)
 
 
 # ── Rule 6: heading-skip ────────────────────────────────────────────────
@@ -309,10 +297,6 @@ class HeadingSkipRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No heading skips"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Heading level rewrites are too risky to auto-fix
-        return list(results)
 
 
 # ── Rule 7: stale-page ──────────────────────────────────────────────────
@@ -387,10 +371,6 @@ class StalePageRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All source files intact and memory fresh"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Stale pages need re-compilation, not auto-fix
-        return list(results)
-
 
 # ── Rule 8: source-not-found ────────────────────────────────────────────
 
@@ -434,10 +414,6 @@ class SourceNotFoundRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All referenced sources exist"))
         return results
-
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        # Cannot auto-fix missing source files
-        return list(results)
 
 
 # ── Registry ────────────────────────────────────────────────────────────

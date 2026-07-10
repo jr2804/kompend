@@ -363,7 +363,6 @@ def lint_remediate(
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     base_dir = state_dir.parent
 
-    # Load latest lint history entry
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
         get_err_console().print("No lint history found. Run `knox lint run` or compile with --lint first.")
@@ -371,13 +370,11 @@ def lint_remediate(
 
     report_dict = entries[-1].get("report", {})
 
-    # Load current wiki
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    # Set up LLM client for tier 2
     llm_client = LLMClient.from_config(cfg)
 
     sources_dir_path = sources_dir if sources_dir.exists() else None

@@ -124,7 +124,7 @@ def _load_runs(runs_path: Path) -> list[dict[str, Any]]:
         try:
             out.append(json.loads(stripped))
         except json.JSONDecodeError:
-            logger.debug("skipping unparseable run entry: %s", stripped[:80])
+            logger.debug("skipping unparseable run entry: %s", stripped[:80], exc_info=True)
     return out
 
 

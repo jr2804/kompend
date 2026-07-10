@@ -564,7 +564,6 @@ class TwoPhaseCompiler(BaseCompiler):
         if gen_total > 0:
             self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
 
-        # Load generation checkpoint so interrupted runs can resume.
         checkpoint = self._load_gen_checkpoint(self._active_gen_deps)
         if checkpoint is not None:
             ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
@@ -897,7 +896,6 @@ class TwoPhaseCompiler(BaseCompiler):
         except Exception:
             logger.debug("Generation checkpoint read error -- ignoring", exc_info=True)
             return None
-        # Validate dependency hashes match current gen_deps.
         stored_deps = raw.get("deps", {})
         if stored_deps != gen_deps:
             logger.debug("Generation checkpoint deps mismatch -- ignoring")

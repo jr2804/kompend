@@ -58,7 +58,7 @@ def _load_excerpt(source: str, sources_dir: Path) -> str:
         try:
             return target.read_text(encoding="utf-8", errors="ignore")
         except OSError:
-            pass
+            logger.debug("Failed to read source for verification: %s", target, exc_info=True)
     return ""
 
 

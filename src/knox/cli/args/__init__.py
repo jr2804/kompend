@@ -6,7 +6,7 @@ for better organization:
 
     from knox.cli.args.common import ConfigPath, WikiDir
     from knox.cli.args.query import QueryText, QueryTopK
-    from knox.cli.args.compile import TargetFormat, OnlineUrls
+    from knox.cli.args.compile import OnlineUrls
 """
 
 from __future__ import annotations
@@ -90,8 +90,6 @@ from .other import (
     Verify,
     VlmModel,
 )
-
-# Parse command
 from .parse import ParseFiles, PrintElements
 
 # Pipeline/tiered compilation
@@ -181,7 +179,6 @@ __all__ = [
     "OrganizeDryRun",
     "OrganizeMaxDepth",
     "OrganizeMinSubcategories",
-    # Parse
     "ParseFiles",
     "Parser",
     "PrintElements",
