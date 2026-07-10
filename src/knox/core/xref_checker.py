@@ -163,36 +163,30 @@ class CrossReferenceChecker:
         figure_idx = 0
         equation_idx = 0
 
+        def _add_numbered(key: str, idx: int, caption: str | None) -> None:
+            targets[key].add(str(idx))
+            if caption:
+                cap_num = _extract_number(caption)
+                if cap_num:
+                    targets[key].add(cap_num)
+
         for tree in trees:
             for node in tree.walk():
                 if node.heading_path:
-                    last_heading = node.heading_path[-1]
-                    section_num = _extract_heading_number(last_heading)
+                    section_num = _extract_heading_number(node.heading_path[-1])
                     if section_num:
                         targets["section"].add(section_num)
 
                 if node.structured:
                     if isinstance(node.structured, StructuredTable):
                         table_idx += 1
-                        targets["table"].add(str(table_idx))
-                        if node.structured.caption:
-                            cap_num = _extract_number(node.structured.caption)
-                            if cap_num:
-                                targets["table"].add(cap_num)
+                        _add_numbered("table", table_idx, node.structured.caption)
                     elif isinstance(node.structured, StructuredFigure):
                         figure_idx += 1
-                        targets["figure"].add(str(figure_idx))
-                        if node.structured.caption:
-                            cap_num = _extract_number(node.structured.caption)
-                            if cap_num:
-                                targets["figure"].add(cap_num)
+                        _add_numbered("figure", figure_idx, node.structured.caption)
                     elif isinstance(node.structured, StructuredEquation):
                         equation_idx += 1
-                        targets["equation"].add(str(equation_idx))
-                        if node.structured.caption:
-                            cap_num = _extract_number(node.structured.caption)
-                            if cap_num:
-                                targets["equation"].add(cap_num)
+                        _add_numbered("equation", equation_idx, node.structured.caption)
 
         return targets
 

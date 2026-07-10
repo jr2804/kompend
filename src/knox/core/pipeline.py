@@ -902,6 +902,27 @@ class WikiPipeline:
             source = node.metadata.get(MetadataField.SOURCE_FILE)
             node_by_heading[(heading, source)] = node
 
+        def _link_parent(
+            node: WikiNode,
+            chunk_node: Any,
+            tree: ChunkTree,
+            source: str,
+            node_by_heading: dict[tuple[str, str | None], WikiNode],
+        ) -> None:
+            """Link *node* to its parent based on chunk tree hierarchy."""
+            if not chunk_node.parent_id:
+                return
+            parent_chunk = tree.nodes.get(chunk_node.parent_id)
+            if not parent_chunk or not parent_chunk.chunk:
+                return
+            parent_heading = parent_chunk.chunk.heading_context or "_root"
+            parent_node = node_by_heading.get((parent_heading, source))
+            if parent_node is None:
+                return
+            node.parent_id = parent_node.id
+            if node.id not in parent_node.children_ids:
+                parent_node.children_ids.append(node.id)
+
         for node in wiki.nodes:
             heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
             source = node.metadata.get(MetadataField.SOURCE_FILE)
@@ -914,20 +935,12 @@ class WikiPipeline:
             for chunk_node in tree.walk():
                 if chunk_node.chunk is None:
                     continue
-                chunk_heading = chunk_node.chunk.heading_context or "_root"
-                if chunk_heading == heading:
-                    node.depth = chunk_node.depth
-                    node.heading_path = chunk_node.heading_path
-                    if chunk_node.parent_id:
-                        parent_chunk = tree.nodes.get(chunk_node.parent_id)
-                        if parent_chunk and parent_chunk.chunk:
-                            parent_heading = parent_chunk.chunk.heading_context or "_root"
-                            parent_node = node_by_heading.get((parent_heading, source))
-                            if parent_node is not None:
-                                node.parent_id = parent_node.id
-                                if node.id not in parent_node.children_ids:
-                                    parent_node.children_ids.append(node.id)
-                    break
+                if (chunk_node.chunk.heading_context or "_root") != heading:
+                    continue
+                node.depth = chunk_node.depth
+                node.heading_path = chunk_node.heading_path
+                _link_parent(node, chunk_node, tree, source, node_by_heading)
+                break
 
     @staticmethod
     def _cache_key(source_file: Path) -> str:

@@ -68,7 +68,77 @@ _ARCHIVE_EXTRACT_PRIORITY: tuple[str, ...] = (
 )
 
 
-def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa: PLR0911,PLR0912,PLR0915
+_EXT_PRIORITY: dict[str, int] = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
+
+
+def _find_best_archive_member(names: list[str]) -> str | None:
+    """Find the member with the highest-priority extension."""
+    best_name, best_p = None, len(_EXT_PRIORITY)
+    for nm in names:
+        p = _EXT_PRIORITY.get(Path(nm).suffix.lower(), len(_EXT_PRIORITY))
+        if p < best_p:
+            best_p, best_name = p, nm
+    return best_name
+
+
+def _extract_7z(path: Path, dest_dir: Path) -> Path | None:
+    with py7zr.SevenZipFile(path, mode="r") as szf:
+        best = _find_best_archive_member(szf.getnames())
+        if best is None:
+            return None
+        szf.extract(targets=[best], path=dest_dir)
+        dest = dest_dir / Path(best).name
+        if not dest.exists():
+            dest = next(dest_dir.rglob(Path(best).name), None)
+        return dest
+
+
+def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
+    with zipfile.ZipFile(path) as zf:
+        best = _find_best_archive_member(zf.namelist())
+        if best is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(zf.read(best))
+        return dest
+
+
+def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
+    if not rarfile.is_rarfile(path):
+        return None
+    with rarfile.RarFile(path) as rf:
+        best = _find_best_archive_member(rf.namelist())
+        if best is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(rf.read(best))
+        return dest
+
+
+def _extract_tar(path: Path, dest_dir: Path) -> Path | None:
+    with tarfile.open(path, mode="r:*") as tf:
+        file_members = [m for m in tf.getmembers() if m.isfile()]
+        best = _find_best_archive_member([m.name for m in file_members])
+        if best is None:
+            return None
+        member = next(m for m in file_members if m.name == best)
+        fobj = tf.extractfile(member)
+        if fobj is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(fobj.read())
+        return dest
+
+
+def _extract_single_file(path: Path, dest_dir: Path, decompress: object) -> Path | None:
+    """Decompress a single-file archive (gz, bz2, xz)."""
+    inner_name = Path(path.stem).name
+    dest = dest_dir / inner_name
+    dest.write_bytes(decompress(path.read_bytes()))  # type: ignore[operator]
+    return dest
+
+
+def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
     """Expand a compressed archive and return the best inner file.
 
     Supported formats (stdlib only, no extra dependencies):
@@ -98,92 +168,32 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:  # noqa
     is_gz = suffix == ".gz" and not is_tar
     is_bz2 = suffix == ".bz2" and not is_tar
     is_xz = suffix in (".xz", ".lzma") and not is_tar
-    is_zip = suffix == ".zip"
-    is_7z = suffix == ".7z"
-    is_rar = suffix == ".rar"
-    if not (is_tar or is_gz or is_bz2 or is_xz or is_zip or is_7z or is_rar):
-        return None
-
-    ext_priority = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
 
     try:
-        if is_7z:
-            with py7zr.SevenZipFile(archive_path, mode="r") as szf:
-                all_files = szf.getnames()
-                best_name, best_p = None, len(ext_priority)
-                for nm in all_files:
-                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
-                    if p < best_p:
-                        best_p, best_name = p, nm
-                if best_name is None:
-                    return None
-                szf.extract(targets=[best_name], path=dest_dir)
-                # py7zr extracts with full sub-path; find the file.
-                dest = dest_dir / Path(best_name).name
-                if not dest.exists():
-                    # fell back to sub-path layout
-                    dest = next(dest_dir.rglob(Path(best_name).name), None)
-                    if dest is None:
-                        return None
-        elif is_zip:
-            with zipfile.ZipFile(archive_path) as zfile:
-                best_name, best_p = None, len(ext_priority)
-                for nm in zfile.namelist():
-                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
-                    if p < best_p:
-                        best_p, best_name = p, nm
-                if best_name is None:
-                    return None
-                dest = dest_dir / Path(best_name).name
-                dest.write_bytes(zfile.read(best_name))
-        elif is_rar:
-            if not rarfile.is_rarfile(archive_path):
-                return None
-            with rarfile.RarFile(archive_path) as rf:
-                best_name, best_p = None, len(ext_priority)
-                for nm in rf.namelist():
-                    p = ext_priority.get(Path(nm).suffix.lower(), len(ext_priority))
-                    if p < best_p:
-                        best_p, best_name = p, nm
-                if best_name is None:
-                    return None
-                dest = dest_dir / Path(best_name).name
-                dest.write_bytes(rf.read(best_name))
+        if is_tar:
+            dest = _extract_tar(archive_path, dest_dir)
+        elif suffix == ".zip":
+            dest = _extract_zip(archive_path, dest_dir)
+        elif suffix == ".7z":
+            dest = _extract_7z(archive_path, dest_dir)
+        elif suffix == ".rar":
+            dest = _extract_rar(archive_path, dest_dir)
         elif is_gz:
-            # Single-file gzip: the inner filename is archive_path without .gz.
-            inner_name = Path(archive_path.stem).name
-            dest = dest_dir / inner_name
-            dest.write_bytes(gzip.decompress(archive_path.read_bytes()))
+            dest = _extract_single_file(archive_path, dest_dir, gzip.decompress)
         elif is_bz2:
-            inner_name = Path(archive_path.stem).name
-            dest = dest_dir / inner_name
-            dest.write_bytes(bz2.decompress(archive_path.read_bytes()))
+            dest = _extract_single_file(archive_path, dest_dir, bz2.decompress)
         elif is_xz:
-            inner_name = Path(archive_path.stem).name
-            dest = dest_dir / inner_name
-            dest.write_bytes(lzma.decompress(archive_path.read_bytes()))
+            dest = _extract_single_file(archive_path, dest_dir, lzma.decompress)
         else:
-            # tar family: auto-detect compression.
-            with tarfile.open(archive_path, mode="r:*") as tf:
-                best_member, best_p = None, len(ext_priority)
-                for member in tf.getmembers():
-                    if not member.isfile():
-                        continue
-                    p = ext_priority.get(Path(member.name).suffix.lower(), len(ext_priority))
-                    if p < best_p:
-                        best_p, best_member = p, member
-                if best_member is None:
-                    return None
-                fobj = tf.extractfile(best_member)
-                if fobj is None:
-                    return None
-                extracted_name = Path(best_member.name).name
-                dest = dest_dir / extracted_name
-                dest.write_bytes(fobj.read())
+            return None
 
-        # Check if the extracted file passes the priority filter (single-file decompression
-        # preserves the stem extension; skip if it's not parseable).
-        if (is_gz or is_bz2 or is_xz) and ext_priority.get(dest.suffix.lower(), len(ext_priority)) >= len(ext_priority):
+        if dest is None:
+            return None
+
+        # Single-file decompression preserves the stem extension;
+        # skip if the result isn't a parseable format.
+        single_file = is_gz or is_bz2 or is_xz
+        if single_file and _EXT_PRIORITY.get(dest.suffix.lower(), len(_EXT_PRIORITY)) >= len(_EXT_PRIORITY):
             dest.unlink(missing_ok=True)
             return None
 
