@@ -49,11 +49,13 @@ class ImageMode(StrEnum):
 class OutputFormat(StrEnum):
     """Output format for the compiled wiki.
 
-    - ``MARKDOWN``: Markdown files (default)
+    - ``OKF``: Open Knowledge Format v0.1 bundle (default)
+    - ``MARKDOWN``: Markdown files (Obsidian vault mode, legacy)
     - ``JSON``: JSON file
     - ``TYPST``: Typst file
     """
 
+    OKF = "okf"
     MARKDOWN = "markdown"
     JSON = "json"
     TYPST = "typst"
@@ -155,9 +157,12 @@ class BudgetConfig(_KnoxBaseModel):
 
 
 class OutputConfig(_KnoxBaseModel):
-    """Configuration for output formatting and rendering."""
+    """Configuration for output formatting and rendering.
 
-    format: OutputFormat = Field(default=OutputFormat.MARKDOWN, validation_alias="KNOX_FORMAT")
+    ``format`` defaults to ``okf`` (Open Knowledge Format v0.1).
+    """
+
+    format: OutputFormat = Field(default=OutputFormat.OKF, validation_alias="KNOX_FORMAT")
     flavor: str | None = Field(default=None, validation_alias="KNOX_OUTPUT_FLAVOR")
     frontmatter: dict[str, Any] = Field(default_factory=dict)
     rumdl_config: Path | None = Field(default=None, validation_alias="KNOX_RUMDL_CONFIG")

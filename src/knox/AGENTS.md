@@ -459,6 +459,33 @@ The `pack.toml` manifest:
     response_format = "json_object"
     temperature = 0.0
 
+### OKF compliance — output format rules
+
+KNOX produces **OKF v0.1** (Open Knowledge Format) bundles by default.
+The spec is at https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
+
+**All output-related code must maintain OKF v0.1 conformance:**
+
+1. **Default format is OKF.** The ``compile.output.format`` config key defaults to
+   ``"okf"``. Legacy formats (``"markdown"``, ``"json"``, ``"typst"``) are opt-in.
+2. **Every concept file** must have parseable YAML frontmatter with a non-empty
+   ``type`` field (OKF \u00a79.2).
+3. **Cross-links** use standard markdown absolute bundle-relative paths:
+   ``[Title](/concepts/title.md)`` \u2014 never ``[[wikilinks]]`` (OKF \u00a75.1).
+4. **Reserved filenames** (``index.md``, ``log.md``) follow OKF structure (\u00a76, \u00a77).
+   Root ``index.md`` MAY declare ``okf_version: "0.1"`` in frontmatter (\u00a711).
+5. **``log.md``** uses ISO 8601 date headings (``## YYYY-MM-DD``) with bold action
+   prefix (\u00a77).
+6. **Citations** from provenance are rendered as a ``# Citations`` section with
+   numbered ``[N]`` refs (\u00a78).
+7. **Consumers MUST tolerate** missing optional fields, unknown ``type`` values,
+   unknown frontmatter keys, broken cross-links, and missing ``index.md`` files
+   (\u00a79 \u2014 permissive consumption model).
+
+**When adding a new output writer or modifying an existing one**, verify
+conformance against the OKF spec. The legacy ``MarkdownWriter`` (Obsidian vault
+mode) is exempt from rules 2\u20136 but must remain functional.
+
 ### Work Guidance
 
 - Python 3.11+ only. Use modern typing syntax (`X | None`, `list[str]`).

@@ -18,6 +18,9 @@ chosen stack.
 
 KNOX refuses to pick a side. [Read the full motivation →](docs/about/motivation.md)
 
+> **OKF v0.1 compliant** — KNOX produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+> bundles by default, an open, portable format for knowledge exchange.
+
 Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web
 sources into an interlinked, queryable knowledge base — with
 structure-preserving parsing, hybrid chunking, multi-turn resolution, and

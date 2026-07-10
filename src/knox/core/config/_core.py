@@ -14,7 +14,7 @@ Config files use TOML. Example ``knox.toml``::
     [compile]
     sources_dir = "sources"
     output_dir = "wiki"
-    format = "markdown"
+    format = "okf"
     image_mode = "file"
     vlm_min_image_bytes = 2048
     vlm_min_image_dimension = 64

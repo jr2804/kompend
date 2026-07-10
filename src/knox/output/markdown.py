@@ -16,6 +16,11 @@ from knox.output.renderer import DocumentRenderer, render_frontmatter
 class MarkdownWriter(BaseOutputWriter):
     """Write compiled wiki as Markdown, optionally formatted to a specific flavor.
 
+    .. note::
+       This writer is **legacy**. The default output format is now
+       :class:`OkfWriter` (Open Knowledge Format v0.1). Use ``--format markdown``
+       or ``compile.output.format = "markdown"`` to select this writer.
+
     Two output modes:
     - **Vault mode** (default): One ``.md`` file per wiki node with
       ``[[wikilinks]]`` between related pages and an ``index.md`` TOC.

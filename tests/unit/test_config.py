@@ -212,7 +212,7 @@ class TestResolveConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 2048
-        assert cfg.get("compile.output.format") == "markdown"
+        assert cfg.get("compile.output.format") == "okf"
         assert cfg.get("compile.llm.fallback_max_retries") == 2
         assert cfg.get("compile.llm.vlm_model") is None
 
@@ -222,7 +222,7 @@ class TestResolveConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 128
-        assert cfg.get("compile.output.format") == "markdown"  # still default
+        assert cfg.get("compile.output.format") == "okf"  # still default
 
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
