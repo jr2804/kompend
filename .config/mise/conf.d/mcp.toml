@@ -4,7 +4,6 @@
 "github:AlmogBaku/debug-skill" = "latest"
 "github:rtk-ai/rtk" = "latest"
 "github:djinn-soul/CytoScnPy" = "latest"
-"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
 "github:ChuprinaDaria/Vibecode-Cleaner-Fartrun" = "latest"
 "pipx:sloppylint" = "latest"
 "pipx:ai-slop-detector" = { version = "latest", extras = ["all"] }
@@ -15,7 +14,7 @@
 "pipx:beads-mcp" = "latest"
 "pipx:repowise" = "latest"
 "github:1broseidon/ketch" = "latest"
-
+"github:colbymchenry/codegraph" = "latest"
 
 [tasks.add-mcp-servers]
 description = "Register MCP servers with AI assistants"

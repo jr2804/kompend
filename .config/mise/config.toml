@@ -19,10 +19,6 @@ ripgrep = "latest"
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 
-# not usable for code (use codegraph instead):
-#"pipx:graphifyy" = { version = "latest", extras = ["mcp"] }
-"github:colbymchenry/codegraph" = "latest"
-
 [settings.npm]
 package_manager = "bun"
 
