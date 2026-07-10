@@ -148,6 +148,7 @@ class ResolvedConfig:
         self._flatten(self.raw, "", result)
         return result
 
+
 # ── File paths ───────────────────────────────────────────────────────────
 
 _PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE)
@@ -155,6 +156,7 @@ _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 
 # ── Built-in defaults (auto-generated from KnoxConfig) ──────────────────
+
 
 def _build_defaults() -> dict[str, Any]:
     """Generate DEFAULTS from the :class:`KnoxConfig` schema model.
@@ -192,13 +194,15 @@ def _build_env_map() -> dict[str, str]:
 
     _walk(KnoxConfig)
     # CLI-only env vars (keys not in the config schema model)
-    env_map.update({
-        COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
-        COMPILE_STOP_AT_TIER: "KNOX_STOP_AT_TIER",
-        COMPILE_TIER_STATE_PATH: "KNOX_TIER_STATE_PATH",
-        COMPILE_CACHE_DIR: "KNOX_COMPILE_CACHE_DIR",
-        COMPILE_RESPECT_GITIGNORE: "KNOX_RESPECT_GITIGNORE",
-    })
+    env_map.update(
+        {
+            COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
+            COMPILE_STOP_AT_TIER: "KNOX_STOP_AT_TIER",
+            COMPILE_TIER_STATE_PATH: "KNOX_TIER_STATE_PATH",
+            COMPILE_CACHE_DIR: "KNOX_COMPILE_CACHE_DIR",
+            COMPILE_RESPECT_GITIGNORE: "KNOX_RESPECT_GITIGNORE",
+        }
+    )
     return env_map
 
 
@@ -382,12 +386,14 @@ def _load_toml(toml_file: Path) -> dict[str, Any]:
 # in the settings model and split into lists in ``_read_env_vars``.
 # NOTE: ``KNOX_LINT`` is intentionally listed here even though its schema
 # field (``compile.lint``) is a bool — the list form targets ``lint.enabled``.
-_ENV_LIST_VARS: frozenset[str] = frozenset({
-    "KNOX_LLM_FALLBACK_CHAIN",
-    "KNOX_LINT",
-    "KNOX_DEDUP_MATCHERS",
-    "KNOX_SEARCH_EXPANSION_VARIANTS",
-})
+_ENV_LIST_VARS: frozenset[str] = frozenset(
+    {
+        "KNOX_LLM_FALLBACK_CHAIN",
+        "KNOX_LINT",
+        "KNOX_DEDUP_MATCHERS",
+        "KNOX_SEARCH_EXPANSION_VARIANTS",
+    }
+)
 
 
 def _classify_env_field(ann: Any) -> tuple[Any, Any]:

@@ -2,7 +2,6 @@
 
 Each backend is a :class:`BaseParser` subclass plus a factory callable that
 builds an instance from :class:`ParserBuildOptions`. Backends self-register at
-import time via :func:`register_backend` (mirror of ``knox.llm.providers``);
 importing the ``knox.preprocessing.parsers`` package triggers registration.
 
 Used by ``knox list-parsers``, ``ParserRouter`` discovery, and

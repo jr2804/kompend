@@ -32,23 +32,25 @@ from __future__ import annotations
 import importlib
 from types import ModuleType
 
-_MODULE_NAMES: frozenset[str] = frozenset({
-    "capture",
-    "config",
-    "doctor",
-    "init",
-    "lint",
-    "log",
-    "memory",
-    "organize",
-    "pack",
-    "pipeline",
-    "quality",
-    "query",
-    "review",
-    "serve",
-    "status",
-})
+_MODULE_NAMES: frozenset[str] = frozenset(
+    {
+        "capture",
+        "config",
+        "doctor",
+        "init",
+        "lint",
+        "log",
+        "memory",
+        "organize",
+        "pack",
+        "pipeline",
+        "quality",
+        "query",
+        "review",
+        "serve",
+        "status",
+    }
+)
 
 
 def __getattr__(name: str) -> ModuleType:

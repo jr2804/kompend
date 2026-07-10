@@ -173,11 +173,7 @@ def _register_for_argv(argv: list[str]) -> None:
     * A known subcommand → load only its module.
     * Otherwise (global flags only, e.g. ``--version``) → load nothing.
     """
-    if (
-        not argv
-        or argv[0] in ("--help", "-h")
-        or any(k.endswith("_COMPLETE") for k in os.environ)
-    ):
+    if not argv or argv[0] in ("--help", "-h") or any(k.endswith("_COMPLETE") for k in os.environ):
         register_all_commands()
         return
     requested = _find_requested_command(argv)

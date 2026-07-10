@@ -468,8 +468,7 @@ class TwoPhaseCompiler(BaseCompiler):
             )
             if self._batch_tracker.should_stop():
                 logger.error(
-                    "TwoPhase: stopping extraction early — %d/%d batches failed "
-                    "(model '%s' is not suitable for structured JSON output)",
+                    "TwoPhase: stopping extraction early — %d/%d batches failed (model '%s' is not suitable for structured JSON output)",
                     self._batch_tracker.failed,
                     self._batch_tracker.total,
                     self._model,
@@ -747,8 +746,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     failed_count += 1
                     if self._batch_tracker.should_stop():
                         logger.error(
-                            "TwoPhase: stopping generation early — %d/%d batches failed "
-                            "(model '%s' is not suitable for structured JSON output)",
+                            "TwoPhase: stopping generation early — %d/%d batches failed (model '%s' is not suitable for structured JSON output)",
                             self._batch_tracker.failed,
                             self._batch_tracker.total,
                             self._model,

@@ -115,15 +115,12 @@ class EnhancedRetriever:
         4. Neural re-ranking
         5. CRAG relevance grading
         """
-        # Step 1: Multi-query expansion
         queries = self._expand_queries(query) if self._expansion_enabled else [query]
 
-        # Step 2: HyDE — generate hypothetical answer for embedding
         if self._hyde_enabled and self._llm_client is not None:
             hyde_query = self._generate_hypothetical(query)
             queries.append(hyde_query)
 
-        # Step 3: Hybrid retrieval for each query variant
         all_results: list[list[SearchResult]] = []
         for q in queries:
             results = self._retriever.search_hybrid(q, sources_dir, top_k=top_k * 2, expand_graph=expand_graph)
@@ -136,11 +133,9 @@ class EnhancedRetriever:
         # Fuse multi-query results via RRF
         results = self._fuse_multi_query(all_results, top_k=top_k * 2) if len(all_results) > 1 else all_results[0]
 
-        # Step 4: Neural re-ranking
         if self._reranker_enabled and results:
             results = self._neural_rerank(query, results)
 
-        # Step 5: CRAG relevance grading
         if self._crag_enabled and self._llm_client is not None and results:
             results = self._crag_filter(query, results)
 

@@ -147,11 +147,7 @@ class Violation:
 
     def format(self) -> str:
         rel = self.file.relative_to(REPO_ROOT)
-        return (
-            f"  {rel}:{self.line}:{self.col}  "
-            f"\"{self.value}\" -> {self.enum}\n"
-            f"    {self.context}"
-        )
+        return f'  {rel}:{self.line}:{self.col}  "{self.value}" -> {self.enum}\n    {self.context}'
 
 
 @dataclass
@@ -266,11 +262,7 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
             if _line_has_nocheck(node.lineno, lines):
                 continue
             func = node.func
-            if (
-                isinstance(func, ast.Attribute)
-                and func.attr == "get"
-                and node.args
-            ):
+            if isinstance(func, ast.Attribute) and func.attr == "get" and node.args:
                 val = _string_node_value(node.args[0])
                 if val is not None:
                     for q in matches(val):
@@ -283,9 +275,7 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
                         continue
                     enum_cls = KEYWORD_ARG_ENUMS[kw.arg]
                     val = kw.value.value
-                    out.append(
-                        _make_violation(path, kw.value, val, f"{enum_cls}.<{val}>", lines)
-                    )
+                    out.append(_make_violation(path, kw.value, val, f"{enum_cls}.<{val}>", lines))
 
     return out
 
@@ -301,9 +291,7 @@ def _line_has_nocheck(line_no: int, lines: list[str]) -> bool:
     return False
 
 
-def _make_violation(
-    path: Path, node: ast.AST, value: str, qualified: str, lines: list[str]
-) -> Violation:
+def _make_violation(path: Path, node: ast.AST, value: str, qualified: str, lines: list[str]) -> Violation:
     line = node.lineno
     ctx = lines[line - 1].strip() if 1 <= line <= len(lines) else ""
     return Violation(
@@ -329,9 +317,7 @@ def main() -> int:
         help="Restrict to a specific enum class name (repeatable).",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON output.")
-    parser.add_argument(
-        "--src", default=str(SRC_ROOT), help="Source root to scan."
-    )
+    parser.add_argument("--src", default=str(SRC_ROOT), help="Source root to scan.")
     args = parser.parse_args()
 
     # Make knox importable for enum discovery.
@@ -359,7 +345,6 @@ def main() -> int:
         all_violations.extend(scan_file(f, entries))
 
     if args.json:
-
         payload = [
             {
                 "file": str(v.file.relative_to(REPO_ROOT)),
@@ -376,10 +361,7 @@ def main() -> int:
         by_file: dict[Path, list[Violation]] = defaultdict(list)
         for v in all_violations:
             by_file[v.file].append(v)
-        print(
-            f"check-field-consistency: {len(all_violations)} violation(s) "
-            f"across {len(by_file)} file(s)"
-        )
+        print(f"check-field-consistency: {len(all_violations)} violation(s) across {len(by_file)} file(s)")
         for f in sorted(by_file):
             print(f"\n{f.relative_to(REPO_ROOT)}:")
             for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):

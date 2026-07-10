@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 # Pandoc JSON AST types
 # ---------------------------------------------------------------------------
 
+
 class _PandocBlockTag(StrEnum):
     """Block type tags from pandoc's JSON AST."""
 
@@ -192,11 +193,13 @@ def _parse_header_level(block: object) -> int | None:
 
 def _render_block(block: object) -> str:
     """Render a single JSON AST block to markdown via a JSON round-trip."""
-    single = json.dumps({
-        "blocks": [block],
-        "meta": {},
-        "pandoc-api-version": [1, 23],
-    })
+    single = json.dumps(
+        {
+            "blocks": [block],
+            "meta": {},
+            "pandoc-api-version": [1, 23],
+        }
+    )
     text = pypandoc.convert_text(single, "markdown", format="json")
     return text.strip()
 
