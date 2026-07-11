@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.output.base import BaseOutputWriter
 from knox.output.okf_writer import OkfWriter, convert_wikilinks
-
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -56,10 +54,12 @@ def test_okf_writer_registered() -> None:
 
 def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
     """OKF §9.2: every frontmatter must contain a non-empty ``type`` field."""
-    wiki = _make_wiki([
-        _make_node("alpha", "Alpha", "Content A"),
-        _make_node("beta", "Beta", "Content B", node_type="entity"),
-    ])
+    wiki = _make_wiki(
+        [
+            _make_node("alpha", "Alpha", "Content A"),
+            _make_node("beta", "Beta", "Content B", node_type="entity"),
+        ]
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -75,11 +75,13 @@ def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
 
 def test_type_maps_from_node_type(tmp_path: Path) -> None:
     """KNOX node_type values map to OKF type strings."""
-    wiki = _make_wiki([
-        _make_node("c", "Concept", "x", node_type="concept"),
-        _make_node("e", "Entity", "x", node_type="entity"),
-        _make_node("o", "Overview", "x", node_type="overview"),
-    ])
+    wiki = _make_wiki(
+        [
+            _make_node("c", "Concept", "x", node_type="concept"),
+            _make_node("e", "Entity", "x", node_type="entity"),
+            _make_node("o", "Overview", "x", node_type="overview"),
+        ]
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -111,10 +113,12 @@ def test_okf_recommended_fields_present(tmp_path: Path) -> None:
 
 def test_wikilinks_converted_to_absolute_markdown_links(tmp_path: Path) -> None:
     """OKF §5: cross-links use standard markdown, not [[wikilinks]]."""
-    wiki = _make_wiki([
-        _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type="concept"),
-        _make_node("beta", "Beta", "See [[alpha]] for context.", node_type="concept"),
-    ])
+    wiki = _make_wiki(
+        [
+            _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type="concept"),
+            _make_node("beta", "Beta", "See [[alpha]] for context.", node_type="concept"),
+        ]
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -132,10 +136,13 @@ def test_wikilinks_converted_to_absolute_markdown_links(tmp_path: Path) -> None:
 
 def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
     """Related section links must be standard markdown, not wikilinks."""
-    wiki = _make_wiki([
-        _make_node("a", "Alpha", "x", node_type="concept"),
-        _make_node("b", "Beta", "x", node_type="concept"),
-    ], edges=[{"source": "a", "target": "b", "type": "related", "confidence": 0.9}])
+    wiki = _make_wiki(
+        [
+            _make_node("a", "Alpha", "x", node_type="concept"),
+            _make_node("b", "Beta", "x", node_type="concept"),
+        ],
+        edges=[{"source": "a", "target": "b", "type": "related", "confidence": 0.9}],
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -174,11 +181,13 @@ def test_index_has_okf_version_frontmatter(tmp_path: Path) -> None:
 
 def test_index_has_grouped_sections(tmp_path: Path) -> None:
     """OKF §6: index uses grouped sections with descriptions."""
-    wiki = _make_wiki([
-        _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
-        _make_node("c2", "Concept 2", "Second concept.", node_type="concept"),
-        _make_node("e1", "Entity 1", "An entity.", node_type="entity"),
-    ])
+    wiki = _make_wiki(
+        [
+            _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
+            _make_node("c2", "Concept 2", "Second concept.", node_type="concept"),
+            _make_node("e1", "Entity 1", "An entity.", node_type="entity"),
+        ]
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -230,9 +239,11 @@ def test_log_has_bold_action_prefix(tmp_path: Path) -> None:
 
 def test_citations_section_from_provenance(tmp_path: Path) -> None:
     """OKF §8: citations rendered as numbered [N] references."""
-    wiki = _make_wiki([
-        _make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"]),
-    ])
+    wiki = _make_wiki(
+        [
+            _make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"]),
+        ]
+    )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 

@@ -134,6 +134,12 @@ class ResolvedConfig:
         """Return where a specific key's value came from."""
         return self.provenance.get(key, ConfigSource("default"))
 
+    def flat(self) -> dict[str, Any]:
+        """Return a flat dotted-key dict of all values."""
+        result: dict[str, Any] = {}
+        self._flatten(self.raw, "", result)
+        return result
+
     def _flatten(self, data: dict[str, Any], prefix: str, out: dict[str, Any]) -> None:
         for key, value in data.items():
             full = f"{prefix}.{key}" if prefix else key
@@ -141,12 +147,6 @@ class ResolvedConfig:
                 self._flatten(value, full, out)
             else:
                 out[full] = value
-
-    def flat(self) -> dict[str, Any]:
-        """Return a flat dotted-key dict of all values."""
-        result: dict[str, Any] = {}
-        self._flatten(self.raw, "", result)
-        return result
 
 
 # ── File paths ───────────────────────────────────────────────────────────

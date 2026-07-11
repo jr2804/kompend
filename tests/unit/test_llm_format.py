@@ -88,18 +88,6 @@ class TestSalvageRecursionGuard:
 class TestSalvageSchemaGuided:
     """Schema-guided repair completes truncated/missing-field JSON toward a model."""
 
-    @staticmethod
-    def _schema() -> type:
-        class Page(BaseModel):
-            title: str
-            content: str
-
-        class Out(BaseModel):
-            summary: str
-            pages: list[Page]
-
-        return Out
-
     def test_truncated_completes_toward_schema(self) -> None:
         Out = self._schema()
         # truncated mid-value — schema salvage completes the structure
@@ -127,3 +115,15 @@ class TestSalvageSchemaGuided:
     def test_no_schema_backward_compatible(self) -> None:
         # callers that pass no schema still work exactly as before
         assert salvage_json('{"a": 1}') == {"a": 1}
+
+    @staticmethod
+    def _schema() -> type:
+        class Page(BaseModel):
+            title: str
+            content: str
+
+        class Out(BaseModel):
+            summary: str
+            pages: list[Page]
+
+        return Out

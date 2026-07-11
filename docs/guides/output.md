@@ -9,9 +9,10 @@ KNOX produces **OKF v0.1**-compliant knowledge bundles by default. OKF is an ope
 human- and agent-friendly format for representing knowledge — a directory of
 markdown files with YAML frontmatter.
 
-**Spec:** https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
+**Spec:** <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
 
 **Conformance (§9):**
+
 - Every concept file has parseable YAML frontmatter with a non-empty ``type`` field
 - Reserved filenames (``index.md``, ``log.md``) follow OKF structure
 - Cross-links use absolute bundle-relative paths: ``[Title](/concepts/title.md)``

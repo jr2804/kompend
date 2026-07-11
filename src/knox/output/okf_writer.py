@@ -41,6 +41,7 @@ from knox.output.models import Document
 # OKF spec version this writer targets.
 _OKF_VERSION = "0.1"
 
+
 # Custom YAML Dumper that never emits anchors/aliases (avoids &id001/*id001
 # for repeated list values, which is valid YAML but confuses some consumers).
 class _NoAliasDumper(yaml.Dumper):
@@ -60,6 +61,7 @@ def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
         sort_keys=True,
     ).strip()
     return f"---\n{yaml_str}\n---\n\n"
+
 
 # Map KNOX node_type values to OKF ``type`` values.
 # OKF types are free-form strings (§4.1); these are descriptive and

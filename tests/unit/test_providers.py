@@ -23,7 +23,7 @@ class TestClaudinIOProvider:
     _TEST_MODEL = "test-model"
 
     def test_provider_registered_on_import(self) -> None:
-        """claudinio provider should be auto-registered on import."""
+        """Claudinio provider should be auto-registered on import."""
         providers = [e for e in (litellm.custom_provider_map or []) if e.get("provider") == "claudinio"]
         assert len(providers) == 1
         assert providers[0]["custom_handler"] is not None
