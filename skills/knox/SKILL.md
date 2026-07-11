@@ -120,6 +120,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 |---------|---------|
 | `knox mcp` | Start stdio MCP server (for agent integration) |
 | `knox agent` | Start ACP agent on stdio (for credential-free LLM injection) |
+| `knox agents` | Manage TOML-defined conversational agents (list, use, install, remove, validate) |
 
 ### ACP Agent Mode
 
@@ -134,7 +135,20 @@ This starts an ACP agent on stdio that:
 
 1. Advertises `providers: {}` capability on `initialize`
 2. Accepts `providers/set` to configure the LLM endpoint (base URL, auth headers, API type)
-3. Creates sessions and responds to `/knox <command>` slash commands
+3. Creates sessions and responds to prompts via a conversational agent loop
+4. Falls back to `/knox <command>` subprocess dispatch when no LLM is configured
+
+**Conversational agents:** When an LLM is configured, prompts are routed through
+a tool-calling loop driven by TOML-defined agents. The LLM reasons over
+available tools (compile, query, capture, config) and calls them as needed.
+See `knox agents list` for available agents.
+
+**Options:**
+
+- `--agent-file <path>` — use an explicit TOML agent definition instead of the
+  configured active agent
+- `--mcp-port <port>` — also start an MCP-over-HTTP server on the given port
+  so connected AI agents can call KNOX's MCP tools directly
 
 **Why ACP instead of MCP sampling?** KNOX needs full Pydantic structured output
 for compilation — MCP sampling is free-text only. With ACP `providers/set`,
