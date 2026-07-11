@@ -17,9 +17,11 @@ import contextlib
 import sys
 
 import typer
+from acp import run_agent
 
 from knox.agent.knox_agent import KnoxAgent
 from knox.cli.app import app
+from knox.mcp.server import create_mcp_server
 
 
 @app.command(name="agent")
@@ -45,15 +47,11 @@ def agent_cmd(
 
 async def _run_agent(agent_file: str | None = None, mcp_port: int | None = None) -> None:
     """Start the ACP agent on stdio, optionally with an MCP companion server."""
-    from acp import run_agent  # noqa: PLC0415  # heavy: acp SDK is large
-
     agent = KnoxAgent(agent_file=agent_file)
 
     # Start MCP companion server in background if port is specified
     mcp_task: asyncio.Task[None] | None = None
     if mcp_port is not None:
-        from knox.mcp.server import create_mcp_server  # noqa: PLC0415  # heavy: imports litellm
-
         mcp_server = create_mcp_server(port=mcp_port)
         mcp_task = asyncio.create_task(mcp_server.run_streamable_http_async())
 

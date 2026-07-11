@@ -7,7 +7,7 @@ sharing API keys — the editor injects the LLM endpoint via ``providers/set``.
 
 ## How it works
 
-```
+```text
 Editor ── ACP stdio ──→ knox agent
                           │
                           ├── /knox compile  → compile_wiki tool
@@ -133,15 +133,18 @@ knox agent --agent-file path/to/my-agent.toml
 ## Troubleshooting
 
 **Agent doesn't start:**
+
 - Ensure ``uv`` is installed and on PATH
 - Ensure the vault directory exists and has a ``.knox/`` directory
 - Run ``knox doctor`` to check the vault health
 
 **LLM not available:**
+
 - The editor must call ``providers/set`` with a valid LLM endpoint
 - Or set ``KNOX_LLM_DEFAULT_MODEL`` / ``KNOX_LLM_API_KEY`` env vars
 - Run ``knox doctor`` to verify LLM connectivity
 
 **Slash commands not working:**
-- Ensure the prompt starts with ``/knox `` (with a space after ``knox``)
+
+- Ensure the prompt starts with ``/knox`` (with a space after ``knox``)
 - Check that the agent is running (``knox agent --help`` for options)

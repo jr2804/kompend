@@ -67,3 +67,5 @@ nul
 .cortexkit
 .codegraph
 /.mise
+.slim
+/**/codemap.md
