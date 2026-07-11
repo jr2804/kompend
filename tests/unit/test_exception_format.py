@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from knox.core.exception_format import MAX_CHARS_EXCEPTION, shorten_exception
+from knox.core.exception_format import MAX_CHARS_EXCEPTION, shorten_exception, shorten_string
 
 
 class TestShortenException:
@@ -66,3 +66,27 @@ class TestShortenException:
         except RuntimeError as exc:
             result = shorten_exception(exc)
             assert result == "outer"
+
+
+class TestShortenString:
+    def test_short_string_unchanged(self) -> None:
+        assert shorten_string("hello") == "hello"
+
+    def test_truncates_long_string(self) -> None:
+        result = shorten_string("x" * 500)
+        assert len(result) <= MAX_CHARS_EXCEPTION
+        assert result.endswith("…")
+
+    def test_multiline_collapsed(self) -> None:
+        assert shorten_string("a\nb\nc") == "a b c"
+
+    def test_strips_whitespace(self) -> None:
+        assert shorten_string("  padded  ") == "padded"
+
+    def test_custom_limit(self) -> None:
+        result = shorten_string("a" * 50, limit=10)
+        assert len(result) == 10
+        assert result.endswith("…")
+
+    def test_empty_string(self) -> None:
+        assert shorten_string("") == ""
