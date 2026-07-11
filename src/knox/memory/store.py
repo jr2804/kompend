@@ -11,6 +11,8 @@ from typing import Any
 
 import zvec as _zvec
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_MEMORY_QUERY_CHARS
 from knox.core.paths import VaultPaths
 from knox.core.timeutil import iso_local
 from knox.logging import get_logger
@@ -110,7 +112,8 @@ class MemoryStore:
                 + "\n"
             )
 
-        logger.info("Added memory entry for query: %s", query[:50])
+        query_log_limit = DEFAULTS.get(DISPLAY_MEMORY_QUERY_CHARS, 50)
+        logger.info("Added memory entry for query: %s", query[:query_log_limit])
 
     def search(
         self,

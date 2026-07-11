@@ -18,6 +18,7 @@ from knox.cli._shared import resolve_project_paths
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.status import collect_stats
 from knox.core.config import (
+    DEFAULTS,
     EmbeddingConfig,
     LLMConfig,
     OutputConfig,
@@ -28,7 +29,7 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MCP_ELEMENT_CHARS, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline import build_pipeline
@@ -78,7 +79,7 @@ def parse_document(file_path: str) -> dict[str, Any]:
             "elements": [
                 {
                     "type": str(el.type),
-                    "content": str(el.content)[:500],
+                    "content": str(el.content)[: DEFAULTS.get(DISPLAY_MCP_ELEMENT_CHARS, 500)],
                     "page": el.page,
                     "heading_level": el.heading_level,
                 }
@@ -277,7 +278,7 @@ def memory_synthesize(
         loader = get_template_loader()
         content = loader.render(
             "memory/system_context.md.j2",
-            entries=entries[:10],
+            entries=entries[: DEFAULTS.get(DISPLAY_MEMORY_ENTRIES, 10)],
         )
         context_file.write_text(content, encoding="utf-8")
 

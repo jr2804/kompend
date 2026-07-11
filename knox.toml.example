@@ -66,6 +66,16 @@ excerpt_chars = 300       # max chars per excerpt in concept pages / chunk previ
 error_chars = 200         # max chars when embedding an exception in a log line
 json_chars = 300          # max chars when embedding unparseable LLM JSON in an error
 cli_element_chars = 80    # max chars per parsed-element preview in CLI output
+tier_sample_size = 5      # max sources in tier-state sample (`knox compile --list-tiers`)
+cli_arg_preview = 4       # max CLI args shown in the run-log command preview
+log_error_chars = 500     # max chars of an error string in the run-log JSONL
+lint_feedback_chars = 200 # max chars of lint feedback embedded in a finding
+memory_query_chars = 50   # max chars of a query string in the memory-store info log
+mcp_element_chars = 500   # max chars per parsed element in the MCP `parse_document` response
+wiki_topics = 30          # max topics shown in the wiki index "Topics" section
+query_expansions = 7      # max multi-query-expansion variants per search
+web_nodes = 10            # max nodes shown in the web server's node preview
+search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / hybrid)
 
 # ── Compile settings ────────────────────────────────────────────────────
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
@@ -94,7 +96,13 @@ class AdaptiveRetriever:
             node = self._node_by_id.get(nid)
             if node is None:
                 continue
-            snippet = _extract_snippet(node.content, query_tokens) if node.content and query_tokens else node.content[:300] if node.content else node.title
+            snippet_limit = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
+            if node.content and query_tokens:
+                snippet = _extract_snippet(node.content, query_tokens)
+            elif node.content:
+                snippet = node.content[:snippet_limit]
+            else:
+                snippet = node.title
             results.append(
                 SearchResult(
                     article_id=node.id,

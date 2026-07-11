@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.cache_store import CacheStore
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.template_loader import get_template_loader
@@ -50,8 +52,9 @@ def generate_index(wiki: CompiledWiki) -> str:
     # Topic / concept cloud (from edges metadata)
     topics = wiki.metadata.get("topics", [])
     if topics:
+        topics_limit = DEFAULTS.get(DISPLAY_WIKI_TOPICS, 30)
         lines.append("## Topics\n")
-        lines.append(" ".join(f"`{t}`" for t in sorted(topics)[:30]))
+        lines.append(" ".join(f"`{t}`" for t in sorted(topics)[:topics_limit]))
         lines.append("")
 
     # Full TOC

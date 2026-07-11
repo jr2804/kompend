@@ -7,6 +7,8 @@ from typing import Any, Final
 
 from rank_bm25 import BM25Okapi
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
@@ -54,7 +56,7 @@ class TokenOverlapRetriever:
                         SearchResult(
                             article_id=r[FtsField.ARTICLE_ID],
                             title=r[FtsField.TITLE],
-                            snippet=r[FtsField.CONTENT][:300],
+                            snippet=r[FtsField.CONTENT][: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)],
                             score=r["score"],
                             source_file=r.get(MetadataField.SOURCE_FILE),
                         )
@@ -117,7 +119,8 @@ class TokenOverlapRetriever:
                 items = result.json_data.get(key, [])
                 if isinstance(items, list):
                     expansions.extend(str(e) for e in items if isinstance(e, str))
-            return expansions[:7]
+            expansions_limit = DEFAULTS.get(DISPLAY_QUERY_EXPANSIONS, 7)
+            return expansions[:expansions_limit]
         except Exception as exc:
             logger.warning("Query expansion failed: %s", exc, exc_info=True)
             return [query]
@@ -443,7 +446,7 @@ class HybridRetriever:
                             expanded[target_id] = SearchResult(
                                 article_id=target_id,
                                 title=node.title,
-                                snippet=node.content[:300] + "..." if node.content else "",
+                                snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
                                 score=result.score * decay_factor,
                                 source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
                             )
@@ -453,7 +456,7 @@ class HybridRetriever:
                             expanded[source_id] = SearchResult(
                                 article_id=source_id,
                                 title=node.title,
-                                snippet=node.content[:300] + "..." if node.content else "",
+                                snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
                                 score=result.score * decay_factor,
                                 source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
                             )

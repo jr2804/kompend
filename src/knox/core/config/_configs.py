@@ -317,6 +317,20 @@ class DisplayConfig(_KnoxBaseModel):
     doc_headings: int = Field(default=5, validation_alias="KNOX_DISPLAY_DOC_HEADINGS")
     concept_names: int = Field(default=3, validation_alias="KNOX_DISPLAY_CONCEPT_NAMES")
     memory_entries: int = Field(default=10, validation_alias="KNOX_DISPLAY_MEMORY_ENTRIES")
+    excerpt_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_EXCERPT_CHARS")
+    error_chars: int = Field(default=200, validation_alias="KNOX_DISPLAY_ERROR_CHARS")
+    json_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_JSON_CHARS")
+    cli_element_chars: int = Field(default=80, validation_alias="KNOX_DISPLAY_CLI_ELEMENT_CHARS")
+    tier_sample_size: int = Field(default=5, validation_alias="KNOX_DISPLAY_TIER_SAMPLE_SIZE")
+    cli_arg_preview: int = Field(default=4, validation_alias="KNOX_DISPLAY_CLI_ARG_PREVIEW")
+    log_error_chars: int = Field(default=500, validation_alias="KNOX_DISPLAY_LOG_ERROR_CHARS")
+    lint_feedback_chars: int = Field(default=200, validation_alias="KNOX_DISPLAY_LINT_FEEDBACK_CHARS")
+    memory_query_chars: int = Field(default=50, validation_alias="KNOX_DISPLAY_MEMORY_QUERY_CHARS")
+    mcp_element_chars: int = Field(default=500, validation_alias="KNOX_DISPLAY_MCP_ELEMENT_CHARS")
+    wiki_topics: int = Field(default=30, validation_alias="KNOX_DISPLAY_WIKI_TOPICS")
+    query_expansions: int = Field(default=7, validation_alias="KNOX_DISPLAY_QUERY_EXPANSIONS")
+    web_nodes: int = Field(default=10, validation_alias="KNOX_DISPLAY_WEB_NODES")
+    search_snippet_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_SEARCH_SNIPPET_CHARS")
 
 
 class NotesConfig(_KnoxBaseModel):

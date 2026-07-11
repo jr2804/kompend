@@ -25,6 +25,8 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache_store import CacheStore
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_TIER_SAMPLE_SIZE
 from knox.core.entity_registry import EntityRegistry
 from knox.core.ingest import parse_cache_name
 from knox.core.memory import update_memory_for_compile
@@ -334,7 +336,8 @@ class WikiPipeline:
         """
         state = self.state
         distribution = state.tier_distribution()
-        sample = list(state.entries.values())[:5]
+        sample_limit = DEFAULTS.get(DISPLAY_TIER_SAMPLE_SIZE, 5)
+        sample = list(state.entries.values())[:sample_limit]
         return [
             {
                 "tier": name,

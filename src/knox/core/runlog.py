@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS
 from knox.core.paths import KNOX_DIR, RUNS_FILE
 from knox.core.timeutil import iso_local, now_local
 from knox.logging import get_logger
@@ -83,7 +85,8 @@ def _command_label() -> str:
         if t.startswith("--wiki-dir="):
             continue
         cleaned.append(t)
-    return " ".join(cleaned[:4]) or "(none)"
+    arg_preview_limit = DEFAULTS.get(DISPLAY_CLI_ARG_PREVIEW, 4)
+    return " ".join(cleaned[:arg_preview_limit]) or "(none)"
 
 
 def log_run_start() -> RunHandle | None:
@@ -138,7 +141,8 @@ def log_run_end(
     if exit_code is not None:
         payload["exit"] = exit_code
     if error:
-        payload["error"] = error[:500]
+        log_error_limit = DEFAULTS.get(DISPLAY_LOG_ERROR_CHARS, 500)
+        payload["error"] = error[:log_error_limit]
     try:
         with handle.runs_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")

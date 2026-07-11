@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_LINT_FEEDBACK_CHARS
+
 _CLARITY_LOW_THRESHOLD = 4
 _CLARITY_MODERATE_THRESHOLD = 6
 
@@ -156,7 +159,8 @@ def _analyze_clarity(results: list[dict[str, Any]]) -> list[GapRecommendation]:
 
         finding = f"Page '{page_id}' scored {score}/10"
         if feedback:
-            finding += f": {feedback[:200]}"
+            feedback_limit = DEFAULTS.get(DISPLAY_LINT_FEEDBACK_CHARS, 200)
+            finding += f": {feedback[:feedback_limit]}"
         recs.append(
             GapRecommendation(
                 priority=priority,

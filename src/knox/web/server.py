@@ -11,6 +11,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from knox.capture.ingest import ingest
 from knox.capture.learn import learn
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_WEB_NODES
 from knox.core.models import CompiledWiki, WikiField
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
@@ -113,7 +115,7 @@ async def dashboard() -> str:
       {
         "".join(
             f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td><td>{n.get("node_type", "")}</td><td>{_source_of(n)}</td></tr>'
-            for n in nodes[:10]
+            for n in nodes[: DEFAULTS.get(DISPLAY_WEB_NODES, 10)]
         )
     }
     </table>
