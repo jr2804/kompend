@@ -103,6 +103,7 @@ COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS: Final[str] = "compile.budget.summary_m
 COMPILE_BUDGET_SUMMARY_TARGET_CHARS: Final[str] = "compile.budget.summary_target_chars"
 COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD: Final[str] = "compile.budget.summary_skip_single_child"
 COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD: Final[str] = "compile.budget.summary_chunk_threshold"
+COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX: Final[str] = "compile.budget.capture_source_char_max"
 
 # ── compile.output sub-section ──
 COMPILE_OUTPUT_FLAVOR: Final[str] = "compile.output.flavor"
@@ -140,6 +141,17 @@ SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.com
 
 # ── query section ──
 QUERY_FORMAT: Final[str] = "query.format"
+
+# ── display section ──
+DISPLAY_SOURCE_NAMES: Final[str] = "display.source_names"
+DISPLAY_RELATED_TITLES: Final[str] = "display.related_titles"
+DISPLAY_DOC_HEADINGS: Final[str] = "display.doc_headings"
+DISPLAY_CONCEPT_NAMES: Final[str] = "display.concept_names"
+DISPLAY_MEMORY_ENTRIES: Final[str] = "display.memory_entries"
+DISPLAY_EXCERPT_CHARS: Final[str] = "display.excerpt_chars"
+DISPLAY_ERROR_CHARS: Final[str] = "display.error_chars"
+DISPLAY_JSON_CHARS: Final[str] = "display.json_chars"
+DISPLAY_CLI_ELEMENT_CHARS: Final[str] = "display.cli_element_chars"
 
 # ── agents section ──
 AGENTS_COMPILE: Final[str] = "agents.compile"

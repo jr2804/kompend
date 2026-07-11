@@ -12,7 +12,18 @@
 See ``knox.core.config.AGENTS.md`` for coding conventions.
 """
 
-from knox.core.config._configs import BudgetConfig, EmbeddingConfig, ImageMode, LLMConfig, LlmDataFormat, OrganizeConfig, OutputConfig, OutputFormat, PdfConfig
+from knox.core.config._configs import (
+    BudgetConfig,
+    DisplayConfig,
+    EmbeddingConfig,
+    ImageMode,
+    LLMConfig,
+    LlmDataFormat,
+    OrganizeConfig,
+    OutputConfig,
+    OutputFormat,
+    PdfConfig,
+)
 from knox.core.config._core import (
     DEFAULTS,
     ConfigSource,
@@ -33,6 +44,7 @@ __all__ = [
     "DEFAULTS",
     "BudgetConfig",
     "ConfigSource",
+    "DisplayConfig",
     "EmbeddingConfig",
     "ImageMode",
     "LLMConfig",

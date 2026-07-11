@@ -154,6 +154,7 @@ class BudgetConfig(_KnoxBaseModel):
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
+    capture_source_char_max: int = Field(default=4000, validation_alias="KNOX_BUDGET_CAPTURE_SOURCE_CHAR_MAX")
 
 
 class OutputConfig(_KnoxBaseModel):
@@ -302,6 +303,22 @@ class IgnoreConfig(_KnoxBaseModel):
     patterns: list[str] = Field(default_factory=list)
 
 
+class DisplayConfig(_KnoxBaseModel):
+    """Display/preview truncation limits.
+
+    Each field caps how many items or how much text a single rendered
+    section (index, log report, related-titles list, etc.) shows.
+    Limits are deliberately configurable so users with long source lists
+    or large captured notes can widen them without touching code.
+    """
+
+    source_names: int = Field(default=20, validation_alias="KNOX_DISPLAY_SOURCE_NAMES")
+    related_titles: int = Field(default=15, validation_alias="KNOX_DISPLAY_RELATED_TITLES")
+    doc_headings: int = Field(default=5, validation_alias="KNOX_DISPLAY_DOC_HEADINGS")
+    concept_names: int = Field(default=3, validation_alias="KNOX_DISPLAY_CONCEPT_NAMES")
+    memory_entries: int = Field(default=10, validation_alias="KNOX_DISPLAY_MEMORY_ENTRIES")
+
+
 class NotesConfig(_KnoxBaseModel):
     file: str = Field(default="NOTES.md", validation_alias="KNOX_NOTES_FILE")
 
@@ -363,6 +380,7 @@ class KnoxConfig(_KnoxBaseModel):
     by walking the model's ``validation_alias`` fields.
     """
 
+    display: DisplayConfig = Field(default_factory=DisplayConfig)
     compile: CompileConfig = Field(default_factory=CompileConfig)
     lint: LintConfig = Field(default_factory=LintConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)

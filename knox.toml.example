@@ -52,6 +52,21 @@ file = "NOTES.md"
 # No effect on the direct HTTPDownloader path used for PDF/binary URLs.
 # undetected = true
 
+# ── Display settings ────────────────────────────────────────────────────
+
+[display]
+# Truncation limits for rendered sections (index, related-titles list,
+# log messages, excerpts). Increase to see more, decrease for compact output.
+source_names = 20         # max sources shown in compiled-wiki index
+related_titles = 15       # max related-titles links in write/capture pages
+doc_headings = 5          # max headings in one-line document summary
+concept_names = 3         # max concept names sampled in extraction log
+memory_entries = 10       # max memory entries in system context
+excerpt_chars = 300       # max chars per excerpt in concept pages / chunk preview
+error_chars = 200         # max chars when embedding an exception in a log line
+json_chars = 300          # max chars when embedding unparseable LLM JSON in an error
+cli_element_chars = 80    # max chars per parsed-element preview in CLI output
+
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]
@@ -178,6 +193,9 @@ summary_target_chars = 600
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
 summary_chunk_threshold = 10
+
+# Capture / write-page synthesis: per-source LLM input char cap
+capture_source_char_max = 4000
 
 # ── LLM settings ────────────────────────────────────────────────────────
 
