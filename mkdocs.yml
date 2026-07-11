@@ -104,6 +104,7 @@ nav:
     - Basic Principles: concepts/basic-principles.md
     - Pipeline Tiers: concepts/pipeline-tiers.md
     - WiCER Loop: concepts/wicer-loop.md
+    - Open Knowledge Format: concepts/open-knowledge-format.md
     - Distill: concepts/distill.md
     - Memory Lifecycle: concepts/memory-lifecycle.md
     - RAG Pipeline: concepts/rag-pipeline.md

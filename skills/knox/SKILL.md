@@ -75,7 +75,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
-| `knox compile <files>` | Compile sources into wiki | `--start-at-tier`, `--llm-default-model`, `--vlm-model`, `--embed-model`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--provenance`, `--private`, `--synthesize/--no-synthesize`, `--index/--no-index`, `--url`, `--url-file`, `--set key=val` (config-only values: format, flavor, compiler, image_mode, budgets, timeouts) |
+| `knox compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
 | `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--set key=val` |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
@@ -84,7 +84,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--llm-default-model` |
+| `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison` |
 | `knox trace [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
 | `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
 | `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
@@ -119,6 +119,47 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | Command | Purpose |
 |---------|---------|
 | `knox mcp` | Start stdio MCP server (for agent integration) |
+| `knox agent` | Start ACP agent on stdio (for credential-free LLM injection) |
+
+### ACP Agent Mode
+
+KNOX implements the **Agent Client Protocol (ACP)** to let editors and AI agents
+inject their LLM endpoint without sharing credentials. Run:
+
+```bash
+knox agent
+```
+
+This starts an ACP agent on stdio that:
+
+1. Advertises `providers: {}` capability on `initialize`
+2. Accepts `providers/set` to configure the LLM endpoint (base URL, auth headers, API type)
+3. Creates sessions and responds to `/knox <command>` slash commands
+
+**Why ACP instead of MCP sampling?** KNOX needs full Pydantic structured output
+for compilation — MCP sampling is free-text only. With ACP `providers/set`,
+the editor configures KNOX's LLM endpoint at init time, and KNOX makes its own
+direct HTTP calls with the full litellm pipeline.
+
+**Slash commands:**
+
+| Command | Purpose |
+|---------|---------|
+| `/knox compile [--start-at-tier <tier>] [--force]` | Compile sources into wiki |
+| `/knox query <question> [--tag <name>]` | Query the compiled wiki |
+| `/knox capture <note>` | Capture a note |
+| `/knox status` | Show vault health and cache stats |
+| `/knox help [<command>]` | Show help |
+
+**Config precedence when using ACP:**
+
+1. `providers/set` (ACP) — highest precedence
+2. Env vars (`KNOX_LLM_*`)
+3. `config.toml` `[compile.llm]`
+4. Built-in defaults
+
+This means even without an ACP client, KNOX falls back to env vars or config,
+preserving `knox compile` in terminal and `knox mcp` for MCP-based agents.
 | `knox serve` | Start web UI server (browser-based wiki viewer) |
 
 ## Compilation Pipeline
@@ -144,7 +185,10 @@ Compiler backends:
 
 ## MCP Server
 
-Run `knox mcp` to start an MCP server on stdio transport. All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": "..."}`.
+Run `knox mcp` to start an MCP server on stdio transport. For credential-free
+LLM injection via ACP, use `knox agent` instead (see ACP Agent Mode above).
+
+All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": "..."}`.
 
 ### Available MCP Tools
 
@@ -212,34 +256,35 @@ compile_wiki(sources_dir="./sources", output="./output", compiler="wicer")
 
 ## Output Format
 
-Wiki pages use the **ISON** format (semantically annotated Markdown with YAML frontmatter):
+KNOX produces **OKF v0.1** (Open Knowledge Format) bundles by default — an open,
+human- and agent-friendly format for representing knowledge as a directory of
+markdown files with YAML frontmatter. [Spec →](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+
+Legacy formats (Obsidian vault mode, JSON, Typst) are available via
+`compile.output.format` config key.
+
+### OKF frontmatter fields
 
 ```yaml
 ---
-title: "System Architecture"
 type: concept
-aliases: [arch, system-design]
-tags: [architecture, infrastructure]
-provenance:
-  - source: "docs/architecture.pdf"
-    page: 12
-    confidence: 0.87
-related:
-  - "Database Schema": "references the database module for persistence"
-  - "API Gateway": "routes requests through the gateway"
+title: "System Architecture"
+description: One-line summary of the page
+tags: [source-file-1, source-file-2]
+timestamp: "2026-07-10T12:00:00"
+kind: concept  # KNOX extension
+compiled_at: "2026-07-10"  # KNOX extension
+sources: [source-file-1.pdf]  # KNOX extension
 ---
 Content in standard Markdown...
 ```
 
-The YAML frontmatter fields (`type`, `aliases`, `tags`, `provenance`, `related`)
-carry machine-readable metadata for cross-linking, classification, source
-attribution, and semantic relationships.
-
 The wiki also includes:
 
-- `wiki.md` — main compiled document (linearized)
-- `index.md` — table of contents (re-generated on re-compile)
-- `pages/` — individual page files (when `--flavor pages`)
+- `index.md` — table of contents with grouped sections and descriptions
+- `log.md` — ISO date headings with bold action prefix
+- `concepts/` — subfolder for concept/entity/comparison pages
+- `# Citations` section with numbered `[N]` refs from provenance
 
 ## Configuration
 
@@ -261,7 +306,7 @@ Key config keys:
 | `compile.llm.default_model` | `""` | LLM for compilation/querying |
 | `compile.llm.vlm_model` | `""` | VLM for image captioning |
 | `compile.embedding.model` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-| `compile.output.format` | `markdown` | Output format (markdown, json, typst) |
+| `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
 | `ingest.parser` | `docling` | Ingestion backend, or comma-separated priority list (docling, liteparse, pandoc; first match wins) |
@@ -281,18 +326,6 @@ Or env var:
 export KNOX_LLM_DEFAULT_MODEL="ollama/llama3.2"
 ```
 
-## Event Hooks
-
-Define post-compile or post-query scripts in `knox.toml`:
-
-```toml
-[hooks.on_compile]
-command = "uv run scripts/notify.py"
-
-[hooks.on_query]
-command = "uv run scripts/log_query.py"
-```
-
 ## Common Patterns
 
 ### Start fresh (force full re-compile)
@@ -310,19 +343,21 @@ knox compile ./sources/* --start-at-tier 4
 ### Use a specific LLM
 
 ```bash
-knox compile ./sources/*.pdf --llm-default-model "openai/gpt-4o"
+knox config set compile.llm.default_model "openai/gpt-4o"
+# or per-invocation:
+knox compile --set compile.llm.default_model="openai/gpt-4o"
 ```
 
 ### Compile with URLs
 
 ```bash
-knox compile ./sources/*.pdf --online-urls "https://example.com/docs"
+knox compile --url "https://example.com/docs"
 ```
 
 ### Enable provenance tracking
 
 ```bash
-knox compile ./sources/*.pdf --provenance
+knox config set compile.provenance true
 ```
 
 ## Error Handling

@@ -1,0 +1,65 @@
+# KNOX Vault — Agent Instructions
+
+This vault is a **KNOX** knowledge base. It produces **OKF v0.1** (Open Knowledge
+Format) bundles — a directory of markdown files with YAML frontmatter.
+
+## Quick Reference
+
+| Action | Command |
+|--------|---------|
+| Compile sources into wiki | `knox compile` |
+| Ingest new documents | `knox ingest <files>` |
+| Query the compiled wiki | `knox query <question>` |
+| Capture knowledge from conversation | `knox capture <text>` |
+| Store a fact verbatim | `knox learn <text>` |
+| Check vault health | `knox status` |
+| Start ACP agent (credential-free LLM) | `knox agent` |
+| Start MCP server | `knox mcp` |
+
+## OKF v0.1 Conformance
+
+- Every concept file has parseable YAML frontmatter with a non-empty `type` field
+- Cross-links use absolute bundle-relative paths: `[Title](/concepts/title.md)`
+- Reserved filenames (`index.md`, `log.md`) follow OKF structure
+- Root `index.md` declares `okf_version: "0.1"`
+- `log.md` uses ISO 8601 date headings with bold action prefix
+- Citations rendered as `# Citations` section with numbered `[N]` refs
+
+## ACP Agent Mode
+
+KNOX implements the Agent Client Protocol (ACP). To inject your LLM endpoint
+without sharing credentials, start KNOX as an ACP agent:
+
+```bash
+knox agent
+```
+
+The editor calls `providers/set` to configure the LLM, then sends `/knox <command>`
+slash commands. See `knox agent --help` for details.
+
+## Directory Layout
+
+```
+.                       ← vault root
+├── .knox/              ← internal state (cache, vectors, search db, memory)
+├── sources/            ← source documents (PDF, DOCX, markdown, URLs)
+│   ├── _captured/      ← knowledge items extracted from conversation
+│   └── _distilled/     ← LLM-synthesized wiki pages
+└── wiki/               ← compiled output (OKF v0.1 bundle)
+    ├── index.md        ← table of contents
+    ├── log.md          ← change log
+    └── concepts/       ← concept/entity/comparison pages
+```
+
+## Configuration
+
+Config lives in `.knox/config.toml`. Key settings:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `compile.llm.default_model` | `""` | LLM for compilation/querying (required) |
+| `compile.llm.vlm_model` | `""` | VLM for image captioning |
+| `compile.embedding.model` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
+| `compile.output.format` | `okf` | Output format |
+
+Set via `knox config set <key> <value>` or env vars (`KNOX_LLM_DEFAULT_MODEL`).

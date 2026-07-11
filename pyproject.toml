@@ -12,6 +12,25 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Database :: Front-Ends",
+]
+keywords = [
+    "knowledge-base",
+    "wiki",
+    "llm",
+    "rag",
+    "document-processing",
+    "open-knowledge-format",
+    "okf",
+    "mcp",
+    "acp",
+    "agent-client-protocol",
+    "knowledge-management",
+    "semantic-search",
+    "vector-search",
+    "pdf-parsing",
+    "knowledge-graph",
 ]
 dependencies = [
     "typer>=0.12.0",

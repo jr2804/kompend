@@ -31,6 +31,7 @@ TEMPLATE_NOTES: Final[str] = "NOTES.md"  # copied verbatim (contains user-facing
 TEMPLATE_README: Final[str] = "README.md.j2"  # rendered with config paths
 TEMPLATE_GITIGNORE: Final[str] = "gitignore.j2"  # rendered with config paths
 TEMPLATE_NEXT_STEPS: Final[str] = "next_steps.txt.j2"  # rendered with config paths (console output only)
+TEMPLATE_AGENTS: Final[str] = "AGENTS.md.j2"  # rendered with config paths (agent instructions)
 
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
 
@@ -297,6 +298,12 @@ def scaffold_project(
         readme_dest = resolved_target_dir / "README.md"
         readme_dest.write_text(_render_template(TEMPLATE_README, **render_vars), encoding="utf-8")
         result.copied_files.append(readme_dest)
+
+    # AGENTS.md is always rendered (even in bare mode) — agents need to know
+    # about OKF conformance and ACP mode regardless of user-facing docs.
+    agents_dest = resolved_target_dir / "AGENTS.md"
+    agents_dest.write_text(_render_template(TEMPLATE_AGENTS, **render_vars), encoding="utf-8")
+    result.copied_files.append(agents_dest)
 
     if git:
         try:

@@ -20,6 +20,8 @@ KNOX refuses to pick a side. [Read the full motivation →](docs/about/motivatio
 
 > **OKF v0.1 compliant** — KNOX produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 > bundles by default, an open, portable format for knowledge exchange.
+> **ACP agent** — KNOX implements the [Agent Client Protocol](https://agentclientprotocol.com)
+> for credential-free LLM injection via `knox agent`.
 
 Parse, chunk, resolve, and compile PDFs, DOCX files, spreadsheets, and web
 sources into an interlinked, queryable knowledge base — with

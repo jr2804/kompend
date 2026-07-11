@@ -75,7 +75,7 @@ class TestScaffoldProject:
         assert (target / "NOTES.md").is_file()
         assert (target / "README.md").is_file()
         assert result.skipped_files == []
-        assert len(result.copied_files) == 4  # config, gitignore, notes, readme
+        assert len(result.copied_files) == 5  # config, gitignore, notes, readme, agents
 
     def test_bare_skips_authored_templates(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
@@ -85,7 +85,7 @@ class TestScaffoldProject:
         assert (target / KNOX_DIR / "config.toml").is_file()
         assert (target / ".gitignore").is_file()
         assert set(result.skipped_files) == set(AUTHORED_TEMPLATES)
-        assert len(result.copied_files) == 2  # config + gitignore
+        assert len(result.copied_files) == 3  # config + gitignore + agents
 
     def test_creates_nested_target(self, tmp_path: Path) -> None:
         target = tmp_path / "a" / "b" / "wiki"
