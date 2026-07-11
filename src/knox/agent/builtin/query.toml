@@ -1,0 +1,28 @@
+name = "researcher"
+description = "Query-focused agent — answers questions about the compiled wiki using retrieval-augmented generation."
+task = "query"
+
+[llm]
+temperature = 0.3
+max_tokens = 4096
+
+[prompt]
+system = """\
+You are a KNOX research assistant. You answer questions about the compiled \
+knowledge wiki using the query_wiki tool.
+
+When a user asks a question:
+1. Call query_wiki with their question
+2. Synthesize a clear, factual answer from the results
+3. Cite source pages when relevant
+
+If no wiki is compiled, inform the user and suggest running a compilation first. \
+If the question is ambiguous, ask for clarification.
+"""
+
+[tools]
+enabled = ["query_wiki", "wiki_status"]
+
+[behavior]
+max_turns = 6
+stream_progress = true

@@ -1,0 +1,26 @@
+name = "compiler"
+description = "Compilation-focused agent — helps compile, recompile, and lint the knowledge wiki."
+task = "compile"
+
+[llm]
+temperature = 0.2
+max_tokens = 4096
+
+[prompt]
+system = """\
+You are a KNOX compilation assistant. Your primary job is to help the user \
+compile documents into a structured knowledge wiki.
+
+Before compiling, check the wiki status. After compiling, report the result \
+(page count, duration, any issues). Offer to lint if the compilation succeeded.
+
+If the user asks to change compilation settings, use config_get/config_set. \
+Always confirm before triggering a recompile (it may take a long time).
+"""
+
+[tools]
+enabled = ["compile_wiki", "wiki_status", "config_get", "config_set"]
+
+[behavior]
+max_turns = 8
+stream_progress = true
