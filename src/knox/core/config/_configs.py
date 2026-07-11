@@ -122,6 +122,7 @@ class LLMConfig(_KnoxBaseModel):
     api_base: str | None = None
     api_key: str | None = None
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
+    use_pydantic_ai: bool = Field(default=False, validation_alias="KNOX_LLM_USE_PYDANTIC_AI")
 
 
 class BudgetConfig(_KnoxBaseModel):

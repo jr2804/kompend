@@ -260,6 +260,12 @@ fallback_max_retries = 2
 # LLM call timeout
 timeout = 120.0
 
+# PydanticAI agents (knox-pyda) — opt-in alternative to the raw litellm
+# path for pipeline stages. When true, stages that have a PydanticAI
+# implementation (currently: extraction) use it instead of the
+# direct litellm call. Default false; the litellm path is stable.
+use_pydantic_ai = false
+
 # ── Embedding settings ──────────────────────────────────────────────────
 
 [compile.embedding]
