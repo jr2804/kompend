@@ -42,6 +42,9 @@ from knox.core.config.keys import (
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Silence noisy third-party loggers that flood CLI output with
 # model-loading chatter, empty-OCR warnings, and full ONNX/docling
@@ -57,10 +60,6 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
-
-from knox.logging import get_logger  # noqa: E402
-
-logger = get_logger(__name__)
 
 
 def resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:  # noqa: ANN401

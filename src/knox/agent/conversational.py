@@ -61,7 +61,7 @@ class ConversationalAgent:
             :class:`PromptResponse` with the final answer.
         """
         definition = self._definition
-        tools_schema = self._tools.schemas(definition.tools.enabled)
+        tools_schema = ToolDispatcher.schemas(definition.tools.enabled)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": definition.prompt.system},

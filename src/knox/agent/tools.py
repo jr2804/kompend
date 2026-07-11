@@ -169,7 +169,25 @@ class ToolDispatcher:
         self._sources_dir = DEFAULTS.get("paths", {}).get("sources_dir", "sources")
         self._output_dir = DEFAULTS.get("paths", {}).get("output_dir", "wiki")
 
-    def schemas(self, enabled: list[str] | None = None) -> list[dict[str, Any]]:  # noqa: PLR6301
+    async def execute(self, name: str, arguments: dict[str, Any]) -> str:
+        """Execute a tool by name and return the result as a JSON string.
+
+        On error, returns ``{"status": "error", "message": "..."}`` as a string.
+        Result is truncated to ``_MAX_TOOL_RESULT_CHARS`` to protect context.
+        """
+        try:
+            result = await asyncio.to_thread(self._dispatch, name, arguments)
+        except Exception as exc:
+            logger.exception("Tool execution failed: %s", name)
+            result = {"status": "error", "message": str(exc)}
+
+        text = json.dumps(result, ensure_ascii=False, default=str)
+        if len(text) > _MAX_TOOL_RESULT_CHARS:
+            text = text[:_MAX_TOOL_RESULT_CHARS] + "\n…(truncated)"
+        return text
+
+    @staticmethod
+    def schemas(enabled: list[str] | None = None) -> list[dict[str, Any]]:
         """Return tool schemas in litellm/OpenAI format for the LLM.
 
         Args:
@@ -193,23 +211,6 @@ class ToolDispatcher:
                 }
             )
         return result
-
-    async def execute(self, name: str, arguments: dict[str, Any]) -> str:
-        """Execute a tool by name and return the result as a JSON string.
-
-        On error, returns ``{"status": "error", "message": "..."}`` as a string.
-        Result is truncated to ``_MAX_TOOL_RESULT_CHARS`` to protect context.
-        """
-        try:
-            result = await asyncio.to_thread(self._dispatch, name, arguments)
-        except Exception as exc:
-            logger.exception("Tool execution failed: %s", name)
-            result = {"status": "error", "message": str(exc)}
-
-        text = json.dumps(result, ensure_ascii=False, default=str)
-        if len(text) > _MAX_TOOL_RESULT_CHARS:
-            text = text[:_MAX_TOOL_RESULT_CHARS] + "\n…(truncated)"
-        return text
 
     def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call the underlying MCP server function via dispatch table."""
