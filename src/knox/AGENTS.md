@@ -486,7 +486,7 @@ The spec is at <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ma
 conformance against the OKF spec. The legacy ``MarkdownWriter`` (Obsidian vault
 mode) is exempt from rules 2\u20136 but must remain functional.
 
-### ACP agent — credential-free LLM injection
+### ACP agent — credential-free LLM injection and conversational agents
 
 KNOX implements the **Agent Client Protocol (ACP)** to let editors and AI
 agents inject their LLM endpoint without sharing credentials. The agent runs
@@ -499,6 +499,25 @@ as ``knox agent`` on stdio.
 3. Client calls ``providers/set`` \u2192 KNOX stores the endpoint and reconfigures litellm
 4. Client calls ``session/new`` \u2192 KNOX creates a session
 5. Client sends ``/knox <command>`` in a prompt \u2192 KNOX runs the pipeline
+
+**Two prompt paths:**
+
+- **Conversational agent** (default when LLM is configured): prompts go through
+  a tool-calling loop driven by TOML-defined agents (``builtin/*.toml`` +
+  ``.knox/agents/*.toml``). The LLM reasons over available tools and calls
+  them as needed. See ``knox agents list`` for available agents.
+- **Subprocess dispatch** (degraded mode, no LLM): ``/knox`` slash commands
+  launch the corresponding CLI subcommand. Free-text prompts are rejected.
+
+**Key modules:**
+
+- ``knox_agent.py`` — ACP protocol handler, routes prompts to conversational or subprocess path
+- ``definitions.py`` — ``AgentDefinition`` pydantic model loaded from TOML
+- ``registry.py`` — ``AgentRegistry`` discovers agents from builtin + vault
+- ``tools.py`` — ``ToolDispatcher`` wraps existing MCP server functions as agent-callable tools
+- ``conversational.py`` — ``ConversationalAgent`` tool-calling loop
+- ``provider_store.py`` — thread-safe LLM credential store for providers/set
+- ``slash_commands.py`` — slash command parsing and structured definitions
 
 **Key design decisions:**
 
@@ -550,7 +569,7 @@ as ``knox agent`` on stdio.
 
 | Path | Scope |
 |------|-------|
-| `agent/` | ACP agent — credential-free LLM injection via `providers/set`; `KnoxAgent`, `ProviderCredentials`, slash commands |
+| `agent/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
