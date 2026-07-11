@@ -18,6 +18,9 @@ from pydantic import BaseModel, ValidationError
 from slugify import slugify as _slugify_impl
 
 from knox.compilation.schema import LLMOutputError
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_JSON_CHARS
+from knox.core.exception_format import shorten_exception
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient, _strip_reasoning, salvage_json
@@ -498,10 +501,12 @@ def _try_litellm_json(  # noqa: PLR0915
             )
         parsed = salvage_json(content, schema=response_model)
         if parsed is None:
-            snippet = content[:300].replace("\n", "\\n")
+            snippet_chars = DEFAULTS.get(DISPLAY_JSON_CHARS, 300)
+            snippet = content[:snippet_chars].replace("\n", "\\n")
             raise LLMOutputError(f"Model '{model_used}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
         if not isinstance(parsed, dict):
-            raise LLMOutputError(f"Model '{model_used}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {str(parsed)[:200]}")
+            parsed_repr = shorten_exception(ValueError(str(parsed)))
+            raise LLMOutputError(f"Model '{model_used}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {parsed_repr}")
         logger.debug("LLM parsed OK model=%s keys=%s", model_used, list(parsed.keys()))
         return parsed
     except LLMOutputError:
@@ -594,12 +599,12 @@ def _complete_validated_batch(
         try:
             validated = response_model.model_validate(data)
         except ValidationError as exc:
-            last_reason = f"schema invalid: {str(exc)[:200]}"
+            last_reason = f"schema invalid: {shorten_exception(exc)}"
             logger.warning(
                 "LLM batch attempt %d/%d failed schema validation — %s",
                 attempt,
                 attempts,
-                str(exc)[:200],
+                shorten_exception(exc),
             )
             continue
         return validated, data

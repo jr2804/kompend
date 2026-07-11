@@ -30,6 +30,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
 )
+from knox.core.exception_format import shorten_exception
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 from knox.llm.format import (
@@ -704,7 +705,7 @@ class LLMClient:
                     "role": role,
                     "model": err.model,
                     "error": type(err).__name__,
-                    "message": str(err)[:200],
+                    "message": shorten_exception(err),
                 }
             )
             logger.warning(
