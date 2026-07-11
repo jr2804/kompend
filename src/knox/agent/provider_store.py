@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import threading
 from copy import deepcopy
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -26,6 +27,16 @@ class LlmApiType(StrEnum):
     AZURE = "azure"
     VERTEX = "vertex"
     BEDROCK = "bedrock"
+
+
+@dataclass
+class ProviderConfig:
+    """LLM endpoint configuration from ACP ``providers/set``."""
+
+    api_type: str
+    base_url: str
+    headers: dict[str, str] = field(default_factory=dict)
+    model: str | None = None
 
 
 # ACP apiType → litellm provider prefix. Only entries whose litellm prefix
