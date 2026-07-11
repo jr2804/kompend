@@ -35,7 +35,13 @@ from knox.agent.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, pa
 from knox.agent.tools import ToolDispatcher
 from knox.core.config import resolve_config
 from knox.core.config._core import set_config_file_value
-from knox.core.config.keys import PATHS_WIKI_DIR
+from knox.core.config.keys import (
+    AGENTS_CAPTURE,
+    AGENTS_COMPILE,
+    AGENTS_ORGANIZE,
+    AGENTS_QUERY,
+    PATHS_WIKI_DIR,
+)
 from knox.core.paths import KNOX_CONFIG_FILE
 from knox.llm.client import LLMClient
 from knox.logging import get_logger
@@ -49,10 +55,10 @@ _SLASH_TASK_MAP: dict[str, AgentTask] = {
 }
 
 _AGENT_CONFIG_KEYS: dict[AgentTask, str] = {
-    AgentTask.COMPILE: "agents.compile",
-    AgentTask.QUERY: "agents.query",
-    AgentTask.CAPTURE: "agents.capture",
-    AgentTask.ORGANIZE: "agents.organize",
+    AgentTask.COMPILE: AGENTS_COMPILE,
+    AgentTask.QUERY: AGENTS_QUERY,
+    AgentTask.CAPTURE: AGENTS_CAPTURE,
+    AgentTask.ORGANIZE: AGENTS_ORGANIZE,
 }
 
 
@@ -238,7 +244,9 @@ class KnoxAgent(Agent):
         if agent is None:
             return {"status": "error", "message": f"Agent not found: {name}"}
 
-        config_key = _AGENT_CONFIG_KEYS.get(task, f"agents.{task.value}")
+        config_key = _AGENT_CONFIG_KEYS.get(task)
+        if config_key is None:
+            return {"status": "error", "message": f"No config key for task: {task.value}"}
         config_path = Path(cwd) / KNOX_CONFIG_FILE
         set_config_file_value(config_path, config_key, name)
         return {"status": "ok", "task": task.value, "agent": name}

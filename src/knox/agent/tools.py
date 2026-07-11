@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from knox.core.config import DEFAULTS
 from knox.logging import get_logger
 from knox.mcp import server as _mcp
 
@@ -153,6 +154,8 @@ class ToolDispatcher:
 
     def __init__(self, base_dir: str | Path | None = None) -> None:
         self._base_dir = str(base_dir) if base_dir else "."
+        self._sources_dir = DEFAULTS.get("paths", {}).get("sources_dir", "sources")
+        self._output_dir = DEFAULTS.get("paths", {}).get("output_dir", "wiki")
 
     def schemas(self, enabled: list[str] | None = None) -> list[dict[str, Any]]:  # noqa: PLR6301
         """Return tool schemas in litellm/OpenAI format for the LLM.
@@ -202,8 +205,8 @@ class ToolDispatcher:
             return _mcp.wiki_status(wiki_dir=self._base_dir)
         if name == "compile_wiki":
             return _mcp.compile_wiki(
-                sources_dir=arguments.get("sources_dir", self._base_dir + "/sources"),
-                output=self._base_dir + "/wiki",
+                sources_dir=arguments.get("sources_dir", self._base_dir + "/" + self._sources_dir),
+                output=self._base_dir + "/" + self._output_dir,
                 compiler=arguments.get("compiler", "graph"),
             )
         if name == "query_wiki":
@@ -215,7 +218,7 @@ class ToolDispatcher:
         if name == "wiki_capture":
             return _mcp.wiki_capture(
                 text=arguments["text"],
-                sources_dir=self._base_dir + "/sources",
+                sources_dir=self._base_dir + "/" + self._sources_dir,
             )
         if name == "config_get":
             return _mcp.config_get(key=arguments["key"])
