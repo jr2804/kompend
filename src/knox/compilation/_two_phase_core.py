@@ -17,6 +17,7 @@ import litellm
 from pydantic import BaseModel, ValidationError
 from slugify import slugify as _slugify_impl
 
+from knox.agents.deps import PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_JSON_CHARS
@@ -610,6 +611,46 @@ def _complete_validated_batch(
         return validated, data
     logger.warning("LLM batch failed after %d attempt(s): %s", attempts, last_reason)
     return None, None
+
+
+def _try_pydanticai_extraction(
+    agent: Any,
+    *,
+    text: str,
+    source_id: str,
+    timeout: float = 120.0,
+) -> Any | None:
+    """Run a PydanticAI :class:`ExtractionAgent` on a chunk of source text.
+
+    This is the PydanticAI counterpart to :func:`_try_litellm_json` for
+    the extraction stage. It is opt-in: callers should only invoke it
+    when ``compile.llm.use_pydantic_ai`` is True (see knox-pyda Phase 1).
+
+    The agent's ``run`` method already does JSON extraction and Pydantic
+    validation internally; auto-retry on schema mismatch is built in.
+    We catch and log any exception here so the caller's failure
+    tracker can record the attempt uniformly with the litellm path.
+
+    Args:
+        agent: An instantiated :class:`~knox.agents.ExtractionAgent`.
+        text: The combined chunk text to extract from.
+        source_id: Provenance tag (file stem / URL).
+        timeout: Per-call timeout in seconds; forwarded to the
+            agent's model settings.
+
+    Returns:
+        The validated :class:`~knox.compilation.schema.ExtractionOutput`
+        instance, or ``None`` on failure.
+    """
+    try:
+        deps = PipelineAgentDeps(text=text, source_id=source_id, timeout=timeout)
+        return agent.run(deps)
+    except LLMOutputError as exc:
+        logger.warning("PydanticAI extraction failed for '%s': %s", source_id, shorten_exception(exc))
+        return None
+    except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
+        logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, shorten_exception(exc))
+        return None
 
 
 def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:

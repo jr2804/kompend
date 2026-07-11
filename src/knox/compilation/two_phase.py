@@ -23,6 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from knox.agents.extraction import ExtractionAgent
 from knox.chunking.summarizer import (
     _structured_to_text,
 )  # ponytail: cross-module private import. Make public or move to knox.core.models if other callers appear.
@@ -39,6 +40,7 @@ from knox.compilation._two_phase_core import (
     _segment_sources,
     _slugify,
     _tokens_to_chars,
+    _try_pydanticai_extraction,
     _upsert_node,
 )
 from knox.compilation.base import BaseCompiler
@@ -818,6 +820,41 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
+
+        # PydanticAI path (knox-pyda Phase 1, opt-in via config flag).
+        # Bypasses _complete_validated_batch and the litellm JSON-repair
+        # path entirely; PydanticAI handles extraction + validation
+        # internally with auto-retry on schema mismatch.
+        if self._config.llm.use_pydantic_ai:
+            agent = ExtractionAgent(
+                litellm_model=self._model,
+                timeout=self._timeout,
+            )
+            validated = _try_pydanticai_extraction(
+                agent,
+                text=combined,
+                source_id=source,
+                timeout=self._timeout,
+            )
+            self._batch_tracker.record(failed=validated is None)
+            if validated is None:
+                logger.warning(
+                    "TwoPhase: PydanticAI extraction skipped for source '%s' — agent returned no result",
+                    source,
+                )
+                return None
+            result = Extraction(
+                source=source,
+                summary=validated.summary,
+                entities=[e.model_dump() for e in validated.entities],
+                concepts=[c.model_dump() for c in validated.concepts],
+                tags=validated.tags,
+            )
+            if not self._config.no_cache:
+                self._cache_store.set("extract", extract_deps, result)
+            return result
+
+        # Default: raw litellm path with JSON-repair + schema validation.
         validated, _data = _complete_validated_batch(
             prompt=prompt,
             model=self._model,
