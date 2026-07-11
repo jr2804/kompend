@@ -1,11 +1,56 @@
-"""Slash command parsing and dispatch for the ACP agent.
+"""Slash command parsing, definitions, and dispatch for the ACP agent.
 
 Maps ``/knox <command> [args]`` to the corresponding KNOX pipeline call.
+
+Command definitions live in :data:`KNOX_COMMANDS` as structured specs so both
+the help text and the ACP ``available_commands_update`` notification are
+derived from a single source of truth.
 """
 
 from __future__ import annotations
 
 import shlex
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    """Structured definition of a single ``/knox`` slash command."""
+
+    name: str
+    description: str
+    usage: str
+
+
+KNOX_COMMANDS: list[CommandSpec] = [
+    CommandSpec(
+        name="compile",
+        description="Compile sources into a wiki",
+        usage="/knox compile [--start-at-tier <tier>] [--force]",
+    ),
+    CommandSpec(
+        name="query",
+        description="Query the compiled wiki",
+        usage="/knox query <question> [--tag <name>]",
+    ),
+    CommandSpec(
+        name="capture",
+        description="Capture a note",
+        usage="/knox capture <note>",
+    ),
+    CommandSpec(
+        name="status",
+        description="Show vault health, tier progress, cache stats",
+        usage="/knox status",
+    ),
+    CommandSpec(
+        name="help",
+        description="Show available commands or details about a specific command",
+        usage="/knox help [<command>]",
+    ),
+]
+
+_COMMAND_INDEX: dict[str, CommandSpec] = {c.name: c for c in KNOX_COMMANDS}
 
 
 class SlashCommand:
@@ -61,25 +106,22 @@ def parse_slash_command(text: str) -> SlashCommand | None:
     return SlashCommand(name, args, kwargs)
 
 
-# ── Help text ──────────────────────────────────────────────────────────
+# ── Help text (derived from KNOX_COMMANDS) ─────────────────────────────
 
-HELP_TEXT = """\
-**KNOX — Knowledge Organizer for eXtended documents**
 
-Available slash commands:
+def _build_help_text() -> str:
+    """Generate help text from :data:`KNOX_COMMANDS`."""
+    lines = [
+        "**KNOX — Knowledge Organizer for eXtended documents**",
+        "",
+        "Available slash commands:",
+        "",
+    ]
+    for cmd in KNOX_COMMANDS:
+        lines.append(f"- ``{cmd.usage}``")
+        lines.append(f"  {cmd.description}.")
+        lines.append("")
+    return "\n".join(lines)
 
-- ``/knox compile [--start-at-tier <tier>] [--force]``
-  Compile sources into a wiki. Same as ``knox compile``.
 
-- ``/knox query <question> [--tag <name>]``
-  Query the compiled wiki. Same as ``knox query``.
-
-- ``/knox capture <note>``
-  Capture a note. Same as ``knox capture``.
-
-- ``/knox status``
-  Show vault health, tier progress, cache stats.
-
-- ``/knox help [<command>]``
-  Show this help or details about a specific command.
-"""
+HELP_TEXT = _build_help_text()
