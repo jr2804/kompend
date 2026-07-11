@@ -138,6 +138,7 @@ _LAZY_MODULES: dict[str, str] = {
     "review": "knox.cli.cmds.review",
     "mcp": "knox.cli.cmds.serve",
     "serve": "knox.cli.cmds.serve",
+    "agent": "knox.cli.cmds.agent",
 }
 
 

@@ -65,6 +65,8 @@ ignore = [
 "tests/**/*.py" = ["S101", "PLR6301"]
 # Lazy __getattr__: __all__ names are resolved at runtime, not statically
 "src/knox/cli/cmds/__init__.py" = ["F822"]
+# ACP Agent protocol methods need self for the protocol signature
+"src/knox/agent/knox_agent.py" = ["PLR6301"]
 
 [lint.pylint]
 max-locals = 20
