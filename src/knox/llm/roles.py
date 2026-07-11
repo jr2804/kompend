@@ -16,6 +16,7 @@ class LLMRole(StrEnum):
     """All LLM call roles used across the pipeline."""
 
     DEFAULT = "default"
+    AGENT = "agent"
 
     # ── Capture ──────────────────────────────────────────────────────────
     CAPTURE = "capture"

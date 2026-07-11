@@ -140,3 +140,10 @@ SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.com
 
 # ── query section ──
 QUERY_FORMAT: Final[str] = "query.format"
+
+# ── agents section ──
+AGENTS_COMPILE: Final[str] = "agents.compile"
+AGENTS_QUERY: Final[str] = "agents.query"
+AGENTS_CAPTURE: Final[str] = "agents.capture"
+AGENTS_ORGANIZE: Final[str] = "agents.organize"
+AGENTS_GENERIC: Final[str] = "agents.generic"
