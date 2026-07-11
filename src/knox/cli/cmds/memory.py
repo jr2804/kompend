@@ -9,8 +9,8 @@ import typer
 
 from knox.cli.app import app
 from knox.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
-from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR, TRUST_USER_TRACKING
+from knox.core.config import DEFAULTS, resolve_config
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR, TRUST_USER_TRACKING
 from knox.core.template_loader import get_template_loader
 from knox.core.user import resolve_actor
 from knox.logging import get_console, get_err_console
@@ -105,9 +105,10 @@ def memory_synthesize(
         context_file.parent.mkdir(parents=True, exist_ok=True)
 
         loader = get_template_loader()
+        memory_entry_limit = DEFAULTS.get(DISPLAY_MEMORY_ENTRIES, 10)
         content = loader.render(
             "memory/system_context.md.j2",
-            entries=entries[:10],
+            entries=entries[:memory_entry_limit],
         )
         context_file.write_text(content, encoding="utf-8")
 

@@ -16,6 +16,8 @@ Config keys (under ``[search.contextual]``):
 
 from __future__ import annotations
 
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_DOC_HEADINGS, DISPLAY_EXCERPT_CHARS
 from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import LLMClient
@@ -88,10 +90,11 @@ class ContextualEnricher:
 
         # Estimate chunk content length
         content_preview = ""
+        excerpt_limit = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
         if node.chunk:
-            content_preview = node.chunk.text[:200]
+            content_preview = node.chunk.text[:excerpt_limit]
         elif node.structured:
-            content_preview = str(node.structured)[:200]
+            content_preview = str(node.structured)[:excerpt_limit]
 
         try:
             rendered = self._template_loader.render(
@@ -143,5 +146,6 @@ class ContextualEnricher:
         elements = doc.elements
         headings = [e.content for e in elements if e.type == ElementType.HEADING and isinstance(e.content, str)]
         if headings:
-            return "; ".join(headings[:5])
+            limit = DEFAULTS.get(DISPLAY_DOC_HEADINGS, 5)
+            return "; ".join(headings[:limit])
         return doc.title or doc.source_file.stem

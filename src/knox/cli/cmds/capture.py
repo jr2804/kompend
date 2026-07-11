@@ -17,6 +17,7 @@ from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, DISPLAY_RELATED_TITLES
 from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
@@ -160,6 +161,7 @@ def write_cmd(
 
     # ── Load related wiki nodes from the last compile ────────────────────
     related_titles = _load_related_titles(base_dir, source_texts)
+    related_titles = related_titles[: cfg.get(DISPLAY_RELATED_TITLES, 15)]
 
     # ── Build body ────────────────────────────────────────────────────────
     fm: dict[str, Any] = {}
@@ -187,6 +189,7 @@ def write_cmd(
             related_titles=related_titles,
             model=llm_model,
             timeout=float(cfg.get("compile.llm.timeout", 120)),
+            source_char_max=cfg.get(COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, 4000),
         )
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────
@@ -231,6 +234,7 @@ def _synthesize_write_page(
     related_titles: list[str],
     model: str,
     timeout: float,
+    source_char_max: int = 4000,
 ) -> str:
     """Return continuous prose for the write page.
 
@@ -243,7 +247,7 @@ def _synthesize_write_page(
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
 
-    source_block = "\n\n".join(f"### {stem}\n\n{text[:4000]}" for stem, text in source_texts)
+    source_block = "\n\n".join(f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts)
     prompt = (
         f"Write a comprehensive wiki page titled '{page_title}'.\n"
         f"Synthesise the sources below into coherent, continuous prose.\n"
@@ -279,6 +283,6 @@ def _build_references_section(
         lines.append(f"- {stem}")
     if related_titles:
         lines.append("\n## Related\n")
-        for title in related_titles[:15]:
+        for title in related_titles:
             lines.append(f"- [[{title}]]")
     return "\n".join(lines)

@@ -58,8 +58,15 @@ from knox.cli.args import (
     VlmModel,
     Workers,
 )
-from knox.core.config import coerce_config_value, resolve_config, validate_config_key
-from knox.core.config.keys import COMPILE_IN_PLACE_SOURCES, DOWNLOADER_UNDETECTED, INGEST_PARSER, PATHS_WIKI_DIR
+from knox.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
+from knox.core.config.keys import (
+    COMPILE_IN_PLACE_SOURCES,
+    DISPLAY_CLI_ELEMENT_CHARS,
+    DISPLAY_SOURCE_NAMES,
+    DOWNLOADER_UNDETECTED,
+    INGEST_PARSER,
+    PATHS_WIKI_DIR,
+)
 from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
@@ -128,8 +135,9 @@ def parse_cmd(
         doc = instance.parse(path)
         get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
+            element_text_limit = DEFAULTS.get(DISPLAY_CLI_ELEMENT_CHARS, 80)
             for el in doc.elements:  # ty: ignore
-                get_console().print(f"  - {el.get('type')}: {str(el.get('text', ''))[:80]}")  # ty: ignore
+                get_console().print(f"  - {el.get('type')}: {str(el.get('text', ''))[:element_text_limit]}")  # ty: ignore
 
 
 @app.command(name="compile")
@@ -274,7 +282,7 @@ def compile_cmd(  # noqa: PLR0915
 
         wiki.metadata[str(WikiField.DURATION_SECONDS)] = round(elapsed, 2)
         wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(source_files)
-        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[:20]]
+        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[: cfg.get(DISPLAY_SOURCE_NAMES, 20)]]
 
         if json_progress:
             _emit_json_done(elapsed, f"Compiled wiki written to {output_dir}")

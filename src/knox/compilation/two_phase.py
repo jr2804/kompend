@@ -503,10 +503,11 @@ class TwoPhaseCompiler(BaseCompiler):
         if embed_model and embed_model != "hash":
             concepts = _merge_similar_concepts(concepts, embed_model)
         if concepts:
+            sample_limit = self._config.display.concept_names
             logger.info(
                 "TwoPhase: %d concept(s) ready for generation (sample: %s)",
                 len(concepts),
-                [c["name"] for c in concepts[:3]],
+                [c["name"] for c in concepts[:sample_limit]],
             )
         else:
             # Diagnose: what keys did extraction actually return? Pinpoints

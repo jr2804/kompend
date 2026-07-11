@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from knox.compilation.base import BaseCompiler
+from knox.core.config import DEFAULTS
+from knox.core.config.keys import DISPLAY_EXCERPT_CHARS
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.logging import get_logger
 
@@ -378,16 +380,17 @@ class GraphCompiler(BaseCompiler):
         for entity_name, node_indices, sources in candidates:
             concept_id = f"concept_{len(concept_nodes)}"
             entity_lower = entity_name.lower()
+            excerpt_chars = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
             excerpts: list[str] = []
             for idx in sorted(node_indices):
                 node = nodes[idx]
                 excerpt = ""
                 for para in (node.content or "").split("\n\n"):
                     if entity_lower in para.lower():
-                        excerpt = para.strip()[:300]
+                        excerpt = para.strip()[:excerpt_chars]
                         break
                 if not excerpt:
-                    excerpt = (node.content or "")[:200].strip()
+                    excerpt = (node.content or "")[:excerpt_chars].strip()
                 if excerpt:
                     excerpts.append(f"**{node.title}**\n\n{excerpt}")
 
