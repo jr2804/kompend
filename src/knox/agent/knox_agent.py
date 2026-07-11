@@ -37,6 +37,7 @@ from knox.core.config import resolve_config
 from knox.core.config._core import set_config_file_value
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import KNOX_CONFIG_FILE
+from knox.llm.client import LLMClient
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -245,9 +246,6 @@ class KnoxAgent(Agent):
     def _make_llm_client(self, session_id: str) -> Any | None:
         """Create an LLMClient from config, or *None* if no model is set."""
         try:
-            # Inline import: LLMClient triggers litellm import (heavy side-effect).
-            from knox.llm.client import LLMClient  # noqa: PLC0415  # heavy: imports litellm
-
             session = self._sessions.get(session_id, {})
             cwd = session.get("cwd", ".")
             cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: cwd})

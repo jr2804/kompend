@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.logging import get_logger
+from knox.mcp import server as _mcp
 
 logger = get_logger(__name__)
 
@@ -197,9 +198,6 @@ class ToolDispatcher:
 
     def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911
         """Call the underlying MCP server function."""
-        # Inline import: MCP server triggers litellm/sentence_transformers import (heavy side-effect).
-        from knox.mcp import server as _mcp  # noqa: PLC0415  # heavy: imports litellm
-
         if name == "wiki_status":
             return _mcp.wiki_status(wiki_dir=self._base_dir)
         if name == "compile_wiki":
