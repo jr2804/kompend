@@ -406,12 +406,60 @@ TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=120` for integration tests
 - Run `ty check src/knox` for type checking (mypy is not used)
+- Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
+- Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
 - Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/knox/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
 - After changing CLI commands, MCP tools, config keys, or output format, check
   `skills/knox/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
+
+## New Code Checklist
+
+Tick these BEFORE writing a function. If you can't, stop and fix the
+foundation first — the alternatives are all antipatterns:
+
+- **Limit value** (number of items, max chars, max tokens) — does it come
+  from `config.get(...)` / `DEFAULTS.get(...)` / a `PipelineConfig`
+  field? If you typed a literal like `[:10]` or `text[:200]`, you're
+  about to silently drop data. Use the `DisplayConfig` section for
+  display limits or `BudgetConfig` for LLM input/output budgets.
+- **Role / task / compiler / tier value** — does it come from a
+  `StrEnum` member (`LLMRole`, `AgentTask`, `Compiler`, `Tier`)?
+  If you typed a bare string like `role="compile.extract"`, the
+  field-consistency scanner will reject the commit.
+- **Import** — is it at module level? If you typed
+  `from somewhere import x` inside a function body, the antipattern
+  scanner will reject the commit. The only legitimate exception is
+  a `try/except ImportError` probe for an **explicitly optional**
+  package declared in `pyproject.toml`'s `[project.optional-dependencies]`.
+- **Exception truncation** — is the limit coming from
+  `shorten_exception(exc)` (which uses the `MAX_CHARS_EXCEPTION`
+  constant)? If you typed `str(exc)[:200]`, you're hard-coding the
+  limit; the helper exists precisely for this.
+- **Path construction** — are you using `pathlib.Path` with `/` for
+  joins? If you typed `+ "/" +` for path concatenation, stop and use
+  the proper operator.
+- **Mutable default** — is the default a factory (`field(default_factory=...)`)
+  or a small literal? If it's a mutable container (`list`, `dict`, `set`),
+  you have a shared-state bug waiting to happen.
+- **Noqa suppression** — is `# noqa: RULE` actually necessary? If you
+  can't justify it in a comment, the right fix is to refactor the
+  code, not suppress the warning. `PLC0415` and other banned-noqa
+  rules cannot be suppressed at all.
+
+### Enforcement scripts
+
+| Script | Catches | Lives in |
+|---|---|---|
+| `ruff check` | Most lint issues, but PLC0415/E402 are still warnings (not errors) | ruff.toml |
+| `scripts/check_field_consistency.py` | Bare-string contract keys (field names, role=, task=, compiler=, tier=) | scripts/ |
+| `scripts/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` keyword | scripts/ |
+
+All three are run in CI; the last two exit non-zero on any violation.
+Run them locally before pushing: `mise run check-all` (or the
+individual commands above).
 
 ### Closeout
 
