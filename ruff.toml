@@ -29,7 +29,7 @@ select = [
 extend-select = [
     "RUF022",  # unsorted-dunder-all
     "PLR6301", # no-self-use
-    "PLC0415",
+    "PLC0415", # import-not-at-top-of-file (see scripts/check_antipatterns.py for noqa ban)
     "E402",    # module-import-not-at-top-of-file
 ]
 ignore = [

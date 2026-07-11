@@ -93,6 +93,10 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
 # positives on common words ("default", "doctor", "verify", …).
 KEYWORD_ARG_ENUMS: dict[str, str] = {
     "role": "LLMRole",
+    "task": "AgentTask",
+    "compiler": "Compiler",
+    "start_at_tier": "Tier",
+    "stop_at_tier": "Tier",
 }
 
 # Global allowlist — files where bare literals are legitimate regardless of
