@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -11,6 +12,9 @@ from knox.output.base import BaseOutputWriter
 from knox.output.okf_writer import OkfWriter, convert_wikilinks
 
 # ── Fixtures ────────────────────────────────────────────────────────────
+
+
+_ISO_DATE_HEADING_RE = re.compile(r"## \d{4}-\d{2}-\d{2}")
 
 
 def _make_node(
@@ -219,9 +223,7 @@ def test_log_uses_iso_date_headings(tmp_path: Path) -> None:
 
     log_text = (tmp_path / "log.md").read_text(encoding="utf-8")
     # Must contain a ## YYYY-MM-DD heading
-    import re
-
-    match = re.search(r"## \d{4}-\d{2}-\d{2}", log_text)
+    match = _ISO_DATE_HEADING_RE.search(log_text)
     assert match is not None, "log.md missing ISO date heading"
 
 
