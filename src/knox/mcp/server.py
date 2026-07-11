@@ -474,3 +474,31 @@ def config_set(
 def main() -> None:
     """Run the KNOX MCP server over stdio transport."""
     server.run(transport="stdio")
+
+
+def create_mcp_server(port: int = 8000) -> FastMCP:
+    """Create a new FastMCP instance with all KNOX tools registered.
+
+    Used by both ``knox mcp`` (stdio) and the ACP agent's companion mode
+    (HTTP on the given *port*).
+    """
+    srv = FastMCP("KNOX", port=port)
+
+    # Register all tools on the new instance.
+    # The tool functions are already defined in this module; we re-register
+    # them here so the new FastMCP instance has the same tool set.
+    srv.tool(name="parse_document")(parse_document)
+    srv.tool(name="compile_wiki")(compile_wiki)
+    srv.tool(name="wiki_capture")(wiki_capture)
+    srv.tool(name="wiki_learn")(wiki_learn)
+    srv.tool(name="memory_add")(memory_add)
+    srv.tool(name="memory_search")(memory_search)
+    srv.tool(name="memory_synthesize")(memory_synthesize)
+    srv.tool(name="init_wiki")(init_wiki)
+    srv.tool(name="query_wiki")(query_wiki)
+    srv.tool(name="wiki_status")(wiki_status)
+    srv.tool(name="wiki_distill")(wiki_distill)
+    srv.tool(name="config_get")(config_get)
+    srv.tool(name="config_set")(config_set)
+
+    return srv
