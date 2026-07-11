@@ -115,6 +115,7 @@ def _configure_streams_utf8() -> None:
 # here when they are created.
 
 _LAZY_MODULES: dict[str, str] = {
+    "agents": "knox.cli.cmds.agents",
     "capture": "knox.cli.cmds.capture",
     "learn": "knox.cli.cmds.capture",
     "distill": "knox.cli.cmds.capture",

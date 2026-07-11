@@ -10,11 +10,14 @@ import asyncio
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from acp import Agent, PromptResponse, text_block
 from acp.schema import (
     AgentMessageChunk,
+    AvailableCommand,
+    AvailableCommandsUpdate,
     ClientCapabilities,
     Implementation,
     InitializeResponse,
@@ -24,8 +27,25 @@ from acp.schema import (
     TextContentBlock,
 )
 
+from knox.agent.definitions import AgentTask
 from knox.agent.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
-from knox.agent.slash_commands import HELP_TEXT, SlashCommand, parse_slash_command
+from knox.agent.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, parse_slash_command
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
+
+_SLASH_TASK_MAP: dict[str, AgentTask] = {
+    "compile": AgentTask.COMPILE,
+    "query": AgentTask.QUERY,
+    "capture": AgentTask.CAPTURE,
+}
+
+_AGENT_CONFIG_KEYS: dict[AgentTask, str] = {
+    AgentTask.COMPILE: "agents.compile",
+    AgentTask.QUERY: "agents.query",
+    AgentTask.CAPTURE: "agents.capture",
+    AgentTask.ORGANIZE: "agents.organize",
+}
 
 
 class KnoxAgent(Agent):
@@ -69,9 +89,10 @@ class KnoxAgent(Agent):
         mcp_servers: list[Any] | None = None,
         **kwargs: Any,
     ) -> NewSessionResponse:
-        """Create a new session."""
+        """Create a new session and advertise available slash commands."""
         session_id = f"sess_{len(self._sessions) + 1}"
         self._sessions[session_id] = {"cwd": cwd}
+        await self._advertise_commands(session_id)
         return NewSessionResponse(session_id=session_id)
 
     async def prompt(
@@ -80,7 +101,13 @@ class KnoxAgent(Agent):
         prompt: list[Any],
         **kwargs: Any,
     ) -> PromptResponse:
-        """Handle a prompt turn — parse slash commands and invoke KNOX."""
+        """Handle a prompt turn — route to conversational agent or subprocess.
+
+        When an LLM is configured (via providers/set or config.toml), all
+        prompts go through the :class:`ConversationalAgent` tool-calling loop.
+        When no LLM is available, ``/knox`` slash commands fall back to
+        subprocess dispatch (degraded mode), and free-text prompts are rejected.
+        """
         # Extract text from the prompt
         text = ""
         for block in prompt:
@@ -88,25 +115,34 @@ class KnoxAgent(Agent):
                 text = block.text
                 break
 
+        # Try conversational agent path (requires LLM)
+        llm_client = self._make_llm_client(session_id)
+        if llm_client is not None:
+            return await self._run_conversational(text, session_id, llm_client)
+
+        # Degraded mode: no LLM — fall back to subprocess dispatch for slash commands
         cmd = parse_slash_command(text)
         if cmd is None:
             return PromptResponse(
                 stop_reason="end_turn",
-                messages=[text_block("Unknown command. Use ``/knox help`` for available commands.")],
+                messages=[text_block("No LLM configured. Use ``/knox`` slash commands, or configure an LLM via providers/set or config.toml.")],
             )
-
         return await self._dispatch_slash(cmd, session_id)
 
     # ── Provider configuration ──────────────────────────────────────────
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Handle extension methods — including providers/*."""
+        """Handle extension methods — providers/* and agents/*."""
         if method == "providers/list":
             return await self._handle_providers_list()
         if method == "providers/set":
             return await self._handle_providers_set(params)
         if method == "providers/disable":
             return await self._handle_providers_disable(params)
+        if method == "agents/list":
+            return self._handle_agents_list(params)
+        if method == "agents/use":
+            return self._handle_agents_use(params)
         return {}
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
@@ -169,6 +205,94 @@ class KnoxAgent(Agent):
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         pass
+
+    def _handle_agents_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List available agents grouped by task."""
+        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
+
+        cwd = params.get("cwd", ".")
+        registry = AgentRegistry(base_dir=cwd)
+        grouped = registry.list_by_task()
+        return {"agents": {task.value: [{"name": a.name, "description": a.description} for a in agents] for task, agents in grouped.items() if agents}}
+
+    def _handle_agents_use(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Set the active agent for a task."""
+        from knox.agent.definitions import AgentTask  # noqa: PLC0415
+        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
+        from knox.core.config._core import set_config_file_value  # noqa: PLC0415
+        from knox.core.paths import KNOX_CONFIG_FILE  # noqa: PLC0415
+
+        task_str = params.get("task", "")
+        name = params.get("name", "")
+        cwd = params.get("cwd", ".")
+
+        try:
+            task = AgentTask(task_str)
+        except ValueError:
+            return {"status": "error", "message": f"Unknown task: {task_str}"}
+
+        registry = AgentRegistry(base_dir=cwd)
+        agent = registry.get(name)
+        if agent is None:
+            return {"status": "error", "message": f"Agent not found: {name}"}
+
+        config_key = _AGENT_CONFIG_KEYS.get(task, f"agents.{task.value}")
+        config_path = Path(cwd) / KNOX_CONFIG_FILE
+        set_config_file_value(config_path, config_key, name)
+        return {"status": "ok", "task": task.value, "agent": name}
+
+    def _make_llm_client(self, session_id: str) -> Any | None:
+        """Create an LLMClient from config, or *None* if no model is set."""
+        try:
+            from knox.core.config import resolve_config  # noqa: PLC0415
+            from knox.core.config.keys import PATHS_WIKI_DIR  # noqa: PLC0415
+            from knox.llm.client import LLMClient  # noqa: PLC0415
+
+            session = self._sessions.get(session_id, {})
+            cwd = session.get("cwd", ".")
+            cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: cwd})
+            return LLMClient.from_config(cfg)
+        except Exception:
+            logger.debug("LLMClient creation failed — degraded mode", exc_info=True)
+            return None
+
+    async def _run_conversational(
+        self,
+        text: str,
+        session_id: str,
+        llm_client: Any,
+    ) -> PromptResponse:
+        """Run the conversational agent loop."""
+        from knox.agent.conversational import ConversationalAgent  # noqa: PLC0415
+        from knox.agent.definitions import AgentTask  # noqa: PLC0415
+        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
+        from knox.agent.tools import ToolDispatcher  # noqa: PLC0415
+
+        session = self._sessions.get(session_id, {})
+        cwd = session.get("cwd", ".")
+
+        # Infer task from slash command, or default to generic
+        cmd = parse_slash_command(text)
+        task = _SLASH_TASK_MAP.get(cmd.name, AgentTask.GENERIC) if cmd else AgentTask.GENERIC
+        user_message = " ".join(cmd.args) if cmd and cmd.args else text
+
+        registry = AgentRegistry(base_dir=cwd)
+        definition = registry.active_for(task, {})
+        tools = ToolDispatcher(base_dir=cwd)
+
+        agent = ConversationalAgent(definition, llm_client, tools)
+        return await agent.run(user_message, session_id, self._conn)
+
+    async def _advertise_commands(self, session_id: str) -> None:
+        """Send available_commands_update with the current slash commands."""
+        if self._conn is None:
+            return
+        commands = [AvailableCommand(name=f"/knox {c.name}", description=c.description) for c in KNOX_COMMANDS]
+        update = AvailableCommandsUpdate(
+            available_commands=commands,
+            session_update="available_commands_update",
+        )
+        await self._conn.session_update(session_id=session_id, update=update)
 
     async def _dispatch_slash(self, cmd: SlashCommand, session_id: str) -> PromptResponse:
         """Dispatch a parsed slash command to the appropriate handler."""
