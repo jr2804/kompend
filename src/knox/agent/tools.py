@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,17 @@ from knox.mcp import server as _mcp
 logger = get_logger(__name__)
 
 _MAX_TOOL_RESULT_CHARS = 4000
+
+
+class ToolName(StrEnum):
+    """All tool names exposed to the conversational agent."""
+
+    WIKI_STATUS = "wiki_status"
+    COMPILE_WIKI = "compile_wiki"
+    QUERY_WIKI = "query_wiki"
+    WIKI_CAPTURE = "wiki_capture"
+    CONFIG_GET = "config_get"
+    CONFIG_SET = "config_set"
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
     """Return all available tool schemas keyed by name."""
     schemas: list[ToolSchema] = [
         ToolSchema(
-            name="wiki_status",
+            name=ToolName.WIKI_STATUS,
             description="Check vault health: whether a wiki is compiled, how many pages, source count.",
             parameters={
                 "type": "object",
@@ -59,7 +71,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
             },
         ),
         ToolSchema(
-            name="compile_wiki",
+            name=ToolName.COMPILE_WIKI,
             description="Compile documents into a knowledge wiki. Sources must already be ingested.",
             parameters={
                 "type": "object",
@@ -74,7 +86,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
             },
         ),
         ToolSchema(
-            name="query_wiki",
+            name=ToolName.QUERY_WIKI,
             description="Query the compiled wiki with a natural language question.",
             parameters={
                 "type": "object",
@@ -93,7 +105,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
             },
         ),
         ToolSchema(
-            name="wiki_capture",
+            name=ToolName.WIKI_CAPTURE,
             description="Capture a note or observation into the knowledge base.",
             parameters={
                 "type": "object",
@@ -107,7 +119,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
             },
         ),
         ToolSchema(
-            name="config_get",
+            name=ToolName.CONFIG_GET,
             description="Read a configuration value by dotted key (e.g. 'compile.llm.default_model').",
             parameters={
                 "type": "object",
@@ -121,7 +133,7 @@ def _build_schemas() -> dict[str, ToolSchema]:
             },
         ),
         ToolSchema(
-            name="config_set",
+            name=ToolName.CONFIG_SET,
             description="Set a configuration value by dotted key.",
             parameters={
                 "type": "object",
@@ -248,10 +260,10 @@ def _cmd_config_set(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any
 
 
 _DISPATCH_TABLE: dict[str, Any] = {
-    "wiki_status": _cmd_wiki_status,
-    "compile_wiki": _cmd_compile_wiki,
-    "query_wiki": _cmd_query_wiki,
-    "wiki_capture": _cmd_wiki_capture,
-    "config_get": _cmd_config_get,
-    "config_set": _cmd_config_set,
+    ToolName.WIKI_STATUS: _cmd_wiki_status,
+    ToolName.COMPILE_WIKI: _cmd_compile_wiki,
+    ToolName.QUERY_WIKI: _cmd_query_wiki,
+    ToolName.WIKI_CAPTURE: _cmd_wiki_capture,
+    ToolName.CONFIG_GET: _cmd_config_get,
+    ToolName.CONFIG_SET: _cmd_config_set,
 }
