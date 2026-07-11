@@ -102,13 +102,27 @@ def _strip_reasoning(content: str) -> str:
 
 
 @dataclass(frozen=True)
+class ToolCall:
+    """A single tool/function call returned by the LLM.
+
+    Used by :meth:`LLMClient.complete_with_tools` for the conversational
+    agent loop. ``arguments`` is the parsed JSON dict.
+    """
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class LLMResult:
     """Successful completion returned by :meth:`LLMClient.complete`.
 
     ``content`` is the raw text content of the assistant message.
     ``json_data`` is the parsed JSON object when ``response_format``
     requested one (``None`` otherwise). ``diagnostics`` carries the
-    failover-chain observability data.
+    failover-chain observability data. ``tool_calls`` is populated by
+    :meth:`~LLMClient.complete_with_tools` (``None`` otherwise).
     """
 
     content: str
@@ -116,6 +130,7 @@ class LLMResult:
     diagnostics: CallDiagnostics
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    tool_calls: list[ToolCall] | None = None
 
 
 @dataclass(frozen=True)
@@ -700,6 +715,100 @@ class LLMClient:
                 err,
             )
             return None
+
+    def complete_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]],
+        role: str = LLMRole.AGENT,
+        tool_choice: str = "auto",
+        temperature: float = 0.3,
+        max_tokens: int | None = None,
+    ) -> LLMResult:
+        """Run a chat completion with tool-calling enabled.
+
+        Unlike :meth:`complete`, this uses non-streaming mode and passes
+        ``tools`` + ``tool_choice`` to the LLM. The response may contain
+        ``tool_calls`` (the LLM decided to call a tool) or plain ``content``
+        (the LLM produced a final answer).
+
+        Used by the conversational agent loop. Does NOT support
+        ``response_format`` (tools and JSON schema are mutually exclusive
+        in most providers).
+
+        Args:
+            messages: Conversation messages including system prompt.
+            tools: Tool schemas in litellm/OpenAI format.
+            role: LLM role for failover chain resolution.
+            tool_choice: "auto", "required", "none", or specific tool name.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+
+        Returns:
+            :class:`LLMResult` with ``tool_calls`` populated when the LLM
+            requested tool execution, or ``content`` when it produced a
+            final answer.
+        """
+        chain = self.chain_for(role)
+        call_start = time.monotonic()
+        tool_calls_holder: list[list[ToolCall]] = [[]]
+
+        def _call(model: str) -> _StreamResult:
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "tools": tools,
+                "tool_choice": tool_choice,
+            }
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+            if self.timeout is not None:
+                kwargs["timeout"] = self.timeout
+            if self._api_base is not None:
+                kwargs["api_base"] = self._api_base
+            if self._api_key is not None:
+                kwargs["api_key"] = _resolve_env_value(self._api_key)
+
+            resp = litellm.completion(**kwargs)
+            message = resp.choices[0].message
+            content = message.content or ""
+
+            # Stash tool calls for the outer scope.
+            raw_tool_calls = getattr(message, "tool_calls", None)
+            parsed_tool_calls: list[ToolCall] = []
+            if raw_tool_calls:
+                for tc in raw_tool_calls:
+                    fn = getattr(tc, "function", None)
+                    if fn is None:
+                        continue
+                    try:
+                        args = json.loads(fn.arguments) if fn.arguments else {}
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    parsed_tool_calls.append(ToolCall(id=tc.id, name=fn.name, arguments=args))
+            tool_calls_holder[0] = parsed_tool_calls
+
+            usage = getattr(resp, "usage", None)
+            pt = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+            ct = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
+            elapsed = time.monotonic() - call_start
+            return _StreamResult(content=content, prompt_tokens=pt, completion_tokens=ct, ttft_s=elapsed)
+
+        result = chain.run(_call)
+        sr = result.value
+        tool_calls = tool_calls_holder[0]
+        content = _strip_reasoning(sr.content)
+
+        return LLMResult(
+            content=content,
+            json_data=None,
+            diagnostics=result.diagnostics,
+            prompt_tokens=sr.prompt_tokens,
+            completion_tokens=sr.completion_tokens,
+            tool_calls=tool_calls if tool_calls else None,
+        )
 
     def degradation_report(self) -> dict[str, Any]:
         """Return a summary of LLM call successes vs failures."""
