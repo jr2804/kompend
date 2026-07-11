@@ -10,27 +10,66 @@ from __future__ import annotations
 import os
 import threading
 from copy import deepcopy
-from dataclasses import dataclass, field
+from enum import StrEnum
 
 
-@dataclass
-class ProviderConfig:
-    """LLM endpoint configuration from ACP ``providers/set``."""
+class LlmApiType(StrEnum):
+    """Well-known ACP ``apiType`` identifiers.
 
-    api_type: str
-    base_url: str
-    headers: dict[str, str] = field(default_factory=dict)
-    model: str | None = None
+    The set of provider identifiers accepted by ``providers/set`` and
+    advertised via ``providers/list``. Values are the strings clients send
+    on the wire; we never re-type them at the call site.
+    """
+
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    AZURE = "azure"
+    VERTEX = "vertex"
+    BEDROCK = "bedrock"
 
 
-# ACP apiType → litellm provider prefix
-LLM_PROVIDER_MAP: dict[str, str] = {
-    "anthropic": "anthropic",
-    "openai": "openai",
-    "azure": "azure",
-    "vertex": "vertex_ai",
-    "bedrock": "bedrock",
+# ACP apiType → litellm provider prefix. Only entries whose litellm prefix
+# differs from the ACP apiType need to be listed explicitly; lookups of any
+# other apiType — including unknown custom protocols — fall through to the
+# identity mapping (the apiType is its own litellm prefix).
+_LITELLM_PREFIX_OVERRIDES: dict[LlmApiType, str] = {
+    LlmApiType.VERTEX: "vertex_ai",
 }
+
+
+def _litellm_prefix(api_type: str) -> str:
+    """Return the litellm provider prefix for an ACP ``api_type``.
+
+    Unknown ``api_type`` values pass through unchanged, so custom protocols
+    Just Work without registering an entry here. Used as the identity
+    default for ``LLM_PROVIDER_MAP`` lookups.
+    """
+    try:
+        key = LlmApiType(api_type)
+    except ValueError:
+        return api_type
+    return _LITELLM_PREFIX_OVERRIDES.get(key, key)
+
+
+class _IdentityDefaultDict(dict[str, str]):
+    """``dict`` subclass that returns the requested key as the default value.
+
+    Used to expose the well-known apiType → litellm-prefix mapping with an
+    identity fallback for any unknown key. Mirrors the behaviour of a
+    ``defaultdict`` whose factory received the missing key, which the
+    stdlib does not support directly.
+    """
+
+    def __missing__(self, key: str) -> str:  # type: ignore[override]
+        return key
+
+
+# Map of well-known apiTypes to their litellm provider prefixes. Used by
+# ``providers/list`` to enumerate supported providers. Unrecognised keys
+# fall through to the identity mapping via ``_IdentityDefaultDict``.
+LLM_PROVIDER_MAP: _IdentityDefaultDict = _IdentityDefaultDict(
+    {api_type.value: _litellm_prefix(api_type.value) for api_type in LlmApiType},
+)
 
 
 class ProviderCredentials:
@@ -75,10 +114,7 @@ class ProviderCredentials:
         if self._provider is None:
             return
 
-        prefix = LLM_PROVIDER_MAP.get(self._provider.api_type)
-        if prefix is None:
-            # Custom protocol — use as-is
-            prefix = self._provider.api_type
+        prefix = _litellm_prefix(self._provider.api_type)
 
         model = self._provider.model or "default"
         self._set_env("KNOX_LLM_DEFAULT_MODEL", f"{prefix}/{model}")
