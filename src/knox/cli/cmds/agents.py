@@ -3,6 +3,8 @@
 - ``knox agents list`` — list all agents grouped by task
 - ``knox agents use <task> <name>`` — set active agent for a task
 - ``knox agents validate <file>`` — validate a TOML agent definition
+- ``knox agents install <file>`` — install an agent TOML into the vault
+- ``knox agents remove <name>`` — remove an installed agent from the vault
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ def _resolve_base_dir() -> str:
 
 @app.command(name="agents")
 def agents_cmd(
-    action: str = typer.Argument(help="Action: list, use, or validate"),
+    action: str = typer.Argument(help="Action: list, use, validate, install, or remove"),
     task: str | None = typer.Argument(None, help="Task name (for 'use'): compile, query, capture, organize"),
     name: str | None = typer.Argument(None, help="Agent name (for 'use') or file path (for 'validate')"),
 ) -> None:
@@ -58,8 +60,18 @@ def agents_cmd(
             get_console().print("[red]Usage: knox agents validate <file>[/red]")
             raise typer.Exit(1)
         _agents_validate(task)
+    elif action == "install":
+        if task is None:
+            get_console().print("[red]Usage: knox agents install <file>[/red]")
+            raise typer.Exit(1)
+        _agents_install(task)
+    elif action == "remove":
+        if task is None:
+            get_console().print("[red]Usage: knox agents remove <name>[/red]")
+            raise typer.Exit(1)
+        _agents_remove(task)
     else:
-        get_console().print(f"[red]Unknown action: {action}. Use list, use, or validate.[/red]")
+        get_console().print(f"[red]Unknown action: {action}. Use list, use, validate, install, or remove.[/red]")
         raise typer.Exit(1)
 
 
@@ -141,3 +153,49 @@ def _agents_validate(file_path: str) -> None:
     except Exception as exc:
         get_console().print(f"[red]✗ Invalid: {exc}[/red]")
         raise typer.Exit(1) from exc
+
+
+def _agents_install(file_path: str) -> None:
+    """Install an agent TOML file into the vault."""
+    src = Path(file_path)
+    if not src.exists():
+        get_console().print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+
+    # Validate before installing
+    try:
+        agent = AgentDefinition.from_toml(src)
+    except Exception as exc:
+        get_console().print(f"[red]Invalid agent definition: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    base_dir = _resolve_base_dir()
+    vault_dir = Path(base_dir) / ".knox" / "agents"
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    dest = vault_dir / f"{agent.name}.toml"
+
+    if dest.exists():
+        get_console().print(f"[yellow]Overwriting existing agent: {agent.name}[/yellow]")
+
+    import shutil  # noqa: PLC0415
+
+    shutil.copy2(src, dest)
+    get_console().print(f"[green]Installed agent: {agent.name} ({agent.task.value})[/green]")
+
+
+def _agents_remove(name: str) -> None:
+    """Remove an installed agent from the vault."""
+    base_dir = _resolve_base_dir()
+    vault_dir = Path(base_dir) / ".knox" / "agents"
+    agent_file = vault_dir / f"{name}.toml"
+
+    if not agent_file.exists():
+        get_console().print(f"[red]Agent not found in vault: {name}[/red]")
+        raise typer.Exit(1)
+
+    agent_file.unlink()
+    get_console().print(f"[green]Removed agent: {name}[/green]")
+
+    # Clean up empty vault dir
+    if vault_dir.exists() and not any(vault_dir.iterdir()):
+        vault_dir.rmdir()

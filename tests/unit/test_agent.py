@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import os
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from knox.agent.knox_agent import KnoxAgent
 from knox.agent.provider_store import (
     LLM_PROVIDER_MAP,
     LlmApiType,
@@ -17,6 +19,7 @@ from knox.agent.provider_store import (
 )
 from knox.agent.slash_commands import HELP_TEXT, parse_slash_command
 from knox.cli._pipeline_helpers import _emit_json_done, _make_json_progress_callback
+from knox.cli.cmds.agents import _agents_install, _agents_remove
 
 
 @pytest.fixture(autouse=True)
@@ -214,3 +217,68 @@ class TestJsonProgressCallback:
         assert event["event"] == "done"
         assert event["duration"] == 123.4
         assert "Compiled wiki" in event["message"]
+
+
+class TestAgentInstallRemove:
+    """knox agents install/remove CLI actions."""
+
+    def test_install_valid_agent(self, tmp_path: Path) -> None:
+        """Install a valid TOML agent into the vault."""
+        agent_toml = tmp_path / "my-agent.toml"
+        agent_toml.write_text(
+            'name = "my-agent"\ndescription = "Custom"\ntask = "query"\n\n[prompt]\nsystem = "x"\n',
+            encoding="utf-8",
+        )
+
+        vault_dir = tmp_path / ".knox" / "agents"
+        with patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+            _agents_install(str(agent_toml))
+
+        assert (vault_dir / "my-agent.toml").exists()
+
+    def test_install_invalid_agent_raises(self, tmp_path: Path) -> None:
+        """Invalid TOML raises during install."""
+        bad_toml = tmp_path / "bad.toml"
+        bad_toml.write_text("invalid toml {{{{", encoding="utf-8")
+
+        with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+            _agents_install(str(bad_toml))
+
+    def test_remove_existing_agent(self, tmp_path: Path) -> None:
+        """Remove an installed agent from the vault."""
+        vault_dir = tmp_path / ".knox" / "agents"
+        vault_dir.mkdir(parents=True)
+        (vault_dir / "test-agent.toml").write_text(
+            'name = "test-agent"\ndescription = "x"\ntask = "generic"\n\n[prompt]\nsystem = "x"\n',
+            encoding="utf-8",
+        )
+
+        with patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+            _agents_remove("test-agent")
+
+        assert not (vault_dir / "test-agent.toml").exists()
+
+    def test_remove_nonexistent_raises(self, tmp_path: Path) -> None:
+        """Removing a non-existent agent raises."""
+        with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+            _agents_remove("nonexistent")
+
+
+class TestAgentFileOverride:
+    """--agent-file flag on knox agent."""
+
+    def test_agent_file_loaded(self, tmp_path: Path) -> None:
+        """KnoxAgent loads agent from explicit file."""
+        agent_toml = tmp_path / "custom.toml"
+        agent_toml.write_text(
+            'name = "custom"\ndescription = "Custom"\ntask = "compile"\n\n[prompt]\nsystem = "You are custom."\n',
+            encoding="utf-8",
+        )
+
+        agent = KnoxAgent(agent_file=str(agent_toml))
+        assert agent._agent_file == str(agent_toml)
+
+    def test_agent_file_none_by_default(self) -> None:
+        """KnoxAgent defaults to None for agent_file."""
+        agent = KnoxAgent()
+        assert agent._agent_file is None

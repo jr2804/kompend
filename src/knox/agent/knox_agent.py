@@ -57,10 +57,11 @@ class KnoxAgent(Agent):
     - Slash commands (/knox compile, /knox query, etc.)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, agent_file: str | None = None) -> None:
         self._providers = ProviderCredentials()
         self._sessions: dict[str, dict[str, Any]] = {}
         self._conn: Any = None  # Set by on_connect
+        self._agent_file = agent_file  # Explicit agent TOML override
 
     def on_connect(self, conn: Any) -> None:
         """Called when the ACP connection is established."""
@@ -277,7 +278,10 @@ class KnoxAgent(Agent):
         user_message = " ".join(cmd.args) if cmd and cmd.args else text
 
         registry = AgentRegistry(base_dir=cwd)
-        definition = registry.active_for(task, {})
+        if self._agent_file:
+            definition = AgentDefinition.from_toml(self._agent_file)
+        else:
+            definition = registry.active_for(task, {})
         tools = ToolDispatcher(base_dir=cwd)
 
         agent = ConversationalAgent(definition, llm_client, tools)
