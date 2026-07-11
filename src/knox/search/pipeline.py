@@ -15,9 +15,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sentence_transformers import CrossEncoder as _CrossEncoder
+
 from knox.core.models import CompiledWiki
 from knox.core.template_loader import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
+from knox.llm.roles import LLMRole
+from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import (
     HybridRetriever,
@@ -25,17 +29,6 @@ from knox.search.retriever import (
     SynthesisResult,
     TokenOverlapRetriever,
 )
-
-try:
-    from sentence_transformers import CrossEncoder as _CrossEncoder
-
-    _HAS_SENTENCE_TRANSFORMERS = True
-except ImportError:
-    _CrossEncoder = None  # type: ignore[assignment]
-    _HAS_SENTENCE_TRANSFORMERS = False
-
-from knox.llm.roles import LLMRole
-from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -218,9 +211,6 @@ class EnhancedRetriever:
     def _neural_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
         """Re-rank candidates using a cross-encoder model."""
         try:
-            if not _HAS_SENTENCE_TRANSFORMERS or _CrossEncoder is None:
-                raise ImportError
-
             reranker = _CrossEncoder(self._reranker_model)
             pairs: list[tuple[str, str]] = []
             for c in candidates:
@@ -253,9 +243,6 @@ class EnhancedRetriever:
                 self._reranker_model,
             )
             return results
-        except ImportError:
-            logger.warning("Neural re-ranker requires sentence-transformers. Install with: uv add sentence-transformers")
-            return candidates
         except Exception as exc:
             logger.warning("Neural re-ranking failed: %s", exc, exc_info=True)
             return candidates
