@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import typer
@@ -16,13 +17,15 @@ import typer
 from knox.agent.definitions import AgentDefinition, AgentTask
 from knox.agent.registry import AgentRegistry
 from knox.cli.app import app
-from knox.core.config import resolve_config
+from knox.core.config import resolve_config, validate_config_key
+from knox.core.config._core import set_config_file_value
 from knox.core.config.keys import (
     AGENTS_CAPTURE,
     AGENTS_COMPILE,
     AGENTS_ORGANIZE,
     AGENTS_QUERY,
 )
+from knox.core.paths import KNOX_CONFIG_FILE
 from knox.logging import get_console, get_logger
 
 logger = get_logger(__name__)
@@ -117,14 +120,9 @@ def _agents_use(task_str: str, name: str) -> None:
         raise typer.Exit(1)
 
     # Write to config.toml
-    from knox.core.config import validate_config_key  # noqa: PLC0415
-
     if not validate_config_key(config_key):
         get_console().print(f"[red]Invalid config key: {config_key}[/red]")
         raise typer.Exit(1)
-
-    from knox.core.config._core import set_config_file_value  # noqa: PLC0415
-    from knox.core.paths import KNOX_CONFIG_FILE  # noqa: PLC0415
 
     config_path = Path(base_dir) / KNOX_CONFIG_FILE
     set_config_file_value(config_path, config_key, name)
@@ -176,8 +174,6 @@ def _agents_install(file_path: str) -> None:
 
     if dest.exists():
         get_console().print(f"[yellow]Overwriting existing agent: {agent.name}[/yellow]")
-
-    import shutil  # noqa: PLC0415
 
     shutil.copy2(src, dest)
     get_console().print(f"[green]Installed agent: {agent.name} ({agent.task.value})[/green]")

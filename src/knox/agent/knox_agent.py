@@ -27,9 +27,16 @@ from acp.schema import (
     TextContentBlock,
 )
 
-from knox.agent.definitions import AgentTask
+from knox.agent.conversational import ConversationalAgent
+from knox.agent.definitions import AgentDefinition, AgentTask
 from knox.agent.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
+from knox.agent.registry import AgentRegistry
 from knox.agent.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, parse_slash_command
+from knox.agent.tools import ToolDispatcher
+from knox.core.config import resolve_config
+from knox.core.config._core import set_config_file_value
+from knox.core.config.keys import PATHS_WIKI_DIR
+from knox.core.paths import KNOX_CONFIG_FILE
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -209,8 +216,6 @@ class KnoxAgent(Agent):
 
     def _handle_agents_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """List available agents grouped by task."""
-        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
-
         cwd = params.get("cwd", ".")
         registry = AgentRegistry(base_dir=cwd)
         grouped = registry.list_by_task()
@@ -218,11 +223,6 @@ class KnoxAgent(Agent):
 
     def _handle_agents_use(self, params: dict[str, Any]) -> dict[str, Any]:
         """Set the active agent for a task."""
-        from knox.agent.definitions import AgentTask  # noqa: PLC0415
-        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
-        from knox.core.config._core import set_config_file_value  # noqa: PLC0415
-        from knox.core.paths import KNOX_CONFIG_FILE  # noqa: PLC0415
-
         task_str = params.get("task", "")
         name = params.get("name", "")
         cwd = params.get("cwd", ".")
@@ -245,9 +245,8 @@ class KnoxAgent(Agent):
     def _make_llm_client(self, session_id: str) -> Any | None:
         """Create an LLMClient from config, or *None* if no model is set."""
         try:
-            from knox.core.config import resolve_config  # noqa: PLC0415
-            from knox.core.config.keys import PATHS_WIKI_DIR  # noqa: PLC0415
-            from knox.llm.client import LLMClient  # noqa: PLC0415
+            # Inline import: LLMClient triggers litellm import (heavy side-effect).
+            from knox.llm.client import LLMClient  # noqa: PLC0415  # heavy: imports litellm
 
             session = self._sessions.get(session_id, {})
             cwd = session.get("cwd", ".")
@@ -264,11 +263,6 @@ class KnoxAgent(Agent):
         llm_client: Any,
     ) -> PromptResponse:
         """Run the conversational agent loop."""
-        from knox.agent.conversational import ConversationalAgent  # noqa: PLC0415
-        from knox.agent.definitions import AgentTask  # noqa: PLC0415
-        from knox.agent.registry import AgentRegistry  # noqa: PLC0415
-        from knox.agent.tools import ToolDispatcher  # noqa: PLC0415
-
         session = self._sessions.get(session_id, {})
         cwd = session.get("cwd", ".")
 
@@ -278,10 +272,7 @@ class KnoxAgent(Agent):
         user_message = " ".join(cmd.args) if cmd and cmd.args else text
 
         registry = AgentRegistry(base_dir=cwd)
-        if self._agent_file:
-            definition = AgentDefinition.from_toml(self._agent_file)
-        else:
-            definition = registry.active_for(task, {})
+        definition = AgentDefinition.from_toml(self._agent_file) if self._agent_file else registry.active_for(task, {})
         tools = ToolDispatcher(base_dir=cwd)
 
         agent = ConversationalAgent(definition, llm_client, tools)
