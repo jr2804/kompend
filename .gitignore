@@ -66,3 +66,4 @@ mise.local.toml
 nul
 .cortexkit
 .codegraph
+/.mise

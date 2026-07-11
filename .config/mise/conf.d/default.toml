@@ -1,3 +1,0 @@
-[tasks.set-repo-topics]
-description = "Set repository topics on Codeberg from pyproject.toml keywords"
-run = "uv run scripts/set_repo_topics.py"
