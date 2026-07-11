@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.config import DEFAULTS
+from knox.core.pipeline_defs import Compiler
 from knox.logging import get_logger
 from knox.mcp import server as _mcp
 
@@ -230,10 +231,12 @@ def _cmd_wiki_status(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, An
 
 
 def _cmd_compile_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    compiler_raw = args.get("compiler", Compiler.GRAPH.value)
+    compiler = Compiler(compiler_raw) if compiler_raw else Compiler.GRAPH
     return _mcp.compile_wiki(
         sources_dir=str(args.get("sources_dir", self._base_dir / self._sources_dir)),
         output=str(self._base_dir / self._output_dir),
-        compiler=args.get("compiler", "graph"),
+        compiler=compiler.value,
     )
 
 
