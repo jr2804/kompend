@@ -486,6 +486,47 @@ The spec is at https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/mai
 conformance against the OKF spec. The legacy ``MarkdownWriter`` (Obsidian vault
 mode) is exempt from rules 2\u20136 but must remain functional.
 
+### ACP agent — credential-free LLM injection
+
+KNOX implements the **Agent Client Protocol (ACP)** to let editors and AI
+agents inject their LLM endpoint without sharing credentials. The agent runs
+as ``knox agent`` on stdio.
+
+**Protocol flow:**
+
+1. Client calls ``initialize`` \u2192 KNOX advertises ``providers: {}`` capability
+2. Client calls ``providers/list`` \u2192 KNOX returns current LLM endpoint info
+3. Client calls ``providers/set`` \u2192 KNOX stores the endpoint and reconfigures litellm
+4. Client calls ``session/new`` \u2192 KNOX creates a session
+5. Client sends ``/knox <command>`` in a prompt \u2192 KNOX runs the pipeline
+
+**Key design decisions:**
+
+- **KNOX controls its own LLM calls.** Unlike MCP sampling (free-text only),
+  KNOX uses its full litellm + Pydantic structured output pipeline. The
+  ``providers/set`` endpoint configures the LLM; KNOX makes direct HTTP calls.
+- **``providers/set`` is an RFD** (not yet in the stable ACP spec). The Python
+  SDK v0.11.0 includes the types. When ``providers/set`` is not called, KNOX
+  falls back to env vars \u2192 config.toml \u2192 DEFAULTS (unchanged).
+- **Slash commands** (``/knox compile``, ``/knox query``, etc.) are parsed from
+  the prompt text and dispatched via subprocess. The agent runs on asyncio.
+- **Sessions are stateless.** Each prompt turn runs independently. No
+  conversation history is accumulated between turns.
+- **MCP companion mode is v2.** The existing ``knox mcp`` subcommand is
+  unchanged. The ACP agent does not bridge to MCP in v1.
+
+**When modifying the agent module (``src/knox/agent/``):**
+
+- The ``KnoxAgent`` class implements the ``acp.Agent`` protocol. All protocol
+  methods are async. Use ``asyncio.run()`` to bridge to synchronous code.
+- ``ProviderCredentials`` is thread-safe (``threading.Lock``). It reconfigures
+  litellm via env vars (``KNOX_LLM_DEFAULT_MODEL``, ``KNOX_LLM_API_BASE``,
+  ``KNOX_LLM_API_KEY``) and restores them on ``disable()``.
+- Slash commands are parsed by ``parse_slash_command()`` in
+  ``slash_commands.py``. Add new commands there.
+- The ``ext_method()`` handler on ``KnoxAgent`` receives unknown ACP methods
+  (including ``providers/*``). Add new provider methods there.
+
 ### Work Guidance
 
 - Python 3.11+ only. Use modern typing syntax (`X | None`, `list[str]`).
