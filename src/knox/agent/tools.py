@@ -199,33 +199,59 @@ class ToolDispatcher:
             text = text[:_MAX_TOOL_RESULT_CHARS] + "\n…(truncated)"
         return text
 
-    def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911
-        """Call the underlying MCP server function."""
-        if name == "wiki_status":
-            return _mcp.wiki_status(wiki_dir=self._base_dir)
-        if name == "compile_wiki":
-            return _mcp.compile_wiki(
-                sources_dir=arguments.get("sources_dir", self._base_dir + "/" + self._sources_dir),
-                output=self._base_dir + "/" + self._output_dir,
-                compiler=arguments.get("compiler", "graph"),
-            )
-        if name == "query_wiki":
-            return _mcp.query_wiki(
-                query=arguments["query"],
-                wiki_dir=self._base_dir,
-                top_k=arguments.get("top_k", 5),
-            )
-        if name == "wiki_capture":
-            return _mcp.wiki_capture(
-                text=arguments["text"],
-                sources_dir=self._base_dir + "/" + self._sources_dir,
-            )
-        if name == "config_get":
-            return _mcp.config_get(key=arguments["key"])
-        if name == "config_set":
-            return _mcp.config_set(
-                key=arguments["key"],
-                value=arguments["value"],
-            )
+    def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Call the underlying MCP server function via dispatch table."""
+        handler = _DISPATCH_TABLE.get(name)
+        if handler is None:
+            return {"status": "error", "message": f"Unknown tool: {name}"}
+        return handler(self, arguments)
 
-        return {"status": "error", "message": f"Unknown tool: {name}"}
+
+# ── Dispatch table ────────────────────────────────────────────────────
+# Maps tool name → callable(dispatcher, arguments) → MCP result dict.
+# Keeps _dispatch() clean and makes adding new tools a single entry.
+
+
+def _cmd_wiki_status(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.wiki_status(wiki_dir=self._base_dir)
+
+
+def _cmd_compile_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.compile_wiki(
+        sources_dir=args.get("sources_dir", self._base_dir + "/" + self._sources_dir),
+        output=self._base_dir + "/" + self._output_dir,
+        compiler=args.get("compiler", "graph"),
+    )
+
+
+def _cmd_query_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.query_wiki(
+        query=args["query"],
+        wiki_dir=self._base_dir,
+        top_k=args.get("top_k", 5),
+    )
+
+
+def _cmd_wiki_capture(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.wiki_capture(
+        text=args["text"],
+        sources_dir=self._base_dir + "/" + self._sources_dir,
+    )
+
+
+def _cmd_config_get(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.config_get(key=args["key"])
+
+
+def _cmd_config_set(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
+    return _mcp.config_set(key=args["key"], value=args["value"])
+
+
+_DISPATCH_TABLE: dict[str, Any] = {
+    "wiki_status": _cmd_wiki_status,
+    "compile_wiki": _cmd_compile_wiki,
+    "query_wiki": _cmd_query_wiki,
+    "wiki_capture": _cmd_wiki_capture,
+    "config_get": _cmd_config_get,
+    "config_set": _cmd_config_set,
+}
