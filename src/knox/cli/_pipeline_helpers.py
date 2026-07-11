@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -27,7 +29,7 @@ from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
-from knox.logging import get_console, get_err_console, get_logger
+from knox.logging import get_console, get_err_console, get_logger, set_verbosity
 from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
@@ -450,3 +452,52 @@ def _post_compile_actions(
         _run_post_compile_lint(wiki, sources_dir, base_dir=base_dir)
 
     _write_wiki_cache(wiki, base_dir)
+
+
+# ── JSON progress callback ──────────────────────────────────────────────
+
+
+def _make_json_progress_callback() -> Callable[[str, int, int, str], None]:
+    """Build a progress callback that writes JSONL events to stdout.
+
+    Each event is one JSON line::
+
+        {"event": "progress", "phase": "parse", "current": 5, "total": 40, "message": "[5/40] file.pdf"}
+        {"event": "done", "duration": 123.4, "message": "Compiled wiki written to ..."}
+
+    The callback also sets INFO verbosity so pipeline log messages are visible.
+    """
+    set_verbosity(logging.INFO)
+    start_time = time.monotonic()
+
+    def _reset() -> None:
+        nonlocal start_time
+        start_time = time.monotonic()
+
+    def _json_cb(phase: str, current: int, total: int, detail: str) -> None:
+        if phase == "start":
+            _reset()
+        elapsed = round(time.monotonic() - start_time, 2)
+        payload = {
+            "event": "progress",
+            "phase": phase,
+            "current": current,
+            "total": total,
+            "message": detail,
+            "elapsed": elapsed,
+        }
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+    return _json_cb
+
+
+def _emit_json_done(duration: float, message: str) -> None:
+    r"""Write the final ``{\"event\":\"done\", ...}`` line to stdout."""
+    payload = {
+        "event": "done",
+        "duration": round(duration, 2),
+        "message": message,
+    }
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    sys.stdout.flush()

@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import os
+from io import StringIO
+from unittest.mock import patch
 
 import pytest
 
-from knox.agent.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
+from knox.agent.provider_store import (
+    LLM_PROVIDER_MAP,
+    LlmApiType,
+    ProviderConfig,
+    ProviderCredentials,
+)
 from knox.agent.slash_commands import HELP_TEXT, parse_slash_command
+from knox.cli._pipeline_helpers import _emit_json_done, _make_json_progress_callback
 
 
 @pytest.fixture(autouse=True)
@@ -89,11 +98,31 @@ class TestProviderCredentials:
         assert "KNOX_LLM_API_BASE" not in os.environ
 
     def test_llm_provider_map(self) -> None:
+        # Well-known apiTypes — four are identity, vertex is overridden.
         assert LLM_PROVIDER_MAP["anthropic"] == "anthropic"
         assert LLM_PROVIDER_MAP["openai"] == "openai"
         assert LLM_PROVIDER_MAP["azure"] == "azure"
         assert LLM_PROVIDER_MAP["vertex"] == "vertex_ai"
         assert LLM_PROVIDER_MAP["bedrock"] == "bedrock"
+
+    def test_llm_provider_map_identity_default(self) -> None:
+        # Unknown apiTypes fall through to the identity mapping so custom
+        # protocols Just Work without registering an entry.
+        assert LLM_PROVIDER_MAP["custom"] == "custom"
+        assert LLM_PROVIDER_MAP["my-thing"] == "my-thing"
+
+    def test_llm_provider_map_enumerates_well_known(self) -> None:
+        # `providers/list` advertises the well-known apiTypes only —
+        # unknown keys should not appear via the identity fallback.
+        assert sorted(LLM_PROVIDER_MAP.keys()) == sorted(member.value for member in LlmApiType)
+
+    def test_llm_api_type_enum_values(self) -> None:
+        # Enum values must match the wire strings clients send on ACP.
+        assert LlmApiType.ANTHROPIC.value == "anthropic"
+        assert LlmApiType.OPENAI.value == "openai"
+        assert LlmApiType.AZURE.value == "azure"
+        assert LlmApiType.VERTEX.value == "vertex"
+        assert LlmApiType.BEDROCK.value == "bedrock"
 
 
 class TestSlashCommands:
@@ -107,7 +136,7 @@ class TestSlashCommands:
         assert cmd.kwargs == {}
 
     def test_parse_compile_with_flags(self) -> None:
-        cmd = parse_slash_command('/knox compile --start-at-tier chunk --force')
+        cmd = parse_slash_command("/knox compile --start-at-tier chunk --force")
         assert cmd is not None
         assert cmd.name == "compile"
         assert cmd.kwargs.get("start-at-tier") == "chunk"
@@ -156,3 +185,32 @@ class TestSlashCommands:
         assert "/knox capture" in HELP_TEXT
         assert "/knox status" in HELP_TEXT
         assert "/knox help" in HELP_TEXT
+
+
+class TestJsonProgressCallback:
+    """JSON progress callback for --json-progress mode."""
+
+    def test_progress_writes_jsonl(self) -> None:
+        """Each progress event is one JSON line on stdout."""
+        cb = _make_json_progress_callback()
+        fake_stdout = StringIO()
+        with patch("sys.stdout", fake_stdout):
+            cb("parse", 5, 40, "[5/40] file.pdf")
+        lines = [line for line in fake_stdout.getvalue().strip().split("\n") if line]
+        assert len(lines) == 1
+        event = json.loads(lines[0])
+        assert event["event"] == "progress"
+        assert event["phase"] == "parse"
+        assert event["current"] == 5
+        assert event["total"] == 40
+        assert event["message"] == "[5/40] file.pdf"
+
+    def test_done_writes_final_line(self) -> None:
+        """_emit_json_done writes a single done event."""
+        fake_stdout = StringIO()
+        with patch("sys.stdout", fake_stdout):
+            _emit_json_done(123.4, "Compiled wiki written to /tmp/wiki")
+        event = json.loads(fake_stdout.getvalue().strip())
+        assert event["event"] == "done"
+        assert event["duration"] == 123.4
+        assert "Compiled wiki" in event["message"]

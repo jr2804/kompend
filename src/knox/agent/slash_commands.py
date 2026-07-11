@@ -29,7 +29,7 @@ def parse_slash_command(text: str) -> SlashCommand | None:
     if not text.startswith("/knox "):
         return None
 
-    rest = text[len("/knox "):].strip()
+    rest = text[len("/knox ") :].strip()
     parts = shlex.split(rest)
     if not parts:
         return None

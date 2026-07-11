@@ -7,17 +7,21 @@ configuration, and slash commands.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
+import time
 from typing import Any
 
 from acp import Agent, PromptResponse, text_block
 from acp.schema import (
+    AgentMessageChunk,
     ClientCapabilities,
     Implementation,
     InitializeResponse,
     ListSessionsResponse,
     NewSessionResponse,
     ProvidersCapabilities,
+    TextContentBlock,
 )
 
 from knox.agent.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
@@ -91,57 +95,7 @@ class KnoxAgent(Agent):
                 messages=[text_block("Unknown command. Use ``/knox help`` for available commands.")],
             )
 
-        return await self._dispatch_slash(cmd)
-
-    async def _dispatch_slash(self, cmd: SlashCommand) -> PromptResponse:
-        """Dispatch a parsed slash command to the appropriate handler."""
-        if cmd.name == "help":
-            return PromptResponse(
-                stop_reason="end_turn",
-                messages=[text_block(HELP_TEXT)],
-            )
-
-        if cmd.name == "status":
-            return await self._handle_status()
-
-        if cmd.name in ("compile", "query", "capture"):
-            return await self._run_knox_cli(cmd)
-
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block(f"Unknown command: ``{cmd.name}``. Use ``/knox help``.")],
-        )
-
-    async def _handle_status(self) -> PromptResponse:
-        """Show vault health and cache stats."""
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block("KNOX agent is running. Use ``/knox compile`` to compile a wiki.")],
-        )
-
-    async def _run_knox_cli(self, cmd: SlashCommand) -> PromptResponse:
-        """Run a KNOX CLI command in a subprocess and return the output."""
-        knox_args = [sys.executable, "-m", "knox", cmd.name, *cmd.args]
-        for key, val in cmd.kwargs.items():
-            knox_args.append(f"--{key}")
-            if val:
-                knox_args.append(val)
-
-        proc = await asyncio.create_subprocess_exec(
-            *knox_args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-
-        output = stdout.decode("utf-8", errors="replace")
-        if stderr:
-            output += f"\n\nStderr:\n{stderr.decode('utf-8', errors='replace')}"
-
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block(output or "(no output)")],
-        )
+        return await self._dispatch_slash(cmd, session_id)
 
     # ── Provider configuration ──────────────────────────────────────────
 
@@ -158,6 +112,178 @@ class KnoxAgent(Agent):
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         """Handle extension notifications."""
         pass
+
+    # ── Unused lifecycle methods ────────────────────────────────────────
+
+    async def load_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[Any] | None = None,
+        additional_directories: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return None
+
+    async def list_sessions(self, cwd: str | None = None, cursor: str | None = None, **kwargs: Any) -> ListSessionsResponse:
+        return ListSessionsResponse(sessions=[])
+
+    async def set_session_mode(self, session_id: str, mode_id: str, **kwargs: Any) -> Any:
+        return None
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        session_id: str,
+        value: str | bool,
+        **kwargs: Any,
+    ) -> Any:
+        return None
+
+    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
+        return None
+
+    async def fork_session(
+        self,
+        session_id: str,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return None
+
+    async def close_session(self, session_id: str, **kwargs: Any) -> Any:
+        self._sessions.pop(session_id, None)
+        return None
+
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        pass
+
+    async def _dispatch_slash(self, cmd: SlashCommand, session_id: str) -> PromptResponse:
+        """Dispatch a parsed slash command to the appropriate handler."""
+        if cmd.name == "help":
+            return PromptResponse(
+                stop_reason="end_turn",
+                messages=[text_block(HELP_TEXT)],
+            )
+
+        if cmd.name == "status":
+            return await self._handle_status()
+
+        if cmd.name in ("compile", "query", "capture"):
+            return await self._run_knox_cli(cmd, session_id)
+
+        return PromptResponse(
+            stop_reason="end_turn",
+            messages=[text_block(f"Unknown command: ``{cmd.name}``. Use ``/knox help``.")],
+        )
+
+    async def _handle_status(self) -> PromptResponse:
+        """Show vault health and cache stats."""
+        return PromptResponse(
+            stop_reason="end_turn",
+            messages=[text_block("KNOX agent is running. Use ``/knox compile`` to compile a wiki.")],
+        )
+
+    async def _run_knox_cli(self, cmd: SlashCommand, session_id: str) -> PromptResponse:
+        """Run a KNOX CLI command in a subprocess and return the output.
+
+        For ``compile``, streams progress as ``session/update`` notifications.
+        """
+        use_json_progress = cmd.name == "compile"
+        knox_args = [sys.executable, "-m", "knox", cmd.name, *cmd.args]
+        if use_json_progress:
+            knox_args.append("--json-progress")
+        for key, val in cmd.kwargs.items():
+            knox_args.append(f"--{key}")
+            if val:
+                knox_args.append(val)
+
+        proc = await asyncio.create_subprocess_exec(
+            *knox_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        if not use_json_progress:
+            stdout, stderr = await proc.communicate()
+            output = stdout.decode("utf-8", errors="replace")
+            if stderr:
+                output += f"\n\nStderr:\n{stderr.decode('utf-8', errors='replace')}"
+            return PromptResponse(
+                stop_reason="end_turn",
+                messages=[text_block(output or "(no output)")],
+            )
+
+        # Stream compile progress line by line.
+        final_message = ""
+        message_id = f"msg_{int(time.time() * 1000)}"
+        stdout = proc.stdout
+        if stdout is None:
+            return PromptResponse(
+                stop_reason="end_turn",
+                messages=[text_block("(no stdout from subprocess)")],
+            )
+        while True:
+            line = await stdout.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").strip()
+            if not decoded:
+                continue
+            try:
+                event = json.loads(decoded)
+            except json.JSONDecodeError:
+                continue
+            evt_type = event.get("event")
+            if evt_type == "progress":
+                await self._send_progress_chunk(session_id, message_id, event)
+            elif evt_type == "done":
+                final_message = event.get("message", "")
+            elif evt_type == "error":
+                final_message = event.get("message", "Compilation failed")
+
+        await proc.wait()
+        stderr_data = await proc.stderr.read() if proc.stderr else b""
+        stderr_text = stderr_data.decode("utf-8", errors="replace").strip()
+
+        output_parts = [final_message] if final_message else []
+        if stderr_text:
+            output_parts.append(f"Stderr:\n{stderr_text}")
+        output = "\n\n".join(output_parts) if output_parts else "(no output)"
+
+        return PromptResponse(
+            stop_reason="end_turn",
+            messages=[text_block(output)],
+        )
+
+    async def _send_progress_chunk(self, session_id: str, message_id: str, event: dict[str, Any]) -> None:
+        """Forward a progress event as an ``AgentMessageChunk`` notification."""
+        if self._conn is None:
+            return
+        phase = event.get("phase", "")
+        current = event.get("current", 0)
+        total = event.get("total", 0)
+        detail = event.get("message", "")
+        pct = f" {int(current * 100 / total)}%" if total else ""
+        text = f"[{phase}] {detail}{pct}".strip()
+        chunk = AgentMessageChunk(
+            content=TextContentBlock(type="text", text=text),
+            message_id=message_id,
+            session_update="agent_message_chunk",
+        )
+        await self._conn.session_update(session_id=session_id, update=chunk)
 
     async def _handle_providers_list(self) -> dict[str, Any]:
         """Return the current provider configuration."""
@@ -192,68 +318,3 @@ class KnoxAgent(Agent):
         """Disable the LLM provider."""
         self._providers.disable()
         return {}
-
-    # ── Unused lifecycle methods ────────────────────────────────────────
-
-    async def load_session(
-        self,
-        cwd: str,
-        session_id: str,
-        mcp_servers: list[Any] | None = None,
-        additional_directories: list[str] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return None
-
-    async def list_sessions(
-        self, cwd: str | None = None, cursor: str | None = None, **kwargs: Any
-    ) -> ListSessionsResponse:
-        return ListSessionsResponse(sessions=[])
-
-    async def set_session_mode(
-        self, session_id: str, mode_id: str, **kwargs: Any
-    ) -> Any:
-        return None
-
-    async def set_config_option(
-        self,
-        config_id: str,
-        session_id: str,
-        value: str | bool,
-        **kwargs: Any,
-    ) -> Any:
-        return None
-
-    async def authenticate(
-        self, method_id: str, **kwargs: Any
-    ) -> Any:
-        return None
-
-    async def fork_session(
-        self,
-        session_id: str,
-        cwd: str,
-        additional_directories: list[str] | None = None,
-        mcp_servers: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return None
-
-    async def resume_session(
-        self,
-        session_id: str,
-        cwd: str,
-        additional_directories: list[str] | None = None,
-        mcp_servers: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        return None
-
-    async def close_session(
-        self, session_id: str, **kwargs: Any
-    ) -> Any:
-        self._sessions.pop(session_id, None)
-        return None
-
-    async def cancel(self, session_id: str, **kwargs: Any) -> None:
-        pass

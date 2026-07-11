@@ -462,7 +462,7 @@ The `pack.toml` manifest:
 ### OKF compliance — output format rules
 
 KNOX produces **OKF v0.1** (Open Knowledge Format) bundles by default.
-The spec is at https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
+The spec is at <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
 
 **All output-related code must maintain OKF v0.1 conformance:**
 
@@ -550,6 +550,7 @@ as ``knox agent`` on stdio.
 
 | Path | Scope |
 |------|-------|
+| `agent/` | ACP agent — credential-free LLM injection via `providers/set`; `KnoxAgent`, `ProviderCredentials`, slash commands |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -10,6 +12,8 @@ from typing import Any
 import typer
 
 from knox.cli._pipeline_helpers import (
+    _emit_json_done,
+    _make_json_progress_callback,
     _make_progress_callback,
     _post_compile_actions,
     _print_tier_listing,
@@ -160,6 +164,7 @@ def compile_cmd(  # noqa: PLR0915
     memory_enabled: MemoryEnabled = None,
     llm_role_model: LlmRoleModel = None,
     cli_set: CliSet = None,
+    json_progress: bool = typer.Option(False, "--json-progress", help="Emit progress as JSONL to stdout (for machine consumers)"),
 ) -> None:
     """Compile documents into a knowledge wiki.
 
@@ -249,15 +254,18 @@ def compile_cmd(  # noqa: PLR0915
         _print_tier_listing(pipeline)
         return
 
-    tracker = PipelineProgress.create(
-        total_files=len(source_files),
-        force_progress=show_progress,
-    )
-    progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
-    # Start the bar eagerly (idempotent). The parse handler also calls start(),
-    # but when parsing is skipped (--start-at-tier >= resolve) only this call
-    # guarantees the live display is running before any phase.
-    tracker.start()
+    if json_progress:
+        progress_cb = _make_json_progress_callback()
+    else:
+        tracker = PipelineProgress.create(
+            total_files=len(source_files),
+            force_progress=show_progress,
+        )
+        progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
+        # Start the bar eagerly (idempotent). The parse handler also calls start(),
+        # but when parsing is skipped (--start-at-tier >= resolve) only this call
+        # guarantees the live display is running before any phase.
+        tracker.start()
 
     try:
         start_time = time.monotonic()
@@ -268,8 +276,13 @@ def compile_cmd(  # noqa: PLR0915
         wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(source_files)
         wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[:20]]
 
-        tracker.finish()
-        get_console().print(f"Compiled wiki written to {output_dir}")
+        if json_progress:
+            _emit_json_done(elapsed, f"Compiled wiki written to {output_dir}")
+            console = get_err_console()
+        else:
+            tracker.finish()
+            console = get_console()
+        console.print(f"Compiled wiki written to {output_dir}")
 
         _post_compile_actions(
             wiki=wiki,
@@ -290,7 +303,8 @@ def compile_cmd(  # noqa: PLR0915
         )
 
     except Exception as exc:
-        tracker.stop()
+        if not json_progress:
+            tracker.stop()
         if isinstance(exc, LLMError):
             parts = [f"Error: {exc}"]
             if exc.model:
@@ -298,12 +312,17 @@ def compile_cmd(  # noqa: PLR0915
             parts.append(f"  attempts: {exc.attempts}")
             if exc.cause:
                 parts.append(f"  cause: {exc.cause}")
-            get_err_console().print("\n".join(parts))
+            err_msg = "\n".join(parts)
         else:
-            # Unexpected bug — the one-line message hides the cause. Show the
-            # full trace so the root cause (file, line, call) is diagnosable.
-            get_err_console().print(f"Error: {exc}")
+            err_msg = f"Error: {exc}"
             get_err_console().print(traceback.format_exc())
+
+        if json_progress:
+            err_payload = json.dumps({"event": "error", "message": err_msg}, ensure_ascii=False)
+            sys.stdout.write(err_payload + "\n")
+            sys.stdout.flush()
+        else:
+            get_err_console().print(err_msg)
         raise typer.Exit(1) from exc
 
 

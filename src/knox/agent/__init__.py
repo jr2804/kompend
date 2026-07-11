@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from knox.agent.knox_agent import KnoxAgent
-from knox.agent.provider_store import ProviderConfig, ProviderCredentials
+from knox.agent.provider_store import LlmApiType, ProviderConfig, ProviderCredentials
 
 __all__ = [
     "KnoxAgent",
+    "LlmApiType",
     "ProviderConfig",
     "ProviderCredentials",
 ]
