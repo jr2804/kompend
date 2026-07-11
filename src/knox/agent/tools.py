@@ -165,7 +165,7 @@ class ToolDispatcher:
     """
 
     def __init__(self, base_dir: str | Path | None = None) -> None:
-        self._base_dir = str(base_dir) if base_dir else "."
+        self._base_dir = Path(base_dir) if base_dir else Path(".")
         self._sources_dir = DEFAULTS.get("paths", {}).get("sources_dir", "sources")
         self._output_dir = DEFAULTS.get("paths", {}).get("output_dir", "wiki")
 
@@ -225,13 +225,13 @@ class ToolDispatcher:
 
 
 def _cmd_wiki_status(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.wiki_status(wiki_dir=self._base_dir)
+    return _mcp.wiki_status(wiki_dir=str(self._base_dir))
 
 
 def _cmd_compile_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
     return _mcp.compile_wiki(
-        sources_dir=args.get("sources_dir", self._base_dir + "/" + self._sources_dir),
-        output=self._base_dir + "/" + self._output_dir,
+        sources_dir=str(args.get("sources_dir", self._base_dir / self._sources_dir)),
+        output=str(self._base_dir / self._output_dir),
         compiler=args.get("compiler", "graph"),
     )
 
@@ -239,7 +239,7 @@ def _cmd_compile_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, A
 def _cmd_query_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
     return _mcp.query_wiki(
         query=args["query"],
-        wiki_dir=self._base_dir,
+        wiki_dir=str(self._base_dir),
         top_k=args.get("top_k", 5),
     )
 
@@ -247,7 +247,7 @@ def _cmd_query_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any
 def _cmd_wiki_capture(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
     return _mcp.wiki_capture(
         text=args["text"],
-        sources_dir=self._base_dir + "/" + self._sources_dir,
+        sources_dir=str(self._base_dir / self._sources_dir),
     )
 
 
