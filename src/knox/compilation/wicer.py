@@ -372,11 +372,13 @@ class WiCERCompiler(BaseCompiler):
                     litellm_model=self._config.llm.default_model,
                     skills=self._config.skills,
                 )
-                output = agent.run(WicerEvaluateDeps(
-                    wiki_text=segment,
-                    probes_json=encode_for_llm(probes, self._config.llm.data_format),
-                    source_id="wicer-eval",
-                ))
+                output = agent.run(
+                    WicerEvaluateDeps(
+                        wiki_text=segment,
+                        probes_json=encode_for_llm(probes, self._config.llm.data_format),
+                        source_id="wicer-eval",
+                    )
+                )
                 for i, r in enumerate(output.results):
                     if i >= len(probes):
                         break
@@ -406,10 +408,12 @@ class WiCERCompiler(BaseCompiler):
                 litellm_model=self._config.llm.default_model,
                 skills=self._config.skills,
             )
-            output = agent.run(WicerDiagnoseDeps(
-                failures_json=encode_for_llm(failures, self._config.llm.data_format),
-                source_id="wicer-diagnose",
-            ))
+            output = agent.run(
+                WicerDiagnoseDeps(
+                    failures_json=encode_for_llm(failures, self._config.llm.data_format),
+                    source_id="wicer-diagnose",
+                )
+            )
             return output.critical_facts
         except Exception as exc:
             logger.warning("WiCER: diagnosis failed: %s", exc, exc_info=True)
