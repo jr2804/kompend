@@ -212,7 +212,6 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             encoding="utf-8",
         )
         count += 1
-        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
         state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
 
     # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
@@ -220,10 +219,15 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     # parsers (Docling) and the embedding model don't compete for GPU memory.
     # The embedding model loads once, fingerprints all documents, then unloads.
     if dedup_orch is not None:
+        # Load the store early so we can skip fingerprinting unchanged docs.
+        dedup_orch._store.load()  # noqa: SLF001 — intentional access to load cached fingerprints
         for idx, source_file in enumerate(files):
+            slug = source_file.stem
+            # Skip files already fingerprinted in a previous run.
+            if slug in dedup_orch._store:  # noqa: SLF001
+                continue
             if progress_fn is not None:
                 progress_fn(idx, total, f"embedding {source_file.name}")
-            slug = source_file.stem
             cached_file = cache_dir / parse_cache_name(source_file)
             if not cached_file.exists():
                 continue
