@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -35,8 +33,11 @@ from knox.compilation._two_phase_core import (
     _BatchFailureTracker,
     _chars_to_tokens,
     _compute_quality_score,
+    _delete_gen_checkpoint,
     _extract_images_from_chunks,
+    _load_gen_checkpoint,
     _merge_extractions,
+    _save_gen_checkpoint,
     _segment_sources,
     _slugify,
     _tokens_to_chars,
@@ -46,7 +47,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
+from knox.core.cache_store import CacheStore
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
@@ -315,7 +316,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         # Generation completed. Remove checkpoint so the next compile starts
         # fresh (or uses the generation cache).
-        self._delete_gen_checkpoint(gen_deps)
+        _delete_gen_checkpoint(self._config, gen_deps)
 
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats
@@ -566,7 +567,7 @@ class TwoPhaseCompiler(BaseCompiler):
         if gen_total > 0:
             self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
 
-        checkpoint = self._load_gen_checkpoint(self._active_gen_deps)
+        checkpoint = _load_gen_checkpoint(self._config, self._active_gen_deps)
         if checkpoint is not None:
             ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
             logger.info(
@@ -590,7 +591,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
         # Generation finished (success or partial). Delete checkpoint always
         # so the next run uses the generation cache or starts fresh.
-        self._delete_gen_checkpoint(self._active_gen_deps)
+        _delete_gen_checkpoint(self._config, self._active_gen_deps)
 
         if not nodes:
             logger.warning(
@@ -787,7 +788,8 @@ class TwoPhaseCompiler(BaseCompiler):
 
             # Checkpoint after each completed batch so interrupted runs can resume.
             completed.add(batch_start)
-            self._save_gen_checkpoint(
+            _save_gen_checkpoint(
+                self._config,
                 self._active_gen_deps,
                 nodes,
                 slug_to_idx,
@@ -866,85 +868,6 @@ class TwoPhaseCompiler(BaseCompiler):
         }
 
     # -- generation checkpoint (resume after crash) ------------------------
-
-    def _gen_checkpoint_dir(self) -> Path:
-        """Directory for per-batch generation checkpoint files."""
-        return self._config.paths.cache_dir / "gen_checkpoint"
-
-    def _gen_checkpoint_path(self, gen_deps: dict[str, str]) -> Path:
-        """On-disk path for the generation checkpoint."""
-        return self._gen_checkpoint_dir() / f"{make_cache_key(gen_deps)}.json"
-
-    def _load_gen_checkpoint(  # noqa: PLR0911
-        self,
-        gen_deps: dict[str, str],
-    ) -> tuple[list[WikiNode], dict[str, int], set[int]] | None:
-        """Load a generation checkpoint if it exists and deps match.
-
-        Returns ``(nodes, slug_to_idx, completed_batches)`` or ``None``
-        when the checkpoint is absent, stale, or malformed.
-        """
-        if self._config.no_cache:
-            return None
-        path = self._gen_checkpoint_path(gen_deps)
-        if not path.exists():
-            return None
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            logger.debug("Generation checkpoint read error -- ignoring", exc_info=True)
-            return None
-        stored_deps = raw.get("deps", {})
-        if stored_deps != gen_deps:
-            logger.debug("Generation checkpoint deps mismatch -- ignoring")
-            return None
-        try:
-            nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]  # nocheck — checkpoint schema
-        except Exception:
-            logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
-            return None
-        slug_to_idx: dict[str, int] = dict(raw.get("slug_to_idx", {}))
-        completed: set[int] = set(raw.get("completed_batches", []))
-        return nodes, slug_to_idx, completed
-
-    def _save_gen_checkpoint(
-        self,
-        gen_deps: dict[str, str],
-        nodes: list[WikiNode],
-        slug_to_idx: dict[str, int],
-        completed_batches: set[int],
-    ) -> None:
-        """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
-        if self._config.no_cache:
-            return
-        path = self._gen_checkpoint_path(gen_deps)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        entry = {
-            "deps": gen_deps,
-            "completed_batches": sorted(completed_batches),
-            "nodes": [_encode_json(n) for n in nodes],  # nocheck — checkpoint schema
-            "slug_to_idx": dict(slug_to_idx),
-        }
-        try:
-            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(entry, f)
-            os.replace(tmp, path)
-            logger.debug("Generation checkpoint saved: %s", path)
-        except OSError:
-            logger.debug("Generation checkpoint write failed -- ignoring", exc_info=True)
-
-    def _delete_gen_checkpoint(self, gen_deps: dict[str, str]) -> None:
-        """Remove generation checkpoint file."""
-        if self._config.no_cache:
-            return
-        path = self._gen_checkpoint_path(gen_deps)
-        try:
-            if path.exists():
-                path.unlink()
-                logger.debug("Generation checkpoint deleted: %s", path)
-        except OSError:
-            logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
 
     @staticmethod
     def _build_tree_texts(tree: ChunkTree) -> list[str]:

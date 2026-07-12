@@ -7,15 +7,19 @@ This module is private API. External callers should import through
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Final
 
 from slugify import slugify as _slugify_impl
 
 from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
+from knox.core.cache_store import _decode_json, _encode_json, make_cache_key
 from knox.core.exception_format import shorten_exception
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
@@ -591,3 +595,85 @@ def _upsert_node(
     else:
         slug_to_idx[slug] = len(nodes)
         nodes.append(new_node)
+
+
+def _gen_checkpoint_dir(config: object) -> Path:
+    """Directory for per-batch generation checkpoint files."""
+    return config.paths.cache_dir / "gen_checkpoint"
+
+
+def _gen_checkpoint_path(config: object, gen_deps: dict[str, str]) -> Path:
+    """On-disk path for the generation checkpoint."""
+    return _gen_checkpoint_dir(config) / f"{make_cache_key(gen_deps)}.json"
+
+
+def _load_gen_checkpoint(
+    config: object,
+    gen_deps: dict[str, str],
+) -> tuple[list[WikiNode], dict[str, int], set[int]] | None:
+    """Load a generation checkpoint if it exists and deps match.
+
+    Returns ``(nodes, slug_to_idx, completed_batches)`` or ``None``
+    when the checkpoint is absent, stale, or malformed.
+    """
+    if getattr(config, "no_cache", False):
+        return None
+    path = _gen_checkpoint_path(config, gen_deps)
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.debug("Generation checkpoint read error -- ignoring", exc_info=True)
+        return None
+    stored_deps = raw.get("deps", {})
+    if stored_deps != gen_deps:
+        logger.debug("Generation checkpoint deps mismatch -- ignoring")
+        return None
+    try:
+        nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]
+    except Exception:
+        logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
+        return None
+    slug_to_idx: dict[str, int] = dict(raw.get("slug_to_idx", {}))
+    completed: set[int] = set(raw.get("completed_batches", []))
+    return nodes, slug_to_idx, completed
+
+
+def _save_gen_checkpoint(
+    config: object,
+    gen_deps: dict[str, str],
+    nodes: list[WikiNode],
+    slug_to_idx: dict[str, int],
+    completed_batches: set[int],
+) -> None:
+    """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
+    if getattr(config, "no_cache", False):
+        return
+    path = _gen_checkpoint_path(config, gen_deps)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "deps": gen_deps,
+        "nodes": [_encode_json(n) for n in nodes],
+        "slug_to_idx": slug_to_idx,
+        "completed_batches": list(completed_batches),
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    try:
+        os.replace(tmp, path)
+        logger.debug("Generation checkpoint saved: %s", path)
+    except OSError:
+        logger.debug("Generation checkpoint write failed -- ignoring", exc_info=True)
+
+
+def _delete_gen_checkpoint(config: object, gen_deps: dict[str, str]) -> None:
+    """Remove a generation checkpoint from disk."""
+    if getattr(config, "no_cache", False):
+        return
+    path = _gen_checkpoint_path(config, gen_deps)
+    try:
+        path.unlink()
+        logger.debug("Generation checkpoint deleted: %s", path)
+    except OSError:
+        logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
