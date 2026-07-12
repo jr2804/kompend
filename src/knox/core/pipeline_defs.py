@@ -262,10 +262,7 @@ class PipelineConfig:
             embedding=embedding_config,
             pdf=pdf_config,
             display=display_config,
-            skills={
-                name: skill.get("instructions", "")
-                for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()
-            },
+            skills={name: skill.get("instructions", "") for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()},
         )
 
 
