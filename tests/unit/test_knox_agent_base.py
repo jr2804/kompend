@@ -53,3 +53,61 @@ class TestKnoxAgentBaseContract:
 
         with pytest.raises(TypeError):
             Incomplete("ollama/foo")  # type: ignore[abstract]
+
+
+class TestSkillInjection:
+    """Skills passed to KnoxAgentBase are appended to the system prompt."""
+
+    def test_skills_appended_to_system_prompt(self) -> None:
+        """Skills are rendered as '## Skill: <name>' sections."""
+        from knox.agents.base import KnoxAgentBase
+        from knox.agents.deps import PipelineAgentDeps
+
+        class _TestAgent(KnoxAgentBase[Any, Any]):
+            template_name: str = "extraction_prompt.md.j2"
+            system_template_name: str = "extraction_system.md.j2"
+            result_type: type[Any] = Any
+
+            def _build_agent(self) -> None:
+                return None  # not needed for prompt rendering test
+
+        agent = _TestAgent(
+            "ollama/test-model",
+            skills={
+                "domain-terms": "- VAD: Voice Activity Detection\n- NR: Noise Reduction",
+                "format-rule": "Always respond in JSON.",
+            },
+        )
+        deps = PipelineAgentDeps(text="sample text", source_id="test")
+        prompt = agent.render_system_prompt(deps)
+
+        # Skill: domain-terms section present
+        assert "## Skill: domain-terms" in prompt
+        assert "VAD: Voice Activity Detection" in prompt
+        assert "NR: Noise Reduction" in prompt
+
+        # Skill: format-rule section present
+        assert "## Skill: format-rule" in prompt
+        assert "Always respond in JSON." in prompt
+
+        # Both skills are in the prompt
+        assert prompt.index("## Skill: domain-terms") < prompt.index("## Skill: format-rule")
+
+    def test_no_skills_empty_prompt(self) -> None:
+        """Without skills, the system prompt is unchanged."""
+        from knox.agents.base import KnoxAgentBase
+        from knox.agents.deps import PipelineAgentDeps
+
+        class _TestAgent(KnoxAgentBase[Any, Any]):
+            template_name: str = "extraction_prompt.md.j2"
+            system_template_name: str = "extraction_system.md.j2"
+            result_type: type[Any] = Any
+
+            def _build_agent(self) -> None:
+                return None
+
+        agent = _TestAgent("ollama/test-model")
+        deps = PipelineAgentDeps(text="sample", source_id="test")
+        prompt = agent.render_system_prompt(deps)
+
+        assert "## Skill:" not in prompt

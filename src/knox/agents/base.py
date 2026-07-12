@@ -90,10 +90,18 @@ class KnoxAgentBase[ResultT: BaseModel, DepsT: PipelineAgentDeps](ABC):
     result_type: ClassVar[type[BaseModel]]
     deps_type: ClassVar[type[PipelineAgentDeps]] = PipelineAgentDeps
 
-    def __init__(self, litellm_model: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        litellm_model: str,
+        *,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        skills: dict[str, str] | None = None,
+    ) -> None:
         self._litellm_model = litellm_model
         self._timeout = timeout
         self._pydanticai_model = _litellm_to_pydanticai_model(litellm_model)
+        # User-defined skills (skill_name → instructions, injected into system prompt)
+        self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
         # to avoid provider-resolution failures at init time. Tests can
         # construct agents without a live provider.
@@ -119,11 +127,21 @@ class KnoxAgentBase[ResultT: BaseModel, DepsT: PipelineAgentDeps](ABC):
         )
 
     def render_system_prompt(self, deps: DepsT) -> str:
-        """Render the system-prompt template. Defaults to static text."""
-        return self._template_loader.render(
+        """Render the system-prompt template, appending any skill instructions.
+
+        Skills defined in config under ``[compile.skills.<name>]`` are
+        injected as additional paragraphs at the end of the system prompt.
+        """
+        prompt = self._template_loader.render(
             f"compilation/{self.system_template_name}",
             **self._deps_to_template_vars(deps),
         )
+        if self._skills:
+            skill_blocks = []
+            for name, instructions in self._skills.items():
+                skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
+            prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
+        return prompt
 
     @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:

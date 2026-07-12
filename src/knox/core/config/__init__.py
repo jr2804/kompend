@@ -23,6 +23,7 @@ from knox.core.config._configs import (
     OutputConfig,
     OutputFormat,
     PdfConfig,
+    SkillConfig,
 )
 from knox.core.config._core import (
     DEFAULTS,

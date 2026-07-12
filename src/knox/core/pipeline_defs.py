@@ -41,6 +41,7 @@ from knox.core.config.keys import (
     COMPILE_MEMORY_HALF_LIFE_DAYS,
     COMPILE_NO_CACHE,
     COMPILE_RESPECT_GITIGNORE,
+    COMPILE_SKILLS,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_PATH,
@@ -151,6 +152,7 @@ class PipelineConfig:
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
+    skills: dict[str, str] = field(default_factory=dict)  # user-defined skill instructions (PydanticAI)
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
@@ -260,6 +262,10 @@ class PipelineConfig:
             embedding=embedding_config,
             pdf=pdf_config,
             display=display_config,
+            skills={
+                name: skill.get("instructions", "")
+                for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()
+            },
         )
 
 

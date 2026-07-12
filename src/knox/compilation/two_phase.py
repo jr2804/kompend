@@ -829,6 +829,7 @@ class TwoPhaseCompiler(BaseCompiler):
             agent = ExtractionAgent(
                 litellm_model=self._model,
                 timeout=self._timeout,
+                skills=self._config.skills,
             )
             validated = _try_pydanticai_extraction(
                 agent,

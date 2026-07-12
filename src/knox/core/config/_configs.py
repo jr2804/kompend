@@ -346,6 +346,20 @@ class DownloaderConfig(_KnoxBaseModel):
     undetected: bool = Field(default=True, validation_alias="KNOX_DOWNLOADER_UNDETECTED")
 
 
+class SkillConfig(_KnoxBaseModel):
+    """A named skill — user-defined instructions injected into the PydanticAI agent's system prompt.
+
+    Skills are defined under ``[compile.skills.<name>]`` in config:
+
+    .. code-block:: toml
+
+        [compile.skills."domain-terms"]
+        instructions = '''...'''  # free-form skill instructions
+    """
+
+    instructions: str
+
+
 # ── Compile section (top-level flags + nested sub-configs) ──────────────
 
 
@@ -383,6 +397,7 @@ class CompileConfig(_KnoxBaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
     pdf: PdfConfig = Field(default_factory=PdfConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    skills: dict[str, SkillConfig] = Field(default_factory=dict)
 
 
 # ── Root config ──────────────────────────────────────────────────────────

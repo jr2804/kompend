@@ -106,6 +106,9 @@ COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD: Final[str] = "compile.budget.summary_s
 COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD: Final[str] = "compile.budget.summary_chunk_threshold"
 COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX: Final[str] = "compile.budget.capture_source_char_max"
 
+# ── compile.skills sub-section ──
+COMPILE_SKILLS: Final[str] = "compile.skills"
+
 # ── compile.output sub-section ──
 COMPILE_OUTPUT_FLAVOR: Final[str] = "compile.output.flavor"
 COMPILE_OUTPUT_FRONTMATTER: Final[str] = "compile.output.frontmatter"

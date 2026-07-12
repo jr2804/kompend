@@ -266,6 +266,17 @@ timeout = 120.0
 # direct litellm call. Default false; the litellm path is stable.
 use_pydantic_ai = false
 
+# User-defined skill instructions injected into PydanticAI agents.
+# Defined under [compile.skills."<name>"] with an "instructions" field.
+# Skills are appended to the system prompt as additional context.
+# Only active when use_pydantic_ai = true.
+#
+# [compile.skills."domain-terms"]
+# instructions = '''
+# - VAD: Voice Activity Detection
+# - NR: Noise Reduction
+# '''
+
 # ── Embedding settings ──────────────────────────────────────────────────
 
 [compile.embedding]
