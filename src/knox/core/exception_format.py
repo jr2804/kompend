@@ -52,3 +52,11 @@ def shorten_string(text: str, *, limit: int = MAX_CHARS_EXCEPTION) -> str:
     if len(text) > limit:
         return f"{text[: limit - 1]}…"
     return text
+
+
+class LLMOutputError(Exception):
+    """Raised when an LLM cannot produce valid structured output.
+
+    The model is considered not suitable for compilation — no fallback,
+    no retry.  The caller should abort compilation with a clear message.
+    """

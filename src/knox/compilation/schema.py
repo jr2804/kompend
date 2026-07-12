@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, ValidationError
 
+from knox.core.exception_format import LLMOutputError
+
 __all__ = [
     "Concept",
     "Entity",
@@ -38,14 +40,6 @@ __all__ = [
     "WicerProbe",
     "WicerProbeOutput",
 ]
-
-
-class LLMOutputError(Exception):
-    """Raised when an LLM cannot produce valid structured output.
-
-    The model is considered not suitable for compilation — no fallback,
-    no retry.  The caller should abort compilation with a clear message.
-    """
 
 
 # ── Extraction (extraction_prompt.md.j2) ─────────────────────────────────
