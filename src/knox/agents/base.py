@@ -28,7 +28,7 @@ The base class handles the boring-but-load-bearing concerns:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
@@ -65,10 +65,26 @@ def _litellm_to_pydanticai_model(litellm_model: str) -> str:
 
 
 ResultT = TypeVar("ResultT", bound=BaseModel)
-DepsT = TypeVar("DepsT", bound=PipelineAgentDeps)
 
 
-class KnoxAgentBase[ResultT: BaseModel, DepsT: PipelineAgentDeps](ABC):
+@runtime_checkable
+class AgentDeps(Protocol):
+    """Structural type for deps objects passed to :class:`KnoxAgentBase`.
+
+    Any dataclass with a ``source_id: str`` and ``timeout: float`` field
+    satisfies this protocol. :class:`~knox.agents.deps.PipelineAgentDeps`
+    (extraction) and :class:`~knox.agents.deps.GenerationDeps` (generation)
+    both conform.
+    """
+
+    source_id: str
+    timeout: float
+
+
+DepsT = TypeVar("DepsT", bound=AgentDeps)
+
+
+class KnoxAgentBase[ResultT: BaseModel, DepsT: AgentDeps](ABC):
     """KNOX-side wrapper around a PydanticAI agent.
 
     Subclasses MUST set:
@@ -88,7 +104,7 @@ class KnoxAgentBase[ResultT: BaseModel, DepsT: PipelineAgentDeps](ABC):
     template_name: ClassVar[str]
     system_template_name: ClassVar[str]
     result_type: ClassVar[type[BaseModel]]
-    deps_type: ClassVar[type[PipelineAgentDeps]] = PipelineAgentDeps
+    deps_type: ClassVar[type[AgentDeps]] = PipelineAgentDeps
 
     def __init__(
         self,

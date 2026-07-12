@@ -17,7 +17,7 @@ import litellm
 from pydantic import BaseModel, ValidationError
 from slugify import slugify as _slugify_impl
 
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_JSON_CHARS
@@ -650,6 +650,52 @@ def _try_pydanticai_extraction(
         return None
     except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
         logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, shorten_exception(exc))
+        return None
+
+
+def _try_pydanticai_generation(
+    agent: Any,
+    *,
+    concepts_json: str,
+    content: str,
+    source_id: str,
+    pinned_facts: list[str] | None = None,
+    timeout: float = 120.0,
+) -> Any | None:
+    """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
+
+    PydanticAI counterpart to :func:`_try_litellm_json` for the
+    generation stage. Opt-in like the extraction helper; callers
+    should only invoke it when ``compile.llm.use_pydantic_ai`` is
+    True (knox-pyda Phase 3).
+
+    Args:
+        agent: An instantiated :class:`~knox.agents.GenerationAgent`.
+        concepts_json: The concept batch encoded via
+            :func:`knox.llm.format.encode_for_llm`.
+        content: Combined source-content block.
+        source_id: Provenance / log label for the batch.
+        pinned_facts: Facts that must appear in the output.
+        timeout: Per-call timeout in seconds.
+
+    Returns:
+        The validated :class:`~knox.compilation.schema.GenerationOutput`
+        instance, or ``None`` on failure.
+    """
+    try:
+        deps = GenerationDeps(
+            concepts_json=concepts_json,
+            content=content,
+            source_id=source_id,
+            pinned_facts=pinned_facts or [],
+            timeout=timeout,
+        )
+        return agent.run(deps)
+    except LLMOutputError as exc:
+        logger.warning("PydanticAI generation failed for '%s': %s", source_id, shorten_exception(exc))
+        return None
+    except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
+        logger.warning("PydanticAI generation unexpected error for '%s': %s", source_id, shorten_exception(exc))
         return None
 
 

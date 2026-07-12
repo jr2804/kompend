@@ -14,7 +14,7 @@ in a follow-up phase. Phase 1 (knox-pyda) only needs extraction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -36,4 +36,33 @@ class PipelineAgentDeps:
 
     text: str
     source_id: str
+    timeout: float = 120.0
+
+
+@dataclass
+class GenerationDeps:
+    """Runtime context for the compilation generation stage.
+
+    Unlike :class:`PipelineAgentDeps` (extraction), the generation
+    stage produces wiki pages from a batch of concepts plus source
+    segments. The prompt template ``generation_prompt.md.j2`` expects
+    three variables: ``concepts_json``, ``content``, and optional
+    ``pinned_facts``.
+
+    Attributes:
+        concepts_json: The concept batch encoded via
+            :func:`knox.llm.format.encode_for_llm` in the configured
+            data format.
+        content: Combined source-content block (one ``### label`` section
+            per source segment).
+        source_id: Provenance / log label for the batch.
+        pinned_facts: Facts that must appear in the output (WiCER
+            refinement input). Empty list when unused.
+        timeout: Per-call timeout in seconds.
+    """
+
+    concepts_json: str
+    content: str
+    source_id: str
+    pinned_facts: list[str] = field(default_factory=list)
     timeout: float = 120.0
