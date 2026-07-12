@@ -56,4 +56,5 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
+            retries=self._retries,
         )

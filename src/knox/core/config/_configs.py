@@ -122,6 +122,7 @@ class LLMConfig(_KnoxBaseModel):
     api_base: str | None = None
     api_key: str | None = None
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
+    pydantic_ai_retries: int = Field(default=2, validation_alias="KNOX_LLM_PYDANTIC_AI_RETRIES")
 
 
 class BudgetConfig(_KnoxBaseModel):

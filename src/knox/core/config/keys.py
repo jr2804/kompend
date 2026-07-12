@@ -62,6 +62,7 @@ COMPILE_LLM_NUM_CTX_MAX: Final[str] = "compile.llm.num_ctx_max"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
 COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
+COMPILE_LLM_PYDANTIC_AI_RETRIES: Final[str] = "compile.llm.pydantic_ai_retries"
 COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
 
 # ── compile.pdf sub-section ──

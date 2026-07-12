@@ -260,6 +260,9 @@ fallback_max_retries = 2
     # LLM call timeout
     timeout = 120.0
 
+    # PydanticAI output retries (retries when LLM output fails schema validation)
+    pydantic_ai_retries = 2
+
 # User-defined skill instructions injected into agent system prompts.
 # Defined under [compile.skills."<name>"] with an "instructions" field.
 # Skills are appended to the system prompt as additional context.

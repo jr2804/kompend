@@ -72,4 +72,5 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
             deps_type=self.deps_type,
             output_type=str,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
+            retries=self._retries,
         )

@@ -82,10 +82,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         litellm_model: str,
         *,
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        retries: int = 2,
         skills: dict[str, str] | None = None,
     ) -> None:
         self._litellm_model = litellm_model
         self._timeout = timeout
+        self._retries = retries
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)

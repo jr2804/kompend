@@ -55,6 +55,9 @@ data_format = "ison"
 # LLM call timeout
 timeout            = 300.0
 
+# PydanticAI output retries (retries when LLM output fails schema validation)
+pydantic_ai_retries = 2
+
 # ── Embedding ───────────────────────────────────────────────────────────
 [compile.embedding]
 # Embedding model for semantic search / RAG.
