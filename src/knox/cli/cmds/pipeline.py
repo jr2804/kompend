@@ -16,6 +16,7 @@ from knox.cli._pipeline_helpers import (
     _make_json_progress_callback,
     _make_progress_callback,
     _post_compile_actions,
+    _PostCompileOptions,
     _print_tier_listing,
     _resolve_compile_inputs,
 )
@@ -293,21 +294,23 @@ def compile_cmd(  # noqa: PLR0915
         console.print(f"Compiled wiki written to {output_dir}")
 
         _post_compile_actions(
-            wiki=wiki,
-            pipeline_config=pipeline_config,
-            output_dir=output_dir,
-            sources_dir=sources_dir,
-            review=review,
-            bypass_review=bypass_review,
-            provenance=provenance,
-            private=private,
-            verify=verify,
-            synthesize=synthesize,
-            index_store=index_store,
-            compile_lint=compile_lint,
-            embed_model=embed_model,
-            show_progress=show_progress,
-            llm_client=pipeline.llm_client,
+            _PostCompileOptions(
+                wiki=wiki,
+                pipeline_config=pipeline_config,
+                output_dir=output_dir,
+                sources_dir=sources_dir,
+                review=review,
+                bypass_review=bypass_review,
+                provenance=provenance,
+                private=private,
+                verify=verify,
+                synthesize=synthesize,
+                index_store=index_store,
+                compile_lint=compile_lint,
+                embed_model=embed_model,
+                show_progress=show_progress,
+                llm_client=pipeline.llm_client,
+            )
         )
 
     except Exception as exc:

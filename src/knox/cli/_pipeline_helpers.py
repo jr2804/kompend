@@ -389,69 +389,79 @@ def _run_overview_synthesis(
         get_err_console().print("Overview generation skipped (no content to summarise).")
 
 
-def _post_compile_actions(
-    *,
-    wiki: CompiledWiki,
-    pipeline_config: PipelineConfig,
-    output_dir: Path,
-    sources_dir: Path,
-    review: bool | None,
-    bypass_review: bool | None,
-    provenance: bool | None,
-    private: bool | None,
-    verify: bool | None,
-    synthesize: bool | None,
-    index_store: bool | None,
-    compile_lint: bool | None,
-    embed_model: str | None,
-    show_progress: bool | None = None,
-    llm_client: object | None = None,
-) -> None:
-    """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
-    base_dir = pipeline_config.resolved_base_dir()
-    _write_wiki_cache(wiki, base_dir)
-    _print_compile_summary(wiki)
+@dataclasses.dataclass
+class _PostCompileOptions:
+    """Options for post-compilation actions, grouped to reduce parameter count."""
 
-    if review and not bypass_review:
-        _send_to_review_queue(wiki, base_dir)
+    wiki: CompiledWiki
+    pipeline_config: PipelineConfig
+    output_dir: Path
+    sources_dir: Path
+    review: bool | None = None
+    bypass_review: bool | None = None
+    provenance: bool | None = None
+    private: bool | None = None
+    verify: bool | None = None
+    synthesize: bool | None = None
+    index_store: bool | None = None
+    compile_lint: bool | None = None
+    embed_model: str | None = None
+    show_progress: bool | None = None
+    llm_client: object | None = None
+
+
+def _post_compile_actions(opts: _PostCompileOptions) -> None:
+    """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
+    base_dir = opts.pipeline_config.resolved_base_dir()
+    _write_wiki_cache(opts.wiki, base_dir)
+    _print_compile_summary(opts.wiki)
+
+    if opts.review and not opts.bypass_review:
+        _send_to_review_queue(opts.wiki, base_dir)
         get_console().print(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
-    elif bypass_review and review:
+    elif opts.bypass_review and opts.review:
         get_console().print("--bypass-review overrides --review; writing pages directly.")
 
-    if provenance:
-        _annotate_provenance(wiki, output_dir)
+    if opts.provenance:
+        _annotate_provenance(opts.wiki, opts.output_dir)
 
-    if private:
-        _mark_private(wiki, output_dir)
+    if opts.private:
+        _mark_private(opts.wiki, opts.output_dir)
 
-    if verify:
-        resolved_model = pipeline_config.llm.default_model
-        if llm_client is None:
+    if opts.verify:
+        resolved_model = opts.pipeline_config.llm.default_model
+        if opts.llm_client is None:
             get_err_console().print("Warning: --verify requires an LLM client — skipping verification")
         else:
-            _verify_claims(wiki, output_dir, client=llm_client, model=resolved_model, verify_budget=pipeline_config.budget.verify_output_max * 4)
+            _verify_claims(
+                opts.wiki,
+                opts.output_dir,
+                client=opts.llm_client,
+                model=resolved_model,
+                verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
+            )
 
-    generated = write_index(wiki, output_dir, base_dir=base_dir)
+    generated = write_index(opts.wiki, opts.output_dir, base_dir=base_dir)
     get_console().print(f"Index: {generated['index']}")
 
-    if synthesize:
+    if opts.synthesize:
         _run_overview_synthesis(
-            wiki=wiki,
-            pipeline_config=pipeline_config,
+            wiki=opts.wiki,
+            pipeline_config=opts.pipeline_config,
             base_dir=base_dir,
-            show_progress=show_progress,
+            show_progress=opts.show_progress,
         )
 
-    if index_store:
+    if opts.index_store:
         search_db_path = VaultPaths(base_dir).search_db_path
-        build_chunk_index(wiki, search_db_path)
-        wiki.metadata["embedding_model"] = embed_model
-        _cli_build_vector_index(wiki, output_dir, pipeline_config.embedding.model, base_dir=base_dir)
+        build_chunk_index(opts.wiki, search_db_path)
+        opts.wiki.metadata["embedding_model"] = opts.embed_model
+        _cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
 
-    if compile_lint:
-        _run_post_compile_lint(wiki, sources_dir, base_dir=base_dir)
+    if opts.compile_lint:
+        _run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir)
 
-    _write_wiki_cache(wiki, base_dir)
+    _write_wiki_cache(opts.wiki, base_dir)
 
 
 # ── JSON progress callback ──────────────────────────────────────────────
