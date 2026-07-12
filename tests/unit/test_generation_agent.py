@@ -31,26 +31,6 @@ class TestGenerationAgentConstruction:
 
 
 class TestGenerationAgentRun:
-    def _make_agent_and_mock(self) -> tuple[GenerationAgent, MagicMock]:
-        """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
-        agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
-        mock_sync = MagicMock()
-        mock_output = GenerationOutput(
-            pages=[
-                GenerationPage(
-                    title="Foo",
-                    slug="foo",
-                    content="A page about Foo.",
-                    provenance=["doc1"],
-                    related=["Bar"],
-                ),
-            ],
-        )
-        mock_sync.return_value = MagicMock(output=mock_output)
-        agent._agent = MagicMock()
-        agent._agent.run_sync = mock_sync
-        return agent, mock_sync
-
     def test_run_returns_typed_generation_output(self) -> None:
         agent, _ = self._make_agent_and_mock()
         deps = GenerationDeps(
@@ -92,6 +72,26 @@ class TestGenerationAgentRun:
             agent.run(deps)
         assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+    def _make_agent_and_mock(self) -> tuple[GenerationAgent, MagicMock]:
+        """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
+        agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
+        mock_sync = MagicMock()
+        mock_output = GenerationOutput(
+            pages=[
+                GenerationPage(
+                    title="Foo",
+                    slug="foo",
+                    content="A page about Foo.",
+                    provenance=["doc1"],
+                    related=["Bar"],
+                ),
+            ],
+        )
+        mock_sync.return_value = MagicMock(output=mock_output)
+        agent._agent = MagicMock()
+        agent._agent.run_sync = mock_sync
+        return agent, mock_sync
 
 
 class TestGenerationDeps:

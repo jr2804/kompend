@@ -18,6 +18,7 @@ class TestKnoxAgentBaseContract:
 
     def test_knox_agent_base_requires_build_agent(self) -> None:
         """Subclasses must implement _build_agent to be instantiable."""
+
         class Incomplete(KnoxAgentBase[Any, Any]):
             pass
 
@@ -30,6 +31,7 @@ class TestSkillInjection:
 
     def test_skills_appended_to_system_prompt(self) -> None:
         """Skills are rendered as '## Skill: <name>' sections."""
+
         class _TestAgent(KnoxAgentBase[Any, Any]):
             template_name: str = "extraction_prompt.md.j2"
             system_template_name: str = "extraction_system.md.j2"
@@ -62,6 +64,7 @@ class TestSkillInjection:
 
     def test_no_skills_empty_prompt(self) -> None:
         """Without skills, the system prompt is unchanged."""
+
         class _TestAgent(KnoxAgentBase[Any, Any]):
             template_name: str = "extraction_prompt.md.j2"
             system_template_name: str = "extraction_system.md.j2"

@@ -833,15 +833,6 @@ class TestWiCERCompilerWithMock:
             controller.diagnose = diagnose
             yield controller
 
-    def _probe_output(self, items: list[dict]) -> WicerProbeOutput:
-        return WicerProbeOutput(probes=list(items))
-
-    def _evaluate_output(self, items: list[dict]) -> WicerEvaluateOutput:
-        return WicerEvaluateOutput(results=list(items))
-
-    def _diagnose_output(self, facts: list[str]) -> WicerDiagnoseOutput:
-        return WicerDiagnoseOutput(critical_facts=list(facts))
-
     def test_llm_generated_probes_used(self, mock_llm: MagicMock) -> None:
         """When the LLM agents return probes, they are used for evaluation."""
         mock_llm.probe.return_value = self._probe_output(
@@ -878,9 +869,7 @@ class TestWiCERCompilerWithMock:
 
     def test_llm_evaluation_detects_failures(self, mock_llm: MagicMock) -> None:
         """When evaluation says probes fail, refinement happens."""
-        mock_llm.probe.return_value = self._probe_output(
-            [{"question": "What is KNOX?", "answer": "A knowledge base project."}]
-        )
+        mock_llm.probe.return_value = self._probe_output([{"question": "What is KNOX?", "answer": "A knowledge base project."}])
         mock_llm.evaluate.return_value = self._evaluate_output(
             [{"question": "What is KNOX?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
         )
@@ -897,12 +886,8 @@ class TestWiCERCompilerWithMock:
 
     def test_all_probes_pass_loop_ends(self, mock_llm: MagicMock) -> None:
         """When all probes pass, the loop ends early."""
-        mock_llm.probe.return_value = self._probe_output(
-            [{"question": "Q1?", "answer": "A1."}]
-        )
-        mock_llm.evaluate.return_value = self._evaluate_output(
-            [{"question": "Q1?", "expected_answer": "A1.", "found_answer": "A1.", "correct": True}]
-        )
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "A1.", "correct": True}])
         mock_llm.diagnose.return_value = self._diagnose_output([])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
@@ -960,6 +945,15 @@ class TestWiCERCompilerWithMock:
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].id == "dummy"
         assert wiki.metadata.get("custom") is True
+
+    def _probe_output(self, items: list[dict]) -> WicerProbeOutput:
+        return WicerProbeOutput(probes=list(items))
+
+    def _evaluate_output(self, items: list[dict]) -> WicerEvaluateOutput:
+        return WicerEvaluateOutput(results=list(items))
+
+    def _diagnose_output(self, facts: list[str]) -> WicerDiagnoseOutput:
+        return WicerDiagnoseOutput(critical_facts=list(facts))
 
     @staticmethod
     def _llm_result(payload: dict | list, content: str = "") -> MagicMock:

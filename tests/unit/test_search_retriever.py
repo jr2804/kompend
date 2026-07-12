@@ -197,16 +197,6 @@ class _FakeLLMClient:
 class TestSynthesizeVerbosity:
     """Query synthesis routes through the PydanticAI QueryAgent."""
 
-    def _synthesize(self, verbosity: str, max_tokens: int | None = 100) -> tuple[Any, Any]:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
-        fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
-        mock_agent = MagicMock()
-        mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
-        with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
-            result = retriever.synthesize("q", [], llm_client=fake, verbosity=verbosity, max_tokens=max_tokens)
-        return result, mock_agent
-
     def test_routes_to_query_agent(self) -> None:
         result, agent = self._synthesize("standard")
         assert result.answer == "answer (standard)"
@@ -247,3 +237,13 @@ class TestSynthesizeVerbosity:
         deps.source_id = "query"
         system = agent.render_system_prompt(deps)
         assert "balanced" in system.lower()
+
+    def _synthesize(self, verbosity: str, max_tokens: int | None = 100) -> tuple[Any, Any]:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        fake = _FakeLLMClient()
+        retriever = TokenOverlapRetriever(wiki)
+        mock_agent = MagicMock()
+        mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
+        with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
+            result = retriever.synthesize("q", [], llm_client=fake, verbosity=verbosity, max_tokens=max_tokens)
+        return result, mock_agent

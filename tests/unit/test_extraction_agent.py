@@ -33,30 +33,6 @@ class TestExtractionAgentConstruction:
 
 
 class TestExtractionAgentRun:
-    def _make_agent_and_mock(self) -> tuple[ExtractionAgent, MagicMock]:
-        """Build an agent with a mocked pydantic_ai.Agent.run_sync.
-
-        The underlying PydanticAI Agent is replaced with a MagicMock to
-        avoid provider-resolution at construction time. This means the
-        ``_build_agent()`` path is never exercised in this test — we
-        only verify the KNOX-side wiring (prompt rendering, result
-        handling, error mapping).
-        """
-        agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
-        mock_sync = MagicMock()
-        mock_output = ExtractionOutput(
-            summary="A summary.",
-            entities=[Entity(name="Foo", type="Author")],
-            concepts=[Concept(name="Bar", definition="A concept.")],
-            findings=[Finding(claim="X", evidence="Y")],
-            tags=["a", "b"],
-        )
-        mock_sync.return_value = MagicMock(output=mock_output)
-        # Replace the lazily-created PydanticAI Agent with a mock.
-        agent._agent = MagicMock()
-        agent._agent.run_sync = mock_sync
-        return agent, mock_sync
-
     def test_run_returns_typed_extraction_output(self) -> None:
         agent, _ = self._make_agent_and_mock()
         deps = PipelineAgentDeps(text="Some text.", source_id="doc1")
@@ -91,6 +67,30 @@ class TestExtractionAgentRun:
         assert "Agent failed for model" in str(exc_info.value)
         assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+    def _make_agent_and_mock(self) -> tuple[ExtractionAgent, MagicMock]:
+        """Build an agent with a mocked pydantic_ai.Agent.run_sync.
+
+        The underlying PydanticAI Agent is replaced with a MagicMock to
+        avoid provider-resolution at construction time. This means the
+        ``_build_agent()`` path is never exercised in this test — we
+        only verify the KNOX-side wiring (prompt rendering, result
+        handling, error mapping).
+        """
+        agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
+        mock_sync = MagicMock()
+        mock_output = ExtractionOutput(
+            summary="A summary.",
+            entities=[Entity(name="Foo", type="Author")],
+            concepts=[Concept(name="Bar", definition="A concept.")],
+            findings=[Finding(claim="X", evidence="Y")],
+            tags=["a", "b"],
+        )
+        mock_sync.return_value = MagicMock(output=mock_output)
+        # Replace the lazily-created PydanticAI Agent with a mock.
+        agent._agent = MagicMock()
+        agent._agent.run_sync = mock_sync
+        return agent, mock_sync
 
 
 class TestPipelineAgentDeps:

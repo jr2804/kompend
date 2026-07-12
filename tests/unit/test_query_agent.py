@@ -26,15 +26,6 @@ class TestQueryAgentConstruction:
 
 
 class TestQueryAgentRun:
-    def _make_agent_and_mock(self) -> tuple[QueryAgent, MagicMock]:
-        """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
-        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
-        mock_sync = MagicMock()
-        mock_sync.return_value = MagicMock(output="VAD stands for Voice Activity Detection.")
-        agent._agent = MagicMock()
-        agent._agent.run_sync = mock_sync
-        return agent, mock_sync
-
     def test_run_returns_string(self) -> None:
         agent, _ = self._make_agent_and_mock()
         deps = QueryDeps(
@@ -73,6 +64,15 @@ class TestQueryAgentRun:
             agent.run(deps)
         assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+    def _make_agent_and_mock(self) -> tuple[QueryAgent, MagicMock]:
+        """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
+        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
+        mock_sync = MagicMock()
+        mock_sync.return_value = MagicMock(output="VAD stands for Voice Activity Detection.")
+        agent._agent = MagicMock()
+        agent._agent.run_sync = mock_sync
+        return agent, mock_sync
 
 
 class TestQueryDeps:

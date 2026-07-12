@@ -29,7 +29,7 @@ class TestShortenException:
         exc = ValueError("first line\nsecond line\nthird")
         result = shorten_exception(exc)
         assert "\n" not in result
-        assert "first line second line third" == result
+        assert result == "first line second line third"
 
     def test_strips_whitespace(self) -> None:
         result = shorten_exception(ValueError("  padded  "))
