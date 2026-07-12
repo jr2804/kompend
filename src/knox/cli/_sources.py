@@ -55,20 +55,21 @@ def _looks_like_html_url(url: str) -> bool:
 
 
 # Priority order for picking a file from an extracted archive.
-_ARCHIVE_EXTRACT_PRIORITY: tuple[str, ...] = (
-    ".tex",
-    ".md",
-    ".rst",
-    ".txt",
-    ".html",
-    ".htm",
-    ".pdf",
-    ".docx",
-    ".epub",
+# Lower index = higher priority (TeX > Markdown > plain text > HTML > PDF > DOCX > EPUB).
+_ARCHIVE_EXTRACT_PRIORITY: tuple[FileExtension, ...] = (
+    FileExtension.TEX,
+    FileExtension.MD,
+    FileExtension.RST,
+    FileExtension.TXT,
+    FileExtension.HTML,
+    FileExtension.HTM,
+    FileExtension.PDF,
+    FileExtension.DOCX,
+    FileExtension.EPUB,
 )
 
 
-_EXT_PRIORITY: dict[str, int] = {ext: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
+_EXT_PRIORITY: dict[str, int] = {ext.value: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
 
 
 def _find_best_archive_member(names: list[str]) -> str | None:

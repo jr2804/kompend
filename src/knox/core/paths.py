@@ -93,6 +93,7 @@ STATE_FILE: Final[str] = "state.json"
 # ── Lint history (append-only JSONL) ─────────────────────────────────────
 LINT_HISTORY_FILE: Final[str] = "lint_history.jsonl"
 RUNS_FILE: Final[str] = "runs.jsonl"
+URLS_FILE: Final[str] = "urls.txt"
 
 # ── Organize (LLM-based file categorisation) ─────────────────────────────
 ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"

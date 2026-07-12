@@ -24,6 +24,7 @@ class FileExtension(StrEnum):
     DOC = ".doc"
     EPUB = ".epub"
     HTML = ".html"
+    HTM = ".htm"
     PPTX = ".pptx"
     XLSX = ".xlsx"
     ODT = ".odt"
