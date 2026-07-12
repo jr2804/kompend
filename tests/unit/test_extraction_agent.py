@@ -9,14 +9,13 @@ mapping) is correct.
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
-from knox.compilation.schema import Concept, Entity, ExtractionOutput, Finding
+from knox.compilation.schema import Concept, Entity, ExtractionOutput, Finding, LLMOutputError
 
 
 class TestExtractionAgentConstruction:
@@ -85,7 +84,7 @@ class TestExtractionAgentRun:
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         deps = PipelineAgentDeps(text="x", source_id="doc1")
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(LLMOutputError) as exc_info:
             agent.run(deps)
         # The exception is an LLMOutputError (knox.compilation.schema) with the
         # original RuntimeError as __cause__.

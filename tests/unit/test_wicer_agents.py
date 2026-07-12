@@ -16,12 +16,11 @@ from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDep
 from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from knox.compilation.schema import (
     WicerDiagnoseOutput,
-    WicerEvaluateOutput,
     WicerEvalResult,
+    WicerEvaluateOutput,
     WicerProbe,
     WicerProbeOutput,
 )
-
 
 # ── WicerProbeAgent ──────────────────────────────────────────────────────
 

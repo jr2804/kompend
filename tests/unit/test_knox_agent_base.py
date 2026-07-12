@@ -6,8 +6,6 @@ from typing import Any
 
 import pytest
 
-from knox.agents.base import KnoxAgentBase
-
 
 class TestKnoxAgentBaseContract:
     def test_knox_agent_base_is_abstract(self) -> None:
