@@ -546,6 +546,48 @@ as ``knox agent`` on stdio.
 - The ``ext_method()`` handler on ``KnoxAgent`` receives unknown ACP methods
   (including ``providers/*``). Add new provider methods there.
 
+### PydanticAI pipeline agents (``src/knox/agents/``)
+
+All LLM stages in the compilation pipeline now route through PydanticAI
+agents instead of direct ``litellm.completion()`` calls. Six agents cover
+the pipeline stages:
+
+| Agent | Stage | Output |
+|-------|-------|--------|
+| ``ExtractionAgent`` | TwoPhase extraction | ``ExtractionOutput`` (JSON) |
+| ``GenerationAgent`` | TwoPhase generation | ``GenerationOutput`` (JSON) |
+| ``QueryAgent`` | RAG query synthesis | ``str`` (free text) |
+| ``WicerProbeAgent`` | WiCER probe generation | ``WicerProbeOutput`` (JSON) |
+| ``WicerEvaluateAgent`` | WiCER evaluation | ``WicerEvaluateOutput`` (JSON) |
+| ``WicerDiagnoseAgent`` | WiCER diagnosis | ``WicerDiagnoseOutput`` (JSON) |
+
+**Key design:**
+
+- Agents use ``LitellmModel`` — a ``pydantic_ai.FunctionModel`` that wraps
+  ``litellm.completion()`` directly. This preserves all custom provider
+  routing (``opencode-zen/*``, ``ollama_cloud/*``, ``claudinio/*``) and
+  the existing litellm dispatch chain.
+- ``KnoxAgentBase`` handles lazy agent construction, template rendering,
+  skill injection, and error wrapping. Subclasses only implement
+  ``_build_agent()`` and optionally override prompt rendering.
+- ``DepsT`` is a structural ``Protocol`` — each stage declares its own
+  deps shape (``PipelineAgentDeps``, ``GenerationDeps``, ``QueryDeps``,
+  ``Wicer*Deps``) without inheritance coupling.
+- The ``use_pydantic_ai`` flag was removed — agents are the only path.
+
+**When modifying agents (``src/knox/agents/``):**
+
+- Add new agents in ``src/knox/agents/<name>.py``, following the existing
+  pattern (subclass ``KnoxAgentBase``, set ``result_type`` and
+  ``template_name``, implement ``_build_agent()``).
+- ``LitellmModel`` is in ``litellm_model.py`` — it's a ``FunctionModel``
+  that delegates to ``litellm.completion()``. Do not use PydanticAI's
+  native provider format (``provider:model``) — always use the
+  ``litellm/provider/model`` format.
+- Template variables are filtered to only include those declared in the
+  template's frontmatter. Add new variables to the template's
+  ``variables:`` list.
+
 ### Work Guidance
 
 - Python 3.11+ only. Use modern typing syntax (`X | None`, `list[str]`).
@@ -570,6 +612,7 @@ as ``knox agent`` on stdio.
 | Path | Scope |
 |------|-------|
 | `agent/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
+| `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through `LitellmModel` (FunctionModel wrapping `litellm.completion()`). |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
