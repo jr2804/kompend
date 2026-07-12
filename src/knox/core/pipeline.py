@@ -45,7 +45,7 @@ from knox.core.models import (
     tree_from_dict,
     tree_to_dict,
 )
-from knox.core.paths import URLS_FILE, VaultPaths
+from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import (
     ALL_TIERS,
     TIER_DESCRIPTIONS,
@@ -317,12 +317,12 @@ class WikiPipeline:
         command to copy files into the source directory — it does
         *not* scope which files the pipeline processes.
 
-        Excludes the URL list file (``urls.txt``) — it is processed via
+        Excludes the URL list file — it is processed via
         ``--url-file``, not a document to parse.
         """
         extensions = get_all_extensions()
         for f in self.config.source_dir.rglob("*"):
-            if f.suffix.lower() in extensions and f.name != URLS_FILE:
+            if f.suffix.lower() in extensions:
                 yield f
 
     def list_tiers(self) -> list[dict[str, Any]]:

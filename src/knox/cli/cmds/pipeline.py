@@ -71,7 +71,7 @@ from knox.core.config.keys import (
 )
 from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
-from knox.core.paths import URLS_FILE, VaultPaths
+from knox.core.paths import VaultPaths
 from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
@@ -219,7 +219,7 @@ def compile_cmd(  # noqa: PLR0915
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     source_extensions = get_all_extensions()
-    source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions and f.name != URLS_FILE]
+    source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions]
     if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
         raise typer.Exit(1)
