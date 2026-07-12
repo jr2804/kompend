@@ -17,6 +17,8 @@ import json
 import time
 from typing import Any, Final
 
+from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
+from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
@@ -337,6 +339,19 @@ class WiCERCompiler(BaseCompiler):
             logger.debug("WiCER has no LLM client — skipping probe generation")
             return []
 
+        # PydanticAI path (knox-pyda Phase 5, opt-in).
+        if self._config.llm.use_pydantic_ai:
+            try:
+                agent = WicerProbeAgent(
+                    litellm_model=self._config.llm.default_model,
+                    skills=self._config.skills,
+                )
+                output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
+                return [p.model_dump() for p in output.probes]
+            except Exception as exc:
+                logger.warning("WiCER: PydanticAI probe generation failed: %s", exc, exc_info=True)
+                return []
+
         result = self._client.try_complete(
             messages=[
                 {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
@@ -374,6 +389,28 @@ class WiCERCompiler(BaseCompiler):
 
         for seg_start in range(0, len(wiki_text), self._eval_input_chars):
             segment = wiki_text[seg_start : seg_start + self._eval_input_chars]
+
+            # PydanticAI path (knox-pyda Phase 5, opt-in).
+            if self._config.llm.use_pydantic_ai:
+                try:
+                    agent = WicerEvaluateAgent(
+                        litellm_model=self._config.llm.default_model,
+                        skills=self._config.skills,
+                    )
+                    output = agent.run(WicerEvaluateDeps(
+                        wiki_text=segment,
+                        probes_json=encode_for_llm(probes, self._config.llm.data_format),
+                        source_id="wicer-eval",
+                    ))
+                    for i, r in enumerate(output.results):
+                        if i >= len(probes):
+                            break
+                        rd = r.model_dump()
+                        if rd.get("correct", False) or i not in probe_results:
+                            probe_results[i] = rd
+                except Exception as exc:
+                    logger.warning("WiCER: PydanticAI evaluation failed: %s", exc, exc_info=True)
+                continue
 
             result = self._client.try_complete(
                 messages=[
@@ -416,6 +453,22 @@ class WiCERCompiler(BaseCompiler):
         if self._client is None:
             logger.debug("WiCER has no LLM client — skipping diagnosis")
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
+
+        # PydanticAI path (knox-pyda Phase 5, opt-in).
+        if self._config.llm.use_pydantic_ai:
+            try:
+                agent = WicerDiagnoseAgent(
+                    litellm_model=self._config.llm.default_model,
+                    skills=self._config.skills,
+                )
+                output = agent.run(WicerDiagnoseDeps(
+                    failures_json=encode_for_llm(failures, self._config.llm.data_format),
+                    source_id="wicer-diagnose",
+                ))
+                return output.critical_facts
+            except Exception as exc:
+                logger.warning("WiCER: PydanticAI diagnosis failed: %s", exc, exc_info=True)
+                return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
         result = self._client.try_complete(
             messages=[

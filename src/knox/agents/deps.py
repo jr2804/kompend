@@ -92,3 +92,64 @@ class QueryDeps:
     source_id: str
     verbosity: str = "standard"
     timeout: float = 120.0
+
+
+@dataclass
+class WicerProbeDeps:
+    """Runtime context for the WiCER probe-generation stage.
+
+    The probe agent generates Q&A probes from source text to test the
+    compiled wiki against. The prompt template ``wicer_probe.md.j2``
+    expects one variable: ``text``.
+
+    Attributes:
+        text: The combined source text to generate probes from.
+        source_id: Log/provenance label for the batch.
+        timeout: Per-call timeout in seconds.
+    """
+
+    text: str
+    source_id: str
+    timeout: float = 120.0
+
+
+@dataclass
+class WicerEvaluateDeps:
+    """Runtime context for the WiCER evaluate stage.
+
+    The evaluate agent checks if the compiled wiki correctly answers
+    the generated probes. The prompt template ``wicer_evaluate.md.j2``
+    expects two variables: ``wiki_text`` and ``probes_json``.
+
+    Attributes:
+        wiki_text: A segment of compiled wiki text to evaluate against.
+        probes_json: The probes encoded via :func:`knox.llm.format.encode_for_llm`.
+        source_id: Log/provenance label.
+        timeout: Per-call timeout in seconds.
+    """
+
+    wiki_text: str
+    probes_json: str
+    source_id: str
+    timeout: float = 120.0
+
+
+@dataclass
+class WicerDiagnoseDeps:
+    """Runtime context for the WiCER diagnose stage.
+
+    The diagnose agent extracts critical facts from evaluation failures
+    so they can be re-injected as pinned facts in the next compilation
+    round. The prompt template ``wicer_diagnose.md.j2`` expects one
+    variable: ``failures_json``.
+
+    Attributes:
+        failures_json: The failed evaluations encoded via
+            :func:`knox.llm.format.encode_for_llm`.
+        source_id: Log/provenance label.
+        timeout: Per-call timeout in seconds.
+    """
+
+    failures_json: str
+    source_id: str
+    timeout: float = 120.0
