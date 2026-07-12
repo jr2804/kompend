@@ -141,6 +141,7 @@ class EnhancedRetriever:
         *,
         verbosity: str = "standard",
         max_tokens: int | None = None,
+        use_pydantic_ai: bool = False,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         synthesizer = TokenOverlapRetriever(self._wiki)
@@ -150,6 +151,7 @@ class EnhancedRetriever:
             llm_client=self._llm_client,
             verbosity=verbosity,
             max_tokens=max_tokens,
+            use_pydantic_ai=use_pydantic_ai,
         )
         return synthesis
 

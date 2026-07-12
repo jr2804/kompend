@@ -26,9 +26,10 @@ opt into PydanticAI via a config flag.
 """
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import GenerationDeps, PipelineAgentDeps
+from knox.agents.deps import GenerationDeps, PipelineAgentDeps, QueryDeps
 from knox.agents.extraction import ExtractionAgent
 from knox.agents.generation import GenerationAgent
+from knox.agents.query import QueryAgent
 
 __all__ = [
     "ExtractionAgent",
@@ -36,4 +37,6 @@ __all__ = [
     "GenerationDeps",
     "KnoxAgentBase",
     "PipelineAgentDeps",
+    "QueryAgent",
+    "QueryDeps",
 ]

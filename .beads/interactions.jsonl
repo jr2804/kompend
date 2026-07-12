@@ -275,3 +275,4 @@
 {"id":"int-89099bf83f1ea96b54777ceecbd261ce","kind":"field_change","created_at":"2026-07-11T23:00:41.9006438Z","actor":"Jan.Reimes","issue_id":"knox-6xb1","extra":{"field":"status","new_value":"closed","old_value":"open"}}
 {"id":"int-013b588b5786bb12faaacc5acae93187","kind":"field_change","created_at":"2026-07-12T00:01:25.8059787Z","actor":"Jan.Reimes","issue_id":"knox-pyda.1","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-04f6997cae640397b734c2c1d43a1510","kind":"field_change","created_at":"2026-07-12T12:49:23.2895594Z","actor":"Jan.Reimes","issue_id":"knox-pyda.2","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-d89bdf5e36c36e89e89c9d2b944d8a47","kind":"field_change","created_at":"2026-07-12T13:57:23.3387406Z","actor":"Jan.Reimes","issue_id":"knox-pyda.3","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}

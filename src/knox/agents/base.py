@@ -30,7 +30,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
-from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from knox.agents.deps import PipelineAgentDeps
@@ -64,7 +63,7 @@ def _litellm_to_pydanticai_model(litellm_model: str) -> str:
     return f"{provider}:{model}"
 
 
-ResultT = TypeVar("ResultT", bound=BaseModel)
+ResultT = TypeVar("ResultT")
 
 
 @runtime_checkable
@@ -84,7 +83,7 @@ class AgentDeps(Protocol):
 DepsT = TypeVar("DepsT", bound=AgentDeps)
 
 
-class KnoxAgentBase[ResultT: BaseModel, DepsT: AgentDeps](ABC):
+class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     """KNOX-side wrapper around a PydanticAI agent.
 
     Subclasses MUST set:
@@ -103,7 +102,7 @@ class KnoxAgentBase[ResultT: BaseModel, DepsT: AgentDeps](ABC):
 
     template_name: ClassVar[str]
     system_template_name: ClassVar[str]
-    result_type: ClassVar[type[BaseModel]]
+    result_type: ClassVar[type]
     deps_type: ClassVar[type[AgentDeps]] = PipelineAgentDeps
 
     def __init__(

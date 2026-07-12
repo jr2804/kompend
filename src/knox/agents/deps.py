@@ -66,3 +66,29 @@ class GenerationDeps:
     source_id: str
     pinned_facts: list[str] = field(default_factory=list)
     timeout: float = 120.0
+
+
+@dataclass
+class QueryDeps:
+    """Runtime context for the query/synthesis stage.
+
+    The query agent answers a user question based on retrieved context
+    chunks. The system prompt template ``query/synthesize_system.md.j2``
+    expects ``context`` and ``verbosity`` variables; the user prompt is
+    the raw question string.
+
+    Attributes:
+        question: The user's free-text question.
+        context: Pre-formatted context block (one entry per search
+            result, with title, source, and snippet).
+        source_id: Log/provenance label for the query.
+        verbosity: Synthesis verbosity (``brief``, ``standard``,
+            ``comprehensive``). Controls answer length.
+        timeout: Per-call timeout in seconds.
+    """
+
+    question: str
+    context: str
+    source_id: str
+    verbosity: str = "standard"
+    timeout: float = 120.0

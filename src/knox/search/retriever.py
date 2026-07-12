@@ -7,6 +7,8 @@ from typing import Any, Final
 
 from rank_bm25 import BM25Okapi
 
+from knox.agents.deps import QueryDeps
+from knox.agents.query import QueryAgent
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
@@ -133,6 +135,8 @@ class TokenOverlapRetriever:
         *,
         verbosity: str = "standard",
         max_tokens: int | None = None,
+        use_pydantic_ai: bool = False,
+        skills: dict[str, str] | None = None,
     ) -> SynthesisResult:
         if llm_client is None:
             citations: list[dict[str, Any]] = []
@@ -157,22 +161,42 @@ class TokenOverlapRetriever:
             context_lines.append("")
 
         context_text: str = "\n".join(context_lines)
-        system_prompt: str = self._template_loader.render(
-            "query/synthesize_system.md.j2",
-            context=context_text,
-            verbosity=verbosity,
-        )
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": query},
-        ]
+        # PydanticAI path (knox-pyda Phase 4, opt-in).
+        if use_pydantic_ai and llm_client is not None:
+            try:
+                agent = QueryAgent(
+                    litellm_model=llm_client.default_model,
+                    timeout=120.0,
+                    skills=skills or {},
+                )
+                deps = QueryDeps(
+                    question=query,
+                    context=context_text,
+                    source_id="query",
+                    verbosity=verbosity,
+                )
+                answer = agent.run(deps)
+            except Exception as exc:
+                logger.warning("PydanticAI query synthesis failed: %s", exc, exc_info=True)
+                answer = ""
+        else:
+            system_prompt: str = self._template_loader.render(
+                "query/synthesize_system.md.j2",
+                context=context_text,
+                verbosity=verbosity,
+            )
 
-        complete_kwargs: dict[str, Any] = {"role": "search"}
-        if max_tokens is not None:
-            complete_kwargs["max_tokens"] = max_tokens
-        result = llm_client.complete(messages, **complete_kwargs)
-        answer: str = result.content
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query},
+            ]
+
+            complete_kwargs: dict[str, Any] = {"role": "search"}
+            if max_tokens is not None:
+                complete_kwargs["max_tokens"] = max_tokens
+            result = llm_client.complete(messages, **complete_kwargs)
+            answer: str = result.content
 
         citations_out: list[dict[str, Any]] = []
         for r in results:

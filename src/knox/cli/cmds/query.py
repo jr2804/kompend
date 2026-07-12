@@ -27,6 +27,7 @@ from knox.core.config import resolve_config
 from knox.core.config._configs import LlmDataFormat, QueryFormat, Verbosity
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_USE_PYDANTIC_AI,
     QUERY_FORMAT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
@@ -328,8 +329,15 @@ def _synthesize_and_output(
     max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
 
     try:
+        use_pydantic_ai: bool = cfg.get(COMPILE_LLM_USE_PYDANTIC_AI, False)
         if has_enhanced and enhanced is not None:
-            synthesis = enhanced.synthesize(query, results, verbosity=verbosity, max_tokens=max_tokens)
+            synthesis = enhanced.synthesize(
+                query,
+                results,
+                verbosity=verbosity,
+                max_tokens=max_tokens,
+                use_pydantic_ai=use_pydantic_ai,
+            )
         else:
             synthesizer = TokenOverlapRetriever(wiki)
             synthesis = synthesizer.synthesize(
@@ -338,6 +346,7 @@ def _synthesize_and_output(
                 llm_client=llm_client,
                 verbosity=verbosity,
                 max_tokens=max_tokens,
+                use_pydantic_ai=use_pydantic_ai,
             )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
