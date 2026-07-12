@@ -320,10 +320,9 @@ class WikiPipeline:
         Excludes ``urls.txt`` — it is a URL list processed via
         ``--url-file``, not a document to parse.
         """
-        for ext in ("*.pdf", "*.docx", "*.doc", "*.epub", "*.md", "*.txt", "*.html", "*.pptx"):
-            for f in self.config.source_dir.rglob(ext):
-                if f.name == "urls.txt":
-                    continue
+        extensions = {".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx"}
+        for f in self.config.source_dir.rglob("*"):
+            if f.suffix.lower() in extensions and f.name != "urls.txt":
                 yield f
 
     def list_tiers(self) -> list[dict[str, Any]]:

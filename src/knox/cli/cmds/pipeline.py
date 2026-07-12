@@ -218,8 +218,8 @@ def compile_cmd(  # noqa: PLR0915
     cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-    source_extensions = ("*.pdf", "*.PDF", "*.docx", "*.DOCX", "*.doc", "*.DOC", "*.epub", "*.md", "*.txt", "*.html", "*.pptx")
-    source_files = [f for ext in source_extensions for f in sources_dir.rglob(ext)]
+    source_extensions = {".pdf", ".docx", ".doc", ".epub", ".md", ".txt", ".html", ".pptx"}
+    source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions and f.name != "urls.txt"]
     if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
         raise typer.Exit(1)
