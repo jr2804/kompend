@@ -29,6 +29,7 @@ from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline_defs import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
+from knox.llm.roles import LLMRole
 from knox.logging import get_console, get_err_console, get_logger, set_verbosity
 from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
@@ -511,3 +512,32 @@ def _emit_json_done(duration: float, message: str) -> None:
     }
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def _check_llm_availability(pipeline: object) -> None:
+    """Pre-flight LLM connectivity check — fail fast before processing documents.
+
+    Catches wrong provider prefixes, missing API keys, unreachable endpoints,
+    and invalid model names before the pipeline starts grinding through all
+    files with silent failures on every LLM call.
+    """
+    if pipeline.llm_client is None:
+        return
+    try:
+        ping = pipeline.llm_client.try_complete(
+            [{"role": "user", "content": "Respond with exactly one word: ok"}],
+            role=LLMRole.DOCTOR,
+            max_tokens=128,
+        )
+    except Exception as exc:
+        get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
+        get_err_console().print(f"  {exc}")
+        raise typer.Exit(1) from exc
+    if ping is None:
+        report = pipeline.llm_client.degradation_report()
+        recent = report.get("recent_failures", [])
+        msg = recent[-1].get("message", "LLM is not responding") if recent else "LLM is not responding"
+        get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
+        get_err_console().print(f"  Model: {pipeline.llm_client.default_model or '?'}")
+        get_err_console().print(f"  Error: {msg}")
+        raise typer.Exit(1)

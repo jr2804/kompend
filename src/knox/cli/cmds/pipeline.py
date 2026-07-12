@@ -12,6 +12,7 @@ from typing import Any
 import typer
 
 from knox.cli._pipeline_helpers import (
+    _check_llm_availability,
     _emit_json_done,
     _make_json_progress_callback,
     _make_progress_callback,
@@ -75,7 +76,6 @@ from knox.core.pipeline import build_pipeline
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.user import resolve_actor
 from knox.llm.errors import LLMError
-from knox.llm.roles import LLMRole
 from knox.logging import get_console, get_err_console, get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
 from knox.preprocessing.parsers.base import ParserRouter
@@ -235,29 +235,7 @@ def compile_cmd(  # noqa: PLR0915
 
     pipeline = build_pipeline(pipeline_config)
 
-    # Pre-flight LLM connectivity check — fail fast before processing documents.
-    # Catches wrong provider prefixes, missing API keys, unreachable endpoints,
-    # and invalid model names before the pipeline starts grinding through all
-    # files with silent failures on every LLM call.
-    if pipeline.llm_client is not None:
-        try:
-            ping = pipeline.llm_client.try_complete(
-                [{"role": "user", "content": "Respond with exactly one word: ok"}],
-                role=LLMRole.DOCTOR,
-                max_tokens=128,
-            )
-        except Exception as exc:
-            get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
-            get_err_console().print(f"  {exc}")
-            raise typer.Exit(1) from exc
-        if ping is None:
-            report = pipeline.llm_client.degradation_report()
-            recent = report.get("recent_failures", [])
-            msg = recent[-1].get("message", "LLM is not responding") if recent else "LLM is not responding"
-            get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
-            get_err_console().print(f"  Model: {pipeline.llm_client.default_model or '?'}")
-            get_err_console().print(f"  Error: {msg}")
-            raise typer.Exit(1)
+    _check_llm_availability(pipeline)
 
     if list_tiers:
         _print_tier_listing(pipeline)
