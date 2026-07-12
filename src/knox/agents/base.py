@@ -103,7 +103,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """
         template_path = f"compilation/{self.template_name}"
         meta = self._template_loader.get_meta(template_path)
-        declared = meta.variable_names()
+        declared = meta.declared_variable_names()
         vars_dict = self._deps_to_template_vars(deps)
         filtered = {k: v for k, v in vars_dict.items() if k in declared}
         return self._template_loader.render(template_path, **filtered)
