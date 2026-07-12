@@ -361,7 +361,9 @@ def _prune(
             collapsed_files.extend(only.files)
             kept_subs = []
 
-    if len(kept_subs) < config.min_subcategories and any(c.subcategories for c in kept_subs):
+    # A non-leaf category must have at least min_subcategories children.
+    # Categories with fewer are dissolved and their files promoted to the parent.
+    if 0 < len(kept_subs) < config.min_subcategories:
         promote_files: list[str] = []
         for child in kept_subs:
             promote_files.extend(child.all_files())
