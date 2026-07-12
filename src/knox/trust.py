@@ -153,8 +153,8 @@ class LifecycleStore:
             encoding="utf-8",
         )
 
+    @staticmethod
     def transition(
-        self,
         state: LifecycleState,
         node_id: str,
         new_state: str,

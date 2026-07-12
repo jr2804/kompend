@@ -104,7 +104,6 @@ class ConversationalAgent:
             }
             messages.append(assistant_msg)
 
-            # Execute each tool call
             for tc in result.tool_calls:
                 await self._notify(
                     conn,

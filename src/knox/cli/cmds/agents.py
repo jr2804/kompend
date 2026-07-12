@@ -120,7 +120,6 @@ def _agents_use(task_str: str, name: str) -> None:
         get_console().print(f"[red]Cannot set active agent for task: {task}[/red]")
         raise typer.Exit(1)
 
-    # Write to config.toml
     if not validate_config_key(config_key):
         get_console().print(f"[red]Invalid config key: {config_key}[/red]")
         raise typer.Exit(1)
@@ -161,7 +160,6 @@ def _agents_install(file_path: str) -> None:
         get_console().print(f"[red]File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
-    # Validate before installing
     try:
         agent = AgentDefinition.from_toml(src)
     except Exception as exc:
@@ -193,6 +191,5 @@ def _agents_remove(name: str) -> None:
     agent_file.unlink()
     get_console().print(f"[green]Removed agent: {name}[/green]")
 
-    # Clean up empty vault dir
     if vault_dir.exists() and not any(vault_dir.iterdir()):
         vault_dir.rmdir()

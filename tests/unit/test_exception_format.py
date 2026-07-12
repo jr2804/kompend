@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from knox.core.exception_format import MAX_CHARS_EXCEPTION, shorten_exception, shorten_string
 
 

@@ -123,7 +123,6 @@ class KnoxAgent(Agent):
         When no LLM is available, ``/knox`` slash commands fall back to
         subprocess dispatch (degraded mode), and free-text prompts are rejected.
         """
-        # Extract text from the prompt
         text = ""
         for block in prompt:
             if hasattr(block, "text"):

@@ -154,10 +154,6 @@ class _CustomProvider(CustomLLM):
         """
         raise NotImplementedError
 
-    # ------------------------------------------------------------------
-    # Helpers for subclasses
-    # ------------------------------------------------------------------
-
     @classmethod
     def _api_key(cls) -> str:
         """Read the API key from the environment variable named by
