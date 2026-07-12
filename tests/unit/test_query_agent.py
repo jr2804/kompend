@@ -23,7 +23,6 @@ class TestQueryAgentConstruction:
     def test_constructs_with_litellm_model(self) -> None:
         agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
         assert agent.litellm_model == "ollama/gpt-oss:20b"
-        assert agent.pydanticai_model == "ollama:gpt-oss:20b"
 
 
 class TestQueryAgentRun:
@@ -70,8 +69,9 @@ class TestQueryAgentRun:
             context="c",
             source_id="query-1",
         )
-        with pytest.raises(Exception, match="PydanticAI agent failed") as exc_info:
+        with pytest.raises(Exception, match="Agent failed for model") as exc_info:
             agent.run(deps)
+        assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 

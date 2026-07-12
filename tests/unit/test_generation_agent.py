@@ -28,7 +28,6 @@ class TestGenerationAgentConstruction:
     def test_constructs_with_litellm_model(self) -> None:
         agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
         assert agent.litellm_model == "ollama/gpt-oss:20b"
-        assert agent.pydanticai_model == "ollama:gpt-oss:20b"
 
 
 class TestGenerationAgentRun:
@@ -89,9 +88,9 @@ class TestGenerationAgentRun:
             content="x",
             source_id="batch-1",
         )
-        with pytest.raises(Exception, match="PydanticAI agent failed") as exc_info:
+        with pytest.raises(Exception, match="Agent failed for model") as exc_info:
             agent.run(deps)
-        assert "PydanticAI agent failed" in str(exc_info.value)
+        assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 

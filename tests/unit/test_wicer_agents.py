@@ -59,8 +59,10 @@ class TestWicerProbeAgent:
         agent = WicerProbeAgent(litellm_model="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
-        with pytest.raises(Exception, match="PydanticAI agent failed"):
+        with pytest.raises(Exception, match="Agent failed for model") as exc_info:
             agent.run(WicerProbeDeps(text="x", source_id="s"))
+        assert "ollama/gpt-oss:20b" in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 # ── WicerEvaluateAgent ───────────────────────────────────────────────────

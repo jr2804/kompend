@@ -10,8 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, _complete_validated_batch, _normalize_concept_key
-from knox.compilation.schema import ExtractionOutput
+from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, _normalize_concept_key
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -72,26 +71,22 @@ def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
 
 
 def _validated_side_effect(dicts: list) -> Callable:
-    """Mock ``_complete_validated_batch`` that validates each dict via response_model.
+    """Mock agent helper that validates each dict via the agent's result_type.
 
-    Each call returns ``(model.validate(dict), dict)``; a ``None`` entry yields
-    ``(None, None)`` (a failed batch). Mirrors the real helper's contract so
-    tests can supply raw LLM-output dicts without constructing models by hand.
+    Each call returns the validated model; a ``None`` entry yields ``None``
+    (a failed batch). Mirrors the agent helper contract so tests can supply
+    raw LLM-output dicts without constructing models by hand.
     """
     it = iter(dicts)
 
-    def _impl(**kwargs: object) -> tuple[object | None, dict | None]:
+    def _impl(*args: object, **_kwargs: object) -> object | None:
         data = next(it)
         if data is None:
-            return None, None
-        return kwargs["response_model"].model_validate(data), data
+            return None
+        agent = args[0]
+        return agent.result_type.model_validate(data)
 
     return _impl
-
-
-# ===========================================================================
-#  Q20: Tiered compilation
-# ===========================================================================
 
 
 class TestTierLevelRanges:
@@ -746,26 +741,11 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._complete_validated_batch", side_effect=_validated_side_effect([None])):
+        with patch("knox.compilation.two_phase._try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
         assert len(wiki.nodes) == 0
-
-    def test_extraction_retry_succeeds_after_failure(self) -> None:
-        """_complete_validated_batch retries: a failed attempt then a success."""
-        valid = {"summary": "ok", "entities": [], "concepts": [{"name": "x", "definition": "y"}], "tags": []}
-        # First low-level call returns empty ({}  → falsy → retry); second succeeds.
-        with patch("knox.compilation._two_phase_core._try_litellm_json", side_effect=[{}, valid]):
-            result, data = _complete_validated_batch(
-                prompt="p",
-                model="m",
-                response_model=ExtractionOutput,
-                attempts=3,
-            )
-        assert result is not None
-        assert isinstance(result, ExtractionOutput)
-        assert data == valid
 
     def test_compile_flags_incomplete_on_high_failure_rate(self) -> None:
         """When most batches fail (after retries), compile stops early and flags incomplete."""
@@ -789,8 +769,8 @@ class TestTwoPhaseCompiler:
             )
             for i in range(n_sources)
         ]
-        # Every batch fails after retries.
-        with patch("knox.compilation.two_phase._complete_validated_batch", return_value=(None, None)):
+        # Every extraction batch fails.
+        with patch("knox.compilation.two_phase._try_pydanticai_extraction", return_value=None):
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
@@ -815,7 +795,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.two_phase._complete_validated_batch",
+            "knox.compilation.two_phase._try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -849,7 +829,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.two_phase._complete_validated_batch",
+            "knox.compilation.two_phase._try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -891,27 +871,32 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch(
-            "knox.compilation.two_phase._complete_validated_batch",
-            side_effect=_validated_side_effect(
-                [
-                    # First call (extract) returns a summary; generation returns a page.
-                    {
-                        "summary": "a summary",
-                        "entities": [],
-                        "concepts": [{"name": "attention", "definition": "y"}],
-                        "tags": [],
-                    },
-                    {
-                        "pages": [
-                            {
-                                "title": "Attention",
-                                "content": "Attention is the cognitive process of selectively focusing on discrete information while ignoring other perceivable input. It plays a critical role in learning and memory.",
-                            }
-                        ]
-                    },
-                ]
-            ),
+        shared_side_effect = _validated_side_effect(
+            [
+                # First call (extract) returns a summary; generation returns a page.
+                {
+                    "summary": "a summary",
+                    "entities": [],
+                    "concepts": [{"name": "attention", "definition": "y"}],
+                    "tags": [],
+                },
+                {
+                    "pages": [
+                        {
+                            "title": "Attention",
+                            "content": (
+                                "Attention is the cognitive process of selectively focusing "
+                                "on discrete information while ignoring other perceivable input. "
+                                "It plays a critical role in learning and memory."
+                            ),
+                        }
+                    ]
+                },
+            ]
+        )
+        with (
+            patch("knox.compilation.two_phase._try_pydanticai_extraction", side_effect=shared_side_effect),
+            patch("knox.compilation.two_phase._try_pydanticai_generation", side_effect=shared_side_effect),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata

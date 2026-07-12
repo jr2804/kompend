@@ -19,6 +19,12 @@ from knox.compilation._two_phase_core import (
     _slugify,
 )
 from knox.compilation.base import BaseCompiler
+from knox.compilation.schema import (
+    LLMOutputError,
+    WicerDiagnoseOutput,
+    WicerEvaluateOutput,
+    WicerProbeOutput,
+)
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
@@ -815,44 +821,52 @@ class TestWiCERCompilerWithMock:
 
     @pytest.fixture
     def mock_llm(self) -> MagicMock:
-        """Patch LLMClient.try_complete on the wicer module's import."""
-        with patch("knox.compilation.wicer.LLMClient.try_complete") as mock:
-            yield mock
+        """Patch the three WiCER PydanticAI agents used by WiCERCompiler."""
+        with (
+            patch("knox.compilation.wicer.WicerProbeAgent.run") as probe,
+            patch("knox.compilation.wicer.WicerEvaluateAgent.run") as evaluate,
+            patch("knox.compilation.wicer.WicerDiagnoseAgent.run") as diagnose,
+        ):
+            controller = MagicMock()
+            controller.probe = probe
+            controller.evaluate = evaluate
+            controller.diagnose = diagnose
+            yield controller
+
+    def _probe_output(self, items: list[dict]) -> WicerProbeOutput:
+        return WicerProbeOutput(probes=list(items))
+
+    def _evaluate_output(self, items: list[dict]) -> WicerEvaluateOutput:
+        return WicerEvaluateOutput(results=list(items))
+
+    def _diagnose_output(self, facts: list[str]) -> WicerDiagnoseOutput:
+        return WicerDiagnoseOutput(critical_facts=list(facts))
 
     def test_llm_generated_probes_used(self, mock_llm: MagicMock) -> None:
-        """When the LLM client returns probes, they are used for evaluation."""
-
-        def respond(*_args: object, **kwargs: object) -> MagicMock:
-            role = kwargs.get("role", "")
-            if role == "wicer.probe":
-                return self._llm_result(
-                    [
-                        {"question": "What is KNOX?", "answer": "A knowledge base project."},
-                        {"question": "What is WiCER?", "answer": "An iterative compilation loop."},
-                    ]
-                )
-            if role == "wicer.judge":
-                return self._llm_result(
-                    {
-                        "results": [
-                            {
-                                "question": "What is KNOX?",
-                                "expected_answer": "A knowledge base project.",
-                                "found_answer": "A knowledge base project.",
-                                "correct": True,
-                            },
-                            {
-                                "question": "What is WiCER?",
-                                "expected_answer": "An iterative compilation loop.",
-                                "found_answer": "An iterative compilation loop.",
-                                "correct": True,
-                            },
-                        ],
-                    }
-                )
-            return self._llm_result({"critical_facts": []})
-
-        mock_llm.side_effect = respond
+        """When the LLM agents return probes, they are used for evaluation."""
+        mock_llm.probe.return_value = self._probe_output(
+            [
+                {"question": "What is KNOX?", "answer": "A knowledge base project."},
+                {"question": "What is WiCER?", "answer": "An iterative compilation loop."},
+            ]
+        )
+        mock_llm.evaluate.return_value = self._evaluate_output(
+            [
+                {
+                    "question": "What is KNOX?",
+                    "expected_answer": "A knowledge base project.",
+                    "found_answer": "A knowledge base project.",
+                    "correct": True,
+                },
+                {
+                    "question": "What is WiCER?",
+                    "expected_answer": "An iterative compilation loop.",
+                    "found_answer": "An iterative compilation loop.",
+                    "correct": True,
+                },
+            ]
+        )
+        mock_llm.diagnose.return_value = self._diagnose_output([])
         chunks = _make_chunks(count=2, heading="Test")
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
@@ -864,25 +878,13 @@ class TestWiCERCompilerWithMock:
 
     def test_llm_evaluation_detects_failures(self, mock_llm: MagicMock) -> None:
         """When evaluation says probes fail, refinement happens."""
-        mock_llm.side_effect = [
-            self._llm_result(
-                [
-                    {"question": "What is KNOX?", "answer": "A knowledge base project."},
-                ]
-            ),
-            self._llm_result(
-                {
-                    "results": [
-                        {"question": "What is KNOX?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False},
-                    ],
-                }
-            ),
-            self._llm_result(
-                {
-                    "critical_facts": ["KNOX is a knowledge base project."],
-                }
-            ),
-        ]
+        mock_llm.probe.return_value = self._probe_output(
+            [{"question": "What is KNOX?", "answer": "A knowledge base project."}]
+        )
+        mock_llm.evaluate.return_value = self._evaluate_output(
+            [{"question": "What is KNOX?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
+        )
+        mock_llm.diagnose.return_value = self._diagnose_output(["KNOX is a knowledge base project."])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
@@ -895,20 +897,13 @@ class TestWiCERCompilerWithMock:
 
     def test_all_probes_pass_loop_ends(self, mock_llm: MagicMock) -> None:
         """When all probes pass, the loop ends early."""
-        mock_llm.side_effect = [
-            self._llm_result(
-                [
-                    {"question": "Q1?", "answer": "A1."},
-                ]
-            ),
-            self._llm_result(
-                {
-                    "results": [
-                        {"question": "Q1?", "expected_answer": "A1.", "found_answer": "A1.", "correct": True},
-                    ],
-                }
-            ),
-        ]
+        mock_llm.probe.return_value = self._probe_output(
+            [{"question": "Q1?", "answer": "A1."}]
+        )
+        mock_llm.evaluate.return_value = self._evaluate_output(
+            [{"question": "Q1?", "expected_answer": "A1.", "found_answer": "A1.", "correct": True}]
+        )
+        mock_llm.diagnose.return_value = self._diagnose_output([])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
@@ -920,14 +915,18 @@ class TestWiCERCompilerWithMock:
         assert wiki.metadata["wicer_refinements"] == 0
 
     def test_llm_failure_skips_wicer(self) -> None:
-        """When the LLM client returns None, WiCER skips (0 iterations)."""
+        """When the WiCER agents fail, WiCER skips (0 iterations)."""
         chunks = _make_chunks(count=2, heading="Fallback")
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
         )
         config.budget.wicer_max_iterations = 2
         compiler = WiCERCompiler(config=config)
-        with patch("knox.compilation.wicer.LLMClient.try_complete", return_value=None):
+        with (
+            patch("knox.compilation.wicer.WicerProbeAgent.run", side_effect=LLMOutputError("boom")),
+            patch("knox.compilation.wicer.WicerEvaluateAgent.run", side_effect=LLMOutputError("boom")),
+            patch("knox.compilation.wicer.WicerDiagnoseAgent.run", side_effect=LLMOutputError("boom")),
+        ):
             wiki = compiler.compile(chunks)
         assert len(wiki.nodes) >= 1
         assert wiki.metadata["wicer_iterations"] == 0
@@ -1185,7 +1184,7 @@ class TestTwoPhaseConceptSalvage:
         # Extraction succeeds, generation returns empty (all calls fail)
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.two_phase._complete_validated_batch", return_value=(None, None)),
+            patch("knox.compilation.two_phase._try_pydanticai_generation", return_value=None),
         ):
             wiki = compiler.compile(chunks)
         assert wiki.metadata.get("generation_skipped") is True

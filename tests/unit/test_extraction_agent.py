@@ -31,7 +31,6 @@ class TestExtractionAgentConstruction:
         # tries to resolve the provider at run-time, not at construction.
         agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
         assert agent.litellm_model == "ollama/gpt-oss:20b"
-        assert agent.pydanticai_model == "ollama:gpt-oss:20b"
 
 
 class TestExtractionAgentRun:
@@ -90,7 +89,8 @@ class TestExtractionAgentRun:
             agent.run(deps)
         # The exception is an LLMOutputError (knox.compilation.schema) with the
         # original RuntimeError as __cause__.
-        assert "PydanticAI agent failed" in str(exc_info.value)
+        assert "Agent failed for model" in str(exc_info.value)
+        assert "ollama/gpt-oss:20b" in str(exc_info.value)
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 

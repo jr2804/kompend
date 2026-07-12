@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
+from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.llm.client import ContextSource, ContextWindow, LLMResult
 from knox.llm.failover import CallDiagnostics
@@ -177,6 +179,7 @@ class _FakeLLMClient:
     """Captures complete() kwargs for synthesis tests."""
 
     def __init__(self, max_output: int = 4096) -> None:
+        self.default_model = "test-model"
         self.context_window = ContextWindow(max_input=8192, max_output=max_output, source=ContextSource.FALLBACK)
         self.last_kwargs: dict[str, Any] = {}
         self.last_messages: list[dict[str, Any]] = []
@@ -192,53 +195,55 @@ class _FakeLLMClient:
 
 
 class TestSynthesizeVerbosity:
-    """Verbosity drives template wording and max_tokens budget."""
+    """Query synthesis routes through the PydanticAI QueryAgent."""
 
-    def test_passes_max_tokens_to_complete(self) -> None:
+    def _synthesize(self, verbosity: str, max_tokens: int | None = 100) -> tuple[Any, Any]:
         wiki = CompiledWiki(nodes=[], edges=[], toc=[])
         fake = _FakeLLMClient()
         retriever = TokenOverlapRetriever(wiki)
+        mock_agent = MagicMock()
+        mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
+        with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
+            result = retriever.synthesize("q", [], llm_client=fake, verbosity=verbosity, max_tokens=max_tokens)
+        return result, mock_agent
 
-        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=800)
+    def test_routes_to_query_agent(self) -> None:
+        result, agent = self._synthesize("standard")
+        assert result.answer == "answer (standard)"
+        agent.run.assert_called_once()
 
-        assert fake.last_kwargs.get("max_tokens") == 800
-        assert fake.last_kwargs.get("role") == "search"
-
-    def test_omits_max_tokens_when_none(self) -> None:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
-        fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
-
-        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=None)
-
-        assert "max_tokens" not in fake.last_kwargs
+    def test_passes_verbosity_in_deps(self) -> None:
+        _, agent = self._synthesize("brief")
+        deps = agent.run.call_args.args[0]
+        assert deps.verbosity == "brief"
+        assert deps.question == "q"
 
     def test_brief_verbosity_renders_brief_instruction(self) -> None:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
-        fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
-
-        retriever.synthesize("q", [], llm_client=fake, verbosity="brief", max_tokens=100)
-
-        system_prompt = fake.last_messages[0]["content"]
-        assert "concise" in system_prompt.lower()
+        agent = QueryAgent(litellm_model="model")
+        deps = MagicMock()
+        deps.question = "q"
+        deps.context = "[1] Some context"
+        deps.verbosity = "brief"
+        deps.source_id = "query"
+        system = agent.render_system_prompt(deps)
+        assert "concise" in system.lower()
 
     def test_comprehensive_verbosity_renders_comprehensive_instruction(self) -> None:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
-        fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
-
-        retriever.synthesize("q", [], llm_client=fake, verbosity="comprehensive", max_tokens=100)
-
-        system_prompt = fake.last_messages[0]["content"]
-        assert "comprehensive" in system_prompt.lower()
+        agent = QueryAgent(litellm_model="model")
+        deps = MagicMock()
+        deps.question = "q"
+        deps.context = "[1] Some context"
+        deps.verbosity = "comprehensive"
+        deps.source_id = "query"
+        system = agent.render_system_prompt(deps)
+        assert "comprehensive" in system.lower()
 
     def test_standard_verbosity_renders_balanced_instruction(self) -> None:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
-        fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
-
-        retriever.synthesize("q", [], llm_client=fake, verbosity="standard", max_tokens=100)
-
-        system_prompt = fake.last_messages[0]["content"]
-        assert "balanced" in system_prompt.lower()
+        agent = QueryAgent(litellm_model="model")
+        deps = MagicMock()
+        deps.question = "q"
+        deps.context = "[1] Some context"
+        deps.verbosity = "standard"
+        deps.source_id = "query"
+        system = agent.render_system_prompt(deps)
+        assert "balanced" in system.lower()
