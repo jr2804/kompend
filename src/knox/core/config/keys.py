@@ -63,7 +63,6 @@ COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
 COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
 COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
-COMPILE_LLM_USE_PYDANTIC_AI: Final[str] = "compile.llm.use_pydantic_ai"
 
 # ── compile.pdf sub-section ──
 COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_before_chunking"

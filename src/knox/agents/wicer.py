@@ -1,14 +1,4 @@
 r"""WicerAgents — PydanticAI wrappers for the WiCER compile-evaluate-refine loop.
-
-WiCER (Wiki Content Evaluation and Refinement) runs three LLM stages:
-
-1. **Probe** — generate Q&A probes from source text
-2. **Evaluate** — judge if the compiled wiki answers those probes
-3. **Diagnose** — extract critical facts from evaluation failures
-
-Each stage gets its own PydanticAI agent subclass with the appropriate
-deps type and structured output schema. All three are wired behind
-the existing ``compile.llm.use_pydantic_ai`` flag.
 """
 
 from __future__ import annotations
@@ -17,6 +7,7 @@ from pydantic_ai import Agent
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
+from knox.agents.litellm_model import make_litellm_model
 from knox.compilation.schema import WicerDiagnoseOutput, WicerEvaluateOutput, WicerProbeOutput
 
 
@@ -30,7 +21,7 @@ class WicerProbeAgent(KnoxAgentBase[WicerProbeOutput, WicerProbeDeps]):
 
     def _build_agent(self) -> Agent[WicerProbeDeps, WicerProbeOutput]:
         return Agent(
-            self._pydanticai_model,
+            make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
@@ -55,7 +46,7 @@ class WicerEvaluateAgent(KnoxAgentBase[WicerEvaluateOutput, WicerEvaluateDeps]):
 
     def _build_agent(self) -> Agent[WicerEvaluateDeps, WicerEvaluateOutput]:
         return Agent(
-            self._pydanticai_model,
+            make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
@@ -80,7 +71,7 @@ class WicerDiagnoseAgent(KnoxAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps]):
 
     def _build_agent(self) -> Agent[WicerDiagnoseDeps, WicerDiagnoseOutput]:
         return Agent(
-            self._pydanticai_model,
+            make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]

@@ -13,7 +13,6 @@ crashes on a single bad provider.
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any, Final
 
@@ -24,15 +23,11 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from knox.core.pipeline_defs import PipelineConfig
-from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.format import encode_for_llm, structured_return_instruction
-from knox.llm.roles import LLMRole
+from knox.llm.client import LLMClient
+from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
-
-_loader = get_template_loader()
 
 # Absolute token reserve carved out of the context window for the WiCER probe
 # and evaluation prompts (system prompt + framing overhead).  Sized for the
@@ -339,34 +334,16 @@ class WiCERCompiler(BaseCompiler):
             logger.debug("WiCER has no LLM client — skipping probe generation")
             return []
 
-        # PydanticAI path (knox-pyda Phase 5, opt-in).
-        if self._config.llm.use_pydantic_ai:
-            try:
-                agent = WicerProbeAgent(
-                    litellm_model=self._config.llm.default_model,
-                    skills=self._config.skills,
-                )
-                output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
-                return [p.model_dump() for p in output.probes]
-            except Exception as exc:
-                logger.warning("WiCER: PydanticAI probe generation failed: %s", exc, exc_info=True)
-                return []
-
-        result = self._client.try_complete(
-            messages=[
-                {"role": "system", "content": "You are a test-probe generator. Return only valid JSON."},
-                {"role": "user", "content": _loader.render("compilation/wicer_probe.md.j2", text=combined)},
-            ],
-            role=LLMRole.WICER_PROBE,
-            response_format=JSON_RESPONSE_FORMAT,
-        )
-
-        probes = self._extract_probe_list(result)
-        if probes is not None:
-            return probes
-
-        logger.warning("WiCER: probe generation returned no parseable results — skipping batch")
-        return []
+        try:
+            agent = WicerProbeAgent(
+                litellm_model=self._config.llm.default_model,
+                skills=self._config.skills,
+            )
+            output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
+            return [p.model_dump() for p in output.probes]
+        except Exception as exc:
+            logger.warning("WiCER: probe generation failed: %s", exc, exc_info=True)
+            return []
 
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
         """Step B: evaluate wiki against probes using LLM-as-judge.
@@ -390,54 +367,24 @@ class WiCERCompiler(BaseCompiler):
         for seg_start in range(0, len(wiki_text), self._eval_input_chars):
             segment = wiki_text[seg_start : seg_start + self._eval_input_chars]
 
-            # PydanticAI path (knox-pyda Phase 5, opt-in).
-            if self._config.llm.use_pydantic_ai:
-                try:
-                    agent = WicerEvaluateAgent(
-                        litellm_model=self._config.llm.default_model,
-                        skills=self._config.skills,
-                    )
-                    output = agent.run(WicerEvaluateDeps(
-                        wiki_text=segment,
-                        probes_json=encode_for_llm(probes, self._config.llm.data_format),
-                        source_id="wicer-eval",
-                    ))
-                    for i, r in enumerate(output.results):
-                        if i >= len(probes):
-                            break
-                        rd = r.model_dump()
-                        if rd.get("correct", False) or i not in probe_results:
-                            probe_results[i] = rd
-                except Exception as exc:
-                    logger.warning("WiCER: PydanticAI evaluation failed: %s", exc, exc_info=True)
-                continue
-
-            result = self._client.try_complete(
-                messages=[
-                    {"role": "system", "content": "You are an impartial judge of factual correctness. Return only valid JSON."},
-                    {
-                        "role": "user",
-                        "content": _loader.render(
-                            "compilation/wicer_evaluate.md.j2",
-                            wiki_text=segment,
-                            probes_json=encode_for_llm(probes, self._config.llm.data_format),
-                        ),
-                    },
-                ],
-                role=LLMRole.WICER_JUDGE,
-                response_format=JSON_RESPONSE_FORMAT,
-            )
-
-            if result is not None and result.json_data is not None:
-                results = result.json_data.get("results", [])
-                if isinstance(results, list):
-                    for i, r in enumerate(results):
-                        if i >= len(probes):
-                            break
-                        if not isinstance(r, dict):
-                            continue
-                        if r.get("correct", False) or i not in probe_results:
-                            probe_results[i] = r
+            try:
+                agent = WicerEvaluateAgent(
+                    litellm_model=self._config.llm.default_model,
+                    skills=self._config.skills,
+                )
+                output = agent.run(WicerEvaluateDeps(
+                    wiki_text=segment,
+                    probes_json=encode_for_llm(probes, self._config.llm.data_format),
+                    source_id="wicer-eval",
+                ))
+                for i, r in enumerate(output.results):
+                    if i >= len(probes):
+                        break
+                    rd = r.model_dump()
+                    if rd.get("correct", False) or i not in probe_results:
+                        probe_results[i] = rd
+            except Exception as exc:
+                logger.warning("WiCER: evaluation failed: %s", exc, exc_info=True)
 
         if probe_results:
             return [probe_results.get(i, {"question": p.get("question", ""), "correct": False}) for i, p in enumerate(probes)]
@@ -454,84 +401,19 @@ class WiCERCompiler(BaseCompiler):
             logger.debug("WiCER has no LLM client — skipping diagnosis")
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
-        # PydanticAI path (knox-pyda Phase 5, opt-in).
-        if self._config.llm.use_pydantic_ai:
-            try:
-                agent = WicerDiagnoseAgent(
-                    litellm_model=self._config.llm.default_model,
-                    skills=self._config.skills,
-                )
-                output = agent.run(WicerDiagnoseDeps(
-                    failures_json=encode_for_llm(failures, self._config.llm.data_format),
-                    source_id="wicer-diagnose",
-                ))
-                return output.critical_facts
-            except Exception as exc:
-                logger.warning("WiCER: PydanticAI diagnosis failed: %s", exc, exc_info=True)
-                return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
+        try:
+            agent = WicerDiagnoseAgent(
+                litellm_model=self._config.llm.default_model,
+                skills=self._config.skills,
+            )
+            output = agent.run(WicerDiagnoseDeps(
+                failures_json=encode_for_llm(failures, self._config.llm.data_format),
+                source_id="wicer-diagnose",
+            ))
+            return output.critical_facts
+        except Exception as exc:
+            logger.warning("WiCER: diagnosis failed: %s", exc, exc_info=True)
+            return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 
-        result = self._client.try_complete(
-            messages=[
-                {"role": "system", "content": f"You are a diagnostic assistant. {structured_return_instruction(self._config.llm.data_format)}"},
-                {
-                    "role": "user",
-                    "content": _loader.render(
-                        "compilation/wicer_diagnose.md.j2",
-                        failures_json=encode_for_llm(failures, self._config.llm.data_format),
-                    ),
-                },
-            ],
-            role=LLMRole.WICER_REFINE,
-            response_format=JSON_RESPONSE_FORMAT,
-        )
 
-        if result is not None and result.json_data is not None:
-            facts = result.json_data.get("critical_facts", [])
-            if isinstance(facts, list):
-                return [str(f) for f in facts if f]
-
-        return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
-
-    @staticmethod
-    def _extract_probe_list(result: Any) -> list[dict] | None:
-        """Extract a list of probes from various JSON shapes the LLM may return.
-
-        Accepts ``[{...}, {...}]`` or ``{"probes": [...]}`` /
-        ``{"results": [...]}`` / ``{"items": [...]}``. Falls back to
-        the single list-valued key when the object has only one.
-        String items are coerced to ``{"question": str}``.
-        """
-        if result is None:
-            return None
-        raw: list | None = None
-        # Try direct list shape first (older content path).
-        if result.json_data is None:
-            try:
-                parsed = json.loads(result.content)
-            except (json.JSONDecodeError, RecursionError):
-                logger.warning("LLM returned malformed JSON for probes — skipping")
-                return None
-            if isinstance(parsed, list):
-                raw = parsed
-        else:
-            data = result.json_data
-            for key in ("probes", "results", "items"):
-                value = data.get(key)
-                if isinstance(value, list):
-                    raw = value
-                    break
-            if raw is None:
-                list_values = [v for v in data.values() if isinstance(v, list)]
-                if len(list_values) == 1:
-                    raw = list_values[0]
-
-        if raw is None:
-            return None
-
-        probes: list[dict] = []
-        for item in raw:
-            if isinstance(item, dict):
-                probes.append(item)
-            elif isinstance(item, str) and item.strip():
-                probes.append({"question": item.strip()})
-        return probes if probes else None
+__all__ = ["WiCERCompiler"]

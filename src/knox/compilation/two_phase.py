@@ -34,7 +34,6 @@ from knox.compilation._two_phase_core import (
     ExtractionSet,
     _BatchFailureTracker,
     _chars_to_tokens,
-    _complete_validated_batch,
     _compute_quality_score,
     _extract_images_from_chunks,
     _merge_extractions,
@@ -47,14 +46,12 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.compilation.schema import ExtractionOutput, GenerationOutput
 from knox.core.cache_store import CacheStore, _decode_json, _encode_json, make_cache_key
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
 from knox.llm.client import LLMClient, _discover_context_window
 from knox.llm.format import encode_for_llm
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.rag.zvec_store import _make_provider
 
@@ -721,42 +718,19 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
-                # PydanticAI path (knox-pyda Phase 3, opt-in via config flag).
-                # Bypasses _complete_validated_batch and the litellm JSON-repair
-                # path entirely; PydanticAI handles generation + validation
-                # internally with auto-retry on schema mismatch.
-                if self._config.llm.use_pydantic_ai:
-                    agent = GenerationAgent(
-                        litellm_model=self._model,
-                        timeout=self._timeout,
-                        skills=self._config.skills,
-                    )
-                    gen_output = _try_pydanticai_generation(
-                        agent,
-                        concepts_json=encode_for_llm(batch, self._config.llm.data_format),
-                        content=content_block,
-                        source_id=seg_label,
-                        pinned_facts=pinned_facts,
-                        timeout=self._timeout,
-                    )
-                else:
-                    prompt = _loader.render(
-                        "compilation/generation_prompt.md.j2",
-                        concepts_json=encode_for_llm(batch, self._config.llm.data_format),
-                        content=content_block,
-                        pinned_facts=pinned_facts,
-                    )
-                    gen_output, _data = _complete_validated_batch(
-                        prompt=prompt,
-                        model=self._model,
-                        response_model=GenerationOutput,
-                        system=generation_system,
-                        timeout=self._timeout,
-                        call_stats=self._llm_stats,
-                        max_tokens=min(self._context_window.max_output, self._budget.gen_output_max),
-                        llm_client=self._llm_client,
-                        role=LLMRole.COMPILE_GENERATE,
-                    )
+                agent = GenerationAgent(
+                    litellm_model=self._model,
+                    timeout=self._timeout,
+                    skills=self._config.skills,
+                )
+                gen_output = _try_pydanticai_generation(
+                    agent,
+                    concepts_json=encode_for_llm(batch, self._config.llm.data_format),
+                    content=content_block,
+                    source_id=seg_label,
+                    pinned_facts=pinned_facts,
+                    timeout=self._timeout,
+                )
 
                 self._batch_tracker.record(failed=gen_output is None)
 
@@ -841,58 +815,21 @@ class TwoPhaseCompiler(BaseCompiler):
             if cached is not None:
                 return cached
 
-        prompt = _loader.render("compilation/extraction_prompt.md.j2", text=combined)
-
-        # PydanticAI path (knox-pyda Phase 1, opt-in via config flag).
-        # Bypasses _complete_validated_batch and the litellm JSON-repair
-        # path entirely; PydanticAI handles extraction + validation
-        # internally with auto-retry on schema mismatch.
-        if self._config.llm.use_pydantic_ai:
-            agent = ExtractionAgent(
-                litellm_model=self._model,
-                timeout=self._timeout,
-                skills=self._config.skills,
-            )
-            validated = _try_pydanticai_extraction(
-                agent,
-                text=combined,
-                source_id=source,
-                timeout=self._timeout,
-            )
-            self._batch_tracker.record(failed=validated is None)
-            if validated is None:
-                logger.warning(
-                    "TwoPhase: PydanticAI extraction skipped for source '%s' — agent returned no result",
-                    source,
-                )
-                return None
-            result = Extraction(
-                source=source,
-                summary=validated.summary,
-                entities=[e.model_dump() for e in validated.entities],
-                concepts=[c.model_dump() for c in validated.concepts],
-                tags=validated.tags,
-            )
-            if not self._config.no_cache:
-                self._cache_store.set("extract", extract_deps, result)
-            return result
-
-        # Default: raw litellm path with JSON-repair + schema validation.
-        validated, _data = _complete_validated_batch(
-            prompt=prompt,
-            model=self._model,
-            response_model=ExtractionOutput,
-            system=extraction_system,
+        agent = ExtractionAgent(
+            litellm_model=self._model,
             timeout=self._timeout,
-            call_stats=self._llm_stats,
-            max_tokens=min(self._context_window.max_output, self._budget.extract_output_max),
-            llm_client=self._llm_client,
-            role=LLMRole.COMPILE_EXTRACT,
+            skills=self._config.skills,
+        )
+        validated = _try_pydanticai_extraction(
+            agent,
+            text=combined,
+            source_id=source,
+            timeout=self._timeout,
         )
         self._batch_tracker.record(failed=validated is None)
         if validated is None:
             logger.warning(
-                "TwoPhase: extraction skipped for source '%s' — LLM returned no valid data after retries",
+                "TwoPhase: extraction skipped for source '%s' — agent returned no result",
                 source,
             )
             return None

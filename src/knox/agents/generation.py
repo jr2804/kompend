@@ -29,6 +29,7 @@ from pydantic_ai import Agent
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import GenerationDeps
+from knox.agents.litellm_model import make_litellm_model
 from knox.compilation.schema import GenerationOutput
 
 
@@ -47,15 +48,9 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     deps_type: type[GenerationDeps] = GenerationDeps
 
     def _build_agent(self) -> Agent[GenerationDeps, GenerationOutput]:
-        """Construct the PydanticAI agent.
-
-        The system prompt is rendered per-call in
-        :meth:`~knox.agents.base.KnoxAgentBase.run` and passed as
-        ``instructions=`` to ``run_sync``. This keeps construction cheap
-        and avoids template-resolution failures at init time.
-        """
+        """Construct the PydanticAI agent with a litellm-backed model."""
         return Agent(
-            self._pydanticai_model,
+            make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]

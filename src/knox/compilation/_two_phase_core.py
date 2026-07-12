@@ -8,25 +8,17 @@ from __future__ import annotations
 
 import hashlib
 import re
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-import litellm
-from pydantic import BaseModel, ValidationError
 from slugify import slugify as _slugify_impl
 
 from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
-from knox.core.config import DEFAULTS
-from knox.core.config.keys import DISPLAY_JSON_CHARS
 from knox.core.exception_format import shorten_exception
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.template_loader import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient, _strip_reasoning, salvage_json
-from knox.llm.errors import PermanentError
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -395,129 +387,6 @@ class ExtractionSet:
         return dict(out)
 
 
-def _try_litellm_json(  # noqa: PLR0915
-    prompt: str,
-    model: str,
-    system: str | None = None,
-    timeout: float | None = None,
-    call_stats: list[tuple[int, int]] | None = None,
-    max_tokens: int | None = None,
-    response_model: type[BaseModel] | None = None,
-    llm_client: LLMClient | None = None,
-    role: str = LLMRole.DEFAULT,
-) -> dict[str, Any]:
-    """Call the LLM and return parsed JSON as a dict.
-
-    When *llm_client* is provided, routes through :meth:`LLMClient.complete`
-    so the call benefits from custom-provider dispatch, the failover chain,
-    and the reasoning-truncation retry (bumps ``max_tokens`` when a reasoning
-    model burns the budget on ``reasoning_content``). This is the path used
-    by the real compilation pipeline.
-
-    When no client is given, falls back to a direct ``litellm.completion()``
-    call (used by tests and callers without a client).
-
-    When *response_model* is provided, it is passed as ``response_format``
-    to litellm, which translates it to the provider-native structured-output
-    format (json_schema for OpenAI/Ollama, etc.).
-
-    Raises:
-        LLMOutputError: If the model returns empty, unparseable, or
-            schema-invalid output.  The model is considered not suitable
-            for compilation — no fallback, no retry.
-
-    If *call_stats* is provided, ``(prompt_tokens, completion_tokens)`` is
-    appended to it on each successful LLM response.
-    """
-    response_format = response_model if response_model is not None else JSON_RESPONSE_FORMAT
-    messages: list[dict[str, str]] = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    start = time.monotonic()
-    try:
-        if llm_client is not None:
-            try:
-                result = llm_client.complete(
-                    messages,
-                    role=role,
-                    response_format=response_format,
-                    max_tokens=max_tokens,
-                )
-            except PermanentError as exc:
-                # The client exhausted its reasoning-truncation retries and the
-                # model still produced empty content — it cannot do structured
-                # output. Preserve the fatal compile-abort semantic.
-                raise LLMOutputError(str(exc)) from exc
-            content = result.content
-            pt, ct = result.prompt_tokens, result.completion_tokens
-            model_used = result.diagnostics.model_used or model
-        else:
-            kwargs: dict[str, Any] = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.0,
-                "response_format": response_format,
-            }
-            if timeout is not None:
-                kwargs["timeout"] = timeout
-            if max_tokens is not None:
-                kwargs["max_tokens"] = max_tokens
-            response = litellm.completion(**kwargs)
-            content = response.choices[0].message.content
-            content = _strip_reasoning(content)
-            usage = getattr(response, "usage", None)
-            pt = ct = 0
-            if usage is not None:
-                try:
-                    pt = int(getattr(usage, "prompt_tokens", 0) or 0)
-                except (TypeError, ValueError):
-                    pt = 0
-                try:
-                    ct = int(getattr(usage, "completion_tokens", 0) or 0)
-                except (TypeError, ValueError):
-                    ct = 0
-            model_used = model
-
-        elapsed = time.monotonic() - start
-        tt = pt + ct
-        if call_stats is not None and (pt or ct):
-            call_stats.append((pt, ct))
-        tps = f"{tt / elapsed:.1f}" if elapsed > 0 and tt else "?"
-        logger.info(
-            "LLM ok model=%s in=%.1fs in=%d out=%d total=%d tok/s=%s",
-            model_used,
-            elapsed,
-            pt,
-            ct,
-            tt,
-            tps,
-        )
-
-        if not content:
-            raise LLMOutputError(
-                f"Model '{model_used}' returned empty content after {elapsed:.1f}s. "
-                "This model cannot produce structured JSON output and is not suitable for compilation."
-            )
-        parsed = salvage_json(content, schema=response_model)
-        if parsed is None:
-            snippet_chars = DEFAULTS.get(DISPLAY_JSON_CHARS, 300)
-            snippet = content[:snippet_chars].replace("\n", "\\n")
-            raise LLMOutputError(f"Model '{model_used}' returned unparseable JSON after {elapsed:.1f}s. Response starts with: {snippet}")
-        if not isinstance(parsed, dict):
-            parsed_repr = shorten_exception(ValueError(str(parsed)))
-            raise LLMOutputError(f"Model '{model_used}' returned non-dict JSON after {elapsed:.1f}s. Type: {type(parsed).__name__}, value: {parsed_repr}")
-        logger.debug("LLM parsed OK model=%s keys=%s", model_used, list(parsed.keys()))
-        return parsed
-    except LLMOutputError:
-        raise
-    except Exception as exc:
-        elapsed = time.monotonic() - start
-        logger.warning("LLM call failed for model=%s in=%.1fs — %s", model, elapsed, exc)
-        return {}
-
-
 class _BatchFailureTracker:
     """Counts successful/failed batches; signals an unsuitable model.
 
@@ -551,68 +420,6 @@ class _BatchFailureTracker:
         return self.total >= self._min_batches and self.failed / self.total > self._ratio
 
 
-def _complete_validated_batch(
-    *,
-    prompt: str,
-    model: str,
-    response_model: type[BaseModel],
-    system: str | None = None,
-    timeout: float | None = None,
-    call_stats: list[tuple[int, int]] | None = None,
-    max_tokens: int | None = None,
-    llm_client: LLMClient | None = None,
-    role: str = LLMRole.DEFAULT,
-    attempts: int = _BATCH_RETRY_ATTEMPTS,
-) -> tuple[Any | None, dict[str, Any] | None]:
-    """Call the LLM, schema-repair, and validate; retry up to *attempts* times.
-
-    Each attempt runs :func:`_try_litellm_json` (schema-guided repair inside)
-    then validates the parsed dict against *response_model*. A failure —
-    empty content, unparseable JSON, or schema-invalid output — is retried on a
-    fresh LLM call, capturing the non-determinism of small models.
-
-    Returns ``(validated_model_instance, raw_dict)`` on success, or
-    ``(None, None)`` after every attempt fails. Never raises — the caller plus
-    a :class:`_BatchFailureTracker` decide when a model is unsuitable.
-    """
-    last_reason = "no attempts ran"
-    for attempt in range(1, attempts + 1):
-        try:
-            data = _try_litellm_json(
-                prompt,
-                model,
-                system=system,
-                timeout=timeout,
-                call_stats=call_stats,
-                max_tokens=max_tokens,
-                response_model=response_model,
-                llm_client=llm_client,
-                role=role,
-            )
-        except LLMOutputError as exc:
-            last_reason = str(exc)
-            logger.warning("LLM batch attempt %d/%d unparseable — %s", attempt, attempts, last_reason)
-            continue
-        if not data:
-            last_reason = "empty response"
-            logger.warning("LLM batch attempt %d/%d returned no data", attempt, attempts)
-            continue
-        try:
-            validated = response_model.model_validate(data)
-        except ValidationError as exc:
-            last_reason = f"schema invalid: {shorten_exception(exc)}"
-            logger.warning(
-                "LLM batch attempt %d/%d failed schema validation — %s",
-                attempt,
-                attempts,
-                shorten_exception(exc),
-            )
-            continue
-        return validated, data
-    logger.warning("LLM batch failed after %d attempt(s): %s", attempts, last_reason)
-    return None, None
-
-
 def _try_pydanticai_extraction(
     agent: Any,
     *,
@@ -622,9 +429,8 @@ def _try_pydanticai_extraction(
 ) -> Any | None:
     """Run a PydanticAI :class:`ExtractionAgent` on a chunk of source text.
 
-    This is the PydanticAI counterpart to :func:`_try_litellm_json` for
-    the extraction stage. It is opt-in: callers should only invoke it
-    when ``compile.llm.use_pydantic_ai`` is True (see knox-pyda Phase 1).
+    This is the agent-based extraction entry point. Callers invoke it
+    for every extraction batch (it is the only path, not opt-in).
 
     The agent's ``run`` method already does JSON extraction and Pydantic
     validation internally; auto-retry on schema mismatch is built in.
@@ -664,10 +470,7 @@ def _try_pydanticai_generation(
 ) -> Any | None:
     """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
 
-    PydanticAI counterpart to :func:`_try_litellm_json` for the
-    generation stage. Opt-in like the extraction helper; callers
-    should only invoke it when ``compile.llm.use_pydantic_ai`` is
-    True (knox-pyda Phase 3).
+    Agent-based generation entry point (the only path).
 
     Args:
         agent: An instantiated :class:`~knox.agents.GenerationAgent`.

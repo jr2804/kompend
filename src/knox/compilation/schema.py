@@ -14,12 +14,8 @@ Usage::
 
     from knox.compilation.schema import ExtractionOutput
 
-    data = _try_litellm_json(...)
-    try:
-        result = ExtractionOutput.model_validate(data)
-    except ValidationError:
-        logger.warning("Invalid extraction output")
-        return None
+    result = agent.run(deps)  # PydanticAI agent with output_type=ExtractionOutput
+    assert isinstance(result, ExtractionOutput)
     # result.summary, result.entities[0].name, etc.
 """
 

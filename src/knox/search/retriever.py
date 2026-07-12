@@ -127,7 +127,7 @@ class TokenOverlapRetriever:
             logger.warning("Query expansion failed: %s", exc, exc_info=True)
             return [query]
 
-    def synthesize(
+    def synthesize(  # noqa: PLR6301
         self,
         query: str,
         results: list[SearchResult],
@@ -135,7 +135,6 @@ class TokenOverlapRetriever:
         *,
         verbosity: str = "standard",
         max_tokens: int | None = None,
-        use_pydantic_ai: bool = False,
         skills: dict[str, str] | None = None,
     ) -> SynthesisResult:
         if llm_client is None:
@@ -162,41 +161,22 @@ class TokenOverlapRetriever:
 
         context_text: str = "\n".join(context_lines)
 
-        # PydanticAI path (knox-pyda Phase 4, opt-in).
-        if use_pydantic_ai and llm_client is not None:
-            try:
-                agent = QueryAgent(
-                    litellm_model=llm_client.default_model,
-                    timeout=120.0,
-                    skills=skills or {},
-                )
-                deps = QueryDeps(
-                    question=query,
-                    context=context_text,
-                    source_id="query",
-                    verbosity=verbosity,
-                )
-                answer = agent.run(deps)
-            except Exception as exc:
-                logger.warning("PydanticAI query synthesis failed: %s", exc, exc_info=True)
-                answer = ""
-        else:
-            system_prompt: str = self._template_loader.render(
-                "query/synthesize_system.md.j2",
+        try:
+            agent = QueryAgent(
+                litellm_model=llm_client.default_model,
+                timeout=120.0,
+                skills=skills or {},
+            )
+            deps = QueryDeps(
+                question=query,
                 context=context_text,
+                source_id="query",
                 verbosity=verbosity,
             )
-
-            messages: list[dict[str, Any]] = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query},
-            ]
-
-            complete_kwargs: dict[str, Any] = {"role": "search"}
-            if max_tokens is not None:
-                complete_kwargs["max_tokens"] = max_tokens
-            result = llm_client.complete(messages, **complete_kwargs)
-            answer: str = result.content
+            answer = agent.run(deps)
+        except Exception as exc:
+            logger.warning("Query synthesis failed: %s", exc, exc_info=True)
+            answer = ""
 
         citations_out: list[dict[str, Any]] = []
         for r in results:

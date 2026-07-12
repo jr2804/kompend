@@ -257,19 +257,12 @@ fallback_max_retries = 2
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"
 
-# LLM call timeout
-timeout = 120.0
+    # LLM call timeout
+    timeout = 120.0
 
-# PydanticAI agents (knox-pyda) — opt-in alternative to the raw litellm
-# path for pipeline stages. When true, stages that have a PydanticAI
-# implementation (currently: extraction) use it instead of the
-# direct litellm call. Default false; the litellm path is stable.
-use_pydantic_ai = false
-
-# User-defined skill instructions injected into PydanticAI agents.
+# User-defined skill instructions injected into agent system prompts.
 # Defined under [compile.skills."<name>"] with an "instructions" field.
 # Skills are appended to the system prompt as additional context.
-# Only active when use_pydantic_ai = true.
 #
 # [compile.skills."domain-terms"]
 # instructions = '''

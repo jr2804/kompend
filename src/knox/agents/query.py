@@ -25,6 +25,7 @@ from pydantic_ai import Agent
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import QueryDeps
+from knox.agents.litellm_model import make_litellm_model
 
 
 class QueryAgent(KnoxAgentBase[str, QueryDeps]):
@@ -47,7 +48,7 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
     def _build_agent(self) -> Agent[QueryDeps, str]:
         """Construct the PydanticAI agent with ``output_type=str``."""
         return Agent(
-            self._pydanticai_model,
+            make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=str,
             model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
