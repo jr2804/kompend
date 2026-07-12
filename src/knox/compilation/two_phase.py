@@ -711,7 +711,9 @@ class TwoPhaseCompiler(BaseCompiler):
                 if failed_count >= MAX_FAILED:
                     break
                 gen_progress_step += 1
-                seg_label = f"gen batch {batch_start + 1}-{batch_start + len(batch)}/{num_concepts} seg {seg_idx + 1}/{num_segments}"
+                batch_num = batch_start // batch_size + 1
+                total_batches = (num_concepts + batch_size - 1) // batch_size
+                seg_label = f"gen batch {batch_num}/{total_batches} seg {seg_idx + 1}"
                 self._report(gen_progress_step, gen_progress_total, seg_label)
                 logger.info(
                     "TwoPhase: %s",
