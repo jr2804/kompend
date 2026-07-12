@@ -6,19 +6,18 @@ from typing import Any
 
 import pytest
 
+from knox.agents.base import KnoxAgentBase
+from knox.agents.deps import PipelineAgentDeps
+
 
 class TestKnoxAgentBaseContract:
     def test_knox_agent_base_is_abstract(self) -> None:
         """KnoxAgentBase cannot be instantiated directly — it requires an agent."""
-        from knox.agents.base import KnoxAgentBase
-
         with pytest.raises(TypeError):
             KnoxAgentBase()  # type: ignore[abstract]
 
     def test_knox_agent_base_requires_build_agent(self) -> None:
         """Subclasses must implement _build_agent to be instantiable."""
-        from knox.agents.base import KnoxAgentBase
-
         class Incomplete(KnoxAgentBase[Any, Any]):
             pass
 
@@ -31,9 +30,6 @@ class TestSkillInjection:
 
     def test_skills_appended_to_system_prompt(self) -> None:
         """Skills are rendered as '## Skill: <name>' sections."""
-        from knox.agents.base import KnoxAgentBase
-        from knox.agents.deps import PipelineAgentDeps
-
         class _TestAgent(KnoxAgentBase[Any, Any]):
             template_name: str = "extraction_prompt.md.j2"
             system_template_name: str = "extraction_system.md.j2"
@@ -66,9 +62,6 @@ class TestSkillInjection:
 
     def test_no_skills_empty_prompt(self) -> None:
         """Without skills, the system prompt is unchanged."""
-        from knox.agents.base import KnoxAgentBase
-        from knox.agents.deps import PipelineAgentDeps
-
         class _TestAgent(KnoxAgentBase[Any, Any]):
             template_name: str = "extraction_prompt.md.j2"
             system_template_name: str = "extraction_system.md.j2"
