@@ -13,12 +13,14 @@ Usage::
     from knox.agents.deps import GenerationDeps
 
     agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
-    result = agent.run(GenerationDeps(
-        concepts_json="[...]",
-        content="### src\\n...",
-        source_id="batch-1",
-        pinned_facts=[],
-    ))
+    result = agent.run(
+        GenerationDeps(
+            concepts_json="[...]",
+            content="### src\\n...",
+            source_id="batch-1",
+            pinned_facts=[],
+        )
+    )
     for page in result.pages:
         print(page.title, page.content)
 """

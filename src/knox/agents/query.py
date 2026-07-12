@@ -12,11 +12,13 @@ Usage::
     from knox.agents.deps import QueryDeps
 
     agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
-    answer: str = agent.run(QueryDeps(
-        question="What is VAD?",
-        context="[1] Voice Activity Detection\\n    ...",
-        source_id="query-1",
-    ))
+    answer: str = agent.run(
+        QueryDeps(
+            question="What is VAD?",
+            context="[1] Voice Activity Detection\\n    ...",
+            source_id="query-1",
+        )
+    )
 """
 
 from __future__ import annotations
@@ -45,15 +47,6 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
     result_type: type = str
     deps_type: type[QueryDeps] = QueryDeps
 
-    def _build_agent(self) -> Agent[QueryDeps, str]:
-        """Construct the PydanticAI agent with ``output_type=str``."""
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=str,
-            model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
-        )
-
     def render_user_prompt(self, deps: QueryDeps) -> str:  # noqa: PLR6301
         """The user prompt is the raw question — no template needed."""
         return deps.question
@@ -71,3 +64,12 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
+
+    def _build_agent(self) -> Agent[QueryDeps, str]:
+        """Construct the PydanticAI agent with ``output_type=str``."""
+        return Agent(
+            make_litellm_model(self._litellm_model),
+            deps_type=self.deps_type,
+            output_type=str,
+            model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
+        )

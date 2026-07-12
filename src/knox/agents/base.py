@@ -95,10 +95,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # and render_user_prompt, which are called at run() time.
         self._template_loader = get_template_loader()
 
-    @abstractmethod
-    def _build_agent(self) -> Agent[DepsT, ResultT]:
-        """Construct the wrapped PydanticAI agent. Called lazily on first run()."""
-
     def render_user_prompt(self, deps: DepsT) -> str:
         """Render the user-prompt template with the agent's deps."""
         return self._template_loader.render(
@@ -118,13 +114,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
-
-    @staticmethod
-    def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:
-        """Convert a Deps instance to a dict for Jinja2 rendering."""
-        if hasattr(deps, "__dict__"):
-            return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
-        return {}
 
     def run(self, deps: DepsT) -> ResultT:
         """Single-turn agent invocation. Returns the typed result.
@@ -150,12 +139,21 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 getattr(deps, "source_id", "?"),
                 exc,
             )
-            raise LLMOutputError(
-                f"Agent failed for model '{self._litellm_model}': {exc}"
-            ) from exc
+            raise LLMOutputError(f"Agent failed for model '{self._litellm_model}': {exc}") from exc
         return result.output
 
     @property
     def litellm_model(self) -> str:
         """The KNOX-format (litellm) model string."""
         return self._litellm_model
+
+    @abstractmethod
+    def _build_agent(self) -> Agent[DepsT, ResultT]:
+        """Construct the wrapped PydanticAI agent. Called lazily on first run()."""
+
+    @staticmethod
+    def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:
+        """Convert a Deps instance to a dict for Jinja2 rendering."""
+        if hasattr(deps, "__dict__"):
+            return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
+        return {}
