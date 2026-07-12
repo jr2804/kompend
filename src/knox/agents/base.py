@@ -96,17 +96,26 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._template_loader = get_template_loader()
 
     def render_user_prompt(self, deps: DepsT) -> str:
-        """Render the user-prompt template with the agent's deps."""
-        return self._template_loader.render(
-            f"compilation/{self.template_name}",
-            **self._deps_to_template_vars(deps),
-        )
+        """Render the user-prompt template with the agent's deps.
+
+        Only variables declared in the template's frontmatter are passed,
+        avoiding warnings about unused variables.
+        """
+        template_path = f"compilation/{self.template_name}"
+        meta = self._template_loader.get_meta(template_path)
+        declared = meta.variable_names()
+        vars_dict = self._deps_to_template_vars(deps)
+        filtered = {k: v for k, v in vars_dict.items() if k in declared}
+        return self._template_loader.render(template_path, **filtered)
 
     def render_system_prompt(self, deps: DepsT) -> str:
-        """Render the system-prompt template, appending any skill instructions."""
+        """Render the system-prompt template, appending any skill instructions.
+
+        System templates are static instructions — deps variables are not passed
+        since no system template uses them.
+        """
         prompt = self._template_loader.render(
             f"compilation/{self.system_template_name}",
-            **self._deps_to_template_vars(deps),
         )
         if self._skills:
             skill_blocks = []
