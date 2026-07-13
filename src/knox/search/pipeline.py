@@ -18,7 +18,7 @@ from pathlib import Path
 from sentence_transformers import CrossEncoder as _CrossEncoder
 
 from knox.core.models import CompiledWiki
-from knox.core.template_loader import TemplateLoader, get_template_loader
+from knox.core.templates import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

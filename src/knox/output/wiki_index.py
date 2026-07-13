@@ -14,13 +14,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from knox.core.cache_store import CacheStore
+from knox.core.cache.store import CacheStore
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
-from knox.core.template_loader import get_template_loader
-from knox.core.timeutil import display_local, iso_local
+from knox.core.templates import get_template_loader
+from knox.core.utils.time import display_local, iso_local
 from knox.llm.client import LLMClient
 from knox.llm.roles import LLMRole
 

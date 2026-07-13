@@ -24,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from knox.core.cache_store import CacheStore
+from knox.core.cache.store import CacheStore
 from knox.core.models import (
     ChunkNode,
     ChunkStrategy,
@@ -34,7 +34,7 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
-from knox.core.template_loader import get_template_loader
+from knox.core.templates import get_template_loader
 from knox.llm.client import LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

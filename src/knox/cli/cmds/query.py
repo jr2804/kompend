@@ -43,7 +43,7 @@ from knox.core.config.keys import (
 )
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, SEARCH_DB_FILE, VECTORS_DIR
-from knox.core.user import resolve_actor
+from knox.core.trust.actor import resolve_actor
 from knox.llm.client import LLMClient
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger

@@ -5,7 +5,7 @@ from pathlib import Path
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug
 from knox.core.paths import CAPTURED_SUBDIR
-from knox.core.timeutil import display_local
+from knox.core.utils.time import display_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)

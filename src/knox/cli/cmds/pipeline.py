@@ -69,12 +69,12 @@ from knox.core.config.keys import (
     INGEST_PARSER,
     PATHS_WIKI_DIR,
 )
-from knox.core.ingest import ingest_documents
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
-from knox.core.pipeline import build_pipeline
-from knox.core.pipeline_defs import PipelineConfig
-from knox.core.user import resolve_actor
+from knox.core.pipeline.config import PipelineConfig
+from knox.core.pipeline.ingest import ingest_documents
+from knox.core.pipeline.orchestrator import build_pipeline
+from knox.core.trust.actor import resolve_actor
 from knox.llm.errors import LLMError
 from knox.logging import get_console, get_err_console, get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions

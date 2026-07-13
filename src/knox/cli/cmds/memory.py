@@ -11,8 +11,8 @@ from knox.cli.app import app
 from knox.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import DEFAULTS, resolve_config
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR, TRUST_USER_TRACKING
-from knox.core.template_loader import get_template_loader
-from knox.core.user import resolve_actor
+from knox.core.templates import get_template_loader
+from knox.core.trust.actor import resolve_actor
 from knox.logging import get_console, get_err_console
 from knox.memory.store import MemoryField, MemoryStore
 

@@ -12,7 +12,7 @@ from typing import Any
 
 from slugify import slugify
 
-from knox.core.template_loader import get_template_loader
+from knox.core.templates import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.llm.client import JSON_RESPONSE_FORMAT
 from knox.llm.roles import LLMRole

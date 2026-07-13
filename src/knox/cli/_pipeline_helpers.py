@@ -26,7 +26,7 @@ from knox.cli.args import (
 )
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
-from knox.core.pipeline_defs import PipelineConfig
+from knox.core.pipeline.config import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.llm.roles import LLMRole

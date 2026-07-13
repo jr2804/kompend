@@ -32,10 +32,10 @@ from knox.core.config import (
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MCP_ELEMENT_CHARS, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
-from knox.core.pipeline import build_pipeline
-from knox.core.pipeline_defs import Compiler, ImageMode, OutputFormat, PipelineConfig
-from knox.core.template_loader import get_template_loader
-from knox.core.user import resolve_actor
+from knox.core.pipeline.config import Compiler, ImageMode, OutputFormat, PipelineConfig
+from knox.core.pipeline.orchestrator import build_pipeline
+from knox.core.templates import get_template_loader
+from knox.core.trust.actor import resolve_actor
 from knox.llm.client import LLMClient
 from knox.logging import get_logger
 from knox.memory import MemoryStore

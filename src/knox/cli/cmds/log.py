@@ -16,8 +16,8 @@ import typer
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.core.config import resolve_config
-from knox.core.log_report import build_log_report
 from knox.core.paths import VaultPaths
+from knox.core.reporting.log import build_log_report
 from knox.logging import get_console
 
 

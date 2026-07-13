@@ -17,7 +17,7 @@ from importlib.metadata import version
 
 import typer
 
-from knox.core.runlog import log_run_end, log_run_start
+from knox.core.reporting.runlog import log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
 
 

@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import INDEX_FILE
-from knox.core.timeutil import iso_local
+from knox.core.utils.time import iso_local
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document
 from knox.output.renderer import DocumentRenderer, render_frontmatter

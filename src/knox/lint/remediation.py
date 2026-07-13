@@ -25,7 +25,7 @@ from slugify import slugify
 
 from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
-from knox.core.template_loader import get_template_loader
+from knox.core.templates import get_template_loader
 from knox.lint.gap_analysis import analyze_gaps
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

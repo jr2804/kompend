@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.config import DEFAULTS
-from knox.core.pipeline_defs import Compiler
+from knox.core.pipeline.config import Compiler
 from knox.logging import get_logger
 from knox.mcp import server as _mcp
 

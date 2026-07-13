@@ -12,7 +12,7 @@ from knox.agents.query import QueryAgent
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
-from knox.core.template_loader import TemplateLoader, get_template_loader
+from knox.core.templates import TemplateLoader, get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

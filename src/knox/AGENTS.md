@@ -42,7 +42,7 @@ This rule exists because:
 
 #### How templates are loaded
 
-All templates go through `knox.core.template_loader.TemplateLoader`, which
+All templates go through `knox.core.templates.TemplateLoader`, which
 searches three locations in order (project > user > built-in):
 
 | Priority | Location | Example path |
@@ -53,7 +53,7 @@ searches three locations in order (project > user > built-in):
 
 Usage:
 
-    from knox.core.template_loader import get_template_loader
+    from knox.core.templates import get_template_loader
     loader = get_template_loader()
     rendered = loader.render("lint/clarity-score.md.j2",
                              title="My Page", content="...")
@@ -614,6 +614,7 @@ the pipeline stages:
 | `agent/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
 | `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through `LitellmModel` (FunctionModel wrapping `litellm.completion()`). |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
-| `core/config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
+| `core/AGENTS.md` | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
+| `memory/AGENTS.md` | Memory layer — query memory store + compile-time lifecycle |
 | `preprocessing/parsers/AGENTS.md` | Pluggable ingestion backends — registration, ParserBuildOptions, figure_enrichment semantics |

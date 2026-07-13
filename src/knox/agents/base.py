@@ -30,8 +30,8 @@ from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 from pydantic_ai import Agent
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.core.exception_format import LLMOutputError
-from knox.core.template_loader import get_template_loader
+from knox.core.templates import get_template_loader
+from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
 
 logger = get_logger(__name__)

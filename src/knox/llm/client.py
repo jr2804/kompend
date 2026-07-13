@@ -32,7 +32,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
 )
-from knox.core.exception_format import shorten_exception
+from knox.core.utils.exceptions import shorten_exception
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
 from knox.llm.format import (

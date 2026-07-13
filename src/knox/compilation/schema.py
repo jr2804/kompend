@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, ValidationError
 
-from knox.core.exception_format import LLMOutputError
+from knox.core.utils.exceptions import LLMOutputError
 
 __all__ = [
     "Concept",

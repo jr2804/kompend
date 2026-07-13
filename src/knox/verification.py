@@ -15,7 +15,7 @@ from pathlib import Path
 from knox.core.config._core import DEFAULTS
 from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
 from knox.core.paths import VaultPaths
-from knox.core.template_loader import get_template_loader
+from knox.core.templates import get_template_loader
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

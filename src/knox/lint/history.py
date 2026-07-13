@@ -21,7 +21,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
 )
-from knox.core.timeutil import iso_local, now_local
+from knox.core.utils.time import iso_local, now_local
 from knox.lint.runner import LintReport, report_to_dict
 
 # Config keys captured in the snapshot

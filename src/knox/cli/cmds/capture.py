@@ -18,10 +18,10 @@ from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, DISPLAY_RELATED_TITLES
-from knox.core.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
-from knox.core.timeutil import iso_local
+from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
+from knox.core.utils.time import iso_local
 from knox.llm.client import LLMClient, _strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter

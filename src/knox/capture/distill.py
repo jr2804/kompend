@@ -16,8 +16,8 @@ import yaml
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
-from knox.core.template_loader import get_template_loader
-from knox.core.timeutil import display_local
+from knox.core.templates import get_template_loader
+from knox.core.utils.time import display_local
 from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger

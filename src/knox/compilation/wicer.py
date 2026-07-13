@@ -22,7 +22,7 @@ from knox.compilation._two_phase_core import _tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
-from knox.core.pipeline_defs import PipelineConfig
+from knox.core.pipeline.config import PipelineConfig
 from knox.llm.client import LLMClient
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger

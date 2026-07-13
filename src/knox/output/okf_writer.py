@@ -34,7 +34,7 @@ import yaml
 
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import INDEX_FILE, LOG_FILE
-from knox.core.timeutil import iso_local
+from knox.core.utils.time import iso_local
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 

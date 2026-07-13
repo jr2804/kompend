@@ -47,11 +47,11 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
-from knox.core.cache_store import CacheStore
-from knox.core.exception_format import LLMOutputError
+from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
-from knox.core.pipeline_defs import PipelineConfig
-from knox.core.template_loader import get_template_loader
+from knox.core.pipeline.config import PipelineConfig
+from knox.core.templates import get_template_loader
+from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.client import LLMClient, _discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger

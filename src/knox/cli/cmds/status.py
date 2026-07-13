@@ -10,7 +10,7 @@ from pathlib import Path
 from knox.cli._sources import get_supported_extensions
 from knox.core.config import find_project_config
 from knox.core.paths import COMPILE_STATE_FILE, INDEX_FILE
-from knox.core.tier_state import TierStateStore, classify_compile_status
+from knox.core.pipeline.state import TierStateStore, classify_compile_status
 from knox.logging import get_console
 
 

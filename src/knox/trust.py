@@ -17,7 +17,7 @@ from knox.core.models import (
     WikiNode,
 )
 from knox.core.paths import VaultPaths
-from knox.core.timeutil import iso_local, now_local
+from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
