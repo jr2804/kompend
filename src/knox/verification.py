@@ -53,7 +53,14 @@ def _split_claims(text: str) -> list[str]:
 
 
 def _load_excerpt(source: str, sources_dir: Path) -> str:
-    target = sources_dir / source
+    target = Path(source)
+    if not target.is_absolute():
+        for root in (sources_dir.parent, sources_dir):
+            if (root / target).exists():
+                target = root / target
+                break
+        else:
+            target = sources_dir.parent / target
     if target.exists():
         try:
             return target.read_text(encoding="utf-8", errors="ignore")

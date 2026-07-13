@@ -11,6 +11,7 @@ client exists to eliminate.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -26,6 +27,7 @@ from pydantic import BaseModel
 
 import knox.llm.providers  # noqa: F401 — registers custom providers on import
 from knox.core.config.keys import (
+    COMPILE_LLM_CONTEXT_WINDOW_CAP,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
@@ -839,9 +841,16 @@ class LLMClient:
         model = default_model or cfg.get(COMPILE_LLM_DEFAULT_MODEL)
         if not model:
             return None
+        # Coerce context_window_cap to int — env var expansion produces strings.
+        raw_cap = cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP)
+        cap: int | None = None
+        if raw_cap is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                cap = int(raw_cap)
         return cls(
             default_model=model,
             fallback_chain=list(cfg.get(COMPILE_LLM_FALLBACK_CHAIN, [])),
             role_models=dict(cfg.get(COMPILE_LLM_ROLE_MODELS, {})),
             timeout=timeout,
+            _context_window_cap=cap,
         )

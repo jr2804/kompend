@@ -361,11 +361,11 @@ class WikiPipeline:
         ]
 
     def _rel_path(self, path: Path) -> str:
-        """Convert absolute path to relative string for serialization."""
+        """Convert absolute path to relative POSIX string for serialization."""
         try:
-            return str(path.relative_to(self._base_dir))
+            return path.relative_to(self._base_dir).as_posix()
         except ValueError:
-            return str(path)
+            return path.as_posix()
 
     def _abs_path(self, path_str: str) -> Path:
         """Reconstruct absolute path from potentially relative string."""
@@ -617,6 +617,14 @@ class WikiPipeline:
                     self._save_cache(source_file, parsed)
                     if not content_hash:
                         content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+            # ── Normalize source_file to relative POSIX on parsed doc ────
+            # All downstream code (chunking, extraction, generation, wiki
+            # metadata, LLM prompts) gets clean portable paths.
+            parsed.source_file = Path(self._rel_path(parsed.source_file))
+            for el in parsed.elements:
+                if el.source_file is not None:
+                    el.source_file = Path(self._rel_path(el.source_file))
 
             if self.config.privacy_filter:
                 self._apply_privacy_filter(parsed.elements)

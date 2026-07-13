@@ -418,7 +418,7 @@ def _chunk_to_dict(chunk: Chunk) -> dict[str, Any]:
         "text": chunk.text,
         "element_types": [str(et) for et in chunk.element_types],
         "source_elements": chunk.source_elements,
-        "source_file": str(chunk.source_file) if chunk.source_file else None,
+        "source_file": chunk.source_file.as_posix() if chunk.source_file else None,
         "heading_context": chunk.heading_context,
         "token_count": chunk.token_count,
         "reading_order": list(chunk.reading_order) if chunk.reading_order else None,
@@ -482,7 +482,7 @@ def tree_to_dict(tree: ChunkTree) -> dict[str, Any]:
         "version": CHUNK_TREE_CACHE_VERSION,
         "root_id": tree.root_id,
         "nodes": {nid: _node_to_dict(n) for nid, n in tree.nodes.items()},
-        "source_file": str(tree.source_file) if tree.source_file else None,
+        "source_file": tree.source_file.as_posix() if tree.source_file else None,
         "strategy": str(tree.strategy),
     }
 
@@ -510,7 +510,7 @@ def _tree_from_dict(d: dict[str, Any]) -> ChunkTree:
 
 
 _CITATION_RE = re.compile(r"\[([^\]]+?):(\d+)-(\d+)\]")
-
+# TODO: make StrEnum for citation types (e.g. "source", "reference", "footnote") if we ever need to distinguish them
 LIFECYCLE_DRAFT = "draft"
 LIFECYCLE_REVIEWED = "reviewed"
 LIFECYCLE_VERIFIED = "verified"

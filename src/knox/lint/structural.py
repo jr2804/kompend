@@ -325,7 +325,14 @@ class StalePageRule(BaseLintRule):
                         continue
                     source_file = Path(source_file_str)
                     if not source_file.is_absolute():
-                        source_file = sources_dir / source_file
+                        # Try base_dir-relative first (sources/paper.pdf),
+                        # then sources_dir-relative (paper.pdf)
+                        for root in (sources_dir.parent, sources_dir):
+                            if (root / source_file).exists():
+                                source_file = root / source_file
+                                break
+                        else:
+                            source_file = sources_dir.parent / source_file
                     if not source_file.exists():
                         results.append(
                             LintResult(
@@ -399,7 +406,12 @@ class SourceNotFoundRule(BaseLintRule):
                 continue
             source_file = Path(source_file_str)
             if not source_file.is_absolute():
-                source_file = sources_dir / source_file
+                for root in (sources_dir.parent, sources_dir):
+                    if (root / source_file).exists():
+                        source_file = root / source_file
+                        break
+                else:
+                    source_file = sources_dir.parent / source_file
             if not source_file.exists():
                 results.append(
                     LintResult(
