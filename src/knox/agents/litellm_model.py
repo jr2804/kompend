@@ -30,8 +30,10 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     SystemPromptPart,
     TextPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -42,7 +44,14 @@ logger = get_logger(__name__)
 
 
 def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
-    """Convert PydanticAI messages to litellm chat format."""
+    """Convert PydanticAI messages to litellm chat format.
+
+    Handles all part types PydanticAI uses in the structured-output retry
+    loop: ``RetryPromptPart`` (validation errors sent back on schema
+    mismatch) and ``ToolReturnPart`` are converted to ``user`` messages so
+    the model sees the feedback. Without this, retries are silently
+    dropped and the model repeats the same invalid output.
+    """
     result: list[dict[str, str]] = []
     for msg in messages:
         if isinstance(msg, ModelRequest):
@@ -51,6 +60,23 @@ def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
                     result.append({"role": "system", "content": part.content})
                 elif isinstance(part, UserPromptPart):
                     result.append({"role": "user", "content": str(part.content)})
+                elif isinstance(part, RetryPromptPart):
+                    content = part.content
+                    if isinstance(content, list):
+                        content = "\n".join(f"- {e.get('msg', e)}" for e in content)
+                    result.append(
+                        {
+                            "role": "user",
+                            "content": f"Validation errors — fix and retry:\n{content}",
+                        }
+                    )
+                elif isinstance(part, ToolReturnPart):
+                    result.append(
+                        {
+                            "role": "user",
+                            "content": str(part.content),
+                        }
+                    )
         elif isinstance(msg, ModelResponse):
             for part in msg.parts:
                 if isinstance(part, TextPart):
@@ -63,6 +89,14 @@ def _make_litellm_function(model_string: str) -> Any:
 
     def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         litellm_messages = _messages_to_litellm(messages)
+
+        # Inject instructions as system message. PydanticAI 2.9 passes the
+        # system prompt via AgentInfo.instructions, NOT as a SystemPromptPart
+        # in the message list. Without this, the system prompt is silently
+        # discarded and the model never sees critical output-format guidance.
+        if info.instructions:
+            litellm_messages.insert(0, {"role": "system", "content": info.instructions})
+
         kwargs: dict[str, Any] = {"model": model_string, "messages": litellm_messages}
 
         # Forward model settings (timeout, max_tokens, temperature)
@@ -79,6 +113,28 @@ def _make_litellm_function(model_string: str) -> Any:
 
         response = litellm.completion(**kwargs)
         content = response.choices[0].message.content or ""
+        finish_reason = response.choices[0].finish_reason
+
+        # Debug: log raw response anomalies for diagnosis
+        if not content.strip() and not info.allow_text_output:
+            logger.warning(
+                "LitellmModel: empty response from '%s' (finish_reason=%s)",
+                model_string,
+                finish_reason,
+            )
+        elif not content.strip().startswith("{") and not info.allow_text_output:
+            logger.warning(
+                "LitellmModel: non-JSON response from '%s' (finish_reason=%s, first 200 chars): %s",
+                model_string,
+                finish_reason,
+                content[:200],
+            )
+        elif finish_reason == "length" and not info.allow_text_output:
+            logger.warning(
+                "LitellmModel: truncated response from '%s' (finish_reason=length, %d chars). Increase max_tokens or reduce input size.",
+                model_string,
+                len(content),
+            )
 
         return ModelResponse(
             parts=[TextPart(content=content)],
