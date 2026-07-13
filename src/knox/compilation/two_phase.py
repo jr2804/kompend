@@ -555,7 +555,21 @@ class TwoPhaseCompiler(BaseCompiler):
             max(_MIN_SEGMENT_TOKENS, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
         )
 
+        logger.info(
+            "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d)",
+            segment_char_size,
+            cw.max_input,
+            self._gen_system_tokens,
+            budget.gen_output_max,
+        )
+
         source_segments = _segment_sources(sources, segment_char_size)
+        logger.info(
+            "TwoPhase: %d source(s) split into %d segment(s) (total content %d chars)",
+            len(sources),
+            len(source_segments),
+            sum(len(c) for _, c in sources),
+        )
 
         # Normalize pinned facts: drop empties + dedup (preserve order).
         pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
