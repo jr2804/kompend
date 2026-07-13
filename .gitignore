@@ -32,7 +32,7 @@ opencode.json
 .opencode
 
 # Skills directory
-/.agents/skills
+/.agents
 skills-lock.json
 
 # GrepAI config directory
