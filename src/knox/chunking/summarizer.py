@@ -24,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.summarizer import SummarizerAgent
 from knox.core.cache.store import CacheStore
 from knox.core.models import (
     ChunkNode,
@@ -35,8 +37,6 @@ from knox.core.models import (
     StructuredTable,
 )
 from knox.core.templates import get_template_loader
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -69,14 +69,14 @@ class NodeSummarizer:
 
     def __init__(
         self,
-        llm_client: LLMClient | None = None,
+        agent: SummarizerAgent | None = None,
         cache_store: CacheStore | None = None,
         *,
         max_content_chars: int = 8000,
         target_chars: int = 600,
         skip_single_child: bool = True,
     ) -> None:
-        self._llm = llm_client
+        self._agent = agent
         self._cache = cache_store
         self._max_content_chars = max_content_chars
         self._target_chars = target_chars
@@ -132,7 +132,7 @@ class NodeSummarizer:
         if cached is not None:
             return cached
 
-        summary = self._llm_summarize(content, heading_path) if self._llm is not None else self._extractive_summary(parts)
+        summary = self._llm_summarize(content, heading_path) if self._agent is not None else self._extractive_summary(parts)
 
         self._cache_store(content, heading_path, summary)
         return summary
@@ -140,19 +140,13 @@ class NodeSummarizer:
     def _llm_summarize(self, content: str, heading_path: str) -> str:
         """Call LLM via the node-summary template."""
         prompt = self._loader.render(_TEMPLATE, content=content, heading_path=heading_path)
-        meta = self._loader.get_meta(_TEMPLATE)
-        role = meta.role or LLMRole.DEFAULT
-
-        llm = self._llm
-        if llm is None:
+        deps = PipelineAgentDeps(text=prompt, source_id=heading_path, timeout=120)
+        try:
+            result = self._agent.run(deps)
+            return result.strip()
+        except Exception as exc:
+            logger.warning("Summarizer failed for '%s': %s", heading_path, exc)
             return self._extractive_summary([content])
-        result = llm.complete(
-            [{"role": "user", "content": prompt}],
-            role=role,
-            temperature=meta.temperature or 0.0,
-            max_tokens=self._target_chars * 2,
-        )
-        return result.content.strip()
 
     def _cache_lookup(self, content: str, heading_path: str) -> str | None:
         if self._cache is None:
@@ -171,8 +165,8 @@ class NodeSummarizer:
 
     def _cache_deps(self, content: str, heading_path: str) -> dict[str, str]:
         model = ""
-        if self._llm is not None and self._llm.default_model is not None:
-            model = str(self._llm.default_model)
+        if self._agent is not None:
+            model = self._agent.litellm_model
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
         return {
             "content_hash": content_hash,
