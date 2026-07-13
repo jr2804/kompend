@@ -4,11 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.entity_registry import (
-    EntityLocation,
-    EntityRecord,
-    EntityRegistry,
-)
 from knox.core.models import (
     Chunk,
     ChunkNode,
@@ -17,6 +12,11 @@ from knox.core.models import (
     EquationVariable,
     StructuredEquation,
     StructuredTable,
+)
+from knox.core.resolution.entity_registry import (
+    EntityLocation,
+    EntityRecord,
+    EntityRegistry,
 )
 
 

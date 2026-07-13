@@ -11,8 +11,8 @@ from knox.cli._shared import build_cli_overrides as _build_cli_overrides
 from knox.cli.app import app
 from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
-from knox.core.pipeline import build_pipeline
-from knox.core.pipeline_defs import Compiler, ImageMode, PipelineConfig
+from knox.core.pipeline.config import Compiler, ImageMode, PipelineConfig
+from knox.core.pipeline.orchestrator import build_pipeline
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
 

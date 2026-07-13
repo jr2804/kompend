@@ -1,8 +1,8 @@
-"""Tests for knox.core.exception_format."""
+"""Tests for knox.core.utils.exceptions."""
 
 from __future__ import annotations
 
-from knox.core.exception_format import MAX_CHARS_EXCEPTION, shorten_exception, shorten_string
+from knox.core.utils.exceptions import MAX_CHARS_EXCEPTION, shorten_exception, shorten_string
 
 
 class TestShortenException:

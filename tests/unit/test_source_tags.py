@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.pipeline import WikiPipeline
+from knox.core.pipeline.orchestrator import WikiPipeline
 
 
 class TestExtractSourceTags:

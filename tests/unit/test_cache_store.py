@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.cache_store import CacheStore, make_cache_key
+from knox.core.cache.store import CacheStore, make_cache_key
 from knox.core.models import Chunk, ElementType, ResolvedChunk
 
 # ---------------------------------------------------------------------------

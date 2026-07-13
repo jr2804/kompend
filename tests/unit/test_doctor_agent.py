@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
-from knox.core.exception_format import LLMOutputError
+from knox.core.utils.exceptions import LLMOutputError
 
 
 class TestDoctorAgentConstruction:

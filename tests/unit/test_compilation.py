@@ -28,7 +28,7 @@ from knox.compilation.schema import (
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
-from knox.core.pipeline_defs import PipelineConfig
+from knox.core.pipeline.config import PipelineConfig
 from knox.llm.client import LLMClient
 
 # ===========================================================================

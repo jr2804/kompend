@@ -10,7 +10,7 @@ import pytest
 
 from knox.core.config import ResolvedConfig, resolve_config
 from knox.core.config.keys import TRUST_USER_TRACKING
-from knox.core.user import get_current_user, resolve_actor
+from knox.core.trust.actor import get_current_user, resolve_actor
 
 
 class TestGetCurrentUser:
@@ -32,7 +32,7 @@ class TestGetCurrentUser:
 
 class TestResolveActor:
     def test_returns_user_when_tracking_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("knox.core.user.get_current_user", lambda: "alice")
+        monkeypatch.setattr("knox.core.trust.actor.get_current_user", lambda: "alice")
         cfg = ResolvedConfig(raw={"trust": {"user_tracking": True}})
         assert resolve_actor(cfg) == "alice"
 

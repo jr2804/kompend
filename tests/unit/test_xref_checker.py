@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.entity_registry import EntityRegistry
 from knox.core.models import (
     Chunk,
     ChunkNode,
@@ -12,7 +11,8 @@ from knox.core.models import (
     ElementType,
     StructuredTable,
 )
-from knox.core.xref_checker import (
+from knox.core.resolution.entity_registry import EntityRegistry
+from knox.core.resolution.xref_checker import (
     CrossReferenceChecker,
     _extract_heading_number,
     _extract_number,

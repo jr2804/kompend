@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from knox.core.log_report import build_log_report
 from knox.core.paths import LINT_HISTORY_FILE, RUNS_FILE
+from knox.core.reporting.log import build_log_report
 
 
 def _write_runs(state_dir: Path, events: list[dict]) -> None:

@@ -12,7 +12,7 @@ from knox.cli.app import app
 from knox.cli.cmds.doctor import CheckResult, print_doctor_results, run_doctor
 from knox.cli.cmds.status import collect_stats, print_status
 from knox.core.paths import COMPILE_STATE_FILE
-from knox.core.tier_state import SourceState, TierState, TierStateStore
+from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 
 
 class TestCheckResult:

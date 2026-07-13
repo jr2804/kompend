@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from jinja2 import UndefinedError as Jinja2UndefinedError
 
-from knox.core.template_loader import (
+from knox.core.templates import (
     TemplateLoader,
     TemplateMeta,
     _parse_frontmatter,

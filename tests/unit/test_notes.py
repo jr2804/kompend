@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from knox.core.config._core import resolve_config
-from knox.core.pipeline import WikiPipeline
-from knox.core.pipeline_defs import EmbeddingConfig, LLMConfig, PipelineConfig, Tier
-from knox.core.template_loader import TemplateLoader
+from knox.core.pipeline.config import EmbeddingConfig, LLMConfig, PipelineConfig, Tier
+from knox.core.pipeline.orchestrator import WikiPipeline
+from knox.core.templates import TemplateLoader
 
 
 def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:

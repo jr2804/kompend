@@ -22,7 +22,8 @@ from knox.compilation.two_phase import (
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
 from knox.core.paths import KNOX_DIR, PRIVATE_FILE, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE, VERIFICATION_FILE
-from knox.core.pipeline import (
+from knox.core.pipeline.config import Tier
+from knox.core.pipeline.orchestrator import (
     ALL_TIERS,
     TIER_CHUNK,
     TIER_COMPILE,
@@ -32,8 +33,7 @@ from knox.core.pipeline import (
     PipelineConfig,
     WikiPipeline,
 )
-from knox.core.pipeline_defs import Tier
-from knox.core.tier_state import (
+from knox.core.pipeline.state import (
     SourceState,
     TierState,
     TierStateStore,

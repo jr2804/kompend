@@ -45,8 +45,8 @@ from knox.compilation.wicer import WiCERCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
 from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, STATE_FILE, VECTORS_DIR
-from knox.core.pipeline_defs import Compiler, PipelineConfig
-from knox.core.tier_state import TierStateStore
+from knox.core.pipeline.config import Compiler, PipelineConfig
+from knox.core.pipeline.state import TierStateStore
 from knox.llm.client import LLMClient
 from knox.output.base import BaseOutputWriter
 from knox.output.json_writer import JsonWriter
