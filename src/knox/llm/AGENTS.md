@@ -9,8 +9,7 @@ Custom litellm providers live in `knox.llm.providers/`.
 ## Format module
 
 `knox.llm.format` is the single source of truth for LLM communication formats.
-It owns `salvage_json` (moved from `client.py`), `encode_for_llm`, `decode_from_llm`,
-and `structured_return_instruction`.
+It owns `salvage_json` (moved from `client.py`), `encode_for_llm`.
 
 Supported formats (`LlmDataFormat` enum, config key `compile.llm.data_format`):
 

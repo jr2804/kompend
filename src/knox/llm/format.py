@@ -47,6 +47,7 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
     """
     if not content or not content.strip():
         return None
+
     if schema is not None:
         try:
             parsed = json_repair.loads(content, schema=schema, schema_repair_mode="salvage")
@@ -54,6 +55,8 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
                 return parsed
         except (json.JSONDecodeError, ValueError, RecursionError):
             pass
+
+    # try repairing without schema; this is the fallback path for any error above
     try:
         parsed = json_repair.loads(content)
     except (json.JSONDecodeError, RecursionError):
@@ -83,42 +86,10 @@ def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
     """
     if fmt == LlmDataFormat.JSON:
         return json.dumps(data, ensure_ascii=False)
-    if fmt == LlmDataFormat.TOON:
+    elif fmt == LlmDataFormat.TOON:
         return _toon.encode(data)
-    if fmt == LlmDataFormat.ISON:
+    elif fmt == LlmDataFormat.ISON:
         doc = _ison.from_dict(data if isinstance(data, dict) else {"data": data})
         return _ison.dumps(doc)
-    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
-
-
-def decode_from_llm(text: str, fmt: LlmDataFormat) -> Any | None:
-    """Parse an LLM response in format *fmt* to a Python object.
-
-    Returns the parsed object or ``None`` if parsing fails entirely.
-    LLM output is always JSON in practice; this exists for completeness
-    and potential future use.
-    """
-    if fmt == LlmDataFormat.JSON:
-        return salvage_json(text)
-    if fmt == LlmDataFormat.TOON:
-        try:
-            return _toon.decode(text)
-        except Exception:
-            try:
-                return _toon.decode(text, {"strict": False})
-            except Exception:
-                return None
-    if fmt == LlmDataFormat.ISON:
-        try:
-            return json.loads(_ison.loads(text).to_json())
-        except Exception:
-            return None
-    raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
-
-
-# ── System message helper ─────────────────────────────────────────────────
-
-
-def structured_return_instruction(fmt: LlmDataFormat) -> str:
-    """Return the format-appropriate instruction for system messages."""
-    return f"Return only valid {str(fmt).upper()}."
+    else:
+        raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
