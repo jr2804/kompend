@@ -41,10 +41,13 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
 
     def _build_agent(self) -> Agent[PipelineAgentDeps, ExtractionOutput]:
         """Construct the PydanticAI agent with a litellm-backed model."""
+        model_settings = {"timeout": self._timeout}
+        if self._max_tokens is not None:
+            model_settings["max_tokens"] = self._max_tokens
         return Agent(
             make_litellm_model(self._litellm_model),
             deps_type=self.deps_type,
             output_type=self.result_type,
-            model_settings={"timeout": self._timeout},  # type: ignore[arg-type]
+            model_settings=model_settings,  # type: ignore[arg-type]
             retries=self._retries,
         )

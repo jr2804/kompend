@@ -724,6 +724,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 agent = GenerationAgent(
                     litellm_model=self._model,
                     timeout=self._timeout,
+                    max_tokens=self._budget.gen_output_max,
                     skills=self._config.skills,
                 )
                 gen_output = _try_pydanticai_generation(
@@ -822,6 +823,7 @@ class TwoPhaseCompiler(BaseCompiler):
         agent = ExtractionAgent(
             litellm_model=self._model,
             timeout=self._timeout,
+            max_tokens=self._budget.extract_output_max,
             skills=self._config.skills,
         )
         validated = _try_pydanticai_extraction(
