@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from knox.agents.categorize import CategorizeAgent
 from knox.cli._shared import resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
@@ -22,7 +23,6 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_SUBCATEGORIES,
     PATHS_WIKI_DIR,
 )
-from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console, get_logger
 from knox.organize.engine import OrganizeResult, organize_sources, resolve_organize_config
 
@@ -56,16 +56,21 @@ def organize_cmd(
     config = resolve_organize_config(overrides or None)
 
     timeout = cfg.get(COMPILE_LLM_TIMEOUT)
-    llm_client = LLMClient.from_config(cfg, timeout=timeout)
-    if llm_client is None:
+    default_model = cfg.get("compile.llm.default_model", "")
+    if not default_model:
         get_err_console().print("No LLM model configured. Set compile.llm.default_model in config.")
         raise typer.Exit(1)
+
+    categorize_agent = CategorizeAgent(
+        default_model,
+        timeout=float(timeout) if timeout else 120,
+    )
 
     result = organize_sources(
         base_dir=base_dir,
         sources_dir=sources_dir,
         output_dir=output_dir,
-        llm_client=llm_client,
+        categorize_agent=categorize_agent,
         config=config,
         dry_run=dry_run,
     )

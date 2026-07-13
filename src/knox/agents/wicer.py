@@ -2,20 +2,9 @@ r"""WicerAgents — PydanticAI wrappers for the WiCER compile-evaluate-refine lo
 
 from __future__ import annotations
 
-from pydantic_ai import Agent
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
-from knox.agents.litellm_model import make_litellm_model
 from knox.compilation.schema import WicerDiagnoseOutput, WicerEvaluateOutput, WicerProbeOutput
-
-
-def _model_settings(timeout: float, max_tokens: int | None) -> dict[str, float | int]:
-    """Build model_settings dict with optional max_tokens."""
-    settings: dict[str, float | int] = {"timeout": timeout}
-    if max_tokens is not None:
-        settings["max_tokens"] = max_tokens
-    return settings
 
 
 class WicerProbeAgent(KnoxAgentBase[WicerProbeOutput, WicerProbeDeps]):
@@ -34,15 +23,6 @@ class WicerProbeAgent(KnoxAgentBase[WicerProbeOutput, WicerProbeDeps]):
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
 
-    def _build_agent(self) -> Agent[WicerProbeDeps, WicerProbeOutput]:
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=self.result_type,
-            model_settings=_model_settings(self._timeout, self._max_tokens),  # type: ignore[arg-type]
-            retries=self._retries,
-        )
-
 
 class WicerEvaluateAgent(KnoxAgentBase[WicerEvaluateOutput, WicerEvaluateDeps]):
     """PydanticAI agent for WiCER evaluation (Stage 2 — LLM-as-judge)."""
@@ -60,15 +40,6 @@ class WicerEvaluateAgent(KnoxAgentBase[WicerEvaluateOutput, WicerEvaluateDeps]):
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
 
-    def _build_agent(self) -> Agent[WicerEvaluateDeps, WicerEvaluateOutput]:
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=self.result_type,
-            model_settings=_model_settings(self._timeout, self._max_tokens),  # type: ignore[arg-type]
-            retries=self._retries,
-        )
-
 
 class WicerDiagnoseAgent(KnoxAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps]):
     """PydanticAI agent for WiCER diagnosis (Stage 3 — extract critical facts)."""
@@ -85,12 +56,3 @@ class WicerDiagnoseAgent(KnoxAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps]):
             skill_blocks = [f"## Skill: {n}\n\n{i}" for n, i in self._skills.items()]
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
-
-    def _build_agent(self) -> Agent[WicerDiagnoseDeps, WicerDiagnoseOutput]:
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=self.result_type,
-            model_settings=_model_settings(self._timeout, self._max_tokens),  # type: ignore[arg-type]
-            retries=self._retries,
-        )

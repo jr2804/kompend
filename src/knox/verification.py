@@ -12,12 +12,12 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.verification import VerificationAgent
 from knox.core.config._core import DEFAULTS
 from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
 from knox.core.paths import VaultPaths
 from knox.core.templates import get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -73,8 +73,7 @@ def verify_node(
     node: WikiNode,
     sources_dir: Path,
     *,
-    client: LLMClient,
-    model: str,
+    agent: VerificationAgent,
     verify_budget: int = 3000,
     min_ngram: int = 3,
 ) -> list[ClaimVerification]:
@@ -108,8 +107,12 @@ def verify_node(
         if verify_system:
             messages.append({"role": "system", "content": verify_system})
         messages.append({"role": "user", "content": prompt})
-        result = client.try_complete(messages=messages, role=LLMRole.VERIFY, response_format=JSON_RESPONSE_FORMAT)
-        if result and result.json_data:
+        deps = PipelineAgentDeps(text=prompt, source_id=node.id, timeout=agent._timeout)
+        try:
+            data = agent.run(deps)
+        except Exception:
+            data = None
+        if data:
             data = result.json_data
             results.append(
                 ClaimVerification(
@@ -125,8 +128,7 @@ def verify_wiki(
     wiki: CompiledWiki,
     output_dir: Path,
     *,
-    client: LLMClient,
-    model: str,
+    agent: VerificationAgent,
     verify_budget: int = 3000,
     min_ngram: int = 3,
 ) -> VerificationResult:
@@ -136,7 +138,7 @@ def verify_wiki(
 
     result = VerificationResult()
     for node in wiki.nodes:
-        result.claims.extend(verify_node(node, sources_dir, client=client, model=model, verify_budget=verify_budget, min_ngram=min_ngram))
+        result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
 
     result.total = len(result.claims)
     result.verified = sum(1 for c in result.claims if c.verdict == "supported")

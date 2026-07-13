@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 import litellm
 import pytest
 
-from knox.llm.client import ContextSource, LLMClient, _discover_context_window, _query_ollama_num_ctx
+from knox.llm.client import LLMClient
+from knox.llm.context_window import ContextSource, _query_ollama_num_ctx, discover_context_window
 from knox.llm.errors import ConfigurationError, PermanentError, TransientError
 
 
@@ -193,7 +194,7 @@ class TestQueryOllamaNumCtx:
             resp.__exit__ = lambda self, *a: None
             return resp
 
-        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("knox.llm.context_window.urllib.request.urlopen", side_effect=fake_urlopen):
             result = _query_ollama_num_ctx("some-model")
         assert result == 65536
 
@@ -208,7 +209,7 @@ class TestQueryOllamaNumCtx:
             resp.__exit__ = lambda self, *a: None
             return resp
 
-        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("knox.llm.context_window.urllib.request.urlopen", side_effect=fake_urlopen):
             result = _query_ollama_num_ctx("some-model")
         assert result == 32768
 
@@ -223,7 +224,7 @@ class TestQueryOllamaNumCtx:
             resp.__exit__ = lambda self, *a: None
             return resp
 
-        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("knox.llm.context_window.urllib.request.urlopen", side_effect=fake_urlopen):
             result = _query_ollama_num_ctx("some-model")
         assert result == 32768
 
@@ -238,7 +239,7 @@ class TestQueryOllamaNumCtx:
             resp.__exit__ = lambda self, *a: None
             return resp
 
-        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("knox.llm.context_window.urllib.request.urlopen", side_effect=fake_urlopen):
             result = _query_ollama_num_ctx("some-model")
         assert result is None
 
@@ -253,7 +254,7 @@ class TestQueryOllamaNumCtx:
             resp.__exit__ = lambda self, *a: None
             return resp
 
-        with patch("knox.llm.client.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("knox.llm.context_window.urllib.request.urlopen", side_effect=fake_urlopen):
             result = _query_ollama_num_ctx("some-model")
         assert result == 32768
 
@@ -264,7 +265,7 @@ class TestContextWindowCap:
     def test_cap_overrides_discovered(self) -> None:
         """Cap limits discovered max_input/max_output."""
         with patch("litellm.get_model_info", return_value={"max_input_tokens": 1048576, "max_output_tokens": 1048576}):
-            cw = _discover_context_window("openai/gpt-4", context_window_cap=65536)
+            cw = discover_context_window("openai/gpt-4", context_window_cap=65536)
         assert cw.max_input == 65536
         assert cw.max_output == 65536
         assert cw.source == ContextSource.LITELLM
@@ -272,21 +273,21 @@ class TestContextWindowCap:
     def test_no_cap_uses_full_discovered(self) -> None:
         """Without cap, discovered values pass through unchanged."""
         with patch("litellm.get_model_info", return_value={"max_input_tokens": 200000, "max_output_tokens": 200000}):
-            cw = _discover_context_window("openai/gpt-4")
+            cw = discover_context_window("openai/gpt-4")
         assert cw.max_input == 200000
         assert cw.max_output == 200000
 
     def test_cap_larger_than_discovered_no_effect(self) -> None:
         """Cap larger than discovered value has no effect."""
         with patch("litellm.get_model_info", return_value={"max_input_tokens": 8192, "max_output_tokens": 4096}):
-            cw = _discover_context_window("openai/gpt-4", context_window_cap=65536)
+            cw = discover_context_window("openai/gpt-4", context_window_cap=65536)
         assert cw.max_input == 8192
         assert cw.max_output == 4096
 
     def test_cap_applies_to_fallback_too(self) -> None:
         """Cap also applies on the fallback path."""
         with patch("litellm.get_model_info", return_value=None):
-            cw = _discover_context_window(
+            cw = discover_context_window(
                 "unknown/model",
                 fallback_max_input=8192,
                 fallback_max_output=4096,
@@ -314,8 +315,8 @@ class TestModelsDevStep:
     def test_custom_provider_resolved_by_models_dev(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A custom-provider model (skipped by litellm) is resolved by models.dev."""
         monkeypatch.setattr(litellm, "custom_provider_map", [{"provider": "ollama-cloud"}], raising=False)
-        monkeypatch.setattr("knox.llm.client.resolve_model_limits", lambda _m: (1_048_576, 1_048_576))
-        cw = _discover_context_window("ollama-cloud/deepseek-v4-flash")
+        monkeypatch.setattr("knox.llm.context_window.resolve_model_limits", lambda _m: (1_048_576, 1_048_576))
+        cw = discover_context_window("ollama-cloud/deepseek-v4-flash")
         assert cw.max_input == 1_048_576
         assert cw.max_output == 1_048_576
         assert cw.source == ContextSource.MODELS_DEV
@@ -327,9 +328,9 @@ class TestModelsDevStep:
     ) -> None:
         """A custom-provider model absent from models.dev falls back and warns once."""
         monkeypatch.setattr(litellm, "custom_provider_map", [{"provider": "ollama-cloud"}], raising=False)
-        monkeypatch.setattr("knox.llm.client.resolve_model_limits", lambda _m: None)
+        monkeypatch.setattr("knox.llm.context_window.resolve_model_limits", lambda _m: None)
         with caplog.at_level(logging.WARNING):
-            cw = _discover_context_window(
+            cw = discover_context_window(
                 "ollama-cloud/unknown-model",
                 fallback_max_input=8192,
                 fallback_max_output=4096,

@@ -23,11 +23,8 @@ Usage::
 
 from __future__ import annotations
 
-from pydantic_ai import Agent
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import QueryDeps
-from knox.agents.litellm_model import make_litellm_model
 
 
 class QueryAgent(KnoxAgentBase[str, QueryDeps]):
@@ -64,16 +61,3 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
-
-    def _build_agent(self) -> Agent[QueryDeps, str]:
-        """Construct the PydanticAI agent with ``output_type=str``."""
-        model_settings = {"timeout": self._timeout}
-        if self._max_tokens is not None:
-            model_settings["max_tokens"] = self._max_tokens
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=str,
-            model_settings=model_settings,  # type: ignore[arg-type]
-            retries=self._retries,
-        )

@@ -17,11 +17,8 @@ Usage::
 
 from __future__ import annotations
 
-from pydantic_ai import Agent
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.litellm_model import make_litellm_model
 from knox.compilation.schema import ExtractionOutput
 
 
@@ -38,16 +35,3 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
     system_template_name: str = "extraction_system.md.j2"
     result_type: type[ExtractionOutput] = ExtractionOutput
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
-
-    def _build_agent(self) -> Agent[PipelineAgentDeps, ExtractionOutput]:
-        """Construct the PydanticAI agent with a litellm-backed model."""
-        model_settings = {"timeout": self._timeout}
-        if self._max_tokens is not None:
-            model_settings["max_tokens"] = self._max_tokens
-        return Agent(
-            make_litellm_model(self._litellm_model),
-            deps_type=self.deps_type,
-            output_type=self.result_type,
-            model_settings=model_settings,  # type: ignore[arg-type]
-            retries=self._retries,
-        )

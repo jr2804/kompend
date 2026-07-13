@@ -12,10 +12,10 @@ from typing import Any
 
 from slugify import slugify
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.lint import LintRuleAgent
 from knox.core.templates import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
-from knox.llm.client import JSON_RESPONSE_FORMAT
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,12 +31,12 @@ class FactualConsistencyRule(BaseLintRule):
     name = "factual-consistency"
     description = "Claims in page contradict source material"
 
-    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
-        self.llm_client = llm_client
+    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
+        self._agent = agent
         self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self.llm_client is None:
+        if self._agent is None:
             return [
                 LintResult(
                     rule=self.name,
@@ -53,12 +53,12 @@ class FactualConsistencyRule(BaseLintRule):
             content = node.content
             for seg_start in range(0, len(content), self.lint_page_budget):
                 segment = content[seg_start : seg_start + self.lint_page_budget]
-                prompt = _loader.render("lint/factual-consistency.md.j2", title=node.title, content=segment)
+                _loader.render("lint/factual-consistency.md.j2", title=node.title, content=segment)
                 try:
-                    llm_result = self.llm_client.try_complete(
-                        [{"role": "user", "content": prompt}],
-                        role=LLMRole.LINT_FACTUAL_CONSISTENCY,
-                        response_format=JSON_RESPONSE_FORMAT,
+                    llm_result = self._call_agent(
+                        "lint/factual-consistency.md.j2",
+                        title=node.title,
+                        content=segment,
                     )
                 except Exception as exc:
                     logger.warning("factual-consistency LLM call failed: %s", exc, exc_info=True)
@@ -72,10 +72,10 @@ class FactualConsistencyRule(BaseLintRule):
                     )
                     continue
 
-                if llm_result is None or llm_result.json_data is None:
+                if llm_result is None:
                     continue
 
-                issues = llm_result.json_data.get("issues", [])
+                issues = llm_result.get("issues", [])
                 for issue in issues:
                     results.append(
                         LintResult(
@@ -92,6 +92,18 @@ class FactualConsistencyRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
 
+    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+        """Call the LintRuleAgent with a rendered template."""
+        if self._agent is None:
+            return None
+        prompt = _loader.render(template_name, **kwargs)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        try:
+            return self._agent.run(deps)
+        except Exception as exc:
+            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
+            return None
+
 
 # ── Rule 10: clarity-score ──────────────────────────────────────────────
 
@@ -102,12 +114,12 @@ class ClarityScoreRule(BaseLintRule):
     name = "clarity-score"
     description = "Readability, coherence, conciseness score (1-10)"
 
-    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
-        self.llm_client = llm_client
+    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
+        self._agent = agent
         self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self.llm_client is None:
+        if self._agent is None:
             return [
                 LintResult(
                     rule=self.name,
@@ -127,12 +139,12 @@ class ClarityScoreRule(BaseLintRule):
             best_feedback = ""
             for seg_start in range(0, len(content), self.lint_page_budget):
                 segment = content[seg_start : seg_start + self.lint_page_budget]
-                prompt = _loader.render("lint/clarity-score.md.j2", title=node.title, content=segment)
+                _loader.render("lint/clarity-score.md.j2", title=node.title, content=segment)
                 try:
-                    llm_result = self.llm_client.try_complete(
-                        [{"role": "user", "content": prompt}],
-                        role=LLMRole.LINT_CLARITY_SCORE,
-                        response_format=JSON_RESPONSE_FORMAT,
+                    llm_result = self._call_agent(
+                        "lint/clarity-score.md.j2",
+                        title=node.title,
+                        content=segment,
                     )
                 except Exception as exc:
                     logger.warning("clarity-score LLM call failed: %s", exc, exc_info=True)
@@ -146,11 +158,11 @@ class ClarityScoreRule(BaseLintRule):
                     )
                     continue
 
-                if llm_result is None or llm_result.json_data is None:
+                if llm_result is None:
                     continue
 
-                score = llm_result.json_data.get("score", 0)
-                feedback = llm_result.json_data.get("feedback", "")
+                score = llm_result.get("score", 0)
+                feedback = llm_result.get("feedback", "")
                 if score > best_score:
                     best_score = score
                     best_feedback = feedback
@@ -173,6 +185,18 @@ class ClarityScoreRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
 
+    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+        """Call the LintRuleAgent with a rendered template."""
+        if self._agent is None:
+            return None
+        prompt = _loader.render(template_name, **kwargs)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        try:
+            return self._agent.run(deps)
+        except Exception as exc:
+            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
+            return None
+
 
 # ── Rule 11: coverage-gap ───────────────────────────────────────────────
 
@@ -183,12 +207,12 @@ class CoverageGapRule(BaseLintRule):
     name = "coverage-gap"
     description = "Important concepts mentioned in sources but missing from wiki"
 
-    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
-        self.llm_client = llm_client
+    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
+        self._agent = agent
         self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self.llm_client is None:
+        if self._agent is None:
             return [
                 LintResult(
                     rule=self.name,
@@ -211,22 +235,21 @@ class CoverageGapRule(BaseLintRule):
             batch = wiki.nodes[batch_start : batch_start + batch_size]
             wiki_summary = "\n".join(f"- {n.title}: {n.content or ''}" for n in batch)
 
-            prompt = _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
+            _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
 
             try:
-                llm_result = self.llm_client.try_complete(
-                    [{"role": "user", "content": prompt}],
-                    role=LLMRole.LINT_COVERAGE_GAP,
-                    response_format=JSON_RESPONSE_FORMAT,
+                llm_result = self._call_agent(
+                    "lint/coverage-gap.md.j2",
+                    wiki_summary=wiki_summary,
                 )
             except Exception as exc:
                 logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
                 continue
 
-            if llm_result is None or llm_result.json_data is None:
+            if llm_result is None:
                 continue
 
-            gaps = llm_result.json_data.get("gaps", [])
+            gaps = llm_result.get("gaps", [])
             if isinstance(gaps, list):
                 all_gaps.extend(gaps)
 
@@ -261,6 +284,18 @@ class CoverageGapRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
 
+    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+        """Call the LintRuleAgent with a rendered template."""
+        if self._agent is None:
+            return None
+        prompt = _loader.render(template_name, **kwargs)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        try:
+            return self._agent.run(deps)
+        except Exception as exc:
+            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
+            return None
+
     def _dedup_gaps(self, gaps: list[dict]) -> list[dict]:
         """Merge semantically equivalent concepts via a single LLM pass.
 
@@ -285,19 +320,18 @@ class CoverageGapRule(BaseLintRule):
         if len(gaps) <= 1:
             return gaps
         gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2)
-        prompt = _loader.render("lint/coverage-gap-dedup.md.j2", gaps_json=gaps_json)
+        _loader.render("lint/coverage-gap-dedup.md.j2", gaps_json=gaps_json)
         try:
-            llm_result = self.llm_client.try_complete(
-                [{"role": "user", "content": prompt}],
-                role=LLMRole.LINT_COVERAGE_GAP_DEDUP,
-                response_format=JSON_RESPONSE_FORMAT,
+            llm_result = self._call_agent(
+                "lint/coverage-gap-dedup.md.j2",
+                gaps_json=gaps_json,
             )
         except Exception as exc:
             logger.warning("coverage-gap dedup failed: %s", exc, exc_info=True)
             return gaps
-        if llm_result is None or llm_result.json_data is None:
+        if llm_result is None:
             return gaps
-        merged = llm_result.json_data.get("gaps", [])
+        merged = llm_result.get("gaps", [])
         return merged if isinstance(merged, list) and merged else gaps
 
     @staticmethod
@@ -338,12 +372,12 @@ class ContradictionDetectionRule(BaseLintRule):
     name = "contradiction-detection"
     description = "Contradictory claims across wiki pages"
 
-    def __init__(self, llm_client: Any | None = None, lint_page_budget: int = 100000) -> None:
-        self.llm_client = llm_client
+    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
+        self._agent = agent
         self.lint_page_budget = lint_page_budget
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self.llm_client is None:
+        if self._agent is None:
             return [
                 LintResult(
                     rule=self.name,
@@ -367,12 +401,11 @@ class ContradictionDetectionRule(BaseLintRule):
             title_to_node = {n.title.lower(): n for n in batch}
             wiki_summary = "\n\n---\n\n".join(f"Title: {n.title}\n{n.content or ''}" for n in batch)
 
-            prompt = _loader.render("lint/contradiction-detection.md.j2", wiki_summary=wiki_summary)
+            _loader.render("lint/contradiction-detection.md.j2", wiki_summary=wiki_summary)
             try:
-                llm_result = self.llm_client.try_complete(
-                    [{"role": "user", "content": prompt}],
-                    role=LLMRole.LINT_CONTRADICTION,
-                    response_format=JSON_RESPONSE_FORMAT,
+                llm_result = self._call_agent(
+                    "lint/contradiction-detection.md.j2",
+                    wiki_summary=wiki_summary,
                 )
             except Exception as exc:
                 logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
@@ -385,10 +418,10 @@ class ContradictionDetectionRule(BaseLintRule):
                 )
                 continue
 
-            if llm_result is None or llm_result.json_data is None:
+            if llm_result is None:
                 continue
 
-            contradictions = llm_result.json_data.get("contradictions", [])
+            contradictions = llm_result.get("contradictions", [])
             if not isinstance(contradictions, list):
                 continue
 
@@ -433,6 +466,18 @@ class ContradictionDetectionRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
         return results
+
+    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+        """Call the LintRuleAgent with a rendered template."""
+        if self._agent is None:
+            return None
+        prompt = _loader.render(template_name, **kwargs)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        try:
+            return self._agent.run(deps)
+        except Exception as exc:
+            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
+            return None
 
 
 # ── Registry ────────────────────────────────────────────────────────────

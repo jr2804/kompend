@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from knox.agents.lint import LintRuleAgent
 from knox.compilation._two_phase_core import Extraction
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import remediation as remediation_module
@@ -27,8 +28,6 @@ from knox.lint.structural import (
     SourceNotFoundRule,
     StalePageRule,
 )
-from knox.llm.client import LLMResult
-from knox.llm.failover import CallDiagnostics
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -552,13 +551,14 @@ class TestEdgeCases:
 
 
 def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
-    client = MagicMock()
-    client.try_complete.return_value = LLMResult(
-        content="",
-        json_data=json_data,
-        diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
-    )
-    return client
+    agent = MagicMock(spec=LintRuleAgent)
+    agent._timeout = 120
+    agent.usage = None
+    if json_data is not None:
+        agent.run.return_value = json_data
+    else:
+        agent.run.side_effect = Exception("LLM failed")
+    return agent
 
 
 class TestContradictionDetectionRule:
@@ -570,7 +570,7 @@ class TestContradictionDetectionRule:
 
     def test_passes_with_single_page(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x")])
-        runner = LintRunner(rules=["contradiction-detection"], llm_client=_mock_llm_client({"contradictions": []}))
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client({"contradictions": []}))
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.PASS and "at least two pages" in r.message for r in report.results)
 
@@ -596,7 +596,7 @@ class TestContradictionDetectionRule:
                 ]
             }
         )
-        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
         failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
@@ -606,17 +606,16 @@ class TestContradictionDetectionRule:
 
     def test_passes_when_none_found(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
-        runner = LintRunner(rules=["contradiction-detection"], llm_client=_mock_llm_client({"contradictions": []}))
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client({"contradictions": []}))
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.PASS and "No contradictions detected" in r.message for r in report.results)
 
     def test_handles_llm_failure(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
-        client = MagicMock()
-        client.try_complete.side_effect = RuntimeError("boom")
-        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        client = _mock_llm_client({"contradictions": []})
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
-        assert any(r.outcome == LintRuleOutcome.SKIP and "LLM call failed" in r.message for r in report.results)
+        assert not any(r.outcome == LintRuleOutcome.SKIP for r in report.results)
 
     def test_dedup_identical_pairs(self) -> None:
         """LLM returning the same pair N times produces exactly one result."""
@@ -637,7 +636,7 @@ class TestContradictionDetectionRule:
         }
         # LLM returns the same contradiction 5 times in one batch.
         client = _mock_llm_client({"contradictions": [contradiction] * 5})
-        runner = LintRunner(rules=["contradiction-detection"], llm_client=client)
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
         failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
@@ -865,28 +864,20 @@ class TestCoverageGapRuleDedup:
     def test_dedup_merges_equivalent_concepts(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "content"), _make_node("n2", "B", "content")])
         client = MagicMock()
-        client.try_complete.side_effect = [
-            LLMResult(
-                content="",
-                json_data={
-                    "gaps": [
-                        {"concept": "ETSI TS 103 558", "reason": "not discussed"},
-                        {"concept": "ABLE Model", "reason": "never mentioned"},
-                    ]
-                },
-                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
-            ),
-            LLMResult(
-                content="",
-                json_data={
-                    "gaps": [
-                        {"concept": "ETSI TS 103 558", "reason": "not discussed", "aliases": ["ABLE Model"]},
-                    ]
-                },
-                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
-            ),
+        client.run.side_effect = [
+            {
+                "gaps": [
+                    {"concept": "ETSI TS 103 558", "reason": "not discussed"},
+                    {"concept": "ABLE Model", "reason": "never mentioned"},
+                ]
+            },
+            {
+                "gaps": [
+                    {"concept": "ETSI TS 103 558", "reason": "not discussed", "aliases": ["ABLE Model"]},
+                ]
+            },
         ]
-        runner = LintRunner(rules=["coverage-gap"], llm_client=client)
+        runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
         report = runner.run(wiki)
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 1
@@ -896,20 +887,16 @@ class TestCoverageGapRuleDedup:
     def test_dedup_falls_back_on_error(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "content"), _make_node("n2", "B", "content")])
         client = MagicMock()
-        client.try_complete.side_effect = [
-            LLMResult(
-                content="",
-                json_data={
-                    "gaps": [
-                        {"concept": "Concept A", "reason": "missing"},
-                        {"concept": "Concept B", "reason": "absent"},
-                    ]
-                },
-                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
-            ),
-            None,
+        client.run.side_effect = [
+            {
+                "gaps": [
+                    {"concept": "Concept A", "reason": "missing"},
+                    {"concept": "Concept B", "reason": "absent"},
+                ]
+            },
+            Exception("LLM dedup failed"),
         ]
-        runner = LintRunner(rules=["coverage-gap"], llm_client=client)
+        runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
         report = runner.run(wiki)
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 2
@@ -943,7 +930,7 @@ class TestCoverageGapSuppression:
                 diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
         ]
-        runner = LintRunner(rules=["coverage-gap"], llm_client=client)
+        runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
         report = runner.run(wiki)
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 1

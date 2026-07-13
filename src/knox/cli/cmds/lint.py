@@ -20,6 +20,7 @@ from pathlib import Path
 import typer
 import yaml
 
+from knox.agents.lint import LintRuleAgent
 from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
@@ -50,7 +51,6 @@ from knox.lint.history import (
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import RemediationStatus, remediate, remediation_to_text
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
-from knox.llm.client import LLMClient
 from knox.logging import get_console, get_err_console
 
 lint_app = typer.Typer(
@@ -148,13 +148,14 @@ def lint_run(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    llm_client = LLMClient.from_config(cfg)
-    if _uses_llm_rule(rule) and llm_client is None:
+    default_model = cfg.get("compile.llm.default_model", "")
+    lint_agent = LintRuleAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120))) if default_model else None
+    if _uses_llm_rule(rule) and lint_agent is None:
         get_err_console().print(
             "LLM-powered lint rules require a model. Set compile.llm.default_model in config (e.g. openai/gpt-4o).",
         )
         raise typer.Exit(1)
-    if llm and llm_client is None:
+    if llm and lint_agent is None:
         get_console().print(
             "No LLM model configured (compile.llm.default_model); running structural rules only. Use --no-llm to silence this note.",
         )
@@ -163,7 +164,7 @@ def lint_run(
     runner = LintRunner(
         rules=list(rule) if rule else None,
         enable_llm=llm,
-        llm_client=llm_client,
+        lint_agent=lint_agent,
         fix=fix,
         sources_dir=sources_dir_str,
     )
@@ -182,10 +183,10 @@ def lint_run(
 
     # ── Persist to lint history ──────────────────────────────────────────
     llm_meta: dict | None = None
-    if llm_client:
+    if lint_agent is not None and lint_agent.usage is not None:
         llm_meta = {
-            "model": llm_client.default_model,
-            "usage": llm_client.usage.to_dict(),
+            "model": default_model,
+            "usage": lint_agent.usage.to_dict(),
         }
 
     options = {

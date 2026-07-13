@@ -24,14 +24,16 @@ The base class handles:
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 from pydantic_ai import Agent
 
 from knox.agents.deps import PipelineAgentDeps
+from knox.agents.litellm_model import make_litellm_model
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -76,6 +78,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     system_template_name: ClassVar[str]
     result_type: ClassVar[type]
     deps_type: ClassVar[type[AgentDeps]] = PipelineAgentDeps
+    temperature: ClassVar[float | None] = None
 
     def __init__(
         self,
@@ -85,11 +88,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         retries: int = 2,
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
+        usage_tracker: UsageTracker | None = None,
+        fallback_models: list[str] | None = None,
     ) -> None:
         self._litellm_model = litellm_model
         self._timeout = timeout
         self._retries = retries
         self._max_tokens = max_tokens
+        self._usage_tracker = usage_tracker
+        self._fallback_models = fallback_models
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
@@ -160,9 +167,32 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """The KNOX-format (litellm) model string."""
         return self._litellm_model
 
-    @abstractmethod
+    @property
+    def usage(self) -> UsageTracker | None:
+        """The usage tracker, if one was provided."""
+        return self._usage_tracker
+
     def _build_agent(self) -> Agent[DepsT, ResultT]:
-        """Construct the wrapped PydanticAI agent. Called lazily on first run()."""
+        """Construct the wrapped PydanticAI agent. Called lazily on first run().
+
+        Subclasses can override to customize model_settings or agent construction.
+        """
+        model_settings: dict[str, object] = {"timeout": self._timeout}
+        if self.temperature is not None:
+            model_settings["temperature"] = self.temperature
+        if self._max_tokens is not None:
+            model_settings["max_tokens"] = self._max_tokens
+        return Agent(
+            make_litellm_model(
+                self._litellm_model,
+                usage_tracker=self._usage_tracker,
+                fallback_models=self._fallback_models,
+            ),
+            deps_type=self.deps_type,
+            output_type=self.result_type,
+            model_settings=model_settings,  # type: ignore[arg-type]
+            retries=self._retries,
+        )
 
     @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:

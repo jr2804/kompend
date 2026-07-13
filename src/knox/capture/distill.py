@@ -13,13 +13,13 @@ from pathlib import Path
 
 import yaml
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.distill import DistillAgent
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
 from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,7 +39,7 @@ class CapturedNote:
 def distill(
     sources_dir: Path,
     *,
-    llm_client: LLMClient | None = None,
+    distill_agent: DistillAgent | None = None,
 ) -> list[Path]:
     """Distill all captured notes into synthesized wiki pages.
 
@@ -69,7 +69,7 @@ def distill(
     written: list[Path] = []
 
     for tag, group_notes in groups.items():
-        page = _synthesize_with_llm(tag, group_notes, llm_client) if llm_client is not None else _synthesize_fallback(tag, group_notes)
+        page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
         filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
@@ -135,12 +135,12 @@ def _group_by_tag(notes: list[CapturedNote]) -> dict[str, list[CapturedNote]]:
 # ── Synthesis ───────────────────────────────────────────────────────────
 
 
-def _synthesize_with_llm(
+def _synthesize_with_agent(
     tag: str,
     notes: list[CapturedNote],
-    llm_client: LLMClient,
+    distill_agent: DistillAgent,
 ) -> dict:
-    """Call the LLM to synthesize a group of notes into a single page."""
+    """Use the DistillAgent to synthesize a group of notes into a single page."""
     loader = get_template_loader()
     notes_data = [
         {
@@ -150,33 +150,29 @@ def _synthesize_with_llm(
         }
         for n in notes
     ]
-    system_prompt = loader.render(
+    loader.render(
         "capture/distill.md.j2",
         notes=notes_data,
         group_tag=tag,
     )
     user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
-
-    result = llm_client.try_complete(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        role=LLMRole.CAPTURE_DISTILL,
-        response_format=JSON_RESPONSE_FORMAT,
-        temperature=0.2,
+    deps = PipelineAgentDeps(
+        text=user_prompt,
+        source_id=f"distill-{tag}",
+        timeout=distill_agent._timeout,
     )
 
-    if result and result.json_data:
-        data = result.json_data
-        return {
-            "title": str(data.get("title", tag)),
-            "content": str(data.get("content", "")),
-            "tags": list(data.get("tags", [tag])),
-        }
+    try:
+        result = distill_agent.run(deps)
+    except Exception:
+        logger.warning("DistillAgent failed for tag '%s', using fallback", tag)
+        return _synthesize_fallback(tag, notes)
 
-    logger.warning("LLM returned no usable result for tag '%s', using fallback", tag)
-    return _synthesize_fallback(tag, notes)
+    return {
+        "title": result.title or tag.replace("-", " ").replace("_", " ").title(),
+        "content": result.content or "",
+        "tags": result.tags or [tag],
+    }
 
 
 def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:

@@ -106,22 +106,21 @@ class TestDistill:
             encoding="utf-8",
         )
 
-        mock_result = MagicMock()
-        mock_result.json_data = {
-            "title": "Synthesized ML Page",
-            "content": "## Overview\n\nIntegrated content.",
-            "tags": ["ml", "synthesized"],
-        }
-        mock_client = MagicMock()
-        mock_client.try_complete.return_value = mock_result
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = MagicMock(
+            title="Synthesized ML Page",
+            content="## Overview\n\nIntegrated content.",
+            tags=["ml", "synthesized"],
+        )
+        mock_agent._timeout = 120
 
-        paths = distill(sources_dir, llm_client=mock_client)
+        paths = distill(sources_dir, distill_agent=mock_agent)
         assert len(paths) == 1
         output = paths[0].read_text(encoding="utf-8")
         assert "Synthesized ML Page" in output
         assert "Integrated content" in output
         assert "synthesized" in output
-        assert mock_client.try_complete.called
+        assert mock_agent.run.called
 
     def test_llm_failure_falls_back(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "sources"
@@ -134,10 +133,11 @@ class TestDistill:
 
         mock_result = MagicMock()
         mock_result.json_data = None
-        mock_client = MagicMock()
-        mock_client.try_complete.return_value = mock_result
+        mock_agent = MagicMock()
+        mock_agent.run.side_effect = Exception("LLM failed")
+        mock_agent._timeout = 120
 
-        paths = distill(sources_dir, llm_client=mock_client)
+        paths = distill(sources_dir, distill_agent=mock_agent)
         assert len(paths) == 1
         output = paths[0].read_text(encoding="utf-8")
         assert "Content A" in output
@@ -161,7 +161,6 @@ class TestCapture:
         paths = capture(
             "The transformer uses d_model=512",
             sources_dir=tmp_path,
-            llm_client=None,
             tags=["architecture", "decoder"],
         )
         assert len(paths) == 1

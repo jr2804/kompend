@@ -52,7 +52,8 @@ from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChu
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
-from knox.llm.client import LLMClient, _discover_context_window
+from knox.llm.client import LLMClient
+from knox.llm.context_window import discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 from knox.rag.zvec_store import _make_provider
@@ -224,7 +225,7 @@ class TwoPhaseCompiler(BaseCompiler):
         if llm_client is not None and llm_client.context_window is not None:
             cw = llm_client.context_window
         else:
-            cw = _discover_context_window(
+            cw = discover_context_window(
                 self._model,
                 fallback_max_input=config.llm.fallback_max_input,
                 fallback_max_output=config.llm.fallback_max_output,

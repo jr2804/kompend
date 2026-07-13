@@ -41,7 +41,9 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from knox.llm.failover import FailoverChain
 from knox.llm.format import salvage_json
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -125,7 +127,11 @@ def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
     return result
 
 
-def _make_litellm_function(model_string: str) -> Any:
+def _make_litellm_function(
+    model_string: str,
+    usage_tracker: UsageTracker | None = None,
+    fallback_models: list[str] | None = None,
+) -> Any:
     """Create a FunctionModel-compatible function calling ``litellm.completion()``."""
 
     def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -138,7 +144,11 @@ def _make_litellm_function(model_string: str) -> Any:
         if info.instructions:
             litellm_messages.insert(0, {"role": "system", "content": info.instructions})
 
-        kwargs: dict[str, Any] = {"model": model_string, "messages": litellm_messages}
+        # Build the model list for failover: primary + fallbacks
+        all_models = [model_string] + (fallback_models or [])
+
+        # Build kwargs once (same for all models in the chain)
+        kwargs: dict[str, Any] = {"messages": litellm_messages}
 
         # Forward model settings (timeout, max_tokens, temperature)
         if info.model_settings:
@@ -152,9 +162,34 @@ def _make_litellm_function(model_string: str) -> Any:
         if not info.allow_text_output:
             kwargs["response_format"] = {"type": "json_object"}
 
-        response = litellm.completion(**kwargs)
+        # Try models in order with failover on transient errors
+        if len(all_models) > 1:
+            chain = FailoverChain(all_models)
+            try:
+                result = chain.run(lambda m: litellm.completion(model=m, **kwargs))
+                response = result.value
+            except Exception as exc:
+                logger.warning(
+                    "All models in failover chain failed for '%s': %s",
+                    model_string,
+                    exc,
+                )
+                raise
+        else:
+            kwargs["model"] = model_string
+            response = litellm.completion(**kwargs)
         content = response.choices[0].message.content or ""
         finish_reason = response.choices[0].finish_reason
+
+        # Track usage if a tracker is provided
+        if usage_tracker is not None:
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                usage_tracker.record(
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                    completion_tokens=getattr(usage, "completion_tokens", 0),
+                    model=model_string,
+                )
 
         # Repair malformed JSON for structured output agents. Small quantized
         # models often return truncated or slightly malformed JSON (trailing
@@ -199,13 +234,26 @@ def _make_litellm_function(model_string: str) -> Any:
     return _fn
 
 
-def make_litellm_model(model_string: str) -> FunctionModel:
+def make_litellm_model(
+    model_string: str,
+    usage_tracker: UsageTracker | None = None,
+    fallback_models: list[str] | None = None,
+) -> FunctionModel:
     """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
 
     This preserves litellm's full provider dispatch chain — custom providers,
     API key resolution, monkey-patches, and per-call kwargs all work unchanged.
+
+    Args:
+        model_string: Model name in litellm format (``"provider/model"``).
+        usage_tracker: Optional :class:`UsageTracker` to record token counts.
+        fallback_models: Optional list of fallback models tried on transient errors.
     """
     return FunctionModel(
-        function=_make_litellm_function(model_string),
+        function=_make_litellm_function(
+            model_string,
+            usage_tracker=usage_tracker,
+            fallback_models=fallback_models,
+        ),
         model_name=model_string,
     )

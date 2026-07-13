@@ -12,7 +12,7 @@ from pathlib import Path
 import litellm
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
-from knox.llm.client import _discover_context_window
+from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
 
@@ -72,7 +72,7 @@ def _check_context_window(model: str | None, label: str) -> CheckResult:
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        cw = _discover_context_window(model)
+        cw = discover_context_window(model)
         source_label = cw.source.value if hasattr(cw.source, "value") else str(cw.source)
         if cw.source == "fallback":
             return CheckResult(
@@ -96,7 +96,7 @@ def _check_budget_consistency(model: str | None, cfg: dict[str, object] | None) 
         return CheckResult(name, True, "No model or config — skipped")
 
     try:
-        cw = _discover_context_window(model)
+        cw = discover_context_window(model)
     except Exception as exc:
         return CheckResult(name, False, f"Cannot discover context window: {exc}")
 

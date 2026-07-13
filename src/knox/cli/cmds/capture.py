@@ -9,6 +9,8 @@ from typing import Any
 import litellm
 import typer
 
+from knox.agents.capture import CaptureAgent
+from knox.agents.distill import DistillAgent
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
@@ -22,7 +24,7 @@ from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.utils.time import iso_local
-from knox.llm.client import LLMClient, _strip_reasoning
+from knox.llm.client import _strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
@@ -52,11 +54,14 @@ def capture_cmd(
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
-        llm_client = LLMClient.from_config(cfg)
+        capture_agent = CaptureAgent(
+            cfg.get("compile.llm.default_model", ""),
+            timeout=float(cfg.get("compile.llm.timeout", 120)),
+        )
     except Exception:
-        llm_client = None
+        capture_agent = None
 
-    paths = capture(text, sources_dir=sources_dir, llm_client=llm_client, tags=tag)
+    paths = capture(text, sources_dir=sources_dir, capture_agent=capture_agent, tags=tag)
     get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / CAPTURED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
@@ -106,11 +111,14 @@ def distill_cmd(
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
-        llm_client = LLMClient.from_config(cfg)
+        distill_agent = DistillAgent(
+            cfg.get("compile.llm.default_model", ""),
+            timeout=float(cfg.get("compile.llm.timeout", 120)),
+        )
     except Exception:
-        llm_client = None
+        distill_agent = None
 
-    paths = distill(sources_dir, llm_client=llm_client)
+    paths = distill(sources_dir, distill_agent=distill_agent)
     if not paths:
         get_console().print("No captured notes found to distill.")
         return

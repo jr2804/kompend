@@ -16,12 +16,13 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from knox.agents.categorize import CategorizeAgent
+from knox.agents.categorize_models import CategoryNode, CategoryTree
+from knox.agents.deps import PipelineAgentDeps
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths, is_protected_source
 from knox.core.templates import get_template_loader
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -204,19 +205,17 @@ def _build_files_payload(extractions: dict[str, Extraction]) -> str:
 def propose_categories(
     extractions: dict[str, Extraction],
     config: OrganizeConfig,
-    llm_client: LLMClient,
+    categorize_agent: CategorizeAgent,
 ) -> CategoryTree:
     """Ask the LLM to categorise every file into a hierarchical tree.
 
     The prompt comes from ``organize/categorize_prompt.md.j2`` and the
-    system prompt from ``organize/categorize_system.md.j2``. The LLM is
-    asked to return ``response_format=json_object`` so we can parse the
-    response without stripping markdown fences.
+    system prompt from ``organize/categorize_system.md.j2``.
     """
     if not extractions:
         return CategoryTree()
 
-    system = _loader.render(
+    _loader.render(
         "organize/categorize_system.md.j2",
         max_depth=config.max_depth,
         min_subcategories=config.min_subcategories,
@@ -228,20 +227,14 @@ def propose_categories(
         files_json=files_json,
     )
 
-    result = llm_client.try_complete(
-        [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        role=LLMRole.ORGANIZE_CATEGORIZE,
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
-    if result is None or result.json_data is None:
+    deps = PipelineAgentDeps(text=prompt, source_id="categorize", timeout=categorize_agent._timeout)
+    try:
+        result = categorize_agent.run(deps)
+    except Exception:
         logger.warning("LLM categorization failed; falling back to flat layout")
         return CategoryTree(categories=[], unfiled=sorted(extractions))
 
-    return _tree_from_json(result.json_data, sorted(extractions))
+    return _tree_from_json(result.model_dump(), sorted(extractions))
 
 
 def _tree_from_json(payload: object, known_files: list[str]) -> CategoryTree:

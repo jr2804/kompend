@@ -16,6 +16,7 @@ from typing import Any
 
 import typer
 
+from knox.agents.verification import VerificationAgent
 from knox.cli._progress import PipelineProgress
 from knox.cli._sources import download_urls, ensure_in_sources, resolve_files
 from knox.cli.args import (
@@ -29,7 +30,6 @@ from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
-from knox.llm.roles import LLMRole
 from knox.logging import get_console, get_err_console, get_logger, set_verbosity
 from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
@@ -250,12 +250,11 @@ def _verify_claims(
     wiki: CompiledWiki,
     output_dir: Path,
     *,
-    client: object,
-    model: str,
+    agent: VerificationAgent,
     verify_budget: int = 3000,
 ) -> None:
     """Run grounding verification over wiki claims."""
-    result = verify_wiki(wiki, output_dir, client=client, model=model, verify_budget=verify_budget)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    result = verify_wiki(wiki, output_dir, agent=agent, verify_budget=verify_budget)
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
@@ -430,15 +429,16 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
         _mark_private(opts.wiki, opts.output_dir)
 
     if opts.verify:
-        resolved_model = opts.pipeline_config.llm.default_model
         if opts.llm_client is None:
             get_err_console().print("Warning: --verify requires an LLM client — skipping verification")
         else:
             _verify_claims(
                 opts.wiki,
                 opts.output_dir,
-                client=opts.llm_client,
-                model=resolved_model,
+                agent=VerificationAgent(
+                    opts.pipeline_config.llm.default_model or "",
+                    timeout=opts.pipeline_config.llm.timeout,
+                ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
             )
 

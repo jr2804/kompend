@@ -3,13 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from knox.agents.capture import CaptureAgent
+from knox.agents.deps import PipelineAgentDeps
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR
-from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,7 +26,7 @@ def capture(
     text: str,
     *,
     sources_dir: Path,
-    llm_client: LLMClient | None = None,
+    capture_agent: CaptureAgent | None = None,
     tags: list[str] | None = None,
 ) -> list[Path]:
     sources_dir.mkdir(parents=True, exist_ok=True)
@@ -36,8 +35,8 @@ def capture(
 
     user_tags = list(tags or [])
     items = (
-        _extract_with_llm(text, llm_client, user_tags)
-        if llm_client is not None
+        _extract_with_agent(text, capture_agent, user_tags)
+        if capture_agent is not None
         else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
     )
 
@@ -69,41 +68,28 @@ source: capture
     return paths
 
 
-def _extract_with_llm(text: str, llm_client: LLMClient, user_tags: list[str]) -> list[CapturedItem]:
-    loader = get_template_loader()
-    system_prompt = loader.render("capture/capture_system.md.j2")
+def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[str]) -> list[CapturedItem]:
+    """Use the CaptureAgent to extract structured items from text."""
     tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
     user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
+    deps = PipelineAgentDeps(text=user_prompt, source_id="capture", timeout=capture_agent._timeout)
 
-    result = llm_client.complete(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        role=LLMRole.CAPTURE,
-        response_format=JSON_RESPONSE_FORMAT,
-        temperature=0.0,
-    )
-
-    if result.json_data is None:
-        logger.warning("LLM returned no JSON, falling back to raw capture")
-        return [CapturedItem(kind="note", title=make_title(text), content=text)]
-
-    items_raw = result.json_data.get("items", [])
-    if not isinstance(items_raw, list):
+    try:
+        result = capture_agent.run(deps)
+    except Exception:
+        logger.warning("CaptureAgent failed, falling back to raw capture")
         return [CapturedItem(kind="note", title=make_title(text), content=text)]
 
     items: list[CapturedItem] = []
-    for raw in items_raw:
-        if not isinstance(raw, dict):
-            continue
-        kind = raw.get("kind", "note")
-        title = raw.get("title", make_title(text))
-        content = raw.get("content", text)
-        tags = raw.get("tags", [])
-        if not isinstance(tags, list):
-            tags = []
-        items.append(CapturedItem(kind=kind, title=title, content=content, tags=_merge_tags(user_tags, tags)))
+    for raw in result.items:
+        items.append(
+            CapturedItem(
+                kind=raw.kind or "note",
+                title=raw.title or make_title(text),
+                content=raw.content or text,
+                tags=_merge_tags(user_tags, raw.tags),
+            )
+        )
 
     return items if items else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
 

@@ -9,6 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from knox.agents.categorize import CategorizeAgent
+from knox.agents.categorize_models import CategoryNode as PydanticNode
+from knox.agents.categorize_models import CategoryTree as PydanticTree
 from knox.cli.app import app
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig, resolve_config
@@ -19,8 +22,6 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_SUBCATEGORIES,
 )
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
-from knox.llm.client import LLMClient, LLMResult
-from knox.llm.failover import CallDiagnostics
 from knox.organize import (
     CategoryNode,
     CategoryTree,
@@ -42,23 +43,25 @@ from knox.organize.moves import FileMove
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-def _diag() -> CallDiagnostics:
-    return CallDiagnostics(
-        model_used="test-model",
-        attempts=1,
-        total_latency_s=0.0,
-    )
-
-
-def _fake_llm(payload: dict[str, Any] | None) -> LLMClient:
-    """Return an LLMClient that yields the given JSON payload once."""
-    client = MagicMock(spec=LLMClient)
+def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
+    """Return a CategorizeAgent that yields the given CategoryTree once."""
+    agent = MagicMock(spec=CategorizeAgent)
+    agent._timeout = 120
     if payload is None:
-        client.try_complete.return_value = None
+        agent.run.side_effect = Exception("LLM failed")
     else:
-        result = LLMResult(content=json.dumps(payload), json_data=payload, diagnostics=_diag())
-        client.try_complete.return_value = result
-    return client
+        cats = []
+        for c in payload.get("categories", []):
+            subs = [PydanticNode(name=s["name"], files=s.get("files", [])) for s in c.get("subcategories", [])]
+            cats.append(PydanticNode(name=c["name"], files=c.get("files", []), subcategories=subs))
+        tree = PydanticTree(categories=cats, unfiled=payload.get("unfiled", []))
+        agent.run.return_value = tree
+    return agent
+
+
+def _fake_llm(payload: dict[str, Any] | None) -> CategorizeAgent:
+    """Legacy alias for _fake_agent."""
+    return _fake_agent(payload)
 
 
 def _write_extraction(base_dir: Path, source: str, summary: str = "test summary") -> None:
@@ -716,7 +719,7 @@ class TestOrganizeSourcesDryRun:
             base_dir=base,
             sources_dir=sources,
             output_dir=output,
-            llm_client=llm,
+            categorize_agent=llm,
             config=OrganizeConfig(),
             dry_run=True,
         )
@@ -735,7 +738,7 @@ class TestOrganizeSourcesDryRun:
             base_dir=base,
             sources_dir=sources,
             output_dir=output,
-            llm_client=_fake_llm(None),
+            categorize_agent=_fake_llm(None),
             dry_run=False,
         )
 
@@ -771,7 +774,7 @@ class TestOrganizeSourcesApply:
             base_dir=base,
             sources_dir=sources,
             output_dir=output,
-            llm_client=llm,
+            categorize_agent=llm,
             config=OrganizeConfig(),
             dry_run=False,
         )

@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from knox.agents.lint import LintRuleAgent
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES
@@ -64,14 +65,14 @@ class LintRunner:
         *,
         rules: list[str] | None = None,
         enable_llm: bool = False,
-        llm_client: Any | None = None,
+        lint_agent: LintRuleAgent | None = None,
         lint_page_budget: int | None = None,
         fix: bool = False,
         sources_dir: str | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
-        self.llm_client = llm_client
+        self._lint_agent = lint_agent
         self.lint_page_budget = lint_page_budget or 100000
         self.fix = fix
         self.sources_dir = sources_dir
@@ -110,7 +111,7 @@ class LintRunner:
         """Build the list of rule instances to run."""
         rules: list[Any] = []
 
-        llm_kwargs = {"llm_client": self.llm_client, "lint_page_budget": self.lint_page_budget}
+        llm_kwargs = {"agent": self._lint_agent, "lint_page_budget": self.lint_page_budget}
 
         if self.requested_rules:
             for name in self.requested_rules:

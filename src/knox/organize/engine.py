@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from knox.agents.categorize import CategorizeAgent
 from knox.core.config import OrganizeConfig, resolve_config
 from knox.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
@@ -21,7 +22,6 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_SUBCATEGORIES,
 )
 from knox.core.paths import VaultPaths, is_protected_source
-from knox.llm.client import LLMClient
 from knox.logging import get_logger
 from knox.organize.categorize import (
     CategoryNode,
@@ -69,7 +69,7 @@ def organize_sources(
     base_dir: Path,
     sources_dir: Path,
     output_dir: Path,
-    llm_client: LLMClient,
+    categorize_agent: CategorizeAgent,
     config: OrganizeConfig | None = None,
     *,
     dry_run: bool = False,
@@ -86,9 +86,8 @@ def organize_sources(
     output_dir:
         Where the wiki output lives. Wiki links in this tree will be
         rewritten after the move.
-    llm_client:
-        The LLM client used for categorisation. Must support the
-        ``organize.categorize`` role.
+    categorize_agent:
+        The PydanticAI agent used for categorisation.
     config:
         Optional :class:`OrganizeConfig`. When ``None`` we resolve it
         from the project config.
@@ -114,7 +113,7 @@ def organize_sources(
 
     files_without_summary = _files_without_summary(sources_dir, extractions)
 
-    proposed = propose_categories(extractions, config, llm_client)
+    proposed = propose_categories(extractions, config, categorize_agent)
     validated = validate_tree(proposed, config)
 
     if dry_run:
