@@ -6,6 +6,7 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -28,8 +29,6 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
-
-_CHARS_PER_TOKEN = 4  # Approximate for English text.
 
 # Maximum slug length. Windows limits a single path component to 255 chars;
 # the LLM sometimes emits a full sentence as a page title, which slugifies to
@@ -56,15 +55,33 @@ _FAILURE_THRESHOLD_MIN: Final[int] = 5
 # enough that ``max_input - system - gen_output_max`` rounds to 1 token.
 _MIN_SEGMENT_TOKENS = 512
 
+_DEFAULT_CHARS_PER_TOKEN: Final[float] = 3.85
+
+
+@functools.cache
+def _chars_per_token() -> float:
+    """Return the characters-per-token heuristic used for budget estimation.
+
+    Override via the ``KNOX_CHARS_PER_TOKEN`` environment variable.
+    The value is parsed as a float and returned as-is.
+    Falls back to _DEFAULT_CHARS_PER_TOKEN when unset or invalid.
+    """
+    raw = os.environ.get("KNOX_CHARS_PER_TOKEN", str(_DEFAULT_CHARS_PER_TOKEN))
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using default %s", raw, _DEFAULT_CHARS_PER_TOKEN)
+        return _DEFAULT_CHARS_PER_TOKEN
+
 
 def _tokens_to_chars(tokens: int) -> int:
     """Convert token count to approximate character count."""
-    return tokens * _CHARS_PER_TOKEN
+    return int(tokens * _chars_per_token())
 
 
 def _chars_to_tokens(chars: int) -> int:
     """Convert character count to approximate token count."""
-    return max(1, chars // _CHARS_PER_TOKEN)
+    return max(1, int(chars / _chars_per_token()))
 
 
 _ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")

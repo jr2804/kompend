@@ -197,8 +197,32 @@ Checks performed:
 3. **Parsers** — all registered parser dependencies load correctly
 4. **Git repository** — check if inside a git repo
 5. **Disk space** — warn if < 500 MB free
-6. **Environment variables** — KNOX_LLM_MODEL, KNOX_LLM_PROVIDER, OPENAI_API_KEY
-7. **LLM connectivity** — quick ping to configured LLM (only with `--verbose`)
+6. **LLM context window** — auto-discovered size and source (litellm, Ollama, models.dev, or fallback)
+7. **VLM context window** — same for the configured VLM model
+8. **Budget consistency** — validates that `gen_output_max` and `extract_output_max` fit within the context window, and that sufficient input budget remains after reserving output tokens
+9. **LLM connectivity** — quick ping to configured LLM
+10. **VLM connectivity** — quick ping to configured VLM
+11. **Embedding connectivity** — quick ping to configured embedding model
+
+Exit code: `0` if all checks pass, `1` if any check fails.
+
+Example output::
+
+```text
+  [OK] sources-directory: Sources dir OK: /path/to/sources
+  [OK] output-directory: Output dir OK: /path/to/wiki
+  [OK] parsers: 3 parser(s) registered
+  [OK] git-repo: Inside a git repository
+  [OK] disk-space: 102400 MB free
+  [OK] context-window-llm: ollama/gemma4:e2b — 128000 in / 128000 out tokens (source: fallback)
+  [OK] context-window-vlm: No vlm model configured — skipped
+  [OK] budget-consistency: Budgets OK: 128000 ctx, 32768 gen_out, 16384 extract_out, ~95104 input
+  [OK] connectivity-llm: llm OK (ollama/gemma4:e2b)
+  [OK] connectivity-vlm: No vlm model configured — skipped
+  [OK] connectivity-embed: No embed model configured — skipped
+
+  11/11 checks passed
+```
 
 Exit code: `0` if all checks pass, `1` if any check fails.
 

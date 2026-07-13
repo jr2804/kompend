@@ -12,6 +12,7 @@ from pathlib import Path
 import litellm
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
+from knox.llm.client import _discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
 
@@ -62,6 +63,91 @@ def _check_parsers() -> CheckResult:
     name = "parsers"
     router = build_default_router()
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
+
+
+def _check_context_window(model: str | None, label: str) -> CheckResult:
+    """Discover and report the context window for a model."""
+    name = f"context-window-{label}"
+    if not model:
+        return CheckResult(name, True, f"No {label} model configured — skipped")
+
+    try:
+        cw = _discover_context_window(model)
+        source_label = cw.source.value if hasattr(cw.source, "value") else str(cw.source)
+        if cw.source == "fallback":
+            return CheckResult(
+                name,
+                True,
+                f"{label}: {cw.max_input} in / {cw.max_output} out tokens ({source_label} — model not found in registry)",
+            )
+        return CheckResult(
+            name,
+            True,
+            f"{label}: {cw.max_input} in / {cw.max_output} out tokens (source: {source_label})",
+        )
+    except Exception as exc:
+        return CheckResult(name, False, f"{label} context window discovery failed: {exc}")
+
+
+def _check_budget_consistency(model: str | None, cfg: dict[str, object] | None) -> CheckResult:
+    """Check that budget config values don't exceed the model's context window."""
+    name = "budget-consistency"
+    if not model or cfg is None:
+        return CheckResult(name, True, "No model or config — skipped")
+
+    try:
+        cw = _discover_context_window(model)
+    except Exception as exc:
+        return CheckResult(name, False, f"Cannot discover context window: {exc}")
+
+    issues: list[str] = []
+
+    # Check gen_output_max vs context window
+    gen_max = _cfg_get_int(cfg, "compile.budget.gen_output_max", 32768)
+    if gen_max > cw.max_output:
+        issues.append(f"gen_output_max ({gen_max}) > context window output ({cw.max_output})")
+
+    # Check extract_output_max vs context window
+    extract_max = _cfg_get_int(cfg, "compile.budget.extract_output_max", 16384)
+    if extract_max > cw.max_output:
+        issues.append(f"extract_output_max ({extract_max}) > context window output ({cw.max_output})")
+
+    # Check that input + output fits in context window
+    sys_tokens = 128  # approximate system prompt overhead
+    input_budget = cw.max_input - sys_tokens - gen_max
+    if input_budget < 512:
+        issues.append(
+            f"Input budget ({input_budget} tokens) too small after reserving "
+            f"{sys_tokens} system + {gen_max} output tokens in {cw.max_input} context window. "
+            f"Reduce gen_output_max or increase context_window_cap."
+        )
+
+    if not issues:
+        return CheckResult(
+            name,
+            True,
+            f"Budgets OK: {cw.max_input} ctx, {gen_max} gen_out, {extract_max} extract_out, ~{input_budget} input",
+        )
+    return CheckResult(name, False, "; ".join(issues))
+
+
+def _cfg_get_int(cfg: dict[str, object], key: str, default: int) -> int:
+    """Read an int from a dotted config key."""
+    parts = key.split(".")
+    val: object = cfg
+    for p in parts:
+        if isinstance(val, dict):
+            val = val.get(p, {})
+        else:
+            return default
+    if isinstance(val, (int, float)):
+        return int(val)
+    if isinstance(val, str):
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+    return default
 
 
 def _ping_model(model: str | None, label: str) -> CheckResult:
@@ -147,6 +233,7 @@ def run_doctor(
     default_model: str | None = None,
     vlm_model: str | None = None,
     embed_model: str | None = None,
+    cfg: dict[str, object] | None = None,
 ) -> list[CheckResult]:
     """Run all doctor checks and return results.
 
@@ -162,6 +249,9 @@ def run_doctor(
         VLM model name for the connectivity ping.
     embed_model:
         Embedding model name for the connectivity ping.
+    cfg:
+        Optional resolved config dict. When provided, budget consistency
+        checks are run against the discovered context window.
     """
     results: list[CheckResult] = []
 
@@ -170,6 +260,9 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
+    results.append(_check_context_window(default_model, "llm"))
+    results.append(_check_context_window(vlm_model, "vlm"))
+    results.append(_check_budget_consistency(default_model, cfg))
     results.append(_ping_model(default_model, "llm"))
     results.append(_ping_model(vlm_model, "vlm"))
     results.append(_ping_embed_model(embed_model))
