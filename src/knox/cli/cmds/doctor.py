@@ -11,8 +11,7 @@ from pathlib import Path
 
 import litellm
 
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
+from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
 
@@ -66,27 +65,21 @@ def _check_parsers() -> CheckResult:
 
 
 def _ping_model(model: str | None, label: str) -> CheckResult:
-    """Ping a single completion-type model (LLM or VLM)."""
+    """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
     if not model:
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        client = LLMClient(default_model=model)
-        result = client.try_complete(
-            [{"role": "user", "content": "Respond with exactly one word: ok"}],
-            role=LLMRole.DOCTOR,
-            # Reasoning models (e.g. deepseek-v4-flash) emit reasoning_content
-            # before the answer; a tiny budget is consumed by thinking and the
-            # visible content stays empty -> false negative on connectivity.
-            # 128 gives reasoning headroom while staying below litellm's
-            # repetition-loop threshold (some vision models spam on a text ping).
+        agent = DoctorAgent(
+            litellm_model=model,
+            timeout=30.0,
             max_tokens=128,
         )
-        if result is not None:
-            model_used = result.diagnostics.model_used
-            return CheckResult(name, True, f"{label} OK ({model_used})")
-        return CheckResult(name, False, f"{label} returned no response")
+        result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
+        if result and result.strip():
+            return CheckResult(name, True, f"{label} OK ({model})")
+        return CheckResult(name, False, f"{label} returned empty response")
     except Exception as exc:
         return CheckResult(name, False, f"{label} failed: {exc}")
 

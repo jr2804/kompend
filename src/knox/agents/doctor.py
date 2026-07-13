@@ -1,0 +1,68 @@
+"""DoctorAgent — PydanticAI agent for the ``knox doctor`` connectivity check.
+
+Replaces the direct ``LLMClient.try_complete()`` call in the doctor command
+with a typed PydanticAI agent. The agent returns free text (a string) —
+the model's response to a simple ping prompt.
+
+Usage::
+
+    from knox.agents.doctor import DoctorAgent
+
+    agent = DoctorAgent(litellm_model="ollama/gemma4:e2b")
+    response: str = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from pydantic_ai import Agent
+
+from knox.agents.base import KnoxAgentBase
+from knox.agents.litellm_model import make_litellm_model
+
+
+@dataclass
+class DoctorDeps:
+    """Deps for the doctor ping agent.
+
+    Attributes:
+        ping: The ping prompt to send to the model.
+        timeout: Per-call timeout in seconds.
+    """
+
+    ping: str
+    timeout: float = 30.0
+
+
+class DoctorAgent(KnoxAgentBase[str, DoctorDeps]):
+    """PydanticAI agent for the doctor connectivity check.
+
+    Returns free text (the model's response to a ping prompt).
+    """
+
+    template_name: str = ""  # not used; render_user_prompt is overridden
+    system_template_name: str = ""  # not used; render_system_prompt is overridden
+    result_type: type = str
+    deps_type: type[DoctorDeps] = DoctorDeps
+
+    def render_user_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
+        """The user prompt is the ping string — no template needed."""
+        return deps.ping
+
+    def render_system_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
+        """No system prompt for the doctor ping."""
+        return ""
+
+    def _build_agent(self) -> Agent[DoctorDeps, str]:
+        """Construct the PydanticAI agent with ``output_type=str``."""
+        model_settings = {"timeout": self._timeout}
+        if self._max_tokens is not None:
+            model_settings["max_tokens"] = self._max_tokens
+        return Agent(
+            make_litellm_model(self._litellm_model),
+            deps_type=self.deps_type,
+            output_type=str,
+            model_settings=model_settings,  # type: ignore[arg-type]
+            retries=self._retries,
+        )
