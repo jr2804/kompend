@@ -17,6 +17,7 @@ from typing import Any
 import typer
 
 from knox.agents.verification import VerificationAgent
+from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
 from knox.cli._sources import download_urls, ensure_in_sources, resolve_files
 from knox.cli.args import (
@@ -373,9 +374,11 @@ def _run_overview_synthesis(
         overview_path = write_overview(
             wiki,
             base_dir,
-            model=resolved_model,
+            agent=WikiIndexAgent(
+                pipeline_config.llm.default_model or "",
+                timeout=pipeline_config.llm.timeout,
+            ),
             overview_budget=pipeline_config.budget.overview_output_max * 4,
-            timeout=pipeline_config.llm.timeout,
             progress_callback=_synth_cb if synthesize_tracker.enabled else None,
         )
     except Exception as exc:

@@ -14,6 +14,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.wiki_index import WikiIndexAgent
 from knox.core.cache.store import CacheStore
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WIKI_TOPICS
@@ -21,8 +23,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local, iso_local
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
+from knox.logging import get_logger
 
 _loader = get_template_loader()
 
@@ -443,10 +444,9 @@ def write_index(
 
 def generate_overview(
     source_texts: list[str],
-    model: str,
+    agent: WikiIndexAgent,
     *,
     overview_budget: int,
-    timeout: float | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> str | None:
     """Generate an overview of the wiki from node content.
@@ -485,12 +485,15 @@ def generate_overview(
     partials: list[str] = []
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
-        result = client.complete(
-            role=LLMRole.SYNTHESIZE,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if result.content:
-            partials.append(result.content)
+        deps = PipelineAgentDeps(text=prompt, source_id="overview", timeout=agent._timeout)
+        try:
+            result = agent.run(deps)
+            if result and isinstance(result, dict):
+                content = result.get("content", "") or str(result.get("text", ""))
+                if content:
+                    partials.append(content)
+        except Exception as exc:
+            logger.warning("Overview synthesis batch %d failed: %s", idx, exc)
         if progress_callback:
             progress_callback(idx + 1, total_steps)
 
@@ -505,22 +508,26 @@ def generate_overview(
     # hide a real LLM failure behind a degraded overview.
     combined = "\n\n".join(partials)
     prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
-    result = client.complete(
-        role=LLMRole.SYNTHESIZE,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    if progress_callback:
-        progress_callback(total_steps, total_steps)
-    return result.content
+    deps = PipelineAgentDeps(text=prompt, source_id="overview-merge", timeout=agent._timeout)
+    try:
+        result = agent.run(deps)
+        if result and isinstance(result, dict):
+            content = result.get("content", "") or str(result.get("text", ""))
+            if content:
+                if progress_callback:
+                    progress_callback(total_steps, total_steps)
+                return content
+    except Exception as exc:
+        logger.warning("Overview merge failed: %s", exc)
+    return None
 
 
 def write_overview(
     wiki: CompiledWiki,
     base_dir: Path,
-    model: str,
+    agent: WikiIndexAgent,
     *,
     overview_budget: int,
-    timeout: float | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> Path | None:
     """Write ``overview.md`` (LLM-generated). Returns the path or None."""
@@ -540,7 +547,7 @@ def write_overview(
         overview_path.write_text(cached, encoding="utf-8")
         return overview_path
 
-    content = generate_overview(source_texts, model=model, overview_budget=overview_budget, timeout=timeout, progress_callback=progress_callback)
+    content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
     if not content:
         return None
 
