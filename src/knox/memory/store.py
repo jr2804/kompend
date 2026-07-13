@@ -14,7 +14,7 @@ import zvec as _zvec
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_MEMORY_QUERY_CHARS
 from knox.core.paths import VaultPaths
-from knox.core.timeutil import iso_local
+from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, _make_provider
 
