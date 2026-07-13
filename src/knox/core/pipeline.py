@@ -42,8 +42,6 @@ from knox.core.models import (
     ResolvedChunk,
     WikiField,
     WikiNode,
-    tree_from_dict,
-    tree_to_dict,
 )
 from knox.core.paths import VaultPaths
 from knox.core.pipeline_defs import (
@@ -654,7 +652,7 @@ class WikiPipeline:
                 if cached is not None:
                     if content_hash:
                         self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
-                    tree = tree_from_dict(cached)
+                    tree = ChunkTree.from_dict(cached)
                     self._apply_tags_to_tree(tree, source_file)
                     return tree
 
@@ -668,7 +666,7 @@ class WikiPipeline:
                     "source": content_hash,
                     "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
                 }
-                self._cache_store.set("chunk", chunk_deps, tree_to_dict(tree))
+                self._cache_store.set("chunk", chunk_deps, tree.to_dict())
             return tree
 
         trees: list[ChunkTree] = []

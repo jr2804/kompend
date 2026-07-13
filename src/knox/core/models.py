@@ -53,6 +53,69 @@ class WikiField(StrEnum):
     METADATA = "metadata"
 
 
+class ChunkField(StrEnum):
+    """Dict key contract for ``Chunk`` JSON serialization."""
+
+    ID = "id"
+    TEXT = "text"
+    ELEMENT_TYPES = "element_types"
+    SOURCE_ELEMENTS = "source_elements"
+    SOURCE_FILE = "source_file"
+    HEADING_CONTEXT = "heading_context"
+    TOKEN_COUNT = "token_count"  # noqa: S105
+    READING_ORDER = "reading_order"
+    METADATA = "metadata"
+
+
+class ChunkNodeField(StrEnum):
+    """Dict key contract for ``ChunkNode`` JSON serialization."""
+
+    ID = "id"
+    PARENT_ID = "parent_id"
+    CHILDREN_IDS = "children_ids"
+    DEPTH = "depth"
+    HEADING_PATH = "heading_path"
+    CHUNK = "chunk"
+    STRUCTURED = "structured"
+    SUMMARY = "summary"
+    TOKEN_COUNT = "token_count"  # noqa: S105
+
+
+class ChunkTreeField(StrEnum):
+    """Dict key contract for ``ChunkTree`` JSON serialization."""
+
+    VERSION = "version"
+    ROOT_ID = "root_id"
+    NODES = "nodes"
+    SOURCE_FILE = "source_file"
+    STRATEGY = "strategy"
+
+
+class StructuredField(StrEnum):
+    """Dict key contract for ``StructuredData`` JSON serialization.
+
+    Shared discriminator key plus per-variant keys. Each variant reuses
+    ``_TYPE`` for its ``_type`` discriminator and inherits common fields
+    like ``caption``.
+    """
+
+    _TYPE = "_type"
+    TYPE_TABLE = "table"
+    TYPE_EQUATION = "equation"
+    TYPE_FIGURE = "figure"
+    COLUMNS = "columns"
+    ROWS = "rows"
+    CAPTION = "caption"
+    LATEX = "latex"
+    VARIABLES = "variables"
+    NAME = "name"
+    DEFINITION = "definition"
+    UNITS = "units"
+    ALT_TEXT = "alt_text"
+    IMAGE_REF = "image_ref"
+    DESCRIPTION = "description"
+
+
 class ElementType(StrEnum):
     """Document element types for structure-preserving extraction.
 
@@ -113,6 +176,36 @@ class Chunk:
     reading_order: tuple[int, int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict."""
+        return {
+            ChunkField.ID: self.id,
+            ChunkField.TEXT: self.text,
+            ChunkField.ELEMENT_TYPES: [str(et) for et in self.element_types],
+            ChunkField.SOURCE_ELEMENTS: self.source_elements,
+            ChunkField.SOURCE_FILE: self.source_file.as_posix() if self.source_file else None,
+            ChunkField.HEADING_CONTEXT: self.heading_context,
+            ChunkField.TOKEN_COUNT: self.token_count,
+            ChunkField.READING_ORDER: list(self.reading_order) if self.reading_order else None,
+            ChunkField.METADATA: self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Chunk:
+        """Deserialize from a dict produced by :meth:`to_dict`."""
+        src = d.get(ChunkField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
+        return cls(
+            id=d[ChunkField.ID],
+            text=d[ChunkField.TEXT],
+            element_types=[ElementType(et) for et in d.get(ChunkField.ELEMENT_TYPES, [])],
+            source_elements=d.get(ChunkField.SOURCE_ELEMENTS, []),
+            source_file=Path(src) if src else None,
+            heading_context=d.get(ChunkField.HEADING_CONTEXT, ""),
+            token_count=d.get(ChunkField.TOKEN_COUNT, 0),
+            reading_order=tuple(d[ChunkField.READING_ORDER]) if d.get(ChunkField.READING_ORDER) else None,
+            metadata=d.get(ChunkField.METADATA, {}),
+        )
+
 
 # ── Structured data types (preserved, not stringified) ──────────────────
 
@@ -150,6 +243,24 @@ class StructuredTable:
     rows: list[dict[str, str]]
     caption: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict."""
+        return {
+            StructuredField._TYPE: StructuredField.TYPE_TABLE.value,
+            StructuredField.COLUMNS: self.columns,
+            StructuredField.ROWS: self.rows,
+            StructuredField.CAPTION: self.caption,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> StructuredTable:
+        """Deserialize from a dict produced by :meth:`to_dict`."""
+        return cls(
+            columns=d.get(StructuredField.COLUMNS, []),
+            rows=d.get(StructuredField.ROWS, []),
+            caption=d.get(StructuredField.CAPTION, ""),
+        )
+
 
 @dataclass
 class StructuredEquation:
@@ -158,6 +269,39 @@ class StructuredEquation:
     latex: str
     variables: list[EquationVariable] = field(default_factory=list)
     caption: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict."""
+        return {
+            StructuredField._TYPE: StructuredField.TYPE_EQUATION.value,
+            StructuredField.LATEX: self.latex,
+            StructuredField.VARIABLES: [
+                {
+                    StructuredField.NAME: variable.name,
+                    StructuredField.DEFINITION: variable.definition,
+                    StructuredField.UNITS: variable.units,
+                }
+                for variable in self.variables
+            ],
+            StructuredField.CAPTION: self.caption,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> StructuredEquation:
+        """Deserialize from a dict produced by :meth:`to_dict`."""
+        variables = [
+            EquationVariable(
+                name=v.get(StructuredField.NAME, ""),
+                definition=v.get(StructuredField.DEFINITION, ""),
+                units=v.get(StructuredField.UNITS, ""),
+            )
+            for v in d.get(StructuredField.VARIABLES, [])
+        ]
+        return cls(
+            latex=d.get(StructuredField.LATEX, ""),
+            variables=variables,
+            caption=d.get(StructuredField.CAPTION, ""),
+        )
 
 
 @dataclass
@@ -168,6 +312,26 @@ class StructuredFigure:
     alt_text: str = ""
     image_ref: str = ""
     description: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict."""
+        return {
+            StructuredField._TYPE: StructuredField.TYPE_FIGURE.value,
+            StructuredField.CAPTION: self.caption,
+            StructuredField.ALT_TEXT: self.alt_text,
+            StructuredField.IMAGE_REF: self.image_ref,
+            StructuredField.DESCRIPTION: self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> StructuredFigure:
+        """Deserialize from a dict produced by :meth:`to_dict`."""
+        return cls(
+            caption=d.get(StructuredField.CAPTION, ""),
+            alt_text=d.get(StructuredField.ALT_TEXT, ""),
+            image_ref=d.get(StructuredField.IMAGE_REF, ""),
+            description=d.get(StructuredField.DESCRIPTION, ""),
+        )
 
 
 StructuredData: TypeAlias = StructuredTable | StructuredEquation | StructuredFigure  # noqa: UP040
@@ -196,6 +360,35 @@ class ChunkNode:
     token_count: int = 0
     contextual_context: str = ""
     contextual_embedding: list[float] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict."""
+        return {
+            ChunkNodeField.ID: self.id,
+            ChunkNodeField.PARENT_ID: self.parent_id,
+            ChunkNodeField.CHILDREN_IDS: self.children_ids,
+            ChunkNodeField.DEPTH: self.depth,
+            ChunkNodeField.HEADING_PATH: list(self.heading_path),
+            ChunkNodeField.CHUNK: self.chunk.to_dict() if self.chunk else None,
+            ChunkNodeField.STRUCTURED: self.structured.to_dict() if self.structured else None,
+            ChunkNodeField.SUMMARY: self.summary,
+            ChunkNodeField.TOKEN_COUNT: self.token_count,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ChunkNode:
+        """Deserialize from a dict produced by :meth:`to_dict`."""
+        return cls(
+            id=d[ChunkNodeField.ID],
+            parent_id=d.get(ChunkNodeField.PARENT_ID),
+            children_ids=d.get(ChunkNodeField.CHILDREN_IDS, []),
+            depth=d.get(ChunkNodeField.DEPTH, 0),
+            heading_path=tuple(d.get(ChunkNodeField.HEADING_PATH, ())),
+            chunk=Chunk.from_dict(d[ChunkNodeField.CHUNK]) if d.get(ChunkNodeField.CHUNK) else None,
+            structured=_structured_from_dict(d[ChunkNodeField.STRUCTURED]) if d.get(ChunkNodeField.STRUCTURED) else None,
+            summary=d.get(ChunkNodeField.SUMMARY, ""),
+            token_count=d.get(ChunkNodeField.TOKEN_COUNT, 0),
+        )
 
 
 @dataclass
@@ -247,6 +440,35 @@ class ChunkTree:
         for child_id in node.children_ids:
             total += self.subtree_tokens(child_id)
         return total
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-safe dict for caching."""
+        return {
+            ChunkTreeField.VERSION: CHUNK_TREE_CACHE_VERSION,
+            ChunkTreeField.ROOT_ID: self.root_id,
+            ChunkTreeField.NODES: {nid: n.to_dict() for nid, n in self.nodes.items()},
+            ChunkTreeField.SOURCE_FILE: self.source_file.as_posix() if self.source_file else None,
+            ChunkTreeField.STRATEGY: str(self.strategy),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ChunkTree:
+        """Deserialize from a dict produced by :meth:`to_dict`.
+
+        Raises ``ValueError`` on cache-version mismatch so callers can
+        regenerate instead of reading a stale format.
+        """
+        version = d.get(ChunkTreeField.VERSION, 0)
+        if version != CHUNK_TREE_CACHE_VERSION:
+            msg = f"ChunkTree cache version mismatch: expected {CHUNK_TREE_CACHE_VERSION}, got {version}"
+            raise ValueError(msg)
+        src = d.get(ChunkTreeField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
+        return cls(
+            root_id=d[ChunkTreeField.ROOT_ID],
+            nodes={nid: ChunkNode.from_dict(n) for nid, n in d.get(ChunkTreeField.NODES, {}).items()},
+            source_file=Path(src) if src else None,
+            strategy=ChunkStrategy(d.get(ChunkTreeField.STRATEGY, ChunkStrategy.SINGLE_PASS)),
+        )
 
     def _walk(self, node_id: str) -> Iterator[ChunkNode]:
         node = self.nodes.get(node_id)
@@ -353,157 +575,30 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
 # ── ChunkTree serialization ─────────────────────────────────────────────
 
 CHUNK_TREE_CACHE_VERSION: int = 1
-"""Increment when ``tree_to_dict`` / ``tree_from_dict`` format changes."""
+"""Increment when ``ChunkTree.to_dict`` / ``ChunkTree.from_dict`` format changes."""
 
 
 def _structured_to_dict(s: StructuredData) -> dict[str, Any]:
-    """Serialize a StructuredData variant with a ``_type`` discriminator."""
+    """Serialize a StructuredData variant with the canonical discriminator."""
     if isinstance(s, StructuredTable):
-        return {"_type": "table", "columns": s.columns, "rows": s.rows, "caption": s.caption}
+        return s.to_dict()
     if isinstance(s, StructuredEquation):
-        return {
-            "_type": "equation",
-            "latex": s.latex,
-            "variables": [{"name": v.name, "definition": v.definition, "units": v.units} for v in s.variables],
-            "caption": s.caption,
-        }
+        return s.to_dict()
     if isinstance(s, StructuredFigure):
-        return {
-            "_type": "figure",
-            "caption": s.caption,
-            "alt_text": s.alt_text,
-            "image_ref": s.image_ref,
-            "description": s.description,
-        }
+        return s.to_dict()
     raise TypeError(f"Unknown StructuredData type: {type(s).__name__}")
 
 
 def _structured_from_dict(d: dict[str, Any]) -> StructuredData:
-    """Deserialize a StructuredData variant using the ``_type`` discriminator."""
-    kind = d.get("_type")
-    if kind == "table":
-        return StructuredTable(
-            columns=d.get("columns", []),
-            rows=d.get("rows", []),
-            caption=d.get("caption", ""),
-        )
-    if kind == "equation":
-        variables = [
-            EquationVariable(
-                name=v.get("name", ""),
-                definition=v.get("definition", ""),
-                units=v.get("units", ""),
-            )
-            for v in d.get("variables", [])
-        ]
-        return StructuredEquation(
-            latex=d.get("latex", ""),
-            variables=variables,
-            caption=d.get("caption", ""),
-        )
-    if kind == "figure":
-        return StructuredFigure(
-            caption=d.get("caption", ""),
-            alt_text=d.get("alt_text", ""),
-            image_ref=d.get("image_ref", ""),
-            description=d.get("description", ""),
-        )
+    """Deserialize a StructuredData variant using the canonical discriminator."""
+    kind = d.get(StructuredField._TYPE)
+    if kind == StructuredField.TYPE_TABLE.value:
+        return StructuredTable.from_dict(d)
+    if kind == StructuredField.TYPE_EQUATION.value:
+        return StructuredEquation.from_dict(d)
+    if kind == StructuredField.TYPE_FIGURE.value:
+        return StructuredFigure.from_dict(d)
     raise ValueError(f"Unknown StructuredData _type: {kind!r}")
-
-
-def _chunk_to_dict(chunk: Chunk) -> dict[str, Any]:
-    """Serialize a Chunk to a JSON-safe dict."""
-    return {
-        "id": chunk.id,
-        "text": chunk.text,
-        "element_types": [str(et) for et in chunk.element_types],
-        "source_elements": chunk.source_elements,
-        "source_file": chunk.source_file.as_posix() if chunk.source_file else None,
-        "heading_context": chunk.heading_context,
-        "token_count": chunk.token_count,
-        "reading_order": list(chunk.reading_order) if chunk.reading_order else None,
-        str(WikiField.METADATA): chunk.metadata,
-    }
-
-
-def _chunk_from_dict(d: dict[str, Any]) -> Chunk:
-    """Deserialize a Chunk from a dict."""
-
-
-def _chunk_from_dict(d: dict[str, Any]) -> Chunk:
-    """Deserialize a Chunk from a dict."""
-    src = d.get(MetadataField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
-    return Chunk(
-        id=d["id"],
-        text=d["text"],
-        element_types=[ElementType(et) for et in d.get("element_types", [])],
-        source_elements=d.get("source_elements", []),
-        source_file=Path(src) if src else None,
-        heading_context=d.get("heading_context", ""),
-        token_count=d.get("token_count", 0),
-        reading_order=tuple(d["reading_order"]) if d.get("reading_order") else None,
-        metadata=d.get(WikiField.METADATA, {}),
-    )
-
-
-def _node_to_dict(node: ChunkNode) -> dict[str, Any]:
-    """Serialize a ChunkNode to a JSON-safe dict."""
-    return {
-        "id": node.id,
-        "parent_id": node.parent_id,
-        "children_ids": node.children_ids,
-        "depth": node.depth,
-        "heading_path": list(node.heading_path),
-        "chunk": _chunk_to_dict(node.chunk) if node.chunk else None,
-        "structured": _structured_to_dict(node.structured) if node.structured else None,
-        "summary": node.summary,
-        "token_count": node.token_count,
-    }
-
-
-def _node_from_dict(d: dict[str, Any]) -> ChunkNode:
-    """Deserialize a ChunkNode from a dict."""
-    return ChunkNode(
-        id=d["id"],
-        parent_id=d.get("parent_id"),
-        children_ids=d.get("children_ids", []),
-        depth=d.get("depth", 0),
-        heading_path=tuple(d.get("heading_path", ())),
-        chunk=_chunk_from_dict(d["chunk"]) if d.get("chunk") else None,
-        structured=_structured_from_dict(d["structured"]) if d.get("structured") else None,
-        summary=d.get("summary", ""),
-        token_count=d.get("token_count", 0),
-    )
-
-
-def tree_to_dict(tree: ChunkTree) -> dict[str, Any]:
-    """Serialize a ChunkTree to a JSON-safe dict for caching."""
-    return {
-        "version": CHUNK_TREE_CACHE_VERSION,
-        "root_id": tree.root_id,
-        "nodes": {nid: _node_to_dict(n) for nid, n in tree.nodes.items()},
-        "source_file": tree.source_file.as_posix() if tree.source_file else None,
-        "strategy": str(tree.strategy),
-    }
-
-
-def tree_from_dict(d: dict[str, Any]) -> ChunkTree:
-    """Deserialize a ChunkTree from a dict produced by ``tree_to_dict``."""
-    version = d.get("version", 0)
-    if version != CHUNK_TREE_CACHE_VERSION:
-        raise ValueError(f"ChunkTree cache version mismatch: expected {CHUNK_TREE_CACHE_VERSION}, got {version}")
-    return _tree_from_dict(d)
-
-
-def _tree_from_dict(d: dict[str, Any]) -> ChunkTree:
-    """Deserialize a ChunkTree from a dict."""
-    src = d.get(MetadataField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
-    return ChunkTree(
-        root_id=d["root_id"],
-        nodes={nid: _node_from_dict(n) for nid, n in d.get("nodes", {}).items()},
-        source_file=Path(src) if src else None,
-        strategy=ChunkStrategy(d.get("strategy", ChunkStrategy.SINGLE_PASS)),
-    )
 
 
 # ── Provenance ────────────────────────────────────────────────────────────

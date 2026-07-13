@@ -22,14 +22,6 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
     WikiNode,
-    _chunk_from_dict,
-    _chunk_to_dict,
-    _node_from_dict,
-    _node_to_dict,
-    _structured_from_dict,
-    _structured_to_dict,
-    tree_from_dict,
-    tree_to_dict,
 )
 
 
@@ -341,7 +333,7 @@ def test_tree_subtree_tokens_missing(sample_tree: tuple[ChunkTree, dict[str, Chu
 
 def test_structured_table_roundtrip() -> None:
     original = StructuredTable(columns=["A", "B"], rows=[{"A": "1", "B": "2"}], caption="Test")
-    restored = _structured_from_dict(_structured_to_dict(original))
+    restored = StructuredTable.from_dict(original.to_dict())
     assert restored == original
 
 
@@ -351,13 +343,13 @@ def test_structured_equation_roundtrip() -> None:
         variables=[EquationVariable(name="x", definition="position", units="m")],
         caption="Position equation",
     )
-    restored = _structured_from_dict(_structured_to_dict(original))
+    restored = StructuredEquation.from_dict(original.to_dict())
     assert restored == original
 
 
 def test_structured_figure_roundtrip() -> None:
     original = StructuredFigure(caption="Fig 1", alt_text="Alt", image_ref="img.png")
-    restored = _structured_from_dict(_structured_to_dict(original))
+    restored = StructuredFigure.from_dict(original.to_dict())
     assert restored == original
 
 
@@ -372,7 +364,7 @@ def test_chunk_roundtrip() -> None:
         token_count=5,
         reading_order=(0, 10),
     )
-    restored = _chunk_from_dict(_chunk_to_dict(original))
+    restored = Chunk.from_dict(original.to_dict())
     assert restored.id == original.id
     assert restored.text == original.text
     assert restored.element_types == original.element_types
@@ -385,7 +377,7 @@ def test_chunk_roundtrip() -> None:
 def test_node_roundtrip_prose(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     _, nodes = sample_tree
     node = nodes["leaf-1"]
-    restored = _node_from_dict(_node_to_dict(node))
+    restored = ChunkNode.from_dict(node.to_dict())
     assert restored.id == node.id
     assert restored.depth == node.depth
     assert restored.chunk is not None
@@ -396,7 +388,7 @@ def test_node_roundtrip_prose(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]
 def test_node_roundtrip_structured(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     _, nodes = sample_tree
     node = nodes["leaf-2"]
-    restored = _node_from_dict(_node_to_dict(node))
+    restored = ChunkNode.from_dict(node.to_dict())
     assert restored.structured is not None
     assert isinstance(restored.structured, StructuredTable)
     assert restored.structured.columns == ["X"]
@@ -405,7 +397,7 @@ def test_node_roundtrip_structured(sample_tree: tuple[ChunkTree, dict[str, Chunk
 def test_node_roundtrip_internal(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     _, nodes = sample_tree
     node = nodes["section-a"]
-    restored = _node_from_dict(_node_to_dict(node))
+    restored = ChunkNode.from_dict(node.to_dict())
     assert restored.summary == "Section A summary"
     assert restored.children_ids == ["leaf-1", "leaf-2"]
     assert restored.chunk is None
@@ -414,10 +406,10 @@ def test_node_roundtrip_internal(sample_tree: tuple[ChunkTree, dict[str, ChunkNo
 
 def test_tree_full_roundtrip(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     tree, _ = sample_tree
-    d = tree_to_dict(tree)
+    d = tree.to_dict()
     # Must be JSON-serializable
     json_str = json.dumps(d)
-    restored = tree_from_dict(json.loads(json_str))
+    restored = ChunkTree.from_dict(json.loads(json_str))
     assert restored.root_id == tree.root_id
     assert restored.strategy == tree.strategy
     assert set(restored.nodes.keys()) == set(tree.nodes.keys())
@@ -429,20 +421,20 @@ def test_tree_full_roundtrip(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]
 
 def test_tree_serialization_includes_version(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     tree, _ = sample_tree
-    d = tree_to_dict(tree)
+    d = tree.to_dict()
     assert d["version"] == CHUNK_TREE_CACHE_VERSION
 
 
 def test_tree_deserialization_version_mismatch() -> None:
     bad_data = {"version": 999, "root_id": "x", "nodes": {}, "strategy": "single_pass"}
     with pytest.raises(ValueError, match="version mismatch"):
-        tree_from_dict(bad_data)
+        ChunkTree.from_dict(bad_data)
 
 
 def test_tree_heading_path_roundtrip(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     _, nodes = sample_tree
     node = nodes["section-a"]
-    restored = _node_from_dict(_node_to_dict(node))
+    restored = ChunkNode.from_dict(node.to_dict())
     assert restored.heading_path == ("Chapter 1", "Section A")
 
 

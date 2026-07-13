@@ -32,8 +32,6 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
     WikiNode,
-    tree_from_dict,
-    tree_to_dict,
 )
 from knox.core.xref_checker import CrossReferenceChecker
 from knox.preprocessing.parsers.docling_parser import DoclingParser
@@ -361,8 +359,8 @@ class TestCacheBehavior:
         doc = make_test_doc(num_paragraphs=3, include_tables=True, include_code=False, include_images=False)
         chunker = HierarchicalChunker(max_tokens=512)
         original = chunker.chunk(doc)
-        serialized = tree_to_dict(original)
-        restored = tree_from_dict(serialized)
+        serialized = original.to_dict()
+        restored = ChunkTree.from_dict(serialized)
         assert isinstance(restored, ChunkTree)
         assert restored.strategy == original.strategy
         assert restored.source_file == original.source_file
@@ -385,7 +383,7 @@ class TestCacheBehavior:
         doc = make_test_doc(num_paragraphs=1, include_tables=False, include_code=False, include_images=False)
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)
-        serialized = tree_to_dict(tree)
+        serialized = tree.to_dict()
         assert "version" in serialized
         assert serialized["version"] >= 1
 
@@ -394,18 +392,18 @@ class TestCacheBehavior:
         doc = make_test_doc(num_paragraphs=1, include_tables=False, include_code=False, include_images=False)
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)
-        serialized = tree_to_dict(tree)
+        serialized = tree.to_dict()
         serialized["version"] = 999
         with pytest.raises(ValueError, match="version"):
-            tree_from_dict(serialized)
+            ChunkTree.from_dict(serialized)
 
     def test_structured_data_survives_round_trip(self) -> None:
         """StructuredTable/Equation/Figure survive serialization round-trip."""
         doc = make_test_doc(num_paragraphs=0, include_tables=True, include_code=False, include_images=True)
         chunker = HierarchicalChunker(max_tokens=512)
         original = chunker.chunk(doc)
-        serialized = tree_to_dict(original)
-        restored = tree_from_dict(serialized)
+        serialized = original.to_dict()
+        restored = ChunkTree.from_dict(serialized)
         for nid in original.nodes:
             orig = original.nodes[nid]
             rest = restored.nodes[nid]
