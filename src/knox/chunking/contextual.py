@@ -16,12 +16,12 @@ Config keys (under ``[search.contextual]``):
 
 from __future__ import annotations
 
+from knox.agents.context_chunk import ContextChunkAgent
+from knox.agents.deps import PipelineAgentDeps
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_DOC_HEADINGS, DISPLAY_EXCERPT_CHARS
 from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from knox.core.templates import TemplateLoader, get_template_loader
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,8 +53,8 @@ class ContextualEnricher:
 
         Returns the same tree with ``.contextual_context`` set on each node.
         """
-        if self._llm_client is None:
-            logger.debug("Contextual enricher: no LLM client, skipping")
+        if self._agent is None:
+            logger.debug("Contextual enricher: no agent, skipping")
             return tree
 
         leaves = self._collect_leaves(tree)
@@ -104,16 +104,9 @@ class ContextualEnricher:
                 heading_path=heading_path,
                 content_preview=content_preview,
             )
-            result = self._llm_client.complete(
-                messages=[
-                    {"role": "system", "content": rendered},
-                    {"role": "user", "content": f"Generate context for the chunk at: {heading_path}"},
-                ],
-                role=LLMRole.CHUNKING_CONTEXTUAL,
-                temperature=0.0,
-                max_tokens=150,
-            )
-            context = result.content.strip()
+            deps = PipelineAgentDeps(text=rendered, source_id=heading_path, timeout=120)
+            result = self._agent.run(deps)
+            context = result.strip()
             if context:
                 return context
         except Exception as exc:
