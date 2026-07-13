@@ -36,8 +36,8 @@ class ContextualEnricher:
     carries the document narrative rather than just a fragment.
     """
 
-    def __init__(self, llm_client: LLMClient | None = None) -> None:
-        self._llm_client = llm_client
+    def __init__(self, agent: ContextChunkAgent | None = None) -> None:
+        self._agent = agent
         self._template_loader: TemplateLoader = get_template_loader()
 
     def enrich_tree(
