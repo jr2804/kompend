@@ -48,6 +48,7 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache_store import CacheStore
+from knox.core.exception_format import LLMOutputError
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline_defs import PipelineConfig
 from knox.core.template_loader import get_template_loader
@@ -594,22 +595,10 @@ class TwoPhaseCompiler(BaseCompiler):
         _delete_gen_checkpoint(self._config, self._active_gen_deps)
 
         if not nodes:
-            logger.warning(
-                "TwoPhase: generation skipped — 0 of %d concept(s) synthesized. All LLM calls returned invalid data.",
-                len(concepts),
-            )
-            return CompiledWiki(
-                nodes=[],
-                edges=[],
-                toc=[],
-                metadata={
-                    WikiField.CHUNK_COUNT: len(chunks),
-                    "two_phase": True,
-                    "generation_skipped": True,
-                    "concepts_available": len(concepts),
-                    "skip_reason": "all LLM calls returned invalid data",
-                    "node_count": 0,
-                },
+            raise LLMOutputError(
+                f"Generation failed: 0 of {len(concepts)} concept(s) synthesized. "
+                f"All LLM calls returned invalid data after retries. "
+                f"Check that model '{self._model}' can produce structured JSON output."
             )
 
         self.disambiguate_duplicate_titles(nodes, chunks)

@@ -1157,8 +1157,8 @@ class TestTwoPhaseConceptSalvage:
         assert "Better-Ear Listening" in names
         assert all(p.get("definitions") for p in pages)
 
-    def test_generation_failure_skips_not_crashes(self) -> None:
-        """When generation LLM calls all fail, compile finishes with 0 pages — no crash, no fillers."""
+    def test_generation_failure_raises(self) -> None:
+        """When generation LLM calls all fail, compile raises LLMOutputError — no silent empty wiki."""
         config = PipelineConfig(
             source_dir=Path("."),
             output_dir=Path("."),
@@ -1180,10 +1180,8 @@ class TestTwoPhaseConceptSalvage:
             patch.object(compiler, "extract", return_value=ext_set),
             patch("knox.compilation.two_phase._try_pydanticai_generation", return_value=None),
         ):
-            wiki = compiler.compile(chunks)
-        assert wiki.metadata.get("generation_skipped") is True
-        assert wiki.metadata.get("concepts_available", 0) > 0
-        assert len(wiki.nodes) == 0
+            with pytest.raises(LLMOutputError, match=r"Generation failed: 0 of 1 concept\(s\) synthesized"):
+                compiler.compile(chunks)
 
 
 class TestVlmArtifactFiltering:
