@@ -22,7 +22,10 @@ Usage::
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import litellm
@@ -38,9 +41,47 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from knox.llm.format import salvage_json
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _save_debug_prompt(
+    model_string: str,
+    litellm_messages: list[dict[str, str]],
+    kwargs: dict[str, Any],
+    response_content: str,
+    finish_reason: str | None,
+) -> None:
+    """Save the LLM prompt and response to a debug file.
+
+    Triggered by ``KNOX_DEBUG_LLM_DIR`` env var. Each call creates a
+    timestamped JSON file with the full message list, model settings,
+    and raw response. Useful for manual testing of model output.
+    """
+    debug_dir = os.environ.get("KNOX_DEBUG_LLM_DIR")
+    if not debug_dir:
+        return
+    debug_path = Path(debug_dir)
+    debug_path.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    slug = model_string.replace("/", "_").replace(":", "_")
+    filepath = debug_path / f"llm_{ts}_{slug}.json"
+    payload = {
+        "model": model_string,
+        "timestamp": datetime.now().isoformat(),
+        "messages": litellm_messages,
+        "kwargs": {k: v for k, v in kwargs.items() if k != "messages"},
+        "response": response_content,
+        "response_parsed": salvage_json(response_content),
+        "finish_reason": finish_reason,
+    }
+    try:
+        filepath.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        logger.info("Debug prompt saved to %s", filepath)
+    except Exception as exc:
+        logger.warning("Failed to save debug prompt: %s", exc)
 
 
 def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
@@ -114,6 +155,19 @@ def _make_litellm_function(model_string: str) -> Any:
         response = litellm.completion(**kwargs)
         content = response.choices[0].message.content or ""
         finish_reason = response.choices[0].finish_reason
+
+        # Repair malformed JSON for structured output agents. Small quantized
+        # models often return truncated or slightly malformed JSON (trailing
+        # commas, unclosed brackets, prose wrapping). The old direct-litellm
+        # path used salvage_json for this; PydanticAI's built-in validation
+        # is strict and rejects anything that isn't perfectly valid JSON.
+        if not info.allow_text_output and content.strip():
+            repaired = salvage_json(content)
+            if repaired is not None:
+                content = json.dumps(repaired, ensure_ascii=False)
+
+        # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
+        _save_debug_prompt(model_string, litellm_messages, kwargs, content, finish_reason)
 
         # Debug: log raw response anomalies for diagnosis
         if not content.strip() and not info.allow_text_output:
