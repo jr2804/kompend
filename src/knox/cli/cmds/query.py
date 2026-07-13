@@ -131,12 +131,6 @@ def _encode_raw_results(results: list[Any], fmt: QueryFormat) -> str:
     return _encode_structured(payload, fmt)
 
 
-def _try_build_llm_client(config: str | None = None) -> LLMClient | None:
-    """Build an LLMClient from config if a default model is set."""
-    cfg = resolve_config(config_path=config)
-    return LLMClient.from_config(cfg)
-
-
 def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
     db_file = knox_dir / VECTORS_DIR
@@ -417,7 +411,7 @@ def query_cmd(
         raise typer.Exit(1)
 
     vector_store = _open_vector_store(state_dir, wiki)
-    llm_client = _try_build_llm_client(config)
+    llm_client = LLMClient.from_config(cfg)
 
     try:
         if adaptive:
