@@ -52,9 +52,9 @@ from knox.core.pipeline.config import (
 from knox.core.pipeline.ingest import parse_cache_name
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.entity_registry import EntityRegistry
+from knox.agents.vlm import VlmAgent
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.core.templates import get_template_loader
-from knox.llm.client import LLMClient
 from knox.logging import get_logger
 from knox.memory.lifecycle import update_memory_for_compile
 from knox.output.base import BaseOutputWriter
@@ -1095,7 +1095,7 @@ def build_pipeline(
     )
 
 
-def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> BaseResolver:
+def _build_resolver_chain(config: PipelineConfig, llm_client: object) -> BaseResolver:
     """Construct the resolver chain.
 
     When a VLM model is configured, a :class:`VLMEnricher` enriches
@@ -1105,23 +1105,13 @@ def _build_resolver_chain(config: PipelineConfig, llm_client: LLMClient) -> Base
 
     if config.llm.vlm_model:
         try:
-            vlm_client = LLMClient(
-                default_model=config.llm.vlm_model,
-                fallback_chain=[],
-                max_retries_per_model=0,
+            vlm_agent = VlmAgent(
+                config.llm.vlm_model,
                 timeout=config.llm.timeout,
-                _fallback_max_input=config.llm.fallback_max_input,
-                _fallback_max_output=config.llm.fallback_max_output,
-                _num_ctx_min=config.llm.num_ctx_min,
-                _num_ctx_max=config.llm.num_ctx_max,
-                _context_window_cap=config.llm.context_window_cap,
-                _api_base=config.llm.api_base,
-                _api_key=config.llm.api_key,
             )
-            vlm_client.usage = llm_client.usage
             resolvers.append(
                 VLMEnricher(
-                    client=vlm_client,
+                    agent=vlm_agent,
                     min_image_bytes=config.vlm_min_image_bytes,
                     min_image_dimension=config.vlm_min_image_dimension,
                 )

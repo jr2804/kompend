@@ -8,28 +8,16 @@ All LLM calls go through the shared :class:`knox.llm.LLMClient`.
 
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 
 from PIL import Image
 
+from knox.agents.vlm import VlmAgent, VlmDeps
 from knox.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
-from knox.llm.client import LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
-
-
-_MIME_BY_EXT: dict[str, str] = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-}
 
 
 class VLMEnricher(BaseResolver):
@@ -56,13 +44,11 @@ class VLMEnricher(BaseResolver):
 
     def __init__(
         self,
-        client: LLMClient | None = None,
-        role: str = LLMRole.VLM,
+        agent: VlmAgent | None = None,
         min_image_bytes: int = 2048,
         min_image_dimension: int = 64,
     ) -> None:
-        self._client = client
-        self._role = role
+        self._agent = agent
         self._min_bytes = min_image_bytes
         self._min_dim = min_image_dimension
 
@@ -181,46 +167,20 @@ class VLMEnricher(BaseResolver):
         return False, ""
 
     def _generate_caption(self, image_ref: str | Path, context_hint: str = "") -> str | None:
-        """Run the VLM on *image_ref* and return a text caption.
-
-        *context_hint* is prepended to the user message (e.g. section heading,
-        page number, document caption) so the VLM can evaluate the image in
-        context.
-
-        Returns ``None`` when no LLM client is configured or all
-        models in the failover chain failed. Raises
-        :class:`FileNotFoundError` when the image file is missing.
-        """
-        if self._client is None:
-            logger.debug("VLMEnricher has no LLM client — skipping caption for %s", image_ref)
+        """Run the VLM on *image_ref* and return a text caption."""
+        if self._agent is None:
+            logger.debug("VLMEnricher has no agent — skipping caption for %s", image_ref)
             return None
-
-        image_file = Path(image_ref)
-        if not image_file.is_file():
-            msg = f"Image not found: {image_file}"
-            raise FileNotFoundError(msg)
-
-        raw_bytes = image_file.read_bytes()
-        b64 = base64.b64encode(raw_bytes).decode("utf-8")
-        mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
 
         prompt = (f"[Context: {context_hint}] " if context_hint else "") + self._VLM_PROMPT_INSTRUCTION
-
-        result = self._client.try_complete(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ],
-                },
-            ],
-            role=self._role,
-        )
-        if result is None:
+        deps = VlmDeps(prompt=prompt, image_path=str(image_ref), timeout=self._agent._timeout)
+        try:
+            return self._agent.run(deps)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            logger.warning("VLM caption failed for %s: %s", image_ref, exc)
             return None
-        return result.content
 
     # ------------------------------------------------------------------
     # Internal helpers
