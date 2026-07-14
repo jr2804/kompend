@@ -23,7 +23,7 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from knox.core.pipeline.config import PipelineConfig
-from knox.llm.client import LLMClient
+from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 
@@ -67,7 +67,7 @@ class WiCERCompiler(BaseCompiler):
     def __init__(
         self,
         config: PipelineConfig,
-        llm_client: LLMClient | None = None,
+        context_window: ContextWindow | None = None,
         base_compiler: BaseCompiler | None = None,
     ) -> None:
         self._config = config
@@ -76,15 +76,22 @@ class WiCERCompiler(BaseCompiler):
             min_content_length=config.budget.min_content_length,
         )
         self.max_iterations = config.budget.wicer_max_iterations
-        self._client = llm_client  # None is OK — caller handles graceful degradation
+        self._has_llm = bool(config.llm.default_model)
 
         # Output budgets (how many tokens the LLM may emit).
         self._probe_output_budget = config.budget.wicer_probe_output_max
         self._eval_output_budget = config.budget.wicer_eval_output_max
 
         # Input batch sizes adapt to the model's discovered context window.
-        # When no client is available, fall back to a conservative size.
-        cw = llm_client.context_window if llm_client else None
+        # When no context window is available, fall back to a conservative size.
+        cw = context_window or discover_context_window(
+            config.llm.default_model,
+            fallback_max_input=config.llm.fallback_max_input,
+            fallback_max_output=config.llm.fallback_max_output,
+            num_ctx_min=config.llm.num_ctx_min,
+            num_ctx_max=config.llm.num_ctx_max,
+            context_window_cap=config.llm.context_window_cap,
+        ) if config.llm.default_model else None
         if cw is not None:
             self._probe_input_chars = _tokens_to_chars(
                 max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget),
@@ -244,20 +251,28 @@ class WiCERCompiler(BaseCompiler):
         total_elapsed = time.monotonic() - compile_start
         wiki.metadata.update(iteration_info)
 
-        if self._client:
-            usage = self._client.usage
+        if self._has_llm:
+            # Aggregate usage from all agents
+            total_calls = 0
+            total_prompt = 0
+            total_completion = 0
+            for agent in (self._probe_agent, self._eval_agent, self._diagnose_agent):
+                if agent is not None and agent.usage is not None:
+                    total_calls += agent.usage.call_count
+                    total_prompt += agent.usage.prompt_tokens
+                    total_completion += agent.usage.completion_tokens
             logger.info(
-                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, %d client LLM call(s), %d prompt + %d completion tokens",
+                "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, %d agent LLM call(s), %d prompt + %d completion tokens",
                 iteration_info["wicer_iterations"],
                 iteration_info["wicer_refinements"],
                 total_elapsed,
-                usage.call_count,
-                usage.prompt_tokens,
-                usage.completion_tokens,
+                total_calls,
+                total_prompt,
+                total_completion,
             )
-            wiki.metadata["wicer_llm_calls"] = usage.call_count
-            wiki.metadata["wicer_llm_prompt_tokens"] = usage.prompt_tokens
-            wiki.metadata["wicer_llm_completion_tokens"] = usage.completion_tokens
+            wiki.metadata["wicer_llm_calls"] = total_calls
+            wiki.metadata["wicer_llm_prompt_tokens"] = total_prompt
+            wiki.metadata["wicer_llm_completion_tokens"] = total_completion
         else:
             logger.info(
                 "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total",
@@ -330,7 +345,7 @@ class WiCERCompiler(BaseCompiler):
         if not combined:
             return []
 
-        if self._client is None:
+        if not self._has_llm:
             logger.debug("WiCER has no LLM client — skipping probe generation")
             return []
 
@@ -357,7 +372,7 @@ class WiCERCompiler(BaseCompiler):
         if not wiki_text:
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
-        if self._client is None:
+        if not self._has_llm:
             logger.debug("WiCER has no LLM client — skipping evaluation")
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
@@ -401,7 +416,7 @@ class WiCERCompiler(BaseCompiler):
         if not failures:
             return []
 
-        if self._client is None:
+        if not self._has_llm:
             logger.debug("WiCER has no LLM client — skipping diagnosis")
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
 

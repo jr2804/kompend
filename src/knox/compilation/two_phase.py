@@ -52,8 +52,7 @@ from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChu
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
-from knox.llm.client import LLMClient
-from knox.llm.context_window import discover_context_window
+from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 from knox.rag.zvec_store import _make_provider
@@ -207,7 +206,7 @@ class TwoPhaseCompiler(BaseCompiler):
         config: PipelineConfig,
         base: BaseCompiler | None = None,
         *,
-        llm_client: LLMClient | None = None,
+        context_window: ContextWindow | None = None,
     ) -> None:
         self._base = base or GraphCompiler(model=config.llm.default_model)
         self._budget = config.budget
@@ -217,13 +216,12 @@ class TwoPhaseCompiler(BaseCompiler):
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
         self._extraction_stats: list[dict[str, Any]] = []
-        self._llm_client = llm_client
         self._batch_tracker = _BatchFailureTracker()
 
-        # Reuse the client's discovered context window when available; only
-        # discover independently as a fallback (e.g. no LLM client provided).
-        if llm_client is not None and llm_client.context_window is not None:
-            cw = llm_client.context_window
+        # Use the provided context window when available; discover
+        # independently as a fallback.
+        if context_window is not None:
+            cw = context_window
         else:
             cw = discover_context_window(
                 self._model,

@@ -44,7 +44,7 @@ from knox.core.config.keys import (
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
-from knox.llm.client import LLMClient
+from knox.llm.context_window import discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
@@ -281,10 +281,10 @@ def _handle_enhanced_search(
     state_dir: Path,
     wiki: CompiledWiki,
     cfg: Any,
-    llm_client: LLMClient | None,
+    model: str,
 ) -> list[Any] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client.default_model if llm_client else "")
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, model)
 
     has_enhanced = (
         cfg.get(SEARCH_EXPANSION_ENABLED, False)
@@ -308,7 +308,8 @@ def _synthesize_and_output(
     has_enhanced: bool,
     enhanced: EnhancedRetriever | None,
     wiki: CompiledWiki,
-    llm_client: LLMClient | None,
+    model: str,
+    cw: object | None,
     remember: bool,
     state_dir: Path,
     cfg: Any,
@@ -324,7 +325,6 @@ def _synthesize_and_output(
     verbosity: str = cfg.get(SEARCH_SYNTHESIS_VERBOSITY, Verbosity.STANDARD.value)
     token_key = _SYNTHESIS_TOKEN_KEYS.get(verbosity, SEARCH_SYNTHESIS_TOKENS_STANDARD)
     target_tokens: int = cfg.get(token_key, 800)
-    cw = llm_client.context_window if llm_client is not None else None
     max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
 
     try:
@@ -340,7 +340,7 @@ def _synthesize_and_output(
             synthesis = synthesizer.synthesize(
                 query,
                 results,
-                model=llm_client.default_model if llm_client else "",
+                model=model,
                 verbosity=verbosity,
                 max_tokens=max_tokens,
             )
@@ -417,14 +417,15 @@ def query_cmd(
         raise typer.Exit(1)
 
     vector_store = _open_vector_store(state_dir, wiki)
-    llm_client = LLMClient.from_config(cfg)
+    model = cfg.get("compile.llm.default_model", "")
+    cw = discover_context_window(model, context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP)) if model else None
 
     try:
         if adaptive:
             results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir)
             has_enhanced = False
         else:
-            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, llm_client)
+            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model)
             if enhanced_result is not None:
                 results = enhanced_result
                 raw = False
@@ -450,10 +451,10 @@ def query_cmd(
         _print_raw_results(results, format)
         return
 
-    if llm_client is None:
+    if not model:
         get_err_console().print("Warning: No LLM configured. Showing raw context instead.")
         _print_raw_results(results, QueryFormat.TEXT)
         return
 
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client.default_model if llm_client else "") if has_enhanced else None
-    _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, llm_client, remember, state_dir, cfg)
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, model) if has_enhanced else None
+    _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)

@@ -93,3 +93,39 @@ def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
         return _ison.dumps(doc)
     else:
         raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
+
+
+# ── Reasoning strip ─────────────────────────────────────────────────────
+
+import re as _re
+
+_REASONING_TAGS: frozenset[str] = frozenset(
+    {
+        "think",
+        "thinking",
+        "reason",
+        "reasoning",
+        "thought",
+        "thoughts",
+        "reflection",
+        "analysis",
+        "scratchpad",
+    }
+)
+
+
+def _build_reasoning_strip_pattern() -> _re.Pattern[str]:
+    """Compile one regex that strips any known reasoning tag."""
+    alt = "|".join(_re.escape(t) for t in sorted(_REASONING_TAGS))
+    return _re.compile(rf"<(?:{alt})>.*?</(?:{alt})>|<(?:{alt})>.*", _re.DOTALL | _re.IGNORECASE)
+
+
+_REASONING_RE: _re.Pattern[str] = _build_reasoning_strip_pattern()
+
+
+def strip_reasoning(content: str) -> str:
+    """Remove inline reasoning/thinking blocks from model *content*."""
+    if not content:
+        return content
+    stripped = _REASONING_RE.sub("", content)
+    return stripped.strip() if stripped != content else content.strip()

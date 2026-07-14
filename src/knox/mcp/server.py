@@ -36,7 +36,9 @@ from knox.core.pipeline.config import Compiler, ImageMode, OutputFormat, Pipelin
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.templates import get_template_loader
 from knox.core.trust.actor import resolve_actor
-from knox.llm.client import LLMClient
+from knox.agents.capture import CaptureAgent
+from knox.agents.distill import DistillAgent
+from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.memory import MemoryStore
 from knox.preprocessing.parsers.base import ParserRouter
@@ -187,12 +189,13 @@ def wiki_capture(
 
     try:
         cfg = resolve_config()
-        llm_client = LLMClient.from_config(cfg)
+        model = cfg.get("compile.llm.default_model", "")
+        capture_agent = CaptureAgent(model, timeout=120) if model else None
     except Exception:
-        llm_client = None
+        capture_agent = None
 
     try:
-        paths = capture(text, sources_dir=source_dir, llm_client=llm_client, tags=tags)
+        paths = capture(text, sources_dir=source_dir, capture_agent=capture_agent, tags=tags)
         return {
             "status": "ok",
             "count": len(paths),
@@ -364,14 +367,14 @@ def query_wiki(
         return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
     try:
-        llm_client = LLMClient.from_config(cfg)
+        model = cfg.get("compile.llm.default_model", "")
     except Exception:
-        llm_client = None
+        model = ""
 
-    if llm_client:
+    if model:
         try:
             synthesizer = TokenOverlapRetriever(wiki)
-            synthesis = synthesizer.synthesize(query, results, model=llm_client.default_model)
+            synthesis = synthesizer.synthesize(query, results, model=model)
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {
                 "status": "ok",
@@ -416,11 +419,12 @@ def wiki_distill(
         sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
         try:
-            llm_client = LLMClient.from_config(cfg)
+            model = cfg.get("compile.llm.default_model", "")
+            distill_agent = DistillAgent(model, timeout=120) if model else None
         except Exception:
-            llm_client = None
+            distill_agent = None
 
-        paths = distill(sources_dir, llm_client=llm_client)
+        paths = distill(sources_dir, distill_agent=distill_agent)
         return {
             "status": "ok",
             "count": len(paths),

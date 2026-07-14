@@ -24,7 +24,7 @@ from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
 from knox.core.utils.time import iso_local
-from knox.llm.client import _strip_reasoning
+from knox.llm.format import strip_reasoning as _strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document

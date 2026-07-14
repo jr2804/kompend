@@ -33,10 +33,11 @@ from knox.core.utils.exceptions import shorten_exception
 from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.errors import ConfigurationError, LLMError, PermanentError
 from knox.llm.failover import CallDiagnostics, FailoverChain
-from knox.llm.format import (
-    salvage_json,  # noqa: F401 — re-exported; callers import from here
-)
+from knox.llm.format import salvage_json, strip_reasoning  # noqa: F401 — re-exported; callers import from here
 from knox.llm.roles import LLMRole
+
+# Re-export with old private name for backward compat
+_strip_reasoning = strip_reasoning
 from knox.logging import get_logger
 
 litellm.suppress_debug_info = True  # suppress stdout noise on exceptions
@@ -56,50 +57,6 @@ _REASONING_TRUNCATION_BUMPS: Final[int] = 3
 # common ones. To support a new model's tag, add its name here (lowercase,
 # without angle brackets). Stripping happens centrally in :meth:`LLMClient.complete`
 # so every consumer (compile, query, organize, lint) gets clean content.
-_REASONING_TAGS: Final[frozenset[str]] = frozenset(
-    {
-        "think",
-        "thinking",
-        "reason",
-        "reasoning",
-        "thought",
-        "thoughts",
-        "reflection",
-        "analysis",
-        "scratchpad",
-    }
-)
-
-
-def _build_reasoning_strip_pattern() -> re.Pattern[str]:
-    """Compile one regex that strips any known reasoning tag.
-
-    Matches two shapes:
-    1. A *closed* block: ``<tag>...</tag>`` (the model finished thinking).
-    2. A *dangling* tag to end-of-string: ``<tag>...`` (``max_tokens`` cut off
-       mid-reasoning, so everything after the opening tag is truncated CoT).
-    """
-    alt = "|".join(re.escape(t) for t in sorted(_REASONING_TAGS))
-    # Closed block first (non-greedy), then a dangling open tag to EOL.
-    return re.compile(rf"<(?:{alt})>.*?</(?:{alt})>|<(?:{alt})>.*", re.DOTALL | re.IGNORECASE)
-
-
-_REASONING_RE: Final[re.Pattern[str]] = _build_reasoning_strip_pattern()
-
-
-def _strip_reasoning(content: str) -> str:
-    """Remove inline reasoning/thinking blocks from model *content*.
-
-    The separate ``reasoning_content`` field is already dropped at the stream
-    level; this handles models that wrap CoT in ``<think>…</think>`` (DeepSeek,
-    Qwen QwQ) or ``<reasoning>…</reasoning>`` etc. directly in the content.
-    Trailing whitespace left after a leading reasoning block is trimmed.
-    """
-    if not content:
-        return content
-    stripped = _REASONING_RE.sub("", content)
-    return stripped.strip() if stripped != content else content.strip()
-
 
 @dataclass(frozen=True)
 class ToolCall:
