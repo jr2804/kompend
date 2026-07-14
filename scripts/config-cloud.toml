@@ -58,6 +58,9 @@ timeout            = 300.0
 # PydanticAI output retries (retries when LLM output fails schema validation)
 output_retries = 2
 
+# Reasoning effort: minimal thinking for cloud models
+reasoning_effort = "low"
+
 # ── Embedding ───────────────────────────────────────────────────────────
 [compile.embedding]
 # Embedding model for semantic search / RAG.

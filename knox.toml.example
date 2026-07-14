@@ -266,7 +266,7 @@ fallback_max_retries = 2
     # Reasoning effort: controls how much the model "thinks" before responding.
     # Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
     # For Ollama models, "none"/"minimal"/"low" also set think=False.
-    # reasoning_effort = "medium"
+    reasoning_effort = "none"
 
 # User-defined skill instructions injected into agent system prompts.
 # Defined under [compile.skills."<name>"] with an "instructions" field.
