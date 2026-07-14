@@ -212,7 +212,7 @@ def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
         summary_cell = f"{words}w" if words else "-"
         title = _display_title(str(s.get("summary", "")))
         lines.append(
-            f"| {_short_source(str(s.get('source', '?')))} | {title} | {dur:.1f}s | {summary_cell} | "
+            f"| {_short_source(str(s.get('source', 'unknown')))} | {title} | {dur:.1f}s | {summary_cell} | "
             f"{s.get('entity_count', 0)} | {s.get('concept_count', 0)} | "
             f"{s.get('tag_count', 0)} | {s.get('batches', 0)} |"
         )

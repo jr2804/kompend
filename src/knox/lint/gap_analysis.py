@@ -213,8 +213,8 @@ def _analyze_contradictions(results: list[dict[str, Any]]) -> list[GapRecommenda
         if r.get("rule") != "contradiction-detection" or r.get("outcome") != "fail":
             continue
         details = r.get("details", {})
-        page_a = details.get("page_a_title", r.get("page_id", "?"))
-        page_b = details.get("page_b_title", "?")
+        page_a = details.get("page_a_title", r.get("page_id", "unknown"))
+        page_b = details.get("page_b_title", "unknown")
         recs.append(
             GapRecommendation(
                 priority=GapPriority.MEDIUM,

@@ -134,7 +134,7 @@ class HTTPDownloader(BaseDownloader):
                 "Re-mapped %s -> %s (Content-Type: %s)",
                 original_name,
                 target_file.name,
-                content_type or "?",
+                content_type or "unknown",
             )
 
         # Content-based dedup: skip if identical content already exists in target_dir

@@ -418,7 +418,7 @@ def download_urls(
                 logger.info(
                     "Resolved %s → %s → %s",
                     resolved.original_url,
-                    resolved.source_label or "?",
+                    resolved.source_label or "unknown",
                     downloaded_file.name,
                 )
             results.append(downloaded_file)

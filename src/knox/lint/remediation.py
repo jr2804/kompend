@@ -455,7 +455,7 @@ def remediation_to_text(actions: list[RemediationAction]) -> str:
             current_tier = action.tier
             lines.append(f"\n[{_TIER_LABELS.get(action.tier, f'Tier {action.tier}')}]")
 
-        icon = _STATUS_ICONS.get(action.status, "?")
+        icon = _STATUS_ICONS.get(action.status, "")
         lines.append(f"  {icon} {action.category}: {action.description}")
 
     applied = sum(1 for a in actions if a.status == RemediationStatus.APPLIED)

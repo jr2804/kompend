@@ -325,7 +325,7 @@ def lint_gaps(
             )
         )
     else:
-        ts = entries[-1].get("timestamp", "?")
+        ts = entries[-1].get("timestamp", "unknown")
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(gaps_to_text(recs))
@@ -415,7 +415,7 @@ def lint_remediate(
             )
         )
     else:
-        ts = entries[-1].get("timestamp", "?")
+        ts = entries[-1].get("timestamp", "unknown")
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(remediation_to_text(actions))
