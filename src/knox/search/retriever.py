@@ -7,14 +7,13 @@ from typing import Any, Final
 
 from rank_bm25 import BM25Okapi
 
-from knox.agents.deps import QueryDeps
+from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
+from knox.agents.search import QueryExpansionAgent
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.templates import TemplateLoader, get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 from knox.search.index import FtsField, build_chunk_index, search_fts
@@ -98,29 +97,18 @@ class TokenOverlapRetriever:
             )
         return results
 
-    def expand_query(self, query: str, llm_client: LLMClient | None = None) -> list[str]:
-        if llm_client is None:
+    def expand_query(self, query: str, expansion_agent: QueryExpansionAgent | None = None) -> list[str]:
+        if expansion_agent is None:
             return [query]
 
         try:
             system_prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
-            result = llm_client.complete(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query},
-                ],
-                role=LLMRole.SEARCH_EXPAND,
-                response_format=JSON_RESPONSE_FORMAT,
-                temperature=0.0,
-            )
-            if result.json_data is None:
-                return [query]
+            deps = PipelineAgentDeps(text=system_prompt, source_id="expand", timeout=120)
+            result = expansion_agent.run(deps)
 
             expansions: list[str] = [query]
-            for key in ("keyword_rewrites", "semantic_rewrites"):
-                items = result.json_data.get(key, [])
-                if isinstance(items, list):
-                    expansions.extend(str(e) for e in items if isinstance(e, str))
+            expansions.extend(result.keyword_rewrites)
+            expansions.extend(result.semantic_rewrites)
             expansions_limit = DEFAULTS.get(DISPLAY_QUERY_EXPANSIONS, 7)
             return expansions[:expansions_limit]
         except Exception as exc:
@@ -131,13 +119,13 @@ class TokenOverlapRetriever:
         self,
         query: str,
         results: list[SearchResult],
-        llm_client: LLMClient | None = None,
+        model: str = "",
         *,
         verbosity: str = "standard",
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
     ) -> SynthesisResult:
-        if llm_client is None:
+        if not model:
             citations: list[dict[str, Any]] = []
             for r in results:
                 citations.append(
@@ -163,7 +151,7 @@ class TokenOverlapRetriever:
 
         try:
             agent = QueryAgent(
-                litellm_model=llm_client.default_model,
+                litellm_model=model,
                 timeout=120.0,
                 skills=skills or {},
             )

@@ -371,7 +371,7 @@ def query_wiki(
     if llm_client:
         try:
             synthesizer = TokenOverlapRetriever(wiki)
-            synthesis = synthesizer.synthesize(query, results, llm_client=llm_client)
+            synthesis = synthesizer.synthesize(query, results, model=llm_client.default_model)
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {
                 "status": "ok",

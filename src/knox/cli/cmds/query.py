@@ -47,6 +47,7 @@ from knox.core.trust.actor import resolve_actor
 from knox.llm.client import LLMClient
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
+from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
@@ -221,15 +222,20 @@ def _build_enhanced_retriever(
     sources_dir: Path | None,
     state_dir: Path,
     cfg: Any,
-    llm_client: LLMClient | None,
+    model: str,
 ) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
+    expansion_agent = QueryExpansionAgent(model, timeout=120) if model else None
+    crag_agent = CragGradeAgent(model, timeout=120) if model else None
+    hyde_agent = HydeAgent(model, timeout=120) if model else None
     return EnhancedRetriever(
         wiki,
         index_file=state_dir / SEARCH_DB_FILE,
         vector_store=vector_store,
         sources_dir=sources_dir,
-        llm_client=llm_client,
+        expansion_agent=expansion_agent,
+        crag_agent=crag_agent,
+        hyde_agent=hyde_agent,
         # Multi-query expansion
         expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
         expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
@@ -278,7 +284,7 @@ def _handle_enhanced_search(
     llm_client: LLMClient | None,
 ) -> list[Any] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client)
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client.default_model if llm_client else "")
 
     has_enhanced = (
         cfg.get(SEARCH_EXPANSION_ENABLED, False)
@@ -334,7 +340,7 @@ def _synthesize_and_output(
             synthesis = synthesizer.synthesize(
                 query,
                 results,
-                llm_client=llm_client,
+                model=llm_client.default_model if llm_client else "",
                 verbosity=verbosity,
                 max_tokens=max_tokens,
             )
@@ -449,5 +455,5 @@ def query_cmd(
         _print_raw_results(results, QueryFormat.TEXT)
         return
 
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client) if has_enhanced else None
+    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, llm_client.default_model if llm_client else "") if has_enhanced else None
     _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, llm_client, remember, state_dir, cfg)

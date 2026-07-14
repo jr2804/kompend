@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
-from knox.llm.client import ContextSource, ContextWindow, LLMResult
+from knox.llm.context_window import ContextSource, ContextWindow
 from knox.llm.failover import CallDiagnostics
 from knox.search.retriever import HybridRetriever, SearchResult, TokenOverlapRetriever, _extract_snippet
 
@@ -245,5 +245,5 @@ class TestSynthesizeVerbosity:
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
         with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
-            result = retriever.synthesize("q", [], llm_client=fake, verbosity=verbosity, max_tokens=max_tokens)
+            result = retriever.synthesize("q", [], model=fake.default_model, verbosity=verbosity, max_tokens=max_tokens)
         return result, mock_agent

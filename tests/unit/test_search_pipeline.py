@@ -80,14 +80,13 @@ class TestSearchPipeline:
 
     def test_crag_drops_low_relevance(self) -> None:
         wiki = _make_wiki()
-        mock_client = MagicMock()
-        # LLM always returns relevance=0.0 — everything should be dropped
-        mock_client.complete.return_value = MagicMock(json_data={"relevance": 0.0}, content="")
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = MagicMock(relevance=0.0)
         retriever = EnhancedRetriever(
             wiki,
             crag_enabled=True,
             crag_threshold=0.5,
-            llm_client=mock_client,
+            crag_agent=mock_agent,
         )
         candidates = [_search_result("a"), _search_result("b")]
         # When all are dropped CRAG falls back to original
@@ -97,13 +96,13 @@ class TestSearchPipeline:
 
     def test_crag_keeps_high_relevance(self) -> None:
         wiki = _make_wiki()
-        mock_client = MagicMock()
-        mock_client.complete.return_value = MagicMock(json_data={"relevance": 0.9}, content="")
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = MagicMock(relevance=0.9)
         retriever = EnhancedRetriever(
             wiki,
             crag_enabled=True,
             crag_threshold=0.5,
-            llm_client=mock_client,
+            crag_agent=mock_agent,
         )
         candidates = [_search_result("a"), _search_result("b")]
         result = retriever._crag_filter("query", candidates)
@@ -122,7 +121,7 @@ class TestSynthesize:
             content="synthesized answer",
             json_data=None,
         )
-        retriever._llm_client = mock_client
+        retriever._synthesis_model = "test"
 
         results = [_search_result("alpha")]
         # Patch inner synthesizer to avoid full pipeline

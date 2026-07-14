@@ -17,10 +17,10 @@ from pathlib import Path
 
 from sentence_transformers import CrossEncoder as _CrossEncoder
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.core.models import CompiledWiki
 from knox.core.templates import TemplateLoader, get_template_loader
-from knox.llm.client import JSON_RESPONSE_FORMAT, LLMClient
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import (
@@ -48,7 +48,9 @@ class EnhancedRetriever:
         index_file: Path | None = None,
         vector_store: ZvecWikiStore | None = None,
         sources_dir: Path | None = None,
-        llm_client: LLMClient | None = None,
+        expansion_agent: QueryExpansionAgent | None = None,
+        crag_agent: CragGradeAgent | None = None,
+        hyde_agent: HydeAgent | None = None,
         # Multi-query expansion config
         expansion_enabled: bool = False,
         expansion_variants: int = 3,
@@ -63,7 +65,9 @@ class EnhancedRetriever:
         hyde_enabled: bool = False,
     ) -> None:
         self._wiki = wiki
-        self._llm_client = llm_client
+        self._expansion_agent = expansion_agent
+        self._crag_agent = crag_agent
+        self._hyde_agent = hyde_agent
         self._template_loader: TemplateLoader = get_template_loader()
 
         # Base retriever
@@ -89,6 +93,14 @@ class EnhancedRetriever:
 
         # HyDE config
         self._hyde_enabled = hyde_enabled
+        # Model for synthesis (from any agent's litellm_model)
+        self._synthesis_model = ""
+        if expansion_agent is not None:
+            self._synthesis_model = expansion_agent.litellm_model
+        elif crag_agent is not None:
+            self._synthesis_model = crag_agent.litellm_model
+        elif hyde_agent is not None:
+            self._synthesis_model = hyde_agent.litellm_model
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -110,7 +122,7 @@ class EnhancedRetriever:
         """
         queries = self._expand_queries(query) if self._expansion_enabled else [query]
 
-        if self._hyde_enabled and self._llm_client is not None:
+        if self._hyde_enabled and self._hyde_agent is not None:
             hyde_query = self._generate_hypothetical(query)
             queries.append(hyde_query)
 
@@ -129,7 +141,7 @@ class EnhancedRetriever:
         if self._reranker_enabled and results:
             results = self._neural_rerank(query, results)
 
-        if self._crag_enabled and self._llm_client is not None and results:
+        if self._crag_enabled and self._crag_agent is not None and results:
             results = self._crag_filter(query, results)
 
         return results[:top_k]
@@ -148,7 +160,7 @@ class EnhancedRetriever:
         synthesis = synthesizer.synthesize(
             query,
             results,
-            llm_client=self._llm_client,
+            model=self._synthesis_model,
             verbosity=verbosity,
             max_tokens=max_tokens,
             skills=skills,
@@ -159,28 +171,17 @@ class EnhancedRetriever:
 
     def _expand_queries(self, query: str) -> list[str]:
         """Generate N query variants via LLM."""
-        if self._llm_client is None:
+        if self._expansion_agent is None:
             return [query]
 
         try:
-            system_prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
-            result = self._llm_client.complete(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query},
-                ],
-                role=LLMRole.SEARCH_EXPAND,
-                response_format=JSON_RESPONSE_FORMAT,
-                temperature=0.0,
-            )
-            if result.json_data is None:
-                return [query]
+            prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
+            deps = PipelineAgentDeps(text=prompt, source_id="expand", timeout=120)
+            result = self._expansion_agent.run(deps)
 
             expansions: list[str] = [query]
-            for key in ("keyword_rewrites", "semantic_rewrites"):
-                items = result.json_data.get(key, [])
-                if isinstance(items, list):
-                    expansions.extend(str(e) for e in items if isinstance(e, str))
+            expansions.extend(result.keyword_rewrites)
+            expansions.extend(result.semantic_rewrites)
             return expansions[: self._expansion_variants + 1]
         except Exception as exc:
             logger.warning("Query expansion failed: %s", exc, exc_info=True)
@@ -191,19 +192,12 @@ class EnhancedRetriever:
     def _generate_hypothetical(self, query: str) -> str:
         """Generate a hypothetical answer passage for sparse queries."""
         try:
-            system_prompt = self._template_loader.render("search/hyde_generate.md.j2", query=query)
-            result = self._llm_client.complete(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query},
-                ],
-                role=LLMRole.SEARCH_HYDE,
-                temperature=0.7,
-            )
-            hyde_text = result.content.strip()
-            if hyde_text:
-                logger.debug("HyDE generated hypothetical passage (%d chars)", len(hyde_text))
-                return hyde_text
+            prompt = self._template_loader.render("search/hyde_generate.md.j2", query=query)
+            deps = PipelineAgentDeps(text=prompt, source_id="hyde", timeout=120)
+            result = self._hyde_agent.run(deps)
+            if result.strip():
+                logger.debug("HyDE generated hypothetical passage (%d chars)", len(result))
+                return result.strip()
         except Exception as exc:
             logger.warning("HyDE generation failed: %s", exc, exc_info=True)
         return query
@@ -253,7 +247,7 @@ class EnhancedRetriever:
 
     def _crag_filter(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
         """Grade each candidate for relevance and drop low-scoring ones."""
-        if self._llm_client is None:
+        if self._crag_agent is None:
             return candidates
 
         filtered: list[SearchResult] = []
@@ -278,24 +272,15 @@ class EnhancedRetriever:
     def _grade_relevance(self, query: str, result: SearchResult) -> float:
         """Ask the LLM to grade a single result's relevance on 0-1 scale."""
         try:
-            system_prompt = self._template_loader.render(
+            prompt = self._template_loader.render(
                 "search/crag_grade.md.j2",
                 query=query,
                 title=result.title,
                 snippet=result.snippet,
             )
-            llm_result = self._llm_client.complete(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query},
-                ],
-                role=LLMRole.SEARCH_CRAG,
-                response_format=JSON_RESPONSE_FORMAT,
-                temperature=0.0,
-            )
-            if llm_result.json_data is not None:
-                score = float(llm_result.json_data.get("relevance", 0.5))
-                return max(0.0, min(1.0, score))
+            deps = PipelineAgentDeps(text=prompt, source_id="crag", timeout=120)
+            grade = self._crag_agent.run(deps)
+            return max(0.0, min(1.0, grade.relevance))
         except Exception as exc:
             logger.debug("CRAG grading failed for %s: %s", result.title, exc)
         return 0.5  # neutral fallback
