@@ -165,7 +165,7 @@ def _enable_litellm_debug() -> None:
             logger.addHandler(handler)
 
 
-def _ping_model(model: str | None, label: str, verbose: bool = False) -> CheckResult:
+def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: float = 60.0) -> CheckResult:
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
     if not model:
@@ -176,7 +176,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False) -> CheckRe
             _enable_litellm_debug()
         agent = DoctorAgent(
             litellm_model=model,
-            timeout=30.0,
+            timeout=timeout,
             max_tokens=128,
         )
         result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
@@ -283,8 +283,9 @@ def run_doctor(
     results.append(_check_context_window(default_model, "llm"))
     results.append(_check_context_window(vlm_model, "vlm"))
     results.append(_check_budget_consistency(default_model, cfg))
-    results.append(_ping_model(default_model, "llm", verbose=verbose))
-    results.append(_ping_model(vlm_model, "vlm", verbose=verbose))
+    llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
+    results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout))
+    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout))
     results.append(_ping_embed_model(embed_model))
 
     return results

@@ -529,7 +529,7 @@ def _check_llm_availability(pipeline: WikiPipeline) -> None:
     if not model:
         return
     try:
-        agent = DoctorAgent(model, timeout=30)
+        agent = DoctorAgent(model, timeout=pipeline.config.llm.timeout)
         agent.run(DoctorDeps(ping="ok"))
     except Exception as exc:
         get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
