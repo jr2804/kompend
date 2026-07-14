@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import litellm
 
@@ -89,7 +90,7 @@ def _check_context_window(model: str | None, label: str) -> CheckResult:
         return CheckResult(name, False, f"{label} context window discovery failed: {exc}")
 
 
-def _check_budget_consistency(model: str | None, cfg: dict[str, object] | None) -> CheckResult:
+def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None) -> CheckResult:
     """Check that budget config values don't exceed the model's context window."""
     name = "budget-consistency"
     if not model or cfg is None:
@@ -131,10 +132,10 @@ def _check_budget_consistency(model: str | None, cfg: dict[str, object] | None) 
     return CheckResult(name, False, "; ".join(issues))
 
 
-def _cfg_get_int(cfg: dict[str, object], key: str, default: int) -> int:
+def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
     """Read an int from a dotted config key."""
     parts = key.split(".")
-    val: object = cfg
+    val: Any = cfg
     for p in parts:
         if isinstance(val, dict):
             val = val.get(p, {})
@@ -233,7 +234,7 @@ def run_doctor(
     default_model: str | None = None,
     vlm_model: str | None = None,
     embed_model: str | None = None,
-    cfg: dict[str, object] | None = None,
+    cfg: dict[str, Any] | None = None,
 ) -> list[CheckResult]:
     """Run all doctor checks and return results.
 

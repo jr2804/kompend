@@ -41,7 +41,6 @@ from knox.core.config.keys import (
     AGENTS_ORGANIZE,
     AGENTS_QUERY,
     COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_TIMEOUT,
     PATHS_WIKI_DIR,
 )
 from knox.core.paths import KNOX_CONFIG_FILE

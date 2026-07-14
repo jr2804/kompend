@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from knox.core.models import ChunkTree, CrossReferenceIssue, StructuredEquation, StructuredTable
 from knox.logging import get_logger
@@ -316,7 +317,7 @@ class EntityRegistry:
                 entity_type="term",
             )
 
-    def _extract_from_structured(self, structured: object, location: EntityLocation) -> None:
+    def _extract_from_structured(self, structured: dict[str, Any] | list[Any], location: EntityLocation) -> None:
         """Extract entities from StructuredData (equation variables, table columns)."""
         if isinstance(structured, StructuredEquation):
             for var in structured.variables:

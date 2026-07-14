@@ -14,6 +14,7 @@ import lzma
 import shutil
 import tarfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -131,11 +132,11 @@ def _extract_tar(path: Path, dest_dir: Path) -> Path | None:
         return dest
 
 
-def _extract_single_file(path: Path, dest_dir: Path, decompress: object) -> Path | None:
+def _extract_single_file(path: Path, dest_dir: Path, decompress: Callable[[bytes], bytes]) -> Path | None:
     """Decompress a single-file archive (gz, bz2, xz)."""
     inner_name = Path(path.stem).name
     dest = dest_dir / inner_name
-    dest.write_bytes(decompress(path.read_bytes()))  # type: ignore[operator]
+    dest.write_bytes(decompress(path.read_bytes()))
     return dest
 
 

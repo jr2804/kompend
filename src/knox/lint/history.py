@@ -33,7 +33,7 @@ _SNAPSHOT_KEYS = (
 )
 
 
-def _build_config_snapshot(cfg: object) -> dict[str, Any]:
+def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
     """Extract the lint-relevant subset of a resolved config."""
     return {key: getattr(cfg, "get", lambda k: None)(key) for key in _SNAPSHOT_KEYS}
 
@@ -43,7 +43,7 @@ def entry_from_report(
     *,
     duration_seconds: float,
     options: dict[str, Any],
-    config: object,
+    config: dict[str, Any],
     node_count: int,
     llm: dict[str, Any] | None = None,
     timestamp: str | None = None,

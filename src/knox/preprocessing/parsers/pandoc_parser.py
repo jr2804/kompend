@@ -6,7 +6,7 @@ import json
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import pypandoc
 
@@ -141,7 +141,7 @@ def _resolve_format(source_file: Path) -> str:
 
 
 def _block_to_element(
-    block: object,
+    block: Any,
     idx: int,
     source_file: Path,
 ) -> DocumentElement | None:
@@ -176,7 +176,7 @@ def _block_to_element(
     )
 
 
-def _parse_header_level(block: object) -> int | None:
+def _parse_header_level(block: Any) -> int | None:
     """Extract heading level from a Header block's content list."""
     if not isinstance(block, dict):
         return None
@@ -191,7 +191,7 @@ def _parse_header_level(block: object) -> int | None:
     return None
 
 
-def _render_block(block: object) -> str:
+def _render_block(block: Any) -> str:
     """Render a single JSON AST block to markdown via a JSON round-trip."""
     single = json.dumps(
         {

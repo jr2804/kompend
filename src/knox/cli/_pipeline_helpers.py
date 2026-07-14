@@ -16,6 +16,7 @@ from typing import Any
 
 import typer
 
+from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.agents.verification import VerificationAgent
 from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
@@ -29,6 +30,7 @@ from knox.cli.args import (
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
+from knox.core.pipeline.orchestrator import WikiPipeline
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger, set_verbosity
@@ -220,7 +222,7 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     cache_file.write_text(json.dumps(data, default=str, indent=2), encoding="utf-8")
 
 
-def _print_tier_listing(pipeline: object) -> None:
+def _print_tier_listing(pipeline: WikiPipeline) -> None:
     """Print the tier listing from a WikiPipeline."""
     if not hasattr(pipeline, "list_tiers"):
         get_err_console().print("Pipeline does not support tier listing.")
@@ -409,7 +411,6 @@ class _PostCompileOptions:
     compile_lint: bool | None = None
     embed_model: str | None = None
     show_progress: bool | None = None
-    llm_client: object | None = None
 
 
 def _post_compile_actions(opts: _PostCompileOptions) -> None:
@@ -431,14 +432,15 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
         _mark_private(opts.wiki, opts.output_dir)
 
     if opts.verify:
-        if opts.llm_client is None:
-            get_err_console().print("Warning: --verify requires an LLM client — skipping verification")
+        model = opts.pipeline_config.llm.default_model
+        if not model:
+            get_err_console().print("Warning: --verify requires an LLM model — skipping verification")
         else:
             _verify_claims(
                 opts.wiki,
                 opts.output_dir,
                 agent=VerificationAgent(
-                    opts.pipeline_config.llm.default_model or "",
+                    model,
                     timeout=opts.pipeline_config.llm.timeout,
                 ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
@@ -516,30 +518,20 @@ def _emit_json_done(duration: float, message: str) -> None:
     sys.stdout.flush()
 
 
-def _check_llm_availability(pipeline: object) -> None:
+def _check_llm_availability(pipeline: WikiPipeline) -> None:
     """Pre-flight LLM connectivity check — fail fast before processing documents.
 
     Catches wrong provider prefixes, missing API keys, unreachable endpoints,
     and invalid model names before the pipeline starts grinding through all
     files with silent failures on every LLM call.
     """
-    if pipeline.llm_client is None:
+    model = pipeline.config.llm.default_model
+    if not model:
         return
     try:
-        ping = pipeline.llm_client.try_complete(
-            [{"role": "user", "content": "Respond with exactly one word: ok"}],
-            role=LLMRole.DOCTOR,
-            max_tokens=128,
-        )
+        agent = DoctorAgent(model, timeout=30)
+        agent.run(DoctorDeps())
     except Exception as exc:
         get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
         get_err_console().print(f"  {exc}")
         raise typer.Exit(1) from exc
-    if ping is None:
-        report = pipeline.llm_client.degradation_report()
-        recent = report.get("recent_failures", [])
-        msg = recent[-1].get("message", "LLM is not responding") if recent else "LLM is not responding"
-        get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
-        get_err_console().print(f"  Model: {pipeline.llm_client.default_model or '?'}")
-        get_err_console().print(f"  Error: {msg}")
-        raise typer.Exit(1)

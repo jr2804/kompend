@@ -92,7 +92,7 @@ class FactualConsistencyRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
         """Call the LintRuleAgent with a rendered template."""
         if self._agent is None:
             return None
@@ -185,7 +185,7 @@ class ClarityScoreRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
         """Call the LintRuleAgent with a rendered template."""
         if self._agent is None:
             return None
@@ -284,7 +284,7 @@ class CoverageGapRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
         """Call the LintRuleAgent with a rendered template."""
         if self._agent is None:
             return None
@@ -467,7 +467,7 @@ class ContradictionDetectionRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: object) -> dict | None:
+    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
         """Call the LintRuleAgent with a rendered template."""
         if self._agent is None:
             return None

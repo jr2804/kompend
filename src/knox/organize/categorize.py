@@ -15,6 +15,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
 from knox.agents.categorize_models import CategoryNode, CategoryTree
@@ -237,7 +238,7 @@ def propose_categories(
     return _tree_from_json(result.model_dump(), sorted(extractions))
 
 
-def _tree_from_json(payload: object, known_files: list[str]) -> CategoryTree:
+def _tree_from_json(payload: dict[str, Any], known_files: list[str]) -> CategoryTree:
     """Parse and normalise the JSON returned by the LLM.
 
     Unknown files (the LLM invented a filename) are dropped; any file the

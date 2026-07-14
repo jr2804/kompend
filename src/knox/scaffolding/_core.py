@@ -13,7 +13,7 @@ import tomllib
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import jinja2
 
@@ -69,7 +69,7 @@ class ScaffoldError(Exception):
     """Raised when scaffolding cannot proceed (e.g. target_dir dir conflicts)."""
 
 
-def _render_template(template_name: str, **vars: object) -> str:
+def _render_template(template_name: str, **vars: Any) -> str:
     """Read a Jinja2 scaffold template and render it with *vars*.
 
     ``keep_trailing_newline=True`` preserves the trailing newline so

@@ -11,6 +11,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from knox.agents.capture import CaptureAgent
+from knox.agents.distill import DistillAgent
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
@@ -36,9 +38,6 @@ from knox.core.pipeline.config import Compiler, ImageMode, OutputFormat, Pipelin
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.templates import get_template_loader
 from knox.core.trust.actor import resolve_actor
-from knox.agents.capture import CaptureAgent
-from knox.agents.distill import DistillAgent
-from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.memory import MemoryStore
 from knox.preprocessing.parsers.base import ParserRouter

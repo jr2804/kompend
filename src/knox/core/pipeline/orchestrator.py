@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from knox.agents.vlm import VlmAgent
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -52,10 +53,9 @@ from knox.core.pipeline.config import (
 from knox.core.pipeline.ingest import parse_cache_name
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.entity_registry import EntityRegistry
-from knox.agents.vlm import VlmAgent
-from knox.llm.context_window import discover_context_window
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.core.templates import get_template_loader
+from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.memory.lifecycle import update_memory_for_compile
 from knox.output.base import BaseOutputWriter

@@ -14,7 +14,7 @@ from pathlib import Path
 import litellm
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.litellm_model import _save_debug_prompt, _messages_to_litellm
+from knox.agents.litellm_model import _save_debug_prompt
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
 

@@ -113,7 +113,6 @@ def verify_node(
         except Exception:
             data = None
         if data:
-            data = result.json_data
             results.append(
                 ClaimVerification(
                     node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))

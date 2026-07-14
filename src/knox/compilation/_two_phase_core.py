@@ -22,6 +22,7 @@ from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
 from knox.core.cache.store import _decode_json, _encode_json, make_cache_key
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
+from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import shorten_exception
 from knox.logging import get_logger
@@ -614,18 +615,18 @@ def _upsert_node(
         nodes.append(new_node)
 
 
-def _gen_checkpoint_dir(config: object) -> Path:
+def _gen_checkpoint_dir(config: PipelineConfig) -> Path:
     """Directory for per-batch generation checkpoint files."""
     return config.paths.cache_dir / "gen_checkpoint"
 
 
-def _gen_checkpoint_path(config: object, gen_deps: dict[str, str]) -> Path:
+def _gen_checkpoint_path(config: PipelineConfig, gen_deps: dict[str, str]) -> Path:
     """On-disk path for the generation checkpoint."""
     return _gen_checkpoint_dir(config) / f"{make_cache_key(gen_deps)}.json"
 
 
 def _load_gen_checkpoint(
-    config: object,
+    config: PipelineConfig,
     gen_deps: dict[str, str],
 ) -> tuple[list[WikiNode], dict[str, int], set[int]] | None:
     """Load a generation checkpoint if it exists and deps match.
@@ -658,7 +659,7 @@ def _load_gen_checkpoint(
 
 
 def _save_gen_checkpoint(
-    config: object,
+    config: PipelineConfig,
     gen_deps: dict[str, str],
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],
@@ -684,7 +685,7 @@ def _save_gen_checkpoint(
         logger.debug("Generation checkpoint write failed -- ignoring", exc_info=True)
 
 
-def _delete_gen_checkpoint(config: object, gen_deps: dict[str, str]) -> None:
+def _delete_gen_checkpoint(config: PipelineConfig, gen_deps: dict[str, str]) -> None:
     """Remove a generation checkpoint from disk."""
     if getattr(config, "no_cache", False):
         return

@@ -23,6 +23,10 @@ from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local, iso_local
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 _loader = get_template_loader()
 
@@ -535,7 +539,7 @@ def write_overview(
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
-        "model": model,
+        "model": agent._litellm_model,
         "overview_budget": str(overview_budget),
     }
     cached = cache_store.get("overview", overview_deps)

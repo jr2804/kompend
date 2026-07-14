@@ -13,6 +13,7 @@ and resolved by :meth:`AgentRegistry.active_for`.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from knox.agent.definitions import AgentDefinition, AgentLLMConfig, AgentPromptConfig, AgentTask
 from knox.core.config.keys import (
@@ -100,7 +101,7 @@ class AgentRegistry:
             agents.sort(key=lambda a: a.name)
         return result
 
-    def active_for(self, task: AgentTask, config: dict[str, object] | object) -> AgentDefinition:
+    def active_for(self, task: AgentTask, config: dict[str, Any]) -> AgentDefinition:
         """Resolve the active agent for *task* from config, with fallback.
 
         Falls back to the generic agent if:
@@ -138,7 +139,7 @@ class AgentRegistry:
         return generic
 
 
-def _config_get(config: dict[str, object] | object, key: str) -> str | None:
+def _config_get(config: dict[str, Any], key: str) -> str | None:
     """Read a dotted key from a config dict or config-like object.
 
     Handles both raw dict and resolved config objects that support ``.get()``.

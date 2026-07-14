@@ -15,6 +15,7 @@ a format specification to every call would be counterproductive.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import ison_parser as _ison
@@ -97,7 +98,7 @@ def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
 
 # ── Reasoning strip ─────────────────────────────────────────────────────
 
-import re as _re
+
 
 _REASONING_TAGS: frozenset[str] = frozenset(
     {
@@ -114,13 +115,13 @@ _REASONING_TAGS: frozenset[str] = frozenset(
 )
 
 
-def _build_reasoning_strip_pattern() -> _re.Pattern[str]:
+def _build_reasoning_strip_pattern() -> re.Pattern[str]:
     """Compile one regex that strips any known reasoning tag."""
-    alt = "|".join(_re.escape(t) for t in sorted(_REASONING_TAGS))
-    return _re.compile(rf"<(?:{alt})>.*?</(?:{alt})>|<(?:{alt})>.*", _re.DOTALL | _re.IGNORECASE)
+    alt = "|".join(re.escape(t) for t in sorted(_REASONING_TAGS))
+    return re.compile(rf"<(?:{alt})>.*?</(?:{alt})>|<(?:{alt})>.*", re.DOTALL | re.IGNORECASE)
 
 
-_REASONING_RE: _re.Pattern[str] = _build_reasoning_strip_pattern()
+_REASONING_RE: re.Pattern[str] = _build_reasoning_strip_pattern()
 
 
 def strip_reasoning(content: str) -> str:

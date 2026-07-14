@@ -20,13 +20,11 @@ import time
 from typing import Any
 
 import litellm
-
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
 
 from knox.agent.definitions import AgentDefinition
 from knox.agent.tools import ToolDispatcher
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
 logger = get_logger(__name__)

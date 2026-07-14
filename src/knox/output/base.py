@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from knox.core.models import CompiledWiki
 
@@ -21,7 +21,7 @@ class BaseOutputWriter(ABC):
     name: ClassVar[str]
     _registry: ClassVar[dict[str, type[BaseOutputWriter]]] = {}
 
-    def __init__(self, flavor: str | None = None, **kwargs: object) -> None:
+    def __init__(self, flavor: str | None = None, **kwargs: Any) -> None:
         """
         Parameters
         ----------
@@ -32,7 +32,7 @@ class BaseOutputWriter(ABC):
         """
         self.flavor = flavor
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         name = getattr(cls, "name", None)
         if name is not None and not getattr(cls, "__abstractmethods__", None):

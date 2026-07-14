@@ -19,7 +19,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,
 )
-from knox.core.models import MetadataField, load_cached_wiki
+from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 from knox.logging import get_console, get_err_console
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 
@@ -128,7 +128,7 @@ def _shorten(source: str, sources_dir: Path) -> str:
         return p.name
 
 
-def _node_sources(node: object, sources_dir: Path) -> list[str]:
+def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:
     """Effective source list for a wiki node.
 
     Prefers ``source_chunks`` (resolved chunk references, used by the

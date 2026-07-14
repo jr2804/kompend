@@ -37,6 +37,7 @@ from knox.cli.args import (
     LintRule,
 )
 from knox.core.config import resolve_config
+from knox.core.config.keys import COMPILE_LLM_TIMEOUT
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
@@ -376,7 +377,7 @@ def lint_remediate(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    llm_client = LLMClient.from_config(cfg)
+    model = cfg.get("compile.llm.default_model", "")
 
     sources_dir_path = sources_dir if sources_dir.exists() else None
 
@@ -386,7 +387,7 @@ def lint_remediate(
         base_dir=base_dir,
         sources_dir=sources_dir_path,
         output_dir=output_dir,
-        llm_client=llm_client,
+        model=model,
         dry_run=dry_run,
     )
 

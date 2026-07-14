@@ -8,6 +8,7 @@ from typing import Any
 
 import typer
 
+from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
@@ -27,6 +28,7 @@ from knox.core.config import resolve_config
 from knox.core.config._configs import LlmDataFormat, QueryFormat, Verbosity
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_CONTEXT_WINDOW_CAP,
     QUERY_FORMAT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
@@ -44,10 +46,9 @@ from knox.core.config.keys import (
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
-from knox.llm.context_window import discover_context_window
+from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
-from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
@@ -309,7 +310,7 @@ def _synthesize_and_output(
     enhanced: EnhancedRetriever | None,
     wiki: CompiledWiki,
     model: str,
-    cw: object | None,
+    cw: ContextWindow | None,
     remember: bool,
     state_dir: Path,
     cfg: Any,
