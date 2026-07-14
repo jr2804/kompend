@@ -442,6 +442,7 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
                 agent=VerificationAgent(
                     model,
                     timeout=opts.pipeline_config.llm.timeout,
+                    retries=opts.pipeline_config.llm.output_retries,
                 ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
             )
@@ -529,7 +530,7 @@ def _check_llm_availability(pipeline: WikiPipeline) -> None:
     if not model:
         return
     try:
-        agent = DoctorAgent(model, timeout=pipeline.config.llm.timeout)
+        agent = DoctorAgent(model, timeout=pipeline.config.llm.timeout, retries=pipeline.config.llm.output_retries)
         agent.run(DoctorDeps(ping="ok"))
     except Exception as exc:
         get_err_console().print("[red]LLM not available — not starting compilation.[/red]")

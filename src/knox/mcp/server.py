@@ -31,7 +31,7 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MCP_ELEMENT_CHARS, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_MCP_ELEMENT_CHARS, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.core.pipeline.config import Compiler, ImageMode, OutputFormat, PipelineConfig
@@ -189,7 +189,7 @@ def wiki_capture(
     try:
         cfg = resolve_config()
         model = cfg.get("compile.llm.default_model", "")
-        capture_agent = CaptureAgent(model, timeout=120) if model else None
+        capture_agent = CaptureAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
     except Exception:
         capture_agent = None
 
@@ -419,7 +419,7 @@ def wiki_distill(
 
         try:
             model = cfg.get("compile.llm.default_model", "")
-            distill_agent = DistillAgent(model, timeout=120) if model else None
+            distill_agent = DistillAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
         except Exception:
             distill_agent = None
 

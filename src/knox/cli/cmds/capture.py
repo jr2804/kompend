@@ -19,7 +19,7 @@ from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, DISPLAY_RELATED_TITLES
+from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_RELATED_TITLES
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
@@ -57,6 +57,7 @@ def capture_cmd(
         capture_agent = CaptureAgent(
             cfg.get("compile.llm.default_model", ""),
             timeout=float(cfg.get("compile.llm.timeout", 120)),
+            retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES),
         )
     except Exception:
         capture_agent = None
@@ -114,6 +115,7 @@ def distill_cmd(
         distill_agent = DistillAgent(
             cfg.get("compile.llm.default_model", ""),
             timeout=float(cfg.get("compile.llm.timeout", 120)),
+            retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES),
         )
     except Exception:
         distill_agent = None

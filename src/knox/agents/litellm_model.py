@@ -55,6 +55,7 @@ def _save_debug_prompt(
     kwargs: dict[str, Any],
     response_content: str,
     finish_reason: str | None,
+    source_id: str = "",
 ) -> None:
     """Save the LLM prompt and response to a debug file.
 
@@ -68,8 +69,10 @@ def _save_debug_prompt(
     debug_path = Path(debug_dir)
     debug_path.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    slug = model_string.replace("/", "_").replace(":", "_")
-    filepath = debug_path / f"llm_{ts}_{slug}.json"
+    model_slug = model_string.replace("/", "_").replace(":", "")
+    source_slug = source_id.replace("/", "_").replace("\\", "_").replace(":", "") if source_id else ""
+    filename = f"llm_{ts}_{source_slug}_{model_slug}.json" if source_slug else f"llm_{ts}_{model_slug}.json"
+    filepath = debug_path / filename
     payload = {
         "model": model_string,
         "timestamp": datetime.now().isoformat(),
@@ -202,7 +205,8 @@ def _make_litellm_function(
                 content = json.dumps(repaired, ensure_ascii=False)
 
         # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
-        _save_debug_prompt(model_string, litellm_messages, kwargs, content, finish_reason)
+        _source_id = info.model_settings.get("source_id", "") if info.model_settings else ""
+        _save_debug_prompt(model_string, litellm_messages, kwargs, content, finish_reason, source_id=_source_id)
 
         # Debug: log raw response anomalies for diagnosis
         if not content.strip() and not info.allow_text_output:

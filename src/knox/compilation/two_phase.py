@@ -728,6 +728,7 @@ class TwoPhaseCompiler(BaseCompiler):
                     timeout=self._timeout,
                     max_tokens=self._budget.gen_output_max,
                     skills=self._config.skills,
+                    retries=self._config.llm.output_retries,
                 )
                 gen_output = _try_pydanticai_generation(
                     agent,
@@ -827,6 +828,7 @@ class TwoPhaseCompiler(BaseCompiler):
             timeout=self._timeout,
             max_tokens=self._budget.extract_output_max,
             skills=self._config.skills,
+            retries=self._config.llm.output_retries,
         )
         validated = _try_pydanticai_extraction(
             agent,

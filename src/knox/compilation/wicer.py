@@ -360,6 +360,7 @@ class WiCERCompiler(BaseCompiler):
                 litellm_model=self._config.llm.default_model,
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
+                retries=self._config.llm.output_retries,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
             return [p.model_dump() for p in output.probes]
@@ -394,6 +395,7 @@ class WiCERCompiler(BaseCompiler):
                     litellm_model=self._config.llm.default_model,
                     max_tokens=self._config.budget.verify_output_max,
                     skills=self._config.skills,
+                    retries=self._config.llm.output_retries,
                 )
                 output = agent.run(
                     WicerEvaluateDeps(
@@ -431,6 +433,7 @@ class WiCERCompiler(BaseCompiler):
                 litellm_model=self._config.llm.default_model,
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
+                retries=self._config.llm.output_retries,
             )
             output = agent.run(
                 WicerDiagnoseDeps(

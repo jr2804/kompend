@@ -29,6 +29,7 @@ from knox.core.config._configs import LlmDataFormat, QueryFormat, Verbosity
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_CONTEXT_WINDOW_CAP,
+    COMPILE_LLM_OUTPUT_RETRIES,
     QUERY_FORMAT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
@@ -226,9 +227,10 @@ def _build_enhanced_retriever(
     model: str,
 ) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
-    expansion_agent = QueryExpansionAgent(model, timeout=120) if model else None
-    crag_agent = CragGradeAgent(model, timeout=120) if model else None
-    hyde_agent = HydeAgent(model, timeout=120) if model else None
+    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES)
+    expansion_agent = QueryExpansionAgent(model, timeout=120, retries=_retries) if model else None
+    crag_agent = CragGradeAgent(model, timeout=120, retries=_retries) if model else None
+    hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
     return EnhancedRetriever(
         wiki,
         index_file=state_dir / SEARCH_DB_FILE,

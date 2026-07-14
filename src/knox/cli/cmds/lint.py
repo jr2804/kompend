@@ -37,7 +37,7 @@ from knox.cli.args import (
     LintRule,
 )
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_LLM_TIMEOUT
+from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
@@ -150,7 +150,7 @@ def lint_run(
         raise typer.Exit(1)
 
     default_model = cfg.get("compile.llm.default_model", "")
-    lint_agent = LintRuleAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120))) if default_model else None
+    lint_agent = LintRuleAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120)), retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if default_model else None
     if _uses_llm_rule(rule) and lint_agent is None:
         get_err_console().print(
             "LLM-powered lint rules require a model. Set compile.llm.default_model in config (e.g. openai/gpt-4o).",

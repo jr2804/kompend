@@ -13,6 +13,7 @@ from typing import Any
 import litellm
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
+from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
@@ -165,7 +166,7 @@ def _enable_litellm_debug() -> None:
             logger.addHandler(handler)
 
 
-def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: float = 60.0) -> CheckResult:
+def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: float = 60.0, retries: int | None = None) -> CheckResult:
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
     if not model:
@@ -178,6 +179,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
             litellm_model=model,
             timeout=timeout,
             max_tokens=128,
+            retries=retries,
         )
         result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
         if result and result.strip():
@@ -284,8 +286,9 @@ def run_doctor(
     results.append(_check_context_window(vlm_model, "vlm"))
     results.append(_check_budget_consistency(default_model, cfg))
     llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
-    results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout))
-    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout))
+    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
+    results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
     results.append(_ping_embed_model(embed_model))
 
     return results

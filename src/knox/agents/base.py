@@ -151,6 +151,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 user_prompt,
                 deps=deps,
                 instructions=system_prompt,
+                model_settings={"source_id": deps.source_id},
             )
         except Exception as exc:
             logger.warning(
