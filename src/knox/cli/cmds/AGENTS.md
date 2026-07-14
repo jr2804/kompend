@@ -132,7 +132,7 @@ Example:
 - No circular imports with `app.py`: `uv run python -c "from knox.cli import app, cmds"`
 - All commands register with app: `uv run python -m knox.cli --help` shows all commands
 - Backward compatibility maintained: Old import paths (`from knox.cli.lint_cmds import lint`) still work via `__init__.py` re-exports
-- `__init__.py` uses `__getattr__` for lazy module loading — do NOT add eager imports; add new modules to `_MODULE_NAMES` frozenset instead
+- `__init__.py` uses `__getattr__` for lazy module loading â€” do NOT add eager imports; add new modules to `_MODULE_NAMES` frozenset instead
 
 ## Child DOX Index
 
