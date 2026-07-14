@@ -23,11 +23,12 @@ from typing import Any
 
 from slugify import slugify
 
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.lint import LintRuleAgent
 from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
 from knox.lint.gap_analysis import analyze_gaps
-from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
 from knox.output.renderer import render_frontmatter
@@ -83,7 +84,7 @@ def remediate(
     base_dir: Path | None = None,
     sources_dir: Path | None = None,
     output_dir: Path | None = None,
-    llm_client: Any | None = None,
+    model: str = "",
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Remediate lint findings from a report dict.
@@ -96,7 +97,7 @@ def remediate(
         output_dir: Wiki output directory. Tier-2 generated concept pages are
             written here as ``.md`` files so they are visible to the user and
             survive a re-organize. When ``None``, pages only update the cache.
-        llm_client: LLM client for tier 2. If ``None``, tier 2 is skipped.
+        model: LLM model name for tier 2. If empty, tier 2 is skipped.
         dry_run: If ``True``, report what would be done without modifying.
 
     Returns a list of :class:`RemediationAction` sorted by tier.
@@ -109,11 +110,11 @@ def remediate(
 
     # ── Tier 2: LLM-remediable ──
     handled_concepts: set[str] = set()
-    if llm_client is not None and base_dir is not None and sources_dir is not None:
+    if model and base_dir is not None and sources_dir is not None:
         tier2_actions = _remediate_coverage_gaps(
             wiki,
             results,
-            llm_client=llm_client,
+            model=model,
             base_dir=base_dir,
             sources_dir=sources_dir,
             output_dir=output_dir,
@@ -216,7 +217,7 @@ def _remediate_coverage_gaps(
     wiki: CompiledWiki,
     results: list[dict[str, Any]],
     *,
-    llm_client: Any,
+    model: str,
     base_dir: Path,
     sources_dir: Path,
     output_dir: Path | None = None,
@@ -253,6 +254,8 @@ def _remediate_coverage_gaps(
     node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
 
+    lint_agent = LintRuleAgent(model, timeout=120) if model else None
+
     for gap in gap_concepts:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
         if not matched:
@@ -284,7 +287,7 @@ def _remediate_coverage_gaps(
             )
             continue
 
-        content = _generate_concept_page(llm_client, matched)
+        content = _generate_concept_page(lint_agent, matched)
         if content is None:
             actions.append(
                 RemediationAction(
@@ -387,8 +390,10 @@ def _write_concept_page(output_dir: Path | None, page_id: str, title: str, conte
     (output_dir / f"{page_id}.md").write_text(body, encoding="utf-8")
 
 
-def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str | None:
+def _generate_concept_page(agent: LintRuleAgent | None, concept_data: dict[str, Any]) -> str | None:
     """Use LLM to generate a wiki page for a concept from extraction data."""
+    if agent is None:
+        return None
     loader = get_template_loader()
     prompt = loader.render(
         "lint/remediate_concept.md.j2",
@@ -397,13 +402,15 @@ def _generate_concept_page(llm_client: Any, concept_data: dict[str, Any]) -> str
         sources=concept_data.get("sources", []),
         source_summaries=concept_data.get("summaries", []),
     )
-    result = llm_client.try_complete(
-        messages=[{"role": "user", "content": prompt}],
-        role=LLMRole.LINT_REMEDIATE_CONCEPT,
-    )
-    if result is None or not result.content:
+    deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate", timeout=120)
+    try:
+        result = agent.run(deps)
+        if result and isinstance(result, dict):
+            return result.get("content", "") or str(result.get("text", ""))
+        return str(result) if result else None
+    except Exception as exc:
+        logger.warning("Concept page generation failed: %s", exc, exc_info=True)
         return None
-    return result.content.strip()
 
 
 def _fuzzy_match_concept(
