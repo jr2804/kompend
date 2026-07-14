@@ -107,5 +107,5 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
                     model=self._litellm_model,
                 )
 
-        _save_debug_prompt(self._litellm_model, messages, kwargs, content, finish_reason)
+        _save_debug_prompt(self._litellm_model, messages, kwargs, content, finish_reason, source_id=self._current_source_id)
         return content.strip()

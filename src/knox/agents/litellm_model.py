@@ -26,7 +26,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import litellm
 from pydantic_ai.messages import (
@@ -133,6 +133,7 @@ def _make_litellm_function(
     model_string: str,
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
+    source_id_provider: Callable[[], str] | None = None,
 ) -> Any:
     """Create a FunctionModel-compatible function calling ``litellm.completion()``."""
 
@@ -204,7 +205,7 @@ def _make_litellm_function(
                 content = json.dumps(repaired, ensure_ascii=False)
 
         # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
-        _source_id = info.model_settings.get("source_id", "") if info.model_settings else ""
+        _source_id = source_id_provider() if source_id_provider else ""
         _save_debug_prompt(model_string, litellm_messages, kwargs, content, finish_reason, source_id=_source_id)
 
         # Debug: log raw response anomalies for diagnosis
@@ -241,6 +242,7 @@ def make_litellm_model(
     model_string: str,
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
+    source_id_provider: Callable[[], str] | None = None,
 ) -> FunctionModel:
     """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
 
@@ -251,12 +253,14 @@ def make_litellm_model(
         model_string: Model name in litellm format (``"provider/model"``).
         usage_tracker: Optional :class:`UsageTracker` to record token counts.
         fallback_models: Optional list of fallback models tried on transient errors.
+        source_id_provider: Optional callable returning the current source_id for debug logging.
     """
     return FunctionModel(
         function=_make_litellm_function(
             model_string,
             usage_tracker=usage_tracker,
             fallback_models=fallback_models,
+            source_id_provider=source_id_provider,
         ),
         model_name=model_string,
     )

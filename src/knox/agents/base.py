@@ -28,6 +28,7 @@ from abc import ABC
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.litellm_model import make_litellm_model
@@ -41,6 +42,10 @@ logger = get_logger(__name__)
 #: Per-stage timeout floor. Agents in KNOX are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
+
+#: Default retries when no config value is provided. Matches the config
+#: default in ``compile.llm.output_retries``.
+_DEFAULT_RETRIES: int = 2
 
 ResultT = TypeVar("ResultT")
 
@@ -85,7 +90,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         litellm_model: str,
         *,
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
-        retries: int = 2,
+        retries: int = _DEFAULT_RETRIES,
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         usage_tracker: UsageTracker | None = None,
@@ -105,6 +110,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # The template loader is available for render_system_prompt
         # and render_user_prompt, which are called at run() time.
         self._template_loader = get_template_loader()
+        # Current source_id for debug logging (set per run() call)
+        self._current_source_id: str = ""
 
     def render_user_prompt(self, deps: DepsT) -> str:
         """Render the user-prompt template with the agent's deps.
@@ -144,6 +151,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """
         if self._agent is None:
             self._agent = self._build_agent()
+        self._current_source_id = deps.source_id
         user_prompt = self.render_user_prompt(deps)
         system_prompt = self.render_system_prompt(deps)
         try:
@@ -151,13 +159,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 user_prompt,
                 deps=deps,
                 instructions=system_prompt,
-                model_settings={"source_id": deps.source_id},
             )
         except Exception as exc:
             logger.warning(
                 "Agent '%s' failed on '%s': %s",
                 type(self).__name__,
-                getattr(deps, "source_id", deps.__class__.__name__),
+                deps.source_id,
                 exc,
             )
             raise LLMOutputError(f"Agent failed for model '{self._litellm_model}': {exc}") from exc
@@ -173,12 +180,17 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """The usage tracker, if one was provided."""
         return self._usage_tracker
 
+    @property
+    def current_source_id(self) -> str:
+        """The source_id from the most recent ``run()`` call."""
+        return self._current_source_id
+
     def _build_agent(self) -> Agent[DepsT, ResultT]:
         """Construct the wrapped PydanticAI agent. Called lazily on first run().
 
         Subclasses can override to customize model_settings or agent construction.
         """
-        model_settings: dict[str, object] = {"timeout": self._timeout}
+        model_settings: ModelSettings = {"timeout": self._timeout}
         if self.temperature is not None:
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
@@ -188,10 +200,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 self._litellm_model,
                 usage_tracker=self._usage_tracker,
                 fallback_models=self._fallback_models,
+                source_id_provider=lambda: self._current_source_id,
             ),
             deps_type=self.deps_type,
             output_type=self.result_type,
-            model_settings=model_settings,  # type: ignore[arg-type]
+            model_settings=model_settings,
             retries=self._retries,
         )
 
