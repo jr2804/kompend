@@ -57,6 +57,7 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
 from knox.resolution.vlm_enricher import VLMEnricher
+from knox.agents.vlm import VlmAgent
 from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
@@ -282,8 +283,6 @@ class TestTier3Resolution:
         if not image_chunks:
             pytest.skip("No IMAGE chunks in parsed corpus — VLM path not exercised")
 
-        from knox.agents.vlm import VlmAgent, VlmDeps
-
         vlm_agent = VlmAgent(f"ollama/{VLM_MODEL}", timeout=120)
         enricher = VLMEnricher(agent=vlm_agent)
 
@@ -323,7 +322,7 @@ class TestTier4Compilation:
 
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
-        cw = discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
         )
@@ -331,7 +330,6 @@ class TestTier4Compilation:
         compiler = WiCERCompiler(
             config=config,
             base_compiler=GraphCompiler("model"),
-            llm_client=llm_client,
         )
         wiki = compiler.compile(resolved_chunks)
         assert len(wiki.nodes) > 0, "WiCERCompiler produced no nodes"

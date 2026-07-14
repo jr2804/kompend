@@ -45,7 +45,7 @@ def distill(
 
     Args:
         sources_dir: Root sources directory (``sources/``).
-        llm_client: Optional LLM client for synthesis.  When ``None``, notes are
+        distill_agent: Optional agent for synthesis.  When ``None``, notes are
             merged deterministically without LLM call.
 
     Returns:

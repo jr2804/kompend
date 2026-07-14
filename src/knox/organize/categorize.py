@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
-from knox.agents.categorize_models import CategoryNode, CategoryTree
 from knox.agents.deps import PipelineAgentDeps
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig

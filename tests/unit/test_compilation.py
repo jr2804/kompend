@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from knox.compilation import GraphCompiler, WiCERCompiler
 from knox.compilation._two_phase_core import (
     _FAILURE_THRESHOLD_MIN,
@@ -27,10 +28,9 @@ from knox.compilation.schema import (
 )
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline.config import PipelineConfig
-from knox.llm.context_window import ContextWindow, discover_context_window
+from knox.llm.context_window import ContextWindow
 
 # ===========================================================================
 #  Helpers
@@ -1193,9 +1193,9 @@ class TestTwoPhaseConceptSalvage:
         with (
             patch.object(compiler, "extract", return_value=ext_set),
             patch("knox.compilation.two_phase._try_pydanticai_generation", return_value=None),
+            pytest.raises(LLMOutputError, match=r"Generation failed: 0 of 1 concept\(s\) synthesized"),
         ):
-            with pytest.raises(LLMOutputError, match=r"Generation failed: 0 of 1 concept\(s\) synthesized"):
-                compiler.compile(chunks)
+            compiler.compile(chunks)
 
 
 class TestVlmArtifactFiltering:
