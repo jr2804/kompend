@@ -70,11 +70,10 @@ def _save_debug_prompt(
     debug_path.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     model_slug = model_string.replace("/", "_").replace(":", "")
-    source_slug = source_id.replace("/", "_").replace("\\", "_").replace(":", "") if source_id else ""
-    filename = f"llm_{ts}_{source_slug}_{model_slug}.json" if source_slug else f"llm_{ts}_{model_slug}.json"
-    filepath = debug_path / filename
+    filepath = debug_path / f"llm_{ts}_{model_slug}.json"
     payload = {
         "model": model_string,
+        "source_id": source_id,
         "timestamp": datetime.now().isoformat(),
         "messages": litellm_messages,
         "kwargs": {k: v for k, v in kwargs.items() if k != "messages"},
