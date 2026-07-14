@@ -41,7 +41,7 @@ dependencies = [
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
     "chonkie>=1.0.0",
     "crawl4ai>=0.5.0",
-    "litellm>=1.0.0",
+    "litellm<1.92.0",
     "zvec>=0.4.0",
     "sentence-transformers>=5.5.1",
     "rumdl>=0.2.9",
@@ -68,7 +68,6 @@ dependencies = [
     "unrar2-cffi>=0.5.0",
     "json-repair[schema]>=0.61.2",
     "pypandoc>=1.17",
-    "pydantic-ai>=2.8.0",
     "logfire>=4.37.0",
     "agent-client-protocol>=0.11.0",
 ]
