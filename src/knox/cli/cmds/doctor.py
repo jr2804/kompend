@@ -151,13 +151,15 @@ def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
     return default
 
 
-def _ping_model(model: str | None, label: str) -> CheckResult:
+def _ping_model(model: str | None, label: str, verbose: bool = False) -> CheckResult:
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
     if not model:
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
+        if verbose:
+            litellm._turn_on_debug()
         agent = DoctorAgent(
             litellm_model=model,
             timeout=30.0,
@@ -235,6 +237,7 @@ def run_doctor(
     vlm_model: str | None = None,
     embed_model: str | None = None,
     cfg: dict[str, Any] | None = None,
+    verbose: bool = False,
 ) -> list[CheckResult]:
     """Run all doctor checks and return results.
 
@@ -253,6 +256,8 @@ def run_doctor(
     cfg:
         Optional resolved config dict. When provided, budget consistency
         checks are run against the discovered context window.
+    verbose:
+        Enable litellm debug logging for LLM connectivity checks.
     """
     results: list[CheckResult] = []
 
@@ -264,8 +269,8 @@ def run_doctor(
     results.append(_check_context_window(default_model, "llm"))
     results.append(_check_context_window(vlm_model, "vlm"))
     results.append(_check_budget_consistency(default_model, cfg))
-    results.append(_ping_model(default_model, "llm"))
-    results.append(_ping_model(vlm_model, "vlm"))
+    results.append(_ping_model(default_model, "llm", verbose=verbose))
+    results.append(_ping_model(vlm_model, "vlm", verbose=verbose))
     results.append(_ping_embed_model(embed_model))
 
     return results

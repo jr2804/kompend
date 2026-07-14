@@ -56,6 +56,7 @@ def doctor_cmd(
         vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
         embed_model=cfg.get(COMPILE_EMBEDDING_MODEL),
         cfg=cfg,
+        verbose=verbose,
     )
     exit_code = print_doctor_results(results, json_output=json_output)
     if exit_code:
