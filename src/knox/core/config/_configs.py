@@ -123,6 +123,7 @@ class LLMConfig(_KnoxBaseModel):
     api_key: str | None = None
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
     output_retries: int = Field(default=2, validation_alias="KNOX_LLM_OUTPUT_RETRIES")
+    reasoning_effort: str | None = Field(default=None, validation_alias="KNOX_LLM_REASONING_EFFORT")
 
 
 class BudgetConfig(_KnoxBaseModel):

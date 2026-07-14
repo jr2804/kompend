@@ -443,6 +443,7 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
                     model,
                     timeout=opts.pipeline_config.llm.timeout,
                     retries=opts.pipeline_config.llm.output_retries,
+                    reasoning_effort=opts.pipeline_config.llm.reasoning_effort,
                 ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
             )

@@ -257,11 +257,16 @@ fallback_max_retries = 2
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"
 
-    # LLM call timeout
+    # LLM call timeout (seconds)
     timeout = 120.0
 
     # PydanticAI output retries (retries when LLM output fails schema validation)
     output_retries = 2
+
+    # Reasoning effort: controls how much the model "thinks" before responding.
+    # Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
+    # For Ollama models, "none"/"minimal"/"low" also set think=False.
+    # reasoning_effort = "medium"
 
 # User-defined skill instructions injected into agent system prompts.
 # Defined under [compile.skills."<name>"] with an "instructions" field.

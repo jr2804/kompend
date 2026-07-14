@@ -42,6 +42,8 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from knox.core.config.keys import DISPLAY_EXCERPT_CHARS
+from knox.core.utils.exceptions import shorten_string
 from knox.llm.failover import FailoverChain
 from knox.llm.format import salvage_json
 from knox.llm.usage import UsageTracker
@@ -135,8 +137,14 @@ def _make_litellm_function(
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
     source_id_provider: Callable[[], str] | None = None,
+    reasoning_effort: str | None = None,
 ) -> Any:
-    """Create a FunctionModel-compatible function calling ``litellm.completion()``."""
+    """Create a FunctionModel-compatible function calling ``litellm.completion()``.
+
+    When *reasoning_effort* is set, it is forwarded to litellm as
+    ``reasoning_effort=`` (for cloud providers like OpenAI/Anthropic) and
+    mapped to ``think=False`` for Ollama models that support the think toggle.
+    """
 
     def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         litellm_messages = _messages_to_litellm(messages)
@@ -165,6 +173,17 @@ def _make_litellm_function(
         # When allow_text_output is True (QueryAgent), the model returns free text.
         if not info.allow_text_output:
             kwargs["response_format"] = {"type": "json_object"}
+
+        # Apply reasoning_effort: cloud providers get it natively via litellm,
+        # Ollama gets think=False for low effort levels.
+        if reasoning_effort:
+            if model_string.startswith("ollama/"):
+                # Ollama: map low effort levels to think=False
+                if reasoning_effort in ("none", "minimal", "low"):
+                    kwargs["think"] = False
+            else:
+                # Cloud providers: forward reasoning_effort directly
+                kwargs["reasoning_effort"] = reasoning_effort
 
         # Try models in order with failover on transient errors
         if len(all_models) > 1:
@@ -221,7 +240,7 @@ def _make_litellm_function(
                 "LitellmModel: non-JSON response from '%s' (finish_reason=%s, first 200 chars): %s",
                 model_string,
                 finish_reason,
-                content[:200],
+                shorten_string(content, limit=DISPLAY_EXCERPT_CHARS),
             )
         elif finish_reason == "length" and not info.allow_text_output:
             logger.warning(
@@ -244,6 +263,7 @@ def make_litellm_model(
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
     source_id_provider: Callable[[], str] | None = None,
+    reasoning_effort: str | None = None,
 ) -> FunctionModel:
     """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
 
@@ -255,6 +275,7 @@ def make_litellm_model(
         usage_tracker: Optional :class:`UsageTracker` to record token counts.
         fallback_models: Optional list of fallback models tried on transient errors.
         source_id_provider: Optional callable returning the current source_id for debug logging.
+        reasoning_effort: Optional reasoning effort (``"none"``, ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"default"``).
     """
     return FunctionModel(
         function=_make_litellm_function(
@@ -262,6 +283,7 @@ def make_litellm_model(
             usage_tracker=usage_tracker,
             fallback_models=fallback_models,
             source_id_provider=source_id_provider,
+            reasoning_effort=reasoning_effort,
         ),
         model_name=model_string,
     )

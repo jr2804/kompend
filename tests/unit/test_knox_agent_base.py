@@ -4,26 +4,49 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
 
 
 class TestKnoxAgentBaseContract:
     def test_knox_agent_base_is_abstract(self) -> None:
-        """KnoxAgentBase cannot be instantiated directly — it requires an agent."""
-        with pytest.raises(TypeError):
-            KnoxAgentBase()  # type: ignore[abstract]
+        """KnoxAgentBase requires a concrete subclass to be usable, but the base
+        class itself can be instantiated for testing because `_build_agent` now
+        provides a default implementation.
+        """
+        agent: KnoxAgentBase[Any, Any] = KnoxAgentBase(litellm_model="test/noop")
+        assert agent.litellm_model == "test/noop"
 
     def test_knox_agent_base_requires_build_agent(self) -> None:
-        """Subclasses must implement _build_agent to be instantiable."""
+        """Subclasses may rely on the default _build_agent implementation."""
 
-        class Incomplete(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        with pytest.raises(TypeError):
-            Incomplete("ollama/foo")  # type: ignore[abstract]
+        agent = DefaultBuilder(litellm_model="test/noop")
+        # Base class provides a default _build_agent; instantiation succeeds
+        assert agent.litellm_model == "test/noop"
+
+    def test_knox_agent_base_stores_reasoning_effort(self) -> None:
+        """reasoning_effort is stored and forwarded to litellm_model."""
+
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+            pass
+
+        agent = DefaultBuilder(
+            litellm_model="test/noop",
+            reasoning_effort="low",
+        )
+        assert agent._reasoning_effort == "low"  # noqa: SLF001
+
+    def test_knox_agent_base_reasoning_effort_none_by_default(self) -> None:
+        """reasoning_effort defaults to None (use provider default)."""
+
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+            pass
+
+        agent = DefaultBuilder(litellm_model="test/noop")
+        assert agent._reasoning_effort is None  # noqa: SLF001
 
 
 class TestSkillInjection:

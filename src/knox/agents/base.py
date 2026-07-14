@@ -95,11 +95,13 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         skills: dict[str, str] | None = None,
         usage_tracker: UsageTracker | None = None,
         fallback_models: list[str] | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self._litellm_model = litellm_model
         self._timeout = timeout
         self._retries = retries
         self._max_tokens = max_tokens
+        self._reasoning_effort = reasoning_effort
         self._usage_tracker = usage_tracker
         self._fallback_models = fallback_models
         # User-defined skills (skill_name -> instructions, injected into system prompt)
@@ -201,6 +203,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 usage_tracker=self._usage_tracker,
                 fallback_models=self._fallback_models,
                 source_id_provider=lambda: self._current_source_id,
+                reasoning_effort=self._reasoning_effort,
             ),
             deps_type=self.deps_type,
             output_type=self.result_type,

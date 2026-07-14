@@ -64,6 +64,7 @@ COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
 COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
 COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
+COMPILE_LLM_REASONING_EFFORT: Final[str] = "compile.llm.reasoning_effort"
 
 # ── compile.pdf sub-section ──
 COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_before_chunking"
