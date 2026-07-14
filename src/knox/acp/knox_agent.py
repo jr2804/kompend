@@ -13,8 +13,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from acp import Agent, PromptResponse, text_block
+from acp import Agent, PromptResponse
 from acp.schema import (
+    AgentCapabilities,
     AgentMessageChunk,
     AvailableCommand,
     AvailableCommandsUpdate,
@@ -27,6 +28,23 @@ from acp.schema import (
     TextContentBlock,
 )
 
+from knox.acp._constants import (
+    CONTENT_TYPE_TEXT,
+    MSG_ID_PREFIX,
+    PROGRESS_CURRENT,
+    PROGRESS_EVENT,
+    PROGRESS_MESSAGE,
+    PROGRESS_PHASE,
+    PROGRESS_TOTAL,
+    PROGRESS_TYPE_DONE,
+    PROGRESS_TYPE_ERROR,
+    PROGRESS_TYPE_PROGRESS,
+    SESSION_ID_PREFIX,
+    SESSION_KEY_CWD,
+    SESSION_UPDATE_AVAILABLE_COMMANDS,
+    SESSION_UPDATE_MESSAGE_CHUNK,
+    STOP_REASON_END_TURN,
+)
 from knox.acp.conversational import ConversationalAgent
 from knox.acp.definitions import AgentDefinition, AgentTask
 from knox.acp.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
@@ -92,9 +110,9 @@ class KnoxAgent(Agent):
     ) -> InitializeResponse:
         """Advertise provider configuration support."""
         return InitializeResponse(
-            protocol_version=protocol_version,
-            agent_info=Implementation(name="knox", version="0.1.0"),
-            agent_capabilities=ProvidersCapabilities(providers={}),
+            protocolVersion=protocol_version,
+            agentInfo=Implementation(name="knox", version="0.1.0"),
+            agentCapabilities=AgentCapabilities(providers=ProvidersCapabilities()),
         )
 
     async def new_session(
@@ -105,10 +123,10 @@ class KnoxAgent(Agent):
         **kwargs: Any,
     ) -> NewSessionResponse:
         """Create a new session and advertise available slash commands."""
-        session_id = f"sess_{len(self._sessions) + 1}"
+        session_id = f"{SESSION_ID_PREFIX}{len(self._sessions) + 1}"
         self._sessions[session_id] = {"cwd": cwd}
         await self._advertise_commands(session_id)
-        return NewSessionResponse(session_id=session_id)
+        return NewSessionResponse(sessionId=session_id)
 
     async def prompt(
         self,
@@ -137,10 +155,8 @@ class KnoxAgent(Agent):
         # Degraded mode: no LLM — fall back to subprocess dispatch for slash commands
         cmd = parse_slash_command(text)
         if cmd is None:
-            return PromptResponse(
-                stop_reason="end_turn",
-                messages=[text_block("No LLM configured. Use ``/knox`` slash commands, or configure an LLM via providers/set or config.toml.")],
-            )
+            await self._send_text(session_id, "No LLM configured. Use ``/knox`` slash commands, or configure an LLM via providers/set or config.toml.")
+            return PromptResponse(stopReason=STOP_REASON_END_TURN)
         return await self._dispatch_slash(cmd, session_id)
 
     # ── Provider configuration ──────────────────────────────────────────
@@ -269,7 +285,7 @@ class KnoxAgent(Agent):
     ) -> PromptResponse:
         """Run the conversational agent loop."""
         session = self._sessions.get(session_id, {})
-        cwd = session.get("cwd", ".")
+        cwd = session.get(SESSION_KEY_CWD, ".")
 
         # Infer task from slash command, or default to generic
         cmd = parse_slash_command(text)
@@ -289,36 +305,30 @@ class KnoxAgent(Agent):
             return
         commands = [AvailableCommand(name=f"/knox {c.name}", description=c.description) for c in KNOX_COMMANDS]
         update = AvailableCommandsUpdate(
-            available_commands=commands,
-            session_update="available_commands_update",
+            availableCommands=commands,
+            sessionUpdate=SESSION_UPDATE_AVAILABLE_COMMANDS,
         )
         await self._conn.session_update(session_id=session_id, update=update)
 
     async def _dispatch_slash(self, cmd: SlashCommand, session_id: str) -> PromptResponse:
         """Dispatch a parsed slash command to the appropriate handler."""
         if cmd.name == "help":
-            return PromptResponse(
-                stop_reason="end_turn",
-                messages=[text_block(HELP_TEXT)],
-            )
+            await self._send_text(session_id, HELP_TEXT)
+            return PromptResponse(stopReason=STOP_REASON_END_TURN)
 
         if cmd.name == "status":
-            return await self._handle_status()
+            return await self._handle_status(session_id)
 
         if cmd.name in ("compile", "query", "capture"):
             return await self._run_knox_cli(cmd, session_id)
 
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block(f"Unknown command: ``{cmd.name}``. Use ``/knox help``.")],
-        )
+        await self._send_text(session_id, f"Unknown command: ``{cmd.name}``. Use ``/knox help``.")
+        return PromptResponse(stopReason=STOP_REASON_END_TURN)
 
-    async def _handle_status(self) -> PromptResponse:
+    async def _handle_status(self, session_id: str) -> PromptResponse:
         """Show vault health and cache stats."""
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block("KNOX agent is running. Use ``/knox compile`` to compile a wiki.")],
-        )
+        await self._send_text(session_id, "KNOX agent is running. Use ``/knox compile`` to compile a wiki.")
+        return PromptResponse(stopReason=STOP_REASON_END_TURN)
 
     async def _run_knox_cli(self, cmd: SlashCommand, session_id: str) -> PromptResponse:
         """Run a KNOX CLI command in a subprocess and return the output.
@@ -345,20 +355,16 @@ class KnoxAgent(Agent):
             output = stdout.decode("utf-8", errors="replace")
             if stderr:
                 output += f"\n\nStderr:\n{stderr.decode('utf-8', errors='replace')}"
-            return PromptResponse(
-                stop_reason="end_turn",
-                messages=[text_block(output or "(no output)")],
-            )
+            await self._send_text(session_id, output or "(no output)")
+            return PromptResponse(stopReason=STOP_REASON_END_TURN)
 
         # Stream compile progress line by line.
         final_message = ""
-        message_id = f"msg_{int(time.time() * 1000)}"
+        message_id = f"{MSG_ID_PREFIX}{int(time.time() * 1000)}"
         stdout = proc.stdout
         if stdout is None:
-            return PromptResponse(
-                stop_reason="end_turn",
-                messages=[text_block("(no stdout from subprocess)")],
-            )
+            await self._send_text(session_id, "(no stdout from subprocess)")
+            return PromptResponse(stopReason=STOP_REASON_END_TURN)
         while True:
             line = await stdout.readline()
             if not line:
@@ -370,13 +376,13 @@ class KnoxAgent(Agent):
                 event = json.loads(decoded)
             except json.JSONDecodeError:
                 continue
-            evt_type = event.get("event")
-            if evt_type == "progress":
+            evt_type = event.get(PROGRESS_EVENT)
+            if evt_type == PROGRESS_TYPE_PROGRESS:
                 await self._send_progress_chunk(session_id, message_id, event)
-            elif evt_type == "done":
-                final_message = event.get("message", "")
-            elif evt_type == "error":
-                final_message = event.get("message", "Compilation failed")
+            elif evt_type == PROGRESS_TYPE_DONE:
+                final_message = event.get(PROGRESS_MESSAGE, "")
+            elif evt_type == PROGRESS_TYPE_ERROR:
+                final_message = event.get(PROGRESS_MESSAGE, "Compilation failed")
 
         await proc.wait()
         stderr_data = await proc.stderr.read() if proc.stderr else b""
@@ -387,25 +393,38 @@ class KnoxAgent(Agent):
             output_parts.append(f"Stderr:\n{stderr_text}")
         output = "\n\n".join(output_parts) if output_parts else "(no output)"
 
-        return PromptResponse(
-            stop_reason="end_turn",
-            messages=[text_block(output)],
-        )
+        await self._send_text(session_id, output)
+        return PromptResponse(stopReason=STOP_REASON_END_TURN)
+
+    async def _send_text(self, session_id: str, text: str) -> None:
+        """Send a text notification as an AgentMessageChunk."""
+        if self._conn is None:
+            return
+        try:
+            message_id = f"{MSG_ID_PREFIX}{int(time.time() * 1000)}"
+            chunk = AgentMessageChunk(
+                content=TextContentBlock(type=CONTENT_TYPE_TEXT, text=text),
+                messageId=message_id,
+                sessionUpdate=SESSION_UPDATE_MESSAGE_CHUNK,
+            )
+            await self._conn.session_update(session_id=session_id, update=chunk)
+        except Exception:
+            logger.debug("Failed to send text notification", exc_info=True)
 
     async def _send_progress_chunk(self, session_id: str, message_id: str, event: dict[str, Any]) -> None:
         """Forward a progress event as an ``AgentMessageChunk`` notification."""
         if self._conn is None:
             return
-        phase = event.get("phase", "")
-        current = event.get("current", 0)
-        total = event.get("total", 0)
-        detail = event.get("message", "")
+        phase = event.get(PROGRESS_PHASE, "")
+        current = event.get(PROGRESS_CURRENT, 0)
+        total = event.get(PROGRESS_TOTAL, 0)
+        detail = event.get(PROGRESS_MESSAGE, "")
         pct = f" {int(current * 100 / total)}%" if total else ""
         text = f"[{phase}] {detail}{pct}".strip()
         chunk = AgentMessageChunk(
-            content=TextContentBlock(type="text", text=text),
-            message_id=message_id,
-            session_update="agent_message_chunk",
+            content=TextContentBlock(type=CONTENT_TYPE_TEXT, text=text),
+            messageId=message_id,
+            sessionUpdate=SESSION_UPDATE_MESSAGE_CHUNK,
         )
         await self._conn.session_update(session_id=session_id, update=chunk)
 

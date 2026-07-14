@@ -23,6 +23,13 @@ import litellm
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
 
+from knox.acp._constants import (
+    CONTENT_TYPE_TEXT,
+    MSG_ID_PREFIX,
+    SESSION_UPDATE_MESSAGE_CHUNK,
+    STOP_REASON_END_TURN,
+    STOP_REASON_MAX_TOKENS,
+)
 from knox.acp.definitions import AgentDefinition
 from knox.acp.tools import ToolDispatcher
 from knox.logging import get_logger
@@ -69,7 +76,7 @@ class ConversationalAgent:
             {"role": "user", "content": user_message},
         ]
 
-        message_id = f"msg_{int(time.time() * 1000)}"
+        message_id = f"{MSG_ID_PREFIX}{int(time.time() * 1000)}"
 
         for _turn in range(definition.behavior.max_turns):
             response = litellm.completion(
@@ -89,7 +96,7 @@ class ConversationalAgent:
             if not tool_calls:
                 await self._notify(conn, session_id, message_id, content or "(no response)")
                 return PromptResponse(
-                    stop_reason="end_turn",
+                    stopReason=STOP_REASON_END_TURN,
                 )
 
             # Build assistant message with tool calls for the conversation
@@ -146,7 +153,7 @@ class ConversationalAgent:
             "I reached the maximum number of reasoning steps without producing a final answer. Please try rephrasing your request.",
         )
         return PromptResponse(
-            stop_reason="max_tokens",
+            stopReason=STOP_REASON_MAX_TOKENS,
         )
 
     async def _notify(  # noqa: PLR6301
@@ -161,10 +168,11 @@ class ConversationalAgent:
             return
         try:
             chunk = AgentMessageChunk(
-                content=TextContentBlock(type="text", text=text),
-                message_id=message_id,
-                session_update="agent_message_chunk",
+                content=TextContentBlock(type=CONTENT_TYPE_TEXT, text=text),
+                messageId=message_id,
+                sessionUpdate=SESSION_UPDATE_MESSAGE_CHUNK,
             )
             await conn.session_update(session_id=session_id, update=chunk)
         except Exception:
             logger.debug("Failed to send progress notification", exc_info=True)
+
