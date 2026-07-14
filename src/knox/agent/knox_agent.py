@@ -40,10 +40,11 @@ from knox.core.config.keys import (
     AGENTS_COMPILE,
     AGENTS_ORGANIZE,
     AGENTS_QUERY,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_TIMEOUT,
     PATHS_WIKI_DIR,
 )
 from knox.core.paths import KNOX_CONFIG_FILE
-from knox.llm.client import LLMClient
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -250,22 +251,22 @@ class KnoxAgent(Agent):
         set_config_file_value(config_path, config_key, name)
         return {"status": "ok", "task": task.value, "agent": name}
 
-    def _make_llm_client(self, session_id: str) -> Any | None:
-        """Create an LLMClient from config, or *None* if no model is set."""
+    def _make_llm_client(self, session_id: str) -> str | None:
+        """Get the model name from config, or *None* if no model is set."""
         try:
             session = self._sessions.get(session_id, {})
             cwd = session.get("cwd", ".")
             cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: cwd})
-            return LLMClient.from_config(cfg)
+            return cfg.get(COMPILE_LLM_DEFAULT_MODEL) or None
         except Exception:
-            logger.debug("LLMClient creation failed — degraded mode", exc_info=True)
+            logger.debug("Model lookup failed — degraded mode", exc_info=True)
             return None
 
     async def _run_conversational(
         self,
         text: str,
         session_id: str,
-        llm_client: Any,
+        model: str,
     ) -> PromptResponse:
         """Run the conversational agent loop."""
         session = self._sessions.get(session_id, {})
@@ -280,7 +281,7 @@ class KnoxAgent(Agent):
         definition = AgentDefinition.from_toml(self._agent_file) if self._agent_file else registry.active_for(task, {})
         tools = ToolDispatcher(base_dir=cwd)
 
-        agent = ConversationalAgent(definition, llm_client, tools)
+        agent = ConversationalAgent(definition, model, tools)
         return await agent.run(user_message, session_id, self._conn)
 
     async def _advertise_commands(self, session_id: str) -> None:

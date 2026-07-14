@@ -53,6 +53,7 @@ from knox.core.pipeline.ingest import parse_cache_name
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.agents.vlm import VlmAgent
+from knox.llm.context_window import discover_context_window
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
@@ -103,7 +104,6 @@ class WikiPipeline:
         compiler: BaseCompiler | None = None,
         output_writer: BaseOutputWriter | None = None,
         state_store: TierStateStore | None = None,
-        llm_client: LLMClient | None = None,
         summarizer: NodeSummarizer | None = None,
     ) -> None:
         self.config = config
@@ -113,7 +113,6 @@ class WikiPipeline:
         self.resolver = resolver
         self.compiler = compiler
         self.output_writer = output_writer
-        self.llm_client = llm_client
         self.summarizer = summarizer
         self._base_dir = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_path(), self._base_dir)
@@ -253,19 +252,7 @@ class WikiPipeline:
             self._emit("output", 1, 1, "done")
 
         wiki.metadata[str(WikiField.TIER_TIMINGS)] = {k: round(v, 2) for k, v in self._tier_timings.items()}
-        if self.llm_client is not None:
-            wiki.metadata[str(WikiField.LLM_USAGE)] = self.llm_client.usage.to_dict()
-            wiki.metadata[str(WikiField.LLM_MODEL)] = self.config.llm.default_model
-            report = self.llm_client.degradation_report()
-            wiki.metadata[str(WikiField.LLM_DEGRADATION)] = report
-            if report["failed_calls"] > 0:
-                rate_pct = report["degradation_rate"] * 100
-                logger.warning(
-                    "LLM degradation: %d/%d calls failed (%.1f%%) — output quality may be reduced",
-                    report["failed_calls"],
-                    report["total_calls"],
-                    rate_pct,
-                )
+        wiki.metadata[str(WikiField.LLM_MODEL)] = self.config.llm.default_model
 
         self.save_state()
         self._progress_callback = None
@@ -956,32 +943,6 @@ class WikiPipeline:
         return parse_cache_name(source_file).removesuffix(".json")
 
 
-def build_llm_client(config: PipelineConfig) -> LLMClient:
-    """Construct an :class:`LLMClient` from a :class:`PipelineConfig`.
-
-    The model is constructed
-    from ``llm.default_model``. The fallback chain is
-    taken verbatim from ``config.llm.fallback_chain`` and the retry
-    budget from ``config.llm.fallback_max_retries``.
-    """
-    default_model = config.llm.default_model
-
-    return LLMClient(
-        default_model=default_model,
-        data_format=config.llm.data_format,
-        fallback_chain=list(config.llm.fallback_chain),
-        max_retries_per_model=config.llm.fallback_max_retries,
-        timeout=config.llm.timeout,
-        _fallback_max_input=config.llm.fallback_max_input,
-        _fallback_max_output=config.llm.fallback_max_output,
-        _num_ctx_min=config.llm.num_ctx_min,
-        _num_ctx_max=config.llm.num_ctx_max,
-        _context_window_cap=config.llm.context_window_cap,
-        _api_base=config.llm.api_base,
-        _api_key=config.llm.api_key,
-    )
-
-
 def build_pipeline(
     config: PipelineConfig,
 ) -> WikiPipeline:
@@ -1027,17 +988,18 @@ def build_pipeline(
     base_compiler: BaseCompiler | None = None
     chunker_context_window = None
     if needs_llm:
-        llm_client = build_llm_client(config)
-        chunker_context_window = llm_client.context_window
-        resolver = _build_resolver_chain(config, llm_client)
+        cw = discover_context_window(
+            config.llm.default_model,
+            fallback_max_input=config.llm.fallback_max_input,
+            fallback_max_output=config.llm.fallback_max_output,
+            num_ctx_min=config.llm.num_ctx_min,
+            num_ctx_max=config.llm.num_ctx_max,
+            context_window_cap=config.llm.context_window_cap,
+        )
+        chunker_context_window = cw
+        resolver = _build_resolver_chain(config)
 
         if config.compiler == Compiler.WICER:
-            # WiCER refines through its base compiler: each iteration calls
-            # base.compile(..., pinned_facts=F_cumulative). The base must
-            # therefore be synthesis-capable (extract → generate) so the
-            # pin set is honored in the generation prompt. Wrap TwoPhase
-            # — not raw GraphCompiler, which only rearranges chunk text
-            # and would silently drop the pin set.
             base_compiler = WiCERCompiler(
                 config=config,
                 base_compiler=TwoPhaseCompiler(
@@ -1048,9 +1010,9 @@ def build_pipeline(
                         min_concept_sources=config.budget.min_concept_sources,
                         max_concept_pages=config.budget.max_concept_pages,
                     ),
-                    llm_client=llm_client,
+                    context_window=cw,
                 ),
-                llm_client=llm_client,
+                context_window=cw,
             )
         elif config.compiler == Compiler.GRAPH:
             base_compiler = TwoPhaseCompiler(
@@ -1061,7 +1023,7 @@ def build_pipeline(
                     min_concept_sources=config.budget.min_concept_sources,
                     max_concept_pages=config.budget.max_concept_pages,
                 ),
-                llm_client=llm_client,
+                context_window=cw,
             )
         else:
             msg = f"Unknown compiler: {config.compiler!r}"
@@ -1084,9 +1046,7 @@ def build_pipeline(
             rumdl_config=config.output.rumdl_config,
             max_related_links=config.output.max_related_links,
         ),
-        llm_client=llm_client if needs_llm else None,
         summarizer=NodeSummarizer(
-            llm_client=llm_client if needs_llm else None,
             cache_store=CacheStore(config.paths.cache_dir),
             max_content_chars=config.budget.summary_max_content_chars,
             target_chars=config.budget.summary_target_chars,
@@ -1095,7 +1055,7 @@ def build_pipeline(
     )
 
 
-def _build_resolver_chain(config: PipelineConfig, llm_client: object) -> BaseResolver:
+def _build_resolver_chain(config: PipelineConfig) -> BaseResolver:
     """Construct the resolver chain.
 
     When a VLM model is configured, a :class:`VLMEnricher` enriches

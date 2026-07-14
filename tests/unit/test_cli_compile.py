@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -13,6 +14,7 @@ from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
+from knox.llm.context_window import ContextWindow
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
 
@@ -30,7 +32,8 @@ def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
     """build_pipeline wires the backend named by ``config.parser`` into the router."""
     config = _make_config(tmp_path, vlm_model="")
     config.parser = "liteparse"
-    pipeline = build_pipeline(config)
+    with patch("knox.core.pipeline.orchestrator.discover_context_window", return_value=ContextWindow(max_input=128000, max_output=32768, source="test")):
+        pipeline = build_pipeline(config)
     assert isinstance(pipeline.router.route(Path("a.pdf")), LiteParseParser)
 
 

@@ -14,7 +14,7 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
-from knox.llm.client import ContextSource, ContextWindow
+from knox.llm.context_window import ContextSource, ContextWindow
 
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:

@@ -47,7 +47,7 @@ from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocu
 from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, STATE_FILE, VECTORS_DIR
 from knox.core.pipeline.config import Compiler, PipelineConfig
 from knox.core.pipeline.state import TierStateStore
-from knox.llm.client import LLMClient
+from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.output.base import BaseOutputWriter
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
@@ -122,9 +122,9 @@ def small_corpus(source_pdfs_module: list[Path]) -> list[Path]:
 
 
 @pytest.fixture(scope="module")
-def llm_client() -> LLMClient:
-    """LLM client wired to Ollama lfm2.5."""
-    return LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+def context_window() -> ContextWindow | None:
+    """Discover context window for the test model."""
+    return discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
 
 
 @pytest.fixture(scope="module")
@@ -282,12 +282,10 @@ class TestTier3Resolution:
         if not image_chunks:
             pytest.skip("No IMAGE chunks in parsed corpus — VLM path not exercised")
 
-        vlm_client = LLMClient(
-            default_model=f"ollama/{VLM_MODEL}",
-            fallback_chain=[],
-            max_retries_per_model=0,
-        )
-        enricher = VLMEnricher(client=vlm_client)
+        from knox.agents.vlm import VlmAgent, VlmDeps
+
+        vlm_agent = VlmAgent(f"ollama/{VLM_MODEL}", timeout=120)
+        enricher = VLMEnricher(agent=vlm_agent)
 
         # Enrich first image chunk — must not raise
         rc = ResolvedChunk(chunk=image_chunks[0])
@@ -325,7 +323,7 @@ class TestTier4Compilation:
 
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
-        llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        cw = discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
         )
@@ -645,7 +643,7 @@ class TestFullPipelineE2E:
         wicer_iterations: int = 1,
     ) -> CompiledWiki:
         """Parse → chunk → resolve → compile → write, without WikiPipeline.run()."""
-        llm_client = LLMClient(default_model=LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        cw = discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
 
         # Tier 1
         parser = DoclingParser(extract_images=False)
@@ -670,7 +668,7 @@ class TestFullPipelineE2E:
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
         )
         config.budget.wicer_max_iterations = wicer_iterations
-        comp = WiCERCompiler(config=config, base_compiler=GraphCompiler("model"), llm_client=llm_client) if compiler == "wicer" else GraphCompiler("model")
+        comp = WiCERCompiler(config=config, base_compiler=GraphCompiler("model"), context_window=cw) if compiler == "wicer" else GraphCompiler("model")
 
         wiki = comp.compile(resolved)
 

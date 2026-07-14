@@ -19,12 +19,13 @@ import json
 import time
 from typing import Any
 
+import litellm
+
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
 
 from knox.agent.definitions import AgentDefinition
 from knox.agent.tools import ToolDispatcher
-from knox.llm.client import LLMClient
 from knox.llm.roles import LLMRole
 from knox.logging import get_logger
 
@@ -37,12 +38,14 @@ class ConversationalAgent:
     def __init__(
         self,
         definition: AgentDefinition,
-        llm_client: LLMClient,
+        model: str,
         tools: ToolDispatcher,
+        timeout: float = 120.0,
     ) -> None:
         self._definition = definition
-        self._llm = llm_client
+        self._model = model
         self._tools = tools
+        self._timeout = timeout
 
     async def run(
         self,
@@ -71,17 +74,22 @@ class ConversationalAgent:
         message_id = f"msg_{int(time.time() * 1000)}"
 
         for _turn in range(definition.behavior.max_turns):
-            result = self._llm.complete_with_tools(
-                messages,
+            response = litellm.completion(
+                model=self._model,
+                messages=messages,
                 tools=tools_schema,
-                role=LLMRole.AGENT,
                 temperature=definition.llm.temperature,
                 max_tokens=definition.llm.max_tokens,
+                timeout=self._timeout,
             )
 
+            choice = response.choices[0]
+            content = choice.message.content or ""
+            tool_calls = choice.message.tool_calls or []
+
             # No tool calls → final answer
-            if not result.tool_calls:
-                await self._notify(conn, session_id, message_id, result.content or "(no response)")
+            if not tool_calls:
+                await self._notify(conn, session_id, message_id, content or "(no response)")
                 return PromptResponse(
                     stop_reason="end_turn",
                 )
@@ -89,22 +97,22 @@ class ConversationalAgent:
             # Build assistant message with tool calls for the conversation
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
-                "content": result.content or "",
+                "content": content or "",
                 "tool_calls": [
                     {
                         "id": tc.id,
                         "type": "function",
                         "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
                         },
                     }
-                    for tc in result.tool_calls
+                    for tc in tool_calls
                 ],
             }
             messages.append(assistant_msg)
 
-            for tc in result.tool_calls:
+            for tc in tool_calls:
                 await self._notify(
                     conn,
                     session_id,
@@ -112,7 +120,7 @@ class ConversationalAgent:
                     f"Calling {tc.name}…",
                 )
                 logger.info("Agent tool call: %s(%s)", tc.name, tc.arguments)
-                tool_result = await self._tools.execute(tc.name, tc.arguments)
+                tool_result = await self._tools.execute(tc.function.name, json.loads(tc.function.arguments))
                 await self._notify(
                     conn,
                     session_id,

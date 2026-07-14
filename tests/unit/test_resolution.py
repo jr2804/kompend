@@ -1,8 +1,6 @@
 """Tests for KNOX Tier 3 resolvers and enrichers.
 
-VLMEnricher routes through the shared :class:`knox.llm.LLMClient`.
-These tests inject a client whose ``try_complete`` is patched so the
-tests stay fast and deterministic.
+VLMEnricher now uses VlmAgent instead of LLMClient.
 """
 
 from __future__ import annotations
@@ -12,18 +10,13 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
+from knox.agents.vlm import VlmAgent
 from knox.core.models import Chunk, ElementType, ResolvedChunk
-from knox.llm.client import LLMClient, LLMResult
-from knox.llm.failover import CallDiagnostics
 from knox.resolution import VLMEnricher
 
 
 def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> Chunk:
     return Chunk(id="chunk_001", text=text, element_types=[ElementType.TEXT], source_elements=[0])
-
-
-def _atomic_chunk(elem_type: ElementType = ElementType.TABLE) -> Chunk:
-    return Chunk(id="chunk_atomic", text="", element_types=[elem_type], source_elements=[1])
 
 
 def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
@@ -36,27 +29,24 @@ def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S1
     )
 
 
-def _make_client(try_complete_return: LLMResult | None = None) -> LLMClient:
-    """Build an LLMClient with try_complete patched to return a fixed value."""
-    client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-    client.try_complete = MagicMock(return_value=try_complete_return)  # type: ignore[method-assign]
-    return client
+def _make_agent() -> VlmAgent:
+    """Build a VlmAgent with a test model."""
+    return VlmAgent("ollama/test", timeout=120)
 
 
 class TestVLMEnricher:
     def test_non_image_chunk_skipped(self) -> None:
         """Text chunks bypass the VLM call entirely."""
-        client = _make_client()
-        enricher = VLMEnricher(client=client)
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent)
         resolved = enricher.enrich(ResolvedChunk(chunk=_text_chunk("just text")))
         for entity in resolved.entities:
             assert entity.get("type") != "image_description"
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
     def test_image_chunk_placeholder_when_no_path(self) -> None:
         """Image chunk without a file path produces a placeholder entity."""
-        client = _make_client()
-        enricher = VLMEnricher(client=client)
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent)
         chunk = _image_chunk(image_path=None)
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
@@ -65,27 +55,22 @@ class TestVLMEnricher:
 
     def test_image_chunk_missing_file_records_error(self, tmp_path: Path) -> None:
         """Image path pointing to a non-existent file → filtered entity, no LLM call."""
-        client = _make_client()
-        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
         chunk = _image_chunk(image_path=str(tmp_path / "missing.png"))
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "missing" in descs[0]["context"].lower()
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
-    def test_caption_generated_when_client_succeeds(self, tmp_path: Path) -> None:
+    def test_caption_generated_when_agent_succeeds(self, tmp_path: Path) -> None:
         png_path = tmp_path / "test.png"
         png_path.write_bytes(b"PNG mock data")
 
-        result = LLMResult(
-            content="A test image caption",
-            json_data=None,
-            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
-        )
-        client = _make_client(try_complete_return=result)
-        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
-        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        with patch.object(agent, "run", return_value="A test image caption"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert descs[0]["context"] == "A test image caption"
@@ -95,32 +80,18 @@ class TestVLMEnricher:
         png_path = tmp_path / "test.png"
         png_path.write_bytes(b"PNG mock data")
 
-        client = _make_client(try_complete_return=None)
-        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
-        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        with patch.object(agent, "run", side_effect=Exception("VLM failed")):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "failed" in descs[0]["context"].lower()
 
-    def test_role_forwarded_to_client(self, tmp_path: Path) -> None:
-        png_path = tmp_path / "test.png"
-        png_path.write_bytes(b"PNG mock data")
-
-        client = _make_client(try_complete_return=None)
-        enricher = VLMEnricher(client=client, role="custom.vlm", min_image_bytes=0, min_image_dimension=0)
-        enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
-        call_kwargs = client.try_complete.call_args.kwargs  # type: ignore[attr-defined]
-        assert call_kwargs["role"] == "custom.vlm"
-
     def test_pre_existing_description_bypasses_vlm(self) -> None:
-        """A figure already carrying a parser/backend description skips the VLM call.
-
-        Backends that emit descriptions (``chunk.metadata["description"]``) are
-        honored verbatim — VLMEnricher attaches it as an ``image_description``
-        entity and makes no LLM call.
-        """
-        client = _make_client()
-        enricher = VLMEnricher(client=client)
+        """A figure already carrying a parser/backend description skips the VLM call."""
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent)
         chunk = _image_chunk()
         chunk.metadata["description"] = "A diagram of the pipeline."
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
@@ -129,43 +100,30 @@ class TestVLMEnricher:
         assert descs[0]["context"] == "A diagram of the pipeline."
         assert descs[0]["name"] == "parser_caption_chunk_img_001"
         assert resolved.metadata.get("figure_enriched") is True
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
     def test_pre_filter_skips_tiny_image_no_vlm_call(self, tmp_path: Path) -> None:
         """Image below byte threshold is filtered before any VLM call."""
         tiny = tmp_path / "tiny.png"
-        # 8×8 PNG — well below default 64px and 2048 bytes
         Image.new("RGB", (8, 8)).save(tiny)
-        result = LLMResult(
-            content="should not be called",
-            json_data=None,
-            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
-        )
-        client = _make_client(try_complete_return=result)
-        enricher = VLMEnricher(client=client)  # default thresholds
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent)  # default thresholds
         resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(tiny))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "filtered" in descs[0]["context"].lower()
         assert resolved.metadata.get("vlm_filtered") is True
-        client.try_complete.assert_not_called()  # type: ignore[attr-defined]
 
     def test_pre_filter_allows_large_image(self, tmp_path: Path) -> None:
         """Image above thresholds reaches the VLM."""
         big = tmp_path / "big.png"
-        # Large + noisy (non-compressible) so it exceeds the 2048-byte floor
         img = Image.new("RGB", (200, 200))
         img.putdata([(x ^ y, (x * y) % 255, (x + y) % 255) for y in range(200) for x in range(200)])
         img.save(big)
         assert big.stat().st_size >= 2048, f"test image too small: {big.stat().st_size}"
-        result = LLMResult(
-            content="A red square.",
-            json_data=None,
-            diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.01),
-        )
-        client = _make_client(try_complete_return=result)
-        enricher = VLMEnricher(client=client)  # default thresholds
-        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(big))))
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent)  # default thresholds
+        with patch.object(agent, "run", return_value="A red square."):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(big))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert descs[0]["context"] == "A red square."
@@ -176,25 +134,18 @@ class TestVLMEnricherIntegration:
     """Sanity checks against the real LiteLLM call path (mocked)."""
 
     def test_litellm_completion_invoked_for_image(self, tmp_path: Path) -> None:
-        """End-to-end: real LLMClient + patched litellm.completion."""
+        """End-to-end: real VlmAgent + patched litellm.completion."""
         png_path = tmp_path / "img.png"
         png_path.write_bytes(b"PNG")
 
-        client = LLMClient(default_model="ollama/test", max_retries_per_model=0)
-        enricher = VLMEnricher(client=client, min_image_bytes=0, min_image_dimension=0)
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
 
         mock_response = MagicMock()
-        mock_message = MagicMock(content="caption text")
-        mock_choice = MagicMock()
-        mock_choice.message = mock_message
-        mock_choice.delta = mock_message
-        mock_response.choices = [mock_choice]
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "caption text"
+        mock_response.choices[0].finish_reason = "stop"
         mock_response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
-        # Streaming support.
-        event = MagicMock()
-        event.choices = [mock_choice]
-        event.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
-        mock_response.__iter__ = lambda self: iter([event])
         with patch("litellm.completion", return_value=mock_response) as mock_completion:
             resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
 

@@ -252,11 +252,12 @@ class WiCERCompiler(BaseCompiler):
         wiki.metadata.update(iteration_info)
 
         if self._has_llm:
-            # Aggregate usage from all agents
+            # Aggregate usage from all agents (may not have been created)
             total_calls = 0
             total_prompt = 0
             total_completion = 0
-            for agent in (self._probe_agent, self._eval_agent, self._diagnose_agent):
+            for attr in ("_probe_agent", "_eval_agent", "_diagnose_agent"):
+                agent = getattr(self, attr, None)
                 if agent is not None and agent.usage is not None:
                     total_calls += agent.usage.call_count
                     total_prompt += agent.usage.prompt_tokens

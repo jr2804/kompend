@@ -360,7 +360,6 @@ def _run_overview_synthesis(
     show_progress: bool | None,
 ) -> None:
     """Generate overview.md via LLM synthesis."""
-    resolved_model = pipeline_config.llm.default_model
     synthesize_tracker = PipelineProgress.create(total_files=1, force_progress=show_progress)
     synthesize_tracker.start()
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
 
 from knox.agent.conversational import ConversationalAgent
@@ -17,7 +18,6 @@ from knox.agent.definitions import (
     AgentToolsConfig,
 )
 from knox.agent.tools import ToolDispatcher
-from knox.llm.client import CallDiagnostics, LLMResult, ToolCall
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -61,19 +61,32 @@ def _all_notifications(mock_conn: MagicMock) -> str:
     return " ".join(texts)
 
 
-class _MockLLMClient:
-    """Mock LLMClient that returns a scripted sequence of results."""
+def _mock_litellm_response(content: str = "", tool_calls: list | None = None) -> MagicMock:
+    """Build a mock litellm response."""
+    mock = MagicMock()
+    mock.choices = [MagicMock()]
+    mock.choices[0].message.content = content
+    mock.choices[0].finish_reason = "stop"
+    if tool_calls:
+        mock.choices[0].message.tool_calls = tool_calls
+    else:
+        mock.choices[0].message.tool_calls = []
+    mock.usage = MagicMock(prompt_tokens=0, completion_tokens=0)
+    return mock
 
-    def __init__(self, results: list[LLMResult]) -> None:
-        self._results = list(results)
-        self._call_index = 0
 
-    def complete_with_tools(self, messages, **kwargs):  # noqa: ANN001, ANN202
-        if self._call_index >= len(self._results):
-            pytest.fail("MockLLMClient exhausted")
-        result = self._results[self._call_index]
-        self._call_index += 1
-        return result
+class _MockToolCall:
+    """Mock litellm tool call for testing."""
+
+    def __init__(self, id: str, name: str, arguments: str = "{}") -> None:
+        class _Function:
+            def __init__(self, name: str, arguments: str) -> None:
+                self.name = name
+                self.arguments = arguments
+        self.id = id
+        self.function = _Function(name, arguments)
+        self.name = name
+        self.arguments = arguments
 
 
 # ── ToolDispatcher ─────────────────────────────────────────────────────
@@ -126,20 +139,12 @@ class TestConversationalAgent:
     async def test_direct_answer_no_tools(self) -> None:
         """LLM returns content immediately → final answer sent as chunk."""
         definition = _make_definition()
-        mock_llm = _MockLLMClient(
-            [
-                LLMResult(
-                    content="The wiki has 42 pages.",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                ),
-            ]
-        )
         tools = ToolDispatcher()
-        agent = ConversationalAgent(definition, mock_llm, tools)
+        agent = ConversationalAgent(definition, "test-model", tools)
 
         conn = _mock_conn()
-        response = await agent.run("How many pages?", "test-session", conn=conn)
+        with patch.object(litellm, "completion", return_value=_mock_litellm_response(content="The wiki has 42 pages.")):
+            response = await agent.run("How many pages?", "test-session", conn=conn)
         assert response.stop_reason == "end_turn"
         assert "42 pages" in _all_notifications(conn)
 
@@ -147,27 +152,17 @@ class TestConversationalAgent:
     async def test_tool_call_then_answer(self) -> None:
         """LLM calls a tool, gets result, then answers."""
         definition = _make_definition()
-        mock_llm = _MockLLMClient(
-            [
-                LLMResult(
-                    content="",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                    tool_calls=[ToolCall(id="call_1", name="wiki_status", arguments={})],
-                ),
-                LLMResult(
-                    content="The wiki is compiled with 42 pages.",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                ),
-            ]
-        )
         tools = ToolDispatcher()
         conn = _mock_conn()
 
         with patch.object(tools, "execute", return_value='{"status": "ok", "pages": 42}'):
-            agent = ConversationalAgent(definition, mock_llm, tools)
-            response = await agent.run("Status?", "test-session", conn=conn)
+            agent = ConversationalAgent(definition, "test-model", tools)
+            with patch.object(litellm, "completion") as mock_completion:
+                mock_completion.side_effect = [
+                    _mock_litellm_response(content="", tool_calls=[_MockToolCall(id="call_1", name="wiki_status")]),
+                    _mock_litellm_response(content="The wiki is compiled with 42 pages."),
+                ]
+                response = await agent.run("Status?", "test-session", conn=conn)
 
         assert response.stop_reason == "end_turn"
         assert "42 pages" in _all_notifications(conn)
@@ -176,19 +171,13 @@ class TestConversationalAgent:
     async def test_max_turns_exhausted(self) -> None:
         """Agent stops after max_turns with an explanation."""
         definition = _make_definition(max_turns=2)
-        tool_result = LLMResult(
-            content="",
-            json_data=None,
-            diagnostics=_make_diagnostics(),
-            tool_calls=[ToolCall(id="call_x", name="wiki_status", arguments={})],
-        )
-        mock_llm = _MockLLMClient([tool_result, tool_result])
         tools = ToolDispatcher()
         conn = _mock_conn()
 
         with patch.object(tools, "execute", return_value='{"status": "ok"}'):
-            agent = ConversationalAgent(definition, mock_llm, tools)
-            response = await agent.run("Keep calling tools", "test-session", conn=conn)
+            agent = ConversationalAgent(definition, "test-model", tools)
+            with patch.object(litellm, "completion", return_value=_mock_litellm_response(content="", tool_calls=[_MockToolCall(id="call_x", name="wiki_status")])):
+                response = await agent.run("Keep calling tools", "test-session", conn=conn)
 
         assert response.stop_reason == "max_tokens"
         assert "maximum" in _all_notifications(conn).lower()
@@ -197,24 +186,6 @@ class TestConversationalAgent:
     async def test_multiple_tool_calls_in_one_turn(self) -> None:
         """LLM requests multiple tools in a single turn."""
         definition = _make_definition()
-        mock_llm = _MockLLMClient(
-            [
-                LLMResult(
-                    content="",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                    tool_calls=[
-                        ToolCall(id="call_1", name="wiki_status", arguments={}),
-                        ToolCall(id="call_2", name="config_get", arguments={"key": "compile.llm.default_model"}),
-                    ],
-                ),
-                LLMResult(
-                    content="Done checking status and config.",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                ),
-            ]
-        )
         tools = ToolDispatcher()
         conn = _mock_conn()
         execute_count = 0
@@ -225,8 +196,16 @@ class TestConversationalAgent:
             return f'{{"status": "ok", "tool": "{name}"}}'
 
         with patch.object(tools, "execute", side_effect=_mock_execute):
-            agent = ConversationalAgent(definition, mock_llm, tools)
-            response = await agent.run("Check everything", "test-session", conn=conn)
+            agent = ConversationalAgent(definition, "test-model", tools)
+            with patch.object(litellm, "completion") as mock_completion:
+                mock_completion.side_effect = [
+                    _mock_litellm_response(content="", tool_calls=[
+                        _MockToolCall(id="call_1", name="wiki_status"),
+                        _MockToolCall(id="call_2", name="config_get", arguments='{"key": "compile.llm.default_model"}'),
+                    ]),
+                    _mock_litellm_response(content="Done checking status and config."),
+                ]
+                response = await agent.run("Check everything", "test-session", conn=conn)
 
         assert execute_count == 2
         assert response.stop_reason == "end_turn"
@@ -235,27 +214,17 @@ class TestConversationalAgent:
     async def test_progress_notification_sent(self) -> None:
         """Progress chunks are sent via the ACP connection."""
         definition = _make_definition()
-        mock_llm = _MockLLMClient(
-            [
-                LLMResult(
-                    content="",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                    tool_calls=[ToolCall(id="call_1", name="wiki_status", arguments={})],
-                ),
-                LLMResult(
-                    content="Done.",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                ),
-            ]
-        )
         tools = ToolDispatcher()
         conn = _mock_conn()
 
         with patch.object(tools, "execute", return_value='{"status": "ok"}'):
-            agent = ConversationalAgent(definition, mock_llm, tools)
-            await agent.run("Status?", "test-session", conn=conn)
+            agent = ConversationalAgent(definition, "test-model", tools)
+            with patch.object(litellm, "completion") as mock_completion:
+                mock_completion.side_effect = [
+                    _mock_litellm_response(content="", tool_calls=[_MockToolCall(id="call_1", name="wiki_status")]),
+                    _mock_litellm_response(content="Done."),
+                ]
+                await agent.run("Status?", "test-session", conn=conn)
 
         # At least 3 notifications: "Calling…", "completed", final answer
         assert conn.session_update.call_count >= 3
@@ -264,17 +233,9 @@ class TestConversationalAgent:
     async def test_no_conn_does_not_crash(self) -> None:
         """Agent works without a connection (silent mode)."""
         definition = _make_definition()
-        mock_llm = _MockLLMClient(
-            [
-                LLMResult(
-                    content="Answer.",
-                    json_data=None,
-                    diagnostics=_make_diagnostics(),
-                ),
-            ]
-        )
         tools = ToolDispatcher()
-        agent = ConversationalAgent(definition, mock_llm, tools)
+        agent = ConversationalAgent(definition, "test-model", tools)
 
-        response = await agent.run("Question?", "test-session", conn=None)
+        with patch.object(litellm, "completion", return_value=_mock_litellm_response(content="Answer.")):
+            response = await agent.run("Question?", "test-session", conn=None)
         assert response.stop_reason == "end_turn"

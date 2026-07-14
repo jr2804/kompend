@@ -1,14 +1,7 @@
-"""Centralised LLM client for KNOX.
+"""LLM utilities for KNOX.
 
-All LLM calls in the pipeline go through :class:`LLMClient` from
-:mod:`knox.llm.client`. The client wraps litellm with:
-
-- A typed error hierarchy (:mod:`knox.llm.errors`)
-- Configurable fallback chains (:mod:`knox.llm.failover`)
-- An exception classifier (:mod:`knox.llm.classifier`)
-- Per-call observability (model_used, attempts, latency)
-
-This module is the single source of truth for LLM semantics in KNOX.
+Provides context window discovery, error classification, failover chains,
+format utilities (JSON/TOON/ISON), and usage tracking.
 Business modules must not import litellm directly.
 """
 

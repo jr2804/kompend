@@ -23,7 +23,6 @@ from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE, VaultPaths
 from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local, iso_local
-from knox.logging import get_logger
 
 _loader = get_template_loader()
 
@@ -462,8 +461,6 @@ def generate_overview(
     """
     if not source_texts:
         return None
-
-    client = LLMClient(default_model=model, fallback_chain=[], max_retries_per_model=1, timeout=timeout)
 
     batches: list[str] = []
     current_parts: list[str] = []
