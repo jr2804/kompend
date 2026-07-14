@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -154,8 +155,6 @@ def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
 
 def _enable_litellm_debug() -> None:
     """Enable litellm debug output to stderr."""
-    import logging
-
     litellm._turn_on_debug()
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
