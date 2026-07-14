@@ -2,7 +2,7 @@
 
 Agents are discovered from three sources (later wins):
 
-1. **Built-in** — ``src/knox/agent/builtin/*.toml`` (shipped with Knox)
+1. **Built-in** — ``src/knox/acp/builtin/*.toml`` (shipped with Knox)
 2. **Vault** — ``<base_dir>/.knox/agents/*.toml`` (user-installed)
 3. **Explicit** — ``--agent-file path`` (CLI override, not yet implemented)
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from knox.agent.definitions import AgentDefinition, AgentLLMConfig, AgentPromptConfig, AgentTask
+from knox.acp.definitions import AgentDefinition, AgentLLMConfig, AgentPromptConfig, AgentTask
 from knox.core.config.keys import (
     AGENTS_CAPTURE,
     AGENTS_COMPILE,

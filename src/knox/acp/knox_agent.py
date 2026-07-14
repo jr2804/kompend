@@ -27,12 +27,12 @@ from acp.schema import (
     TextContentBlock,
 )
 
-from knox.agent.conversational import ConversationalAgent
-from knox.agent.definitions import AgentDefinition, AgentTask
-from knox.agent.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
-from knox.agent.registry import AgentRegistry
-from knox.agent.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, parse_slash_command
-from knox.agent.tools import ToolDispatcher
+from knox.acp.conversational import ConversationalAgent
+from knox.acp.definitions import AgentDefinition, AgentTask
+from knox.acp.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
+from knox.acp.registry import AgentRegistry
+from knox.acp.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, parse_slash_command
+from knox.acp.tools import ToolDispatcher
 from knox.core.config import resolve_config
 from knox.core.config._core import set_config_file_value
 from knox.core.config.keys import (

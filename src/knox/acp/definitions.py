@@ -92,8 +92,8 @@ class AgentDefinition(BaseModel):
     """A single TOML-defined conversational agent.
 
     Loaded from a TOML file via :meth:`from_toml` or constructed directly.
-    Used by :class:`~knox.agent.conversational.ConversationalAgent` and
-    :class:`~knox.agent.registry.AgentRegistry`.
+    Used by :class:`~knox.acp.conversational.ConversationalAgent` and
+    :class:`~knox.acp.registry.AgentRegistry`.
     """
 
     model_config = ConfigDict(extra="forbid")

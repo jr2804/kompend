@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from knox.agent.definitions import AgentDefinition, AgentTask
-from knox.agent.knox_agent import KnoxAgent
-from knox.agent.provider_store import LlmApiType, ProviderConfig, ProviderCredentials
-from knox.agent.registry import AgentRegistry
+from knox.acp.definitions import AgentDefinition, AgentTask
+from knox.acp.knox_agent import KnoxAgent
+from knox.acp.provider_store import LlmApiType, ProviderConfig, ProviderCredentials
+from knox.acp.registry import AgentRegistry
 
 __all__ = [
     "AgentDefinition",

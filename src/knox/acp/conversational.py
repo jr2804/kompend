@@ -1,8 +1,8 @@
 """Conversational agent with a tool-calling loop.
 
-Driven by an :class:`~knox.agent.definitions.AgentDefinition`, this agent
+Driven by an :class:`~knox.acp.definitions.AgentDefinition`, this agent
 uses an LLM to reason about user requests and call available tools
-(:class:`~knox.agent.tools.ToolDispatcher`) until a final answer is produced.
+(:class:`~knox.acp.tools.ToolDispatcher`) until a final answer is produced.
 
 The loop:
 
@@ -23,8 +23,8 @@ import litellm
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
 
-from knox.agent.definitions import AgentDefinition
-from knox.agent.tools import ToolDispatcher
+from knox.acp.definitions import AgentDefinition
+from knox.acp.tools import ToolDispatcher
 from knox.logging import get_logger
 
 logger = get_logger(__name__)

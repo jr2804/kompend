@@ -534,7 +534,7 @@ as ``knox agent`` on stdio.
 - **MCP companion mode is v2.** The existing ``knox mcp`` subcommand is
   unchanged. The ACP agent does not bridge to MCP in v1.
 
-**When modifying the agent module (``src/knox/agent/``):**
+**When modifying the agent module (``src/knox/acp/``):**
 
 - The ``KnoxAgent`` class implements the ``acp.Agent`` protocol. All protocol
   methods are async. Use ``asyncio.run()`` to bridge to synchronous code.
@@ -611,7 +611,7 @@ the pipeline stages:
 
 | Path | Scope |
 |------|-------|
-| `agent/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
+| `acp/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
 | `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through `LitellmModel` (FunctionModel wrapping `litellm.completion()`). |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/AGENTS.md` | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution |

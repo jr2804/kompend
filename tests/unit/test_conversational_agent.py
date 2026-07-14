@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import litellm
 import pytest
 
-from knox.agent.conversational import ConversationalAgent
-from knox.agent.definitions import (
+from knox.acp.conversational import ConversationalAgent
+from knox.acp.definitions import (
     AgentBehaviorConfig,
     AgentDefinition,
     AgentLLMConfig,
@@ -17,7 +17,7 @@ from knox.agent.definitions import (
     AgentTask,
     AgentToolsConfig,
 )
-from knox.agent.tools import ToolDispatcher
+from knox.acp.tools import ToolDispatcher
 
 # ── Helpers ────────────────────────────────────────────────────────────
 

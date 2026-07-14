@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from knox.agent.definitions import (
+from knox.acp.definitions import (
     AgentDefinition,
     AgentLLMConfig,
     AgentPromptConfig,
     AgentTask,
 )
-from knox.agent.registry import AgentRegistry
+from knox.acp.registry import AgentRegistry
 
 # ── AgentDefinition ────────────────────────────────────────────────────
 

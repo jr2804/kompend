@@ -14,8 +14,8 @@ from pathlib import Path
 
 import typer
 
-from knox.agent.definitions import AgentDefinition, AgentTask
-from knox.agent.registry import AgentRegistry
+from knox.acp.definitions import AgentDefinition, AgentTask
+from knox.acp.registry import AgentRegistry
 from knox.cli.app import app
 from knox.core.config import resolve_config, validate_config_key
 from knox.core.config._core import set_config_file_value

@@ -19,7 +19,7 @@ import sys
 import typer
 from acp import run_agent
 
-from knox.agent.knox_agent import KnoxAgent
+from knox.acp.knox_agent import KnoxAgent
 from knox.cli.app import app
 from knox.mcp.server import create_mcp_server
 

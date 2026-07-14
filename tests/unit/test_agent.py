@@ -10,14 +10,14 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.agent.knox_agent import KnoxAgent
-from knox.agent.provider_store import (
+from knox.acp.knox_agent import KnoxAgent
+from knox.acp.provider_store import (
     LLM_PROVIDER_MAP,
     LlmApiType,
     ProviderConfig,
     ProviderCredentials,
 )
-from knox.agent.slash_commands import HELP_TEXT, parse_slash_command
+from knox.acp.slash_commands import HELP_TEXT, parse_slash_command
 from knox.cli._pipeline_helpers import _emit_json_done, _make_json_progress_callback
 from knox.cli.cmds.agents import _agents_install, _agents_remove
 
