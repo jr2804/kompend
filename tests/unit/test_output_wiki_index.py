@@ -215,7 +215,7 @@ class TestGenerateOverviewProgress:
         mock_agent = MagicMock()
         mock_agent.run.return_value = {"content": "Overview text"}
 
-        result = generate_overview(
+        generate_overview(
             ["short text"],
             agent=mock_agent,
             overview_budget=10000,
@@ -232,7 +232,7 @@ class TestGenerateOverviewProgress:
         mock_agent = MagicMock()
         mock_agent.run.return_value = {"content": "Partial overview"}
 
-        result = generate_overview(
+        generate_overview(
             ["aaa", "bbb", "ccc"],
             agent=mock_agent,
             overview_budget=5,

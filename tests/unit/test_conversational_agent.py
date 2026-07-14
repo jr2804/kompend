@@ -74,6 +74,7 @@ class _MockToolCall:
             def __init__(self, name: str, arguments: str) -> None:
                 self.name = name
                 self.arguments = arguments
+
         self.id = id
         self.function = _Function(name, arguments)
         self.name = name
@@ -167,7 +168,9 @@ class TestConversationalAgent:
 
         with patch.object(tools, "execute", return_value='{"status": "ok"}'):
             agent = ConversationalAgent(definition, "test-model", tools)
-            with patch.object(litellm, "completion", return_value=_mock_litellm_response(content="", tool_calls=[_MockToolCall(id="call_x", name="wiki_status")])):
+            with patch.object(
+                litellm, "completion", return_value=_mock_litellm_response(content="", tool_calls=[_MockToolCall(id="call_x", name="wiki_status")])
+            ):
                 response = await agent.run("Keep calling tools", "test-session", conn=conn)
 
         assert response.stop_reason == "max_tokens"
@@ -190,10 +193,13 @@ class TestConversationalAgent:
             agent = ConversationalAgent(definition, "test-model", tools)
             with patch.object(litellm, "completion") as mock_completion:
                 mock_completion.side_effect = [
-                    _mock_litellm_response(content="", tool_calls=[
-                        _MockToolCall(id="call_1", name="wiki_status"),
-                        _MockToolCall(id="call_2", name="config_get", arguments='{"key": "compile.llm.default_model"}'),
-                    ]),
+                    _mock_litellm_response(
+                        content="",
+                        tool_calls=[
+                            _MockToolCall(id="call_1", name="wiki_status"),
+                            _MockToolCall(id="call_2", name="config_get", arguments='{"key": "compile.llm.default_model"}'),
+                        ],
+                    ),
                     _mock_litellm_response(content="Done checking status and config."),
                 ]
                 response = await agent.run("Check everything", "test-session", conn=conn)

@@ -99,7 +99,6 @@ def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
 # ── Reasoning strip ─────────────────────────────────────────────────────
 
 
-
 _REASONING_TAGS: frozenset[str] = frozenset(
     {
         "think",

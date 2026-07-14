@@ -84,14 +84,19 @@ class WiCERCompiler(BaseCompiler):
 
         # Input batch sizes adapt to the model's discovered context window.
         # When no context window is available, fall back to a conservative size.
-        cw = context_window or discover_context_window(
-            config.llm.default_model,
-            fallback_max_input=config.llm.fallback_max_input,
-            fallback_max_output=config.llm.fallback_max_output,
-            num_ctx_min=config.llm.num_ctx_min,
-            num_ctx_max=config.llm.num_ctx_max,
-            context_window_cap=config.llm.context_window_cap,
-        ) if config.llm.default_model else None
+        cw = (
+            context_window
+            or discover_context_window(
+                config.llm.default_model,
+                fallback_max_input=config.llm.fallback_max_input,
+                fallback_max_output=config.llm.fallback_max_output,
+                num_ctx_min=config.llm.num_ctx_min,
+                num_ctx_max=config.llm.num_ctx_max,
+                context_window_cap=config.llm.context_window_cap,
+            )
+            if config.llm.default_model
+            else None
+        )
         if cw is not None:
             self._probe_input_chars = _tokens_to_chars(
                 max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget),
