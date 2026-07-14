@@ -120,6 +120,17 @@ def discover_context_window(
     max_output: int | None = None
     source = ContextSource.FALLBACK
 
+    # Validate model name before attempting discovery.
+    # Common mistake: setting KNOX_LOCAL_LLM to "ollama run <model>" (a CLI
+    # command) instead of "ollama/<model>" (litellm format).
+    if " " in model:
+        msg = (
+            f"Invalid model name {model!r}: contains spaces. "
+            "Did you include a CLI command (e.g. 'ollama run ...') in the model string?\n"
+            "Use litellm format: 'ollama/<model-name>'"
+        )
+        raise ValueError(msg)
+
     custom_prefixes = {f"{e['provider']}/" for e in (litellm.custom_provider_map or []) if e.get("provider")}
     if not any(model.startswith(p) for p in custom_prefixes):
         try:
