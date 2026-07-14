@@ -76,7 +76,7 @@ def _save_debug_prompt(
         "source_id": source_id,
         "timestamp": datetime.now().isoformat(),
         "messages": litellm_messages,
-        "kwargs": {k: v for k, v in kwargs.items() if k != "messages"},
+        "kwargs": {k: v for k, v in kwargs.items() if k not in ("messages", "model")},
         "response": response_content,
         "response_parsed": salvage_json(response_content),
         "finish_reason": finish_reason,
