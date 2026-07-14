@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.llm.context_window import ContextSource, ContextWindow
-from knox.llm.failover import CallDiagnostics
 from knox.search.retriever import HybridRetriever, SearchResult, TokenOverlapRetriever, _extract_snippet
 
 
@@ -184,13 +183,12 @@ class _FakeLLMClient:
         self.last_kwargs: dict[str, Any] = {}
         self.last_messages: list[dict[str, Any]] = []
 
-    def complete(self, messages: list[dict[str, Any]], **kwargs: Any) -> LLMResult:  # noqa: ANN401
+    def complete(self, messages: list[dict[str, Any]], **kwargs: Any) -> MagicMock:  # noqa: ANN401
         self.last_messages = messages
         self.last_kwargs = kwargs
-        return LLMResult(
+        return MagicMock(
             content="synthesized answer",
             json_data=None,
-            diagnostics=CallDiagnostics(model_used="test-model", attempts=1, total_latency_s=0.0),
         )
 
 

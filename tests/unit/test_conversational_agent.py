@@ -35,15 +35,6 @@ def _make_definition(max_turns: int = 10) -> AgentDefinition:
     )
 
 
-def _make_diagnostics() -> CallDiagnostics:
-    """Build minimal CallDiagnostics for LLMResult."""
-    return CallDiagnostics(
-        model_used="test-model",
-        attempts=1,
-        total_latency_s=0.01,
-    )
-
-
 def _mock_conn() -> MagicMock:
     """Build a mock ACP connection that records session_update calls."""
     conn = MagicMock()

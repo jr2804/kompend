@@ -647,10 +647,9 @@ class TestContradictionDetectionRule:
 
 def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
     client = MagicMock()
-    client.try_complete.return_value = LLMResult(
+    client.try_complete.return_value = MagicMock(
         content=content,
         json_data=None,
-        diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
     )
     return client
 
@@ -909,7 +908,7 @@ class TestCoverageGapSuppression:
         wiki = _make_wiki([_make_node("leap-model", "LEAP Model", "content about LEAP")])
         client = MagicMock()
         client.try_complete.side_effect = [
-            LLMResult(
+            MagicMock(
                 content="",
                 json_data={
                     "gaps": [
@@ -917,9 +916,8 @@ class TestCoverageGapSuppression:
                         {"concept": "Truly Missing", "reason": "absent"},
                     ]
                 },
-                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
-            LLMResult(
+            MagicMock(
                 content="",
                 json_data={
                     "gaps": [
@@ -927,7 +925,6 @@ class TestCoverageGapSuppression:
                         {"concept": "Truly Missing", "reason": "absent"},
                     ]
                 },
-                diagnostics=CallDiagnostics(model_used="ollama/test", attempts=1, total_latency_s=0.0),
             ),
         ]
         runner = LintRunner(rules=["coverage-gap"], lint_agent=client)

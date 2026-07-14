@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.wiki_index import (
@@ -212,17 +212,15 @@ class TestGenerateOverviewProgress:
         """Single batch: callback fires (0,1) then (1,1)."""
         calls: list[tuple[int, int]] = []
 
-        mock_result = MagicMock()
-        mock_result.content = "Overview text"
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = {"content": "Overview text"}
 
-        with patch("knox.output.wiki_index.LLMClient") as MockClient:
-            MockClient.return_value.complete.return_value = mock_result
-            generate_overview(
-                ["short text"],
-                model="test-model",
-                overview_budget=10000,
-                progress_callback=lambda c, t: calls.append((c, t)),
-            )
+        result = generate_overview(
+            ["short text"],
+            agent=mock_agent,
+            overview_budget=10000,
+            progress_callback=lambda c, t: calls.append((c, t)),
+        )
 
         assert calls[0] == (0, 1)
         assert calls[-1] == (1, 1)
@@ -231,17 +229,15 @@ class TestGenerateOverviewProgress:
         """Multiple batches: total includes merge step."""
         calls: list[tuple[int, int]] = []
 
-        mock_result = MagicMock()
-        mock_result.content = "Partial overview"
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = {"content": "Partial overview"}
 
-        with patch("knox.output.wiki_index.LLMClient") as MockClient:
-            MockClient.return_value.complete.return_value = mock_result
-            generate_overview(
-                ["aaa", "bbb", "ccc"],
-                model="test-model",
-                overview_budget=5,
-                progress_callback=lambda c, t: calls.append((c, t)),
-            )
+        result = generate_overview(
+            ["aaa", "bbb", "ccc"],
+            agent=mock_agent,
+            overview_budget=5,
+            progress_callback=lambda c, t: calls.append((c, t)),
+        )
 
         total = calls[0][1]
         assert total > 1
@@ -250,11 +246,9 @@ class TestGenerateOverviewProgress:
 
     def test_no_callback(self) -> None:
         """Works fine without callback."""
-        mock_result = MagicMock()
-        mock_result.content = "Overview text"
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = {"content": "Overview text"}
 
-        with patch("knox.output.wiki_index.LLMClient") as MockClient:
-            MockClient.return_value.complete.return_value = mock_result
-            result = generate_overview(["short text"], model="test-model", overview_budget=10000)
+        result = generate_overview(["short text"], agent=mock_agent, overview_budget=10000)
 
         assert result is not None
