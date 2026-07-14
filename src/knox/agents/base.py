@@ -156,7 +156,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             logger.warning(
                 "Agent '%s' failed on '%s': %s",
                 type(self).__name__,
-                getattr(deps, "source_id", "?"),
+                getattr(deps, "source_id", deps.__class__.__name__),
                 exc,
             )
             raise LLMOutputError(f"Agent failed for model '{self._litellm_model}': {exc}") from exc

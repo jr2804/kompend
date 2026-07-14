@@ -26,10 +26,12 @@ class DoctorDeps:
     Attributes:
         ping: The ping prompt to send to the model.
         timeout: Per-call timeout in seconds.
+        source_id: Log/provenance label.
     """
 
     ping: str
     timeout: float = 30.0
+    source_id: str = "doctor"
 
 
 class DoctorAgent(KnoxAgentBase[str, DoctorDeps]):
