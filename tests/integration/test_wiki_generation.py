@@ -38,6 +38,7 @@ from typing import Any
 
 import pytest
 
+from knox.agents.vlm import VlmAgent
 from knox.chunking import HierarchicalChunker
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
@@ -57,7 +58,6 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
 from knox.resolution.vlm_enricher import VLMEnricher
-from knox.agents.vlm import VlmAgent
 from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
