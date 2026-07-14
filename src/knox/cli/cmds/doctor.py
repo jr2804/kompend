@@ -151,6 +151,20 @@ def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
     return default
 
 
+def _enable_litellm_debug() -> None:
+    """Enable litellm debug output to stderr."""
+    import logging
+
+    litellm._turn_on_debug()
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    for logger_name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.DEBUG)
+        if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+            logger.addHandler(handler)
+
+
 def _ping_model(model: str | None, label: str, verbose: bool = False) -> CheckResult:
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
@@ -159,7 +173,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False) -> CheckRe
 
     try:
         if verbose:
-            litellm._turn_on_debug()
+            _enable_litellm_debug()
         agent = DoctorAgent(
             litellm_model=model,
             timeout=30.0,
