@@ -46,8 +46,8 @@ def review_cmd(
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 
-def _review_list(queue: ReviewQueue, json_output: bool) -> None:  # ty: ignore
-    entries = queue.list_entries()  # ty: ignore
+def _review_list(queue: ReviewQueue, json_output: bool) -> None:
+    entries = queue.list_entries()
     if json_output:
         get_console().print(json.dumps([e.to_dict() for e in entries], indent=2, default=str))
         return
@@ -58,19 +58,19 @@ def _review_list(queue: ReviewQueue, json_output: bool) -> None:  # ty: ignore
         get_console().print(f"  [{e.status:9s}] {e.slug}  ({e.title})", markup=False)
 
 
-def _review_lock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
+def _review_lock(queue: ReviewQueue, slug: str | None) -> None:
     if not slug:
         get_err_console().print("Lock requires a slug.")
         raise typer.Exit(1)
-    if queue.lock(slug):  # ty: ignore
+    if queue.lock(slug):
         get_console().print(f"Locked: {slug}")
         return
     get_err_console().print(f"Cannot lock {slug!r}: no approved page found.")
     raise typer.Exit(1)
 
 
-def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
-    lock_file = queue.review_dir / f"{slug}.locked" if slug else None  # ty: ignore
+def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:
+    lock_file = queue.review_dir / f"{slug}.locked" if slug else None
     if lock_file and lock_file.exists():
         lock_file.unlink()
         get_console().print(f"Unlocked: {slug}")
@@ -79,8 +79,8 @@ def _review_unlock(queue: ReviewQueue, slug: str | None) -> None:  # ty: ignore
     raise typer.Exit(1)
 
 
-def _review_approve(queue: ReviewQueue, slug: str | None, approve_all: bool) -> None:  # ty: ignore
-    approved = queue.approve(slug or "", approve_all=approve_all)  # ty: ignore
+def _review_approve(queue: ReviewQueue, slug: str | None, approve_all: bool) -> None:
+    approved = queue.approve(slug or "", approve_all=approve_all)
     if not approved:
         get_err_console().print("No matching pages to approve.")
         raise typer.Exit(1)
@@ -88,11 +88,11 @@ def _review_approve(queue: ReviewQueue, slug: str | None, approve_all: bool) -> 
         get_console().print(f"Approved: {e.slug}")
 
 
-def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> None:  # ty: ignore
+def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> None:
     if not slug:
         get_err_console().print("Reject requires a slug.")
         raise typer.Exit(1)
-    rejected = queue.reject(slug, reason=reason or "")  # ty: ignore
+    rejected = queue.reject(slug, reason=reason or "")
     if not rejected:
         get_err_console().print(f"No pending page with slug {slug!r}.")
         raise typer.Exit(1)
@@ -101,7 +101,7 @@ def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> 
 
 
 def _dispatch_review_action(
-    queue: ReviewQueue,  # ty: ignore
+    queue: ReviewQueue,
     action: str,
     slug: str | None,
     reason: str | None,

@@ -155,7 +155,7 @@ def remediate(
                 tier=3,
                 category=rec.category,
                 description=rec.finding,
-                status="recommended",
+                status=RemediationStatus.RECOMMENDED,
                 details={"action": rec.action, "priority": rec.priority},
             )
         )
@@ -203,7 +203,7 @@ def _fix_image_wikilinks(
                     tier=1,
                     category="Image embed syntax",
                     description=f"Fixed {fixed} image wikilink(s) in '{node.title}'",
-                    status="applied" if not dry_run else "skipped",
+                    status=RemediationStatus.APPLIED if not dry_run else RemediationStatus.SKIPPED,
                     details={"targets": targets},
                 )
             )
@@ -264,7 +264,7 @@ def _remediate_coverage_gaps(
                     tier=3,
                     category="Coverage gap (no extraction match)",
                     description=f"'{gap}' — not found in cached extractions",
-                    status="recommended",
+                    status=RemediationStatus.RECOMMENDED,
                     details={"action": "Add a source document covering this concept.", "concept": gap},
                 )
             )
@@ -281,7 +281,7 @@ def _remediate_coverage_gaps(
                     tier=2,
                     category="Coverage gap",
                     description=f"Would generate concept page for '{concept_name}'",
-                    status="skipped",
+                    status=RemediationStatus.SKIPPED,
                     details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
                 )
             )
@@ -294,7 +294,7 @@ def _remediate_coverage_gaps(
                     tier=2,
                     category="Coverage gap (LLM failed)",
                     description=f"Failed to generate page for '{concept_name}'",
-                    status="skipped",
+                    status=RemediationStatus.SKIPPED,
                     details={"concept": concept_name},
                 )
             )
@@ -325,7 +325,7 @@ def _remediate_coverage_gaps(
                 tier=2,
                 category="Coverage gap",
                 description=f"Generated concept page '{concept_name}' from {len(matched.get('sources', []))} source(s)",
-                status="applied",
+                status=RemediationStatus.APPLIED,
                 details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
             )
         )

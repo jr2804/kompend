@@ -48,11 +48,11 @@ class WebPageParser(BaseParser):
         self.include_tables = include_tables
         self.include_links = include_links
 
-    def can_parse(self, file_path: Path) -> bool:  # noqa: PLR6301
-        return file_path.suffix.lower() in {".html", ".htm"}
+    def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301
+        return source_file.suffix.lower() in {".html", ".htm"}
 
-    def parse(self, file_path: Path, **kwargs: Any) -> ParsedDocument:  # noqa: ARG002
-        html = file_path.read_text(encoding="utf-8", errors="replace")
+    def parse(self, source_file: Path, **kwargs: Any) -> ParsedDocument:  # noqa: ARG002
+        html = source_file.read_text(encoding="utf-8", errors="replace")
 
         # trafilatura's markdown output preserves headings, paragraphs,
         # lists, tables, and code — much cleaner than docling on raw HTML.
@@ -73,16 +73,16 @@ class WebPageParser(BaseParser):
             # Fallback: emit the raw HTML-stripped text as a single element.
             markdown = trafilatura.extract(html, output_format="text") or html
 
-        elements = _markdown_to_elements(markdown, file_path)
+        elements = _markdown_to_elements(markdown, source_file)
 
         return ParsedDocument(
-            source_file=file_path,
+            source_file=source_file,
             elements=elements,
             title=title,
             author=author,
             language="en",
             page_count=1,
-            metadata={"parser": "web", "url": str(file_path)},
+            metadata={"parser": "web", "url": str(source_file)},
         )
 
 

@@ -60,6 +60,6 @@ async def _run_agent(agent_file: str | None = None, mcp_port: int | None = None)
     finally:
         if mcp_task is not None:
             mcp_task.cancel()
-            with asyncio.timeout(5):
+            async with asyncio.timeout(5):
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await mcp_task

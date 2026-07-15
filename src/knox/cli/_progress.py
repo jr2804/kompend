@@ -80,8 +80,7 @@ class _EtaColumn(ProgressColumn):
     well-defined once at least one item is done.
     """
 
-    @staticmethod
-    def render(task: Task) -> Text:
+    def render(self, task: Task) -> Text:
         if task.total is None or task.completed <= 0:
             return Text("-:--:--", style="progress.remaining")
         elapsed = task.elapsed

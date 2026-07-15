@@ -99,7 +99,7 @@ class ReviewQueue:
             pending_path.write_text(node.content, encoding="utf-8")
         entry = ReviewEntry(
             slug=slug,
-            status="pending",
+            status=ReviewStatus.PENDING,
             title=node.title,
             source_node_id=node.id,
         )
@@ -111,12 +111,12 @@ class ReviewQueue:
         state = self._load_state()
         approved: list[ReviewEntry] = []
         for entry in state.values():
-            if entry.status != "pending":
+            if entry.status != ReviewStatus.PENDING:
                 continue
             if not approve_all and entry.slug != slug:
                 continue
             self._move(entry.slug, pending=True, approved=True)
-            entry.status = "approved"
+            entry.status = ReviewStatus.APPROVED
             state[entry.slug] = entry
             approved.append(entry)
         self._save_state(state)
@@ -127,10 +127,10 @@ class ReviewQueue:
         state = self._load_state()
         rejected: list[ReviewEntry] = []
         for entry in state.values():
-            if entry.status != "pending" or entry.slug != slug:
+            if entry.status != ReviewStatus.PENDING or entry.slug != slug:
                 continue
             self._move(entry.slug, pending=True, rejected=True)
-            entry.status = "rejected"
+            entry.status = ReviewStatus.REJECTED
             entry.reason = reason
             state[entry.slug] = entry
             rejected.append(entry)
