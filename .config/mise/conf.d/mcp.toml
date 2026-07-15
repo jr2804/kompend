@@ -12,7 +12,7 @@
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 "pipx:beads-mcp" = "latest"
-"pipx:repowise" = "latest"
+#"pipx:repowise" = "latest"
 "github:1broseidon/ketch" = "latest"
 "github:colbymchenry/codegraph" = "latest"
 
