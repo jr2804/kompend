@@ -808,6 +808,8 @@ class WikiPipeline:
                     resolved_references=cached.get("resolved_references", []),
                     metadata=cached.get("metadata", {}),
                 )
+            if self.resolver is None:
+                raise RuntimeError("Resolver not initialized")
             result = self.resolver.resolve(chunk)
             self._cache_store.set(
                 "resolve",

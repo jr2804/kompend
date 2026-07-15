@@ -142,6 +142,8 @@ class NodeSummarizer:
         prompt = self._loader.render(_TEMPLATE, content=content, heading_path=heading_path)
         deps = PipelineAgentDeps(text=prompt, source_id=heading_path, timeout=120)
         try:
+            if self._agent is None:
+                raise RuntimeError("SummarizerAgent not initialized")
             result = self._agent.run(deps)
             return result.strip()
         except Exception as exc:

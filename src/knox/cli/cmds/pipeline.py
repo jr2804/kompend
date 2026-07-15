@@ -137,7 +137,7 @@ def parse_cmd(
         get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
             element_text_limit = DEFAULTS.get(DISPLAY_CLI_ELEMENT_CHARS, 80)
-            for el in doc.elements:  # ty: ignore
+            for el in doc.elements:
                 get_console().print(f"  - {el.get('type')}: {str(el.get('text', ''))[:element_text_limit]}")  # ty: ignore
 
 
@@ -193,7 +193,7 @@ def compile_cmd(  # noqa: PLR0915
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
         start_at_tier=start_at_tier,
-        no_cache=no_cache,
+        no_cache=no_cache or False,
         workers=workers,
         force=force,
         review=review,
@@ -346,7 +346,7 @@ def ingest_cmd(
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
-        no_cache=no_cache,
+        no_cache=no_cache or False,
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,
@@ -403,7 +403,7 @@ def ingest_cmd(
             base_dir=base_dir,
             router=router,
             progress_fn=_progress,
-            no_cache=no_cache,
+            no_cache=no_cache or False,
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
         )

@@ -178,7 +178,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
             litellm_model=model,
             timeout=timeout,
             max_tokens=128,
-            retries=retries,
+            retries=retries or 2,
         )
         result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
         if result and result.strip():

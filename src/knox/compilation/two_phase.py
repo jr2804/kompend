@@ -208,7 +208,7 @@ class TwoPhaseCompiler(BaseCompiler):
         *,
         context_window: ContextWindow | None = None,
     ) -> None:
-        self._base = base or GraphCompiler(model=config.llm.default_model)
+        self._base = base or GraphCompiler(model=config.llm.default_model or "")
         self._budget = config.budget
         self._model = config.llm.default_model
         self._config = config
@@ -724,7 +724,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
                 agent = GenerationAgent(
-                    litellm_model=self._model,
+                    litellm_model=self._model or "",
                     timeout=self._timeout,
                     max_tokens=self._budget.gen_output_max,
                     skills=self._config.skills,
@@ -825,7 +825,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         agent = ExtractionAgent(
-            litellm_model=self._model,
+            litellm_model=self._model or "",
             timeout=self._timeout,
             max_tokens=self._budget.extract_output_max,
             skills=self._config.skills,
@@ -868,14 +868,14 @@ class TwoPhaseCompiler(BaseCompiler):
         pin_blob = "\n".join(sorted(f.strip() for f in (pinned_facts or []) if f and f.strip()))
         pin_hash = hashlib.sha256(pin_blob.encode()).hexdigest()
         budget = self._budget
-        return {
-            "extractions": ext_hash,
-            "model": self._model,
-            "chunk_size_min": str(budget.chunk_size_min),
-            "chunk_size_max": str(budget.chunk_size_max),
-            "concepts_per_batch": str(budget.concepts_per_batch),
-            "pinned_facts": pin_hash,
-        }
+        deps: dict[str, str] = {}
+        deps["extractions"] = ext_hash or ""
+        deps["model"] = self._model or ""
+        deps["chunk_size_min"] = str(budget.chunk_size_min or "")
+        deps["chunk_size_max"] = str(budget.chunk_size_max or "")
+        deps["concepts_per_batch"] = str(budget.concepts_per_batch or "")
+        deps["pinned_facts"] = pin_hash or ""
+        return deps
 
     # -- generation checkpoint (resume after crash) ------------------------
 

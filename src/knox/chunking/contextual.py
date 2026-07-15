@@ -105,6 +105,8 @@ class ContextualEnricher:
                 content_preview=content_preview,
             )
             deps = PipelineAgentDeps(text=rendered, source_id=heading_path, timeout=120)
+            if self._agent is None:
+                raise RuntimeError("ContextChunkAgent not initialized")
             result = self._agent.run(deps)
             context = result.strip()
             if context:

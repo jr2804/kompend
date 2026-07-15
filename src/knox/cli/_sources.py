@@ -108,7 +108,7 @@ def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
 def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
     if not rarfile.is_rarfile(path):
         return None
-    with rarfile.RarFile(path) as rf:
+    with rarfile.RarFile(path) as rf:  # type: ignore[reportGeneralTypeIssues]
         best = _find_best_archive_member(rf.namelist())
         if best is None:
             return None

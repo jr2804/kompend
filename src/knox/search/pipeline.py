@@ -194,6 +194,8 @@ class EnhancedRetriever:
         try:
             prompt = self._template_loader.render("search/hyde_generate.md.j2", query=query)
             deps = PipelineAgentDeps(text=prompt, source_id="hyde", timeout=120)
+            if self._hyde_agent is None:
+                raise RuntimeError("HyDE agent not initialized")
             result = self._hyde_agent.run(deps)
             if result.strip():
                 logger.debug("HyDE generated hypothetical passage (%d chars)", len(result))
@@ -279,6 +281,8 @@ class EnhancedRetriever:
                 snippet=result.snippet,
             )
             deps = PipelineAgentDeps(text=prompt, source_id="crag", timeout=120)
+            if self._crag_agent is None:
+                raise RuntimeError("CRAG agent not initialized")
             grade = self._crag_agent.run(deps)
             return max(0.0, min(1.0, grade.relevance))
         except Exception as exc:

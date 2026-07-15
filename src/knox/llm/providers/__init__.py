@@ -159,9 +159,9 @@ def _patch_get_llm_provider() -> None:
                 return model, prefix, api_key, api_base
         return _original(model, custom_llm_provider, api_base, api_key, litellm_params)
 
-    litellm.utils.get_llm_provider = _patched  # type: ignore[assignment]
-    litellm.get_llm_provider = _patched  # type: ignore[assignment]
-    litellm.main.get_llm_provider = _patched  # type: ignore[assignment]
+    litellm.utils.get_llm_provider = _patched  # type: ignore
+    litellm.get_llm_provider = _patched  # type: ignore
+    litellm.main.get_llm_provider = _patched  # type: ignore
 
 
 # Auto-register on import.

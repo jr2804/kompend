@@ -116,7 +116,7 @@ def _fetch_catalog() -> dict[str, dict[str, Any]]:
     """Resolve the catalog: in-memory → disk (if fresh) → remote → disk write."""
     cached = _CACHE["catalog"]
     if cached is not None:
-        return cached  # type: ignore[return-value]
+        return cached  # type: ignore
     ttl = _cache_ttl_seconds()
     path = _cache_path()
     if ttl > 0:

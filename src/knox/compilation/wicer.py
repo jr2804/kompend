@@ -72,7 +72,7 @@ class WiCERCompiler(BaseCompiler):
     ) -> None:
         self._config = config
         self._compiler = base_compiler or GraphCompiler(
-            model=config.llm.default_model,
+            model=config.llm.default_model or "",
             min_content_length=config.budget.min_content_length,
         )
         self.max_iterations = config.budget.wicer_max_iterations
@@ -357,7 +357,7 @@ class WiCERCompiler(BaseCompiler):
 
         try:
             agent = WicerProbeAgent(
-                litellm_model=self._config.llm.default_model,
+                litellm_model=self._config.llm.default_model or "",
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,
@@ -394,7 +394,7 @@ class WiCERCompiler(BaseCompiler):
 
             try:
                 agent = WicerEvaluateAgent(
-                    litellm_model=self._config.llm.default_model,
+                    litellm_model=self._config.llm.default_model or "",
                     max_tokens=self._config.budget.verify_output_max,
                     skills=self._config.skills,
                     retries=self._config.llm.output_retries,
@@ -434,7 +434,7 @@ class WiCERCompiler(BaseCompiler):
 
         try:
             agent = WicerDiagnoseAgent(
-                litellm_model=self._config.llm.default_model,
+                litellm_model=self._config.llm.default_model or "",
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,

@@ -306,14 +306,14 @@ class _OpenCodeDummyProvider(CustomLLM):
 
     _ERR = "Invalid provider prefix 'opencode/'. Use 'opencode-go/' (subscription) or 'opencode-zen/' (pay-as-you-go) instead."
 
-    def completion(self, model: str, messages: list, **_kw: Any) -> Any:
+    def completion(self, model: str, messages: list, **_kw: Any) -> Any:  # type: ignore
         raise ValueError(self._ERR)
 
-    def streaming(self, model: str, messages: list, **_kw: Any) -> Any:
+    def streaming(self, model: str, messages: list, **_kw: Any) -> Any:  # type: ignore
         raise ValueError(self._ERR)
 
-    async def acompletion(self, model: str, messages: list, **_kw: Any) -> Any:
+    async def acompletion(self, model: str, messages: list, **_kw: Any) -> Any:  # type: ignore
         raise ValueError(self._ERR)
 
-    async def astreaming(self, model: str, messages: list, **_kw: Any) -> Any:
+    async def astreaming(self, model: str, messages: list, **_kw: Any) -> Any:  # type: ignore
         raise ValueError(self._ERR)
