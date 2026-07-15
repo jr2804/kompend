@@ -1,16 +1,13 @@
-"""Conversational agent with a tool-calling loop.
+"""Conversational agent with a PydanticAI-driven tool-calling loop.
 
 Driven by an :class:`~knox.acp.definitions.AgentDefinition`, this agent
-uses an LLM to reason about user requests and call available tools
-(:class:`~knox.acp.tools.ToolDispatcher`) until a final answer is produced.
+uses a PydanticAI :class:`~pydantic_ai.Agent` with a single generic tool
+that dispatches to :class:`~knox.acp.tools.ToolDispatcher`.  PydanticAI
+handles the tool-calling loop, retry budgeting, and message history.
 
-The loop:
-
-1. System prompt + user message → LLM (with tools)
-2. If LLM returns tool_calls → execute each → feed results back → repeat
-3. If LLM returns content (no tool_calls) → final answer
-
-Bounded by ``AgentDefinition.behavior.max_turns``.
+The system prompt is built from the agent definition's system prompt plus
+a rendered tool manifest (name, description, parameter schema) so the LLM
+knows what tools are available and how to call them.
 """
 
 from __future__ import annotations
@@ -19,7 +16,6 @@ import json
 import time
 from typing import Any
 
-import litellm
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
 
@@ -32,13 +28,43 @@ from knox.acp._constants import (
 )
 from knox.acp.definitions import AgentDefinition
 from knox.acp.tools import ToolDispatcher
+from knox.agents.knox_model import KnoxModel
+from knox.llm.models import build_model
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+def _build_tool_manifest(definition: AgentDefinition) -> str:
+    """Render a human-readable tool manifest for the system prompt.
+
+    Lists each enabled tool with its name, description, and parameter
+    schema so the LLM knows how to call it via the generic dispatch tool.
+    """
+    schemas = ToolDispatcher.schemas(definition.tools.enabled)
+    lines: list[str] = ["## Available Tools", ""]
+    for s in schemas:
+        func = s.get("function", s)
+        name = func.get("name", "?")
+        desc = func.get("description", "")
+        params = func.get("parameters", {})
+        lines.append(f"### {name}")
+        lines.append(f"Description: {desc}")
+        props = params.get("properties", {})
+        if props:
+            lines.append("Parameters:")
+            for pname, pinfo in props.items():
+                ptype = pinfo.get("type", "any")
+                pdesc = pinfo.get("description", "")
+                required = " (required)" if pname in params.get("required", []) else ""
+                lines.append(f"  - {pname}: {ptype}{required} — {pdesc}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 class ConversationalAgent:
-    """Tool-calling conversational loop driven by an AgentDefinition."""
+    """Tool-calling conversational loop driven by a PydanticAI Agent."""
 
     def __init__(
         self,
@@ -51,6 +77,11 @@ class ConversationalAgent:
         self._model = model
         self._tools = tools
         self._timeout = timeout
+        self._usage_tracker = UsageTracker()
+        # Notification state (set per run() call)
+        self._notify_conn: Any = None
+        self._notify_session_id: str = ""
+        self._notify_message_id: str = ""
 
     async def run(
         self,
@@ -69,92 +100,84 @@ class ConversationalAgent:
             :class:`PromptResponse` with the final answer.
         """
         definition = self._definition
-        tools_schema = ToolDispatcher.schemas(definition.tools.enabled)
+        self._notify_conn = conn
+        self._notify_session_id = session_id
+        self._notify_message_id = f"{MSG_ID_PREFIX}{int(time.time() * 1000)}"
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": definition.prompt.system},
-            {"role": "user", "content": user_message},
-        ]
+        # Build the system prompt with tool manifest.
+        system_prompt = definition.prompt.system
+        tool_manifest = _build_tool_manifest(definition)
+        full_system = f"{system_prompt}\n\n{tool_manifest}"
 
-        message_id = f"{MSG_ID_PREFIX}{int(time.time() * 1000)}"
+        # Build the PydanticAI Agent lazily (per-run so tools can vary).
+        agent = self._build_agent()
 
-        for _turn in range(definition.behavior.max_turns):
-            response = litellm.completion(
-                model=self._model,
-                messages=messages,
-                tools=tools_schema,
-                temperature=definition.llm.temperature,
-                max_tokens=definition.llm.max_tokens,
-                timeout=self._timeout,
+        try:
+            result = await agent.run(
+                user_message,
+                instructions=full_system,
+                usage_limits=None,
+            )
+            content = result.output or "(no response)"
+            await self._notify(conn, session_id, self._notify_message_id, content)
+            return PromptResponse(
+                stopReason=STOP_REASON_END_TURN,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Conversational agent '%s' failed: %s",
+                definition.name,
+                exc,
+            )
+            error_msg = f"I encountered an error: {exc}"
+            await self._notify(conn, session_id, self._notify_message_id, error_msg)
+            return PromptResponse(
+                stopReason=STOP_REASON_MAX_TOKENS,
             )
 
-            choice = response.choices[0]
-            content = choice.message.content or ""
-            tool_calls = choice.message.tool_calls or []
+    def _build_agent(self) -> Any:
+        """Build a PydanticAI Agent with a single generic dispatch tool."""
+        from pydantic_ai import Agent
 
-            # No tool calls → final answer
-            if not tool_calls:
-                await self._notify(conn, session_id, message_id, content or "(no response)")
-                return PromptResponse(
-                    stopReason=STOP_REASON_END_TURN,
-                )
-
-            # Build assistant message with tool calls for the conversation
-            assistant_msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            }
-            messages.append(assistant_msg)
-
-            for tc in tool_calls:
-                await self._notify(
-                    conn,
-                    session_id,
-                    message_id,
-                    f"Calling {tc.name}…",
-                )
-                logger.info("Agent tool call: %s(%s)", tc.name, tc.arguments)
-                tool_result = await self._tools.execute(tc.function.name, json.loads(tc.function.arguments))
-                await self._notify(
-                    conn,
-                    session_id,
-                    message_id,
-                    f"{tc.name} completed",
-                )
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": tool_result,
-                    }
-                )
-
-        # Max turns exhausted
-        logger.warning(
-            "Agent %s reached max_turns=%d without a final answer",
-            definition.name,
-            definition.behavior.max_turns,
+        model = KnoxModel(
+            build_model(self._model),
+            usage_tracker=self._usage_tracker,
         )
-        await self._notify(
-            conn,
-            session_id,
-            message_id,
-            "I reached the maximum number of reasoning steps without producing a final answer. Please try rephrasing your request.",
+        agent = Agent(
+            model,
+            system_prompt="You are a helpful assistant with access to tools.",
+            retries=2,
         )
-        return PromptResponse(
-            stopReason=STOP_REASON_MAX_TOKENS,
-        )
+
+        @agent.tool_plain
+        async def dispatch_tool(
+            tool_name: str,
+            tool_args_json: str = "{}",
+        ) -> str:
+            """Call a tool by name with JSON-encoded arguments.
+
+            Available tools are described in the system prompt under
+            '## Available Tools'.  Set *tool_name* to the tool name and
+            *tool_args_json* to a JSON object with the tool's parameters.
+            """
+            args = json.loads(tool_args_json) if tool_args_json.strip() else {}
+            logger.info("Agent tool call: %s(%s)", tool_name, args)
+            await self._notify(
+                self._notify_conn,
+                self._notify_session_id,
+                self._notify_message_id,
+                f"Calling {tool_name}…",
+            )
+            result = await self._tools.execute(tool_name, args)
+            await self._notify(
+                self._notify_conn,
+                self._notify_session_id,
+                self._notify_message_id,
+                f"{tool_name} completed",
+            )
+            return result
+
+        return agent
 
     async def _notify(  # noqa: PLR6301
         self,
