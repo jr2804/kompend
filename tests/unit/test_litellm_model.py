@@ -1,107 +1,119 @@
-"""Tests for the LitellmModel FunctionModel bridge.
+"""Tests for KnoxLiteLLMModel — the pydantic-ai-litellm bridge with KNOX enhancements.
 
-Verifies that the message converter handles PydanticAI's retry protocol
-(RetryPromptPart, ToolReturnPart) — without this, schema-validation
-retries are silently dropped and the model repeats the same invalid
-output.
+Verifies retry enrichment (valid partial JSON injected into RetryPromptPart
+feedback) and schema-aware JSON repair.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from unittest.mock import MagicMock
 
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
-    RetryPromptPart,
-    SystemPromptPart,
-    TextPart,
-    ToolReturnPart,
-    UserPromptPart,
-)
+from pydantic import BaseModel
+from pydantic_ai.messages import TextPart
 
-from knox.agents.litellm_model import _messages_to_litellm
+from knox.agents.litellm_model import KnoxLiteLLMModel
 
 
-class TestMessagesToLitellm:
-    """Verify every PydanticAI part type maps to a litellm message."""
+class _FakeSchema(BaseModel):
+    name: str
+    value: int
 
-    def test_system_prompt(self) -> None:
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[SystemPromptPart(content="You are a bot")]),
+
+class TestRetryEnrichment:
+    """Verify retry messages are enriched with valid partial JSON."""
+
+    def test_no_schema_no_enrichment(self) -> None:
+        """Without output_schema, retry messages pass through unchanged."""
+        model = KnoxLiteLLMModel("test-model")
+        messages = [
+            {"role": "assistant", "content": '{"name": "x", "value": 1}'},
+            {"role": "user", "content": "Validation errors — fix and retry:\n- Field required"},
         ]
-        result = _messages_to_litellm(msgs)
-        assert result == [{"role": "system", "content": "You are a bot"}]
+        result = model._enrich_retry_messages(messages)
+        assert result == messages  # unchanged
 
-    def test_user_prompt(self) -> None:
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[UserPromptPart(content="Hello")]),
+    def test_with_schema_enriches_retry(self) -> None:
+        """With output_schema, valid partial JSON is injected into retry."""
+        model = KnoxLiteLLMModel("test-model", output_schema=_FakeSchema)
+        messages = [
+            {"role": "assistant", "content": '{"name": "x", "value": 1}'},
+            {"role": "user", "content": "Validation errors — fix and retry:\n- Field required"},
         ]
-        result = _messages_to_litellm(msgs)
-        assert result == [{"role": "user", "content": "Hello"}]
+        result = model._enrich_retry_messages(messages)
+        assert len(result) == 2
+        assert "valid parts extracted" in result[1]["content"]
+        assert '"name": "x"' in result[1]["content"]
 
-    def test_assistant_text(self) -> None:
-        msgs: list[ModelMessage] = [
-            ModelResponse(parts=[TextPart(content="Hi back")], model_name="test", timestamp=datetime.now()),
+    def test_no_assistant_before_retry_no_enrichment(self) -> None:
+        """Retry without preceding assistant message is not enriched."""
+        model = KnoxLiteLLMModel("test-model", output_schema=_FakeSchema)
+        messages = [
+            {"role": "user", "content": "Validation errors — fix and retry:\n- Field required"},
         ]
-        result = _messages_to_litellm(msgs)
-        assert result == [{"role": "assistant", "content": "Hi back"}]
+        result = model._enrich_retry_messages(messages)
+        assert result == messages
 
-    def test_retry_prompt_part_is_converted(self) -> None:
-        """RetryPromptPart must become a user message — not be dropped.
+    def test_unparseable_assistant_content_no_enrichment(self) -> None:
+        """When salvage_json returns None, retry message is unchanged."""
+        model = KnoxLiteLLMModel("test-model", output_schema=_FakeSchema)
+        messages = [
+            {"role": "assistant", "content": "not json at all"},
+            {"role": "user", "content": "Validation errors — fix and retry:\n- Field required"},
+        ]
+        result = model._enrich_retry_messages(messages)
+        assert result == messages
 
-        This is the regression test for the root cause: without handling
-        RetryPromptPart, PydanticAI retries were silently lost and the
-        model repeated the same invalid output.
-        """
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[UserPromptPart(content="Generate JSON")]),
-            ModelResponse(parts=[TextPart(content='{"bad"')], model_name="test", timestamp=datetime.now()),
-            ModelRequest(parts=[RetryPromptPart(content="Invalid JSON near line 1")]),
+    def test_non_retry_user_message_not_enriched(self) -> None:
+        """Only messages containing 'Validation errors' are enriched."""
+        model = KnoxLiteLLMModel("test-model", output_schema=_FakeSchema)
+        messages = [
+            {"role": "assistant", "content": '{"name": "x", "value": 1}'},
+            {"role": "user", "content": "What is the capital of France?"},
         ]
-        result = _messages_to_litellm(msgs)
-        assert len(result) == 3
-        assert result[2]["role"] == "user"
-        assert "Invalid JSON near line 1" in result[2]["content"]
+        result = model._enrich_retry_messages(messages)
+        assert result == messages
 
-    def test_retry_prompt_part_with_error_list(self) -> None:
-        """RetryPromptPart with a list of ErrorDetails is flattened to readable text."""
-        errors = [
-            {"msg": "Field required", "loc": ("pages", 0, "title")},
-            {"msg": "extra fields not permitted", "loc": ("foo",)},
-        ]
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[RetryPromptPart(content=errors)]),
-        ]
-        result = _messages_to_litellm(msgs)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "Field required" in result[0]["content"]
-        assert "extra fields not permitted" in result[0]["content"]
 
-    def test_tool_return_part_is_converted(self) -> None:
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[ToolReturnPart(tool_name="lookup", content="result data", tool_call_id="tc1")]),
-        ]
-        result = _messages_to_litellm(msgs)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "result data" in result[0]["content"]
+class TestProcessResponse:
+    """Verify schema-aware JSON repair in _process_response."""
 
-    def test_full_retry_conversation_roundtrip(self) -> None:
-        """Simulate the full PydanticAI retry flow: prompt → bad response → retry → good response."""
-        msgs: list[ModelMessage] = [
-            ModelRequest(parts=[SystemPromptPart(content="Return JSON"), UserPromptPart(content="Make a page")]),
-            ModelResponse(parts=[TextPart(content='{"bad"')], model_name="test", timestamp=datetime.now()),
-            ModelRequest(parts=[RetryPromptPart(content="JSON decode error at line 1")]),
-            ModelResponse(parts=[TextPart(content='{"pages":[]}')], model_name="test", timestamp=datetime.now()),
-        ]
-        result = _messages_to_litellm(msgs)
-        # System + User + Assistant + RetryFeedback + Assistant = 5 messages
-        assert len(result) == 5
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        assert result[2]["role"] == "assistant"
-        assert result[3]["role"] == "user"  # retry feedback
-        assert "JSON decode error" in result[3]["content"]
+    def test_no_schema_passthrough(self) -> None:
+        """Without output_schema, response is unchanged."""
+        model = KnoxLiteLLMModel("test-model")
+        raw = MagicMock()
+        raw.choices = [MagicMock()]
+        raw.choices[0].message = MagicMock()
+        raw.choices[0].message.content = '{"name": "x", "value": 1}'
+        raw.choices[0].message.tool_calls = None
+        raw.usage = None
+        raw.model = "test-model"
+        raw.id = None
+        raw.created = None
+
+        result = model._process_response(raw)
+        parts = result.parts
+        assert len(parts) == 1
+        assert isinstance(parts[0], TextPart)
+        assert parts[0].content == '{"name": "x", "value": 1}'
+
+    def test_with_schema_repairs_json(self) -> None:
+        """With output_schema, salvage_json is applied to text parts."""
+        model = KnoxLiteLLMModel("test-model", output_schema=_FakeSchema)
+        raw = MagicMock()
+        raw.choices = [MagicMock()]
+        raw.choices[0].message = MagicMock()
+        raw.choices[0].message.content = '{"name": "x", "value": 1}'
+        raw.choices[0].message.tool_calls = None
+        raw.usage = None
+        raw.model = "test-model"
+        raw.id = None
+        raw.created = None
+
+        result = model._process_response(raw)
+        parts = result.parts
+        assert len(parts) == 1
+        # salvage_json should parse and re-serialize (valid JSON stays valid)
+        parsed = json.loads(parts[0].content)
+        assert parsed["name"] == "x"
+        assert parsed["value"] == 1

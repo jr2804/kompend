@@ -1,293 +1,387 @@
-"""Litellm-backed PydanticAI model bridge.
+"""KnoxLiteLLMModel — PydanticAI Model backed by litellm via pydantic-ai-litellm.
 
-PydanticAI's built-in ``litellm:`` prefix creates an OpenAI client pointed
-at a LiteLLM **proxy server** — it does NOT call ``litellm.completion()``
-through litellm's Python routing. KNOX's custom providers (opencode-zen,
-ollama_cloud, claudinio) depend on litellm's Python monkey-patching, so
-they would break with the built-in integration.
+Thin subclass of :class:`pydantic_ai_litellm.LiteLLMModel` that adds
+KNOX-specific features while delegating all message conversion, tool
+calling, and streaming to the upstream library.
 
-This module creates a :class:`~pydantic_ai.models.function.FunctionModel`
-backed by ``litellm.completion()``, preserving litellm's full dispatch chain:
-custom providers, API key resolution, per-call kwargs, and all monkey-patches.
+Added features
+--------------
+* **Schema-aware JSON repair** — ``salvage_json(content, schema=…)``
+  runs on every structured-output response before PydanticAI validates.
+* **Retry enrichment** — when PydanticAI sends a ``RetryPromptPart``,
+  the valid portions of the model's previous output are extracted and
+  included so the model only fixes the broken parts.
+* **Failover chain** — on transient errors the primary model is retried,
+  then fallback models are tried in order.
+* **Debug saving** — when ``KNOX_DEBUG_LLM_DIR`` is set, every LLM
+  call is saved to disk with full messages + response.
+* **Usage tracking** — token counts are recorded on the agent's
+  :class:`~knox.llm.usage.UsageTracker`.
+* **Reasoning effort** — ``reasoning_effort`` is forwarded to cloud
+  providers and mapped to ``think=False`` for Ollama.
+* **JSON mode** — ``response_format={"type": "json_object"}`` is
+  added for structured-output agents.
 
 Usage::
 
-    from knox.agents.litellm_model import make_litellm_model
+    from knox.agents.litellm_model import KnoxLiteLLMModel
 
     agent = Agent(
-        make_litellm_model("ollama/gpt-oss:20b"),
-        output_type=ExtractionOutput,
+        model=KnoxLiteLLMModel("ollama/gpt-oss:20b", output_schema=MyOutput),
+        output_type=MyOutput,
     )
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import litellm
 from pydantic import BaseModel
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
-    RetryPromptPart,
-    SystemPromptPart,
-    TextPart,
-    ToolReturnPart,
-    UserPromptPart,
-)
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai import ModelHTTPError, UnexpectedModelBehavior
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models import ModelRequestParameters, check_allow_model_requests
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai_litellm import LiteLLMModel, LiteLLMModelSettings
 
 from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import shorten_string
-from knox.llm.failover import FailoverChain
 from knox.llm.format import salvage_json
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
-
-def _messages_to_litellm(
-    messages: list[ModelMessage],
-    *,
-    schema: type[BaseModel] | None = None,
-) -> list[dict[str, Any]]:
-    """Convert PydanticAI messages to litellm chat format.
-
-    Handles all part types PydanticAI uses in the structured-output retry
-    loop: ``RetryPromptPart`` (validation errors sent back on schema
-    mismatch) and ``ToolReturnPart`` are converted to ``user`` messages so
-    the model sees the feedback. Without this, retries are silently
-    dropped and the model repeats the same invalid output.
-
-    When *schema* is provided, ``RetryPromptPart`` content is enriched with
-    the valid portions of the model's previous output (extracted via
-    schema-aware ``salvage_json``), so the model only needs to fix the
-    broken parts rather than redo everything.
-    """
-    result: list[dict[str, Any]] = []
-    _last_assistant_content: str | None = None
-    for msg in messages:
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, SystemPromptPart):
-                    result.append({"role": "system", "content": part.content})
-                elif isinstance(part, UserPromptPart):
-                    result.append({"role": "user", "content": str(part.content)})
-                elif isinstance(part, RetryPromptPart):
-                    content = _enrich_retry_content(
-                        part.content,
-                        _last_assistant_content,
-                        schema,
-                    )
-                    result.append({"role": "user", "content": content})
-                elif isinstance(part, ToolReturnPart):
-                    result.append({"role": "user", "content": str(part.content)})
-        elif isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, TextPart):
-                    _last_assistant_content = part.content
-                    result.append({"role": "assistant", "content": part.content})
-    return result
+#: Transient error classes that trigger failover to the next model.
+_TRANSIENT_ERRORS = (
+    litellm.exceptions.Timeout,
+    litellm.exceptions.APIConnectionError,
+    litellm.exceptions.RateLimitError,
+    litellm.exceptions.ServiceUnavailableError,
+)
 
 
-def _enrich_retry_content(
-    retry_content: object,
-    last_assistant_content: str | None,
-    schema: type[BaseModel] | None,
-) -> str:
-    """Enrich PydanticAI's retry message with schema-aware feedback.
+class KnoxLiteLLMModel(LiteLLMModel):
+    """LiteLLM-backed PydanticAI model with KNOX-specific enhancements."""
 
-    PydanticAI's default retry messages are generic (``"Input should be a
-    valid string"``). When *schema* and *last_assistant_content* are
-    available, this function extracts the valid portions of the model's
-    previous output via ``salvage_json`` and includes them in the retry
-    message, so the model only needs to fix the broken parts.
-    """
-    errors = "\n".join(f"- {e.get('msg', e)}" for e in retry_content) if isinstance(retry_content, list) else str(retry_content)
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        output_schema: type[BaseModel] | None = None,
+        usage_tracker: UsageTracker | None = None,
+        fallback_models: list[str] | None = None,
+        agent: Any | None = None,
+        reasoning_effort: str | None = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        custom_llm_provider: str | None = None,
+        settings: ModelSettings | None = None,
+    ) -> None:
+        super().__init__(
+            model_name,
+            api_key=api_key,
+            api_base=api_base,
+            custom_llm_provider=custom_llm_provider,
+            settings=settings,
+        )
+        self._output_schema = output_schema
+        self._usage_tracker = usage_tracker
+        self._fallback_models = fallback_models or []
+        self._agent = agent
+        self._reasoning_effort = reasoning_effort
 
-    if schema is not None and last_assistant_content:
-        repaired = salvage_json(last_assistant_content, schema=schema)
-        if repaired is not None:
-            valid_json = json.dumps(repaired, ensure_ascii=False, indent=2)
-            if len(valid_json) > 3000:
-                valid_json = valid_json[:3000] + "\n  ... (truncated)"
-            return (
-                f"Validation errors — fix and retry:\n{errors}\n\n"
-                f"The valid parts extracted from your previous response:\n"
-                f"```json\n{valid_json}\n```\n\n"
-                f"Return ONLY a corrected JSON object that fixes the listed "
-                f"errors. Keep all valid fields unchanged."
-            )
+    # ------------------------------------------------------------------
+    # request — failover + debug + usage tracking
+    # ------------------------------------------------------------------
 
-    return f"Validation errors — fix and retry:\n{errors}"
+    async def request(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> ModelResponse:
+        check_allow_model_requests()
 
+        all_models = [self._model_name] + self._fallback_models
+        last_error: Exception | None = None
 
-def _make_litellm_function(  # noqa: C901, PLR0915
-    model_string: str,
-    usage_tracker: UsageTracker | None = None,
-    fallback_models: list[str] | None = None,
-    agent: Any | None = None,
-    reasoning_effort: str | None = None,
-    schema: type[BaseModel] | None = None,
-) -> Any:
-    """Create a FunctionModel-compatible function calling ``litellm.completion()``.
-
-    When *reasoning_effort* is set, it is forwarded to litellm as
-    ``reasoning_effort=`` (for cloud providers like OpenAI/Anthropic) and
-    mapped to ``think=False`` for Ollama models that support the think toggle.
-    """
-
-    def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:  # noqa: C901, PLR0915
-        litellm_messages = _messages_to_litellm(messages, schema=schema)
-
-        # Inject instructions as system message. PydanticAI 2.9 passes the
-        # system prompt via AgentInfo.instructions, NOT as a SystemPromptPart
-        # in the message list. Without this, the system prompt is silently
-        # discarded and the model never sees critical output-format guidance.
-        if info.instructions:
-            litellm_messages.insert(0, {"role": "system", "content": info.instructions})
-
-        # Build the model list for failover: primary + fallbacks
-        all_models = [model_string] + (fallback_models or [])
-
-        # Build kwargs once (same for all models in the chain)
-        kwargs: dict[str, Any] = {"messages": litellm_messages}
-
-        # Forward model settings (timeout, max_tokens, temperature)
-        if info.model_settings:
-            for key in ("timeout", "max_tokens", "temperature"):
-                val = info.model_settings.get(key)
-                if val is not None:
-                    kwargs[key] = val
-
-        # Force JSON output for structured agents (Pydantic model output_type).
-        # When allow_text_output is True (QueryAgent), the model returns free text.
-        if not info.allow_text_output:
-            kwargs["response_format"] = {"type": "json_object"}
-
-        # Apply reasoning_effort: cloud providers get it natively via litellm,
-        # Ollama gets think=False for low effort levels.
-        if reasoning_effort:
-            if model_string.startswith("ollama/"):
-                if reasoning_effort in ("none", "minimal", "low"):
-                    kwargs["think"] = False
-            else:
-                kwargs["reasoning_effort"] = reasoning_effort
-
-        # Try models in order with failover on transient errors
-        if len(all_models) > 1:
-            chain = FailoverChain(all_models)
+        for model in all_models:
             try:
-                result = chain.run(lambda m: litellm.completion(model=m, **kwargs))
-                response = result.value
-            except Exception as exc:
+                response = await self._completion_create(
+                    messages,
+                    False,
+                    cast(LiteLLMModelSettings, model_settings or {}),
+                    model_request_parameters,
+                    model_name=model,
+                )
+                result = self._process_response(response)
+
+                # Debug save
+                if self._agent is not None:
+                    litellm_messages = await self._map_messages(messages, model_request_parameters)
+                    litellm_messages = self._enrich_retry_messages(litellm_messages)
+                    content = ""
+                    for part in result.parts:
+                        if isinstance(part, TextPart):
+                            content = part.content
+                            break
+                    finish_reason = getattr(response.choices[0], "finish_reason", "stop")
+                    save_debug_prompt(
+                        self._agent,
+                        model,
+                        litellm_messages,
+                        {"model": model},
+                        content,
+                        finish_reason,
+                    )
+
+                return result
+
+            except _TRANSIENT_ERRORS as exc:
                 logger.warning(
-                    "All models in failover chain failed for '%s': %s",
-                    model_string,
+                    "KnoxLiteLLMModel: transient error for '%s': %s",
+                    model,
                     exc,
                 )
-                raise
-        else:
-            kwargs["model"] = model_string
-            response = litellm.completion(**kwargs)
+                last_error = exc
+                continue
+
+        # All models exhausted
+        if last_error is not None:
+            raise last_error
+        raise UnexpectedModelBehavior("All models in failover chain failed")
+
+    # ------------------------------------------------------------------
+    # _completion_create — response_format, reasoning_effort, failover
+    # ------------------------------------------------------------------
+
+    async def _completion_create(  # noqa: PLR0915
+        self,
+        messages: list[ModelMessage],
+        stream: bool,
+        model_settings: LiteLLMModelSettings,
+        model_request_parameters: ModelRequestParameters,
+        *,
+        model_name: str | None = None,
+    ) -> Any:
+        """Build litellm kwargs and call ``acompletion``.
+
+        Overrides the parent to add:
+
+        * ``response_format`` for structured-output agents
+        * ``reasoning_effort`` / ``think`` mapping
+        * Per-model usage tracking from the raw response
+        """
+        tools = self._get_tools(model_request_parameters)
+
+        tool_choice: str | None = "required" if not model_request_parameters.allow_text_output else "auto"
+        if not tools:
+            tool_choice = None
+
+        litellm_messages = await self._map_messages(messages, model_request_parameters)
+        litellm_messages = self._enrich_retry_messages(litellm_messages)
+
+        effective_model = model_name or self._model_name
+        completion_kwargs = self._build_completion_kwargs(
+            effective_model,
+            litellm_messages,
+            stream,
+            tools,
+            tool_choice,
+            model_settings,
+            model_request_parameters,
+        )
+
+        try:
+            response = await litellm.acompletion(**completion_kwargs)
+        except Exception as exc:
+            if hasattr(exc, "status_code") and isinstance(exc.status_code, int) and exc.status_code >= 400:
+                raise ModelHTTPError(
+                    status_code=exc.status_code,
+                    model_name=effective_model,
+                    body=str(exc),
+                ) from exc
+            raise
+
+        self._track_usage(response, effective_model)
+        self._log_response_anomalies(response, effective_model, model_request_parameters)
+        return response
+
+    def _build_completion_kwargs(
+        self,
+        effective_model: str,
+        litellm_messages: list[dict[str, Any]],
+        stream: bool,
+        tools: list[dict[str, Any]],
+        tool_choice: str | None,
+        model_settings: LiteLLMModelSettings,
+        model_request_parameters: ModelRequestParameters,
+    ) -> dict[str, Any]:
+        """Build the kwargs dict for ``litellm.acompletion``."""
+        kwargs: dict[str, Any] = {
+            "model": effective_model,
+            "messages": litellm_messages,
+            "stream": stream,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
+
+        for key in ("max_tokens", "temperature", "top_p", "timeout", "seed"):
+            if val := model_settings.get(key):
+                kwargs[key] = val
+        if stop_sequences := model_settings.get("stop_sequences"):
+            kwargs["stop"] = stop_sequences
+        if parallel_tool_calls := model_settings.get("parallel_tool_calls"):
+            kwargs["parallel_tool_calls"] = parallel_tool_calls
+
+        # LiteLLM-specific parameters
+        if api_key := model_settings.get("litellm_api_key") or self._api_key:
+            kwargs["api_key"] = api_key
+        if api_base := model_settings.get("litellm_api_base") or self._api_base:
+            kwargs["api_base"] = api_base
+        if custom_provider := (model_settings.get("litellm_custom_llm_provider") or self._custom_llm_provider):
+            kwargs["custom_llm_provider"] = custom_provider
+        if metadata := model_settings.get("litellm_metadata"):
+            kwargs["metadata"] = metadata
+        if extra_headers := model_settings.get("extra_headers"):
+            kwargs["extra_headers"] = dict(extra_headers)
+        if extra_body := model_settings.get("extra_body"):
+            kwargs["extra_body"] = extra_body
+
+        # --- KNOX additions ---
+        if not model_request_parameters.allow_text_output:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        if self._reasoning_effort:
+            if effective_model.startswith("ollama/"):
+                if self._reasoning_effort in ("none", "minimal", "low"):
+                    kwargs["think"] = False
+            else:
+                kwargs["reasoning_effort"] = self._reasoning_effort
+
+        return kwargs
+
+    def _track_usage(self, response: Any, effective_model: str) -> None:
+        """Record token usage from a raw litellm response."""
+        if self._usage_tracker is None:
+            return
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self._usage_tracker.record(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                completion_tokens=getattr(usage, "completion_tokens", 0),
+                model=effective_model,
+            )
+
+    def _log_response_anomalies(  # noqa: PLR6301
+        self,
+        response: Any,
+        effective_model: str,
+        model_request_parameters: ModelRequestParameters,
+    ) -> None:
+        """Log warnings for empty, non-JSON, or truncated responses."""
         content = response.choices[0].message.content or ""
-        finish_reason = response.choices[0].finish_reason
-
-        # Track usage if a tracker is provided
-        if usage_tracker is not None:
-            usage = getattr(response, "usage", None)
-            if usage is not None:
-                usage_tracker.record(
-                    prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                    completion_tokens=getattr(usage, "completion_tokens", 0),
-                    model=model_string,
-                )
-
-        # Schema-aware JSON repair. json_repair's schema_repair_mode='salvage'
-        # fixes syntax errors, coerces types, and fills missing fields toward
-        # the schema. If the repaired output still fails PydanticAI's validation,
-        # the retry loop sends an enriched RetryPromptPart (see _enrich_retry_content)
-        # that includes the valid partial data so the model only fixes the broken parts.
-        if not info.allow_text_output and content.strip():
-            repaired = salvage_json(content, schema=schema)
-            if repaired is not None:
-                content = json.dumps(repaired, ensure_ascii=False)
-
-        # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
-        if agent is not None:
-            save_debug_prompt(
-                agent,
-                model_string,
-                litellm_messages,
-                kwargs,
-                content,
+        finish_reason = getattr(response.choices[0], "finish_reason", None)
+        if not content.strip() and not model_request_parameters.allow_text_output:
+            logger.warning(
+                "KnoxLiteLLMModel: empty response from '%s' (finish_reason=%s)",
+                effective_model,
                 finish_reason,
             )
-
-        # Debug: log raw response anomalies for diagnosis
-        if not content.strip() and not info.allow_text_output:
+        elif not content.strip().startswith("{") and not model_request_parameters.allow_text_output:
             logger.warning(
-                "LitellmModel: empty response from '%s' (finish_reason=%s)",
-                model_string,
-                finish_reason,
-            )
-        elif not content.strip().startswith("{") and not info.allow_text_output:
-            logger.warning(
-                "LitellmModel: non-JSON response from '%s' (finish_reason=%s, first 200 chars): %s",
-                model_string,
+                "KnoxLiteLLMModel: non-JSON response from '%s' (finish_reason=%s, first 200 chars): %s",
+                effective_model,
                 finish_reason,
                 shorten_string(content),
             )
-        elif finish_reason == "length" and not info.allow_text_output:
+        elif finish_reason == "length" and not model_request_parameters.allow_text_output:
             logger.warning(
-                "LitellmModel: truncated response from '%s' (finish_reason=length, %d chars). Increase max_tokens or reduce input size.",
-                model_string,
+                "KnoxLiteLLMModel: truncated response from '%s' (finish_reason=length, %d chars). Increase max_tokens or reduce input size.",
+                effective_model,
                 len(content),
             )
 
+    # ------------------------------------------------------------------
+    # _process_response — schema-aware JSON repair
+    # ------------------------------------------------------------------
+
+    def _process_response(self, response: Any) -> ModelResponse:
+        """Process a non-streamed response with schema-aware JSON repair."""
+        result = super()._process_response(response)
+
+        if self._output_schema is None:
+            return result
+
+        # Run salvage_json on every text part
+        new_parts: list[Any] = []
+        for part in result.parts:
+            if isinstance(part, TextPart) and part.content.strip():
+                repaired = salvage_json(part.content, schema=self._output_schema)
+                if repaired is not None:
+                    new_parts.append(TextPart(content=json.dumps(repaired, ensure_ascii=False)))
+                else:
+                    new_parts.append(part)
+            else:
+                new_parts.append(part)
+
         return ModelResponse(
-            parts=[TextPart(content=content)],
-            model_name=model_string,
-            timestamp=datetime.now(),
+            parts=new_parts,
+            model_name=result.model_name,
+            timestamp=result.timestamp,
         )
 
-    return _fn
+    # ------------------------------------------------------------------
+    # _enrich_retry_messages — inject valid partial JSON into retries
+    # ------------------------------------------------------------------
 
+    def _enrich_retry_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Post-process litellm messages to enrich retry feedback.
 
-def make_litellm_model(
-    model_string: str,
-    usage_tracker: UsageTracker | None = None,
-    fallback_models: list[str] | None = None,
-    agent: Any | None = None,
-    reasoning_effort: str | None = None,
-    schema: type[BaseModel] | None = None,
-) -> FunctionModel:
-    """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
+        Scans for the pattern: assistant (with content) → user (with
+        "Validation errors"). When found, extracts the valid portions of
+        the assistant's output via ``salvage_json`` and includes them in
+        the retry message so the model only fixes the broken parts.
 
-    This preserves litellm's full provider dispatch chain — custom providers,
-    API key resolution, monkey-patches, and per-call kwargs all work unchanged.
+        No-op when ``_output_schema`` is ``None``.
+        """
+        if self._output_schema is None:
+            return messages
+        result: list[dict[str, Any]] = []
+        last_assistant_content: str | None = None
 
-    Args:
-        model_string: Model name in litellm format (``"provider/model"``).
-        usage_tracker: Optional :class:`UsageTracker` to record token counts.
-        fallback_models: Optional list of fallback models tried on transient errors.
-        agent: Optional owning agent instance.  When provided, its ``stage`` and
-            ``current_source_id`` attributes are recorded in the debug dump.
-        reasoning_effort: Optional reasoning effort (``"none"``, ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"default"``).
-        schema: Optional Pydantic model class for schema-aware JSON repair.
-    """
-    return FunctionModel(
-        function=_make_litellm_function(
-            model_string,
-            usage_tracker=usage_tracker,
-            fallback_models=fallback_models,
-            agent=agent,
-            reasoning_effort=reasoning_effort,
-            schema=schema,
-        ),
-        model_name=model_string,
-    )
+        for msg in messages:
+            role = msg.get("role", "")
+            if role == "assistant":
+                last_assistant_content = msg.get("content", "")
+                result.append(msg)
+            elif role == "user" and last_assistant_content and "Validation errors" in str(msg.get("content", "")):
+                enriched = self._build_enriched_retry(msg.get("content", ""), last_assistant_content)
+                result.append({**msg, "content": enriched})
+            else:
+                result.append(msg)
+
+        return result
+
+    def _build_enriched_retry(self, original_content: str, assistant_content: str, max_chars_last_msg: int = 3000) -> str:
+        """Build an enriched retry message with valid partial JSON."""
+        repaired = salvage_json(assistant_content, schema=self._output_schema)
+        if repaired is None:
+            return original_content
+
+        valid_json = json.dumps(repaired, ensure_ascii=False, indent=2)
+        if len(valid_json) > max_chars_last_msg:
+            valid_json = valid_json[:max_chars_last_msg] + "\n  ... (truncated)"
+
+        return (
+            f"{original_content}\n\n"
+            f"The valid parts extracted from your previous response:\n"
+            f"```json\n{valid_json}\n```\n\n"
+            f"Return ONLY a corrected JSON object that fixes the listed "
+            f"errors. Keep all valid fields unchanged."
+        )

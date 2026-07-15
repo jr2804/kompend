@@ -11,8 +11,8 @@ from this base and supplies:
 
 The base class handles:
 
-- **Model bridge** — creates a :class:`~pydantic_ai.models.function.FunctionModel`
-  backed by ``litellm.completion()``, preserving litellm's full provider
+- **Model bridge** — creates a :class:`KnoxLiteLLMModel`
+  backed by ``pydantic-ai-litellm``, preserving litellm's full provider
   dispatch chain (custom providers, API key resolution, monkey-patches).
 - **Template rendering** — loads system + user prompt templates via the
   existing ``TemplateLoader`` and renders with the agent's ``Deps``.
@@ -32,7 +32,7 @@ from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.litellm_model import make_litellm_model
+from knox.agents.litellm_model import KnoxLiteLLMModel
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.usage import UsageTracker
@@ -212,13 +212,13 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # (e.g. QueryAgent, DoctorAgent) return free text and don't need repair.
         _schema = self.result_type if isinstance(self.result_type, type) and issubclass(self.result_type, BaseModel) else None
         return Agent(
-            make_litellm_model(
+            KnoxLiteLLMModel(
                 self._litellm_model,
+                output_schema=_schema,
                 usage_tracker=self._usage_tracker,
                 fallback_models=self._fallback_models,
                 agent=self,
                 reasoning_effort=self._reasoning_effort,
-                schema=_schema,
             ),
             deps_type=self.deps_type,
             output_type=self.result_type,

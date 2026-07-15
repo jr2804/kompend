@@ -549,7 +549,7 @@ as ``knox agent`` on stdio.
 ### PydanticAI pipeline agents (``src/knox/agents/``)
 
 All LLM stages in the compilation pipeline now route through PydanticAI
-agents instead of direct ``litellm.completion()`` calls. Six agents cover
+agents instead of direct ``litellm.completion()`` calls. Seven agents cover
 the pipeline stages:
 
 | Agent | Stage | Output |
@@ -560,11 +560,12 @@ the pipeline stages:
 | ``WicerProbeAgent`` | WiCER probe generation | ``WicerProbeOutput`` (JSON) |
 | ``WicerEvaluateAgent`` | WiCER evaluation | ``WicerEvaluateOutput`` (JSON) |
 | ``WicerDiagnoseAgent`` | WiCER diagnosis | ``WicerDiagnoseOutput`` (JSON) |
+| ``VlmAgent`` | VLM image captioning | ``str`` (caption) |
 
 **Key design:**
 
-- Agents use ``LitellmModel`` — a ``pydantic_ai.FunctionModel`` that wraps
-  ``litellm.completion()`` directly. This preserves all custom provider
+- Agents use ``KnoxLiteLLMModel`` — a ``pydantic_ai_litellm.LiteLLMModel``
+  subclass that wraps ``litellm.acompletion()``. This preserves all custom provider
   routing (``opencode-zen/*``, ``ollama_cloud/*``, ``claudinio/*``) and
   the existing litellm dispatch chain.
 - ``KnoxAgentBase`` handles lazy agent construction, template rendering,
@@ -580,13 +581,22 @@ the pipeline stages:
 - Add new agents in ``src/knox/agents/<name>.py``, following the existing
   pattern (subclass ``KnoxAgentBase``, set ``result_type`` and
   ``template_name``, implement ``_build_agent()``).
-- ``LitellmModel`` is in ``litellm_model.py`` — it's a ``FunctionModel``
-  that delegates to ``litellm.completion()``. Do not use PydanticAI's
+- ``KnoxLiteLLMModel`` is in ``litellm_model.py`` — it's a
+  ``LiteLLMModel`` subclass from ``pydantic-ai-litellm`` that delegates to
+  ``litellm.acompletion()``. Do not use PydanticAI's
   native provider format (``provider:model``) — always use the
   ``litellm/provider/model`` format.
 - Template variables are filtered to only include those declared in the
   template's frontmatter. Add new variables to the template's
   ``variables:`` list.
+- ``debug.py`` holds ``save_debug_prompt(agent, model_string,
+  litellm_messages, kwargs, response_content, finish_reason)`` — the
+  per-LLM-call dump triggered by ``KNOX_DEBUG_LLM_DIR``. It derives
+  ``stage`` and ``source_id`` from the passed ``KnoxAgentBase`` instance
+  (via its ``stage`` property and ``current_source_id``), so callers never
+  hard-code a stage string. ``litellm_model.py`` passes ``agent=self``
+  from ``KnoxAgentBase._build_agent()``; ``VlmAgent.run()`` sets
+  ``self._current_source_id`` then calls ``save_debug_prompt(self, ...)``.
 
 ### Work Guidance
 
@@ -612,7 +622,7 @@ the pipeline stages:
 | Path | Scope |
 |------|-------|
 | `acp/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
-| `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through `LitellmModel` (FunctionModel wrapping `litellm.completion()`). |
+| `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through `KnoxLiteLLMModel` (``pydantic-ai-litellm`` subclass). |
 | `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
 | `core/AGENTS.md` | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution |
 | `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
