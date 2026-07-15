@@ -27,9 +27,49 @@ Usage::
 
 from __future__ import annotations
 
+from pydantic_ai import ModelRetry, RunContext
+
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import GenerationDeps
 from knox.compilation.schema import GenerationOutput
+
+
+def _validate_generation_output(
+    ctx: RunContext[GenerationDeps],
+    output: GenerationOutput,
+) -> GenerationOutput:
+    """Semantic output validator for generation results.
+
+    Checks for common issues that Pydantic structural validation can't
+    catch: empty pages list, pages with empty content, empty slugs,
+    and duplicate slugs.  Raises ``ModelRetry`` with actionable
+    feedback so the model can fix the problem.
+    """
+    if not output.pages:
+        raise ModelRetry(
+            "You returned an empty pages list. Generate at least one "
+            "wiki page with a title, slug, and content."
+        )
+
+    seen_slugs: set[str] = set()
+    issues: list[str] = []
+
+    for i, page in enumerate(output.pages):
+        if not page.content.strip():
+            issues.append(f"page {i} ('{page.title}') has empty content")
+        if not page.slug.strip():
+            issues.append(f"page {i} ('{page.title}') has an empty slug")
+        if page.slug in seen_slugs:
+            issues.append(f"duplicate slug '{page.slug}' on page {i} ('{page.title}')")
+        seen_slugs.add(page.slug)
+
+    if issues:
+        raise ModelRetry(
+            "Fix the following issues and return the complete output again:\n"
+            + "\n".join(f"- {issue}" for issue in issues)
+        )
+
+    return output
 
 
 class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
@@ -45,3 +85,7 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     system_template_name: str = "generation_system.md.j2"
     result_type: type[GenerationOutput] = GenerationOutput
     deps_type: type[GenerationDeps] = GenerationDeps
+
+    #: Semantic output validator: catches empty pages, empty content,
+    #: empty slugs, and duplicate slugs before they reach the pipeline.
+    output_validator_func = _validate_generation_output

@@ -2,9 +2,9 @@
 
 ## Purpose
 
-LLM layer: model construction, context-window discovery, error
-classification, failover chains, format utilities (JSON/TOON/ISON),
-and usage tracking. Business modules build models via
+LLM layer: model construction, context-window discovery, format
+utilities (JSON/TOON/ISON), HTTP retry transport, and usage tracking.
+Business modules build models via
 `build_model()` — never construct pydantic-ai models or import litellm
 directly.
 
@@ -64,16 +64,23 @@ fetches `models.dev/catalog.json`, caches in-memory and on disk
 (`~/.config/knox/cache/models-dev-catalog.json`, 7-day TTL). Matching:
 exact key → provider-local stem → normalized base + size fuzzy match.
 
-## Error handling
+## HTTP retry transport — `knox.llm.http_client`
 
-The broad `except Exception` in `failover.py` `FailoverChain.run` is
-**deliberate** — it catches everything around the arbitrary
-`call(model)` and routes it through `classify_litellm_error`
-(guaranteed fallthrough → `TransientError`). Error-hierarchy trust
-boundary. Do not narrow it unless litellm ships a `LiteLLMException`
-base class.
+`AsyncTenacityTransport` is an ``httpx.AsyncBaseTransport`` that wraps
+requests in tenacity's exponential-backoff retry loop. It retries on
+429/502/503/504 and ``httpx.TimeoutException``/``ConnectError``/
+``RemoteProtocolError``.
+
+`create_retrying_http_client()` builds an ``httpx.AsyncClient`` with
+this transport. Custom provider constructors in `build_model()`
+(claudinio, ollama-cloud) receive this client so all LLM API calls
+through those providers get automatic retry.
+
+Standard providers (ollama, openai, anthropic, etc.) use pydantic-ai's
+default client — the OpenAI SDK has its own retry mechanism.
 
 ## Verification
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
 - `uv run pytest tests/unit/test_litellm_model.py -x` — KnoxModel wrapper
+- `uv run pytest tests/unit/test_http_client.py -x` — retry transport

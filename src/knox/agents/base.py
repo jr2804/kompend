@@ -88,6 +88,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     deps_type: type[AgentDeps] = PipelineAgentDeps
     temperature: float | None = None
 
+    #: Optional output validator function. Subclasses can set this to a
+    #: callable that receives ``(ctx, output)`` and returns the (possibly
+    #: modified) output, raising ``ModelRetry`` to trigger a retry with
+    #: actionable feedback.  The callable signature matches
+    #: ``@agent.output_validator`` — it can be sync or async, with or
+    #: without ``RunContext``.
+    output_validator_func: Any | None = None
+
     @property
     def stage(self) -> str:
         """Pipeline stage label recorded in the LLM debug dump.
@@ -213,13 +221,16 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
             model_settings["max_tokens"] = self._max_tokens
-        return Agent(
+        agent = Agent(
             self._build_top_level_model(),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings=model_settings,
             retries=self._retries,
         )
+        if self.output_validator_func is not None:
+            agent.output_validator(self.output_validator_func)
+        return agent
 
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + KNOX wrapper) for the Agent."""
