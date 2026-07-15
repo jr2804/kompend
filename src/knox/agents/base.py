@@ -29,12 +29,14 @@ from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.litellm_model import KnoxLiteLLMModel
+from knox.agents.knox_model import KnoxModel
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
+from knox.llm.models import build_model
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
@@ -200,30 +202,48 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def _build_agent(self) -> Agent[DepsT, ResultT]:
         """Construct the wrapped PydanticAI agent. Called lazily on first run().
 
-        Subclasses can override to customize model_settings or agent construction.
+        Uses :func:`knox.llm.models.build_model` to construct a native
+        pydantic-ai Model from the configured model string, wraps it in
+        :class:`~knox.agents.knox_model.KnoxModel` for usage tracking and
+        debug saving, and in :class:`~pydantic_ai.models.fallback.FallbackModel`
+        when fallback models are configured.
         """
         model_settings: ModelSettings = {"timeout": self._timeout}
         if self.temperature is not None:
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
             model_settings["max_tokens"] = self._max_tokens
-        # Pass the result schema to litellm_model for schema-aware JSON repair.
-        # Only Pydantic BaseModel subclasses have a schema; str result_type agents
-        # (e.g. QueryAgent, DoctorAgent) return free text and don't need repair.
-        _schema = self.result_type if isinstance(self.result_type, type) and issubclass(self.result_type, BaseModel) else None
         return Agent(
-            KnoxLiteLLMModel(
-                self._litellm_model,
-                output_schema=_schema,
-                usage_tracker=self._usage_tracker,
-                fallback_models=self._fallback_models,
-                agent=self,
-                reasoning_effort=self._reasoning_effort,
-            ),
+            self._build_top_level_model(),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings=model_settings,
             retries=self._retries,
+        )
+
+    def _build_top_level_model(self) -> Model:
+        """Build the model (with failover + KNOX wrapper) for the Agent."""
+        primary = KnoxModel(
+            build_model(self._litellm_model),
+            usage_tracker=self._usage_tracker,
+            agent=self,
+            reasoning_effort=self._reasoning_effort,
+        )
+        if not self._fallback_models:
+            return primary
+        from pydantic_ai.models.fallback import FallbackModel
+
+        return FallbackModel(
+            primary,
+            *(
+                KnoxModel(
+                    build_model(m),
+                    usage_tracker=self._usage_tracker,
+                    agent=self,
+                    reasoning_effort=self._reasoning_effort,
+                )
+                for m in self._fallback_models
+            ),
         )
 
     @staticmethod
