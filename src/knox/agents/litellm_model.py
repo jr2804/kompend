@@ -42,7 +42,6 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from knox.core.config.keys import DISPLAY_EXCERPT_CHARS
 from knox.core.utils.exceptions import shorten_string
 from knox.llm.failover import FailoverChain
 from knox.llm.format import salvage_json
@@ -52,9 +51,41 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _clean_json_artifacts(obj: Any) -> tuple[Any, list[str]]:
+    """Recursively clean JSON artifacts from model output.
+
+    Small quantized models sometimes place field names as bare strings inside
+    arrays that should contain objects (e.g. ``[{...page...}, "provenance", "related"]``).
+    This removes non-dict items from any list containing at least one dict.
+
+    Returns a tuple of (cleaned_obj, removed_artifacts) where *removed_artifacts*
+    is a list of stringified removed items, used for Layer 2 retry feedback.
+    """
+    removed: list[str] = []
+
+    def _walk(o: Any) -> Any:
+        if isinstance(o, dict):
+            return {k: _walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            cleaned_items = [_walk(item) for item in o]
+            has_dicts = any(isinstance(item, dict) for item in cleaned_items)
+            if has_dicts:
+                result: list[Any] = []
+                for item in cleaned_items:
+                    if isinstance(item, dict):
+                        result.append(item)
+                    else:
+                        removed.append(json.dumps(item, ensure_ascii=False) if not isinstance(item, str) else item)
+                return result
+            return cleaned_items
+        return o
+
+    return _walk(obj), removed
+
+
 def _save_debug_prompt(
     model_string: str,
-    litellm_messages: list[dict[str, str]],
+    litellm_messages: list[dict[str, Any]],
     kwargs: dict[str, Any],
     response_content: str,
     finish_reason: str | None,
@@ -91,7 +122,11 @@ def _save_debug_prompt(
         logger.warning("Failed to save debug prompt: %s", exc)
 
 
-def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
+def _messages_to_litellm(
+    messages: list[ModelMessage],
+    *,
+    removed_artifacts: list[str] | None = None,
+) -> list[dict[str, str]]:
     """Convert PydanticAI messages to litellm chat format.
 
     Handles all part types PydanticAI uses in the structured-output retry
@@ -99,6 +134,10 @@ def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
     mismatch) and ``ToolReturnPart`` are converted to ``user`` messages so
     the model sees the feedback. Without this, retries are silently
     dropped and the model repeats the same invalid output.
+
+    When *removed_artifacts* is non-empty, they are appended to the
+    RetryPromptPart message as Layer 2 feedback — telling the model exactly
+    what was wrong with its previous response so it can fix it.
     """
     result: list[dict[str, str]] = []
     for msg in messages:
@@ -112,6 +151,16 @@ def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
                     content = part.content
                     if isinstance(content, list):
                         content = "\n".join(f"- {e.get('msg', e)}" for e in content)
+                    # Layer 2: include removed artifacts in retry feedback
+                    if removed_artifacts:
+                        artifacts_str = ", ".join(removed_artifacts)
+                        content += (
+                            f"\n\nInvalid JSON artifacts detected in previous reply: "
+                            f"[{artifacts_str}]. These items were placed as bare "
+                            f"values inside an object array. If they represent schema "
+                            f"fields, include them as proper key-value pairs in the "
+                            f"JSON object. If they can be omitted, return empty JSON."
+                        )
                     result.append(
                         {
                             "role": "user",
@@ -132,7 +181,7 @@ def _messages_to_litellm(messages: list[ModelMessage]) -> list[dict[str, str]]:
     return result
 
 
-def _make_litellm_function(
+def _make_litellm_function(  # noqa: C901, PLR0915
     model_string: str,
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
@@ -145,9 +194,12 @@ def _make_litellm_function(
     ``reasoning_effort=`` (for cloud providers like OpenAI/Anthropic) and
     mapped to ``think=False`` for Ollama models that support the think toggle.
     """
+    # Layer 2 state: artifacts removed from the previous response.
+    # Persists across retry calls within one agent run.
+    _removed_artifacts: list[str] = []
 
-    def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-        litellm_messages = _messages_to_litellm(messages)
+    def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:  # noqa: C901, PLR0915
+        litellm_messages = _messages_to_litellm(messages, removed_artifacts=_removed_artifacts)
 
         # Inject instructions as system message. PydanticAI 2.9 passes the
         # system prompt via AgentInfo.instructions, NOT as a SystemPromptPart
@@ -219,10 +271,26 @@ def _make_litellm_function(
         # commas, unclosed brackets, prose wrapping). The old direct-litellm
         # path used salvage_json for this; PydanticAI's built-in validation
         # is strict and rejects anything that isn't perfectly valid JSON.
+        #
+        # Layer 1: salvage_json repairs syntax errors.
+        # Layer 2: _clean_json_artifacts removes non-dict items from
+        # dict-containing lists (common artifact: field names as bare
+        # strings mixed into object arrays). Removed artifacts are stored
+        # in the closure variable for Layer 2 retry feedback.
+        _removed_artifacts.clear()
         if not info.allow_text_output and content.strip():
             repaired = salvage_json(content)
             if repaired is not None:
+                repaired, new_removed = _clean_json_artifacts(repaired)
+                _removed_artifacts.extend(new_removed)
                 content = json.dumps(repaired, ensure_ascii=False)
+                if new_removed:
+                    logger.info(
+                        "LitellmModel: cleaned %d JSON artifact(s) from '%s' response: %s",
+                        len(new_removed),
+                        model_string,
+                        ", ".join(new_removed),
+                    )
 
         # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
         _source_id = source_id_provider() if source_id_provider else ""
@@ -240,7 +308,7 @@ def _make_litellm_function(
                 "LitellmModel: non-JSON response from '%s' (finish_reason=%s, first 200 chars): %s",
                 model_string,
                 finish_reason,
-                shorten_string(content, limit=DISPLAY_EXCERPT_CHARS),
+                shorten_string(content),
             )
         elif finish_reason == "length" and not info.allow_text_output:
             logger.warning(
