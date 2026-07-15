@@ -85,6 +85,7 @@ def remediate(
     sources_dir: Path | None = None,
     output_dir: Path | None = None,
     model: str = "",
+    agent: LintRuleAgent | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Remediate lint findings from a report dict.
@@ -110,11 +111,13 @@ def remediate(
 
     # ── Tier 2: LLM-remediable ──
     handled_concepts: set[str] = set()
-    if model and base_dir is not None and sources_dir is not None:
+    has_tier2_agent = bool(model) or bool(agent)
+    if has_tier2_agent and base_dir is not None and sources_dir is not None:
         tier2_actions = _remediate_coverage_gaps(
             wiki,
             results,
             model=model,
+            agent=agent,
             base_dir=base_dir,
             sources_dir=sources_dir,
             output_dir=output_dir,
@@ -217,7 +220,8 @@ def _remediate_coverage_gaps(
     wiki: CompiledWiki,
     results: list[dict[str, Any]],
     *,
-    model: str,
+    model: str = "",
+    agent: LintRuleAgent | None = None,
     base_dir: Path,
     sources_dir: Path,
     output_dir: Path | None = None,
@@ -254,7 +258,7 @@ def _remediate_coverage_gaps(
     node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
 
-    lint_agent = LintRuleAgent(model, timeout=120) if model else None
+    lint_agent = agent or (LintRuleAgent(model, timeout=120) if model else None)
 
     for gap in gap_concepts:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
