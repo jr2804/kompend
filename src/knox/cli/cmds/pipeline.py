@@ -75,7 +75,7 @@ from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import ingest_documents
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.trust.actor import resolve_actor
-from knox.llm.errors import LLMError
+from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_console, get_err_console, get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions
 from knox.preprocessing.parsers.base import ParserRouter
@@ -293,14 +293,8 @@ def compile_cmd(  # noqa: PLR0915
     except Exception as exc:
         if not json_progress:
             tracker.stop()
-        if isinstance(exc, LLMError):
-            parts = [f"Error: {exc}"]
-            if exc.model:
-                parts.append(f"  model: {exc.model}")
-            parts.append(f"  attempts: {exc.attempts}")
-            if exc.cause:
-                parts.append(f"  cause: {exc.cause}")
-            err_msg = "\n".join(parts)
+        if isinstance(exc, LLMOutputError):
+            err_msg = f"Error: {exc}"
         else:
             err_msg = f"Error: {exc}"
             get_err_console().print(traceback.format_exc())

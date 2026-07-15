@@ -36,6 +36,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
+from knox.llm.http_client import create_retrying_http_client
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -63,6 +64,9 @@ def build_model(model_string: str) -> Model:
     """
     prefix, sep, name = model_string.partition("/")
 
+    # Retrying HTTP client for custom providers.
+    _http = create_retrying_http_client()
+
     # Our custom providers — explicit native construction.
     if prefix == "claudinio" and sep:
         return OpenAIChatModel(
@@ -70,6 +74,7 @@ def build_model(model_string: str) -> Model:
             provider=OpenAIProvider(
                 base_url=_CLAUDINIO_BASE_URL,
                 api_key=os.environ.get("CLAUDINIO_API_KEY", ""),
+                http_client=_http,
             ),
         )
     if prefix == "ollama-cloud" and sep:
@@ -78,6 +83,7 @@ def build_model(model_string: str) -> Model:
             provider=OpenAIProvider(
                 base_url=_OLLAMA_CLOUD_BASE_URL,
                 api_key=os.environ.get("OLLAMA_API_KEY", ""),
+                http_client=_http,
             ),
         )
     if prefix in ("opencode-zen", "opencode-go") and sep:

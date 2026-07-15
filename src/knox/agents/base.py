@@ -12,7 +12,7 @@ from this base and supplies:
 The base class handles:
 
 - **Model bridge** — creates a :class:`KnoxLiteLLMModel`
-  backed by ``pydantic-ai-litellm``, preserving litellm's full provider
+  backed by a native pydantic-ai model via ``build_model()``
   dispatch chain (custom providers, API key resolution, monkey-patches).
 - **Template rendering** — loads system + user prompt templates via the
   existing ``TemplateLoader`` and renders with the agent's ``Deps``.

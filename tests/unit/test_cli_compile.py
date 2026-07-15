@@ -163,7 +163,7 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
 
 
 def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unexpected (non-LLMError) exceptions print a full traceback, not just a message.
+    """Unexpected (non-LLMOutputError) exceptions print a full traceback, not just a message.
 
     Regression for the 'unhashable type: dict' crash: the generic except
     branch previously printed only `Error: {exc}`, hiding the call site.
