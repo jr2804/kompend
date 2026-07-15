@@ -21,9 +21,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
-
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError
 
 from knox.core.utils.exceptions import LLMOutputError
 
@@ -88,35 +86,13 @@ class ExtractionOutput(BaseModel):
 
 
 class GenerationPage(BaseModel):
-    """A single generated wiki page from the two-phase generation step.
-
-    Models naturally produce ``related`` and ``provenance`` as either
-    ``list[str]`` or ``list[dict]`` (e.g. ``{"title": "...", "slug": "..."}``).
-    The ``_coerce_to_str_list`` validator normalizes both forms to
-    ``list[str]`` so downstream code always sees strings.
-    """
+    """A single generated wiki page from the two-phase generation step."""
 
     title: str
     slug: str = ""
     content: str = ""
     provenance: list[str] = Field(default_factory=list)
     related: list[str] = Field(default_factory=list)
-
-    @field_validator("provenance", "related", mode="before")
-    @classmethod
-    def _coerce_to_str_list(cls, v: Any) -> list[str]:
-        """Coerce list[dict] to list[str] — models return dicts for related/provenance."""
-        if not isinstance(v, list):
-            return []
-        result: list[str] = []
-        for item in v:
-            if isinstance(item, str):
-                result.append(item)
-            elif isinstance(item, dict):
-                result.append(item.get("title") or item.get("slug") or str(item))
-            else:
-                result.append(str(item))
-        return result
 
 
 class GenerationOutput(BaseModel):
