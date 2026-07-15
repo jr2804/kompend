@@ -114,8 +114,8 @@ def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
     sources = list(pipeline.iter_sources())
-    assert len(sources) == 3  # pdf, md, html — not png, csv, py
-    assert all(s.suffix.lower() in (".pdf", ".md", ".html") for s in sources)
+    assert len(sources) == 4  # pdf, md, html, csv — not png, py
+    assert all(s.suffix.lower() in (".pdf", ".md", ".html", ".csv") for s in sources)
 
 
 class _OrderTrackingResolver:
@@ -173,13 +173,12 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     (sources / "note.md").write_text("# Test\ncontent")
 
     class _BoomPipeline:
-        llm_client = None
-
         def run(self, progress_callback: object | None = None) -> None:
             raise RuntimeError("synthetic boom")
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("knox.cli.cmds.pipeline._check_llm_availability", lambda p: None)
     monkeypatch.setattr("knox.cli.cmds.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
 
     runner = CliRunner()

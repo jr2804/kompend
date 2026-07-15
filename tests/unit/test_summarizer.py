@@ -135,89 +135,80 @@ def single_child_tree() -> ChunkTree:
 
 class TestSummarizerSkip:
     def test_single_pass_skipped(self, single_pass_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         result = summarizer.summarize(single_pass_tree)
         root = result.nodes["root"]
         assert root.summary == ""
 
     def test_single_child_skipped_by_default(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None, skip_single_child=True)
+        summarizer = NodeSummarizer(agent=None, skip_single_child=True)
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
-        # Single-child wrapper gets the child's content propagated
         assert wrapper.summary == ""
 
     def test_single_child_summarized_when_disabled(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None, skip_single_child=False)
+        summarizer = NodeSummarizer(agent=None, skip_single_child=False)
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
-        # Extractive fallback: first sentence from single child
         assert wrapper.summary != ""
 
 
 class TestSummarizerExtractiveFallback:
     def test_internal_nodes_get_summaries(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         summarizer.summarize(sample_tree)
-
         section1 = sample_tree.nodes["doc_h1"]
         assert section1.summary != ""
         assert "SNR" in section1.summary or "threshold" in section1.summary.lower()
 
     def test_root_gets_summary(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         summarizer.summarize(sample_tree)
-
         root = sample_tree.nodes["doc_root"]
         assert root.summary != ""
 
     def test_leaf_nodes_unchanged(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         summarizer.summarize(sample_tree)
-
         leaf = sample_tree.nodes["doc_t1"]
         assert leaf.summary == ""
         assert leaf.chunk is not None
 
     def test_extractive_max_sentences(self, sample_tree: ChunkTree) -> None:
-        """Extractive fallback takes at most 5 sentences."""
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         summarizer.summarize(sample_tree)
-
         root = sample_tree.nodes["doc_root"]
-        # Root summarizes both sections — each contributes a sentence
         assert len(root.summary.split(". ")) <= 6
 
 
 class TestSummarizerLLM:
     def test_llm_called_for_internal_nodes(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.default_model = "test-model"
-        mock_llm.complete.return_value = MagicMock(content="LLM summary.")
+        mock_llm.litellm_model = "test-model"
+        mock_llm.run.return_value = "LLM summary."
 
-        summarizer = NodeSummarizer(llm_client=mock_llm)
+        summarizer = NodeSummarizer(agent=mock_llm)
         summarizer.summarize(sample_tree)
 
         section1 = sample_tree.nodes["doc_h1"]
         assert section1.summary == "LLM summary."
-        assert mock_llm.complete.called
+        assert mock_llm.run.called
 
     def test_llm_template_rendered(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.default_model = "test-model"
-        mock_llm.complete.return_value = MagicMock(content="Summary.")
+        mock_llm.litellm_model = "test-model"
+        mock_llm.run.return_value = "Summary."
 
-        summarizer = NodeSummarizer(llm_client=mock_llm)
+        summarizer = NodeSummarizer(agent=mock_llm)
         summarizer.summarize(sample_tree)
 
-        # Check the LLM was called with a rendered prompt
-        call_args = mock_llm.complete.call_args
-        messages = call_args[0][0]
-        prompt = messages[0]["content"]
+        call_args = mock_llm.run.call_args
+        deps = call_args[0][0]
+        prompt = deps.text
         assert "SNR" in prompt or "threshold" in prompt.lower()
 
     def test_returns_same_tree_object(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(llm_client=None)
+        summarizer = NodeSummarizer(agent=None)
         result = summarizer.summarize(sample_tree)
         assert result is sample_tree
 
@@ -225,40 +216,40 @@ class TestSummarizerLLM:
 class TestSummarizerCache:
     def test_cache_hit_skips_llm(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.default_model = "test-model"
-        mock_llm.complete.return_value = MagicMock(content="Fresh summary.")
+        mock_llm.litellm_model = "test-model"
+        mock_llm.run.return_value = "Fresh summary."
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = "Cached summary."
 
-        summarizer = NodeSummarizer(llm_client=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
         summarizer.summarize(sample_tree)
 
-        mock_llm.complete.assert_not_called()
+        mock_llm.run.assert_not_called()
 
     def test_cache_miss_calls_llm(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.default_model = "test-model"
-        mock_llm.complete.return_value = MagicMock(content="Fresh summary.")
+        mock_llm.litellm_model = "test-model"
+        mock_llm.run.return_value = "Fresh summary."
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
 
-        summarizer = NodeSummarizer(llm_client=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
         summarizer.summarize(sample_tree)
 
-        assert mock_llm.complete.called
+        assert mock_llm.run.called
         assert mock_cache.set.called
 
     def test_cache_includes_model_in_deps(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.default_model = "my-model"
-        mock_llm.complete.return_value = MagicMock(content="Summary.")
+        mock_llm.litellm_model = "my-model"
+        mock_llm.run.return_value = "Summary."
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
 
-        summarizer = NodeSummarizer(llm_client=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
         summarizer.summarize(sample_tree)
 
         for call in mock_cache.set.call_args_list:
@@ -268,7 +259,6 @@ class TestSummarizerCache:
 
 class TestSummarizerStructuredLeaf:
     def test_structured_leaf_content(self) -> None:
-        """Test that structured leaves contribute content to summaries."""
         root = ChunkNode(id="r", depth=0)
         section = ChunkNode(id="s", parent_id="r", depth=1, heading_path=("Data",))
         table_leaf = ChunkNode(
@@ -294,9 +284,8 @@ class TestSummarizerStructuredLeaf:
             strategy=ChunkStrategy.TWO_LEVEL,
         )
 
-        summarizer = NodeSummarizer(llm_client=None, skip_single_child=False)
+        summarizer = NodeSummarizer(agent=None, skip_single_child=False)
         summarizer.summarize(tree)
 
-        # Section should have a summary derived from the table content
         section_node = tree.nodes["s"]
         assert section_node.summary != ""

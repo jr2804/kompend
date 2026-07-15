@@ -1125,7 +1125,7 @@ class TestVerificationUnavailable:
             content="This claim has no citation.",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, client=self._fake_client(), model="test/model")
+        result = verify_node(node, tmp_path, agent=self._fake_client())
         assert result[0].verdict == "unsupported"
         assert result[0].confidence < 0.5
 
@@ -1136,7 +1136,7 @@ class TestVerificationUnavailable:
             content="A claim with a missing source citation. ^[missing.pdf:1-3]",
             node_type="section",
         )
-        result = verify_node(node, tmp_path, client=self._fake_client(), model="test/model")
+        result = verify_node(node, tmp_path, agent=self._fake_client())
         assert result[0].verdict == "unsupported"
 
     def test_llm_unavailable_marks_unverified(self, tmp_path: Path) -> None:
@@ -1153,7 +1153,7 @@ class TestVerificationUnavailable:
             content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
             node_type="section",
         )
-        result = verify_node(node, sources, client=self._fake_client(), model="test/model")
+        result = verify_node(node, sources, agent=self._fake_client())
         assert result[0].verdict == "unverified"
         assert result[0].confidence == 0.0
 
@@ -1165,14 +1165,15 @@ class TestVerificationUnavailable:
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, output_dir, client=self._fake_client(), model="test/model")
+        result = verify_wiki(wiki, output_dir, agent=self._fake_client())
         assert result.total >= 1
         report = tmp_path / KNOX_DIR / VERIFICATION_FILE
         assert report.exists()
 
     @staticmethod
     def _fake_client() -> Mock:
-        """Client whose try_complete always returns None (forces fallback)."""
+        """Agent whose run returns None (forces fallback)."""
         c = Mock()
-        c.try_complete.return_value = None
+        c.run.return_value = None
+        c._timeout = 120
         return c

@@ -103,14 +103,14 @@ class TestEnrichTreeNoClient:
     """Without an LLM client, enrich_tree returns tree unchanged."""
 
     def test_returns_same_tree(self) -> None:
-        enricher = ContextualEnricher(llm_client=None)
+        enricher = ContextualEnricher(agent=None)
         tree = _make_tree(_make_leaf("x"))
         doc = _make_doc()
         result = enricher.enrich_tree(tree, doc)
         assert result is tree
 
     def test_leaves_unchanged(self) -> None:
-        enricher = ContextualEnricher(llm_client=None)
+        enricher = ContextualEnricher(agent=None)
         leaf = _make_leaf("x")
         tree = _make_tree(leaf)
         enricher.enrich_tree(tree, _make_doc())
@@ -134,9 +134,9 @@ class TestEnrichTreeWithClient:
             assert tree.nodes[node_id].contextual_context != ""
 
     def test_llm_failure_uses_fallback(self) -> None:
-        mock_client = MagicMock()
-        mock_client.complete.side_effect = RuntimeError("LLM unavailable")
-        enricher = ContextualEnricher(llm_client=mock_client)
+        mock = MagicMock()
+        mock.run.side_effect = RuntimeError("LLM unavailable")
+        enricher = ContextualEnricher(agent=mock)
         leaf = _make_leaf("x", heading=("Introduction",))
         tree = _make_tree(leaf)
         enricher.enrich_tree(tree, _make_doc("My Paper"))
@@ -154,7 +154,7 @@ class TestEnrichTreeWithClient:
         assert "Doc" in ctx
         assert "Results" in ctx
 
-    def _make_enricher(self, llm_response: str = "context paragraph") -> ContextualEnricher:
-        mock_client = MagicMock()
-        mock_client.complete.return_value = MagicMock(content=llm_response)
-        return ContextualEnricher(llm_client=mock_client)
+    def _make_enricher(self, response: str = "context paragraph") -> ContextualEnricher:
+        mock = MagicMock()
+        mock.run.return_value = response
+        return ContextualEnricher(agent=mock)

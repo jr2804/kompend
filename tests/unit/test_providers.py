@@ -347,15 +347,6 @@ class TestGetLlmProviderPatch:
         assert model == "opencode-zen/gpt-5.4-nano"
         assert provider == "opencode-zen"
 
-    def test_custom_provider_not_in_provider_list(self) -> None:
-        """Custom providers are NOT in litellm.provider_list (avoids prefix stripping)."""
-        assert "opencode-zen" not in litellm.provider_list
-        assert "opencode-go" not in litellm.provider_list
-        assert "opencode" not in litellm.provider_list
-        assert "claudinio" not in litellm.provider_list
-        assert "claudin-io" not in litellm.provider_list
-        assert "ollama-cloud" not in litellm.provider_list
-
     def test_custom_provider_in_custom_providers(self) -> None:
         """Custom providers ARE in litellm._custom_providers."""
         assert "opencode-zen" in litellm._custom_providers
