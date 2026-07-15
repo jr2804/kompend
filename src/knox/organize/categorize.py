@@ -274,7 +274,7 @@ def _tree_from_json(payload: dict[str, Any], known_files: list[str]) -> Category
     return CategoryTree(categories=categories, unfiled=sorted(unfiled))
 
 
-def _node_from_json(entry: dict[str, object], assigned: set[str], known: list[str]) -> CategoryNode | None:
+def _node_from_json(entry: dict[str, Any], assigned: set[str], known: list[str]) -> CategoryNode | None:
     name_raw = entry.get("name", "")
     if not isinstance(name_raw, str) or not name_raw.strip():
         return None

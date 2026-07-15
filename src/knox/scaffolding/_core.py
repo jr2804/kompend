@@ -267,7 +267,7 @@ def scaffold_project(
     # when --config installs a custom profile). Previously these came from
     # DEFAULTS, so a non-default sources_dir left stale/empty directories.
     config_relative_file = KNOX_CONFIG_FILE
-    _write_config(resolved_target_dir, config_relative_file, config_file=config_file)
+    _write_config(resolved_target_dir, config_relative_file, config_file=Path(config_file) if config_file else None)
     result.copied_files.append(resolved_target_dir / config_relative_file)
 
     sources_dir_name, output_dir_name = _read_path_dirs(resolved_target_dir / config_relative_file)

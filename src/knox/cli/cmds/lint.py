@@ -73,7 +73,7 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
 
 
 def _persist_lint_fixes(
-    wiki: CompiledWiki,  # ty: ignore
+    wiki: CompiledWiki,
     output_dir: Path,
     base_dir: Path,
 ) -> int:
@@ -82,7 +82,7 @@ def _persist_lint_fixes(
     Returns the number of files updated.
     """
     updated = 0
-    for node in wiki.nodes:  # ty: ignore
+    for node in wiki.nodes:
         fm = node.metadata.get("frontmatter", {})
         if not isinstance(fm, dict) or "title" not in fm:
             continue
@@ -103,7 +103,7 @@ def _persist_lint_fixes(
             md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
             updated += 1
 
-    _write_wiki_cache(wiki, base_dir)  # ty: ignore
+    _write_wiki_cache(wiki, base_dir)
     return updated
 
 
@@ -201,7 +201,7 @@ def lint_run(
         report,
         duration_seconds=lint_elapsed,
         options=options,
-        config=cfg,
+        config=cfg.raw,
         node_count=len(wiki.nodes),
         llm=llm_meta,
     )

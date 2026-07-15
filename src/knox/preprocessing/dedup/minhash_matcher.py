@@ -8,6 +8,7 @@ large corpora.
 from __future__ import annotations
 
 import re
+from collections.abc import Hashable
 from typing import Any
 
 from datasketch import MinHash, MinHashLSH
@@ -77,7 +78,7 @@ class MinhashMatcher(ContentMatcher):
             self._lsh.insert(slug, minhash)
             self._slugs_in_lsh.add(slug)
 
-    def lsh_query(self, minhash: MinHash) -> list[str]:
+    def lsh_query(self, minhash: MinHash) -> list[Hashable]:
         """Return candidate slugs whose signatures are near *minhash*.
 
         Returns an empty list if no LSH index is active.

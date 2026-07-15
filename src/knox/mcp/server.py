@@ -137,10 +137,10 @@ def compile_wiki(
     config = PipelineConfig(
         source_dir=source_dir,
         output_dir=Path(output),
-        llm=LLMConfig(default_model="", vlm_model=vlm_model),
-        embedding=EmbeddingConfig(model=""),
+        llm=LLMConfig(default_model="", vlm_model=vlm_model),  # type: ignore[unknown-argument]
+        embedding=EmbeddingConfig(model=""),  # type: ignore[unknown-argument]
         online_sources=urls or [],
-        output=OutputConfig(format=format_enum),
+        output=OutputConfig(format=format_enum),  # type: ignore[unknown-argument]
         image_mode=image_mode_enum,
         compiler=compiler_enum,
     )
@@ -465,7 +465,7 @@ def config_set(
     if global_:
         config_file = get_global_config_path(create=True)
     else:
-        config_file = get_project_config_path(create=False)
+        config_file = get_project_config_path()
         if not config_file.exists():
             return {"status": "error", "message": "Not in a KNOX vault — run `knox init` first or use `--global`"}
     try:

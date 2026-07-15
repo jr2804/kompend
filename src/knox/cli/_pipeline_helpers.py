@@ -228,7 +228,7 @@ def _print_tier_listing(pipeline: WikiPipeline) -> None:
         get_err_console().print("Pipeline does not support tier listing.")
         return
 
-    get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]  # ty:ignore[call-non-callable]
+    get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]
 
 
 def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
@@ -279,7 +279,7 @@ def _run_post_compile_lint(
         report,
         duration_seconds=lint_elapsed,
         options={"context": "pipeline"},
-        config=type("Cfg", (), {"get": staticmethod(lambda k: None)})(),
+        config=dict[str, Any](),
         node_count=len(wiki.nodes),
     )
     save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)

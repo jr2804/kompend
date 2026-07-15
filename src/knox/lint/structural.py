@@ -317,8 +317,8 @@ class StalePageRule(BaseLintRule):
 
         # ── Source file existence check ──
         if sources_dir is not None:
-            sources_dir = Path(sources_dir)
-            if sources_dir.exists():
+            sources_dir_path = Path(sources_dir)
+            if sources_dir_path.exists():
                 for node in wiki.nodes:
                     source_file_str = node.metadata.get(MetadataField.SOURCE_FILE)
                     if not source_file_str:
@@ -327,13 +327,13 @@ class StalePageRule(BaseLintRule):
                     if not source_file.is_absolute():
                         # Try base_dir-relative first (sources/paper.pdf),
                         # then sources_dir-relative (paper.pdf)
-                        for root in (sources_dir.parent, sources_dir):
+                        for root in (sources_dir_path.parent, Path(sources_dir)):
                             if (root / source_file).exists():
-                                source_file = root / source_file
+                                source_file = str(root / source_file)
                                 break
                         else:
-                            source_file = sources_dir.parent / source_file
-                    if not source_file.exists():
+                            source_file = str(sources_dir_path.parent / source_file)
+                    if not Path(source_file).exists():
                         results.append(
                             LintResult(
                                 rule=self.name,
@@ -394,7 +394,7 @@ class SourceNotFoundRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
             return results
 
-        sources_dir = Path(sources_dir)
+        sources_dir_path = Path(sources_dir)
         for node in wiki.nodes:
             source_chunks = node.source_chunks or []
             if not source_chunks:
@@ -406,13 +406,13 @@ class SourceNotFoundRule(BaseLintRule):
                 continue
             source_file = Path(source_file_str)
             if not source_file.is_absolute():
-                for root in (sources_dir.parent, sources_dir):
+                for root in (sources_dir_path.parent, Path(sources_dir)):
                     if (root / source_file).exists():
-                        source_file = root / source_file
+                        source_file = str(root / source_file)
                         break
                 else:
-                    source_file = sources_dir.parent / source_file
-            if not source_file.exists():
+                    source_file = str(sources_dir_path.parent / source_file)
+            if not Path(source_file).exists():
                 results.append(
                     LintResult(
                         rule=self.name,

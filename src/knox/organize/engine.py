@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
 from knox.core.config import OrganizeConfig, resolve_config
@@ -58,10 +59,10 @@ def resolve_organize_config(overrides: dict[str, object] | None = None) -> Organ
     if min_files < 1:
         raise ValueError(f"organize.min_files_per_category must be >= 1, got {min_files}")
     return OrganizeConfig(
-        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),
-        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),
+        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),  # type: ignore
+        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),  # type: ignore
         min_files_per_category=min_files,
-        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),
+        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),  # type: ignore
     )
 
 
@@ -146,7 +147,7 @@ def organize_sources(
     )
 
 
-def _files_without_summary(sources_dir: Path, extractions: dict[str, object]) -> list[str]:
+def _files_without_summary(sources_dir: Path, extractions: dict[str, Any]) -> list[str]:
     """Files in ``sources_dir`` that lack an extraction summary."""
     known = set(extractions)
     missing: list[str] = []
