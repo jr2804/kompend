@@ -7,6 +7,11 @@ Business modules must not import litellm directly.
 
 from __future__ import annotations
 
+# Importing knox.llm.providers registers KNOX's custom litellm providers
+# (claudinio/, ollama-cloud/, opencode-zen/, opencode-go/) as a side effect.
+# Without this, model strings using those prefixes fail at runtime with
+# "LLM Provider NOT provided".
+import knox.llm.providers  # noqa: F401
 from knox.llm.classifier import classify_litellm_error
 from knox.llm.context_window import ContextSource, ContextWindow, discover_context_window
 from knox.llm.errors import (
