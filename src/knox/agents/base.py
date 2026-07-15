@@ -25,7 +25,7 @@ The base class handles:
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
@@ -79,11 +79,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     Subclasses MUST implement :meth:`_build_agent`.
     """
 
-    template_name: ClassVar[str]
-    system_template_name: ClassVar[str]
-    result_type: ClassVar[type]
-    deps_type: ClassVar[type[AgentDeps]] = PipelineAgentDeps
-    temperature: ClassVar[float | None] = None
+    template_name: str
+    system_template_name: str
+    result_type: type
+    deps_type: type[AgentDeps] = PipelineAgentDeps
+    temperature: float | None = None
 
     def __init__(
         self,

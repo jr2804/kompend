@@ -126,7 +126,7 @@ def _messages_to_litellm(
     messages: list[ModelMessage],
     *,
     removed_artifacts: list[str] | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Convert PydanticAI messages to litellm chat format.
 
     Handles all part types PydanticAI uses in the structured-output retry
@@ -139,7 +139,7 @@ def _messages_to_litellm(
     RetryPromptPart message as Layer 2 feedback — telling the model exactly
     what was wrong with its previous response so it can fix it.
     """
-    result: list[dict[str, str]] = []
+    result: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:

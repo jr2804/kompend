@@ -175,4 +175,3 @@ class ConversationalAgent:
             await conn.session_update(session_id=session_id, update=chunk)
         except Exception:
             logger.debug("Failed to send progress notification", exc_info=True)
-
