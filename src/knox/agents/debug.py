@@ -4,6 +4,10 @@ When the ``KNOX_DEBUG_LLM_DIR`` environment variable is set, every LLM call
 is dumped to a timestamped JSON file containing the full message list, model
 settings, and response. This module centralises that logic so it can be
 imported without coupling the litellm bridge to the debug-sink details.
+
+The calling agent is passed in directly; its ``stage`` and ``current_source_id``
+attributes supply the per-dump context, so callers never hard-code a stage
+string or repeat the assembly logic.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from knox.llm.format import salvage_json
 from knox.logging import get_logger
@@ -20,15 +24,25 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
+class _DebugSource(Protocol):
+    """Minimal interface ``save_debug_prompt`` needs from an agent."""
+
+    @property
+    def stage(self) -> str:
+        """Pipeline stage label (e.g. ``extraction``, ``wicer``, ``vlm``)."""
+
+    @property
+    def current_source_id(self) -> str:
+        """Source id of the most recent ``run()`` call."""
+
+
 def save_debug_prompt(
+    agent: _DebugSource,
     model_string: str,
     litellm_messages: list[dict[str, Any]],
     kwargs: dict[str, Any],
     response_content: str,
     finish_reason: str | None,
-    *,
-    source_id: str = "",
-    stage: str = "",
 ) -> None:
     """Save the LLM prompt and response to a debug file.
 
@@ -36,7 +50,7 @@ def save_debug_prompt(
     timestamped JSON file with the full message list, model settings,
     and parsed response.
 
-    The dump records the pipeline ``stage`` (compile, wicer, twostage, …)
+    The dump records the agent's ``stage`` (compile, wicer, twostage, …)
     and the number of user / assistant turns so sessions that needed
     correction (extra retries, validation feedback) are easy to spot.
 
@@ -62,8 +76,8 @@ def save_debug_prompt(
 
     payload: dict[str, Any] = {
         "model": model_string,
-        "stage": stage,
-        "source_id": source_id,
+        "stage": agent.stage,
+        "source_id": agent.current_source_id,
         "timestamp": datetime.now().isoformat(),
         "user_turns": user_turns,
         "assistant_turns": assistant_turns,

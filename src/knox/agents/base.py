@@ -216,16 +216,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 self._litellm_model,
                 usage_tracker=self._usage_tracker,
                 fallback_models=self._fallback_models,
-                source_id_provider=lambda: self._current_source_id,
+                agent=self,
                 reasoning_effort=self._reasoning_effort,
                 schema=_schema,
-                max_retries=self._retries,
-                stage=self.stage,
             ),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings=model_settings,
-            retries=0,  # PydanticAI retries disabled — _fn handles incremental repair
+            retries=self._retries,
         )
 
     @staticmethod

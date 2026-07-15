@@ -23,12 +23,11 @@ Usage::
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 import litellm
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -51,142 +50,10 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-
-def _incremental_json_repair(
-    content: str,
-    schema: type[BaseModel],
-    model_string: str,
-    litellm_messages: list[dict[str, Any]],
-    kwargs: dict[str, Any],
-    usage_tracker: UsageTracker | None,
-    *,
-    max_retries: int = 2,
-) -> str:
-    """Repair model JSON output incrementally with focused follow-up prompts.
-
-    Instead of asking the model to redo the entire output, this function:
-    1. Parses the output with schema-aware salvage_json (fixes syntax, coerces types)
-    2. Validates against the schema
-    3. If valid → returns the repaired JSON
-    4. If invalid → sends a focused follow-up asking for ONLY the broken/missing parts
-    5. Merges the model's new response with previously extracted valid data
-    6. Repeats until valid or max_retries exhausted
-
-    Returns the best-effort JSON string (may not pass validation if all
-    retries are exhausted — PydanticAI will then handle the final failure).
-    """
-    # Step 1: Initial salvage
-    repaired = salvage_json(content, schema=schema)
-    if repaired is None:
-        # Complete parse failure — fall back to plain syntax repair
-        repaired = salvage_json(content)
-        if repaired is None:
-            return content  # nothing salvageable, let PydanticAI handle it
-
-    for attempt in range(max_retries):
-        # Step 2: Validate against schema
-        try:
-            schema.model_validate(repaired)
-            # Valid! Return the repaired JSON
-            return json.dumps(repaired, ensure_ascii=False)
-        except ValidationError as exc:
-            # Step 3: Build focused follow-up prompt
-            errors = []
-            for err in exc.errors():
-                loc = ".".join(str(x) for x in err.get("loc", []))
-                msg = err.get("msg", "")
-                err_type = err.get("type", "")
-                errors.append(f"  - Field '{loc}': {msg} (expected: {err_type})")
-
-            valid_json = json.dumps(repaired, ensure_ascii=False, indent=2)
-            # Truncate valid_json if very large (keep context manageable)
-            if len(valid_json) > 4000:
-                valid_json = valid_json[:4000] + "\n  ... (truncated)"
-
-            follow_up = (
-                f"Your previous JSON response was partially valid. The following "
-                f"validation errors remain:\n{chr(10).join(errors)}\n\n"
-                f"The valid parts extracted so far:\n```json\n{valid_json}\n```\n\n"
-                f"Return ONLY a complete, corrected JSON object that fixes the "
-                f"listed errors. Keep all valid fields unchanged."
-            )
-
-            logger.info(
-                "IncrementalJSONRepair: attempt %d/%d for '%s', %d validation error(s)",
-                attempt + 1,
-                max_retries,
-                model_string,
-                len(errors),
-            )
-
-            # Step 4: Call model with focused follow-up
-            retry_messages = litellm_messages + [
-                {"role": "assistant", "content": content},
-                {"role": "user", "content": follow_up},
-            ]
-            retry_kwargs = {**kwargs, "messages": retry_messages}
-            try:
-                retry_response = litellm.completion(**retry_kwargs)
-            except Exception as retry_exc:
-                logger.warning(
-                    "IncrementalJSONRepair: retry call failed for '%s': %s",
-                    model_string,
-                    retry_exc,
-                )
-                break
-
-            retry_content = retry_response.choices[0].message.content or ""
-
-            # Track usage from retry
-            if usage_tracker is not None:
-                usage = getattr(retry_response, "usage", None)
-                if usage is not None:
-                    usage_tracker.record(
-                        prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                        completion_tokens=getattr(usage, "completion_tokens", 0),
-                        model=model_string,
-                    )
-
-            if not retry_content.strip():
-                logger.warning("IncrementalJSONRepair: empty retry response from '%s'", model_string)
-                break
-
-            # Step 5: Salvage and merge the new response
-            new_repaired = salvage_json(retry_content, schema=schema)
-            if new_repaired is not None:
-                repaired = _merge_json(repaired, new_repaired)
-                content = json.dumps(repaired, ensure_ascii=False)
-            else:
-                logger.warning(
-                    "IncrementalJSONRepair: could not parse retry response from '%s'",
-                    model_string,
-                )
-                break
-
-    # Best effort — return whatever we have, even if not fully valid
-    return json.dumps(repaired, ensure_ascii=False)
-
-
-def _merge_json(base: Any, update: Any) -> Any:
-    """Deep-merge two JSON values. Dict keys from *update* override *base*.
-
-    Lists are replaced entirely (no attempt to merge list elements).
-    Non-container values from *update* override *base*.
-    """
-    if isinstance(base, dict) and isinstance(update, dict):
-        result = dict(base)
-        for key, val in update.items():
-            if key in result:
-                result[key] = _merge_json(result[key], val)
-            else:
-                result[key] = val
-        return result
-    # For lists, scalars, etc. — update wins
-    return update if update is not None else base
-
-
 def _messages_to_litellm(
     messages: list[ModelMessage],
+    *,
+    schema: type[BaseModel] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert PydanticAI messages to litellm chat format.
 
@@ -195,8 +62,14 @@ def _messages_to_litellm(
     mismatch) and ``ToolReturnPart`` are converted to ``user`` messages so
     the model sees the feedback. Without this, retries are silently
     dropped and the model repeats the same invalid output.
+
+    When *schema* is provided, ``RetryPromptPart`` content is enriched with
+    the valid portions of the model's previous output (extracted via
+    schema-aware ``salvage_json``), so the model only needs to fix the
+    broken parts rather than redo everything.
     """
     result: list[dict[str, Any]] = []
+    _last_assistant_content: str | None = None
     for msg in messages:
         if isinstance(msg, ModelRequest):
             for part in msg.parts:
@@ -205,38 +78,61 @@ def _messages_to_litellm(
                 elif isinstance(part, UserPromptPart):
                     result.append({"role": "user", "content": str(part.content)})
                 elif isinstance(part, RetryPromptPart):
-                    content = part.content
-                    if isinstance(content, list):
-                        content = "\n".join(f"- {e.get('msg', e)}" for e in content)
-                    result.append(
-                        {
-                            "role": "user",
-                            "content": f"Validation errors — fix and retry:\n{content}",
-                        }
+                    content = _enrich_retry_content(
+                        part.content,
+                        _last_assistant_content,
+                        schema,
                     )
+                    result.append({"role": "user", "content": content})
                 elif isinstance(part, ToolReturnPart):
-                    result.append(
-                        {
-                            "role": "user",
-                            "content": str(part.content),
-                        }
-                    )
+                    result.append({"role": "user", "content": str(part.content)})
         elif isinstance(msg, ModelResponse):
             for part in msg.parts:
                 if isinstance(part, TextPart):
+                    _last_assistant_content = part.content
                     result.append({"role": "assistant", "content": part.content})
     return result
+
+
+def _enrich_retry_content(
+    retry_content: object,
+    last_assistant_content: str | None,
+    schema: type[BaseModel] | None,
+) -> str:
+    """Enrich PydanticAI's retry message with schema-aware feedback.
+
+    PydanticAI's default retry messages are generic (``"Input should be a
+    valid string"``). When *schema* and *last_assistant_content* are
+    available, this function extracts the valid portions of the model's
+    previous output via ``salvage_json`` and includes them in the retry
+    message, so the model only needs to fix the broken parts.
+    """
+    errors = "\n".join(f"- {e.get('msg', e)}" for e in retry_content) if isinstance(retry_content, list) else str(retry_content)
+
+    if schema is not None and last_assistant_content:
+        repaired = salvage_json(last_assistant_content, schema=schema)
+        if repaired is not None:
+            valid_json = json.dumps(repaired, ensure_ascii=False, indent=2)
+            if len(valid_json) > 3000:
+                valid_json = valid_json[:3000] + "\n  ... (truncated)"
+            return (
+                f"Validation errors — fix and retry:\n{errors}\n\n"
+                f"The valid parts extracted from your previous response:\n"
+                f"```json\n{valid_json}\n```\n\n"
+                f"Return ONLY a corrected JSON object that fixes the listed "
+                f"errors. Keep all valid fields unchanged."
+            )
+
+    return f"Validation errors — fix and retry:\n{errors}"
 
 
 def _make_litellm_function(  # noqa: C901, PLR0915
     model_string: str,
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
-    source_id_provider: Callable[[], str] | None = None,
+    agent: Any | None = None,
     reasoning_effort: str | None = None,
     schema: type[BaseModel] | None = None,
-    stage: str = "",
-    max_retries: int = 2,
 ) -> Any:
     """Create a FunctionModel-compatible function calling ``litellm.completion()``.
 
@@ -246,7 +142,7 @@ def _make_litellm_function(  # noqa: C901, PLR0915
     """
 
     def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:  # noqa: C901, PLR0915
-        litellm_messages = _messages_to_litellm(messages)
+        litellm_messages = _messages_to_litellm(messages, schema=schema)
 
         # Inject instructions as system message. PydanticAI 2.9 passes the
         # system prompt via AgentInfo.instructions, NOT as a SystemPromptPart
@@ -277,11 +173,9 @@ def _make_litellm_function(  # noqa: C901, PLR0915
         # Ollama gets think=False for low effort levels.
         if reasoning_effort:
             if model_string.startswith("ollama/"):
-                # Ollama: map low effort levels to think=False
                 if reasoning_effort in ("none", "minimal", "low"):
                     kwargs["think"] = False
             else:
-                # Cloud providers: forward reasoning_effort directly
                 kwargs["reasoning_effort"] = reasoning_effort
 
         # Try models in order with failover on transient errors
@@ -313,43 +207,26 @@ def _make_litellm_function(  # noqa: C901, PLR0915
                     model=model_string,
                 )
 
-        # Schema-aware JSON repair with incremental retry.
-        # Instead of PydanticAI's built-in retry (which sends useless
-        # validation errors and asks the model to redo everything), we:
-        #   1. Parse the output with salvage_json(schema=schema) — fixes
-        #      syntax, coerces types, fills missing fields
-        #   2. Validate against the schema
-        #   3. If valid → done. If not → extract what IS valid, ask the
-        #      model for ONLY the broken/missing parts, merge, retry.
-        # This keeps context small (only focused follow-up, not full
-        # re-submission) and gives the model actionable feedback.
-        if not info.allow_text_output and content.strip() and schema is not None:
-            content = _incremental_json_repair(
-                content,
-                schema,
-                model_string,
-                litellm_messages,
-                kwargs,
-                usage_tracker,
-                max_retries=max_retries,
-            )
-        elif not info.allow_text_output and content.strip():
-            # No schema available — best-effort syntax repair only
-            repaired = salvage_json(content)
+        # Schema-aware JSON repair. json_repair's schema_repair_mode='salvage'
+        # fixes syntax errors, coerces types, and fills missing fields toward
+        # the schema. If the repaired output still fails PydanticAI's validation,
+        # the retry loop sends an enriched RetryPromptPart (see _enrich_retry_content)
+        # that includes the valid partial data so the model only fixes the broken parts.
+        if not info.allow_text_output and content.strip():
+            repaired = salvage_json(content, schema=schema)
             if repaired is not None:
                 content = json.dumps(repaired, ensure_ascii=False)
 
         # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
-        _source_id = source_id_provider() if source_id_provider else ""
-        save_debug_prompt(
-            model_string,
-            litellm_messages,
-            kwargs,
-            content,
-            finish_reason,
-            source_id=_source_id,
-            stage=stage,
-        )
+        if agent is not None:
+            save_debug_prompt(
+                agent,
+                model_string,
+                litellm_messages,
+                kwargs,
+                content,
+                finish_reason,
+            )
 
         # Debug: log raw response anomalies for diagnosis
         if not content.strip() and not info.allow_text_output:
@@ -385,11 +262,9 @@ def make_litellm_model(
     model_string: str,
     usage_tracker: UsageTracker | None = None,
     fallback_models: list[str] | None = None,
-    source_id_provider: Callable[[], str] | None = None,
+    agent: Any | None = None,
     reasoning_effort: str | None = None,
     schema: type[BaseModel] | None = None,
-    stage: str = "",
-    max_retries: int = 2,
 ) -> FunctionModel:
     """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
 
@@ -400,23 +275,19 @@ def make_litellm_model(
         model_string: Model name in litellm format (``"provider/model"``).
         usage_tracker: Optional :class:`UsageTracker` to record token counts.
         fallback_models: Optional list of fallback models tried on transient errors.
-        source_id_provider: Optional callable returning the current source_id for debug logging.
+        agent: Optional owning agent instance.  When provided, its ``stage`` and
+            ``current_source_id`` attributes are recorded in the debug dump.
         reasoning_effort: Optional reasoning effort (``"none"``, ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"default"``).
         schema: Optional Pydantic model class for schema-aware JSON repair.
-        stage: Optional pipeline stage label (``compile``, ``wicer``, ``twostage``, …)
-            recorded in the LLM debug dump.
-        max_retries: Max incremental JSON repair attempts inside ``_fn``.
     """
     return FunctionModel(
         function=_make_litellm_function(
             model_string,
             usage_tracker=usage_tracker,
             fallback_models=fallback_models,
-            source_id_provider=source_id_provider,
+            agent=agent,
             reasoning_effort=reasoning_effort,
             schema=schema,
-            stage=stage,
-            max_retries=max_retries,
         ),
         model_name=model_string,
     )

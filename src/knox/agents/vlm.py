@@ -61,6 +61,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
 
     def run(self, deps: VlmDeps) -> str:
         """Run VLM captioning with image input."""
+        self._current_source_id = deps.source_id
         image_file = Path(deps.image_path)
         if not image_file.is_file():
             msg = f"Image not found: {image_file}"
@@ -108,12 +109,11 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
                 )
 
         save_debug_prompt(
+            self,
             self._litellm_model,
             messages,
             kwargs,
             content,
             finish_reason,
-            source_id=self._current_source_id,
-            stage="vlm",
         )
         return content.strip()
