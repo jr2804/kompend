@@ -361,6 +361,7 @@ class WiCERCompiler(BaseCompiler):
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,
+                timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
@@ -397,6 +398,7 @@ class WiCERCompiler(BaseCompiler):
                     max_tokens=self._config.budget.verify_output_max,
                     skills=self._config.skills,
                     retries=self._config.llm.output_retries,
+                    timeout=self._config.llm.timeout,
                     reasoning_effort=self._config.llm.reasoning_effort,
                 )
                 output = agent.run(
@@ -436,6 +438,7 @@ class WiCERCompiler(BaseCompiler):
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,
+                timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
             )
             output = agent.run(
