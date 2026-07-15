@@ -55,6 +55,32 @@ class LintResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class LintReportResult:
+    """A single lint finding, as stored in ``lint_history.jsonl``.
+
+    Used by the remediation layer, which reads the serialized report dict
+    rather than in-memory :class:`LintResult` objects.
+    """
+
+    rule: str
+    outcome: str
+    details: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
+    page_id: str = ""
+
+
+@dataclass
+class LintReport:
+    """Typed wrapper around a lint report's ``results`` list.
+
+    Replaces the previous ``report_dict: dict[str, Any]`` parameter with a
+    named, strictly-typed model.
+    """
+
+    results: list[LintReportResult]
+
+
 class BaseLintRule(ABC):
     """Abstract base class that every lint rule must implement.
 

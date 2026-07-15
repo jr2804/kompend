@@ -19,10 +19,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_LINT_FEEDBACK_CHARS
+from knox.lint.base import LintReport, LintReportResult
 
 _CLARITY_LOW_THRESHOLD = 4
 _CLARITY_MODERATE_THRESHOLD = 6
@@ -44,13 +44,13 @@ class GapRecommendation:
     action: str
 
 
-def analyze_gaps(report_dict: dict[str, Any]) -> list[GapRecommendation]:
-    """Extract knowledge-gap recommendations from a lint report dict.
+def analyze_gaps(report: LintReport) -> list[GapRecommendation]:
+    """Extract knowledge-gap recommendations from a typed lint report.
 
-    Accepts the ``report`` sub-dict as stored in ``lint_history.jsonl``
-    (i.e. the output of :func:`knox.lint.runner.report_to_dict`).
+    Accepts a :class:`LintReport` (the ``report`` sub-dict as stored in
+    ``lint_history.jsonl``, wrapped by :func:`knox.lint.remediation.remediate`).
     """
-    results: list[dict[str, Any]] = report_dict.get("results", [])
+    results: list[LintReportResult] = report.results
     recs: list[GapRecommendation] = []
 
     recs.extend(_analyze_broken_wikilinks(results))
@@ -88,13 +88,13 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
 # ── Per-rule analyzers ───────────────────────────────────────────────────
 
 
-def _analyze_broken_wikilinks(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecommendation]:
     """Broken wikilinks point to topics the wiki doesn't cover yet."""
     targets: list[str] = []
     for r in results:
-        if r.get("rule") != "broken-wikilinks" or r.get("outcome") != "fail":
+        if r.rule != "broken-wikilinks" or r.outcome != "fail":
             continue
-        target = r.get("details", {}).get("target", "")
+        target = r.details.get("target", "")
         if target:
             targets.append(target)
 
@@ -112,14 +112,14 @@ def _analyze_broken_wikilinks(results: list[dict[str, Any]]) -> list[GapRecommen
     return recs
 
 
-def _analyze_coverage_gaps(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_coverage_gaps(results: list[LintReportResult]) -> list[GapRecommendation]:
     """LLM-identified concepts missing from the wiki."""
     recs: list[GapRecommendation] = []
     for r in results:
-        if r.get("rule") != "coverage-gap" or r.get("outcome") != "fail":
+        if r.rule != "coverage-gap" or r.outcome != "fail":
             continue
-        details = r.get("details", {})
-        concept = details.get("concept", r.get("message", ""))
+        details = r.details
+        concept = details.get("concept", r.message)
         reason = details.get("reason", "")
         finding = f"'{concept}'"
         if reason:
@@ -135,18 +135,18 @@ def _analyze_coverage_gaps(results: list[dict[str, Any]]) -> list[GapRecommendat
     return recs
 
 
-def _analyze_clarity(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_clarity(results: list[LintReportResult]) -> list[GapRecommendation]:
     """Low clarity scores indicate incomplete or poorly extracted content."""
     recs: list[GapRecommendation] = []
     for r in results:
-        if r.get("rule") != "clarity-score" or r.get("outcome") != "fail":
+        if r.rule != "clarity-score" or r.outcome != "fail":
             continue
-        details = r.get("details", {})
+        details = r.details
         score = details.get("score")
         if not isinstance(score, int | float):
             continue
-        page_id = r.get("page_id", "unknown")
-        feedback = details.get("feedback", r.get("message", ""))
+        page_id = r.page_id or "unknown"
+        feedback = details.get("feedback", r.message)
 
         if score < _CLARITY_LOW_THRESHOLD:
             priority = GapPriority.HIGH
@@ -172,13 +172,13 @@ def _analyze_clarity(results: list[dict[str, Any]]) -> list[GapRecommendation]:
     return recs
 
 
-def _analyze_empty_pages(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_empty_pages(results: list[LintReportResult]) -> list[GapRecommendation]:
     """Empty pages indicate source parsing failures or empty sources."""
     recs: list[GapRecommendation] = []
     for r in results:
-        if r.get("rule") != "empty-page" or r.get("outcome") != "fail":
+        if r.rule != "empty-page" or r.outcome != "fail":
             continue
-        page_id = r.get("page_id", "unknown")
+        page_id = r.page_id or "unknown"
         recs.append(
             GapRecommendation(
                 priority=GapPriority.HIGH,
@@ -190,9 +190,9 @@ def _analyze_empty_pages(results: list[dict[str, Any]]) -> list[GapRecommendatio
     return recs
 
 
-def _analyze_orphans(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_orphans(results: list[LintReportResult]) -> list[GapRecommendation]:
     """Orphan pages need related sources to build connections."""
-    orphan_ids = [r.get("page_id", "") for r in results if r.get("rule") == "orphan-page" and r.get("outcome") == "fail"]
+    orphan_ids = [r.page_id for r in results if r.rule == "orphan-page" and r.outcome == "fail"]
     recs: list[GapRecommendation] = []
     for page_id in orphan_ids:
         recs.append(
@@ -206,14 +206,14 @@ def _analyze_orphans(results: list[dict[str, Any]]) -> list[GapRecommendation]:
     return recs
 
 
-def _analyze_contradictions(results: list[dict[str, Any]]) -> list[GapRecommendation]:
+def _analyze_contradictions(results: list[LintReportResult]) -> list[GapRecommendation]:
     """Contradictions may need an authoritative source to resolve."""
     recs: list[GapRecommendation] = []
     for r in results:
-        if r.get("rule") != "contradiction-detection" or r.get("outcome") != "fail":
+        if r.rule != "contradiction-detection" or r.outcome != "fail":
             continue
-        details = r.get("details", {})
-        page_a = details.get("page_a_title", r.get("page_id", "unknown"))
+        details = r.details
+        page_a = details.get("page_a_title", r.page_id or "unknown")
         page_b = details.get("page_b_title", "unknown")
         recs.append(
             GapRecommendation(

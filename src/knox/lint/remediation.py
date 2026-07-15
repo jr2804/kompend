@@ -24,10 +24,11 @@ from typing import Any
 from slugify import slugify
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.lint import LintRuleAgent
+from knox.agents.remediate import RemediationAgent
 from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
+from knox.lint.base import LintReport, LintReportResult
 from knox.lint.gap_analysis import analyze_gaps
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
@@ -79,31 +80,30 @@ class RemediationAction:
 
 def remediate(
     wiki: CompiledWiki,
-    report_dict: dict[str, Any],
+    report: LintReport,
     *,
-    base_dir: Path | None = None,
-    sources_dir: Path | None = None,
+    base_dir: Path,
     output_dir: Path | None = None,
-    model: str = "",
-    agent: LintRuleAgent | None = None,
+    agent: RemediationAgent,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
-    """Remediate lint findings from a report dict.
+    """Remediate lint findings from a :class:`LintReport`.
 
     Args:
         wiki: The compiled wiki to modify in-place (tier 1/2).
-        report_dict: The ``report`` sub-dict from ``lint_history.jsonl``.
-        base_dir: Project root. Required for tier 2.
-        sources_dir: Sources directory. Required for tier 2.
+        report: Typed lint report (the ``report`` sub-dict from
+            ``lint_history.jsonl``).
+        base_dir: Project root. Required for tier 2 (drives ``sources_dir`` /
+            cache resolution via :class:`VaultPaths`).
         output_dir: Wiki output directory. Tier-2 generated concept pages are
             written here as ``.md`` files so they are visible to the user and
             survive a re-organize. When ``None``, pages only update the cache.
-        model: LLM model name for tier 2. If empty, tier 2 is skipped.
+        agent: :class:`RemediationAgent` used for tier-2 content generation.
         dry_run: If ``True``, report what would be done without modifying.
 
     Returns a list of :class:`RemediationAction` sorted by tier.
     """
-    results: list[dict[str, Any]] = report_dict.get("results", [])
+    results: list[LintReportResult] = report.results
     actions: list[RemediationAction] = []
 
     # ── Tier 1: Auto-fixable ──
@@ -111,39 +111,26 @@ def remediate(
 
     # ── Tier 2: LLM-remediable ──
     handled_concepts: set[str] = set()
-    has_tier2_agent = bool(model) or bool(agent)
-    if has_tier2_agent and base_dir is not None and sources_dir is not None:
-        tier2_actions = _remediate_coverage_gaps(
-            wiki,
-            results,
-            model=model,
-            agent=agent,
-            base_dir=base_dir,
-            sources_dir=sources_dir,
-            output_dir=output_dir,
-            dry_run=dry_run,
-        )
-        actions.extend(tier2_actions)
-        # Track which concepts tier 2 looked at (any status) to exclude from tier 3
-        for a in tier2_actions:
-            concept = a.details.get("concept")
-            if concept:
-                handled_concepts.add(concept.lower().strip())
-            matched = a.details.get("matched_concept")
-            if matched:
-                handled_concepts.add(matched.lower().strip())
+    tier2_actions = _remediate_coverage_gaps(
+        wiki,
+        results,
+        base_dir=base_dir,
+        output_dir=output_dir,
+        agent=agent,
+        dry_run=dry_run,
+    )
+    actions.extend(tier2_actions)
+    # Track which concepts tier 2 looked at (any status) to exclude from tier 3
+    for a in tier2_actions:
+        concept = a.details.get("concept")
+        if concept:
+            handled_concepts.add(concept.lower().strip())
+        matched = a.details.get("matched_concept")
+        if matched:
+            handled_concepts.add(matched.lower().strip())
 
     # ── Tier 3: Recommendations ──
-    # Collect targets already handled by tier 1 to avoid duplicate recommendations
-    handled_targets: set[str] = set()
-    for r in results:
-        if r.get("rule") != "broken-wikilinks" or r.get("outcome") != "fail":
-            continue
-        target = r.get("details", {}).get("target", "")
-        if target and Path(target).suffix.lower() in _IMAGE_EXTENSIONS:
-            handled_targets.add(target)
-
-    for rec in analyze_gaps(report_dict):
+    for rec in analyze_gaps(report):
         if rec.category not in _TIER3_CATEGORIES:
             continue
         # Skip image-extension false positives already handled in tier 1
@@ -172,18 +159,18 @@ def remediate(
 
 def _fix_image_wikilinks(
     wiki: CompiledWiki,
-    results: list[dict[str, Any]],
+    results: list[LintReportResult],
     *,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Fix ``[[image.png]]`` → ``![[image.png]]`` (wrong embed syntax)."""
     image_targets: dict[str, list[str]] = {}
     for r in results:
-        if r.get("rule") != "broken-wikilinks" or r.get("outcome") != "fail":
+        if r.rule != "broken-wikilinks" or r.outcome != "fail":
             continue
-        target = r.get("details", {}).get("target", "")
+        target = r.details.get("target", "")
         if target and Path(target).suffix.lower() in _IMAGE_EXTENSIONS:
-            image_targets.setdefault(r.get("page_id", ""), []).append(target)
+            image_targets.setdefault(r.page_id, []).append(target)
 
     if not image_targets:
         return []
@@ -218,28 +205,26 @@ def _fix_image_wikilinks(
 
 def _remediate_coverage_gaps(
     wiki: CompiledWiki,
-    results: list[dict[str, Any]],
+    results: list[LintReportResult],
     *,
-    model: str = "",
-    agent: LintRuleAgent | None = None,
     base_dir: Path,
-    sources_dir: Path,
+    agent: RemediationAgent,
     output_dir: Path | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Generate concept pages for coverage gaps using cached extractions."""
     gap_concepts: list[str] = []
     for r in results:
-        if r.get("rule") != "coverage-gap" or r.get("outcome") != "fail":
+        if r.rule != "coverage-gap" or r.outcome != "fail":
             continue
-        concept = r.get("details", {}).get("concept") or r.get("message", "")
+        concept = r.details.get("concept") or r.message
         if concept:
             gap_concepts.append(concept)
 
     if not gap_concepts:
         return []
 
-    extraction_map = load_all_extractions(base_dir, sources_dir)
+    extraction_map = load_all_extractions(base_dir, base_dir / "sources")
     if not extraction_map:
         logger.info("No cached extractions found — skipping coverage gap remediation")
         return []
@@ -257,8 +242,6 @@ def _remediate_coverage_gaps(
         existing_ids |= {f.stem for f in output_dir.glob("*.md")}
     node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
-
-    lint_agent = agent or (LintRuleAgent(model, timeout=120) if model else None)
 
     for gap in gap_concepts:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
@@ -291,7 +274,7 @@ def _remediate_coverage_gaps(
             )
             continue
 
-        content = _generate_concept_page(lint_agent, matched)
+        content = _generate_concept_page(agent, matched)
         if content is None:
             actions.append(
                 RemediationAction(
@@ -394,10 +377,13 @@ def _write_concept_page(output_dir: Path | None, page_id: str, title: str, conte
     (output_dir / f"{page_id}.md").write_text(body, encoding="utf-8")
 
 
-def _generate_concept_page(agent: LintRuleAgent | None, concept_data: dict[str, Any]) -> str | None:
-    """Use LLM to generate a wiki page for a concept from extraction data."""
-    if agent is None:
-        return None
+def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]) -> str | None:
+    """Use the remediation agent to generate a wiki page for a concept.
+
+    Returns the generated Markdown, or ``None`` if the agent produced no
+    content. Exceptions propagate — a failed generation is a real error, not
+    something to silently swallow.
+    """
     loader = get_template_loader()
     prompt = loader.render(
         "lint/remediate_concept.md.j2",
@@ -407,14 +393,8 @@ def _generate_concept_page(agent: LintRuleAgent | None, concept_data: dict[str, 
         source_summaries=concept_data.get("summaries", []),
     )
     deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate", timeout=120)
-    try:
-        result = agent.run(deps)
-        if result and isinstance(result, dict):
-            return result.get("content", "") or str(result.get("text", ""))
-        return str(result) if result else None
-    except Exception as exc:
-        logger.warning("Concept page generation failed: %s", exc, exc_info=True)
-        return None
+    result = agent.run(deps)
+    return result if result else None
 
 
 def _fuzzy_match_concept(

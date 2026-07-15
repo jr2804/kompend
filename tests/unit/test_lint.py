@@ -10,10 +10,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from knox.agents.lint import LintRuleAgent
+from knox.agents.remediate import RemediationAgent
 from knox.compilation._two_phase_core import Extraction
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import remediation as remediation_module
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
+from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, Severity
 from knox.lint.remediation import RemediationStatus, remediate
 from knox.lint.runner import LintRunner, _build_report, report_to_json, report_to_text
 from knox.lint.structural import (
@@ -646,13 +647,13 @@ class TestContradictionDetectionRule:
 
 
 def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
-    client = MagicMock()
-    client.run.return_value = {"content": content}
+    client = MagicMock(spec=RemediationAgent)
+    client.run.return_value = content
     return client
 
 
-def _gap_result(concept: str) -> dict[str, Any]:
-    return {"rule": "coverage-gap", "outcome": "fail", "message": f"{concept} — missing", "details": {"concept": concept}}
+def _gap_result(concept: str) -> LintReportResult:
+    return LintReportResult(rule="coverage-gap", outcome="fail", message=f"{concept} — missing", details={"concept": concept})
 
 
 class TestCoverageGapRemediation:
@@ -665,7 +666,7 @@ class TestCoverageGapRemediation:
             lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}])},
         )
         wiki = _make_wiki()
-        actions = remediate(wiki, {"results": [_gap_result("Active Noise Control")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("Active Noise Control")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
         assert len(applied) == 1
         assert "Active Noise Control" in applied[0].description
@@ -684,7 +685,7 @@ class TestCoverageGapRemediation:
             },
         )
         wiki = _make_wiki()
-        actions = remediate(wiki, {"results": [_gap_result("ITU-T P.57")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("ITU-T P.57")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
         assert len(applied) == 1
         assert "ITU-T P.57" in applied[0].description
@@ -697,7 +698,7 @@ class TestCoverageGapRemediation:
             lambda b, s: {"doc1": Extraction(source="doc1")},
         )
         wiki = _make_wiki()
-        actions = remediate(wiki, {"results": [_gap_result("POLQA")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("POLQA")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         tier3 = [a for a in actions if a.tier == 3 and "no extraction match" in a.category.lower()]
         assert len(tier3) == 1
 
@@ -715,7 +716,7 @@ class TestCoverageGapRemediation:
             },
         )
         wiki = _make_wiki()
-        actions = remediate(wiki, {"results": [_gap_result("ERP")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("ERP")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
         assert len(applied) == 1
         assert "ERP" in applied[0].description
@@ -729,9 +730,8 @@ class TestCoverageGapRemediation:
         wiki = _make_wiki()
         actions = remediate(
             wiki,
-            {"results": [_gap_result("Echo Cancellation")]},
+            LintReport(results=[_gap_result("Echo Cancellation")]),
             base_dir=tmp_path,
-            sources_dir=tmp_path,
             agent=_mock_remediate_llm(),
             dry_run=True,
         )
@@ -746,7 +746,7 @@ class TestCoverageGapRemediation:
             lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Existing", "definition": "Already there"}])},
         )
         wiki = _make_wiki([_make_node("existing", "Existing", "pre-existing")])
-        actions = remediate(wiki, {"results": [_gap_result("Existing")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("Existing")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         assert not any(a.tier == 2 for a in actions)
 
     def test_source_summary_seed_included_in_prompt(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -765,7 +765,7 @@ class TestCoverageGapRemediation:
         )
         client = _mock_remediate_llm()
         wiki = _make_wiki()
-        remediate(wiki, {"results": [_gap_result("Active Noise Control")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=client)
+        remediate(wiki, LintReport(results=[_gap_result("Active Noise Control")]), base_dir=tmp_path, agent=client)
         prompt = client.run.call_args[0][0].text
         assert unique_summary in prompt
 
@@ -788,7 +788,7 @@ class TestCoverageGapRemediation:
         )
         client = _mock_remediate_llm()
         wiki = _make_wiki()
-        remediate(wiki, {"results": [_gap_result("ANC")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=client)
+        remediate(wiki, LintReport(results=[_gap_result("ANC")]), base_dir=tmp_path, agent=client)
         prompt = client.run.call_args[0][0].text
         assert "RELEVANT_SUMMARY_MARKER" in prompt
         assert "UNRELATED_SUMMARY_MARKER" not in prompt
@@ -801,7 +801,7 @@ class TestCoverageGapRemediation:
             lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "POLQA", "definition": "Speech quality metric"}])},
         )
         wiki = _make_wiki()
-        actions = remediate(wiki, {"results": [_gap_result("POLQA")]}, base_dir=tmp_path, sources_dir=tmp_path, agent=_mock_remediate_llm())
+        actions = remediate(wiki, LintReport(results=[_gap_result("POLQA")]), base_dir=tmp_path, agent=_mock_remediate_llm())
         tier2 = [a for a in actions if a.tier == 2]
         tier3_coverage = [a for a in actions if a.tier == 3 and a.category == "Coverage gap"]
         assert len(tier2) == 1
@@ -818,9 +818,8 @@ class TestCoverageGapRemediation:
         wiki = _make_wiki()
         remediate(
             wiki,
-            {"results": [_gap_result("Active Noise Control")]},
+            LintReport(results=[_gap_result("Active Noise Control")]),
             base_dir=tmp_path,
-            sources_dir=tmp_path,
             output_dir=output_dir,
             agent=_mock_remediate_llm(),
         )
@@ -840,9 +839,8 @@ class TestCoverageGapRemediation:
         output_dir = tmp_path / "wiki"
         actions = remediate(
             wiki,
-            {"results": [_gap_result("POLQA")]},
+            LintReport(results=[_gap_result("POLQA")]),
             base_dir=tmp_path,
-            sources_dir=tmp_path,
             output_dir=output_dir,
             agent=_mock_remediate_llm("fresh content"),
         )
