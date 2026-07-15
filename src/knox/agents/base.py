@@ -27,6 +27,7 @@ from __future__ import annotations
 from abc import ABC
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
+from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
@@ -84,6 +85,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     result_type: type
     deps_type: type[AgentDeps] = PipelineAgentDeps
     temperature: float | None = None
+
+    @property
+    def stage(self) -> str:
+        """Pipeline stage label recorded in the LLM debug dump.
+
+        Derived from the agent class name (e.g. ``ExtractionAgent`` ->
+        ``extraction``), so no per-subclass attribute is needed.
+        """
+        return self.__class__.__name__.removesuffix("Agent").lower()
 
     def __init__(
         self,
@@ -197,6 +207,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
             model_settings["max_tokens"] = self._max_tokens
+        # Pass the result schema to litellm_model for schema-aware JSON repair.
+        # Only Pydantic BaseModel subclasses have a schema; str result_type agents
+        # (e.g. QueryAgent, DoctorAgent) return free text and don't need repair.
+        _schema = self.result_type if isinstance(self.result_type, type) and issubclass(self.result_type, BaseModel) else None
         return Agent(
             make_litellm_model(
                 self._litellm_model,
@@ -204,11 +218,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 fallback_models=self._fallback_models,
                 source_id_provider=lambda: self._current_source_id,
                 reasoning_effort=self._reasoning_effort,
+                schema=_schema,
+                max_retries=self._retries,
+                stage=self.stage,
             ),
             deps_type=self.deps_type,
             output_type=self.result_type,
             model_settings=model_settings,
-            retries=self._retries,
+            retries=0,  # PydanticAI retries disabled — _fn handles incremental repair
         )
 
     @staticmethod

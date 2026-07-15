@@ -23,13 +23,12 @@ Usage::
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import litellm
+from pydantic import BaseModel, ValidationError
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -42,6 +41,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import shorten_string
 from knox.llm.failover import FailoverChain
 from knox.llm.format import salvage_json
@@ -51,81 +51,142 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _clean_json_artifacts(obj: Any) -> tuple[Any, list[str]]:
-    """Recursively clean JSON artifacts from model output.
 
-    Small quantized models sometimes place field names as bare strings inside
-    arrays that should contain objects (e.g. ``[{...page...}, "provenance", "related"]``).
-    This removes non-dict items from any list containing at least one dict.
-
-    Returns a tuple of (cleaned_obj, removed_artifacts) where *removed_artifacts*
-    is a list of stringified removed items, used for Layer 2 retry feedback.
-    """
-    removed: list[str] = []
-
-    def _walk(o: Any) -> Any:
-        if isinstance(o, dict):
-            return {k: _walk(v) for k, v in o.items()}
-        if isinstance(o, list):
-            cleaned_items = [_walk(item) for item in o]
-            has_dicts = any(isinstance(item, dict) for item in cleaned_items)
-            if has_dicts:
-                result: list[Any] = []
-                for item in cleaned_items:
-                    if isinstance(item, dict):
-                        result.append(item)
-                    else:
-                        removed.append(json.dumps(item, ensure_ascii=False) if not isinstance(item, str) else item)
-                return result
-            return cleaned_items
-        return o
-
-    return _walk(obj), removed
-
-
-def _save_debug_prompt(
+def _incremental_json_repair(
+    content: str,
+    schema: type[BaseModel],
     model_string: str,
     litellm_messages: list[dict[str, Any]],
     kwargs: dict[str, Any],
-    response_content: str,
-    finish_reason: str | None,
-    source_id: str = "",
-) -> None:
-    """Save the LLM prompt and response to a debug file.
+    usage_tracker: UsageTracker | None,
+    *,
+    max_retries: int = 2,
+) -> str:
+    """Repair model JSON output incrementally with focused follow-up prompts.
 
-    Triggered by ``KNOX_DEBUG_LLM_DIR`` env var. Each call creates a
-    timestamped JSON file with the full message list, model settings,
-    and raw response. Useful for manual testing of model output.
+    Instead of asking the model to redo the entire output, this function:
+    1. Parses the output with schema-aware salvage_json (fixes syntax, coerces types)
+    2. Validates against the schema
+    3. If valid → returns the repaired JSON
+    4. If invalid → sends a focused follow-up asking for ONLY the broken/missing parts
+    5. Merges the model's new response with previously extracted valid data
+    6. Repeats until valid or max_retries exhausted
+
+    Returns the best-effort JSON string (may not pass validation if all
+    retries are exhausted — PydanticAI will then handle the final failure).
     """
-    debug_dir = os.environ.get("KNOX_DEBUG_LLM_DIR")
-    if not debug_dir:
-        return
-    debug_path = Path(debug_dir)
-    debug_path.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    model_slug = model_string.replace("/", "_").replace(":", "")
-    filepath = debug_path / f"llm_{ts}_{model_slug}.json"
-    payload = {
-        "model": model_string,
-        "source_id": source_id,
-        "timestamp": datetime.now().isoformat(),
-        "messages": litellm_messages,
-        "kwargs": {k: v for k, v in kwargs.items() if k not in ("messages", "model")},
-        "response": response_content,
-        "response_parsed": salvage_json(response_content),
-        "finish_reason": finish_reason,
-    }
-    try:
-        filepath.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        logger.info("Debug prompt saved to %s", filepath)
-    except Exception as exc:
-        logger.warning("Failed to save debug prompt: %s", exc)
+    # Step 1: Initial salvage
+    repaired = salvage_json(content, schema=schema)
+    if repaired is None:
+        # Complete parse failure — fall back to plain syntax repair
+        repaired = salvage_json(content)
+        if repaired is None:
+            return content  # nothing salvageable, let PydanticAI handle it
+
+    for attempt in range(max_retries):
+        # Step 2: Validate against schema
+        try:
+            schema.model_validate(repaired)
+            # Valid! Return the repaired JSON
+            return json.dumps(repaired, ensure_ascii=False)
+        except ValidationError as exc:
+            # Step 3: Build focused follow-up prompt
+            errors = []
+            for err in exc.errors():
+                loc = ".".join(str(x) for x in err.get("loc", []))
+                msg = err.get("msg", "")
+                err_type = err.get("type", "")
+                errors.append(f"  - Field '{loc}': {msg} (expected: {err_type})")
+
+            valid_json = json.dumps(repaired, ensure_ascii=False, indent=2)
+            # Truncate valid_json if very large (keep context manageable)
+            if len(valid_json) > 4000:
+                valid_json = valid_json[:4000] + "\n  ... (truncated)"
+
+            follow_up = (
+                f"Your previous JSON response was partially valid. The following "
+                f"validation errors remain:\n{chr(10).join(errors)}\n\n"
+                f"The valid parts extracted so far:\n```json\n{valid_json}\n```\n\n"
+                f"Return ONLY a complete, corrected JSON object that fixes the "
+                f"listed errors. Keep all valid fields unchanged."
+            )
+
+            logger.info(
+                "IncrementalJSONRepair: attempt %d/%d for '%s', %d validation error(s)",
+                attempt + 1,
+                max_retries,
+                model_string,
+                len(errors),
+            )
+
+            # Step 4: Call model with focused follow-up
+            retry_messages = litellm_messages + [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": follow_up},
+            ]
+            retry_kwargs = {**kwargs, "messages": retry_messages}
+            try:
+                retry_response = litellm.completion(**retry_kwargs)
+            except Exception as retry_exc:
+                logger.warning(
+                    "IncrementalJSONRepair: retry call failed for '%s': %s",
+                    model_string,
+                    retry_exc,
+                )
+                break
+
+            retry_content = retry_response.choices[0].message.content or ""
+
+            # Track usage from retry
+            if usage_tracker is not None:
+                usage = getattr(retry_response, "usage", None)
+                if usage is not None:
+                    usage_tracker.record(
+                        prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                        completion_tokens=getattr(usage, "completion_tokens", 0),
+                        model=model_string,
+                    )
+
+            if not retry_content.strip():
+                logger.warning("IncrementalJSONRepair: empty retry response from '%s'", model_string)
+                break
+
+            # Step 5: Salvage and merge the new response
+            new_repaired = salvage_json(retry_content, schema=schema)
+            if new_repaired is not None:
+                repaired = _merge_json(repaired, new_repaired)
+                content = json.dumps(repaired, ensure_ascii=False)
+            else:
+                logger.warning(
+                    "IncrementalJSONRepair: could not parse retry response from '%s'",
+                    model_string,
+                )
+                break
+
+    # Best effort — return whatever we have, even if not fully valid
+    return json.dumps(repaired, ensure_ascii=False)
+
+
+def _merge_json(base: Any, update: Any) -> Any:
+    """Deep-merge two JSON values. Dict keys from *update* override *base*.
+
+    Lists are replaced entirely (no attempt to merge list elements).
+    Non-container values from *update* override *base*.
+    """
+    if isinstance(base, dict) and isinstance(update, dict):
+        result = dict(base)
+        for key, val in update.items():
+            if key in result:
+                result[key] = _merge_json(result[key], val)
+            else:
+                result[key] = val
+        return result
+    # For lists, scalars, etc. — update wins
+    return update if update is not None else base
 
 
 def _messages_to_litellm(
     messages: list[ModelMessage],
-    *,
-    removed_artifacts: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert PydanticAI messages to litellm chat format.
 
@@ -134,10 +195,6 @@ def _messages_to_litellm(
     mismatch) and ``ToolReturnPart`` are converted to ``user`` messages so
     the model sees the feedback. Without this, retries are silently
     dropped and the model repeats the same invalid output.
-
-    When *removed_artifacts* is non-empty, they are appended to the
-    RetryPromptPart message as Layer 2 feedback — telling the model exactly
-    what was wrong with its previous response so it can fix it.
     """
     result: list[dict[str, Any]] = []
     for msg in messages:
@@ -151,16 +208,6 @@ def _messages_to_litellm(
                     content = part.content
                     if isinstance(content, list):
                         content = "\n".join(f"- {e.get('msg', e)}" for e in content)
-                    # Layer 2: include removed artifacts in retry feedback
-                    if removed_artifacts:
-                        artifacts_str = ", ".join(removed_artifacts)
-                        content += (
-                            f"\n\nInvalid JSON artifacts detected in previous reply: "
-                            f"[{artifacts_str}]. These items were placed as bare "
-                            f"values inside an object array. If they represent schema "
-                            f"fields, include them as proper key-value pairs in the "
-                            f"JSON object. If they can be omitted, return empty JSON."
-                        )
                     result.append(
                         {
                             "role": "user",
@@ -187,6 +234,9 @@ def _make_litellm_function(  # noqa: C901, PLR0915
     fallback_models: list[str] | None = None,
     source_id_provider: Callable[[], str] | None = None,
     reasoning_effort: str | None = None,
+    schema: type[BaseModel] | None = None,
+    stage: str = "",
+    max_retries: int = 2,
 ) -> Any:
     """Create a FunctionModel-compatible function calling ``litellm.completion()``.
 
@@ -194,12 +244,9 @@ def _make_litellm_function(  # noqa: C901, PLR0915
     ``reasoning_effort=`` (for cloud providers like OpenAI/Anthropic) and
     mapped to ``think=False`` for Ollama models that support the think toggle.
     """
-    # Layer 2 state: artifacts removed from the previous response.
-    # Persists across retry calls within one agent run.
-    _removed_artifacts: list[str] = []
 
     def _fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:  # noqa: C901, PLR0915
-        litellm_messages = _messages_to_litellm(messages, removed_artifacts=_removed_artifacts)
+        litellm_messages = _messages_to_litellm(messages)
 
         # Inject instructions as system message. PydanticAI 2.9 passes the
         # system prompt via AgentInfo.instructions, NOT as a SystemPromptPart
@@ -266,35 +313,43 @@ def _make_litellm_function(  # noqa: C901, PLR0915
                     model=model_string,
                 )
 
-        # Repair malformed JSON for structured output agents. Small quantized
-        # models often return truncated or slightly malformed JSON (trailing
-        # commas, unclosed brackets, prose wrapping). The old direct-litellm
-        # path used salvage_json for this; PydanticAI's built-in validation
-        # is strict and rejects anything that isn't perfectly valid JSON.
-        #
-        # Layer 1: salvage_json repairs syntax errors.
-        # Layer 2: _clean_json_artifacts removes non-dict items from
-        # dict-containing lists (common artifact: field names as bare
-        # strings mixed into object arrays). Removed artifacts are stored
-        # in the closure variable for Layer 2 retry feedback.
-        _removed_artifacts.clear()
-        if not info.allow_text_output and content.strip():
+        # Schema-aware JSON repair with incremental retry.
+        # Instead of PydanticAI's built-in retry (which sends useless
+        # validation errors and asks the model to redo everything), we:
+        #   1. Parse the output with salvage_json(schema=schema) — fixes
+        #      syntax, coerces types, fills missing fields
+        #   2. Validate against the schema
+        #   3. If valid → done. If not → extract what IS valid, ask the
+        #      model for ONLY the broken/missing parts, merge, retry.
+        # This keeps context small (only focused follow-up, not full
+        # re-submission) and gives the model actionable feedback.
+        if not info.allow_text_output and content.strip() and schema is not None:
+            content = _incremental_json_repair(
+                content,
+                schema,
+                model_string,
+                litellm_messages,
+                kwargs,
+                usage_tracker,
+                max_retries=max_retries,
+            )
+        elif not info.allow_text_output and content.strip():
+            # No schema available — best-effort syntax repair only
             repaired = salvage_json(content)
             if repaired is not None:
-                repaired, new_removed = _clean_json_artifacts(repaired)
-                _removed_artifacts.extend(new_removed)
                 content = json.dumps(repaired, ensure_ascii=False)
-                if new_removed:
-                    logger.info(
-                        "LitellmModel: cleaned %d JSON artifact(s) from '%s' response: %s",
-                        len(new_removed),
-                        model_string,
-                        ", ".join(new_removed),
-                    )
 
         # Save debug prompt when KNOX_DEBUG_LLM_DIR is set
         _source_id = source_id_provider() if source_id_provider else ""
-        _save_debug_prompt(model_string, litellm_messages, kwargs, content, finish_reason, source_id=_source_id)
+        save_debug_prompt(
+            model_string,
+            litellm_messages,
+            kwargs,
+            content,
+            finish_reason,
+            source_id=_source_id,
+            stage=stage,
+        )
 
         # Debug: log raw response anomalies for diagnosis
         if not content.strip() and not info.allow_text_output:
@@ -332,6 +387,9 @@ def make_litellm_model(
     fallback_models: list[str] | None = None,
     source_id_provider: Callable[[], str] | None = None,
     reasoning_effort: str | None = None,
+    schema: type[BaseModel] | None = None,
+    stage: str = "",
+    max_retries: int = 2,
 ) -> FunctionModel:
     """Create a PydanticAI :class:`FunctionModel` backed by ``litellm.completion()``.
 
@@ -344,6 +402,10 @@ def make_litellm_model(
         fallback_models: Optional list of fallback models tried on transient errors.
         source_id_provider: Optional callable returning the current source_id for debug logging.
         reasoning_effort: Optional reasoning effort (``"none"``, ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"default"``).
+        schema: Optional Pydantic model class for schema-aware JSON repair.
+        stage: Optional pipeline stage label (``compile``, ``wicer``, ``twostage``, …)
+            recorded in the LLM debug dump.
+        max_retries: Max incremental JSON repair attempts inside ``_fn``.
     """
     return FunctionModel(
         function=_make_litellm_function(
@@ -352,6 +414,9 @@ def make_litellm_model(
             fallback_models=fallback_models,
             source_id_provider=source_id_provider,
             reasoning_effort=reasoning_effort,
+            schema=schema,
+            stage=stage,
+            max_retries=max_retries,
         ),
         model_name=model_string,
     )

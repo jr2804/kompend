@@ -14,7 +14,7 @@ from pathlib import Path
 import litellm
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.litellm_model import _save_debug_prompt
+from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
 
@@ -107,5 +107,13 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
                     model=self._litellm_model,
                 )
 
-        _save_debug_prompt(self._litellm_model, messages, kwargs, content, finish_reason, source_id=self._current_source_id)
+        save_debug_prompt(
+            self._litellm_model,
+            messages,
+            kwargs,
+            content,
+            finish_reason,
+            source_id=self._current_source_id,
+            stage="vlm",
+        )
         return content.strip()
