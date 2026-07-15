@@ -1,3 +1,4 @@
+sync.remote: "git+https://codeberg.org/jr2804/knox.git" 
 # Beads Configuration File
 # This file configures default behavior for all bd commands in this repository
 # All settings can also be set via environment variables (BD_* prefix)
@@ -55,4 +56,5 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 # sync.remote temporarily disabled for local reinit (remote has no Dolt data)
-# sync.remote: "git+https://codeberg.org/jr2804/knox.git"
+# sync.remote: "git+https://codeberg.org/jr2804/knox.git" 
+
