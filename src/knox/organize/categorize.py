@@ -355,8 +355,10 @@ def _prune(
             kept_subs = []
 
     # A non-leaf category must have at least min_subcategories children.
-    # Categories with fewer are dissolved and their files promoted to the parent.
-    if 0 < len(kept_subs) < config.min_subcategories:
+    # Categories with fewer are dissolved and their files promoted to the parent —
+    # unless the remaining subcategories are already valid (have enough files),
+    # in which case the parent is kept.
+    if 0 < len(kept_subs) < config.min_subcategories and all(len(child.files) < effective_min for child in kept_subs):
         promote_files: list[str] = []
         for child in kept_subs:
             promote_files.extend(child.all_files())
