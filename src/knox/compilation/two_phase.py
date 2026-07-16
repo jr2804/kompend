@@ -478,7 +478,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 break
         return extractions
 
-    def generate(  # noqa: PLR0915
+    def generate(
         self,
         extractions: ExtractionSet,
         chunks: list[ResolvedChunk],
@@ -496,32 +496,8 @@ class TwoPhaseCompiler(BaseCompiler):
         treats each item as a hard preservation constraint when emitting
         page content (WiCER refinement input).
         """
-        concepts = extractions.concept_pages()
-        # Embedding-based similarity merge (Option C) — merges concepts whose
-        # name embeddings are above a threshold, catching semantic duplicates
-        # that Option A (normalized-key) misses. Only runs when an embedding
-        # model is configured (not "hash").
-        embed_model = self._config.embedding.model
-        if embed_model and embed_model != "hash":
-            concepts = _merge_similar_concepts(concepts, embed_model)
-        if concepts:
-            sample_limit = self._config.display.concept_names
-            logger.info(
-                "TwoPhase: %d concept(s) ready for generation (sample: %s)",
-                len(concepts),
-                [c["name"] for c in concepts[:sample_limit]],
-            )
-        else:
-            # Diagnose: what keys did extraction actually return? Pinpoints
-            # schema drift vs. genuinely empty extraction in one log line.
-            sample_keys: set[str] = set()
-            for ext in extractions.extractions:
-                for c in ext.concepts:
-                    sample_keys.update(c.keys())
-            logger.warning(
-                "TwoPhase: concept_pages() empty \u2014 extraction concept keys: %s",
-                sorted(sample_keys) or "(no concepts returned)",
-            )
+        concepts = self._prepare_concepts(extractions)
+        if not concepts:
             return CompiledWiki(
                 nodes=[],
                 edges=[],
@@ -536,10 +512,48 @@ class TwoPhaseCompiler(BaseCompiler):
                 },
             )
 
-        # Collect images from IMAGE chunks for embedding in output
         all_images = _extract_images_from_chunks(chunks)
+        source_segments = self._prepare_source_segments(chunks)
+        pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
+        generation_system = _loader.get_body("compilation/generation_system.md.j2")
 
-        # Per-source content, collected in full.
+        num_concepts = len(concepts)
+        gen_total = ((num_concepts + self._budget.concepts_per_batch - 1) // self._budget.concepts_per_batch) * len(source_segments)
+        if gen_total > 0:
+            self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
+
+        nodes, slug_to_idx = self._run_generation_with_checkpoint(
+            concepts, source_segments, generation_system, all_images, pinned_clean,
+        )
+
+        return self._assemble_wiki(nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
+
+    def _prepare_concepts(self, extractions: ExtractionSet) -> list[dict[str, Any]]:
+        """Merge and validate concepts from extractions. Returns empty list if none."""
+        concepts = extractions.concept_pages()
+        embed_model = self._config.embedding.model
+        if embed_model and embed_model != "hash":
+            concepts = _merge_similar_concepts(concepts, embed_model)
+        if concepts:
+            sample_limit = self._config.display.concept_names
+            logger.info(
+                "TwoPhase: %d concept(s) ready for generation (sample: %s)",
+                len(concepts),
+                [c["name"] for c in concepts[:sample_limit]],
+            )
+        else:
+            sample_keys: set[str] = set()
+            for ext in extractions.extractions:
+                for c in ext.concepts:
+                    sample_keys.update(c.keys())
+            logger.warning(
+                "TwoPhase: concept_pages() empty — extraction concept keys: %s",
+                sorted(sample_keys) or "(no concepts returned)",
+            )
+        return concepts
+
+    def _prepare_source_segments(self, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
+        """Build source segments sized to the context window."""
         by_source: dict[str, str] = defaultdict(str)
         for rc in chunks:
             label = Path(str(rc.chunk.source_file or "unknown")).stem
@@ -547,65 +561,61 @@ class TwoPhaseCompiler(BaseCompiler):
                 by_source[label] += rc.chunk.text + "\n\n"
         sources: list[tuple[str, str]] = list(by_source.items())
 
-        # Adaptive segment size: fill context window (no clamping).
         cw = self._context_window
         budget = self._budget
         segment_char_size = _tokens_to_chars(
             max(_MIN_SEGMENT_TOKENS, cw.max_input - self._gen_system_tokens - budget.gen_output_max),
         )
-
         logger.info(
             "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d)",
-            segment_char_size,
-            cw.max_input,
-            self._gen_system_tokens,
-            budget.gen_output_max,
+            segment_char_size, cw.max_input, self._gen_system_tokens, budget.gen_output_max,
         )
-
         source_segments = _segment_sources(sources, segment_char_size)
         logger.info(
             "TwoPhase: %d source(s) split into %d segment(s) (total content %d chars)",
-            len(sources),
-            len(source_segments),
-            sum(len(c) for _, c in sources),
+            len(sources), len(source_segments), sum(len(c) for _, c in sources),
         )
+        return source_segments
 
-        # Normalize pinned facts: drop empties + dedup (preserve order).
-        pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
-
-        generation_system = _loader.get_body("compilation/generation_system.md.j2")
-
-        # Compute total generation steps for a determinate progress bar.
-        num_concepts = len(concepts)
-        gen_total = ((num_concepts + self._budget.concepts_per_batch - 1) // self._budget.concepts_per_batch) * len(source_segments)
-        if gen_total > 0:
-            self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
-
+    def _run_generation_with_checkpoint(
+        self,
+        concepts: list[dict[str, Any]],
+        source_segments: list[list[tuple[str, str]]],
+        generation_system: str,
+        all_images: list[dict[str, Any]],
+        pinned_clean: list[str],
+    ) -> tuple[list[WikiNode], dict[str, int]]:
+        """Run generation with checkpoint support, returning nodes and slug map."""
         checkpoint = _load_gen_checkpoint(self._config, self._active_gen_deps)
         if checkpoint is not None:
             ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
             logger.info(
-                "TwoPhase: generation checkpoint loaded \u2014 %d batch(es) already done, %d node(s)",
-                len(ck_completed),
-                len(ck_nodes),
+                "TwoPhase: generation checkpoint loaded — %d batch(es) already done, %d node(s)",
+                len(ck_completed), len(ck_nodes),
             )
         else:
             ck_nodes, ck_slug_to_idx, ck_completed = [], {}, set()
 
         nodes, slug_to_idx = self._generate_all_pages(
-            concepts,
-            source_segments,
-            generation_system,
-            all_images,
+            concepts, source_segments, generation_system, all_images,
             pinned_facts=pinned_clean,
-            initial_nodes=ck_nodes,
-            initial_slug_to_idx=ck_slug_to_idx,
+            initial_nodes=ck_nodes, initial_slug_to_idx=ck_slug_to_idx,
             completed_batches=ck_completed,
         )
-
-        # Generation finished (success or partial). Delete checkpoint always
-        # so the next run uses the generation cache or starts fresh.
         _delete_gen_checkpoint(self._config, self._active_gen_deps)
+        return nodes, slug_to_idx
+
+    def _assemble_wiki(
+        self,
+        nodes: list[WikiNode],
+        slug_to_idx: dict[str, int],
+        chunks: list[ResolvedChunk],
+        extractions: ExtractionSet,
+        concepts: list[dict[str, Any]],
+        pinned_clean: list[str],
+    ) -> CompiledWiki:
+        """Filter, dedup, and assemble the final CompiledWiki."""
+        cw = self._context_window
 
         if not nodes:
             raise LLMOutputError(
@@ -615,10 +625,7 @@ class TwoPhaseCompiler(BaseCompiler):
             )
 
         self.disambiguate_duplicate_titles(nodes, chunks)
-        nodes = self.filter_empty_nodes(
-            nodes,
-            min_content_length=self._config.budget.min_content_length,
-        )
+        nodes = self.filter_empty_nodes(nodes, min_content_length=self._config.budget.min_content_length)
 
         if not nodes:
             logger.warning(
@@ -626,35 +633,24 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._config.budget.min_content_length,
             )
             return CompiledWiki(
-                nodes=[],
-                edges=[],
-                toc=[],
+                nodes=[], edges=[], toc=[],
                 metadata={
                     WikiField.CHUNK_COUNT: len(chunks),
-                    "two_phase": True,
-                    "generation_skipped": True,
-                    "skip_reason": "all pages filtered as empty",
-                    "node_count": 0,
+                    "two_phase": True, "generation_skipped": True,
+                    "skip_reason": "all pages filtered as empty", "node_count": 0,
                 },
             )
 
         nodes = self.dedup_content_duplicate_nodes(nodes)
         edges = self._build_edges(nodes, extractions)
         quality = _compute_quality_score(nodes, edges)
-
         toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
         return CompiledWiki(
-            nodes=nodes,
-            edges=edges,
-            toc=toc,
-            quality_score=quality,
+            nodes=nodes, edges=edges, toc=toc, quality_score=quality,
             metadata={
-                WikiField.CHUNK_COUNT: len(chunks),
-                "node_count": len(nodes),
-                "edge_count": len(edges),
-                "two_phase": True,
-                "concepts_merged": len(concepts),
-                "context_window": cw.max_input,
+                WikiField.CHUNK_COUNT: len(chunks), "node_count": len(nodes),
+                "edge_count": len(edges), "two_phase": True,
+                "concepts_merged": len(concepts), "context_window": cw.max_input,
                 "pinned_facts_count": len(pinned_clean),
             },
         )
