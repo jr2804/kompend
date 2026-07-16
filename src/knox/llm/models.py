@@ -19,10 +19,9 @@ Resolution order:
 
 from __future__ import annotations
 
-import functools
 import os
 
-from models_dev import Limit, Provider, get_model_by_id, get_provider
+from models_dev import get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -30,23 +29,6 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
-
-logger = get_logger(__name__)
-
-
-# ── models-dev catalog (cached) ────────────────────────────────────────
-
-
-@functools.cache
-def _get_provider_cached(provider_id: str) -> Provider | None:
-    """Cached wrapper around ``models_dev.get_provider()``.
-
-    Repeated lookups for the same provider avoid re-querying the catalog.
-    """
-    try:
-        return get_provider(provider_id)
-    except KeyError:
-        return None
 
 
 # ── public API ─────────────────────────────────────────────────────────
@@ -65,9 +47,10 @@ def build_model(model_string: str) -> Model:
         )
 
     # 1. Try models-dev catalog (150+ providers)
-    model = _from_models_dev(prefix, name)
-    if model is not None:
-        return model
+    try:
+        return _from_models_dev(prefix, name)
+    except _ProviderUnsupported:
+        pass
 
     # 2. Fall through to pydantic-ai native inference (ollama, openai,
     #    anthropic, google-gla, groq, mistral, cohere, etc.)
@@ -95,7 +78,7 @@ def resolve_model_limits(model_id: str) -> tuple[int, int] | None:
     except KeyError:
         return None
 
-    limit: Limit | None = model.limit
+    limit = model.limit
     if limit is None or limit.context is None:
         return None
 
@@ -105,28 +88,29 @@ def resolve_model_limits(model_id: str) -> tuple[int, int] | None:
 # ── internal helpers ───────────────────────────────────────────────────
 
 
-def _from_models_dev(provider_id: str, model_name: str) -> Model | None:
-    """Resolve via models-dev catalog; returns ``None`` if not found."""
-    provider = _get_provider_cached(provider_id)
-    if provider is None:
-        return None
+class _ProviderUnsupported(Exception):
+    """Provider not in models-dev catalog or has no API endpoint."""
 
-    api_url = provider.api
-    if not api_url:
-        # Standard provider (openai, anthropic, etc.) — handled by
-        # pydantic-ai native inference.
-        return None
 
-    # Custom OpenAI-compatible provider — look up the API key from
-    # the env var(s) the catalog advertises.
-    api_key: str | None = None
+def _from_models_dev(provider_id: str, model_name: str) -> Model:
+    """Resolve via models-dev catalog; raises ``_ProviderUnsupported`` if not found."""
+    try:
+        provider = get_provider(provider_id)
+    except KeyError:
+        raise _ProviderUnsupported(provider_id) from None
+
+    if not provider.api:
+        raise _ProviderUnsupported(provider_id)
+
+    # Use the env var(s) the catalog advertises for the API key.
+    api_key = None
     for env_var in (provider.env or ()):
         value = os.environ.get(env_var)
         if value:
             api_key = value
             break
 
-    base = api_url.rstrip("/")
+    base = provider.api.rstrip("/")
     if not base.endswith("/v1"):
         base = f"{base}/v1"
 
