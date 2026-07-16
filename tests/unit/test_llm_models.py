@@ -1,18 +1,13 @@
-"""Tests for knox.llm.models.build_model() and _OpencodeModel discovery."""
+"""Tests for knox.llm.models.build_model() and resolve_model_limits()."""
 
 from __future__ import annotations
-
-from typing import Never
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from knox.llm import models as knox_models
-from knox.llm.models import _OpencodeModel, build_model
+from knox.llm.models import build_model, resolve_model_limits
 
 # ── build_model: standard providers via pydantic-ai auto-resolution ────
 
@@ -33,16 +28,27 @@ def _provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestBuildModelStandardProviders:
-    def test_ollama_prefix_returns_ollama_model(self) -> None:
+    def test_ollama_prefix_returns_openai_compatible_model(self) -> None:
+        """Ollama is resolved as a local OpenAI-compatible provider, not
+        pydantic-ai's native OllamaModel (which requires OLLAMA_BASE_URL).
+        """
         m = build_model("ollama/qwen3")
-        assert isinstance(m, OllamaModel)
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "qwen3"
         assert m.model_name == "qwen3"
 
     def test_ollama_multi_slash_model_name_preserved(self) -> None:
-        """Model names may contain slashes (e.g. hf.co/qwen3.6)."""
         m = build_model("ollama/hf.co/qwen3.6")
-        assert isinstance(m, OllamaModel)
+        assert isinstance(m, OpenAIChatModel)
         assert m.model_name == "hf.co/qwen3.6"
+
+    def test_ollama_colon_in_model_name_preserved(self) -> None:
+        """Ollama model tags contain a colon (e.g. ``gemma4:e2b``); the
+        internal colon must survive the ``provider/model`` split.
+        """
+        m = build_model("ollama/gemma4:e2b")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "gemma4:e2b"
 
     def test_openai_prefix_returns_responses_model(self) -> None:
         m = build_model("openai/gpt-5.2")
@@ -63,7 +69,7 @@ class TestBuildModelStandardProviders:
         assert isinstance(m, GoogleModel)
 
 
-# ── build_model: custom providers ──────────────────────────────────────
+# ── build_model: custom providers via models-dev catalog ──────────────
 
 
 class TestBuildModelCustomProviders:
@@ -79,19 +85,24 @@ class TestBuildModelCustomProviders:
         assert m.model_name == "deepseek-v4-flash"
         assert str(m.base_url).rstrip("/") == "https://ollama.com/v1"
 
-    def test_opencode_zen_returns_opencode_model(self) -> None:
+    def test_opencode_zen_returns_openai_chat_at_opencode_endpoint(self) -> None:
         m = build_model("opencode-zen/gpt-5.4-nano")
-        assert isinstance(m, _OpencodeModel)
-        assert m.model_name == "gpt-5.4-nano"
-
-    def test_opencode_go_returns_opencode_model(self) -> None:
-        m = build_model("opencode-go/kimi-k2.6")
-        assert isinstance(m, _OpencodeModel)
-        assert m.model_name == "kimi-k2.6"
-
-    def test_claudinio_alias_no_dash(self) -> None:
-        m = build_model("claudinio/claudinio")
         assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "gpt-5.4-nano"
+        assert str(m.base_url).rstrip("/") == "https://opencode.ai/zen/v1"
+
+    def test_opencode_go_returns_openai_chat_at_opencode_go_endpoint(self) -> None:
+        m = build_model("opencode-go/kimi-k2.6")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "kimi-k2.6"
+        assert str(m.base_url).rstrip("/") == "https://opencode.ai/zen/go/v1"
+
+    def test_deepseek_returns_openai_chat_with_v1_appended(self) -> None:
+        """Deepseek's api URL lacks /v1; the code appends it."""
+        m = build_model("deepseek/deepseek-chat")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "deepseek-chat"
+        assert str(m.base_url).rstrip("/") == "https://api.deepseek.com/v1"
 
 
 # ── build_model: error handling ────────────────────────────────────────
@@ -99,133 +110,35 @@ class TestBuildModelCustomProviders:
 
 class TestBuildModelErrors:
     def test_unknown_prefix_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="Unknown model string"):
+        with pytest.raises(ValueError, match="Unknown model"):
             build_model("nonexistent-provider/some-model")
 
-    def test_empty_string_raises(self) -> None:
-        with pytest.raises((ValueError, Exception)):
-            build_model("")
+    def test_no_slash_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid model string"):
+            build_model("justamodelname")
 
 
-# ── _OpencodeModel endpoint config ─────────────────────────────────────
+# ── resolve_model_limits: models.dev catalog lookup ───────────────────
 
 
-class TestOpencodeEndpointConfig:
-    def test_zen_base_url_and_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-        monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
-        monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
-        m = _OpencodeModel("opencode-zen", "gpt-5.4-nano")
-        base, key = m._endpoint_config()
-        assert base == "https://opencode.ai/zen"
-        assert key == "zen-key"
+class TestResolveModelLimits:
+    def test_openai_gpt4o_returns_limits(self) -> None:
+        limits = resolve_model_limits("openai/gpt-4o")
+        assert limits is not None
+        max_input, max_output = limits
+        assert max_input == 128000
+        assert max_output == 16384
 
-    def test_go_base_url_and_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENCODE_GO_API_KEY", "go-key")
-        monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
-        m = _OpencodeModel("opencode-go", "kimi-k2.6")
-        base, key = m._endpoint_config()
-        assert base == "https://opencode.ai/zen/go"
-        assert key == "go-key"
+    def test_anthropic_claude_returns_limits(self) -> None:
+        limits = resolve_model_limits("anthropic/claude-sonnet-4-20250514")
+        assert limits is not None
+        max_input, _ = limits
+        assert max_input == 200000
 
-    def test_fallback_to_common_opencode_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
-        monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
-        monkeypatch.setenv("OPENCODE_API_KEY", "common-key")
-        m = _OpencodeModel("opencode-zen", "gpt-5.4-nano")
-        _, key = m._endpoint_config()
-        assert key == "common-key"
+    def test_unknown_model_returns_none(self) -> None:
+        limits = resolve_model_limits("nonexistent/fake-model-9000")
+        assert limits is None
 
-
-# ── _OpencodeModel lazy discovery (mocked probes) ──────────────────────
-
-
-class TestOpencodeDiscovery:
-    def setup_method(self) -> None:
-        # Clear the discovery cache between tests.
-        knox_models._opencode_cache.clear()
-
-    @pytest.mark.asyncio
-    async def test_discovers_openai_chat_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """First probe (OpenAI Chat) succeeds → delegates to OpenAIChatModel."""
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-
-        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
-            # Only the OpenAI Chat endpoint accepts the model.
-            return url.endswith("/v1/chat/completions")
-
-        with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
-            m = _OpencodeModel("opencode-zen", "deepseek-v4-flash")
-            delegate = await m._resolve()
-
-        assert isinstance(delegate, OpenAIChatModel)
-        assert delegate.model_name == "deepseek-v4-flash"
-
-    @pytest.mark.asyncio
-    async def test_discovers_anthropic_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """OpenAI Chat fails, Anthropic succeeds → delegates to AnthropicModel."""
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-
-        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
-            return url.endswith("/v1/messages")
-
-        with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
-            m = _OpencodeModel("opencode-zen", "claude-sonnet-4-6")
-            delegate = await m._resolve()
-
-        assert isinstance(delegate, AnthropicModel)
-        assert delegate.model_name == "claude-sonnet-4-6"
-
-    @pytest.mark.asyncio
-    async def test_discovers_openai_responses_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Chat + Anthropic fail, Responses succeeds → OpenAIResponsesModel."""
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-
-        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
-            return url.endswith("/v1/responses")
-
-        with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
-            m = _OpencodeModel("opencode-zen", "gpt-5.4-nano")
-            delegate = await m._resolve()
-
-        assert isinstance(delegate, OpenAIResponsesModel)
-
-    @pytest.mark.asyncio
-    async def test_auth_error_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """401 during probe raises PermissionError, not a silent fallthrough."""
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "bad-key")
-
-        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> Never:
-            raise PermissionError("HTTP 401: Invalid API key")
-
-        with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
-            m = _OpencodeModel("opencode-zen", "gpt-5.4-nano")
-            with pytest.raises(PermissionError, match="401"):
-                await m._resolve()
-
-    @pytest.mark.asyncio
-    async def test_all_formats_rejected_raises_value_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-
-        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
-            return False  # every endpoint rejects
-
-        with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
-            m = _OpencodeModel("opencode-zen", "nonexistent-model")
-            with pytest.raises(ValueError, match="Could not discover API format"):
-                await m._resolve()
-
-    @pytest.mark.asyncio
-    async def test_discovery_cached_across_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Second instance reuses cached discovery — no second probe."""
-        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
-
-        probe_mock = AsyncMock(return_value=True)  # OpenAI Chat always succeeds
-        with patch.object(knox_models, "_probe_openai_chat", probe_mock):
-            m1 = _OpencodeModel("opencode-zen", "deepseek-v4-flash")
-            await m1._resolve()
-            m2 = _OpencodeModel("opencode-zen", "deepseek-v4-flash")
-            await m2._resolve()
-
-        # Probe called once (for m1), m2 hit the cache.
-        assert probe_mock.call_count == 1
+    def test_missing_slash_returns_none(self) -> None:
+        limits = resolve_model_limits("no-slash-here")
+        assert limits is None

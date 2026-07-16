@@ -29,6 +29,13 @@ from knox.preprocessing.parsers._registry import build_default_router, get_regis
 @app.command(name="doctor")
 def doctor_cmd(
     ctx: typer.Context,
+    wiki_dir: str | None = typer.Option(
+        None,
+        "--wiki-dir",
+        "-w",
+        help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
+        envvar="KNOX_WIKI_DIR",
+    ),
     verbose: Verbose = False,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
@@ -39,7 +46,8 @@ def doctor_cmd(
     or the current directory must contain a compiled wiki (i.e. the
     resolved output directory must exist).
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    # Prefer explicit --wiki-dir on this subcommand over the root callback value
+    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
