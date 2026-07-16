@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from knox.core.config.keys import COMPILE_EMBEDDING_DIM
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
@@ -254,7 +255,7 @@ class DedupOrchestrator:
         # Empty string "" and None are both treated as "not set" (falsy),
         # so `or` chains the fallback: dedup.model → compile.embedding.model → built-in.
         model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "") or "all-MiniLM-L6-v2"
-        dim = int(self._config.get("compile.embedding.dim", 384))
+        dim = int(self._config.get(COMPILE_EMBEDDING_DIM, 384))
         lsh_threshold = float(self._config.get("dedup.minhash_lsh_threshold", 0.8))
 
         for name in names:

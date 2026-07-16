@@ -119,8 +119,6 @@ class LLMConfig(_KnoxBaseModel):
     num_ctx_max: int = Field(default=131072, validation_alias="KNOX_LLM_NUM_CTX_MAX")
     context_window_cap: int | None = Field(default=None, validation_alias="KNOX_LLM_CONTEXT_WINDOW_CAP")
     role_models: dict[str, str] = Field(default_factory=dict)
-    api_base: str | None = None
-    api_key: str | None = None
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
     output_retries: int = Field(default=2, validation_alias="KNOX_LLM_OUTPUT_RETRIES")
     reasoning_effort: str | None = Field(default=None, validation_alias="KNOX_LLM_REASONING_EFFORT")

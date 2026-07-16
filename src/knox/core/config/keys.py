@@ -60,8 +60,6 @@ COMPILE_LLM_FALLBACK_MAX_OUTPUT: Final[str] = "compile.llm.fallback_max_output"
 COMPILE_LLM_NUM_CTX_MIN: Final[str] = "compile.llm.num_ctx_min"
 COMPILE_LLM_NUM_CTX_MAX: Final[str] = "compile.llm.num_ctx_max"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
-COMPILE_LLM_API_BASE: Final[str] = "compile.llm.api_base"
-COMPILE_LLM_API_KEY: Final[str] = "compile.llm.api_key"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
 COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
 COMPILE_LLM_REASONING_EFFORT: Final[str] = "compile.llm.reasoning_effort"
@@ -79,7 +77,6 @@ ORGANIZE_COLLAPSE_SINGLE_FILE: Final[str] = "organize.collapse_single_file"
 
 # ── compile.embedding sub-section ──
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"
-COMPILE_EMBEDDING_PROVIDER: Final[str] = "compile.embedding.provider"
 COMPILE_EMBEDDING_BATCH_SIZE: Final[str] = "compile.embedding.batch_size"
 COMPILE_EMBEDDING_DIM: Final[str] = "compile.embedding.dim"
 

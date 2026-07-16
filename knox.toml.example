@@ -158,7 +158,7 @@ workers = 1
 # 1 token ≈ 4 characters for English text.
 #
 # Input sizing is adaptive: the context window is discovered from the
-# model at startup (via litellm.get_model_info or Ollama /api/show).
+# model at startup (via pydantic-ai's model info or Ollama /api/show).
 # Chunks fill the available context window, clamped to [chunk_size_min,
 # chunk_size_max]. The system NEVER silently truncates input.
 #
@@ -210,7 +210,8 @@ capture_source_char_max = 4000
 # ── LLM settings ────────────────────────────────────────────────────────
 
 [compile.llm]
-# Primary model in litellm format ("provider/model")
+# Primary model in "provider/model" format (e.g. "ollama/qwen3",
+# "openai/gpt-4o", "anthropic/claude-opus-4-6").
 default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 
 # Vision model for captioning IMAGE chunks during resolution.
@@ -223,7 +224,7 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 
 # Context window discovery:
 # The context window (max_input / max_output tokens) is discovered
-# automatically at startup from litellm or Ollama /api/show. If discovery
+# automatically at startup from pydantic-ai or Ollama /api/show. If discovery
 # fails, these fallback values are used:
 # fallback_max_input = 8192
 # fallback_max_output = 4096
@@ -239,11 +240,16 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 # context_window_cap = 65536
 
 # Custom API endpoint (e.g. for proxies, Ollama Cloud, or self-hosted gateways).
-# When set, passed as api_base to litellm for every completion call.
+# Only used by custom providers (claudinio, ollama-cloud, opencode-zen/go)
+# which read their own env vars. Standard providers (openai, anthropic, etc.)
+# use their default endpoints.
 # api_base = "https://ollama.com"
 
 # API key for the primary provider. Supports $VARNAME env-var indirection
 # to avoid embedding secrets in the config file.
+# Custom providers read their own env vars (CLAUDINIO_API_KEY, OLLAMA_API_KEY,
+# OPENCODE_API_KEY). Standard providers use their default env vars
+# (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.).
 # api_key = "$OPENAI_API_KEY"
 
 # Transient-error retries before advancing to next fallback model
@@ -286,6 +292,7 @@ fallback_max_retries = 2
 # Two options:
 #   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
+# Embedding models still use litellm (not pydantic-ai) for broad provider support.
 # Leave commented to disable vector indexing.
 # model = "${KNOX_EMBEDDING_MODEL}"
 # model = "litellm:granite-embedding:278m"
