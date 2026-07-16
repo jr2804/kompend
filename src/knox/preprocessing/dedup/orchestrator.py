@@ -126,7 +126,12 @@ class DedupOrchestrator:
         if not self._store.is_fresh():
             logger.info("Dedup store stamp mismatch — rebuilding fingerprints from cache")
             self._store = self._build_store(recreate=True)
-            # TODO: re-fingerprint cached parsed docs from .knox/cache/
+            # Cross-batch dedup history is lost on stamp mismatch (store schema or
+            # config changed). Only the current batch's docs are compared against
+            # each other. Re-fingerprinting cached parse outputs from .knox/cache/
+            # would restore cross-batch comparison, but that requires loading each
+            # cached doc's text — deferred until dedup store invalidation becomes
+            # frequent enough to matter (currently rare: only on _STORE_VERSION bump).
 
         results: dict[str, DedupResult] = {}
         new_slugs = list(fingerprints.keys())

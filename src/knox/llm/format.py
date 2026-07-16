@@ -15,6 +15,7 @@ a format specification to every call would be counterproductive.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -55,7 +56,7 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
             if parsed != "":
                 return parsed
         except (json.JSONDecodeError, ValueError, RecursionError):
-            pass
+            logging.getLogger(__name__).debug("salvage_json schema-mode failed", exc_info=True)
 
     # try repairing without schema; this is the fallback path for any error above
     try:

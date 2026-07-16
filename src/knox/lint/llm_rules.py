@@ -22,20 +22,33 @@ logger = get_logger(__name__)
 
 _loader = get_template_loader()
 
-# ── Rule 9: factual-consistency ──────────────────────────────────────────
 
+class LlmLintRule(BaseLintRule):
+    """Base class for LLM-powered lint rules.
 
-class FactualConsistencyRule(BaseLintRule):
-    """Check if claims in a page contradict source material."""
-
-    name = "factual-consistency"
-    description = "Claims in page contradict source material"
+    Consolidates the shared ``__init__``, ``_call_agent``, and
+    ``_skip_if_no_agent`` logic duplicated across all LLM lint rules.
+    Subclasses must set ``name``, ``description``, and implement ``check``.
+    """
 
     def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
         self._agent = agent
         self.lint_page_budget = lint_page_budget
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
+        """Call the LintRuleAgent with a rendered template."""
+        if self._agent is None:
+            return None
+        prompt = _loader.render(template_name, **kwargs)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        try:
+            return self._agent.run(deps)
+        except Exception as exc:
+            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
+            return None
+
+    def _skip_if_no_agent(self) -> list[LintResult] | None:
+        """Return a SKIP result if no agent is configured, else *None*."""
         if self._agent is None:
             return [
                 LintResult(
@@ -44,6 +57,21 @@ class FactualConsistencyRule(BaseLintRule):
                     message="No LLM client available",
                 )
             ]
+        return None
+
+# ── Rule 9: factual-consistency ──────────────────────────────────────────
+
+
+class FactualConsistencyRule(LlmLintRule):
+    """Check if claims in a page contradict source material."""
+
+    name = "factual-consistency"
+    description = "Claims in page contradict source material"
+
+    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+        skip = self._skip_if_no_agent()
+        if skip is not None:
+            return skip
 
         results: list[LintResult] = []
         for node in wiki.nodes:
@@ -92,41 +120,20 @@ class FactualConsistencyRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
-        """Call the LintRuleAgent with a rendered template."""
-        if self._agent is None:
-            return None
-        prompt = _loader.render(template_name, **kwargs)
-        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
-        try:
-            return self._agent.run(deps)
-        except Exception as exc:
-            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
-            return None
-
 
 # ── Rule 10: clarity-score ──────────────────────────────────────────────
 
 
-class ClarityScoreRule(BaseLintRule):
+class ClarityScoreRule(LlmLintRule):
     """Rate readability, coherence, conciseness (1-10)."""
 
     name = "clarity-score"
     description = "Readability, coherence, conciseness score (1-10)"
 
-    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
-        self._agent = agent
-        self.lint_page_budget = lint_page_budget
-
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self._agent is None:
-            return [
-                LintResult(
-                    rule=self.name,
-                    outcome=LintRuleOutcome.SKIP,
-                    message="No LLM client available",
-                )
-            ]
+        skip = self._skip_if_no_agent()
+        if skip is not None:
+            return skip
 
         results: list[LintResult] = []
         for node in wiki.nodes:
@@ -185,41 +192,20 @@ class ClarityScoreRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
 
-    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
-        """Call the LintRuleAgent with a rendered template."""
-        if self._agent is None:
-            return None
-        prompt = _loader.render(template_name, **kwargs)
-        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
-        try:
-            return self._agent.run(deps)
-        except Exception as exc:
-            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
-            return None
-
 
 # ── Rule 11: coverage-gap ───────────────────────────────────────────────
 
 
-class CoverageGapRule(BaseLintRule):
+class CoverageGapRule(LlmLintRule):
     """Detect important concepts from sources missing in the wiki."""
 
     name = "coverage-gap"
     description = "Important concepts mentioned in sources but missing from wiki"
 
-    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
-        self._agent = agent
-        self.lint_page_budget = lint_page_budget
-
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self._agent is None:
-            return [
-                LintResult(
-                    rule=self.name,
-                    outcome=LintRuleOutcome.SKIP,
-                    message="No LLM client available",
-                )
-            ]
+        skip = self._skip_if_no_agent()
+        if skip is not None:
+            return skip
 
         if not wiki.nodes:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Empty wiki")]
@@ -366,25 +352,16 @@ class CoverageGapRule(BaseLintRule):
 # ── Rule 12: contradiction-detection ────────────────────────────────────
 
 
-class ContradictionDetectionRule(BaseLintRule):
+class ContradictionDetectionRule(LlmLintRule):
     """Detect pairs of wiki pages that make contradictory claims."""
 
     name = "contradiction-detection"
     description = "Contradictory claims across wiki pages"
 
-    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
-        self._agent = agent
-        self.lint_page_budget = lint_page_budget
-
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
-        if self._agent is None:
-            return [
-                LintResult(
-                    rule=self.name,
-                    outcome=LintRuleOutcome.SKIP,
-                    message="No LLM client available",
-                )
-            ]
+        skip = self._skip_if_no_agent()
+        if skip is not None:
+            return skip
 
         if len(wiki.nodes) < 2:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="Need at least two pages to detect contradictions")]
@@ -466,18 +443,6 @@ class ContradictionDetectionRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
         return results
-
-    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
-        """Call the LintRuleAgent with a rendered template."""
-        if self._agent is None:
-            return None
-        prompt = _loader.render(template_name, **kwargs)
-        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
-        try:
-            return self._agent.run(deps)
-        except Exception as exc:
-            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
-            return None
 
 
 # ── Registry ────────────────────────────────────────────────────────────
