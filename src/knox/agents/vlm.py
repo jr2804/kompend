@@ -53,10 +53,12 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
     result_type: type = str
     deps_type: type[VlmDeps] = VlmDeps
 
-    def render_user_prompt(self, deps: VlmDeps) -> str:
+    @staticmethod
+    def render_user_prompt(deps: VlmDeps) -> str:
         return deps.prompt
 
-    def render_system_prompt(self, deps: VlmDeps) -> str:
+    @staticmethod
+    def render_system_prompt(deps: VlmDeps) -> str:
         return ""
 
     def run(self, deps: VlmDeps) -> str:

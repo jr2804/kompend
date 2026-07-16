@@ -20,6 +20,7 @@ class WriteAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     result_type: type = str
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
 
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
+    @staticmethod
+    def render_user_prompt(deps: PipelineAgentDeps) -> str:
         """Return the pre-rendered prompt from deps.text."""
         return deps.text

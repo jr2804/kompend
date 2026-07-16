@@ -22,7 +22,8 @@ class LintRuleAgent(KnoxAgentBase[dict[str, Any], PipelineAgentDeps]):
     result_type: type = dict  # type: ignore[arg-type]
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
 
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
+    @staticmethod
+    def render_user_prompt(deps: PipelineAgentDeps) -> str:
         """Return the pre-rendered prompt from deps.text.
 
         Lint rules render their own templates in ``_call_agent()`` and

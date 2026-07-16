@@ -6,11 +6,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import typer
+
 from knox.agents.capture import CaptureAgent
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.distill import DistillAgent
 from knox.agents.write import WriteAgent
-import typer
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
@@ -23,6 +24,7 @@ from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, COMPIL
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
+from knox.core.templates import get_template_loader
 from knox.core.utils.time import iso_local
 from knox.llm.format import strip_reasoning as _strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
@@ -256,8 +258,6 @@ def _synthesize_write_page(
 
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
-
-    from knox.core.templates import get_template_loader
 
     agent = WriteAgent(
         model,
