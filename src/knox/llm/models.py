@@ -34,7 +34,6 @@ from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.tools import ToolDefinition
 
 from knox.llm.http_client import create_retrying_http_client
 from knox.logging import get_logger
@@ -91,9 +90,7 @@ def build_model(model_string: str) -> Model:
 
     # Standard providers — delegate to pydantic-ai's auto-resolution.
     # KNOX uses ``provider/model``; pydantic-ai uses ``provider:model``.
-    pydantic_ai_string = (
-        f"{prefix}:{name}" if sep and ":" not in model_string else model_string
-    )
+    pydantic_ai_string = f"{prefix}:{name}" if sep and ":" not in model_string else model_string
     try:
         return infer_model(pydantic_ai_string)
     except Exception as exc:
@@ -202,25 +199,16 @@ class _OpencodeModel(Model):
                 )
                 return builder()
 
-        raise ValueError(
-            f"Could not discover API format for {self._tier}/{self._name} at {base}. "
-            f"Verify the model name and API key."
-        )
+        raise ValueError(f"Could not discover API format for {self._tier}/{self._name} at {base}. Verify the model name and API key.")
 
     def _endpoint_config(self) -> tuple[str, str]:
         """Return (base_url, api_key) for this tier."""
         if self._tier == "opencode-go":
             base = _OPENCODE_GO_BASE_URL
-            api_key = (
-                os.environ.get("OPENCODE_GO_API_KEY")
-                or os.environ.get("OPENCODE_API_KEY", "")
-            )
+            api_key = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("OPENCODE_API_KEY", "")
         else:
             base = _OPENCODE_ZEN_BASE_URL
-            api_key = (
-                os.environ.get("OPENCODE_ZEN_API_KEY")
-                or os.environ.get("OPENCODE_API_KEY", "")
-            )
+            api_key = os.environ.get("OPENCODE_ZEN_API_KEY") or os.environ.get("OPENCODE_API_KEY", "")
         return base, api_key
 
 
@@ -278,10 +266,7 @@ async def _probe_endpoint(url: str, headers: dict[str, str], body: dict[str, Any
         return True
     if resp.status_code in (401, 403):
         # Auth problem — let it surface clearly.
-        raise PermissionError(
-            f"OpenCode API key rejected (HTTP {resp.status_code}) at {url}: "
-            f"{resp.text[:200]}"
-        )
+        raise PermissionError(f"OpenCode API key rejected (HTTP {resp.status_code}) at {url}: {resp.text[:200]}")
     # 404 / 400 / others → model not served at this endpoint format.
     logger.debug(
         "OpenCode probe %s rejected model (HTTP %s): %s",

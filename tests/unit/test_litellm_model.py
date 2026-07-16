@@ -8,7 +8,6 @@ arguments validated directly), so there is no JSON text to repair.
 
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -118,7 +117,7 @@ class TestDelegation:
 
 class TestDebugSaving:
     @pytest.mark.asyncio
-    async def test_debug_not_saved_when_no_agent(self, tmp_path, monkeypatch) -> None:
+    async def test_debug_not_saved_when_no_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without an agent reference, debug saving is a no-op even if dir set."""
         monkeypatch.setenv("KNOX_DEBUG_LLM_DIR", str(tmp_path))
         wrapper = KnoxModel(TestModel(), agent=None)

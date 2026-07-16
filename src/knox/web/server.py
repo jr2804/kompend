@@ -17,7 +17,7 @@ from knox.core.models import CompiledWiki, WikiField
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
 from knox.search.classifier import classify
-from knox.search.retriever import SearchResult, HybridRetriever
+from knox.search.retriever import HybridRetriever, SearchResult
 
 logger = get_logger(__name__)
 

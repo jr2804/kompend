@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock
 
-import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
     ModelMessage,
@@ -61,8 +59,10 @@ def _all_notifications(mock_conn: MagicMock) -> str:
 
 def _make_function_model(response_text: str) -> FunctionModel:
     """Build a FunctionModel that returns a fixed text response."""
+
     def handler(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         return ModelResponse(parts=[TextPart(content=response_text)])
+
     return FunctionModel(handler)
 
 
@@ -149,12 +149,12 @@ class TestConversationalAgent:
         """When max_turns is reached without a final answer, agent stops."""
         definition = _make_definition(max_turns=1)
         tools = ToolDispatcher()
+
         # Return a tool call to keep the loop going
         def handler(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-            return ModelResponse(
-                parts=[ToolCallPart(tool_name="wiki_status", args={})]
-            )
-        model = FunctionModel(handler)
+            return ModelResponse(parts=[ToolCallPart(tool_name="wiki_status", args={})])
+
+        FunctionModel(handler)
         agent = ConversationalAgent(definition, "test", tools)
         # Build the real agent (with dispatch_tool registered) so tool calls work
         conn = _mock_conn()

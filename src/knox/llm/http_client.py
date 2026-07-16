@@ -8,7 +8,6 @@ Used by :func:`knox.llm.models.build_model` to inject into native providers.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Callable
 
 import httpx
 import tenacity
@@ -102,11 +101,11 @@ class AsyncTenacityTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         return await self._retry(self._attempt, request)
 
-    async def _attempt(self, request: httpx.Request) -> httpx.Response:
-        return await self._base.handle_async_request(request)
-
     async def aclose(self) -> None:
         await self._base.aclose()
+
+    async def _attempt(self, request: httpx.Request) -> httpx.Response:
+        return await self._base.handle_async_request(request)
 
 
 # -- factory -------------------------------------------------------------------

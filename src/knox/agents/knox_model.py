@@ -74,9 +74,7 @@ class KnoxModel(Model):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         merged_settings = self._merge_reasoning(model_settings)
-        response = await self._delegate.request(
-            messages, merged_settings, model_request_parameters
-        )
+        response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         self._track_usage(response)
         self._save_debug(messages, response)
         return response

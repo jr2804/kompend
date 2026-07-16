@@ -46,10 +46,7 @@ def _validate_generation_output(
     feedback so the model can fix the problem.
     """
     if not output.pages:
-        raise ModelRetry(
-            "You returned an empty pages list. Generate at least one "
-            "wiki page with a title, slug, and content."
-        )
+        raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
 
     seen_slugs: set[str] = set()
     issues: list[str] = []
@@ -64,10 +61,7 @@ def _validate_generation_output(
         seen_slugs.add(page.slug)
 
     if issues:
-        raise ModelRetry(
-            "Fix the following issues and return the complete output again:\n"
-            + "\n".join(f"- {issue}" for issue in issues)
-        )
+        raise ModelRetry("Fix the following issues and return the complete output again:\n" + "\n".join(f"- {issue}" for issue in issues))
 
     return output
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+from typing import Never
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,7 +13,6 @@ from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 from knox.llm import models as knox_models
 from knox.llm.models import _OpencodeModel, build_model
-
 
 # ── build_model: standard providers via pydantic-ai auto-resolution ────
 
@@ -129,9 +128,7 @@ class TestOpencodeEndpointConfig:
         assert base == "https://opencode.ai/zen/go"
         assert key == "go-key"
 
-    def test_fallback_to_common_opencode_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_to_common_opencode_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
         monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
         monkeypatch.setenv("OPENCODE_API_KEY", "common-key")
@@ -153,7 +150,7 @@ class TestOpencodeDiscovery:
         """First probe (OpenAI Chat) succeeds → delegates to OpenAIChatModel."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
-        async def fake_probe(url, headers, body):
+        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
             # Only the OpenAI Chat endpoint accepts the model.
             return url.endswith("/v1/chat/completions")
 
@@ -169,7 +166,7 @@ class TestOpencodeDiscovery:
         """OpenAI Chat fails, Anthropic succeeds → delegates to AnthropicModel."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
-        async def fake_probe(url, headers, body):
+        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
             return url.endswith("/v1/messages")
 
         with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
@@ -180,13 +177,11 @@ class TestOpencodeDiscovery:
         assert delegate.model_name == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
-    async def test_discovers_openai_responses_format(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_discovers_openai_responses_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Chat + Anthropic fail, Responses succeeds → OpenAIResponsesModel."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
-        async def fake_probe(url, headers, body):
+        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
             return url.endswith("/v1/responses")
 
         with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
@@ -200,7 +195,7 @@ class TestOpencodeDiscovery:
         """401 during probe raises PermissionError, not a silent fallthrough."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "bad-key")
 
-        async def fake_probe(url, headers, body):
+        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> Never:
             raise PermissionError("HTTP 401: Invalid API key")
 
         with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
@@ -209,12 +204,10 @@ class TestOpencodeDiscovery:
                 await m._resolve()
 
     @pytest.mark.asyncio
-    async def test_all_formats_rejected_raises_value_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_all_formats_rejected_raises_value_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
-        async def fake_probe(url, headers, body):
+        async def fake_probe(url: str, headers: dict[str, str], body: dict[str, object]) -> bool:
             return False  # every endpoint rejects
 
         with patch.object(knox_models, "_probe_endpoint", AsyncMock(side_effect=fake_probe)):
@@ -223,9 +216,7 @@ class TestOpencodeDiscovery:
                 await m._resolve()
 
     @pytest.mark.asyncio
-    async def test_discovery_cached_across_instances(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_discovery_cached_across_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Second instance reuses cached discovery — no second probe."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
