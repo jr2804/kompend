@@ -13,6 +13,7 @@ the agent, tools, and per-session configuration.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import typer
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
@@ -39,29 +40,26 @@ def agent_cmd(
     """
     agent = build_knox_agent()
 
-    # Start MCP companion server in background if port is specified
     if mcp_port is not None:
         mcp_server = create_mcp_server(port=mcp_port)
         mcp_task = asyncio.create_task(mcp_server.run_streamable_http_async())
         try:
-            run_acp_stdio_sync(
-                agent,
-                session_config=knox_session_config,
-                name="knox",
-                version="0.1.0",
-            )
+            _run_sync(agent)
         finally:
             mcp_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception, TimeoutError):
                 asyncio.get_event_loop().run_until_complete(
                     asyncio.wait_for(mcp_task, timeout=5)
                 )
-            except (asyncio.CancelledError, Exception, TimeoutError):
-                pass
     else:
-        run_acp_stdio_sync(
-            agent,
-            session_config=knox_session_config,
-            name="knox",
-            version="0.1.0",
-        )
+        _run_sync(agent)
+
+
+def _run_sync(agent: object) -> None:
+    """Run the ACP agent synchronously."""
+    run_acp_stdio_sync(
+        agent,  # type: ignore[arg-type]
+        session_config=knox_session_config,
+        name="knox",
+        version="0.1.0",
+    )

@@ -10,14 +10,12 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.acp.knox_agent import KnoxAgent
 from knox.acp.provider_store import (
     LLM_PROVIDER_MAP,
     LlmApiType,
     ProviderConfig,
     ProviderCredentials,
 )
-from knox.acp.slash_commands import HELP_TEXT, parse_slash_command
 from knox.cli._pipeline_helpers import _emit_json_done, _make_json_progress_callback
 from knox.cli.cmds.agents import _agents_install, _agents_remove
 
@@ -128,68 +126,6 @@ class TestProviderCredentials:
         assert LlmApiType.BEDROCK.value == "bedrock"
 
 
-class TestSlashCommands:
-    """Slash command parsing."""
-
-    def test_parse_compile(self) -> None:
-        cmd = parse_slash_command("/knox compile")
-        assert cmd is not None
-        assert cmd.name == "compile"
-        assert cmd.args == []
-        assert cmd.kwargs == {}
-
-    def test_parse_compile_with_flags(self) -> None:
-        cmd = parse_slash_command("/knox compile --start-at-tier chunk --force")
-        assert cmd is not None
-        assert cmd.name == "compile"
-        assert cmd.kwargs.get("start-at-tier") == "chunk"
-        assert "force" in cmd.kwargs
-
-    def test_parse_query(self) -> None:
-        cmd = parse_slash_command('/knox query "What is audio processing?" --tag audio')
-        assert cmd is not None
-        assert cmd.name == "query"
-        assert cmd.args == ["What is audio processing?"]
-        assert cmd.kwargs.get("tag") == "audio"
-
-    def test_parse_capture(self) -> None:
-        cmd = parse_slash_command("/knox capture Remember to check the spec")
-        assert cmd is not None
-        assert cmd.name == "capture"
-        assert cmd.args == ["Remember", "to", "check", "the", "spec"]
-
-    def test_parse_status(self) -> None:
-        cmd = parse_slash_command("/knox status")
-        assert cmd is not None
-        assert cmd.name == "status"
-
-    def test_parse_help(self) -> None:
-        cmd = parse_slash_command("/knox help")
-        assert cmd is not None
-        assert cmd.name == "help"
-
-    def test_parse_help_with_command(self) -> None:
-        cmd = parse_slash_command("/knox help compile")
-        assert cmd is not None
-        assert cmd.name == "help"
-        assert cmd.args == ["compile"]
-
-    def test_non_knox_command_returns_none(self) -> None:
-        cmd = parse_slash_command("hello world")
-        assert cmd is None
-
-    def test_empty_after_knox_returns_none(self) -> None:
-        cmd = parse_slash_command("/knox ")
-        assert cmd is None
-
-    def test_help_text_contains_commands(self) -> None:
-        assert "/knox compile" in HELP_TEXT
-        assert "/knox query" in HELP_TEXT
-        assert "/knox capture" in HELP_TEXT
-        assert "/knox status" in HELP_TEXT
-        assert "/knox help" in HELP_TEXT
-
-
 class TestJsonProgressCallback:
     """JSON progress callback for --json-progress mode."""
 
@@ -262,23 +198,3 @@ class TestAgentInstallRemove:
         """Removing a non-existent agent raises."""
         with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_remove("nonexistent")
-
-
-class TestAgentFileOverride:
-    """--agent-file flag on knox agent."""
-
-    def test_agent_file_loaded(self, tmp_path: Path) -> None:
-        """KnoxAgent loads agent from explicit file."""
-        agent_toml = tmp_path / "custom.toml"
-        agent_toml.write_text(
-            'name = "custom"\ndescription = "Custom"\ntask = "compile"\n\n[prompt]\nsystem = "You are custom."\n',
-            encoding="utf-8",
-        )
-
-        agent = KnoxAgent(agent_file=str(agent_toml))
-        assert agent._agent_file == str(agent_toml)
-
-    def test_agent_file_none_by_default(self) -> None:
-        """KnoxAgent defaults to None for agent_file."""
-        agent = KnoxAgent()
-        assert agent._agent_file is None

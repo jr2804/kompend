@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic_ai import Agent
+from pydantic_ai_harness.experimental.acp import AcpSessionConfig
 
 from knox.acp.definitions import AgentTask
 from knox.acp.registry import AgentRegistry
@@ -36,7 +37,7 @@ def build_knox_agent() -> Agent[None, str]:
     )
 
 
-def knox_session_config(session: Any) -> Any:
+def knox_session_config(session: Any) -> AcpSessionConfig[None]:
     """Per-session factory for ``run_acp_stdio_sync(session_config=...)``.
 
     Resolves the active agent definition for the session's workspace and
@@ -50,8 +51,6 @@ def knox_session_config(session: Any) -> Any:
     Returns:
         An ``AcpSessionConfig`` with deps=None and the resolved toolset.
     """
-    from pydantic_ai_harness.experimental.acp import AcpSessionConfig
-
     cwd = session.cwd
     registry = AgentRegistry(base_dir=cwd)
     definition = registry.active_for(AgentTask.GENERIC, {})
