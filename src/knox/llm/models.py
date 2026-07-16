@@ -34,17 +34,39 @@ logger = get_logger(__name__)
 # ── public API ─────────────────────────────────────────────────────────
 
 
+def _parse_model_string(model_string: str) -> tuple[str, str]:
+    """Split ``provider/model`` or ``provider:model`` into *(provider, model_name)*.
+
+    Splits on the **first** ``/`` or ``:`` — whichever comes first.
+    The remainder (model_name) may itself contain further slashes or colons.
+    """
+    slash_pos = model_string.find("/")
+    colon_pos = model_string.find(":")
+
+    # First separator wins
+    if slash_pos == -1:
+        sep_pos = colon_pos
+    elif colon_pos == -1:
+        sep_pos = slash_pos
+    else:
+        sep_pos = min(slash_pos, colon_pos)
+
+    if sep_pos <= 0:
+        raise ValueError(
+            f"Invalid model string {model_string!r}. "
+            f"Use 'provider/model' or 'provider:model' format "
+            f"(e.g. 'ollama/qwen3', 'openai:gpt-5.2')."
+        )
+
+    return model_string[:sep_pos], model_string[sep_pos + 1 :]
+
+
 def build_model(model_string: str) -> Model:
-    """Build a native pydantic-ai Model from a KNOX ``provider/model`` string.
+    """Build a native pydantic-ai Model from a KNOX model string.
 
     Resolution order: models-dev catalog → pydantic-ai native inference.
     """
-    prefix, sep, name = model_string.partition("/")
-    if not sep:
-        raise ValueError(
-            f"Invalid model string {model_string!r}. Use the format "
-            f"'provider/model' (e.g. 'ollama/qwen3', 'openai/gpt-5.2')."
-        )
+    prefix, name = _parse_model_string(model_string)
 
     # 1. Try models-dev catalog (150+ providers)
     try:
@@ -58,8 +80,8 @@ def build_model(model_string: str) -> Model:
         return infer_model(f"{prefix}:{name}")
     except Exception as exc:
         msg = (
-            f"Unknown model model_string {model_string!r}. "
-            f"Verify the provider name (prefix before '/') is correct. "
+            f"Unknown model string {model_string!r}. "
+            f"Verify the provider name is correct. "
             f"Original error: {exc}"
         )
         raise ValueError(msg) from exc
@@ -69,15 +91,11 @@ def resolve_model_limits(model_id: str) -> tuple[int, int]:
     """Resolve ``(max_input, max_output)`` token limits from models-dev catalog.
 
     Raises:
-        ValueError: If *model_id* has no ``/`` separator.
+        ValueError: If *model_id* has no ``/`` or ``:`` separator.
         KeyError: If the provider or model is not in the catalog.
         LookupError: If the model entry has no limit data.
     """
-    provider, sep, model_name = model_id.partition("/")
-    if not sep:
-        raise ValueError(
-            f"Invalid model ID {model_id!r}. Use 'provider/model' format."
-        )
+    provider, model_name = _parse_model_string(model_id)
 
     model = get_model_by_id(provider, model_name)  # raises KeyError
 

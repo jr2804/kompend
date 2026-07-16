@@ -7,7 +7,53 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from knox.llm.models import build_model, resolve_model_limits
+from knox.llm.models import _parse_model_string, build_model, resolve_model_limits
+
+# ── _parse_model_string ────────────────────────────────────────────────
+
+
+class TestParseModelString:
+    def test_slash_separator(self) -> None:
+        assert _parse_model_string("ollama/qwen3") == ("ollama", "qwen3")
+
+    def test_colon_separator(self) -> None:
+        assert _parse_model_string("openai:gpt-5.2") == ("openai", "gpt-5.2")
+
+    def test_multi_slash(self) -> None:
+        """provider/sub/sub_model → provider='provider', model='sub/sub_model'"""
+        assert _parse_model_string("ollama/hf.co/qwen3.6") == ("ollama", "hf.co/qwen3.6")
+
+    def test_colon_with_slash(self) -> None:
+        """provider:sub/model → provider='provider', model='sub/model'"""
+        assert _parse_model_string("deepseek:sub/model") == ("deepseek", "sub/model")
+
+    def test_slash_with_colon_in_model(self) -> None:
+        """provider/model:version → provider='provider', model='model:version'"""
+        assert _parse_model_string("ollama/gemma4:e2b") == ("ollama", "gemma4:e2b")
+
+    def test_multi_slash_with_colon(self) -> None:
+        """provider/sub/model:version → provider, sub/model:version"""
+        assert _parse_model_string("ollama/hf.co/qwen3.6:latest") == ("ollama", "hf.co/qwen3.6:latest")
+
+    def test_colon_with_multi_slash_and_colon(self) -> None:
+        """provider:sub/model:version → provider, sub/model:version"""
+        assert _parse_model_string("deepseek:sub/model:v2") == ("deepseek", "sub/model:v2")
+
+    def test_first_separator_wins(self) -> None:
+        """When both / and : exist, the first one splits."""
+        assert _parse_model_string("a/b:c") == ("a", "b:c")
+        assert _parse_model_string("a:b/c") == ("a", "b/c")
+
+    def test_no_separator_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid model string"):
+            _parse_model_string("justamodelname")
+
+    def test_empty_model_name_raises(self) -> None:
+        """'provider/' or 'provider:' with empty model name."""
+        # sep_pos would be > 0 but model_name would be empty
+        assert _parse_model_string("ollama/") == ("ollama", "")
+        assert _parse_model_string("ollama:") == ("ollama", "")
+
 
 # ── build_model: standard providers via pydantic-ai auto-resolution ────
 
@@ -34,7 +80,6 @@ class TestBuildModelStandardProviders:
         """
         m = build_model("ollama/qwen3")
         assert isinstance(m, OpenAIChatModel)
-        assert m.model_name == "qwen3"
         assert m.model_name == "qwen3"
 
     def test_ollama_multi_slash_model_name_preserved(self) -> None:
@@ -67,6 +112,30 @@ class TestBuildModelStandardProviders:
     def test_google_prefix(self) -> None:
         m = build_model("google/gemini-3-flash")
         assert isinstance(m, GoogleModel)
+
+    def test_colon_separator_standard_provider(self) -> None:
+        """provider:model works for standard providers."""
+        m = build_model("ollama:qwen3")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "qwen3"
+
+    def test_colon_separator_with_slash_in_model(self) -> None:
+        """provider:sub/model works."""
+        m = build_model("ollama:hf.co/qwen3.6")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "hf.co/qwen3.6"
+
+    def test_colon_separator_with_colon_in_model(self) -> None:
+        """provider:model:version works — first colon splits."""
+        m = build_model("ollama:gemma4:e2b")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "gemma4:e2b"
+
+    def test_multi_slash_with_version(self) -> None:
+        """provider/sub/model:version works."""
+        m = build_model("ollama/hf.co/qwen3.6:latest")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "hf.co/qwen3.6:latest"
 
 
 # ── build_model: custom providers via models-dev catalog ──────────────
@@ -113,7 +182,7 @@ class TestBuildModelErrors:
         with pytest.raises(ValueError, match="Unknown model"):
             build_model("nonexistent-provider/some-model")
 
-    def test_no_slash_raises_value_error(self) -> None:
+    def test_no_separator_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid model string"):
             build_model("justamodelname")
 
@@ -135,6 +204,11 @@ class TestResolveModelLimits:
         with pytest.raises(KeyError, match="nonexistent"):
             resolve_model_limits("nonexistent/fake-model-9000")
 
-    def test_missing_slash_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="Invalid model ID"):
+    def test_no_separator_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid model string"):
             resolve_model_limits("no-slash-here")
+
+    def test_colon_separator_works(self) -> None:
+        max_input, max_output = resolve_model_limits("openai:gpt-4o")
+        assert max_input == 128000
+        assert max_output == 16384

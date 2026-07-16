@@ -34,10 +34,11 @@ Resolution order:
 | `anthropic/` | `AnthropicModel` | pydantic-ai `infer_model` |
 | `google/` | `GoogleModel` | pydantic-ai `infer_model` |
 
-Model strings split at the **first** slash; the remainder is the model
-name verbatim and may itself contain slashes (e.g.
-`ollama/hf.co/qwen3.6` → provider `ollama`, model `hf.co/qwen3.6`) or a
-colon (e.g. `ollama/gemma4:e2b`).
+`_parse_model_string(model_string)` splits on the **first** `/` or `:`
+— whichever comes first — into `(provider, model_name)`. The remainder
+is passed verbatim and may contain further slashes or colons (e.g.
+`ollama/hf.co/qwen3.6:latest` → provider `ollama`, model
+`hf.co/qwen3.6:latest`).
 
 Provider ID aliases (`opencode-zen` → `opencode`) are maintained in
 `_PROVIDER_ALIASES` — the only hardcoded mapping in the module.

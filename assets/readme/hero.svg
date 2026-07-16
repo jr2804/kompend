@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="340" viewBox="0 0 1200 340"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">KNOX — Knowledge Organizer for eXtended documents</title>
+  <desc id="hero-desc">KNOX compiles scattered technical documents (PDF, DOCX, web) into an interlinked, queryable wiki using any LLM. Title beside a knowledge-graph motif showing source documents transforming into linked wiki nodes.</desc>
+
+  <defs>
+    <linearGradient id="edgeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0.7"/>
+    </linearGradient>
+    <radialGradient id="nodeGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="340" rx="22" fill="#0b1220"/>
+  <rect x="1" y="1" width="1198" height="338" rx="21" fill="none" stroke="#1f2a44" stroke-width="1"/>
+
+  <!-- ── title block ─────────────────────────────────────────────── -->
+  <g transform="translate(56 44)">
+    <!-- eyebrow -->
+    <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+          font-size="13" letter-spacing="3" fill="#2dd4bf" font-weight="600">
+      KNOWLEDGE ORGANIZER
+    </text>
+    <text x="195" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+          font-size="13" letter-spacing="1" fill="#6b7a90">
+      · provider-agnostic · OKF v0.1 · ACP agent
+    </text>
+
+    <!-- name -->
+    <text x="-3" y="92" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+          font-size="86" font-weight="800" fill="#e6edf3" letter-spacing="-2">KNOX</text>
+
+    <!-- tagline -->
+    <text x="2" y="138" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+          font-size="22" font-weight="500" fill="#c8d4e3">
+      Compile scattered documents into an
+    </text>
+    <text x="2" y="166" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+          font-size="22" font-weight="500" fill="#c8d4e3">
+      interlinked, queryable wiki — with any LLM.
+    </text>
+
+    <!-- metadata row -->
+    <g transform="translate(2 214)" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+       font-size="12" fill="#6b7a90">
+      <text x="0" y="0">PDF</text>
+      <text x="40" y="0" fill="#3b4a63">·</text>
+      <text x="54" y="0">DOCX</text>
+      <text x="104" y="0" fill="#3b4a63">·</text>
+      <text x="118" y="0">PPTX</text>
+      <text x="168" y="0" fill="#3b4a63">·</text>
+      <text x="182" y="0">EPUB</text>
+      <text x="232" y="0" fill="#3b4a63">·</text>
+      <text x="246" y="0">XLSX</text>
+      <text x="296" y="0" fill="#3b4a63">·</text>
+      <text x="310" y="0">HTML</text>
+      <text x="360" y="0" fill="#3b4a63">·</text>
+      <text x="374" y="0">WEB</text>
+    </g>
+
+    <!-- first action chip -->
+    <g transform="translate(2 240)">
+      <rect x="0" y="0" width="430" height="40" rx="10" fill="#131c2e" stroke="#243250" stroke-width="1"/>
+      <text x="14" y="26" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="14" fill="#6b7a90">$</text>
+      <text x="30" y="26" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="14" fill="#e6edf3">knox init &amp;&amp; knox compile &amp;&amp; knox query</text>
+      <rect x="0" y="0" width="3" height="40" rx="1.5" fill="#2dd4bf"/>
+    </g>
+  </g>
+
+  <!-- ── knowledge-graph motif ───────────────────────────────────── -->
+  <g transform="translate(720 40)">
+    <!-- source documents stacked (left edge of motif) -->
+    <g opacity="0.85">
+      <rect x="6" y="42" width="44" height="56" rx="5" fill="#1a2640" stroke="#2c3a5c" stroke-width="1"/>
+      <rect x="10" y="52" width="28" height="3" rx="1.5" fill="#3b4a63"/>
+      <rect x="10" y="60" width="36" height="3" rx="1.5" fill="#2c3a5c"/>
+      <rect x="10" y="68" width="22" height="3" rx="1.5" fill="#2c3a5c"/>
+      <rect x="10" y="76" width="30" height="3" rx="1.5" fill="#2c3a5c"/>
+      <text x="28" y="116" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#6b7a90" text-anchor="middle">sources</text>
+    </g>
+
+    <!-- transform arrow -->
+    <path d="M58 70 Q90 70 110 70" fill="none" stroke="url(#edgeGrad)" stroke-width="2"/>
+    <path d="M106 65 L114 70 L106 75" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- interlinked wiki nodes (right of motif) -->
+    <g transform="translate(120 0)">
+      <!-- edges first (under nodes) -->
+      <g stroke="#2dd4bf" stroke-width="1.4" opacity="0.55" fill="none">
+        <line x1="80" y1="50" x2="160" y2="40"/>
+        <line x1="80" y1="50" x2="150" y2="120"/>
+        <line x1="160" y1="40" x2="250" y2="70"/>
+        <line x1="150" y1="120" x2="250" y2="70"/>
+        <line x1="150" y1="120" x2="170" y2="200"/>
+        <line x1="250" y1="70" x2="330" y2="140"/>
+        <line x1="170" y1="200" x2="330" y2="140"/>
+        <line x1="170" y1="200" x2="260" y2="250"/>
+        <line x1="330" y1="140" x2="260" y2="250"/>
+        <line x1="80" y1="50" x2="40" y2="130"/>
+        <line x1="40" y1="130" x2="150" y2="120"/>
+      </g>
+
+      <!-- highlight node glow -->
+      <circle cx="250" cy="70" r="34" fill="url(#nodeGlow)"/>
+
+      <!-- nodes -->
+      <g>
+        <circle cx="80" cy="50" r="9" fill="#131c2e" stroke="#2dd4bf" stroke-width="2"/>
+        <circle cx="160" cy="40" r="7" fill="#131c2e" stroke="#3b82c4" stroke-width="2"/>
+        <circle cx="40" cy="130" r="6" fill="#131c2e" stroke="#3b82c4" stroke-width="2"/>
+        <circle cx="150" cy="120" r="10" fill="#131c2e" stroke="#2dd4bf" stroke-width="2"/>
+        <!-- primary highlighted node -->
+        <circle cx="250" cy="70" r="13" fill="#2dd4bf" stroke="#5eead4" stroke-width="2"/>
+        <circle cx="330" cy="140" r="11" fill="#131c2e" stroke="#2dd4bf" stroke-width="2"/>
+        <circle cx="170" cy="200" r="9" fill="#131c2e" stroke="#3b82c4" stroke-width="2"/>
+        <circle cx="260" cy="250" r="8" fill="#131c2e" stroke="#3b82c4" stroke-width="2"/>
+      </g>
+
+      <text x="180" y="290" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#6b7a90" text-anchor="middle">interlinked wiki</text>
+    </g>
+  </g>
+</svg>

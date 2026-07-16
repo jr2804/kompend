@@ -153,14 +153,16 @@ See [WiCER Loop](wicer-loop.md) for a detailed walkthrough.
 ## Tier 5: Output
 
 **Input:** `CompiledWiki`  
-**Output:** Files on disk (markdown, JSON, Typst)  
+**Output:** Files on disk (OKF, Markdown, JSON, Typst)  
 **Interface:** `BaseOutputWriter` in `src/knox/output/base.py`
 
 ``` mermaid
 flowchart LR
-    Wiki[CompiledWiki] --> MD[MarkdownWriter]
+    Wiki[CompiledWiki] --> OKF[OkfWriter]
+    Wiki --> MD[MarkdownWriter]
     Wiki --> JSON[JSONWriter]
     Wiki --> Typst[TypstWriter]
+    OKF --> wiki_okf[wiki/ OKF bundles]
     MD --> wiki_md[wiki/*.md]
     JSON --> wiki_json[wiki.json]
     Typst --> wiki_typ[wiki.typ]
@@ -171,7 +173,8 @@ flowchart LR
 | Class | File | Purpose |
 |-------|------|---------|
 | `BaseOutputWriter` | `output/base.py` | Abstract interface: `write(wiki, path)` |
-| `MarkdownWriter` | `output/markdown.py` | Obsidian vault (one `.md` per node + `index.md`) |
+| `OkfWriter` | `output/okf_writer.py` | **Default.** [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) v0.1 bundles |
+| `MarkdownWriter` | `output/markdown.py` | Obsidian vault (one `.md` per node + `index.md`). Use `--format markdown` |
 | `JSONWriter` | `output/json_writer.py` | Machine-readable JSON graph |
 | `TypstWriter` | `output/typst.py` | Academic PDF via Typst |
 

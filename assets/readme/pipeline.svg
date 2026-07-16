@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="280" viewBox="0 0 1200 280"
+     role="img" aria-labelledby="pipe-title pipe-desc">
+  <title id="pipe-title">KNOX 5-tier pipeline</title>
+  <desc id="pipe-desc">Five sequential tiers — Preprocessing, Chunking, Resolution, Compilation, Output — showing what each tier produces. Tiers 2–4 require an LLM; tier 1 does not.</desc>
+
+  <!-- background -->
+  <rect width="1200" height="280" rx="18" fill="#0b1220"/>
+  <rect x="1" y="1" width="1198" height="278" rx="17" fill="none" stroke="#1f2a44" stroke-width="1"/>
+
+  <!-- tier colors -->
+  <defs>
+    <!-- defined inline per tier below -->
+  </defs>
+
+  <g transform="translate(40 30)">
+    <!-- header -->
+    <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+          font-size="12" letter-spacing="2" fill="#6b7a90">5-TIER PIPELINE · each tier independently replaceable</text>
+  </g>
+
+  <!-- ── tier cards ─────────────────────────────────────────────── -->
+  <!-- 5 cards across 1120 width: 200 each, 20 gap -->
+  <g transform="translate(40 56)">
+
+    <!-- T1 Preprocessing -->
+    <g>
+      <rect x="0" y="0" width="200" height="150" rx="14" fill="#131c2e" stroke="#6366f1" stroke-width="1.5"/>
+      <rect x="0" y="0" width="200" height="4" rx="2" fill="#6366f1"/>
+      <text x="16" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="12" font-weight="700" fill="#818cf8">T1</text>
+      <text x="16" y="60" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="17" font-weight="700" fill="#e6edf3">Preprocessing</text>
+      <text x="16" y="84" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">PDF · DOCX · PPTX</text>
+      <text x="16" y="100" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">EPUB · XLSX · WEB</text>
+      <text x="16" y="132" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="10" fill="#6b7a90">→ ParsedDocument</text>
+      <text x="16" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#4a5a76">LLM-free</text>
+    </g>
+
+    <!-- arrow T1→T2 -->
+    <path d="M200 75 L220 75" stroke="#3b4a63" stroke-width="1.5"/>
+    <path d="M216 71 L222 75 L216 79" fill="none" stroke="#3b4a63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- T2 Chunking -->
+    <g transform="translate(228 0)">
+      <rect x="0" y="0" width="200" height="150" rx="14" fill="#131c2e" stroke="#3b82f6" stroke-width="1.5"/>
+      <rect x="0" y="0" width="200" height="4" rx="2" fill="#3b82f6"/>
+      <text x="16" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="12" font-weight="700" fill="#60a5fa">T2</text>
+      <text x="16" y="60" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="17" font-weight="700" fill="#e6edf3">Chunking</text>
+      <text x="16" y="84" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Adaptive sizing</text>
+      <text x="16" y="100" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Atomic elements</text>
+      <text x="16" y="132" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="10" fill="#6b7a90">→ ChunkTree</text>
+      <text x="16" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#f59e0b">needs LLM</text>
+    </g>
+
+    <path d="M428 75 L448 75" stroke="#3b4a63" stroke-width="1.5"/>
+    <path d="M444 71 L450 75 L444 79" fill="none" stroke="#3b4a63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- T3 Resolution -->
+    <g transform="translate(456 0)">
+      <rect x="0" y="0" width="200" height="150" rx="14" fill="#131c2e" stroke="#06b6d4" stroke-width="1.5"/>
+      <rect x="0" y="0" width="200" height="4" rx="2" fill="#06b6d4"/>
+      <text x="16" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="12" font-weight="700" fill="#22d3ee">T3</text>
+      <text x="16" y="60" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="17" font-weight="700" fill="#e6edf3">Resolution</text>
+      <text x="16" y="84" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Entities · acronyms</text>
+      <text x="16" y="100" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Cross-references</text>
+      <text x="16" y="132" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="10" fill="#6b7a90">→ ResolvedChunk</text>
+      <text x="16" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#f59e0b">needs LLM</text>
+    </g>
+
+    <path d="M656 75 L676 75" stroke="#3b4a63" stroke-width="1.5"/>
+    <path d="M672 71 L678 75 L672 79" fill="none" stroke="#3b4a63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- T4 Compilation -->
+    <g transform="translate(684 0)">
+      <rect x="0" y="0" width="200" height="150" rx="14" fill="#131c2e" stroke="#2dd4bf" stroke-width="1.5"/>
+      <rect x="0" y="0" width="200" height="4" rx="2" fill="#2dd4bf"/>
+      <text x="16" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="12" font-weight="700" fill="#2dd4bf">T4</text>
+      <text x="16" y="60" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="17" font-weight="700" fill="#e6edf3">Compilation</text>
+      <text x="16" y="84" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Two-phase · WiCER</text>
+      <text x="16" y="100" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">Typed graph edges</text>
+      <text x="16" y="132" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="10" fill="#6b7a90">→ CompiledWiki</text>
+      <text x="16" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#f59e0b">needs LLM</text>
+    </g>
+
+    <path d="M884 75 L904 75" stroke="#3b4a63" stroke-width="1.5"/>
+    <path d="M900 71 L906 75 L900 79" fill="none" stroke="#3b4a63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- T5 Output -->
+    <g transform="translate(912 0)">
+      <rect x="0" y="0" width="200" height="150" rx="14" fill="#131c2e" stroke="#f59e0b" stroke-width="1.5"/>
+      <rect x="0" y="0" width="200" height="4" rx="2" fill="#f59e0b"/>
+      <text x="16" y="34" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="12" font-weight="700" fill="#f59e0b">T5</text>
+      <text x="16" y="60" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="17" font-weight="700" fill="#e6edf3">Output</text>
+      <text x="16" y="84" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">OKF · Markdown</text>
+      <text x="16" y="100" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+            font-size="12" fill="#9aa7bd">JSON · Typst</text>
+      <text x="16" y="132" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="10" fill="#6b7a90">→ wiki/</text>
+      <text x="16" y="146" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+            font-size="9" fill="#4a5a76">+ vector index</text>
+    </g>
+  </g>
+
+  <!-- footer note -->
+  <text x="600" y="248" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
+        font-size="10" fill="#4a5a76" text-anchor="middle">
+    knox ingest stops at T1 (no LLM, no cost) · knox compile runs T2–T5
+  </text>
+</svg>
