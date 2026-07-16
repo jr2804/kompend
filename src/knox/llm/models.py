@@ -256,6 +256,11 @@ def _from_litellm_response(
     message = response.choices[0].message
     content = message.get("content") or ""
     if output_tools:
+        # Small models often emit literal ``\n`` / ``\t`` escape sequences
+        # instead of actual whitespace characters — the JSON is structurally
+        # correct but ``json.loads`` rejects ``{\n  "key"`` (backslash at
+        # top level is illegal). Unescape before wrapping.
+        content = _unescape_json_whitespace(content)
         parts: list[TextPart | ToolCallPart] = [
             ToolCallPart(tool_name=output_tools[0].name, args=content or "{}")
         ]
@@ -275,6 +280,17 @@ def _from_litellm_response(
 
 def _json_dumps(obj: Any) -> str:
     return json.dumps(obj)
+
+
+def _unescape_json_whitespace(text: str) -> str:
+    r"""Replace literal ``\n`` / ``\t`` / ``\r`` with actual whitespace.
+
+    Small models commonly emit JSON with literal escape-sequence characters
+    (e.g. ``{\n  "key"``) instead of real newlines. The JSON is structurally
+    correct but ``json.loads`` rejects it because a backslash is illegal outside
+    of a string value.
+    """
+    return text.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
 
 
 # ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────
