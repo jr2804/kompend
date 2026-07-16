@@ -131,24 +131,33 @@ class TestVLMEnricher:
 
 
 class TestVLMEnricherIntegration:
-    """Sanity checks against the real LiteLLM call path (mocked)."""
+    """Sanity checks against the unified pydantic-ai agent path (mocked)."""
 
-    def test_litellm_completion_invoked_for_image(self, tmp_path: Path) -> None:
-        """End-to-end: real VlmAgent + patched litellm.completion."""
+    def test_agent_run_sync_invoked_for_image(self, tmp_path: Path) -> None:
+        """End-to-end: VlmAgent routes through the unified pydantic-ai agent
+        path (build_model + KnoxModel), not a direct litellm.completion call.
+        """
         png_path = tmp_path / "img.png"
-        png_path.write_bytes(b"PNG")
+        png_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
 
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "caption text"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
-        with patch("litellm.completion", return_value=mock_response) as mock_completion:
-            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+        mock_result = MagicMock()
+        mock_result.output = "caption text"
+        mock_ai_agent = MagicMock()
+        mock_ai_agent.run_sync.return_value = mock_result
 
-        mock_completion.assert_called_once()
+        with patch.object(VlmAgent, "_build_agent", return_value=mock_ai_agent):
+            resolved = enricher.enrich(
+                ResolvedChunk(chunk=_image_chunk(image_path=str(png_path)))
+            )
+
+        mock_ai_agent.run_sync.assert_called_once()
+        # The user prompt passed to run_sync is a sequence: [text, BinaryContent].
+        call = mock_ai_agent.run_sync.call_args
+        user_prompt = call.args[0] if call.args else call.kwargs["user_prompt"]
+        assert isinstance(user_prompt, list)
+        assert len(user_prompt) == 2  # instruction text + image part
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert descs[0]["context"] == "caption text"

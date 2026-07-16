@@ -1107,7 +1107,6 @@ def _build_resolver_chain(config: PipelineConfig) -> BaseResolver:
             vlm_agent = VlmAgent(
                 config.llm.vlm_model,
                 timeout=config.llm.timeout,
-                reasoning_effort=config.llm.reasoning_effort,
             )
             resolvers.append(
                 VLMEnricher(

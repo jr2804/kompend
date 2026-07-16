@@ -1,19 +1,26 @@
 """VlmAgent — PydanticAI agent for VLM image captioning.
 
-Special case: handles image input via base64 data URLs in the message
-content, which PydanticAI's text-only prompt system doesn't support.
-Overrides ``run()`` to construct the litellm call directly.
+Routes through the unified :class:`KnoxAgentBase` → :class:`KnoxModel` →
+``build_model()`` path like every other agent, passing image bytes via a
+:class:`pydantic_ai.messages.BinaryContent` part in the user prompt.
+
+Reasoning is forced off (``reasoning_effort="none"``) — image captioning
+never benefits from thinking traces, and uncontrolled reasoning was the
+root cause of VLM timeouts and reasoning-polluted captions.
 """
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic_ai.messages import BinaryContent
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import LLMOutputError
+from knox.llm.format import strip_reasoning
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +33,10 @@ _MIME_BY_EXT: dict[str, str] = {
     ".webp": "image/webp",
     ".bmp": "image/bmp",
 }
+
+# pydantic-ai requires a concrete ImageMediaType; this fallback covers the
+# rare case of an unrecognised extension.
+_DEFAULT_MEDIA_TYPE = "image/png"
 
 
 @dataclass
@@ -41,9 +52,9 @@ class VlmDeps:
 class VlmAgent(KnoxAgentBase[str, VlmDeps]):
     """PydanticAI agent for VLM image captioning.
 
-    Overrides ``run()`` to construct the litellm call with image content
-    directly, since PydanticAI's text-only prompt system doesn't support
-    image attachments.
+    Overrides :meth:`run` to attach the image as a ``BinaryContent`` part
+    alongside the text prompt, since the standard single-string user
+    prompt cannot carry image bytes.
     """
 
     template_name: str = ""
@@ -51,71 +62,60 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
     result_type: type = str
     deps_type: type[VlmDeps] = VlmDeps
 
-    @staticmethod
-    def render_user_prompt(deps: VlmDeps) -> str:
-        return deps.prompt
-
-    @staticmethod
-    def render_system_prompt(deps: VlmDeps) -> str:
-        return ""
+    def __init__(
+        self,
+        litellm_model: str,
+        *,
+        timeout: float = 120.0,
+        usage_tracker: UsageTracker | None = None,
+    ) -> None:
+        # Image captioning never benefits from reasoning — force it off so
+        # the model doesn't burn time on thinking traces that pollute
+        # captions and cause timeouts on slow local vision models.
+        super().__init__(
+            litellm_model,
+            timeout=timeout,
+            reasoning_effort="none",
+            usage_tracker=usage_tracker,
+        )
 
     def run(self, deps: VlmDeps) -> str:
-        """Run VLM captioning with image input."""
+        """Run VLM captioning with image input via the unified model path."""
         self._current_source_id = deps.source_id
         image_file = Path(deps.image_path)
         if not image_file.is_file():
             msg = f"Image not found: {image_file}"
             raise FileNotFoundError(msg)
 
-        raw_bytes = image_file.read_bytes()
-        b64 = base64.b64encode(raw_bytes).decode("utf-8")
-        mime = _MIME_BY_EXT.get(image_file.suffix.lower(), "image/png")
+        media_type = _MIME_BY_EXT.get(image_file.suffix.lower(), _DEFAULT_MEDIA_TYPE)
+        image_bytes = image_file.read_bytes()
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": deps.prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                ],
-            },
+        # User prompt is a sequence: instruction text + image part. pydantic-ai
+        # forwards the BinaryContent to the native model's image handling.
+        user_prompt: list[str | BinaryContent] = [
+            deps.prompt,
+            BinaryContent(image_bytes, media_type=media_type),
         ]
 
-        kwargs: dict = {
-            "model": self._litellm_model,
-            "messages": messages,
-            "timeout": self._timeout,
-        }
-        if self._max_tokens is not None:
-            kwargs["max_tokens"] = self._max_tokens
+        if self._agent is None:
+            self._agent = self._build_agent()
 
         try:
-            import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
-
-            response = litellm.completion(**kwargs)
+            result = self._agent.run_sync(user_prompt, deps=deps)
         except Exception as exc:
             logger.warning("VLM call failed for '%s': %s", deps.image_path, exc)
-            raise LLMOutputError(f"VLM failed for model '{self._litellm_model}': {exc}") from exc
+            raise LLMOutputError(
+                f"VLM failed for model '{self._litellm_model}': {exc}"
+            ) from exc
 
-        content = response.choices[0].message.content or ""
-        finish_reason = response.choices[0].finish_reason
-
-        # Track usage
-        if self._usage_tracker is not None:
-            usage = getattr(response, "usage", None)
-            if usage is not None:
-                self._usage_tracker.record(
-                    prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                    completion_tokens=getattr(usage, "completion_tokens", 0),
-                    model=self._litellm_model,
-                )
+        caption = strip_reasoning(result.output).strip()
 
         save_debug_prompt(
             self,
             self._litellm_model,
-            messages,
-            kwargs,
-            content,
-            finish_reason,
+            [{"role": "user", "content": deps.prompt}],
+            {"model": self._litellm_model, "image_bytes": len(image_bytes)},
+            caption,
+            "stop",
         )
-        return content.strip()
+        return caption
