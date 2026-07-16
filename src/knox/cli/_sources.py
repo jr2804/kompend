@@ -192,11 +192,8 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
         if dest is None:
             return None
 
-        # Single-file decompression preserves the stem extension;
-        # skip if the result isn't a parseable format.
-        single_file = is_gz or is_bz2 or is_xz
-        if single_file and _EXT_PRIORITY.get(dest.suffix.lower(), len(_EXT_PRIORITY)) >= len(_EXT_PRIORITY):
-            dest.unlink(missing_ok=True)
+        dest = _clean_single_file_extract(dest, is_gz or is_bz2 or is_xz)
+        if dest is None:
             return None
 
         archive_path.unlink()
@@ -205,6 +202,14 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
     except Exception as exc:
         logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
         return None
+
+
+def _clean_single_file_extract(dest: Path, is_single_file: bool) -> Path | None:
+    """Remove single-file extract result when it's not a parseable format."""
+    if is_single_file and _EXT_PRIORITY.get(dest.suffix.lower(), len(_EXT_PRIORITY)) >= len(_EXT_PRIORITY):
+        dest.unlink(missing_ok=True)
+        return None
+    return dest
 
 
 # ── Extension helpers ───────────────────────────────────────────────────
@@ -222,6 +227,65 @@ def get_supported_extensions() -> set[str]:
     except Exception as exc:
         logger.debug("Could not load external parser extensions: %s", exc, exc_info=True)
     return extensions
+
+
+def _resolve_glob(
+    raw_pattern: str,
+    candidate_file: Path,
+    recursive: bool,
+    seen: set[Path],
+    results: list[Path],
+) -> bool:
+    """Resolve a glob pattern and add matching files. Returns True if pattern was a glob."""
+    if not any(c in raw_pattern for c in ("*", "?", "[")):
+        return False
+    parent_dir = candidate_file.parent if candidate_file.parent != Path(".") else Path.cwd()
+    stem = candidate_file.name
+    glob_func = parent_dir.rglob if recursive else parent_dir.glob
+    for match in sorted(glob_func(stem)):
+        if match.is_file() and _is_supported(match):
+            _add(match, seen, results)
+    return True
+
+
+def _resolve_file(candidate_file: Path, seen: set[Path], results: list[Path]) -> bool:
+    """Add candidate_file if it exists and is a supported format."""
+    if not candidate_file.is_file():
+        return False
+    if _is_supported(candidate_file):
+        _add(candidate_file, seen, results)
+    return True
+
+
+def _resolve_dir(
+    candidate_file: Path,
+    recursive: bool,
+    seen: set[Path],
+    results: list[Path],
+) -> bool:
+    """Scan a directory and add supported files."""
+    if not candidate_file.is_dir():
+        return False
+    _scan_dir(candidate_file, recursive, seen, results)
+    return True
+
+
+def _resolve_by_name(
+    candidate_file: Path,
+    raw_pattern: str,
+    sources_dir: Path | None,
+    seen: set[Path],
+    results: list[Path],
+) -> bool:
+    """Search for a bare filename under sources_dir. Returns True if found."""
+    if sources_dir is None or "/" in raw_pattern or "\\" in raw_pattern:
+        return False
+    found = False
+    for match in sorted(sources_dir.rglob(candidate_file.name)):
+        if match.is_file() and _is_supported(match):
+            _add(match, seen, results)
+            found = True
+    return found
 
 
 def resolve_files(
@@ -249,47 +313,22 @@ def resolve_files(
 
     for raw_pattern in patterns:
         candidate_file = Path(raw_pattern).expanduser()
-
-        # Try as a glob pattern if it contains wildcard characters
-        if any(c in raw_pattern for c in ("*", "?", "[")):
-            parent_dir = candidate_file.parent if candidate_file.parent != Path(".") else Path.cwd()
-            stem = candidate_file.name
-            glob_func = parent_dir.rglob if recursive else parent_dir.glob
-            for match in sorted(glob_func(stem)):
-                if match.is_file() and _is_supported(match):
-                    _add(match, seen, results)
+        if _resolve_glob(raw_pattern, candidate_file, recursive, seen, results):
             continue
-
-        # Existing file (absolute, relative, or CWD-relative)
-        if candidate_file.is_file():
-            if _is_supported(candidate_file):
-                _add(candidate_file, seen, results)
+        if _resolve_file(candidate_file, seen, results):
             continue
-
-        # Existing scan_dir — scan it
-        if candidate_file.is_dir():
-            _scan_dir(candidate_file, recursive, seen, results)
+        if _resolve_dir(candidate_file, recursive, seen, results):
             continue
-
-        # Bare filename not found at CWD — search sources_dir recursively
-        if sources_dir is not None and "/" not in raw_pattern and "\\" not in raw_pattern:
-            found = False
-            for match in sorted(sources_dir.rglob(candidate_file.name)):
-                if match.is_file() and _is_supported(match):
-                    _add(match, seen, results)
-                    found = True
-            if found:
-                continue
-
+        if _resolve_by_name(candidate_file, raw_pattern, sources_dir, seen, results):
+            continue
         # Neither file nor dir nor glob — skip silently.
-        # (Could be a typo or an unsupported file that was passed explicitly.)
 
     if ignore_patterns or respect_gitignore:
         results = filter_files(
             results,
             ignore_patterns=ignore_patterns,
             respect_gitignore=respect_gitignore,
-            base_dir=None,  # auto-detect from first resolved file's common parent
+            base_dir=None,
         )
 
     return results
@@ -391,38 +430,49 @@ def download_urls(
     web_crawler = WebCrawler(detector=detector, undetected=undetected)
     results: list[Path] = []
     for url in urls:
-        # Resolve: Wikipedia → PDF API, arXiv → direct PDF, etc.
-        resolved = resolver_chain.resolve(url)
-
-        # Dedup at the *original* URL level so the same Wikipedia
-        # article isn't re-downloaded on every pipeline run.
-        if detector.is_duplicate(resolved.original_url):
-            logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
-            continue
-
-        use_crawler = not resolved.prefer_http and _looks_like_html_url(resolved.download_url)
-        downloader = web_crawler if use_crawler else http_downloader
-        downloaded_file = downloader.download(resolved.download_url, sources_dir)
-        # If web crawler is unavailable/failed, fall back to HTTPDownloader.
-        if downloaded_file is None and use_crawler:
-            downloaded_file = http_downloader.download(resolved.download_url, sources_dir)
-        if downloaded_file:
-            # Expand archives (.tar.gz, .gz, .zip) to find the first
-            # parseable document inside them.
-            downloaded_file = _extract_archive(downloaded_file, sources_dir) or downloaded_file
-            # Track the original URL for future dedup.
-            content = downloaded_file.read_bytes()
-            content_hash = hashlib.sha256(content).hexdigest()
-            detector.mark_downloaded(resolved.original_url, content_hash)
-            if resolved.original_url != resolved.download_url:
-                logger.info(
-                    "Resolved %s → %s → %s",
-                    resolved.original_url,
-                    resolved.source_label or "unknown",
-                    downloaded_file.name,
-                )
-            results.append(downloaded_file)
+        dest = _download_single_url(url, resolver_chain, detector, http_downloader, web_crawler, sources_dir)
+        if dest:
+            results.append(dest)
     return results
+
+
+def _download_single_url(
+    url: str,
+    resolver_chain: UrlResolverChain,
+    detector: DuplicateDetector,
+    http_downloader: HTTPDownloader,
+    web_crawler: WebCrawler,
+    sources_dir: Path,
+) -> Path | None:
+    """Download one URL: resolve, fetch, extract, track. Returns destination path or None."""
+    resolved = resolver_chain.resolve(url)
+
+    if detector.is_duplicate(resolved.original_url):
+        logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
+        return None
+
+    use_crawler = not resolved.prefer_http and _looks_like_html_url(resolved.download_url)
+    downloader: HTTPDownloader | WebCrawler = web_crawler if use_crawler else http_downloader
+    downloaded_file = downloader.download(resolved.download_url, sources_dir)
+    if downloaded_file is None and use_crawler:
+        downloaded_file = http_downloader.download(resolved.download_url, sources_dir)
+
+    if not downloaded_file:
+        return None
+
+    downloaded_file = _extract_archive(downloaded_file, sources_dir) or downloaded_file
+    content = downloaded_file.read_bytes()
+    content_hash = hashlib.sha256(content).hexdigest()
+    detector.mark_downloaded(resolved.original_url, content_hash)
+
+    if resolved.original_url != resolved.download_url:
+        logger.info(
+            "Resolved %s → %s → %s",
+            resolved.original_url,
+            resolved.source_label or "unknown",
+            downloaded_file.name,
+        )
+    return downloaded_file
 
 
 # ── Internal helpers ────────────────────────────────────────────────────
