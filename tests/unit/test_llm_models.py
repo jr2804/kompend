@@ -85,8 +85,8 @@ class TestBuildModelCustomProviders:
         assert m.model_name == "deepseek-v4-flash"
         assert str(m.base_url).rstrip("/") == "https://ollama.com/v1"
 
-    def test_opencode_zen_returns_openai_chat_at_opencode_endpoint(self) -> None:
-        m = build_model("opencode-zen/gpt-5.4-nano")
+    def test_opencode_returns_openai_chat_at_opencode_endpoint(self) -> None:
+        m = build_model("opencode/gpt-5.4-nano")
         assert isinstance(m, OpenAIChatModel)
         assert m.model_name == "gpt-5.4-nano"
         assert str(m.base_url).rstrip("/") == "https://opencode.ai/zen/v1"
