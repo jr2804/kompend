@@ -1,0 +1,17 @@
+---
+variables:
+  - name: page_title
+    required: true
+  - name: source_block
+    required: true
+role: write
+response_format: text
+temperature: 0.3
+---
+
+Write a comprehensive wiki page titled '{{ page_title }}'.
+Synthesise the sources below into coherent, continuous prose.
+If the sources are too unrelated to synthesise, state that clearly.
+Do NOT include a raw list of sources; weave citations naturally.
+
+{{ source_block }}

@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-import litellm
-import typer
-
 from knox.agents.capture import CaptureAgent
+from knox.agents.deps import PipelineAgentDeps
 from knox.agents.distill import DistillAgent
+from knox.agents.write import WriteAgent
+import typer
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
@@ -257,22 +257,29 @@ def _synthesize_write_page(
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
 
-    source_block = "\n\n".join(f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts)
-    prompt = (
-        f"Write a comprehensive wiki page titled '{page_title}'.\n"
-        f"Synthesise the sources below into coherent, continuous prose.\n"
-        f"If the sources are too unrelated to synthesise, state that clearly.\n"
-        f"Do NOT include a raw list of sources; weave citations naturally.\n\n"
-        f"{source_block}"
+    from knox.core.templates import get_template_loader
+
+    agent = WriteAgent(
+        model,
+        timeout=timeout,
+        retries=2,
+    )
+    source_block = "\n\n".join(
+        f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts
+    )
+    loader = get_template_loader()
+    prompt = loader.render(
+        "capture/write_prompt.md.j2",
+        page_title=page_title,
+        source_block=source_block,
+    )
+    deps = PipelineAgentDeps(
+        text=prompt,
+        source_id="write",
+        timeout=timeout,
     )
     try:
-        response = litellm.completion(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            timeout=timeout,
-        )
-        content = response.choices[0].message.content or ""
+        content = agent.run(deps)
         content = _strip_reasoning(content)
         if content.strip():
             return content.strip() + "\n\n" + references_section
