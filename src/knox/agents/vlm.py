@@ -11,8 +11,6 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
-import litellm
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import LLMOutputError
@@ -92,6 +90,8 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
             kwargs["max_tokens"] = self._max_tokens
 
         try:
+            import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
+
             response = litellm.completion(**kwargs)
         except Exception as exc:
             logger.warning("VLM call failed for '%s': %s", deps.image_path, exc)

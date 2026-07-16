@@ -14,8 +14,6 @@ import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
 
-import litellm
-
 from knox.llm.models_dev import resolve_model_limits
 from knox.logging import get_logger
 
@@ -86,7 +84,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     return min(candidates) if candidates else None
 
 
-def discover_context_window(
+def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 statements (limit 50)
     model: str,
     *,
     fallback_max_input: int = 8192,
@@ -116,6 +114,8 @@ def discover_context_window(
     values by capping ``max_input`` and ``max_output`` to the cap.  This is
     a user-configured limit, not a hardcoded assumption.
     """
+    import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
+
     max_input: int | None = None
     max_output: int | None = None
     source = ContextSource.FALLBACK

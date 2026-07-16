@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import litellm
-
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
@@ -155,6 +153,8 @@ def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
 
 def _enable_litellm_debug() -> None:
     """Enable litellm debug output to stderr."""
+    import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
+
     litellm._turn_on_debug()
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
@@ -199,6 +199,8 @@ def _ping_embed_model(model: str | None) -> CheckResult:
     effective = model.removeprefix("litellm:")
 
     try:
+        import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
+
         response = litellm.embedding(model=effective, input="ping")
         dims = len(response.data[0]["embedding"]) if response.data else 0
         return CheckResult(name, True, f"embed OK ({effective}, {dims} dims)")

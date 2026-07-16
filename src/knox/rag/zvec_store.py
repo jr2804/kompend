@@ -20,9 +20,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-import litellm
 import zvec as _zvec
-from sentence_transformers import SentenceTransformer
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
@@ -83,6 +81,8 @@ class SentenceTransformerProvider(EmbeddingProvider):
     """Real embedding via sentence-transformers."""
 
     def __init__(self, model_name: str) -> None:
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415 — heavy import (~14s), deferred to avoid CLI startup cost
+
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
         self._dim: int = self._model.get_embedding_dimension() or 384
@@ -110,6 +110,8 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
         return self._dim
 
     def embed(self, text: str) -> list[float]:
+        import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
+
         kwargs: dict[str, Any] = {"model": self._model, "input": [text]}
         # If user explicitly requested a smaller dimension, pass it to LiteLLM
         # (Supported natively by models like OpenAI's text-embedding-3 series)
