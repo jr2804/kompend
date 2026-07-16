@@ -1,4 +1,4 @@
-"""Model context-window discovery via the models.dev catalog.
+"""Model limits discovery via the models.dev catalog.
 
 Fetches ``https://models.dev/catalog.json`` and caches it both in-memory
 (per process) and on disk (``~/.config/knox/cache/models-dev-catalog.json``,
@@ -6,9 +6,9 @@ shared across invocations). Disk cache freshness is governed by TTL.
 
 Matching strategy (first hit wins):
 
-1. ``litellm.get_model_info()`` — static tables for major providers.
-2. models.dev catalog — exact key, then provider-local stem, then
-   normalized base + size fuzzy match (bridges ``ollama-cloud/gemma4:31b``
+1. Exact key match in the catalog.
+2. Provider-local stem match (``ollama-cloud/gemma4:31b`` → ``gemma4:31b``).
+3. Normalized base + size fuzzy match (bridges ``ollama-cloud/gemma4:31b``
    to ``google/gemma-4-31b-it``).
 
 Returns ``None`` when unknown — the caller decides how to handle the miss
@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import litellm
 
 from knox.logging import get_logger
 
@@ -204,28 +203,14 @@ def _match_catalog(model_id: str, catalog: dict[str, dict[str, Any]]) -> tuple[i
 
 def resolve_model_limits(
     model_id: str,
-    **kwargs: Any,  # noqa: ARG001 — accept `catalog` param for backward compat
 ) -> tuple[int, int] | None:
-    """Resolve ``(max_input, max_output)`` token limits for *model_id*.
+    """Resolve ``(max_input, max_output)`` token limits from the models.dev catalog.
 
-    Tries litellm, then the models.dev catalog. Returns ``None`` when
-    unknown — no guessed values.
+    This function queries the models.dev community catalog only. The caller
+    (``discover_context_window``) is responsible for trying litellm first.
+
+    Returns ``None`` when the model is not found in the catalog.
     """
-    _, _, stem = model_id.partition("/")
-    lookup = stem or model_id
-
-    # 1. litellm static tables
-    try:
-        info = litellm.get_model_info(lookup)
-        if isinstance(info, dict):
-            max_in = info.get("max_input_tokens") or info.get("max_tokens")
-            max_out = info.get("max_output_tokens") or max_in
-            if max_in and max_out:
-                return int(max_in), int(max_out)
-    except Exception:  # noqa: BLE001 — optional probe, never fatal
-        logger.debug("litellm.get_model_info(%r) failed", lookup, exc_info=True)
-
-    # 2. models.dev catalog
     catalog = _fetch_catalog()
     if catalog:
         limits = _match_catalog(model_id, catalog)

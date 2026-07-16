@@ -1,4 +1,4 @@
-"""Tests for knox.llm.models_dev — models.dev catalog + litellm context-window lookup."""
+"""Tests for knox.llm.models_dev — models.dev catalog lookup."""
 
 from __future__ import annotations
 
@@ -15,32 +15,22 @@ _GEMMA_ENTRY = {"limit": {"context": 262144, "output": 32768}}
 
 
 class TestResolveModelLimits:
-    def test_known_litellm_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Litellm knows gpt-4o → returns its limits."""
-        monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: {})
-        mock_info = MagicMock(return_value={"max_input_tokens": 128_000, "max_output_tokens": 16_384})
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", mock_info)
+    def test_catalog_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Model in catalog → returns its limits."""
+        catalog = {"openai/gpt-4o": {"limit": {"context": 128_000, "output": 16_384}}}
+        monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
         limits = models_dev.resolve_model_limits("openai/gpt-4o")
         assert limits == (128_000, 16_384)
 
     def test_unknown_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Model not in catalog → None."""
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: {})
-        mock_info = MagicMock(side_effect=Exception("not found"))
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", mock_info)
         assert models_dev.resolve_model_limits("nolab/no-such-model") is None
 
-    def test_litellm_failure_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_empty_catalog(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Empty catalog → None."""
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: {})
-        mock_info = MagicMock(side_effect=ConnectionError("offline"))
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", mock_info)
         assert models_dev.resolve_model_limits("openai/gpt-4o") is None
-
-    def test_backward_compat_catalog_param(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Old callers passing catalog= kwarg get None back (ignored param)."""
-        monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: {})
-        mock_info = MagicMock(side_effect=Exception)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", mock_info)
-        assert models_dev.resolve_model_limits("nolab/no-such-model", catalog={"old": "data"}) is None
 
 
 class TestCatalogFetch:
@@ -138,7 +128,6 @@ class TestCatalogMatch:
     def test_exact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         catalog = {"openai/gpt-4o": _GEMMA_ENTRY}
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", MagicMock(side_effect=Exception))
         limits = models_dev.resolve_model_limits("openai/gpt-4o")
         assert limits == (262144, 32768)
 
@@ -146,7 +135,6 @@ class TestCatalogMatch:
         """Provider-local model that exists by its bare stem."""
         catalog = {"llama3.2": _GEMMA_ENTRY}
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", MagicMock(side_effect=Exception))
         limits = models_dev.resolve_model_limits("ollama/llama3.2")
         assert limits == (262144, 32768)
 
@@ -154,7 +142,6 @@ class TestCatalogMatch:
         """ollama-cloud/gemma4:31b → google/gemma-4-31b-it via normalized stem + size."""
         catalog = {"google/gemma-4-31b-it": _GEMMA_ENTRY, "google/gemma-4-E4B-it": {"limit": {"context": 131072}}}
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", MagicMock(side_effect=Exception))
         limits = models_dev.resolve_model_limits("ollama-cloud/gemma4:31b")
         assert limits == (262144, 32768)
 
@@ -165,7 +152,6 @@ class TestCatalogMatch:
             "google/gemma-4-26b-a4b-it": {"limit": {"context": 262144, "output": 32768}},
         }
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", MagicMock(side_effect=Exception))
         # query for 26b should NOT match 31b entry; both share base stem
         limits = models_dev.resolve_model_limits("ollama-cloud/gemma4:26b")
         assert limits == (262144, 32768)
@@ -173,7 +159,6 @@ class TestCatalogMatch:
     def test_no_match_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         catalog = {"google/gemma-4-31b-it": _GEMMA_ENTRY}
         monkeypatch.setattr(models_dev, "_fetch_catalog", lambda: catalog)
-        monkeypatch.setattr(models_dev.litellm, "get_model_info", MagicMock(side_effect=Exception))
         assert models_dev.resolve_model_limits("nolab/totally-different") is None
 
 
