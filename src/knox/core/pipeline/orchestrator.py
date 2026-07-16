@@ -539,7 +539,7 @@ class WikiPipeline:
             logger.debug("Dedup store not available — skipping dedup check", exc_info=True)
         return dedup_skip, dedup_similar
 
-    def _parse_and_chunk(self) -> list[Any]:  # noqa: PLR0915
+    def _parse_and_chunk(self) -> list[Any]:
         """Parse documents and chunk them, with optional caching and parallelism.
 
         When tier state is available, sources that already match the
@@ -566,101 +566,12 @@ class WikiPipeline:
                 return []
 
         workers = max(1, self.config.workers)
-        use_cache = not self.config.no_cache
-
-        state = self.state
-
-        def _process_one(source_file: Path) -> ChunkTree | None:
-            """Parse a single file (cache-aware) and chunk it."""
-            stem = source_file.stem
-            content_hash = ""
-
-            if use_cache and not self.config.force:
-                content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-
-            parsed = self._load_cache(source_file) if use_cache else None
-
-            if parsed is None and use_cache and not self.config.force:
-                cached_entry = state.entries.get(stem)
-                if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
-                    parsed = self._load_cache(source_file)
-
-            if parsed is None:
-                if self.router is None:
-                    return None
-                try:
-                    selected = self.router.route(source_file)
-                    if selected is None:
-                        logger.warning("No parser backend for %s, skipping", source_file)
-                        return None
-                    parsed = selected.parse(source_file)
-                    _ = len(parsed.elements)
-                except Exception:
-                    logger.exception("Failed to parse %s", source_file)
-                    return None
-                if use_cache:
-                    self._save_cache(source_file, parsed)
-                    if not content_hash:
-                        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-
-            # ── Normalize source_file to relative POSIX on parsed doc ────
-            # All downstream code (chunking, extraction, generation, wiki
-            # metadata, LLM prompts) gets clean portable paths.
-            parsed.source_file = Path(self._rel_path(parsed.source_file))
-            for el in parsed.elements:
-                if el.source_file is not None:
-                    el.source_file = Path(self._rel_path(el.source_file))
-
-            if self.config.privacy_filter:
-                self._apply_privacy_filter(parsed.elements)
-
-            if not self.chunker:
-                return None
-
-            # ── Attach dedup similarity warning if applicable ────────
-            similar_entry = dedup_similar.get(stem)
-            if similar_entry:
-                warning = (
-                    f"> [!warning] Possible duplicate\n"
-                    f"> This document is similar to **{similar_entry.get('closest_match', 'unknown')}** "
-                    f"> (score={similar_entry.get('closest_score', 0):.2f}).\n"
-                )
-                if not parsed.metadata:
-                    parsed.metadata = {}
-                parsed.metadata["_dedup_warning"] = warning
-
-            # 2a. Chunk cache lookup (Tier 1).
-            if use_cache and content_hash:
-                chunk_deps = {
-                    "source": content_hash,
-                    "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
-                }
-                cached = self._cache_store.get("chunk", chunk_deps)
-                if cached is not None:
-                    if content_hash:
-                        self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
-                    tree = ChunkTree.from_dict(cached)
-                    self._apply_tags_to_tree(tree, source_file)
-                    return tree
-
-            # 2b. Chunk and cache.
-            tree = self.chunker.chunk(parsed)
-            self._apply_tags_to_tree(tree, source_file)
-
-            if content_hash:
-                self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
-                chunk_deps = {
-                    "source": content_hash,
-                    "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
-                }
-                self._cache_store.set("chunk", chunk_deps, tree.to_dict())
-            return tree
 
         trees: list[ChunkTree] = []
         if workers > 1 and len(source_files) > 1:
             completed = 0
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(_process_one, sf): sf for sf in source_files}
+                futures = {executor.submit(self._process_single_source, sf, dedup_similar): sf for sf in source_files}
                 for future in as_completed(futures):
                     sf = futures[future]
                     try:
@@ -674,7 +585,7 @@ class WikiPipeline:
                         self._emit("parse", completed, len(source_files), sf.name)
         else:
             for idx, sf in enumerate(source_files):
-                tree = _process_one(sf)
+                tree = self._process_single_source(sf, dedup_similar)
                 if tree is not None:
                     trees.append(tree)
                 self._emit("parse", idx + 1, len(source_files), sf.name)
@@ -686,6 +597,132 @@ class WikiPipeline:
                 self.summarizer.summarize(tree)
 
         return trees
+
+    def _process_single_source(
+        self,
+        source_file: Path,
+        dedup_similar: dict[str, dict[str, Any]],
+    ) -> ChunkTree | None:
+        """Parse a single source file (cache-aware) and chunk it.
+
+        Returns the :class:`ChunkTree` or *None* if the file was skipped
+        (no parser, cache hit with no tree, or parse failure).
+        """
+        stem = source_file.stem
+        use_cache = not self.config.no_cache
+        content_hash = ""
+
+        if use_cache and not self.config.force:
+            content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+        parsed = self._try_load_parsed_cache(source_file, stem, content_hash, use_cache)
+
+        if parsed is None:
+            parsed = self._parse_source(source_file, use_cache, content_hash)
+            if parsed is None:
+                return None
+            if use_cache and not content_hash:
+                content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+        # Normalize source_file to relative POSIX on parsed doc.
+        parsed.source_file = Path(self._rel_path(parsed.source_file))
+        for el in parsed.elements:
+            if el.source_file is not None:
+                el.source_file = Path(self._rel_path(el.source_file))
+
+        if self.config.privacy_filter:
+            self._apply_privacy_filter(parsed.elements)
+
+        if not self.chunker:
+            return None
+
+        # Attach dedup similarity warning if applicable.
+        self._attach_dedup_warning(parsed, stem, dedup_similar)
+
+        # Chunk cache lookup (Tier 1).
+        tree = self._try_load_chunk_cache(source_file, content_hash, use_cache)
+        if tree is not None:
+            return tree
+
+        # Chunk and cache.
+        tree = self.chunker.chunk(parsed)
+        self._apply_tags_to_tree(tree, source_file)
+
+        if content_hash:
+            self.state_store.record(self.state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
+            chunk_deps = {
+                "source": content_hash,
+                "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
+            }
+            self._cache_store.set("chunk", chunk_deps, tree.to_dict())
+        return tree
+
+    def _try_load_parsed_cache(
+        self, source_file: Path, stem: str, content_hash: str, use_cache: bool
+    ) -> Any | None:
+        """Try to load a parsed document from cache. Returns *None* on miss."""
+        if not use_cache:
+            return None
+        parsed = self._load_cache(source_file)
+        if parsed is not None:
+            return parsed
+        if self.config.force:
+            return None
+        cached_entry = self.state.entries.get(stem)
+        if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
+            return self._load_cache(source_file)
+        return None
+
+    def _parse_source(self, source_file: Path, use_cache: bool, content_hash: str) -> Any | None:
+        """Parse a source file via the router and optionally cache the result."""
+        if self.router is None:
+            return None
+        try:
+            selected = self.router.route(source_file)
+            if selected is None:
+                logger.warning("No parser backend for %s, skipping", source_file)
+                return None
+            parsed = selected.parse(source_file)
+            _ = len(parsed.elements)
+        except Exception:
+            logger.exception("Failed to parse %s", source_file)
+            return None
+        if use_cache:
+            self._save_cache(source_file, parsed)
+        return parsed
+
+    def _attach_dedup_warning(self, parsed: Any, stem: str, dedup_similar: dict[str, dict[str, Any]]) -> None:
+        """Attach a dedup similarity warning to the parsed document's metadata."""
+        similar_entry = dedup_similar.get(stem)
+        if not similar_entry:
+            return
+        warning = (
+            f"> [!warning] Possible duplicate\n"
+            f"> This document is similar to **{similar_entry.get('closest_match', 'unknown')}** "
+            f"> (score={similar_entry.get('closest_score', 0):.2f}).\n"
+        )
+        if not parsed.metadata:
+            parsed.metadata = {}
+        parsed.metadata["_dedup_warning"] = warning
+
+    def _try_load_chunk_cache(
+        self, source_file: Path, content_hash: str, use_cache: bool
+    ) -> ChunkTree | None:
+        """Try to load a chunked tree from cache. Returns *None* on miss."""
+        if not (use_cache and content_hash):
+            return None
+        chunk_deps = {
+            "source": content_hash,
+            "chunk_effective_max": str(getattr(self.chunker, "_effective_max", 0)),
+        }
+        cached = self._cache_store.get("chunk", chunk_deps)
+        if cached is None:
+            return None
+        stem = source_file.stem
+        self.state_store.record(self.state, stem, Path(self._rel_path(source_file)), content_hash, tier=1)
+        tree = ChunkTree.from_dict(cached)
+        self._apply_tags_to_tree(tree, source_file)
+        return tree
 
     def _cache_dir(self) -> Path:
         """Resolve the cache directory."""
