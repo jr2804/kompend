@@ -247,8 +247,9 @@ def _remediate_coverage_gaps(
     node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
 
+    token_index = _build_token_index(concept_lookup)
     for gap in gap_concepts:
-        matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
+        matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup, token_index)
         if not matched:
             actions.append(
                 RemediationAction(
@@ -401,13 +402,38 @@ def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]
     return result if result else None
 
 
+def _build_token_index(lookup: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """Build an inverted index from tokens to concept keys.
+
+    Used by :func:`_fuzzy_match_concept` for O(1) per-token lookups
+    instead of O(n) substring scanning.
+    """
+    index: dict[str, list[str]] = {}
+    for key in lookup:
+        for token in key.lower().split():
+            index.setdefault(token, []).append(key)
+    return index
+
+
 def _fuzzy_match_concept(
     normalized: str,
     lookup: dict[str, dict[str, Any]],
+    token_index: dict[str, list[str]] | None = None,
 ) -> dict[str, Any] | None:
-    """Find the best matching concept for a normalized gap name."""
+    """Find the best matching concept for a normalized gap name.
+
+    Uses a pre-built token index for O(1) per-token lookups when available,
+    falling back to linear scan otherwise.
+    """
     if normalized in lookup:
         return lookup[normalized]
+    if token_index is not None:
+        gap_tokens = set(normalized.split())
+        for token in gap_tokens:
+            for key in token_index.get(token, []):
+                return lookup[key]
+        return None
+    # Fallback: linear scan (no index available).
     for key, data in lookup.items():
         if normalized in key or key in normalized:
             return data
