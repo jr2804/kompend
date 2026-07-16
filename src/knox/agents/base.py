@@ -116,6 +116,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         usage_tracker: UsageTracker | None = None,
         fallback_models: list[str] | None = None,
         reasoning_effort: str | None = None,
+        use_native_output: bool = False,
     ) -> None:
         self._litellm_model = litellm_model
         self._timeout = timeout
@@ -124,6 +125,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._reasoning_effort = reasoning_effort
         self._usage_tracker = usage_tracker
         self._fallback_models = fallback_models
+        self._use_native_output = use_native_output
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
@@ -221,10 +223,20 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
             model_settings["max_tokens"] = self._max_tokens
+        from pydantic_ai import NativeOutput
+
+        output_type: type | NativeOutput = self.result_type
+        if self._use_native_output:
+            output_type = NativeOutput(
+                self.result_type,
+                name=self.stage,
+                description=f"Structured output for {self.stage}",
+            )
+
         agent = Agent(
             self._build_top_level_model(),
             deps_type=self.deps_type,
-            output_type=self.result_type,
+            output_type=output_type,
             model_settings=model_settings,
             retries=self._retries,
         )
