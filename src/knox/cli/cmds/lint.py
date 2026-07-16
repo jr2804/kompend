@@ -16,11 +16,13 @@ import json
 import time
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
 
 from knox.agents.lint import LintRuleAgent
+from knox.agents.remediate import RemediationAgent
 from knox.cli._pipeline_helpers import _write_wiki_cache
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
@@ -40,6 +42,7 @@ from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
+from knox.lint.base import LintReport, LintReportResult
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
     entry_from_report,
@@ -70,6 +73,21 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
     if not rule:
         return False
     return any(r in LLM_RULE_BY_NAME for r in rule)
+
+
+def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:
+    """Convert a raw ``report`` dict from ``lint_history.jsonl`` to :class:`LintReport`."""
+    results = [
+        LintReportResult(
+            rule=r.get("rule", ""),
+            outcome=r.get("outcome", ""),
+            details=r.get("details", {}),
+            message=r.get("message", ""),
+            page_id=r.get("page_id", ""),
+        )
+        for r in report_dict.get("results", [])
+    ]
+    return LintReport(results=results)
 
 
 def _persist_lint_fixes(
@@ -316,7 +334,8 @@ def lint_gaps(
         raise typer.Exit(1)
 
     report_dict = entries[-1].get("report", {})
-    recs = analyze_gaps(report_dict)
+    report = _to_lint_report(report_dict)
+    recs = analyze_gaps(report)
 
     if json_output:
         get_console().print(
@@ -373,23 +392,26 @@ def lint_remediate(
         raise typer.Exit(1)
 
     report_dict = entries[-1].get("report", {})
+    report = _to_lint_report(report_dict)
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    model = cfg.get("compile.llm.default_model", "")
-
-    sources_dir_path = sources_dir if sources_dir.exists() else None
+    default_model = cfg.get("compile.llm.default_model", "")
+    agent = (
+        RemediationAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120)))
+        if default_model
+        else None
+    )
 
     actions = remediate(
         wiki,
-        report_dict,
+        report,
         base_dir=base_dir,
-        sources_dir=sources_dir_path,
         output_dir=output_dir,
-        model=model,
+        agent=agent,
         dry_run=dry_run,
     )
 

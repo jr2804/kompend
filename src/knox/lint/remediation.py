@@ -84,7 +84,7 @@ def remediate(
     *,
     base_dir: Path,
     output_dir: Path | None = None,
-    agent: RemediationAgent,
+    agent: RemediationAgent | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Remediate lint findings from a :class:`LintReport`.
@@ -99,6 +99,8 @@ def remediate(
             written here as ``.md`` files so they are visible to the user and
             survive a re-organize. When ``None``, pages only update the cache.
         agent: :class:`RemediationAgent` used for tier-2 content generation.
+            When ``None``, tier 2 is skipped (only tier 1 auto-fixes and
+            tier 3 recommendations run).
         dry_run: If ``True``, report what would be done without modifying.
 
     Returns a list of :class:`RemediationAction` sorted by tier.
@@ -111,14 +113,16 @@ def remediate(
 
     # ── Tier 2: LLM-remediable ──
     handled_concepts: set[str] = set()
-    tier2_actions = _remediate_coverage_gaps(
-        wiki,
-        results,
-        base_dir=base_dir,
-        output_dir=output_dir,
-        agent=agent,
-        dry_run=dry_run,
-    )
+    tier2_actions: list[RemediationAction] = []
+    if agent is not None:
+        tier2_actions = _remediate_coverage_gaps(
+            wiki,
+            results,
+            base_dir=base_dir,
+            output_dir=output_dir,
+            agent=agent,
+            dry_run=dry_run,
+        )
     actions.extend(tier2_actions)
     # Track which concepts tier 2 looked at (any status) to exclude from tier 3
     for a in tier2_actions:
