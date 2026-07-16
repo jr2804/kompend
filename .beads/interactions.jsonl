@@ -294,3 +294,4 @@
 {"id":"int-af82a542","kind":"field_change","created_at":"2026-07-16T11:52:39.4022273Z","actor":"Jan.Reimes","issue_id":"knox-fcpc","extra":{"field":"status","new_value":"closed","old_value":"in_progress"}}
 {"id":"int-596e8afe","kind":"field_change","created_at":"2026-07-16T11:53:05.6410454Z","actor":"Jan.Reimes","issue_id":"knox-i1ji","extra":{"field":"status","new_value":"closed","old_value":"in_progress"}}
 {"id":"int-6fc8f49b","kind":"field_change","created_at":"2026-07-16T11:53:39.2584355Z","actor":"Jan.Reimes","issue_id":"knox-vg6h","extra":{"field":"status","new_value":"closed","old_value":"open"}}
+{"id":"int-a9e7c9cf","kind":"field_change","created_at":"2026-07-16T12:17:11.1517086Z","actor":"Jan.Reimes","issue_id":"knox-2kd6","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
