@@ -69,6 +69,7 @@ dependencies = [
     "pypandoc>=1.17",
     "logfire>=4.37.0",
     "pydantic-ai-harness[acp]>=0.7.0",
+    "models-dev>=1.0.398",
 ]
 
 [project.scripts]
