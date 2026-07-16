@@ -400,11 +400,7 @@ def lint_remediate(
         raise typer.Exit(1)
 
     default_model = cfg.get("compile.llm.default_model", "")
-    agent = (
-        RemediationAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120)))
-        if default_model
-        else None
-    )
+    agent = RemediationAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120))) if default_model else None
 
     actions = remediate(
         wiki,

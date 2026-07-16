@@ -18,6 +18,7 @@ from typing import Any
 
 from acp import PromptResponse
 from acp.schema import AgentMessageChunk, TextContentBlock
+from pydantic_ai import Agent
 
 from knox.acp._constants import (
     CONTENT_TYPE_TEXT,
@@ -137,8 +138,6 @@ class ConversationalAgent:
 
     def _build_agent(self) -> Any:
         """Build a PydanticAI Agent with a single generic dispatch tool."""
-        from pydantic_ai import Agent
-
         model = KnoxModel(
             build_model(self._model),
             usage_tracker=self._usage_tracker,

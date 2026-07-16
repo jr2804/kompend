@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.llm.context_window import ContextSource, ContextWindow
-from knox.search.retriever import HybridRetriever, SearchResult, _extract_snippet, synthesize_results
+from knox.search.retriever import HybridRetriever, _extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -51,30 +50,13 @@ class _FakeVectorStore:
 
 
 class TestHybridRetriever:
-    """HybridRetriever fuses multiple signals via reciprocal rank fusion."""
+    """HybridRetriever performs vector-only semantic search."""
 
-    def test_fusion_rrf_combines_ranked_lists(self) -> None:
-        wiki = self._make_wiki()
-        retriever = HybridRetriever(wiki)
-        list_a = [SearchResult(article_id="alpha", title="Alpha", snippet="snip", score=1.0)]
-        list_b = [SearchResult(article_id="beta", title="Beta", snippet="snip", score=1.0)]
-
-        fused = retriever._fuse_results(list_a, list_b, top_k=5)
-
-        ids = [r.article_id for r in fused]
-        assert "alpha" in ids
-        assert "beta" in ids
-        # Both appear exactly once with equal RRF score when each is ranked first
-        # in exactly one list and the second list contributes nothing.
-        alpha = next(r for r in fused if r.article_id == "alpha")
-        beta = next(r for r in fused if r.article_id == "beta")
-        assert alpha.score == beta.score
-
-    def test_search_wiki_falls_back_to_token_overlap(self) -> None:
+    def test_search_wiki_returns_empty_without_vector_store(self) -> None:
         wiki = self._make_wiki()
         retriever = HybridRetriever(wiki)
         results = retriever.search_wiki("alpha", top_k=5)
-        assert any(r.article_id == "alpha" for r in results)
+        assert results == []
 
     def test_search_wiki_uses_vector_store(self) -> None:
         wiki = self._make_wiki()
@@ -86,65 +68,32 @@ class TestHybridRetriever:
         assert beta.source_file == "beta.pdf"
         assert "beta" in beta.snippet.lower()
 
-    def test_search_hybrid_includes_raw_sources(self, tmp_path: Path) -> None:
-        sources_dir = tmp_path / "sources"
-        sources_dir.mkdir()
-        (sources_dir / "apple.md").write_text("This file is about apples and orchards.")
-        (sources_dir / "banana.md").write_text("Bananas are yellow tropical fruit.")
-
-        wiki = self._make_wiki()
-        retriever = HybridRetriever(wiki, sources_dir=sources_dir)
-        # Use "bananas" to match the tokenized form of "Bananas"
-        results = retriever.search("bananas tropical", top_k=5)
-
-        raw = next((r for r in results if r.article_id == "banana"), None)
-        assert raw is not None
-        assert raw.source_file == str(sources_dir / "banana.md")
-
     def test_search_wiki_empty_query_returns_empty(self) -> None:
         wiki = self._make_wiki()
         retriever = HybridRetriever(wiki)
-        assert retriever.search_wiki("a", top_k=5) == []
+        assert retriever.search_wiki("", top_k=5) == []
 
-    def test_search_hybrid_returns_results_from_each_subsystem(self, tmp_path: Path) -> None:
-        """Verify hybrid search fuses results from FTS, vector, token, and BM25 raw."""
-        sources_dir = tmp_path / "sources"
-        sources_dir.mkdir()
-        (sources_dir / "apple.md").write_text("This file is about apples and orchards.")
-        (sources_dir / "banana.md").write_text("Bananas are yellow tropical fruit.")
-
-        wiki = self._make_wiki_with_edges()
+    def test_search_hybrid_vector_only(self) -> None:
+        """Verify hybrid search returns vector results."""
+        wiki = self._make_wiki()
         fake_vector = _FakeVectorStore(hits=[{"id": "beta", "score": 0.95, "source_file": "beta.pdf"}])
-        retriever = HybridRetriever(wiki, vector_store=fake_vector, sources_dir=sources_dir)
+        retriever = HybridRetriever(wiki, vector_store=fake_vector)
 
-        # Search for something that matches raw BM25 ("bananas") and wiki token/vector ("beta")
-        results = retriever.search_hybrid("beta bananas", top_k=5)
+        results = retriever.search_hybrid("beta", top_k=5)
 
-        # Debug: print results
-        print("RESULTS:", [(r.article_id, r.score) for r in results])
-
-        # Should contain wiki result (beta)
         assert any(r.article_id == "beta" for r in results)
-        # Should contain raw BM25 result (banana)
-        assert any(r.article_id == "banana" for r in results)
 
-    def test_graph_expansion_adds_related_nodes(self, tmp_path: Path) -> None:
+    def test_graph_expansion_adds_related_nodes(self) -> None:
         """Verify graph expansion follows edges and adds related nodes with decayed score."""
-        sources_dir = tmp_path / "sources"
-        sources_dir.mkdir()
-
         wiki = self._make_wiki_with_edges()
-        retriever = HybridRetriever(wiki, sources_dir=sources_dir)
+        fake_vector = _FakeVectorStore(hits=[{"id": "alpha", "score": 1.0}])
+        retriever = HybridRetriever(wiki, vector_store=fake_vector)
 
-        # Search for "alpha" which should match the alpha node
         results = retriever.search_hybrid("alpha", top_k=5, expand_graph=True)
 
-        # Should contain the original result
         assert any(r.article_id == "alpha" for r in results)
-        # Should contain the expanded result (gamma) via the edge alpha -> gamma
         assert any(r.article_id == "gamma" for r in results)
 
-        # Verify decayed score
         alpha_result = next(r for r in results if r.article_id == "alpha")
         gamma_result = next(r for r in results if r.article_id == "gamma")
         assert gamma_result.score <= alpha_result.score * 0.5

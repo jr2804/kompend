@@ -27,9 +27,9 @@ from __future__ import annotations
 from abc import ABC
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.models import Model
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
 
 from knox.agents.deps import PipelineAgentDeps
@@ -226,7 +226,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings["temperature"] = self.temperature
         if self._max_tokens is not None:
             model_settings["max_tokens"] = self._max_tokens
-        from pydantic_ai import NativeOutput
 
         output_type: type | NativeOutput = self.result_type
         if self._use_native_output:
@@ -257,7 +256,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         )
         if not self._fallback_models:
             return primary
-        from pydantic_ai.models.fallback import FallbackModel
 
         return FallbackModel(
             primary,
