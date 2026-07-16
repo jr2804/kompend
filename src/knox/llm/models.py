@@ -31,15 +31,30 @@ from the env vars the provider/catalog advertises.
 
 from __future__ import annotations
 
+import base64
+import json
 import os
+from typing import Any
 
+import litellm
 from models_dev import Provider, get_model_by_id, get_provider
+from pydantic_ai.messages import (
+    BinaryContent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
 from pydantic_ai.models import Model, infer_model
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers import Provider as PaiProvider
 from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.usage import RequestUsage
 
 from knox.logging import get_logger
 
@@ -135,38 +150,131 @@ def _build_native(provider_id: str, model_name: str) -> Model:
     except ValueError as exc:
         raise _NotNativeProvider from exc
 
-    provider = provider_cls(**_native_kwargs(provider_cls))
+    # Ollama: route through litellm so `think` can disable reasoning.
+    # pydantic-ai's OllamaModel uses /v1/chat/completions which ignores the
+    # think parameter; litellm calls the native /api/chat where think=False
+    # is honoured. litellm owns the transport (endpoint, schema, images, usage).
+    if provider_cls is OllamaProvider:
+        return _ollama_function_model(model_name)
+
+    provider = provider_cls()
     return infer_model(
         f"{provider_id}:{model_name}",
         provider_factory=lambda _name: provider,
     )
 
 
-def _native_kwargs(provider_cls: type[PaiProvider]) -> dict[str, str]:
-    """Constructor kwargs a native provider needs beyond its own defaults.
+def _ollama_function_model(model_name: str) -> FunctionModel:
+    """Wrap litellm's ollama transport in a pydantic-ai FunctionModel.
 
-    Hosted providers (OpenAI, Anthropic, Google, …) bake their endpoint
-    into the client and read their own API-key env var, so they need no
-    kwargs. Locally-served providers (Ollama) have no baked endpoint —
-    pydantic-ai's ``OllamaProvider`` raises unless a ``base_url`` is given
-    or ``OLLAMA_BASE_URL`` is set. We pass the endpoint directly (reading
-    the user's override env var if present) rather than mutating the
-    environment.
+    Only concern is mapping ``reasoning_effort`` → litellm's ``think`` flag;
+    litellm handles everything else (endpoint, auth, structured output,
+    images, token usage).
     """
-    if provider_cls is OllamaProvider:
-        return {"base_url": _ollama_base_url()}
-    return {}
+
+    async def request_fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        settings = info.model_settings or {}
+        kwargs: dict[str, Any] = {
+            "model": f"ollama/{model_name}",
+            "messages": _to_litellm_messages(messages, info),
+        }
+        if settings.get("reasoning_effort") in {"none", "minimal", "low"}:
+            kwargs["think"] = False
+        if "timeout" in settings:
+            kwargs["timeout"] = settings["timeout"]
+        if "max_tokens" in settings:
+            kwargs["max_tokens"] = settings["max_tokens"]
+        if info.output_tools:
+            schema = info.output_tools[0].parameters_json_schema
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": info.output_tools[0].name, "schema": schema},
+            }
+
+        response = await litellm.acompletion(**kwargs)
+        return _from_litellm_response(response, model_name, info.output_tools)
+
+    return FunctionModel(request_fn, model_name=model_name)
 
 
-def _ollama_base_url() -> str:
-    """Ollama OpenAI-compatible endpoint.
+# ── pydantic-ai ↔ litellm message bridge ───────────────────────────────
 
-    pydantic-ai's ``OllamaProvider`` passes ``base_url`` verbatim to the
-    OpenAI SDK, which appends ``/chat/completions`` — so the base URL must
-    include the ``/v1`` segment. A user-set ``OLLAMA_BASE_URL`` (already in
-    OpenAI format) wins over the standard local default.
-    """
-    return os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+
+def _to_litellm_messages(
+    messages: list[ModelMessage], info: AgentInfo
+) -> list[dict[str, Any]]:
+    """Flatten pydantic-ai ModelMessages to litellm ``{role, content}`` dicts."""
+    out: list[dict[str, Any]] = []
+    if info.instructions:
+        out.append({"role": "system", "content": info.instructions})
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    out.append(_user_prompt_to_litellm(part))
+                elif isinstance(part, RetryPromptPart):
+                    feedback = (
+                        part.content
+                        if isinstance(part.content, str)
+                        else str(part.content)
+                    )
+                    out.append(
+                        {"role": "user", "content": f"Previous output invalid: {feedback}"}
+                    )
+        elif isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, TextPart):
+                    out.append({"role": "assistant", "content": part.content})
+                elif isinstance(part, ToolCallPart):
+                    args = part.args
+                    content = args if isinstance(args, str) else _json_dumps(args)
+                    out.append({"role": "assistant", "content": content or "{}"})
+    return out
+
+
+def _user_prompt_to_litellm(part: UserPromptPart) -> dict[str, Any]:
+    """UserPromptPart content is a str or a text+image sequence (VLM)."""
+    content = part.content
+    if isinstance(content, str):
+        return {"role": "user", "content": content}
+    blocks: list[dict[str, Any]] = []
+    for item in content:
+        if isinstance(item, str):
+            blocks.append({"type": "text", "text": item})
+        elif isinstance(item, BinaryContent):
+            data_url = f"data:{item.media_type};base64,{base64.b64encode(item.data).decode()}"
+            blocks.append({"type": "image_url", "image_url": {"url": data_url}})
+    return {"role": "user", "content": blocks}
+
+
+def _from_litellm_response(
+    response: Any,
+    model_name: str,
+    output_tools: list[Any],
+) -> ModelResponse:
+    """Convert a litellm completion response to a pydantic-ai ModelResponse."""
+    message = response.choices[0].message
+    content = message.get("content") or ""
+    if output_tools:
+        parts: list[TextPart | ToolCallPart] = [
+            ToolCallPart(tool_name=output_tools[0].name, args=content or "{}")
+        ]
+    else:
+        parts = [TextPart(content=content)]
+    usage = response.usage
+    return ModelResponse(
+        parts=parts,
+        usage=RequestUsage(
+            input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+        ),
+        model_name=model_name,
+        finish_reason="length" if response.choices[0].finish_reason == "length" else "stop",
+    )
+
+
+def _json_dumps(obj: Any) -> str:
+    return json.dumps(obj)
 
 
 # ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────

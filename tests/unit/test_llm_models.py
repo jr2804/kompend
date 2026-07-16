@@ -6,6 +6,7 @@ import os
 
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
@@ -62,8 +63,8 @@ class TestSplit:
 def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """API keys for hosted providers (read by pydantic-ai's own providers).
 
-    OLLAMA_BASE_URL is intentionally NOT set here — the native path must
-    default it. See ``test_ollama_works_without_base_url_env``.
+    OLLAMA_BASE_URL is intentionally NOT set here -- litellm owns the ollama
+    transport (endpoint, auth) and defaults to localhost:11434.
     """
     for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.setenv(key, "test-key")
@@ -73,20 +74,15 @@ def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestBuildModelNative:
-    def test_ollama_works_without_base_url_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Ollama must resolve without OLLAMA_BASE_URL set — the standard local
-        default (OpenAI-compatible, includes ``/v1``) is passed to the
-        constructor directly, never injected as an environment variable.
+    def test_ollama_routes_through_litellm_function_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ollama routes through a litellm-backed FunctionModel so ``think`` can
+        disable reasoning (pydantic-ai's OllamaModel uses /v1/ which ignores it).
+        No OLLAMA_BASE_URL needed; litellm owns the transport.
         """
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         m = build_model("ollama/qwen3")
+        assert isinstance(m, FunctionModel)
         assert m.model_name == "qwen3"
-        assert str(m.base_url).rstrip("/") == "http://localhost:11434/v1"
-
-    def test_ollama_base_url_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11434/v1")
-        m = build_model("ollama/qwen3")
-        assert str(m.base_url).rstrip("/") == "http://gpu-box:11434/v1"
 
     def test_ollama_multi_slash_model_name_preserved(self) -> None:
         m = build_model("ollama/hf.co/qwen3.6")
@@ -177,7 +173,7 @@ class TestBuildModelCatalog:
 class TestBuildModelNativeWins:
     def test_deepseek_uses_native_not_catalog(self) -> None:
         """DeepSeek is both native (DeepSeekProvider) and in the catalog.
-        The native path must win — pydantic-ai's DeepSeekProvider bakes in
+        The native path must win -- pydantic-ai's DeepSeekProvider bakes in
         its own endpoint handling.
         """
         m = build_model("deepseek/deepseek-chat")
