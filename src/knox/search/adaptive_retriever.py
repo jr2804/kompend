@@ -1,6 +1,13 @@
-from __future__ import annotations
+"""Context-budget-aware retrieval using the ChunkTree hierarchy.
 
-from pathlib import Path
+Retrieval is purely vector-based. Wraps the zvec store with three
+adaptive modes:
+- ZOOM_IN: retrieve summaries -> identify hot sections -> expand to full leaves
+- ZOOM_OUT: too many leaf hits -> collapse to section summaries
+- TARGETED: query mentions table/equation -> direct structured query
+"""
+
+from __future__ import annotations
 
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
@@ -8,8 +15,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 from knox.search.budget import BudgetPlan, ContextBudgetManager
-from knox.search.index import FtsField, search_fts
-from knox.search.retriever import SearchResult, _extract_snippet, _tokenize  # ponytail: private retriever imports. Make public when other callers appear.
+from knox.search.retriever import SearchResult, _extract_snippet, _tokenize
 
 logger = get_logger(__name__)
 
@@ -27,15 +33,11 @@ class AdaptiveRetriever:
         self,
         wiki: CompiledWiki,
         *,
-        index_file: Path | None = None,
         vector_store: ZvecWikiStore | None = None,
-        sources_dir: Path | None = None,
         max_input_tokens: int = 128_000,
     ) -> None:
         self._wiki = wiki
-        self._index_path = index_file
         self._vector_store = vector_store
-        self._sources_dir = sources_dir
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}
         self._budget = ContextBudgetManager(max_input_tokens)
 
@@ -64,22 +66,14 @@ class AdaptiveRetriever:
         if mode is not None:
             plan = self._override_mode(plan, candidates, query, mode, top_k=top_k)
 
-        results = self._execute_plan(plan, query, top_k=top_k)
-
-        if not results:
-            results = self._wiki_token_results(query, top_k=top_k)
-        return results
+        return self._execute_plan(plan, query, top_k=top_k)
 
     def _collect_candidates(self, query: str, top_k: int) -> list[WikiNode]:
-        """Collect candidate nodes from FTS, vector, and token overlap."""
+        """Collect candidate nodes from vector search."""
         seen: set[str] = set()
         candidates: list[WikiNode] = []
 
-        self._dedup_add(self._wiki_fts_results(query, top_k), seen, candidates, self._node_by_id)
         self._dedup_add(self._wiki_vector_results(query, top_k), seen, candidates, self._node_by_id)
-
-        if not candidates:
-            self._dedup_add(self._wiki_token_results(query, top_k), seen, candidates, self._node_by_id)
 
         return candidates
 
@@ -131,30 +125,6 @@ class AdaptiveRetriever:
             return self._budget.plan_targeted(candidates, query, top_k=top_k)
         return plan
 
-    def _wiki_fts_results(self, query: str, top_k: int) -> list[SearchResult]:
-        if self._index_path is None or not self._index_path.exists():
-            return []
-        try:
-            rows = search_fts(query, self._index_path, top_k=top_k)
-        except Exception as exc:
-            logger.warning("FTS search failed: %s", exc, exc_info=True)
-            return []
-        query_tokens = set(_tokenize(query))
-        results: list[SearchResult] = []
-        for row in rows:
-            content = row.get("content") or ""
-            snippet = _extract_snippet(content, query_tokens) if content else ""
-            results.append(
-                SearchResult(
-                    article_id=row[FtsField.ARTICLE_ID],
-                    title=row.get("title", ""),
-                    snippet=snippet,
-                    score=float(row.get("score", 0.0)),
-                    source_file=row.get(ZvecField.SOURCE_FILE),
-                )
-            )
-        return results
-
     def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
         if self._vector_store is None or not self._vector_store.available:
             return []
@@ -179,43 +149,6 @@ class AdaptiveRetriever:
                     title=title,
                     snippet=snippet,
                     score=float(hit.get("score", 0.0)),
-                    source_file=source_file,
-                )
-            )
-        return results
-
-    def _wiki_token_results(
-        self,
-        query: str,
-        top_k: int,
-    ) -> list[SearchResult]:
-        query_tokens = _tokenize(query)
-        if not query_tokens:
-            return []
-        query_set = set(query_tokens)
-        scored: list[tuple[float, WikiNode]] = []
-        for node in self._wiki.nodes:
-            content = node.content or node.title
-            node_tokens = set(_tokenize(content))
-            if not node_tokens:
-                continue
-            overlap = len(query_set & node_tokens)
-            score = overlap / len(query_set)
-            if score > 0:
-                scored.append((score, node))
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        results: list[SearchResult] = []
-        for score, node in scored[:top_k]:
-            snippet = _extract_snippet(node.content, query_set) if node.content else node.title
-            source_file = None
-            if node.metadata and node.metadata.get(MetadataField.SOURCE):
-                source_file = str(node.metadata[MetadataField.SOURCE])
-            results.append(
-                SearchResult(
-                    article_id=node.id,
-                    title=node.title,
-                    snippet=snippet,
-                    score=score,
                     source_file=source_file,
                 )
             )

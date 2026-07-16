@@ -178,7 +178,7 @@ class EmbeddingConfig(_KnoxBaseModel):
     instantiated yet.
     """
 
-    model: str | None = Field(default=None, validation_alias="KNOX_EMBEDDING_MODEL")
+    model: str = Field(default="all-MiniLM-L6-v2", validation_alias="KNOX_EMBEDDING_MODEL")
     batch_size: int = Field(default=10, validation_alias="KNOX_EMBEDDING_BATCH_SIZE")
     dim: int = 384
 

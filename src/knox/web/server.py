@@ -17,7 +17,7 @@ from knox.core.models import CompiledWiki, WikiField
 from knox.core.paths import PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
 from knox.search.classifier import classify
-from knox.search.retriever import SearchResult, TokenOverlapRetriever
+from knox.search.retriever import SearchResult, HybridRetriever
 
 logger = get_logger(__name__)
 
@@ -217,7 +217,7 @@ async def query_page(q: str = Query(default="")) -> str:
             iteration=wiki.get(WikiField.ITERATION, 0),
             metadata=wiki.get(WikiField.METADATA, {}),
         )
-        retriever = TokenOverlapRetriever(w)
+        retriever = HybridRetriever(w)
         results = retriever.search(q, top_k=5)
 
         intent = classify(q)

@@ -154,8 +154,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """Render the system-prompt template, appending any skill instructions.
 
         System templates are static instructions — deps variables are not passed
-        since no system template uses them.
+        since no system template uses them. Returns an empty string when
+        ``system_template_name`` is not set.
         """
+        if not self.system_template_name:
+            return ""
         prompt = self._template_loader.render(
             f"compilation/{self.system_template_name}",
         )

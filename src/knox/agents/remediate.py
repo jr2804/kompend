@@ -12,9 +12,17 @@ class RemediationAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     Used by tier-2 remediation (``lint/remediate_concept.md.j2``) to fill
     coverage gaps. Returns free-text Markdown — distinct from
     :class:`LintRuleAgent`, which returns structured JSON for lint checks.
+
+    The prompt is rendered by the remediation logic and passed via
+    ``deps.text``, so ``render_user_prompt`` is overridden to return it
+    directly.
     """
 
-    template_name: str = "lint/remediate_concept.md.j2"
-    system_template_name: str = ""  # system prompt is empty for this agent
+    template_name: str = ""  # not used; render_user_prompt is overridden
+    system_template_name: str = ""  # not used; system prompt is empty
     result_type: type = str
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
+
+    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
+        """Return the pre-rendered prompt from deps.text."""
+        return deps.text

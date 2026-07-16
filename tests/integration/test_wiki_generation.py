@@ -45,7 +45,7 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
-from knox.core.paths import KNOX_DIR, SEARCH_DB_FILE, STATE_FILE, VECTORS_DIR
+from knox.core.paths import KNOX_DIR, STATE_FILE, VECTORS_DIR
 from knox.core.pipeline.config import Compiler, PipelineConfig
 from knox.core.pipeline.state import TierStateStore
 from knox.llm.context_window import ContextWindow, discover_context_window
@@ -58,7 +58,6 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
 from knox.resolution.vlm_enricher import VLMEnricher
-from knox.search.index import build_chunk_index, search_fts
 
 logger = logging.getLogger(__name__)
 
@@ -434,40 +433,6 @@ class TestTier5Output:
 
 @_skip_no_ollama
 @_skip_no_parser
-@_skip_no_pdfs
-class TestSearchFTS:
-    """SQLite FTS index built from compiled wiki."""
-
-    def test_build_and_search_fts_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
-        """FTS index must be queryable and return relevant results."""
-        index_file = tmp_path / SEARCH_DB_FILE
-        build_chunk_index(graph_wiki, index_file)
-        assert index_file.exists(), "FTS index file not created"
-
-        # Pick a word from the first node title/content as query
-        query_term = None
-        for node in graph_wiki.nodes:
-            words = (node.title + " " + node.content).split()
-            meaningful = [w for w in words if len(w) > 4 and w.isalpha()]
-            if meaningful:
-                query_term = meaningful[0]
-                break
-
-        if query_term is None:
-            pytest.skip("Could not extract a query term from wiki nodes")
-
-        results = search_fts(query_term, index_file, top_k=5)
-        assert isinstance(results, list)
-        logger.info("FTS search for %r: %d results", query_term, len(results))
-
-    def test_fts_returns_empty_list_for_unknown_term(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
-        """FTS search must return empty list for a term not in the corpus."""
-        index_file = tmp_path / "search_empty.db"
-        build_chunk_index(graph_wiki, index_file)
-        results = search_fts("xyzzy_nonexistent_term_42", index_file, top_k=5)
-        assert results == [] or isinstance(results, list)
-
-
 # ── Search: Vector store ──────────────────────────────────────────────────────
 
 
@@ -861,10 +826,6 @@ class TestGenerateExampleWiki:
 
         # Typst
         TypstWriter().write(wiki, out_dir / "typst")
-
-        # FTS
-        build_chunk_index(wiki, out_dir / KNOX_DIR / SEARCH_DB_FILE)
-        logger.info("FTS index built")
 
         # Vector index
         embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)

@@ -45,7 +45,7 @@ from knox.core.config.keys import (
     SEARCH_SYNTHESIS_VERBOSITY,
 )
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, SEARCH_DB_FILE, VECTORS_DIR
+from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
 from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.format import encode_for_llm
@@ -55,7 +55,7 @@ from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.classifier import classify
 from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
+from knox.search.retriever import HybridRetriever, synthesize_results
 
 logger = get_logger(__name__)
 
@@ -221,7 +221,6 @@ def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model
 def _build_enhanced_retriever(
     wiki: CompiledWiki,
     vector_store: ZvecWikiStore | None,
-    sources_dir: Path | None,
     state_dir: Path,
     cfg: Any,
     model: str,
@@ -233,9 +232,7 @@ def _build_enhanced_retriever(
     hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
     return EnhancedRetriever(
         wiki,
-        index_file=state_dir / SEARCH_DB_FILE,
         vector_store=vector_store,
-        sources_dir=sources_dir,
         expansion_agent=expansion_agent,
         crag_agent=crag_agent,
         hyde_agent=hyde_agent,
@@ -266,9 +263,7 @@ def _handle_adaptive_search(
     """Search using adaptive retriever."""
     retriever = AdaptiveRetriever(
         wiki,
-        index_file=state_dir / SEARCH_DB_FILE,
         vector_store=vector_store,
-        sources_dir=sources_dir,
     )
     mode = search_mode if search_mode != SearchMode.HYBRID else None
     results = retriever.search(query, top_k=top_k, mode=mode)
@@ -339,8 +334,7 @@ def _synthesize_and_output(
                 max_tokens=max_tokens,
             )
         else:
-            synthesizer = TokenOverlapRetriever(wiki)
-            synthesis = synthesizer.synthesize(
+            synthesis = synthesize_results(
                 query,
                 results,
                 model=model,
@@ -436,9 +430,7 @@ def query_cmd(
             else:
                 retriever = HybridRetriever(
                     wiki,
-                    index_file=state_dir / SEARCH_DB_FILE,
                     vector_store=vector_store,
-                    sources_dir=sources_dir,
                 )
                 results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
                 has_enhanced = False
@@ -459,5 +451,5 @@ def query_cmd(
         _print_raw_results(results, QueryFormat.TEXT)
         return
 
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, model) if has_enhanced else None
+    enhanced = _build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
     _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)

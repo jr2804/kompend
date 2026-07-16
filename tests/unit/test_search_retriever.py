@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.llm.context_window import ContextSource, ContextWindow
-from knox.search.retriever import HybridRetriever, SearchResult, TokenOverlapRetriever, _extract_snippet
+from knox.search.retriever import HybridRetriever, SearchResult, _extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -237,11 +237,9 @@ class TestSynthesizeVerbosity:
         assert "balanced" in system.lower()
 
     def _synthesize(self, verbosity: str, max_tokens: int | None = 100) -> tuple[Any, Any]:
-        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
         fake = _FakeLLMClient()
-        retriever = TokenOverlapRetriever(wiki)
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
         with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
-            result = retriever.synthesize("q", [], model=fake.default_model, verbosity=verbosity, max_tokens=max_tokens)
+            result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity, max_tokens=max_tokens)
         return result, mock_agent

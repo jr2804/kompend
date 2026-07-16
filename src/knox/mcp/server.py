@@ -44,7 +44,7 @@ from knox.preprocessing.parsers.base import ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.scaffolding import ScaffoldError, scaffold_project
-from knox.search.retriever import HybridRetriever, TokenOverlapRetriever
+from knox.search.retriever import HybridRetriever
 
 logger = get_logger(__name__)
 
@@ -372,7 +372,7 @@ def query_wiki(
 
     if model:
         try:
-            synthesizer = TokenOverlapRetriever(wiki)
+            synthesizer = HybridRetriever(wiki)
             synthesis = synthesizer.synthesize(query, results, model=model)
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {

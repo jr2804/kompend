@@ -38,7 +38,6 @@ from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
 from knox.review import ReviewQueue
-from knox.search.index import build_chunk_index
 from knox.trust import mark_wiki_private
 from knox.verification import verify_wiki
 
@@ -459,9 +458,9 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
             show_progress=opts.show_progress,
         )
 
-    if opts.index_store:
-        search_db_path = VaultPaths(base_dir).search_db_path
-        build_chunk_index(opts.wiki, search_db_path)
+    # Build vector index unless explicitly disabled (--no-index).
+    # opts.index_store is None when not passed (treat as True), True, or False.
+    if opts.index_store is not False:
         opts.wiki.metadata["embedding_model"] = opts.embed_model
         _cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
 

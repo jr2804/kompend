@@ -125,7 +125,7 @@ workers = 1
 # synthesize = false
 
 # Enable vector index build
-# index = false
+# index = true
 
 # Enable lint during compile
 # lint = false
@@ -293,8 +293,8 @@ fallback_max_retries = 2
 #   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Embedding models still use litellm (not pydantic-ai) for broad provider support.
-# Leave commented to disable vector indexing.
-# model = "${KNOX_EMBEDDING_MODEL}"
+# Default: all-MiniLM-L6-v2 (sentence-transformers, 384 dim, no API key needed).
+# model = "all-MiniLM-L6-v2"
 # model = "litellm:granite-embedding:278m"
 
 # Embedding batch size (number of texts to embed per API call)

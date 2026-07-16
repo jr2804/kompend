@@ -13,8 +13,6 @@ All default to **disabled** — opt-in only.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from sentence_transformers import CrossEncoder as _CrossEncoder
 
 from knox.agents.deps import PipelineAgentDeps
@@ -27,7 +25,7 @@ from knox.search.retriever import (
     HybridRetriever,
     SearchResult,
     SynthesisResult,
-    TokenOverlapRetriever,
+    synthesize_results,
 )
 
 logger = get_logger(__name__)
@@ -45,9 +43,7 @@ class EnhancedRetriever:
         self,
         wiki: CompiledWiki,
         *,
-        index_file: Path | None = None,
         vector_store: ZvecWikiStore | None = None,
-        sources_dir: Path | None = None,
         expansion_agent: QueryExpansionAgent | None = None,
         crag_agent: CragGradeAgent | None = None,
         hyde_agent: HydeAgent | None = None,
@@ -73,9 +69,7 @@ class EnhancedRetriever:
         # Base retriever
         self._retriever = HybridRetriever(
             wiki,
-            index_file=index_file,
             vector_store=vector_store,
-            sources_dir=sources_dir,
         )
 
         # Expansion config
@@ -107,7 +101,6 @@ class EnhancedRetriever:
     def search(
         self,
         query: str,
-        sources_dir: Path | None = None,
         top_k: int = 5,
         expand_graph: bool = False,
     ) -> list[SearchResult]:
@@ -128,7 +121,7 @@ class EnhancedRetriever:
 
         all_results: list[list[SearchResult]] = []
         for q in queries:
-            results = self._retriever.search_hybrid(q, sources_dir, top_k=top_k * 2, expand_graph=expand_graph)
+            results = self._retriever.search_hybrid(q, top_k=top_k * 2, expand_graph=expand_graph)
             if results:
                 all_results.append(results)
 
@@ -156,8 +149,7 @@ class EnhancedRetriever:
         skills: dict[str, str] | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
-        synthesizer = TokenOverlapRetriever(self._wiki)
-        synthesis = synthesizer.synthesize(
+        return synthesize_results(
             query,
             results,
             model=self._synthesis_model,
@@ -165,7 +157,6 @@ class EnhancedRetriever:
             max_tokens=max_tokens,
             skills=skills,
         )
-        return synthesis
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────
 
