@@ -180,7 +180,7 @@ flowchart LR
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | `PipelineConfig` | `core/pipeline.py` | Configuration dataclass for all tiers |
-| `LLMClient` | `llm/client.py` | Shared litellm wrapper with failover chain |
+| PydanticAI agents | `agents/*.py` | LLM calls route through `KnoxAgentBase` subclasses (Extraction, Generation, Query, WiCER, Doctor, Capture) wrapped via `KnoxModel`; failover via `FallbackModel`. See [LLM Configuration](../guides/llm-config.md) |
 | `TemplateLoader` | `core/template_loader.py` | Jinja2 template loading with override chain |
 | `LintRunner` | `lint/runner.py` | 8 structural + 4 LLM-powered lint rules |
 | `MCP Server` | `mcp/server.py` | stdio MCP tools for agent integration |

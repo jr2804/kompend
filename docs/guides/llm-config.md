@@ -1,105 +1,85 @@
 # LLM Configuration
 
-KNOX routes every LLM call through a shared client
-([`knox.llm.LLMClient`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/client.py)) so every tier
-gets the same retry, failover and observability semantics.
+KNOX routes every LLM call through **PydanticAI agents** (`knox.agents.*`)
+so every pipeline stage — extraction, generation, query, WiCER, doctor,
+capture — gets the same retry, failover, and observability semantics.
 
-This guide covers:
+Under the hood, each agent wraps a native pydantic-ai Model built by
+[`knox.llm.models.build_model`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/models.py)
+from a `provider/model` string. This guide covers:
 
-- Custom API endpoints and authentication
-- The Ollama Cloud provider
-- Typed errors and a configurable failover chain
+- Model strings and provider resolution
+- API key discovery
+- The fallback chain
+- Retry and reasoning-effort controls
+- Token usage observability
 
-## Custom API base and API key
+## Model strings
 
-When the LLM provider is behind a proxy, gateway, or custom endpoint,
-set `api_base` in the `[compile.llm]` section:
+KNOX uses the `provider/model` convention everywhere (e.g.
+`ollama/qwen3`, `openai/gpt-4o`, `claudinio/claude-4`). `build_model()`
+resolves a string to a native pydantic-ai `Model` in two steps:
+
+1. **models-dev catalog** — if the provider has a known API base URL in
+   the [models.dev](https://models.dev) catalog (e.g. `claudinio`,
+   `opencode`, `deepseek`), an OpenAI-compatible `OpenAIChatModel` is
+   constructed with the catalog-advertised endpoint.
+2. **pydantic-ai native** — otherwise, pydantic-ai's `infer_model()`
+   handles standard providers (`ollama`, `openai`, `anthropic`,
+   `google`, `groq`, `mistral`, `cohere`).
+
+If neither path resolves, `build_model()` raises `ValueError`.
+
+## API key discovery
+
+There is no `api_base` / `api_key` config field. API keys are read from
+the environment variable(s) the models-dev catalog advertises for each
+provider. For example:
+
+| Provider | Env var |
+|----------|---------|
+| `claudinio/` | `CLAUDINIO_API_KEY` |
+| `opencode/` | `OPENCODE_API_KEY` |
+| `deepseek/` | `DEEPSEEK_API_KEY` |
+| `openai/` | `OPENAI_API_KEY` (pydantic-ai native) |
+| `anthropic/` | `ANTHROPIC_API_KEY` (pydantic-ai native) |
+| `ollama/` | none (local); requires `OLLAMA_BASE_URL` if not default |
+
+```bash
+export OPENCODE_API_KEY="oc-..."
+```
+
+## Configuring the primary model
+
+Set the primary model in `[compile.llm]`:
 
 ```toml
 [compile.llm]
-default_model = "ollama-cloud/qwen3-coder"
-api_base = "https://my-gateway.example.com"
-api_key = "$MY_API_KEY"
+default_model = "ollama/qwen3"
+vlm_model = "ollama/qwen3"          # separate VLM if desired
+timeout = 120.0                      # per-call timeout in seconds
 ```
 
-The `api_key` field supports **env-var indirection**: if the value
-starts with `$`, the remainder is treated as an environment variable
-name. This keeps secrets out of the config file.
+## Fallback chain
 
-```bash
-# Resolved from the environment at call time
-api_key = "$OPENAI_API_KEY"
-```
+A chain is an ordered list of models. The primary is tried first; each
+subsequent model is tried only when the previous one fails.
 
-Both fields can also be set via environment variables:
-
-```bash
-export KNOX_LLM_API_BASE="https://my-gateway.example.com"
-export KNOX_LLM_API_KEY="sk-..."
-```
-
-When `api_base` or `api_key` are `None` (the default), litellm's
-built-in provider routing and key discovery apply unchanged.
-
-## Ollama Cloud
-
-KNOX ships a custom litellm provider for
-[Ollama Cloud](https://ollama.com). Use the `ollama-cloud/` prefix in
-the model string:
-
-```toml
-[compile.llm]
-default_model = "ollama-cloud/qwen3-coder"
-```
-
-Authentication uses the `OLLAMA_API_KEY` environment variable:
-
-```bash
-export OLLAMA_API_KEY="oll-..."
-```
-
-The cloud API does not expose the local `/api/show` endpoint, so
-context-window discovery falls back to `fallback_max_input` (8192).
-Set `context_window_cap` explicitly to use the full window:
-
-```toml
-[compile.llm]
-default_model = "ollama-cloud/qwen3-coder"
-context_window_cap = 1048576   # 1M tokens
-```
-
-## Typed errors
-
-The shared client raises one of three classes from
-[`knox.llm.errors`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/errors.py) — never a raw
-provider exception:
-
-| Class | When it fires | Retry behaviour |
-|---|---|---|
-| `TransientError` | Rate limit, timeout, 5xx, connection error | Retried with exponential backoff, then the chain advances to the next model |
-| `PermanentError` | Bad request, content policy, context window exceeded, malformed JSON | No retry — surfaced or advances to the next model |
-| `ConfigurationError` | Missing API key, unknown model, permission denied | Fatal — fails fast without trying any other model |
-
-Unknown exception types default to `TransientError` so a single
-upstream library change cannot break the entire pipeline.
-
-## Failover chain
-
-A chain is an ordered list of models. The primary is tried first;
-each subsequent model is tried only when the previous one exhausts
-its retries with transient errors.
+Fallback is implemented by wrapping the primary and fallback `KnoxModel`
+instances in `pydantic_ai.models.fallback.FallbackModel` at agent
+construction time.
 
 ### CLI
 
 ```bash
-knox compile sources/ \
+knox compile \
   --llm-fallback-chain openai/gpt-4o \
   --llm-fallback-chain anthropic/claude-3-haiku-20240307 \
   --llm-fallback-chain ollama/llama3.2
 ```
 
-`--llm-fallback-chain` is repeatable. Without it the pipeline runs in
-single-model mode — the pre-Q12 behaviour.
+`--llm-fallback-chain` is repeatable. Without it, the pipeline runs in
+single-model mode.
 
 ### Environment
 
@@ -108,74 +88,110 @@ export KNOX_LLM_FALLBACK_CHAIN="openai/gpt-4o,anthropic/claude-3-haiku-20240307,
 export KNOX_LLM_FALLBACK_MAX_RETRIES=2
 ```
 
-### Programmatic
+### TOML
 
-```python
-from knox.core.pipeline import PipelineConfig, build_llm_client
-
-config = PipelineConfig(
-    source_dir=Path("sources"),
-    output_dir=Path("wiki"),
-    llm_model="gpt-4o",
-    llm_provider="openai",
-    llm_fallback_chain=[
-        "anthropic/claude-3-haiku-20240307",
-        "ollama/llama3.2",
-    ],
-    llm_fallback_max_retries_per_model=2,
-)
-client = build_llm_client(config)
+```toml
+[compile.llm]
+default_model = "ollama/qwen3"
+fallback_chain = ["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]
+fallback_max_retries = 2
 ```
 
-## Retry semantics
+## Retry and structured output
 
-For each model in the chain:
+PydanticAI validates structured output against the result type's schema.
+When validation fails, the agent retries before surfacing the error.
+Control this with:
 
-1. First attempt
-2. On `TransientError`: sleep `initial_backoff_s × 2^retry` (default
-   1s → 2s → 4s, capped at 8s)
-3. Retry up to `max_retries_per_model` times
-4. On `PermanentError`: skip retries, advance to the next model
-5. On `ConfigurationError`: raise immediately
-
-`max_retries_per_model = 2` (the default) means each model gets up to
-three attempts (1 initial + 2 retries) before the chain advances.
-
-## Observability
-
-Every successful call produces a `CallDiagnostics` record:
-
-```text
-LLM ok role=resolve model=openai/gpt-4o attempts=2 latency_s=1.42
+```toml
+[compile.llm]
+output_retries = 2   # 3 total attempts (1 initial + 2 retries)
 ```
+
+## Reasoning effort
+
+Controls how much a model "thinks" before responding — useful for local
+models that tend to over-reason:
+
+```toml
+[compile.llm]
+# Supported: "none", "minimal", "low", "medium", "high", "xhigh", "default"
+# For Ollama, "none"/"minimal"/"low" also set think=False.
+# Default (unset / None) uses the provider's own default.
+reasoning_effort = "none"
+```
+
+Set via `KNOX_LLM_REASONING_EFFORT`. Best-effort: providers that don't
+recognize the key ignore it.
+
+## Per-role model overrides
+
+Some roles can be routed to a different model than the primary (e.g. a
+cheaper model for extraction, a stronger one for generation):
+
+```toml
+[compile.llm.role_models]
+"compile.extract" = "ollama/qwen3"
+"compile.generate" = "openai/gpt-4o"
+```
+
+The role identifiers come from the `LLMRole` StrEnum in
+[`knox.llm.roles`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/roles.py).
+
+## Token usage observability
+
+Every successful call feeds a shared
+[`UsageTracker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/usage.py)
+which accumulates token counts across the whole pipeline run:
 
 | Field | Meaning |
-|---|---|
-| `role` | The pipeline role that issued the call (e.g. `resolve`, `wicer.judge`) |
-| `model_used` | The model in the chain that produced the result |
-| `attempts` | Total provider invocations across all models tried |
-| `total_latency_s` | Wall-clock time including backoff sleeps |
+|-------|---------|
+| `prompt_tokens` | Total input tokens across all calls |
+| `completion_tokens` | Total output tokens across all calls |
+| `call_count` | Number of successful calls |
+| `per_model` | Per-model breakdown: `{prompt, completion, calls}` |
+| `avg_ttft` | Average time-to-first-token |
 
-Failed calls produce a warning with the same fields plus the
-classified error type.
+After a compile run, the tracker's data is attached to the wiki's
+metadata for the [`knox log`](cli.md) command to render.
+
+## Debug logging
+
+Set `KNOX_DEBUG_LLM_DIR` to a directory path to dump every LLM call
+(message list + response) to disk for manual inspection:
+
+```bash
+export KNOX_DEBUG_LLM_DIR=".knox/cache/debug"
+```
+
+## Errors
+
+When an agent's LLM call fails (network error, empty content after
+retries, non-salvageable output), it raises
+[`LLMOutputError`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/core/utils/exceptions.py)
+from `knox.core.utils.exceptions`. Callers (pipeline, WiCER, lint)
+surface this as a hard stop rather than silently skipping — a model that
+cannot produce usable output should abort cleanly so you can pick a
+different one.
 
 ## FAQ
 
 ### Why did the LLM call fail?
 
-Look for `LLM call failed role=… model=… attempts=… <error>` in the
-logs. The error message is the classified type — `TransientError`
-means every model in the chain exhausted retries; `PermanentError`
-means the prompt itself is rejected and no model could help;
-`ConfigurationError` means an API key or model name needs fixing.
-
-### How do I see which model was used?
-
-`LLM ok role=… model=…` log lines emit `model_used` for every
-successful call. When using `LLMClient.complete()` directly,
-`result.diagnostics.model_used` returns the same value.
+Set `KNOX_DEBUG_LLM_DIR` and re-run. The dumped request/response files
+show exactly what was sent and returned. Common causes: wrong provider
+prefix (check the [models.dev catalog](https://models.dev) for the
+exact name), missing API key env var, or a model too small to produce
+valid structured output.
 
 ### Does failover apply to single-model setups?
 
-Yes — even with no fallback chain, `max_retries_per_model` still
-applies to the single model so transient errors are retried.
+A single model still gets `output_retries` attempts on schema-validation
+failures, but there is no secondary model to fall back to.
+
+### How do I use a custom OpenAI-compatible provider?
+
+If the provider is in the [models.dev catalog](https://models.dev),
+just use its `provider/model` string and set the advertised API key env
+var. If it isn't in the catalog, KNOX cannot route to it — file an issue
+to get the provider added to models.dev upstream.

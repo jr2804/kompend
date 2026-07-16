@@ -14,10 +14,9 @@ between small/local and large/remote models.
 
 ## How KNOX Discovers the Context Window
 
-At startup, the `LLMClient`
-([`knox.llm.client`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/client.py))
-queries a three-tier discovery chain to determine the model's real input
-and output token capacity:
+At startup, [`discover_context_window()`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/context_window.py)
+in `knox.llm.context_window` queries a four-tier discovery chain to
+determine the model's real input and output token capacity:
 
 ```mermaid
 flowchart TD
@@ -28,9 +27,12 @@ flowchart TD
     E --> F{num_ctx < litellm value?}
     F -- yes --> G[Override with num_ctx]
     F -- no --> C
-    D -- no --> H["Fallback: max(2048, min(8192, 131072))<br/>= 8192 tokens"]
+    D -- no --> Md{models.dev catalog?}
+    Md -- yes --> MdC[context / output limits]
+    Md -- no --> H["Fallback: max(2048, min(32768, 131072))<br/>= 32768 tokens"]
     C --> I[ContextWindow]
     G --> I
+    MdC --> I
     H --> I
     I --> J{context_window_cap set?}
     J -- yes --> K["min(discovered, cap)"]
@@ -43,7 +45,8 @@ flowchart TD
 |------|--------|----------------|
 | 1 — litellm | `litellm.get_model_info()` database | All major hosted models (OpenAI, Anthropic, Google, etc.) |
 | 2 — Ollama | `OLLAMA_NUM_CTX` env var or Modelfile `parameters.num_ctx` | Local Ollama models |
-| 3 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **8192** | Custom or unknown providers |
+| 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Custom-provider models absent from litellm (e.g. some Ollama Cloud models) |
+| 4 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **32768** | Unknown providers with no catalog entry |
 
 The most restrictive value wins for Ollama: if litellm reports 128K but the
 Ollama Modelfile sets `num_ctx 8192`, KNOX uses 8192.
