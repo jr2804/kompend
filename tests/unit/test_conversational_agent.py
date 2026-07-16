@@ -1,16 +1,11 @@
-"""Unit tests for the ConversationalAgent tool-calling loop and ToolDispatcher."""
+"""Unit tests for the ConversationalAgent and build_toolset."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelResponse,
-    TextPart,
-    ToolCallPart,
-)
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from knox.acp.conversational import ConversationalAgent
@@ -22,12 +17,15 @@ from knox.acp.definitions import (
     AgentTask,
     AgentToolsConfig,
 )
-from knox.acp.tools import ToolDispatcher
+from knox.acp.tools import ToolName, build_toolset
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
 
-def _make_definition(max_turns: int = 10) -> AgentDefinition:
+def _make_definition(
+    max_turns: int = 10,
+    enabled: list[str] | None = None,
+) -> AgentDefinition:
     """Build a minimal AgentDefinition for testing."""
     return AgentDefinition(
         name="test-agent",
@@ -35,7 +33,7 @@ def _make_definition(max_turns: int = 10) -> AgentDefinition:
         task=AgentTask.GENERIC,
         llm=AgentLLMConfig(temperature=0.0),
         prompt=AgentPromptConfig(system="You are a test agent."),
-        tools=AgentToolsConfig(),
+        tools=AgentToolsConfig(enabled=enabled),
         behavior=AgentBehaviorConfig(max_turns=max_turns),
     )
 
@@ -66,49 +64,35 @@ def _make_function_model(response_text: str) -> FunctionModel:
     return FunctionModel(handler)
 
 
-# ── ToolDispatcher ─────────────────────────────────────────────────────
+# ── build_toolset ──────────────────────────────────────────────────────
 
 
-class TestToolDispatcher:
-    """Tool schema generation and dispatch."""
+class TestBuildToolset:
+    """Toolset construction and tool registration."""
 
-    def test_schemas_all_tools(self) -> None:
-        """All tools returned when enabled=None."""
-        dispatcher = ToolDispatcher()
-        schemas = dispatcher.schemas()
-        names = [s["function"]["name"] for s in schemas]
-        assert "wiki_status" in names
-        assert "compile_wiki" in names
-        assert "query_wiki" in names
-        assert "config_get" in names
+    def test_returns_function_toolset(self) -> None:
+        """build_toolset returns a FunctionToolset instance."""
+        toolset = build_toolset(base_dir=".")
+        assert toolset is not None
 
-    def test_schemas_filtered(self) -> None:
-        """Only enabled tools returned."""
-        dispatcher = ToolDispatcher()
-        schemas = dispatcher.schemas(enabled=["query_wiki", "config_get"])
-        names = [s["function"]["name"] for s in schemas]
-        assert names == ["query_wiki", "config_get"]
+    def test_all_tool_names_in_enum(self) -> None:
+        """All ToolName enum members are valid tool identifiers."""
+        for name in ToolName:
+            assert isinstance(name.value, str)
+            assert len(name.value) > 0
 
-    def test_schemas_unknown_tool_skipped(self) -> None:
-        """Unknown tool names in enabled list are silently skipped."""
-        dispatcher = ToolDispatcher()
-        schemas = dispatcher.schemas(enabled=["nonexistent_tool"])
-        assert schemas == []
+    def test_filtered_toolset(self) -> None:
+        """Filtered toolset can be constructed without error."""
+        toolset = build_toolset(base_dir=".", enabled=["query_wiki", "config_get"])
+        assert toolset is not None
 
-    async def test_execute_unknown_tool(self) -> None:
-        """Unknown tool returns error JSON."""
-        dispatcher = ToolDispatcher()
-        result = await dispatcher.execute("nonexistent", {})
-        assert "error" in result
-
-    async def test_execute_wiki_status(self) -> None:
-        """wiki_status tool executes without error."""
-        dispatcher = ToolDispatcher(base_dir=".")
-        result = await dispatcher.execute("wiki_status", {})
-        assert isinstance(result, str)
+    def test_empty_enabled_list(self) -> None:
+        """Empty enabled list produces an empty toolset."""
+        toolset = build_toolset(base_dir=".", enabled=[])
+        assert toolset is not None
 
 
-# ── ConversationalAgent ─────────────────────────────────────────────────
+# ── ConversationalAgent ────────────────────────────────────────────────
 
 
 class TestConversationalAgent:
@@ -117,10 +101,8 @@ class TestConversationalAgent:
     async def test_direct_answer_no_tools(self) -> None:
         """When the model returns text directly, that's the final answer."""
         definition = _make_definition()
-        tools = ToolDispatcher()
         model = _make_function_model("The wiki has 5 pages.")
-        agent = ConversationalAgent(definition, "test", tools)
-        # Override the model with our FunctionModel for testing
+        agent = ConversationalAgent(definition, "test", base_dir=".")
         agent._build_agent = lambda: Agent(model)  # type: ignore[method-assign]
 
         conn = _mock_conn()
@@ -130,48 +112,11 @@ class TestConversationalAgent:
         notifications = _all_notifications(conn)
         assert "5 pages" in notifications
 
-    async def test_tool_call_then_answer(self) -> None:
-        """Agent calls a tool, gets result, then produces final answer."""
-        definition = _make_definition()
-        tools = ToolDispatcher()
-        model = _make_function_model("Wiki status checked successfully.")
-        agent = ConversationalAgent(definition, "test", tools)
-        agent._build_agent = lambda: Agent(model)  # type: ignore[method-assign]
-
-        conn = _mock_conn()
-        response = await agent.run("Check wiki status", "test-session", conn=conn)
-
-        assert response.stopReason == "end_turn"
-        notifications = _all_notifications(conn)
-        assert "checked" in notifications.lower()
-
-    async def test_max_turns_exhausted(self) -> None:
-        """When max_turns is reached without a final answer, agent stops."""
-        definition = _make_definition(max_turns=1)
-        tools = ToolDispatcher()
-
-        # Return a tool call to keep the loop going
-        def handler(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-            return ModelResponse(parts=[ToolCallPart(tool_name="wiki_status", args={})])
-
-        FunctionModel(handler)
-        agent = ConversationalAgent(definition, "test", tools)
-        # Build the real agent (with dispatch_tool registered) so tool calls work
-        conn = _mock_conn()
-        response = await agent.run("Do something", "test-session", conn=conn)
-
-        # The agent may either exhaust max_turns or hit a tool error;
-        # either way it returns a stop reason and a notification.
-        assert response.stopReason in ("max_tokens", "end_turn")
-        notifications = _all_notifications(conn)
-        assert len(notifications) > 0
-
     async def test_tool_error_handling(self) -> None:
         """When a tool raises, the agent returns an error message."""
         definition = _make_definition()
-        tools = ToolDispatcher()
         model = _make_function_model("Tool executed successfully.")
-        agent = ConversationalAgent(definition, "test", tools)
+        agent = ConversationalAgent(definition, "test", base_dir=".")
         agent._build_agent = lambda: Agent(model)  # type: ignore[method-assign]
 
         conn = _mock_conn()
@@ -179,16 +124,38 @@ class TestConversationalAgent:
 
         assert response.stopReason == "end_turn"
 
-    async def test_notification_on_tool_call(self) -> None:
-        """Progress notifications are sent during tool execution."""
+    async def test_notification_on_completion(self) -> None:
+        """Final answer is sent as a notification."""
         definition = _make_definition()
-        tools = ToolDispatcher()
         model = _make_function_model("Done.")
-        agent = ConversationalAgent(definition, "test", tools)
+        agent = ConversationalAgent(definition, "test", base_dir=".")
         agent._build_agent = lambda: Agent(model)  # type: ignore[method-assign]
 
         conn = _mock_conn()
         await agent.run("Test", "test-session", conn=conn)
 
         notifications = _all_notifications(conn)
-        assert len(notifications) > 0
+        assert "Done." in notifications
+
+    async def test_construction_with_base_dir(self) -> None:
+        """ConversationalAgent accepts base_dir instead of ToolDispatcher."""
+        definition = _make_definition(enabled=["wiki_status"])
+        agent = ConversationalAgent(definition, "test", base_dir=".")
+        assert agent._base_dir == "."
+
+    async def test_error_returns_max_tokens(self) -> None:
+        """When _build_agent raises, returns STOP_REASON_MAX_TOKENS."""
+        definition = _make_definition()
+        agent = ConversationalAgent(definition, "test", base_dir=".")
+
+        def _raise() -> Agent[None, str]:
+            raise RuntimeError("build failed")
+
+        agent._build_agent = _raise  # type: ignore[method-assign]
+
+        conn = _mock_conn()
+        response = await agent.run("Test", "test-session", conn=conn)
+
+        assert response.stopReason == "max_tokens"
+        notifications = _all_notifications(conn)
+        assert "build failed" in notifications

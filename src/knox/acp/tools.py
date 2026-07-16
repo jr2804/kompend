@@ -1,18 +1,17 @@
-"""Tool dispatcher for the conversational agent loop.
+"""Native PydanticAI toolset for the conversational agent.
 
-Wraps existing MCP server functions as LLM-callable tools. Injects the
-vault's ``base_dir`` automatically so the LLM doesn't need to specify it.
+Wraps existing MCP server functions as PydanticAI ``FunctionToolset``
+tools. Each tool is a proper ``@toolset.tool_plain`` function so
+PydanticAI handles schema generation, validation, and retry natively.
 
-Each tool is defined with an explicit schema (name, description, parameters)
-and an async executor that calls the underlying function via
-``asyncio.to_thread`` (MCP functions are synchronous).
+The vault's ``base_dir`` is injected via closure so the LLM never needs
+to specify it.
 
 Tool list:
 - ``wiki_status`` — check vault health and compiled wiki presence
 - ``compile_wiki`` — compile sources into a wiki
 - ``query_wiki`` — query the compiled wiki
 - ``wiki_capture`` — capture a note
-- ``wiki_learn`` — learn/distill from content
 - ``config_get`` — read a config value
 - ``config_set`` — write a config value
 """
@@ -21,10 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+
+from pydantic_ai.toolsets import FunctionToolset
 
 from knox.core.config import DEFAULTS
 from knox.core.pipeline.config import Compiler
@@ -47,227 +46,135 @@ class ToolName(StrEnum):
     CONFIG_SET = "config_set"
 
 
-@dataclass(frozen=True)
-class ToolSchema:
-    """LLM-facing schema for a single tool."""
-
-    name: str
-    description: str
-    parameters: dict[str, Any]
+def _truncate(text: str) -> str:
+    """Truncate tool result to protect context window."""
+    if len(text) > _MAX_TOOL_RESULT_CHARS:
+        return text[:_MAX_TOOL_RESULT_CHARS] + "\n...(truncated)"
+    return text
 
 
-# ── Tool schemas (OpenAI/litellm function format) ──────────────────────
+def build_toolset(
+    base_dir: str | Path,
+    enabled: list[str] | None = None,
+) -> FunctionToolset[None]:
+    """Build a PydanticAI ``FunctionToolset`` with KNOX tools.
 
+    Each tool calls the corresponding MCP server function with ``base_dir``
+    injected via closure. PydanticAI generates JSON schemas from the type
+    hints and docstrings automatically.
 
-def _build_schemas() -> dict[str, ToolSchema]:
-    """Return all available tool schemas keyed by name."""
-    schemas: list[ToolSchema] = [
-        ToolSchema(
-            name=ToolName.WIKI_STATUS,
-            description="Check vault health: whether a wiki is compiled, how many pages, source count.",
-            parameters={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        ToolSchema(
-            name=ToolName.COMPILE_WIKI,
-            description="Compile documents into a knowledge wiki. Sources must already be ingested.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "compiler": {
-                        "type": "string",
-                        "description": "Compiler backend: 'graph' (default) or 'wicer'.",
-                        "default": "graph",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        ToolSchema(
-            name=ToolName.QUERY_WIKI,
-            description="Query the compiled wiki with a natural language question.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural language question.",
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": "Number of results to retrieve.",
-                        "default": 5,
-                    },
-                },
-                "required": ["query"],
-            },
-        ),
-        ToolSchema(
-            name=ToolName.WIKI_CAPTURE,
-            description="Capture a note or observation into the knowledge base.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "The note text to capture.",
-                    },
-                },
-                "required": ["text"],
-            },
-        ),
-        ToolSchema(
-            name=ToolName.CONFIG_GET,
-            description="Read a configuration value by dotted key (e.g. 'compile.llm.default_model').",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Dotted config key.",
-                    },
-                },
-                "required": ["key"],
-            },
-        ),
-        ToolSchema(
-            name=ToolName.CONFIG_SET,
-            description="Set a configuration value by dotted key.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Dotted config key.",
-                    },
-                    "value": {
-                        "type": "string",
-                        "description": "Value to set (as string).",
-                    },
-                },
-                "required": ["key", "value"],
-            },
-        ),
-    ]
-    return {s.name: s for s in schemas}
+    Args:
+        base_dir: Vault root directory (injected into every tool call).
+        enabled: Tool names to register. *None* = all available tools.
 
-
-_ALL_SCHEMAS = _build_schemas()
-
-
-class ToolDispatcher:
-    """Routes tool calls to existing MCP server functions.
-
-    The vault's ``base_dir`` is injected automatically into tool calls that
-    need it, so the LLM's tool schemas stay clean.
+    Returns:
+        A ``FunctionToolset`` ready to pass to ``Agent(toolsets=[...])``.
     """
+    base = Path(base_dir)
+    sources_dir = DEFAULTS.get("paths", {}).get("sources_dir", "sources")
+    output_dir = DEFAULTS.get("paths", {}).get("output_dir", "wiki")
+    toolset: FunctionToolset[None] = FunctionToolset()
 
-    def __init__(self, base_dir: str | Path | None = None) -> None:
-        self._base_dir = Path(base_dir) if base_dir else Path(".")
-        self._sources_dir = DEFAULTS.get("paths", {}).get("sources_dir", "sources")
-        self._output_dir = DEFAULTS.get("paths", {}).get("output_dir", "wiki")
+    allowed = set(enabled) if enabled is not None else None
 
-    async def execute(self, name: str, arguments: dict[str, Any]) -> str:
-        """Execute a tool by name and return the result as a JSON string.
+    def _is_enabled(name: str) -> bool:
+        return allowed is None or name in allowed
 
-        On error, returns ``{"status": "error", "message": "..."}`` as a string.
-        Result is truncated to ``_MAX_TOOL_RESULT_CHARS`` to protect context.
-        """
-        try:
-            result = await asyncio.to_thread(self._dispatch, name, arguments)
-        except Exception as exc:
-            logger.exception("Tool execution failed: %s", name)
-            result = {"status": "error", "message": str(exc)}
+    # ── wiki_status ────────────────────────────────────────────────────
 
-        text = json.dumps(result, ensure_ascii=False, default=str)
-        if len(text) > _MAX_TOOL_RESULT_CHARS:
-            text = text[:_MAX_TOOL_RESULT_CHARS] + "\n…(truncated)"
-        return text
+    if _is_enabled(ToolName.WIKI_STATUS):
 
-    @staticmethod
-    def schemas(enabled: list[str] | None = None) -> list[dict[str, Any]]:
-        """Return tool schemas in litellm/OpenAI format for the LLM.
+        @toolset.tool_plain
+        async def wiki_status() -> str:
+            """Check vault health: whether a wiki is compiled, how many pages, source count."""
+            result = await asyncio.to_thread(_mcp.wiki_status, wiki_dir=str(base))
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-        Args:
-            enabled: Tool names to include. *None* = all tools.
-        """
-        names = enabled if enabled is not None else list(_ALL_SCHEMAS)
-        result: list[dict[str, Any]] = []
-        for name in names:
-            schema = _ALL_SCHEMAS.get(name)
-            if schema is None:
-                logger.warning("Unknown tool in enabled list: %s", name)
-                continue
-            result.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": schema.name,
-                        "description": schema.description,
-                        "parameters": schema.parameters,
-                    },
-                }
+    # ── compile_wiki ───────────────────────────────────────────────────
+
+    if _is_enabled(ToolName.COMPILE_WIKI):
+
+        @toolset.tool_plain
+        async def compile_wiki(compiler: str = "graph") -> str:
+            """Compile documents into a knowledge wiki. Sources must already be ingested.
+
+            Args:
+                compiler: Compiler backend: 'graph' (default) or 'wicer'.
+            """
+            comp = Compiler(compiler) if compiler else Compiler.GRAPH
+            result = await asyncio.to_thread(
+                _mcp.compile_wiki,
+                sources_dir=str(base / sources_dir),
+                output=str(base / output_dir),
+                compiler=comp.value,
             )
-        return result
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-    def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Call the underlying MCP server function via dispatch table."""
-        handler = _DISPATCH_TABLE.get(name)
-        if handler is None:
-            return {"status": "error", "message": f"Unknown tool: {name}"}
-        return handler(self, arguments)
+    # ── query_wiki ─────────────────────────────────────────────────────
 
+    if _is_enabled(ToolName.QUERY_WIKI):
 
-# ── Dispatch table ────────────────────────────────────────────────────
-# Maps tool name → callable(dispatcher, arguments) → MCP result dict.
-# Keeps _dispatch() clean and makes adding new tools a single entry.
+        @toolset.tool_plain
+        async def query_wiki(query: str, top_k: int = 5) -> str:
+            """Query the compiled wiki with a natural language question.
 
+            Args:
+                query: Natural language question.
+                top_k: Number of results to retrieve.
+            """
+            result = await asyncio.to_thread(
+                _mcp.query_wiki,
+                query=query,
+                wiki_dir=str(base),
+                top_k=top_k,
+            )
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-def _cmd_wiki_status(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.wiki_status(wiki_dir=str(self._base_dir))
+    # ── wiki_capture ───────────────────────────────────────────────────
 
+    if _is_enabled(ToolName.WIKI_CAPTURE):
 
-def _cmd_compile_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    compiler_raw = args.get("compiler", Compiler.GRAPH.value)
-    compiler = Compiler(compiler_raw) if compiler_raw else Compiler.GRAPH
-    return _mcp.compile_wiki(
-        sources_dir=str(args.get("sources_dir", self._base_dir / self._sources_dir)),
-        output=str(self._base_dir / self._output_dir),
-        compiler=compiler.value,
-    )
+        @toolset.tool_plain
+        async def wiki_capture(text: str) -> str:
+            """Capture a note or observation into the knowledge base.
 
+            Args:
+                text: The note text to capture.
+            """
+            result = await asyncio.to_thread(
+                _mcp.wiki_capture,
+                text=text,
+                sources_dir=str(base / sources_dir),
+            )
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-def _cmd_query_wiki(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.query_wiki(
-        query=args["query"],
-        wiki_dir=str(self._base_dir),
-        top_k=args.get("top_k", 5),
-    )
+    # ── config_get ─────────────────────────────────────────────────────
 
+    if _is_enabled(ToolName.CONFIG_GET):
 
-def _cmd_wiki_capture(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.wiki_capture(
-        text=args["text"],
-        sources_dir=str(self._base_dir / self._sources_dir),
-    )
+        @toolset.tool_plain
+        async def config_get(key: str) -> str:
+            """Read a configuration value by dotted key (e.g. 'compile.llm.default_model').
 
+            Args:
+                key: Dotted config key.
+            """
+            result = await asyncio.to_thread(_mcp.config_get, key=key)
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-def _cmd_config_get(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.config_get(key=args["key"])
+    # ── config_set ─────────────────────────────────────────────────────
 
+    if _is_enabled(ToolName.CONFIG_SET):
 
-def _cmd_config_set(self: ToolDispatcher, args: dict[str, Any]) -> dict[str, Any]:
-    return _mcp.config_set(key=args["key"], value=args["value"])
+        @toolset.tool_plain
+        async def config_set(key: str, value: str) -> str:
+            """Set a configuration value by dotted key.
 
+            Args:
+                key: Dotted config key.
+                value: Value to set (as string).
+            """
+            result = await asyncio.to_thread(_mcp.config_set, key=key, value=value)
+            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
 
-_DISPATCH_TABLE: dict[str, Any] = {
-    ToolName.WIKI_STATUS: _cmd_wiki_status,
-    ToolName.COMPILE_WIKI: _cmd_compile_wiki,
-    ToolName.QUERY_WIKI: _cmd_query_wiki,
-    ToolName.WIKI_CAPTURE: _cmd_wiki_capture,
-    ToolName.CONFIG_GET: _cmd_config_get,
-    ToolName.CONFIG_SET: _cmd_config_set,
-}
+    return toolset

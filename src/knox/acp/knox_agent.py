@@ -50,7 +50,6 @@ from knox.acp.definitions import AgentDefinition, AgentTask
 from knox.acp.provider_store import LLM_PROVIDER_MAP, ProviderConfig, ProviderCredentials
 from knox.acp.registry import AgentRegistry
 from knox.acp.slash_commands import HELP_TEXT, KNOX_COMMANDS, SlashCommand, parse_slash_command
-from knox.acp.tools import ToolDispatcher
 from knox.core.config import resolve_config
 from knox.core.config._core import set_config_file_value
 from knox.core.config.keys import (
@@ -294,9 +293,8 @@ class KnoxAgent(Agent):
 
         registry = AgentRegistry(base_dir=cwd)
         definition = AgentDefinition.from_toml(self._agent_file) if self._agent_file else registry.active_for(task, {})
-        tools = ToolDispatcher(base_dir=cwd)
 
-        agent = ConversationalAgent(definition, model, tools)
+        agent = ConversationalAgent(definition, model, base_dir=cwd)
         return await agent.run(user_message, session_id, self._conn)
 
     async def _advertise_commands(self, session_id: str) -> None:
