@@ -106,11 +106,9 @@ These are filed as beads issues and must be fixed before adding new text-in-code
 2. **No inline imports — PLC0415 is a hard error.** All imports must live at
    module level (standard library → third-party → local, per PEP 8 grouping).
    Importing inside functions, methods, or class bodies is forbidden. Using
-   `# noqa: PLC0415` to suppress the lint error is itself an antipattern — it
+   `# noqa: PLC0415` to suppress the lint error is itself an antipattern as well — it
    hides a real problem rather than fixing it. Move the import to the top of
-   the file. The only accepted exceptions are cases where the import would
-   cause a circular dependency or an unconditional heavy side-effect at import
-   time; both must be documented with a comment explaining why.
+   the file.
 
 3. **No try/except ImportError guards for core dependencies.** Every package
    listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be
