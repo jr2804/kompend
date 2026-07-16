@@ -65,22 +65,25 @@ def build_model(model_string: str) -> Model:
         raise ValueError(msg) from exc
 
 
-def resolve_model_limits(model_id: str) -> tuple[int, int] | None:
+def resolve_model_limits(model_id: str) -> tuple[int, int]:
     """Resolve ``(max_input, max_output)`` token limits from models-dev catalog.
 
-    Returns ``None`` when the model is not present in the catalog.
+    Raises:
+        ValueError: If *model_id* has no ``/`` separator.
+        KeyError: If the provider or model is not in the catalog.
+        LookupError: If the model entry has no limit data.
     """
     provider, sep, model_name = model_id.partition("/")
     if not sep:
-        return None
-    try:
-        model = get_model_by_id(provider, model_name)
-    except KeyError:
-        return None
+        raise ValueError(
+            f"Invalid model ID {model_id!r}. Use 'provider/model' format."
+        )
+
+    model = get_model_by_id(provider, model_name)  # raises KeyError
 
     limit = model.limit
     if limit is None or limit.context is None:
-        return None
+        raise LookupError(f"No limit data for {model_id!r}")
 
     return limit.context, limit.output or limit.context
 

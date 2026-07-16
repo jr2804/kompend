@@ -14,7 +14,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
 
-from knox.llm.models_dev import resolve_model_limits
+from knox.llm.models import resolve_model_limits
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -154,14 +154,15 @@ def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 
                 source = ContextSource.OLLAMA
 
     if max_input is None or max_output is None:
-        limits = resolve_model_limits(model)
-        if limits is not None:
-            md_input, md_output = limits
+        try:
+            md_input, md_output = resolve_model_limits(model)
             if max_input is None:
                 max_input = md_input
             if max_output is None:
                 max_output = md_output
             source = ContextSource.MODELS_DEV
+        except (KeyError, LookupError):
+            pass
 
     if max_input is None:
         logger.warning(

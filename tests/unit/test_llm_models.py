@@ -123,22 +123,18 @@ class TestBuildModelErrors:
 
 class TestResolveModelLimits:
     def test_openai_gpt4o_returns_limits(self) -> None:
-        limits = resolve_model_limits("openai/gpt-4o")
-        assert limits is not None
-        max_input, max_output = limits
+        max_input, max_output = resolve_model_limits("openai/gpt-4o")
         assert max_input == 128000
         assert max_output == 16384
 
     def test_anthropic_claude_returns_limits(self) -> None:
-        limits = resolve_model_limits("anthropic/claude-sonnet-4-20250514")
-        assert limits is not None
-        max_input, _ = limits
+        max_input, _ = resolve_model_limits("anthropic/claude-sonnet-4-20250514")
         assert max_input == 200000
 
-    def test_unknown_model_returns_none(self) -> None:
-        limits = resolve_model_limits("nonexistent/fake-model-9000")
-        assert limits is None
+    def test_unknown_model_raises_key_error(self) -> None:
+        with pytest.raises(KeyError, match="nonexistent"):
+            resolve_model_limits("nonexistent/fake-model-9000")
 
-    def test_missing_slash_returns_none(self) -> None:
-        limits = resolve_model_limits("no-slash-here")
-        assert limits is None
+    def test_missing_slash_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid model ID"):
+            resolve_model_limits("no-slash-here")
