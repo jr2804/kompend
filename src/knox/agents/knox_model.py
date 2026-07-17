@@ -25,7 +25,7 @@ Failover is handled by wrapping multiple :class:`KnoxModel` instances in
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models import Model, ModelRequestParameters
@@ -122,7 +122,7 @@ class KnoxModel(Model):
                 self._reasoning_effort,
             )
             return model_settings
-        settings: ModelSettings = dict(model_settings or {})
+        settings = cast("ModelSettings", dict(model_settings or {}))
         settings.setdefault("thinking", thinking)
         return settings
 

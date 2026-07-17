@@ -25,7 +25,7 @@ The base class handles:
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.models import Model
@@ -244,7 +244,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         )
         if self.output_validator_func is not None:
             agent.output_validator(self.output_validator_func)
-        return agent
+        return cast("Agent[DepsT, ResultT]", agent)
 
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + KNOX wrapper) for the Agent."""
