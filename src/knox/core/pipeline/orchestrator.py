@@ -689,7 +689,7 @@ class WikiPipeline:
             self._save_cache(source_file, parsed)
         return parsed
 
-    def _attach_dedup_warning(self, parsed: Any, stem: str, dedup_similar: dict[str, dict[str, Any]]) -> None:
+    def _attach_dedup_warning(self, parsed: Any, stem: str, dedup_similar: dict[str, dict[str, Any]]) -> None:  # noqa: PLR6301
         """Attach a dedup similarity warning to the parsed document's metadata."""
         similar_entry = dedup_similar.get(stem)
         if not similar_entry:
@@ -1023,12 +1023,15 @@ def build_pipeline(
     base_compiler: BaseCompiler | None = None
     chunker_context_window = None
     if needs_llm:
+        model = config.llm.default_model
+        if not model:
+            msg = f"LLM model required for tier {config.stop_at_tier}"
+            raise ValueError(msg)
+
         cw = discover_context_window(
-            config.llm.default_model,
+            model,
             fallback_max_input=config.llm.fallback_max_input,
             fallback_max_output=config.llm.fallback_max_output,
-            num_ctx_min=config.llm.num_ctx_min,
-            num_ctx_max=config.llm.num_ctx_max,
             context_window_cap=config.llm.context_window_cap,
         )
         chunker_context_window = cw
@@ -1040,7 +1043,7 @@ def build_pipeline(
                 base_compiler=TwoPhaseCompiler(
                     config=config,
                     base=GraphCompiler(
-                        model=config.llm.default_model,
+                        model=model,
                         min_content_length=config.budget.min_content_length,
                         min_concept_sources=config.budget.min_concept_sources,
                         max_concept_pages=config.budget.max_concept_pages,
@@ -1053,7 +1056,7 @@ def build_pipeline(
             base_compiler = TwoPhaseCompiler(
                 config=config,
                 base=GraphCompiler(
-                    model=config.llm.default_model,
+                    model=model,
                     min_content_length=config.budget.min_content_length,
                     min_concept_sources=config.budget.min_concept_sources,
                     max_concept_pages=config.budget.max_concept_pages,

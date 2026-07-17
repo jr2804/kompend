@@ -208,9 +208,9 @@ class TwoPhaseCompiler(BaseCompiler):
         *,
         context_window: ContextWindow | None = None,
     ) -> None:
-        self._base = base or GraphCompiler(model=config.llm.default_model or "")
+        self._model = config.llm.default_model or ""
+        self._base = base or GraphCompiler(model=self._model)
         self._budget = config.budget
-        self._model = config.llm.default_model
         self._config = config
         self._timeout = config.llm.timeout
         self._cache_store = CacheStore(config.paths.cache_dir)
@@ -223,12 +223,13 @@ class TwoPhaseCompiler(BaseCompiler):
         if context_window is not None:
             cw = context_window
         else:
+            if not self._model:
+                msg = "LLM model required for TwoPhaseCompiler"
+                raise ValueError(msg)
             cw = discover_context_window(
                 self._model,
                 fallback_max_input=config.llm.fallback_max_input,
                 fallback_max_output=config.llm.fallback_max_output,
-                num_ctx_min=config.llm.num_ctx_min,
-                num_ctx_max=config.llm.num_ctx_max,
                 context_window_cap=config.llm.context_window_cap,
             )
         self._context_window = cw
