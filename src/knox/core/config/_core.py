@@ -436,7 +436,7 @@ def _get_env_settings_model() -> BaseSettings:
         __base__=BaseSettings,
         __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
         **_KnoxEnvFields,
-    )
+    )  # type: ignore[no-matching-overload]  # ty:ignore[no-matching-overload]
 
 
 def _env_map_key_for(env_name: str) -> str:
@@ -449,7 +449,7 @@ def _env_map_key_for(env_name: str) -> str:
 
 def _read_env_vars() -> dict[str, Any]:
     """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
-    settings = _get_env_settings_model()()
+    settings = _get_env_settings_model()()  # type: ignore[call-non-callable]  # ty:ignore[call-non-callable]
     result: dict[str, Any] = {}
     for dotted_key, env_name in _ENV_MAP.items():
         field_name = env_name.removeprefix("KNOX_").lower()

@@ -186,7 +186,7 @@ class PipelineConfig:
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
         """Build PipelineConfig from a fully resolved config dict."""
 
-        def _kwargs_for(cls: type, section: str) -> dict[str, Any]:
+        def _kwargs_for(cls: Any, section: str) -> dict[str, Any]:
             """Build constructor kwargs for a pydantic model from a config section.
 
             Only includes keys present (non-None) in the resolved config.
@@ -194,7 +194,7 @@ class PipelineConfig:
             coercion (str-to-enum, str-to-Path) during construction.
             """
             out: dict[str, Any] = {}
-            for name in cls.model_fields:
+            for name in cls.model_fields:  # type: ignore[union-attr]
                 val = cfg.get(f"{section}.{name}")
                 if val is not None:
                     out[name] = val

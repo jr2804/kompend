@@ -317,7 +317,7 @@ class EntityRegistry:
                 entity_type="term",
             )
 
-    def _extract_from_structured(self, structured: dict[str, Any] | list[Any], location: EntityLocation) -> None:
+    def _extract_from_structured(self, structured: Any, location: EntityLocation) -> None:
         """Extract entities from StructuredData (equation variables, table columns)."""
         if isinstance(structured, StructuredEquation):
             for var in structured.variables:
