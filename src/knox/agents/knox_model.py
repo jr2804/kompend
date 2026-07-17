@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
 
@@ -74,7 +74,16 @@ class KnoxModel(Model):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         merged_settings = self._merge_reasoning(model_settings)
-        response = await self._delegate.request(messages, merged_settings, model_request_parameters)
+        # Compact history on retry: drop all ModelResponse (assistant
+        # attempts) to prevent the context window from growing on each
+        # validation retry. Only ModelRequest (system + user + retry
+        # prompts) carry the instructions the model needs — its own
+        # previous output is irrelevant and wastes context.
+        compacted = _compact_messages(messages)
+        if len(compacted) < len(messages):
+            logger.info("Compacted message history: %d → %d messages (dropped %d assistant responses)",
+                        len(messages), len(compacted), len(messages) - len(compacted))
+        response = await self._delegate.request(compacted, merged_settings, model_request_parameters)
         self._track_usage(response)
         self._save_debug(messages, response)
         return response
@@ -124,6 +133,20 @@ class KnoxModel(Model):
             content,
             str(finish_reason),
         )
+
+
+def _compact_messages(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Drop all ModelResponse messages to prevent context window blowup on retry.
+
+    Each retry iteration adds the model's full previous attempt (a
+    ModelResponse) and a retry prompt (a ModelRequest). On a small model
+    with limited context, a single retry can exceed the budget.
+
+    ModelResponse carries the model's OWN previous output — irrelevant
+    for the next generation. Only the ModelRequest instructions (system
+    prompt, user prompt, retry instructions) matter.
+    """
+    return [m for m in messages if isinstance(m, ModelRequest)]
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:

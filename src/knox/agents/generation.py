@@ -61,7 +61,13 @@ def _validate_generation_output(
         seen_slugs.add(page.slug)
 
     if issues:
-        raise ModelRetry("Fix the following issues and return the complete output again:\n" + "\n".join(f"- {issue}" for issue in issues))
+        issue_list = "\n".join(f"- {issue}" for issue in issues)
+        raise ModelRetry(
+            "The following pages need correction:\n"
+            + issue_list
+            + "\n\nProvide corrected content ONLY for the listed pages. "
+            "Return the full page list, but keep other pages' content unchanged."
+        )
 
     return output
 
