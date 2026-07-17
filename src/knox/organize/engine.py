@@ -59,10 +59,10 @@ def resolve_organize_config(overrides: dict[str, object] | None = None) -> Organ
     if min_files < 1:
         raise ValueError(f"organize.min_files_per_category must be >= 1, got {min_files}")
     return OrganizeConfig(
-        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),  # type: ignore[arg-type]
-        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),  # type: ignore[arg-type]
+        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
+        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
         min_files_per_category=min_files,
-        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),  # type: ignore[arg-type]
+        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
     )
 
 

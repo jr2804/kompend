@@ -137,10 +137,10 @@ def compile_wiki(
     config = PipelineConfig(
         source_dir=source_dir,
         output_dir=Path(output),
-        llm=LLMConfig(default_model="", vlm_model=vlm_model),  # type: ignore[unknown-argument]
-        embedding=EmbeddingConfig(model=""),  # type: ignore[unknown-argument]
+        llm=LLMConfig(default_model="", vlm_model=vlm_model),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
+        embedding=EmbeddingConfig(model=""),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
         online_sources=urls or [],
-        output=OutputConfig(format=format_enum),  # type: ignore[unknown-argument]
+        output=OutputConfig(format=format_enum),  # type: ignore[unknown-argument]  # ty:ignore[unknown-argument]
         image_mode=image_mode_enum,
         compiler=compiler_enum,
     )
@@ -341,9 +341,9 @@ def query_wiki(
     try:
         retriever = HybridRetriever(
             wiki,
-            index_file=state_dir / SEARCH_DB_FILE,
+            index_file=state_dir / SEARCH_DB_FILE,  # ty:ignore[unknown-argument]
             vector_store=vector_store,
-            sources_dir=sources_dir if sources_dir.exists() else None,
+            sources_dir=sources_dir if sources_dir.exists() else None,  # ty:ignore[unknown-argument]
         )
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
@@ -351,7 +351,7 @@ def query_wiki(
         if mode == SearchMode.RAW:
             if not sources_dir.exists():
                 return {"status": "error", "message": "No sources directory found for raw search."}
-            results = retriever.search_raw(query, sources_dir, top_k=top_k)
+            results = retriever.search_raw(query, sources_dir, top_k=top_k)  # ty:ignore[unresolved-attribute]
             return {"status": "ok", "results": results, "synthesis": None, "raw": True}
         elif mode == SearchMode.HYBRID:
             results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
