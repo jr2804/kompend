@@ -198,7 +198,7 @@ def _execute_query_search(
         if sources_dir is None:
             get_err_console().print("No sources directory found. Use --sources-dir to specify.")
             raise typer.Exit(1)
-        results = retriever.search_raw(query, sources_dir, top_k=top_k)
+        results = retriever.search(query, top_k=top_k)
         raw = True
     elif mode == SearchMode.HYBRID:
         results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
@@ -282,7 +282,7 @@ def _handle_enhanced_search(
     model: str,
 ) -> list[Any] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
-    enhanced = _build_enhanced_retriever(wiki, vector_store, sources_dir, state_dir, cfg, model)
+    enhanced = _build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
 
     has_enhanced = (
         cfg.get(SEARCH_EXPANSION_ENABLED, False)
@@ -293,7 +293,7 @@ def _handle_enhanced_search(
 
     if has_enhanced:
         expand_graph = search_mode == SearchMode.GRAPH
-        results = enhanced.search(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
+        results = enhanced.search(query, top_k=top_k, expand_graph=expand_graph)
         return results
 
     return None

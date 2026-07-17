@@ -16,6 +16,7 @@ import tarfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import py7zr
@@ -108,13 +109,16 @@ def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
 def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
     if not rarfile.is_rarfile(path):
         return None
-    with rarfile.RarFile(path) as rf:  # type: ignore[reportGeneralTypeIssues]
+    rf: Any = rarfile.RarFile(path)
+    try:
         best = _find_best_archive_member(rf.namelist())
         if best is None:
             return None
         dest = dest_dir / Path(best).name
         dest.write_bytes(rf.read(best))
         return dest
+    finally:
+        pass
 
 
 def _extract_tar(path: Path, dest_dir: Path) -> Path | None:

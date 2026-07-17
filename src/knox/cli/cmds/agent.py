@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import Any
 
 import typer
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
@@ -53,7 +54,7 @@ def agent_cmd(
         _run_sync(agent)
 
 
-def _run_sync(agent: object) -> None:
+def _run_sync(agent: Any) -> None:
     """Run the ACP agent synchronously."""
     run_acp_stdio_sync(
         agent,  # type: ignore[arg-type]
