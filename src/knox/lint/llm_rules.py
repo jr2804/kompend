@@ -59,6 +59,7 @@ class LlmLintRule(BaseLintRule):
             ]
         return None
 
+
 # ── Rule 9: factual-consistency ──────────────────────────────────────────
 
 

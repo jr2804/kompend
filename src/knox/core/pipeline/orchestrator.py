@@ -657,9 +657,7 @@ class WikiPipeline:
             self._cache_store.set("chunk", chunk_deps, tree.to_dict())
         return tree
 
-    def _try_load_parsed_cache(
-        self, source_file: Path, stem: str, content_hash: str, use_cache: bool
-    ) -> Any | None:
+    def _try_load_parsed_cache(self, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> Any | None:
         """Try to load a parsed document from cache. Returns *None* on miss."""
         if not use_cache:
             return None
@@ -705,9 +703,7 @@ class WikiPipeline:
             parsed.metadata = {}
         parsed.metadata["_dedup_warning"] = warning
 
-    def _try_load_chunk_cache(
-        self, source_file: Path, content_hash: str, use_cache: bool
-    ) -> ChunkTree | None:
+    def _try_load_chunk_cache(self, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
         """Try to load a chunked tree from cache. Returns *None* on miss."""
         if not (use_cache and content_hash):
             return None

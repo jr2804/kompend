@@ -48,9 +48,7 @@ def agent_cmd(
         finally:
             mcp_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception, TimeoutError):
-                asyncio.get_event_loop().run_until_complete(
-                    asyncio.wait_for(mcp_task, timeout=5)
-                )
+                asyncio.get_event_loop().run_until_complete(asyncio.wait_for(mcp_task, timeout=5))
     else:
         _run_sync(agent)
 

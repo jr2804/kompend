@@ -414,14 +414,20 @@ class TestWikiPipelineTiered:
 
     def test_pipeline_config_defaults(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         assert config.start_at_tier == "index"
         assert config.stop_at_tier == "output"
 
     def test_start_level_default(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         assert pipeline.start_level() == 0
@@ -453,7 +459,10 @@ class TestWikiPipelineTiered:
 
     def test_run_tier_unknown_raises(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"), output_dir=Path("o"), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("s"),
+            output_dir=Path("o"),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         pipeline = WikiPipeline(config=config, state_store=TierStateStore(Path("/dev/null")))
         with pytest.raises(ValueError, match="Unknown tier"):
@@ -461,7 +470,10 @@ class TestWikiPipelineTiered:
 
     def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"), output_dir=tmp_path, llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("s"),
+            output_dir=tmp_path,
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         pipeline = WikiPipeline(
             config=config,
@@ -715,7 +727,10 @@ class TestTwoPhaseCompiler:
 
     def test_empty_input(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         compiler = TwoPhaseCompiler(config=config)
         wiki = compiler.compile([])
@@ -779,7 +794,10 @@ class TestTwoPhaseCompiler:
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
@@ -813,7 +831,10 @@ class TestTwoPhaseCompiler:
 
     def test_extract_populates_extraction_stats(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
@@ -856,7 +877,10 @@ class TestTwoPhaseCompiler:
 
     def test_compile_writes_extraction_stats_to_metadata(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="test/model")
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="test/model"),
         )
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
