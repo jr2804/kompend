@@ -37,6 +37,7 @@ import os
 from typing import Any
 
 import litellm
+from json_repair import repair_json
 from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.messages import (
     BinaryContent,
@@ -256,11 +257,7 @@ def _from_litellm_response(
     message = response.choices[0].message
     content = message.get("content") or ""
     if output_tools:
-        # Small models often emit literal ``\n`` / ``\t`` escape sequences
-        # instead of actual whitespace characters — the JSON is structurally
-        # correct but ``json.loads`` rejects ``{\n  "key"`` (backslash at
-        # top level is illegal). Unescape before wrapping.
-        content = _unescape_json_whitespace(content)
+        content = _repair_json_output(content)
         parts: list[TextPart | ToolCallPart] = [
             ToolCallPart(tool_name=output_tools[0].name, args=content or "{}")
         ]
@@ -282,15 +279,20 @@ def _json_dumps(obj: Any) -> str:
     return json.dumps(obj)
 
 
-def _unescape_json_whitespace(text: str) -> str:
-    r"""Replace literal ``\n`` / ``\t`` / ``\r`` with actual whitespace.
+def _repair_json_output(raw: str) -> str:
+    r"""Repair small-model JSON output.
 
-    Small models commonly emit JSON with literal escape-sequence characters
-    (e.g. ``{\n  "key"``) instead of real newlines. The JSON is structurally
-    correct but ``json.loads`` rejects it because a backslash is illegal outside
-    of a string value.
+    Two-step repair: (1) unescape literal ``\n`` / ``\t`` / ``\r``
+    sequences that appear between tokens (small models emit the
+    escape representation instead of real whitespace), then (2) use
+    ``json_repair`` for remaining issues (unescaped control chars in
+    strings, missing commas, unescaped quotes, etc.).
     """
-    return text.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+    text = raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+    try:
+        return repair_json(text)
+    except Exception:
+        return raw  # unfixable — let pydantic-ai's retry handle it
 
 
 # ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────
