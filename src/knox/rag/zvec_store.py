@@ -268,10 +268,7 @@ class ZvecWikiStore:
                 self._embedding_dim,
             ),
         )
-        collection = _zvec.create_and_open(
-            path=str(self.db_file),
-            schema=schema,
-        )
+        collection = _zvec.open(path=str(self.db_file)) if self.db_file.exists() else _zvec.create_and_open(path=str(self.db_file), schema=schema)
         self._collection = collection
         return collection
 
