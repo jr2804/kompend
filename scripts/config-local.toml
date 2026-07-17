@@ -71,11 +71,11 @@ reasoning_effort = "none"
 # Embedding model for semantic search / RAG.
 # Set KNOX_LOCAL_EMBEDDING in your environment, or uncomment and set below.
 # Two syntaxes:
-#   "litellm:<model>" — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
+#   "<provider>:<model>" — pydantic-ai Embedder format
 #   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
 # Leave commented to disable vector indexing.
 model = "${KNOX_LOCAL_EMBEDDING}"
-#model = "litellm:ollama/granite-embedding:278m"
+#model = "ollama:granite-embedding:278m"
 
 # ── Output ──────────────────────────────────────────────────────────────
 [compile.output]

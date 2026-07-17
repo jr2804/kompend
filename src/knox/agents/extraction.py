@@ -1,6 +1,6 @@
 """ExtractionAgent — PydanticAI wrapper for the two-phase extraction stage.
 
-Replaces the raw litellm call in ``knox/compilation/_two_phase_core.py``
+Replaces the raw direct LLM call in ``knox/compilation/_two_phase_core.py``
 with a typed PydanticAI agent. The agent's ``output_type`` is
 :class:`~knox.compilation.schema.ExtractionOutput`, so the LLM is
 asked to produce that exact Pydantic model. PydanticAI handles JSON
@@ -10,7 +10,7 @@ Usage::
 
     from knox.agents.extraction import ExtractionAgent
 
-    agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
+    agent = ExtractionAgent(model_string="ollama/gpt-oss:20b")
     result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
     print(result.summary, result.entities, result.concepts)
 """
@@ -27,7 +27,7 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
 
     The agent's system + user prompts come from the existing Jinja2
     templates (``extraction_system.md.j2``, ``extraction_prompt.md.j2``)
-    so the LLM-facing surface is identical to the current litellm
+    so the LLM-facing surface is identical to the current direct LLM
     path. Only the dispatch and validation are upgraded.
     """
 

@@ -45,7 +45,7 @@ class TestWicerProbeAgent:
         assert "PAYLOAD-TEXT-XYZ" in mock_sync.call_args.args[0]
 
     def test_run_wraps_exception(self) -> None:
-        agent = WicerProbeAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = WicerProbeAgent(model_string="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         with pytest.raises(Exception, match="Agent failed for model") as exc_info:
@@ -54,7 +54,7 @@ class TestWicerProbeAgent:
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
     def _make_agent_and_mock(self) -> tuple[WicerProbeAgent, MagicMock]:
-        agent = WicerProbeAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = WicerProbeAgent(model_string="ollama/gpt-oss:20b")
         mock_output = WicerProbeOutput(
             probes=[WicerProbe(question="What is X?", answer="X is Y.")],
         )
@@ -93,7 +93,7 @@ class TestWicerEvaluateAgent:
         assert "PROBES-PAYLOAD" in prompt
 
     def _make_agent_and_mock(self) -> tuple[WicerEvaluateAgent, MagicMock]:
-        agent = WicerEvaluateAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = WicerEvaluateAgent(model_string="ollama/gpt-oss:20b")
         mock_output = WicerEvaluateOutput(
             results=[WicerEvalResult(question="Q?", expected_answer="A", found_answer="A", correct=True)],
         )
@@ -125,7 +125,7 @@ class TestWicerDiagnoseAgent:
         assert "FAILURES-PAYLOAD" in mock_sync.call_args.args[0]
 
     def _make_agent_and_mock(self) -> tuple[WicerDiagnoseAgent, MagicMock]:
-        agent = WicerDiagnoseAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = WicerDiagnoseAgent(model_string="ollama/gpt-oss:20b")
         mock_output = WicerDiagnoseOutput(critical_facts=["Fact A", "Fact B"])
         mock_sync = MagicMock(return_value=MagicMock(output=mock_output))
         agent._agent = MagicMock()

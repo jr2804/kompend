@@ -88,7 +88,7 @@ def synthesize_results(
 
     try:
         agent = QueryAgent(
-            litellm_model=model,
+            model_string=model,
             timeout=120.0,
             skills=skills or {},
         )

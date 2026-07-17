@@ -107,7 +107,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     def __init__(
         self,
-        litellm_model: str,
+        model_string: str,
         *,
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
         retries: int = _DEFAULT_RETRIES,
@@ -118,7 +118,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         reasoning_effort: str | None = None,
         use_native_output: bool = False,
     ) -> None:
-        self._litellm_model = litellm_model
+        self._model_string = model_string
         self._timeout = timeout
         self._retries = retries
         self._max_tokens = max_tokens
@@ -194,13 +194,13 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 deps.source_id,
                 exc,
             )
-            raise LLMOutputError(f"Agent failed for model '{self._litellm_model}': {exc}") from exc
+            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}") from exc
         return result.output
 
     @property
-    def litellm_model(self) -> str:
-        """The KNOX-format (litellm) model string."""
-        return self._litellm_model
+    def model_string(self) -> str:
+        """The KNOX-format model string (``provider/model``)."""
+        return self._model_string
 
     @property
     def usage(self) -> UsageTracker | None:
@@ -249,7 +249,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + KNOX wrapper) for the Agent."""
         primary = KnoxModel(
-            build_model(self._litellm_model),
+            build_model(self._model_string),
             usage_tracker=self._usage_tracker,
             agent=self,
             reasoning_effort=self._reasoning_effort,

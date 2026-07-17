@@ -457,7 +457,7 @@ def _try_pydanticai_extraction(
     The agent's ``run`` method already does JSON extraction and Pydantic
     validation internally; auto-retry on schema mismatch is built in.
     We catch and log any exception here so the caller's failure
-    tracker can record the attempt uniformly with the litellm path.
+    tracker can record the attempt uniformly with the pydantic-ai path.
 
     Args:
         agent: An instantiated :class:`~knox.agents.ExtractionAgent`.

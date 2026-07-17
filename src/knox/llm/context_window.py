@@ -1,8 +1,7 @@
-"""Discover a model's context window from litellm, Ollama, or models.dev.
+"""Discover a model's context window from Ollama or models.dev.
 
 This module is the canonical way to determine how many tokens a model can
-accept and generate. It is used by the LLMClient, the agent layer, and the
-doctor command.
+accept and generate. It is used by the agent layer and the doctor command.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ logger = get_logger(__name__)
 
 
 class ContextSource(StrEnum):
-    LITELLM = "litellm"
     OLLAMA = "ollama"
     MODELS_DEV = "models_dev"
     FALLBACK = "fallback"
@@ -84,7 +82,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     return min(candidates) if candidates else None
 
 
-def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 statements (limit 50)
+def discover_context_window(  # noqa: PLR0912
     model: str,
     *,
     fallback_max_input: int = 8192,
@@ -96,17 +94,15 @@ def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 
     """Discover the context window for *model*.
 
     Strategy (first hit wins; each step fills only the values still missing):
-    1. Try ``litellm.get_model_info()`` for static max_input/max_output.
-    2. For Ollama models, query ``GET /api/show`` for the runtime
+    1. For Ollama models, query ``GET /api/show`` for the runtime
        ``num_ctx`` parameter (also checks ``OLLAMA_NUM_CTX`` env var).
-    3. Query the `models.dev <https://models.dev>`_ catalog — a
-       community DB that covers custom-provider models (e.g. Ollama
-       Cloud) and others absent from litellm's static tables.
-    4. Fall back to *fallback_max_input* / *fallback_max_output*,
+    2. Query the `models.dev <https://models.dev>`_ catalog — a
+       community DB that covers most providers and custom mirrors.
+    3. Fall back to *fallback_max_input* / *fallback_max_output*,
        clamped to ``[num_ctx_min, num_ctx_max]``, and emit a warning
        when no source could resolve the model.
 
-    Discovered values (steps 1–3) are used **as-is** — they are never
+    Discovered values (steps 1–2) are used **as-is** — they are never
     clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max`` rails apply
     only to the **fallback** path, never to discovered values.
 
@@ -114,44 +110,27 @@ def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 
     values by capping ``max_input`` and ``max_output`` to the cap.  This is
     a user-configured limit, not a hardcoded assumption.
     """
-    import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
-
     max_input: int | None = None
     max_output: int | None = None
     source = ContextSource.FALLBACK
 
     # Validate model name before attempting discovery.
     # Common mistake: setting KNOX_LOCAL_LLM to "ollama run <model>" (a CLI
-    # command) instead of "ollama/<model>" (litellm format).
+    # command) instead of "ollama/<model>" (``provider/model`` format).
     if " " in model:
         msg = (
             f"Invalid model name {model!r}: contains spaces. "
             "Did you include a CLI command (e.g. 'ollama run ...') in the model string?\n"
-            "Use litellm format: 'ollama/<model-name>'"
+            "Use 'provider/<model-name>' format (e.g. 'ollama/qwen3')"
         )
         raise ValueError(msg)
-
-    custom_prefixes = {f"{e['provider']}/" for e in (litellm.custom_provider_map or []) if e.get("provider")}
-    if not any(model.startswith(p) for p in custom_prefixes):
-        try:
-            info = litellm.get_model_info(model)
-            if info:
-                max_input = info.get("max_input_tokens")
-                max_output = info.get("max_output_tokens")
-                if max_input is not None:
-                    source = ContextSource.LITELLM
-        except Exception:
-            logger.debug("litellm has no model info for %s", model, exc_info=True)
 
     if model.startswith("ollama/"):
         ollama_ctx = _query_ollama_num_ctx(model.removeprefix("ollama/"))
         if ollama_ctx is not None:
-            if max_input is None or ollama_ctx < max_input:
-                max_input = ollama_ctx
-                source = ContextSource.OLLAMA
-            if max_output is None or ollama_ctx < max_output:
-                max_output = ollama_ctx
-                source = ContextSource.OLLAMA
+            max_input = ollama_ctx
+            max_output = ollama_ctx
+            source = ContextSource.OLLAMA
 
     if max_input is None or max_output is None:
         try:
@@ -166,7 +145,7 @@ def discover_context_window(  # noqa: PLR0915 — pre-existing: function has 51 
 
     if max_input is None:
         logger.warning(
-            "%s — context window not found in litellm, Ollama, or models.dev; "
+            "%s — context window not found in Ollama or models.dev; "
             "using fallback_max_input=%d. Set fallback_max_input or "
             "context_window_cap in config to match your model's actual context window",
             model,

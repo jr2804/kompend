@@ -7,8 +7,10 @@ Wraps a native model returned by :func:`knox.llm.models.build_model` and adds:
   aggregate usage.
 - **Debug saving** — when ``KNOX_DEBUG_LLM_DIR`` is set, every LLM call is
   dumped to disk with the message list and response.
-- **Reasoning effort** — forwarded to the delegate via ``model_settings``
-  when set (best-effort; provider-specific keys).
+- **Thinking** — the configured ``reasoning_effort`` string is mapped to
+  pydantic-ai's unified ``thinking`` ``model_settings`` key and forwarded
+  to the delegate. See
+  https://pydantic.dev/docs/ai/advanced-features/thinking/.
 
 Salvage and retry enrichment are intentionally NOT reimplemented here:
 native models use ToolOutput mode for structured output, which validates
@@ -27,11 +29,23 @@ from typing import Any
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models import Model, ModelRequestParameters
-from pydantic_ai.settings import ModelSettings
+from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
 from knox.agents.debug import save_debug_prompt
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
+
+# KNOX config ``reasoning_effort`` string → pydantic-ai unified ``thinking``.
+# ``none`` disables thinking entirely (``False``); the five named levels map
+# to the corresponding ``ThinkingLevel`` literals.
+_EFFORT_TO_THINKING: dict[str, ThinkingLevel] = {
+    "none": False,
+    "minimal": "minimal",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "xhigh": "xhigh",
+}
 
 logger = get_logger(__name__)
 
@@ -81,8 +95,9 @@ class KnoxModel(Model):
         # previous output is irrelevant and wastes context.
         compacted = _compact_messages(messages)
         if len(compacted) < len(messages):
-            logger.info("Compacted message history: %d → %d messages (dropped %d assistant responses)",
-                        len(messages), len(compacted), len(messages) - len(compacted))
+            logger.info(
+                "Compacted message history: %d → %d messages (dropped %d assistant responses)", len(messages), len(compacted), len(messages) - len(compacted)
+            )
         response = await self._delegate.request(compacted, merged_settings, model_request_parameters)
         self._track_usage(response)
         self._save_debug(messages, response)
@@ -91,12 +106,24 @@ class KnoxModel(Model):
     # ── KNOX-specific hooks ─────────────────────────────────────────────
 
     def _merge_reasoning(self, model_settings: ModelSettings | None) -> ModelSettings | None:
-        """Inject reasoning_effort into model_settings when configured."""
-        if not self._reasoning_effort:
+        """Map the configured ``reasoning_effort`` to the unified ``thinking`` setting.
+
+        pydantic-ai's unified ``thinking`` key covers every provider's
+        reasoning/thinking knob. ``"none"`` → ``False`` (disabled); every
+        other level passes through as-is. See
+        https://pydantic.dev/docs/ai/advanced-features/thinking/.
+        """
+        if self._reasoning_effort is None:
+            return model_settings
+        thinking = _EFFORT_TO_THINKING.get(self._reasoning_effort)
+        if thinking is None:
+            logger.warning(
+                "Unknown reasoning_effort %r — ignoring (use none/minimal/low/medium/high/xhigh)",
+                self._reasoning_effort,
+            )
             return model_settings
         settings: ModelSettings = dict(model_settings or {})
-        # Best-effort: providers that don't recognize this key ignore it.
-        settings.setdefault("reasoning_effort", self._reasoning_effort)
+        settings.setdefault("thinking", thinking)
         return settings
 
     def _track_usage(self, response: ModelResponse) -> None:
@@ -122,7 +149,7 @@ class KnoxModel(Model):
                 content = part.content
                 break
         finish_reason = getattr(response, "finish_reason", None) or "stop"
-        # save_debug_prompt expects litellm-style message dicts; pydantic-ai
+        # save_debug_prompt expects message-dict message dicts; pydantic-ai
         # ModelMessage objects serialize via their to_dict. We pass a minimal
         # payload — the debug file is for manual inspection, not replay.
         save_debug_prompt(

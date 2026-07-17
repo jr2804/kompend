@@ -16,19 +16,19 @@ class TestDoctorAgentConstruction:
         assert DoctorAgent.result_type is str
         assert DoctorAgent.deps_type is DoctorDeps
 
-    def test_constructs_with_litellm_model(self) -> None:
-        agent = DoctorAgent(litellm_model="ollama/test-model")
-        assert agent.litellm_model == "ollama/test-model"
+    def test_constructs_with_model_string(self) -> None:
+        agent = DoctorAgent(model_string="ollama/test-model")
+        assert agent.model_string == "ollama/test-model"
 
     def test_constructs_with_max_tokens(self) -> None:
-        agent = DoctorAgent(litellm_model="ollama/test-model", max_tokens=128)
+        agent = DoctorAgent(model_string="ollama/test-model", max_tokens=128)
         assert agent._max_tokens == 128
 
 
 class TestDoctorAgentRun:
     def test_run_returns_string(self) -> None:
         """DoctorAgent returns free text from the model."""
-        agent = DoctorAgent(litellm_model="ollama/test-model")
+        agent = DoctorAgent(model_string="ollama/test-model")
         # Mock the underlying PydanticAI agent
         mock_pydantic = MagicMock()
         mock_pydantic.run_sync.return_value.output = "ok"
@@ -40,7 +40,7 @@ class TestDoctorAgentRun:
 
     def test_run_passes_ping_as_user_prompt(self) -> None:
         """The ping string is passed as the user prompt."""
-        agent = DoctorAgent(litellm_model="ollama/test-model")
+        agent = DoctorAgent(model_string="ollama/test-model")
         mock_pydantic = MagicMock()
         mock_pydantic.run_sync.return_value.output = "ok"
         agent._agent = mock_pydantic
@@ -53,7 +53,7 @@ class TestDoctorAgentRun:
 
     def test_run_raises_on_failure(self) -> None:
         """When the agent fails, the exception is wrapped in LLMOutputError."""
-        agent = DoctorAgent(litellm_model="ollama/test-model")
+        agent = DoctorAgent(model_string="ollama/test-model")
         mock_pydantic = MagicMock()
         mock_pydantic.run_sync.side_effect = RuntimeError("LLM unavailable")
         agent._agent = mock_pydantic
@@ -64,7 +64,7 @@ class TestDoctorAgentRun:
 
     def test_empty_response_returns_empty_string(self) -> None:
         """An empty model response returns an empty string (not None)."""
-        agent = DoctorAgent(litellm_model="ollama/test-model")
+        agent = DoctorAgent(model_string="ollama/test-model")
         mock_pydantic = MagicMock()
         mock_pydantic.run_sync.return_value.output = ""
         agent._agent = mock_pydantic

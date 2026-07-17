@@ -197,8 +197,8 @@ class TwoPhaseCompiler(BaseCompiler):
         Compiler used as a fallback when the LLM is unavailable.
     llm_client:
         LLM client whose ``context_window`` is reused when available. When
-        ``None``, the context window is discovered independently from litellm
-        or Ollama as a fallback.
+        ``None``, the context window is discovered independently from
+        Ollama or models.dev as a fallback.
     """
 
     def __init__(
@@ -523,7 +523,11 @@ class TwoPhaseCompiler(BaseCompiler):
             self._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
 
         nodes, slug_to_idx = self._run_generation_with_checkpoint(
-            concepts, source_segments, generation_system, all_images, pinned_clean,
+            concepts,
+            source_segments,
+            generation_system,
+            all_images,
+            pinned_clean,
         )
 
         return self._assemble_wiki(nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
@@ -568,12 +572,17 @@ class TwoPhaseCompiler(BaseCompiler):
         )
         logger.info(
             "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d)",
-            segment_char_size, cw.max_input, self._gen_system_tokens, budget.gen_output_max,
+            segment_char_size,
+            cw.max_input,
+            self._gen_system_tokens,
+            budget.gen_output_max,
         )
         source_segments = _segment_sources(sources, segment_char_size)
         logger.info(
             "TwoPhase: %d source(s) split into %d segment(s) (total content %d chars)",
-            len(sources), len(source_segments), sum(len(c) for _, c in sources),
+            len(sources),
+            len(source_segments),
+            sum(len(c) for _, c in sources),
         )
         return source_segments
 
@@ -591,15 +600,20 @@ class TwoPhaseCompiler(BaseCompiler):
             ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
             logger.info(
                 "TwoPhase: generation checkpoint loaded — %d batch(es) already done, %d node(s)",
-                len(ck_completed), len(ck_nodes),
+                len(ck_completed),
+                len(ck_nodes),
             )
         else:
             ck_nodes, ck_slug_to_idx, ck_completed = [], {}, set()
 
         nodes, slug_to_idx = self._generate_all_pages(
-            concepts, source_segments, generation_system, all_images,
+            concepts,
+            source_segments,
+            generation_system,
+            all_images,
             pinned_facts=pinned_clean,
-            initial_nodes=ck_nodes, initial_slug_to_idx=ck_slug_to_idx,
+            initial_nodes=ck_nodes,
+            initial_slug_to_idx=ck_slug_to_idx,
             completed_batches=ck_completed,
         )
         _delete_gen_checkpoint(self._config, self._active_gen_deps)
@@ -633,11 +647,15 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._config.budget.min_content_length,
             )
             return CompiledWiki(
-                nodes=[], edges=[], toc=[],
+                nodes=[],
+                edges=[],
+                toc=[],
                 metadata={
                     WikiField.CHUNK_COUNT: len(chunks),
-                    "two_phase": True, "generation_skipped": True,
-                    "skip_reason": "all pages filtered as empty", "node_count": 0,
+                    "two_phase": True,
+                    "generation_skipped": True,
+                    "skip_reason": "all pages filtered as empty",
+                    "node_count": 0,
                 },
             )
 
@@ -646,11 +664,17 @@ class TwoPhaseCompiler(BaseCompiler):
         quality = _compute_quality_score(nodes, edges)
         toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
         return CompiledWiki(
-            nodes=nodes, edges=edges, toc=toc, quality_score=quality,
+            nodes=nodes,
+            edges=edges,
+            toc=toc,
+            quality_score=quality,
             metadata={
-                WikiField.CHUNK_COUNT: len(chunks), "node_count": len(nodes),
-                "edge_count": len(edges), "two_phase": True,
-                "concepts_merged": len(concepts), "context_window": cw.max_input,
+                WikiField.CHUNK_COUNT: len(chunks),
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "two_phase": True,
+                "concepts_merged": len(concepts),
+                "context_window": cw.max_input,
                 "pinned_facts_count": len(pinned_clean),
             },
         )
@@ -720,7 +744,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
 
                 agent = GenerationAgent(
-                    litellm_model=self._model or "",
+                    model_string=self._model or "",
                     timeout=self._timeout,
                     max_tokens=self._budget.gen_output_max,
                     skills=self._config.skills,
@@ -821,7 +845,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 return cached
 
         agent = ExtractionAgent(
-            litellm_model=self._model or "",
+            model_string=self._model or "",
             timeout=self._timeout,
             max_tokens=self._budget.extract_output_max,
             skills=self._config.skills,

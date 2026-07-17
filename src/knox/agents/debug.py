@@ -3,7 +3,7 @@
 When the ``KNOX_DEBUG_LLM_DIR`` environment variable is set, every LLM call
 is dumped to a timestamped JSON file containing the full message list, model
 settings, and response. This module centralises that logic so it can be
-imported without coupling the litellm bridge to the debug-sink details.
+imported without coupling the model to the debug-sink details.
 
 The calling agent is passed in directly; its ``stage`` and ``current_source_id``
 attributes supply the per-dump context, so callers never hard-code a stage
@@ -39,7 +39,7 @@ class _DebugSource(Protocol):
 def save_debug_prompt(
     agent: _DebugSource,
     model_string: str,
-    litellm_messages: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
     kwargs: dict[str, Any],
     response_content: str,
     finish_reason: str | None,
@@ -68,8 +68,8 @@ def save_debug_prompt(
     model_slug = model_string.replace("/", "_").replace(":", "")
     filepath = debug_path / f"llm_{ts}_{model_slug}.json"
 
-    user_turns = sum(1 for m in litellm_messages if m.get("role") == "user")
-    assistant_turns = sum(1 for m in litellm_messages if m.get("role") == "assistant")
+    user_turns = sum(1 for m in messages if m.get("role") == "user")
+    assistant_turns = sum(1 for m in messages if m.get("role") == "assistant")
 
     parsed = salvage_json(response_content)
     parsed_str = json.dumps(parsed, ensure_ascii=False) if parsed is not None else None
@@ -81,7 +81,7 @@ def save_debug_prompt(
         "timestamp": datetime.now().isoformat(),
         "user_turns": user_turns,
         "assistant_turns": assistant_turns,
-        "messages": litellm_messages,
+        "messages": messages,
         "kwargs": {k: v for k, v in kwargs.items() if k not in ("messages", "model")},
         "response_parsed": parsed_str,
         "finish_reason": finish_reason,

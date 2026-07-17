@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
+from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, _to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -183,70 +183,41 @@ class TestZvecWikiStore:
             shutil.rmtree(zvec_db, ignore_errors=True)
 
 
-class TestLiteLLMEmbeddingProvider:
-    """Tests for LiteLLMEmbeddingProvider dimension handling and validation."""
+class TestEmbeddingStringConversion:
+    """Tests for _to_pydantic_ai_embedding_string format translation."""
 
-    def test_auto_detects_dimension_on_first_call(self) -> None:
-        """Provider should auto-detect dimension if not explicitly provided."""
-        provider = LiteLLMEmbeddingProvider(model="test-model")
-        mock_response = MagicMock()
-        mock_response.data = [{"embedding": [0.1] * 768}]
+    def test_litellm_prefix_translated_to_provider_colon_model(self) -> None:
+        assert _to_pydantic_ai_embedding_string("litellm:openai/text-embedding-3-small") == "openai:text-embedding-3-small"
 
-        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response):
+    def test_litellm_ollama_translated(self) -> None:
+        assert _to_pydantic_ai_embedding_string("litellm:ollama/nomic-embed-text") == "ollama:nomic-embed-text"
+
+    def test_already_pydantic_ai_format_unchanged(self) -> None:
+        assert _to_pydantic_ai_embedding_string("openai:text-embedding-3-small") == "openai:text-embedding-3-small"
+
+    def test_bare_hf_name_gets_sentence_transformers_prefix(self) -> None:
+        assert _to_pydantic_ai_embedding_string("BAAI/bge-small-en") == "sentence-transformers:BAAI/bge-small-en"
+
+
+class TestPydanticAIEmbeddingProvider:
+    """Tests for PydanticAIEmbeddingProvider dimension handling."""
+
+    def test_auto_detects_dimension_on_first_embed(self) -> None:
+        """Provider should auto-detect dimension after the first embed call."""
+        provider = PydanticAIEmbeddingProvider(model_string="test:test-model")
+        mock_result = MagicMock()
+        mock_result.embeddings = [[0.1] * 768]
+        with patch.object(provider, "_embedder") as mock_embedder:
+            mock_embedder.embed_documents_sync.return_value = mock_result
             vec = provider.embed("test text")
-
         assert len(vec) == 768
         assert provider.dim == 768
 
-    def test_accepts_explicit_smaller_dimension(self) -> None:
-        """Provider should accept and use an explicitly requested smaller dimension."""
-        provider = LiteLLMEmbeddingProvider(model="test-model", dim=256)
-        mock_response = MagicMock()
-        mock_response.data = [{"embedding": [0.1] * 256}]
-
-        with patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response) as mock_embed:
-            vec = provider.embed("test text")
-
-        # Verify the dimensions kwarg was passed to litellm
-        mock_embed.assert_called_once_with(model="test-model", input=["test text"], dimensions=256)
-        assert len(vec) == 256
-        assert provider.dim == 256
-
-    def test_rejects_larger_requested_dimension(self) -> None:
-        """Provider should raise ValueError if model returns smaller vector than requested."""
-        # Simulates a model that ignores the 'dimensions' param and returns its native 768 dim
-        provider = LiteLLMEmbeddingProvider(model="test-model", dim=1024)
-        mock_response = MagicMock()
-        mock_response.data = [{"embedding": [0.1] * 768}]
-
-        with (
-            patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response),
-            pytest.raises(ValueError, match="Embedding dimension mismatch") as exc_info,
-        ):
-            provider.embed("test text")
-
-        assert "Requested 1024" in str(exc_info.value)
-        assert "returned a vector of size 768" in str(exc_info.value)
-
-    def test_rejects_smaller_requested_dimension(self) -> None:
-        """Provider should raise ValueError if model returns larger vector than requested."""
-        # Simulates a model that ignores the 'dimensions' param and returns its native 768 dim
-        provider = LiteLLMEmbeddingProvider(model="test-model", dim=128)
-        mock_response = MagicMock()
-        mock_response.data = [{"embedding": [0.1] * 768}]
-
-        with (
-            patch("knox.rag.zvec_store.litellm.embedding", return_value=mock_response),
-            pytest.raises(ValueError, match="Embedding dimension mismatch") as exc_info,
-        ):
-            provider.embed("test text")
-
-        assert "Requested 128" in str(exc_info.value)
-        assert "returned a vector of size 768" in str(exc_info.value)
-
-    def test_raises_if_dim_accessed_before_embed(self) -> None:
-        """Provider should raise RuntimeError if dim is accessed before first embed call."""
-        provider = LiteLLMEmbeddingProvider(model="test-model")
-        with pytest.raises(RuntimeError) as exc_info:
-            _ = provider.dim
-        assert "not yet determined" in str(exc_info.value)
+    def test_dim_probe_triggers_embed(self) -> None:
+        """Accessing dim before any embed call triggers a probe embed."""
+        provider = PydanticAIEmbeddingProvider(model_string="test:test-model")
+        mock_result = MagicMock()
+        mock_result.embeddings = [[0.1] * 384]
+        with patch.object(provider, "_embedder") as mock_embedder:
+            mock_embedder.embed_documents_sync.return_value = mock_result
+            assert provider.dim == 384

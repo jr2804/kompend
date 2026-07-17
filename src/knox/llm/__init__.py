@@ -2,7 +2,7 @@
 
 Provides context window discovery, format utilities (JSON/TOON/ISON),
 model construction, and usage tracking. Business modules build models
-via :func:`knox.llm.models.build_model` — never import litellm directly.
+via :func:`knox.llm.models.build_model` — never construct pydantic-ai models directly.
 """
 
 from __future__ import annotations

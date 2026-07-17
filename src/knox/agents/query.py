@@ -1,6 +1,6 @@
 r"""QueryAgent — PydanticAI wrapper for the wiki query/synthesis stage.
 
-Replaces the raw litellm call in ``knox/search/retriever.py``
+Replaces the raw direct LLM call in ``knox/search/retriever.py``
 ``TokenOverlapRetriever.synthesize()`` with a typed PydanticAI agent.
 Unlike ExtractionAgent and GenerationAgent (which return structured
 Pydantic models), the query agent returns **free text** — the answer
@@ -11,7 +11,7 @@ Usage::
     from knox.agents.query import QueryAgent
     from knox.agents.deps import QueryDeps
 
-    agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
+    agent = QueryAgent(model_string="ollama/gpt-oss:20b")
     answer: str = agent.run(
         QueryDeps(
             question="What is VAD?",
@@ -32,7 +32,7 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
 
     The agent's system prompt comes from the existing Jinja2 template
     ``query/synthesize_system.md.j2`` so the LLM-facing surface is
-    identical to the current litellm path. The user prompt is the raw
+    identical to the current pydantic-ai path. The user prompt is the raw
     question string. Output is free text (a string), not structured
     JSON.
     """

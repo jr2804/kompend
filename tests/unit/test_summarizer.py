@@ -184,7 +184,7 @@ class TestSummarizerExtractiveFallback:
 class TestSummarizerLLM:
     def test_llm_called_for_internal_nodes(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.litellm_model = "test-model"
+        mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "LLM summary."
 
         summarizer = NodeSummarizer(agent=mock_llm)
@@ -196,7 +196,7 @@ class TestSummarizerLLM:
 
     def test_llm_template_rendered(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.litellm_model = "test-model"
+        mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "Summary."
 
         summarizer = NodeSummarizer(agent=mock_llm)
@@ -216,7 +216,7 @@ class TestSummarizerLLM:
 class TestSummarizerCache:
     def test_cache_hit_skips_llm(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.litellm_model = "test-model"
+        mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "Fresh summary."
 
         mock_cache = MagicMock()
@@ -229,7 +229,7 @@ class TestSummarizerCache:
 
     def test_cache_miss_calls_llm(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.litellm_model = "test-model"
+        mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "Fresh summary."
 
         mock_cache = MagicMock()
@@ -243,7 +243,7 @@ class TestSummarizerCache:
 
     def test_cache_includes_model_in_deps(self, sample_tree: ChunkTree) -> None:
         mock_llm = MagicMock()
-        mock_llm.litellm_model = "my-model"
+        mock_llm.model_string = "my-model"
         mock_llm.run.return_value = "Summary."
 
         mock_cache = MagicMock()

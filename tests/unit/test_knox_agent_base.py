@@ -14,8 +14,8 @@ class TestKnoxAgentBaseContract:
         class itself can be instantiated for testing because `_build_agent` now
         provides a default implementation.
         """
-        agent: KnoxAgentBase[Any, Any] = KnoxAgentBase(litellm_model="test/noop")
-        assert agent.litellm_model == "test/noop"
+        agent: KnoxAgentBase[Any, Any] = KnoxAgentBase(model_string="test/noop")
+        assert agent.model_string == "test/noop"
 
     def test_knox_agent_base_requires_build_agent(self) -> None:
         """Subclasses may rely on the default _build_agent implementation."""
@@ -23,18 +23,18 @@ class TestKnoxAgentBaseContract:
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        agent = DefaultBuilder(litellm_model="test/noop")
+        agent = DefaultBuilder(model_string="test/noop")
         # Base class provides a default _build_agent; instantiation succeeds
-        assert agent.litellm_model == "test/noop"
+        assert agent.model_string == "test/noop"
 
     def test_knox_agent_base_stores_reasoning_effort(self) -> None:
-        """reasoning_effort is stored and forwarded to litellm_model."""
+        """reasoning_effort is stored and forwarded to model_string."""
 
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(
-            litellm_model="test/noop",
+            model_string="test/noop",
             reasoning_effort="low",
         )
         assert agent._reasoning_effort == "low"  # noqa: SLF001
@@ -45,7 +45,7 @@ class TestKnoxAgentBaseContract:
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        agent = DefaultBuilder(litellm_model="test/noop")
+        agent = DefaultBuilder(model_string="test/noop")
         assert agent._reasoning_effort is None  # noqa: SLF001
 
 

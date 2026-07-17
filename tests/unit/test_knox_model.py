@@ -67,24 +67,36 @@ class TestReasoningEffort:
         settings: ModelSettings = {"timeout": 30.0}
         assert wrapper._merge_reasoning(settings) is settings
 
-    def test_effort_injected_into_settings(self) -> None:
+    def test_effort_injected_as_thinking(self) -> None:
         wrapper = KnoxModel(TestModel(), reasoning_effort="low")
         merged = wrapper._merge_reasoning({"timeout": 30.0})
         assert merged is not None
-        assert merged["reasoning_effort"] == "low"
+        assert merged["thinking"] == "low"
         assert merged["timeout"] == 30.0
 
-    def test_effort_does_not_override_existing_setting(self) -> None:
-        """If reasoning_effort already in settings, wrapper doesn't clobber it."""
+    def test_none_maps_to_false(self) -> None:
+        """``reasoning_effort='none'`` disables thinking (``thinking=False``)."""
+        wrapper = KnoxModel(TestModel(), reasoning_effort="none")
+        merged = wrapper._merge_reasoning(None)
+        assert merged is not None
+        assert merged["thinking"] is False
+
+    def test_thinking_does_not_override_existing_setting(self) -> None:
+        """If thinking already in settings, wrapper doesn't clobber it."""
         wrapper = KnoxModel(TestModel(), reasoning_effort="low")
-        merged = wrapper._merge_reasoning({"reasoning_effort": "high"})
-        assert merged["reasoning_effort"] == "high"
+        merged = wrapper._merge_reasoning({"thinking": "high"})
+        assert merged["thinking"] == "high"
 
     def test_effort_creates_settings_from_none(self) -> None:
         wrapper = KnoxModel(TestModel(), reasoning_effort="medium")
         merged = wrapper._merge_reasoning(None)
         assert merged is not None
-        assert merged["reasoning_effort"] == "medium"
+        assert merged["thinking"] == "medium"
+
+    def test_unknown_effort_ignored_with_warning(self) -> None:
+        wrapper = KnoxModel(TestModel(), reasoning_effort="bogus")
+        merged = wrapper._merge_reasoning(None)
+        assert merged is None  # unknown value → no injection
 
 
 class TestDelegation:

@@ -539,7 +539,7 @@ def write_overview(
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
-        "model": agent._litellm_model,
+        "model": agent._model_string,
         "overview_budget": str(overview_budget),
     }
     cached = cache_store.get("overview", overview_deps)

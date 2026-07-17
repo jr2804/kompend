@@ -64,7 +64,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
 
     def __init__(
         self,
-        litellm_model: str,
+        model_string: str,
         *,
         timeout: float = 120.0,
         usage_tracker: UsageTracker | None = None,
@@ -73,7 +73,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
         # the model doesn't burn time on thinking traces that pollute
         # captions and cause timeouts on slow local vision models.
         super().__init__(
-            litellm_model,
+            model_string,
             timeout=timeout,
             reasoning_effort="none",
             usage_tracker=usage_tracker,
@@ -104,17 +104,15 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
             result = self._agent.run_sync(user_prompt, deps=deps)
         except Exception as exc:
             logger.warning("VLM call failed for '%s': %s", deps.image_path, exc)
-            raise LLMOutputError(
-                f"VLM failed for model '{self._litellm_model}': {exc}"
-            ) from exc
+            raise LLMOutputError(f"VLM failed for model '{self._model_string}': {exc}") from exc
 
         caption = strip_reasoning(result.output).strip()
 
         save_debug_prompt(
             self,
-            self._litellm_model,
+            self._model_string,
             [{"role": "user", "content": deps.prompt}],
-            {"model": self._litellm_model, "image_bytes": len(image_bytes)},
+            {"model": self._model_string, "image_bytes": len(image_bytes)},
             caption,
             "stop",
         )

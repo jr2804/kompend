@@ -6,7 +6,6 @@ import os
 
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
@@ -74,14 +73,23 @@ def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestBuildModelNative:
-    def test_ollama_routes_through_litellm_function_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Ollama routes through a litellm-backed FunctionModel so ``think`` can
-        disable reasoning (pydantic-ai's OllamaModel uses /v1/ which ignores it).
-        No OLLAMA_BASE_URL needed; litellm owns the transport.
+    def test_ollama_returns_native_model_with_default_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ollama returns a native OllamaModel with the local default base_url.
+
+        No OLLAMA_BASE_URL needed — the local default
+        ``http://127.0.0.1:11434`` is used when the env var is unset.
         """
+        from pydantic_ai.models.ollama import OllamaModel
+
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         m = build_model("ollama/qwen3")
-        assert isinstance(m, FunctionModel)
+        assert isinstance(m, OllamaModel)
+        assert m.model_name == "qwen3"
+
+    def test_ollama_base_url_env_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OLLAMA_BASE_URL env var overrides the local default."""
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://myhost:1234")
+        m = build_model("ollama/qwen3")
         assert m.model_name == "qwen3"
 
     def test_ollama_multi_slash_model_name_preserved(self) -> None:
@@ -144,21 +152,15 @@ class TestBuildModelCatalog:
         m = build_model("claudinio/claude-4")
         assert isinstance(m, OpenAIChatModel)
         assert m.model_name == "claude-4"
-        assert str(m.base_url).rstrip("/") == "https://api.claud.in/v1" or str(
-            m.base_url
-        ).rstrip("/") == "https://api.claudin.io/v1"
+        assert str(m.base_url).rstrip("/") == "https://api.claud.in/v1" or str(m.base_url).rstrip("/") == "https://api.claudin.io/v1"
 
-    def test_catalog_api_key_from_advertised_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_catalog_api_key_from_advertised_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The catalog advertises CLAUDINIO_API_KEY; the key flows to the client."""
         monkeypatch.setenv("CLAUDINIO_API_KEY", "sk-catalog-key")
         m = build_model("claudinio/claude-4")
         assert isinstance(m, OpenAIChatModel)
 
-    def test_catalog_keyless_endpoint_uses_placeholder(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_catalog_keyless_endpoint_uses_placeholder(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When no API-key env var is set, a placeholder is used so the OpenAI
         SDK accepts the client (local/keyless compatible endpoints).
         """

@@ -168,7 +168,7 @@ class NodeSummarizer:
     def _cache_deps(self, content: str, heading_path: str) -> dict[str, str]:
         model = ""
         if self._agent is not None:
-            model = self._agent.litellm_model
+            model = self._agent.model_string
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
         return {
             "content_hash": content_hash,

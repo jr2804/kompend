@@ -25,9 +25,9 @@ class TestGenerationAgentConstruction:
         assert GenerationAgent.system_template_name == "generation_system.md.j2"
         assert GenerationAgent.result_type is GenerationOutput
 
-    def test_constructs_with_litellm_model(self) -> None:
-        agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
-        assert agent.litellm_model == "ollama/gpt-oss:20b"
+    def test_constructs_with_model_string(self) -> None:
+        agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
+        assert agent.model_string == "ollama/gpt-oss:20b"
 
 
 class TestGenerationAgentRun:
@@ -60,7 +60,7 @@ class TestGenerationAgentRun:
         assert mock_sync.call_args.kwargs.get("deps") is deps
 
     def test_run_wraps_pydantic_ai_exception_as_llm_output_error(self) -> None:
-        agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         deps = GenerationDeps(
@@ -75,7 +75,7 @@ class TestGenerationAgentRun:
 
     def _make_agent_and_mock(self) -> tuple[GenerationAgent, MagicMock]:
         """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
-        agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
         mock_sync = MagicMock()
         mock_output = GenerationOutput(
             pages=[

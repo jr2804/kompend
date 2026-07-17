@@ -25,11 +25,11 @@ class TestExtractionAgentConstruction:
         assert ExtractionAgent.system_template_name == "extraction_system.md.j2"
         assert ExtractionAgent.result_type is ExtractionOutput
 
-    def test_constructs_with_litellm_model(self) -> None:
+    def test_constructs_with_model_string(self) -> None:
         # Use a real model string; the underlying pydantic_ai.Agent only
         # tries to resolve the provider at run-time, not at construction.
-        agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
-        assert agent.litellm_model == "ollama/gpt-oss:20b"
+        agent = ExtractionAgent(model_string="ollama/gpt-oss:20b")
+        assert agent.model_string == "ollama/gpt-oss:20b"
 
 
 class TestExtractionAgentRun:
@@ -56,7 +56,7 @@ class TestExtractionAgentRun:
         assert mock_sync.call_args.kwargs.get("deps") is deps
 
     def test_run_wraps_pydantic_ai_exception_as_llm_output_error(self) -> None:
-        agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = ExtractionAgent(model_string="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         deps = PipelineAgentDeps(text="x", source_id="doc1")
@@ -77,7 +77,7 @@ class TestExtractionAgentRun:
         only verify the KNOX-side wiring (prompt rendering, result
         handling, error mapping).
         """
-        agent = ExtractionAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = ExtractionAgent(model_string="ollama/gpt-oss:20b")
         mock_sync = MagicMock()
         mock_output = ExtractionOutput(
             summary="A summary.",

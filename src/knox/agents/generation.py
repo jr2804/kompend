@@ -1,6 +1,6 @@
 r"""GenerationAgent — PydanticAI wrapper for the two-phase generation stage.
 
-Replaces the raw litellm call in ``knox/compilation/two_phase.py``
+Replaces the raw direct LLM call in ``knox/compilation/two_phase.py``
 generation stage with a typed PydanticAI agent. The agent's
 ``output_type`` is :class:`~knox.compilation.schema.GenerationOutput`,
 so the LLM is asked to produce that exact Pydantic model. PydanticAI
@@ -12,7 +12,7 @@ Usage::
     from knox.agents.generation import GenerationAgent
     from knox.agents.deps import GenerationDeps
 
-    agent = GenerationAgent(litellm_model="ollama/gpt-oss:20b")
+    agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
     result = agent.run(
         GenerationDeps(
             concepts_json="[...]",
@@ -63,9 +63,7 @@ def _validate_generation_output(
     if issues:
         issue_list = "\n".join(f"- {issue}" for issue in issues)
         raise ModelRetry(
-            "The following pages need correction:\n"
-            + issue_list
-            + "\n\nProvide corrected content ONLY for the listed pages. "
+            "The following pages need correction:\n" + issue_list + "\n\nProvide corrected content ONLY for the listed pages. "
             "Return the full page list, but keep other pages' content unchanged."
         )
 
@@ -77,7 +75,7 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
 
     The agent's system + user prompts come from the existing Jinja2
     templates (``generation_system.md.j2``, ``generation_prompt.md.j2``)
-    so the LLM-facing surface is identical to the current litellm
+    so the LLM-facing surface is identical to the current direct LLM
     path. Only the dispatch and validation are upgraded.
     """
 

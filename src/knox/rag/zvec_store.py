@@ -4,11 +4,10 @@ zvec is an embedded vector database (Alibaba, Apache 2.0) — in-process,
 no server required. This module wraps it as a sidecar for KNOX's compiled
 knowledge base.
 
-Embedding providers are pluggable via ``EmbeddingProvider``. Two backends
-are supported via ``_make_provider``:
-
-- ``litellm:<model>`` — routes through LiteLLM (OpenAI, Azure, Ollama, etc.)
-- ``<model>`` (no prefix) — loads a sentence-transformers model from HuggingFace
+Embedding providers are pluggable via ``EmbeddingProvider``. The default
+``PydanticAIEmbeddingProvider`` wraps pydantic-ai's :class:`~pydantic_ai.Embedder`,
+which supports every provider pydantic-ai ships (openai, google, cohere,
+bedrock, sentence-transformers, and all OpenAI-compatible endpoints).
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import zvec as _zvec
+from pydantic_ai import Embedder
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
@@ -77,62 +77,32 @@ class EmbeddingProvider(ABC):
         ...
 
 
-class SentenceTransformerProvider(EmbeddingProvider):
-    """Real embedding via sentence-transformers."""
+class PydanticAIEmbeddingProvider(EmbeddingProvider):
+    """Embedding via pydantic-ai's :class:`~pydantic_ai.Embedder`.
 
-    def __init__(self, model_name: str) -> None:
-        from sentence_transformers import SentenceTransformer  # noqa: PLC0415 — heavy import (~14s), deferred to avoid CLI startup cost
+    Supports every embedding provider pydantic-ai ships a class for
+    (openai, google, cohere, bedrock, sentence-transformers, and all
+    OpenAI-compatible endpoints like Ollama). The *model_string* uses the
+    pydantic-ai ``provider:model`` convention.
+    """
 
-        self._model_name = model_name
-        self._model = SentenceTransformer(model_name)
-        self._dim: int = self._model.get_embedding_dimension() or 384
-
-    @property
-    def dim(self) -> int:
-        return self._dim
-
-    def embed(self, text: str) -> list[float]:
-        vec = self._model.encode(text, normalize_embeddings=True)
-        return vec.tolist()
-
-
-class LiteLLMEmbeddingProvider(EmbeddingProvider):
-    """Embedding via litellm (supports local Ollama, OpenAI, Azure, etc.)."""
-
-    def __init__(self, model: str, dim: int | None = None) -> None:
-        self._model = model
-        self._dim: int | None = dim
+    def __init__(self, model_string: str) -> None:
+        self._model_string = model_string
+        self._embedder = Embedder(model_string)
+        self._dim: int | None = None
 
     @property
     def dim(self) -> int:
         if self._dim is None:
-            raise RuntimeError("Embedding dimension not yet determined. Call embed() first.")
+            # Determine dimensionality by embedding a short probe text.
+            self._dim = len(self.embed("dimension probe"))
         return self._dim
 
     def embed(self, text: str) -> list[float]:
-        import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
-
-        kwargs: dict[str, Any] = {"model": self._model, "input": [text]}
-        # If user explicitly requested a smaller dimension, pass it to LiteLLM
-        # (Supported natively by models like OpenAI's text-embedding-3 series)
-        if self._dim is not None:
-            kwargs["dimensions"] = self._dim
-
-        response = litellm.embedding(**kwargs)
-        vector = response.data[0]["embedding"]
-        actual_dim = len(vector)
-
-        # Auto-detect dimension on first call if not explicitly provided
+        result = self._embedder.embed_documents_sync(text)
+        vector = list(result.embeddings[0])
         if self._dim is None:
-            self._dim = actual_dim
-        # Validate that the model actually respected the requested dimension
-        elif actual_dim != self._dim:
-            raise ValueError(
-                f"Embedding dimension mismatch: Requested {self._dim}, but model "
-                f"'{self._model}' returned a vector of size {actual_dim}. The model "
-                f"may not support the requested dimension, or it may ignore the parameter."
-            )
-
+            self._dim = len(vector)
         return vector
 
 
@@ -142,13 +112,29 @@ def _make_provider(
 ) -> EmbeddingProvider:
     """Select an embedding provider based on model name.
 
-    - ``litellm:<model>`` prefix → LiteLLMEmbeddingProvider (OpenAI, Ollama, etc.)
-    - No prefix → SentenceTransformerProvider (HuggingFace model name)
+    Accepts either a pydantic-ai ``provider:model`` string directly, or the
+    legacy ``litellm:<provider>/<model>`` prefix (translated to
+    ``<provider>:<model>``), or a bare HuggingFace model name (treated as
+    ``sentence-transformers:<model>``).
+    """
+    pydantic_ai_string = _to_pydantic_ai_embedding_string(embedding_model)
+    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
+
+
+def _to_pydantic_ai_embedding_string(embedding_model: str) -> str:
+    """Translate a KNOX embedding-model config value to pydantic-ai format.
+
+    - ``litellm:<provider>/<model>`` → ``<provider>:<model>``
+    - ``<provider>:<model>``          → unchanged (already pydantic-ai format)
+    - ``<hf-model-name>``             → ``sentence-transformers:<hf-model-name>``
     """
     if embedding_model.startswith("litellm:"):
-        model = embedding_model.removeprefix("litellm:")
-        return LiteLLMEmbeddingProvider(model=model, dim=dim)
-    return SentenceTransformerProvider(model_name=embedding_model)
+        rest = embedding_model.removeprefix("litellm:")
+        provider, _, model = rest.partition("/")
+        return f"{provider}:{model}"
+    if ":" in embedding_model:
+        return embedding_model  # already pydantic-ai format
+    return f"sentence-transformers:{embedding_model}"
 
 
 class ZvecWikiStore:

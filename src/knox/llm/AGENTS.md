@@ -13,11 +13,12 @@ import litellm directly.
 `provider/model` strings to native pydantic-ai `Model` instances.
 
 Resolution order:
+
 1. Look up the provider in the **models-dev** bundled catalog.
-   * If the provider has a known `api` base URL (e.g. `claudinio`,
+   - If the provider has a known `api` base URL (e.g. `claudinio`,
      `opencode-zen`, `deepseek`), construct an OpenAI-compatible
      `OpenAIChatModel` with the discovered endpoint and API key env var.
-   * Otherwise fall through to pydantic-ai native resolution.
+   - Otherwise fall through to pydantic-ai native resolution.
 2. If models-dev has no entry for the provider either, try
    pydantic-ai's `infer_model()` (supports ollama, openai, anthropic,
    google-gla, groq, mistral, cohere, bedrock, etc.).

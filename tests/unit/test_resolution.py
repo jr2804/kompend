@@ -135,7 +135,7 @@ class TestVLMEnricherIntegration:
 
     def test_agent_run_sync_invoked_for_image(self, tmp_path: Path) -> None:
         """End-to-end: VlmAgent routes through the unified pydantic-ai agent
-        path (build_model + KnoxModel), not a direct litellm.completion call.
+        path (build_model + KnoxModel), not a direct pydantic-ai model call.
         """
         png_path = tmp_path / "img.png"
         png_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
@@ -149,9 +149,7 @@ class TestVLMEnricherIntegration:
         mock_ai_agent.run_sync.return_value = mock_result
 
         with patch.object(VlmAgent, "_build_agent", return_value=mock_ai_agent):
-            resolved = enricher.enrich(
-                ResolvedChunk(chunk=_image_chunk(image_path=str(png_path)))
-            )
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
 
         mock_ai_agent.run_sync.assert_called_once()
         # The user prompt passed to run_sync is a sequence: [text, BinaryContent].

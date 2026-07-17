@@ -20,9 +20,9 @@ class TestQueryAgentConstruction:
         assert QueryAgent.system_template_name == "synthesize_system.md.j2"
         assert QueryAgent.result_type is str
 
-    def test_constructs_with_litellm_model(self) -> None:
-        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
-        assert agent.litellm_model == "ollama/gpt-oss:20b"
+    def test_constructs_with_model_string(self) -> None:
+        agent = QueryAgent(model_string="ollama/gpt-oss:20b")
+        assert agent.model_string == "ollama/gpt-oss:20b"
 
 
 class TestQueryAgentRun:
@@ -52,7 +52,7 @@ class TestQueryAgentRun:
         assert mock_sync.call_args.kwargs.get("deps") is deps
 
     def test_run_wraps_exception_as_llm_output_error(self) -> None:
-        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = QueryAgent(model_string="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         deps = QueryDeps(
@@ -67,7 +67,7 @@ class TestQueryAgentRun:
 
     def _make_agent_and_mock(self) -> tuple[QueryAgent, MagicMock]:
         """Build an agent with a mocked pydantic_ai.Agent.run_sync."""
-        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = QueryAgent(model_string="ollama/gpt-oss:20b")
         mock_sync = MagicMock()
         mock_sync.return_value = MagicMock(output="VAD stands for Voice Activity Detection.")
         agent._agent = MagicMock()
@@ -88,7 +88,7 @@ class TestQueryDeps:
 
 class TestQueryAgentRenderUserPrompt:
     def test_user_prompt_is_raw_question(self) -> None:
-        agent = QueryAgent(litellm_model="ollama/gpt-oss:20b")
+        agent = QueryAgent(model_string="ollama/gpt-oss:20b")
         deps = QueryDeps(question="What is noise reduction?", context="ctx", source_id="q1")
         prompt = agent.render_user_prompt(deps)
         assert prompt == "What is noise reduction?"

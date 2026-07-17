@@ -1,7 +1,7 @@
 """Embedding-based content similarity matcher.
 
 Uses the configurable KNOX embedding provider (sentence-transformers or
-litellm) to compute document vectors, then compares via cosine similarity.
+pydantic-ai embeddings) to compute document vectors, then compares via cosine similarity.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ class EmbeddingMatcher(ContentMatcher):
     Long documents are chunked and mean-pooled into a single vector.
 
     Uses the existing KNOX ``EmbeddingProvider`` abstraction so that
-    both local sentence-transformers models and remote litellm providers
+    both local sentence-transformers models and remote embedding providers
     (e.g. ``litellm:ollama/granite-embedding:278m``) work transparently.
     """
 

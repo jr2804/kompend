@@ -1,8 +1,8 @@
 """Thread-safe LLM provider credential store for ACP providers/set.
 
 Stores the LLM endpoint configuration received via ACP ``providers/set``
-and reconfigures litellm's env-var-based resolution so the KNOX pipeline
-uses the configured endpoint.
+and reconfigures the pipeline's env-var-based resolution so KNOX uses the
+configured endpoint.
 """
 
 from __future__ import annotations
@@ -39,17 +39,17 @@ class ProviderConfig:
     model: str | None = None
 
 
-# ACP apiType → litellm provider prefix. Only entries whose litellm prefix
+# ACP apiType → provider prefix. Only entries whose prefix
 # differs from the ACP apiType need to be listed explicitly; lookups of any
 # other apiType — including unknown custom protocols — fall through to the
-# identity mapping (the apiType is its own litellm prefix).
+# identity mapping (the apiType is its own prefix).
 _LITELLM_PREFIX_OVERRIDES: dict[LlmApiType, str] = {
     LlmApiType.VERTEX: "vertex_ai",
 }
 
 
-def _litellm_prefix(api_type: str) -> str:
-    """Return the litellm provider prefix for an ACP ``api_type``.
+def _provider_prefix(api_type: str) -> str:
+    """Return the provider prefix for an ACP ``api_type``.
 
     Unknown ``api_type`` values pass through unchanged, so custom protocols
     Just Work without registering an entry here. Used as the identity
@@ -65,7 +65,7 @@ def _litellm_prefix(api_type: str) -> str:
 class _IdentityDefaultDict(dict[str, str]):
     """``dict`` subclass that returns the requested key as the default value.
 
-    Used to expose the well-known apiType → litellm-prefix mapping with an
+    Used to expose the well-known apiType → provider-prefix mapping with an
     identity fallback for any unknown key. Mirrors the behaviour of a
     ``defaultdict`` whose factory received the missing key, which the
     stdlib does not support directly.
@@ -75,18 +75,18 @@ class _IdentityDefaultDict(dict[str, str]):
         return key
 
 
-# Map of well-known apiTypes to their litellm provider prefixes. Used by
+# Map of well-known apiTypes to their provider prefixes. Used by
 # ``providers/list`` to enumerate supported providers. Unrecognised keys
 # fall through to the identity mapping via ``_IdentityDefaultDict``.
 LLM_PROVIDER_MAP: _IdentityDefaultDict = _IdentityDefaultDict(
-    {api_type.value: _litellm_prefix(api_type.value) for api_type in LlmApiType},
+    {api_type.value: _provider_prefix(api_type.value) for api_type in LlmApiType},
 )
 
 
 class ProviderCredentials:
     """Thread-safe store for the LLM endpoint configured via ACP ``providers/set``.
 
-    When a provider is set, litellm's env-var-based resolution is reconfigured
+    When a provider is set, the pipeline's env-var-based resolution is reconfigured
     so the KNOX pipeline uses the configured endpoint. When disabled, the
     fallback chain (env vars → config.toml → DEFAULTS) is restored.
     """
@@ -98,13 +98,13 @@ class ProviderCredentials:
         self._saved_env: dict[str, str | None] = {}
 
     def set(self, provider: ProviderConfig) -> None:
-        """Store the provider config and reconfigure litellm.
+        """Store the provider config and reconfigure the pipeline.
 
         Called from the ``providers/set`` handler.
         """
         with self._lock:
             self._provider = provider
-            self._reconfigure_litellm()
+            self._reconfigure_env()
 
     def get(self) -> ProviderConfig | None:
         """Return a copy of the current provider config, or *None*."""
@@ -120,12 +120,12 @@ class ProviderCredentials:
             self._provider = None
             self._restore_env()
 
-    def _reconfigure_litellm(self) -> None:
-        """Apply provider config to litellm's env-var-based resolution."""
+    def _reconfigure_env(self) -> None:
+        """Apply provider config to the pipeline's env-var-based resolution."""
         if self._provider is None:
             return
 
-        prefix = _litellm_prefix(self._provider.api_type)
+        prefix = _provider_prefix(self._provider.api_type)
 
         model = self._provider.model or "default"
         self._set_env("KNOX_LLM_DEFAULT_MODEL", f"{prefix}/{model}")

@@ -357,7 +357,7 @@ class WiCERCompiler(BaseCompiler):
 
         try:
             agent = WicerProbeAgent(
-                litellm_model=self._config.llm.default_model or "",
+                model_string=self._config.llm.default_model or "",
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,
@@ -394,7 +394,7 @@ class WiCERCompiler(BaseCompiler):
 
             try:
                 agent = WicerEvaluateAgent(
-                    litellm_model=self._config.llm.default_model or "",
+                    model_string=self._config.llm.default_model or "",
                     max_tokens=self._config.budget.verify_output_max,
                     skills=self._config.skills,
                     retries=self._config.llm.output_retries,
@@ -434,7 +434,7 @@ class WiCERCompiler(BaseCompiler):
 
         try:
             agent = WicerDiagnoseAgent(
-                litellm_model=self._config.llm.default_model or "",
+                model_string=self._config.llm.default_model or "",
                 max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
                 retries=self._config.llm.output_retries,

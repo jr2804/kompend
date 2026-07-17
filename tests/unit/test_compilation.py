@@ -813,13 +813,7 @@ class TestWiCERCompilerUnavailable:
 
     @pytest.fixture(autouse=True)
     def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"probes": [{"question": "test", "answer": "test"}], "results": [], "diagnosis": ""}'
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.usage = MagicMock(prompt_tokens=0, completion_tokens=0)
-        with patch("litellm.completion", return_value=mock_response):
-            yield
+        return
 
 
 class TestWiCERCompilerWithMock:
@@ -1011,13 +1005,7 @@ class TestWiCERWithGraphCompiler:
 
     @pytest.fixture(autouse=True)
     def _no_llm(self) -> None:  # noqa: ANN202 — generator fixture
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"probes": [{"question": "test", "answer": "test"}], "results": [], "diagnosis": ""}'
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.usage = MagicMock(prompt_tokens=0, completion_tokens=0)
-        with patch("litellm.completion", return_value=mock_response):
-            yield
+        return
 
 
 # ===========================================================================

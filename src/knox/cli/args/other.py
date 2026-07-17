@@ -250,7 +250,7 @@ LlmDefaultModel = Annotated[
     typer.Option(
         "--llm-default-model",
         help=(
-            "Primary model in litellm format ('provider/model'), "
+            "Primary model in provider/model format ('provider/model'), "
             "e.g. 'openai/gpt-4o' or 'ollama/llama3.2'. "
             "Overrides the config-file model/provider when set. "
             f"Env: {APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL."
@@ -264,7 +264,7 @@ VlmModel = Annotated[
     typer.Option(
         "--vlm-model",
         help=(
-            "Vision model in litellm format ('provider/model') used to caption "
+            "Vision model in provider/model format ('provider/model') used to caption "
             "IMAGE chunks during resolution. When set, VLMEnricher is added to "
             "the resolver chain. Example: 'openai/gpt-4o'. "
             f"Env: {APP_NAME_UPPERCASE}_VLM_MODEL."
@@ -292,7 +292,7 @@ LlmFallbackChain = Annotated[
         "--llm-fallback-chain",
         help=(
             "Ordered fallback model(s) tried when the primary LLM fails "
-            "(repeatable). Each value is a litellm-style 'provider/model' "
+            "(repeatable). Each value is a message-dict 'provider/model' "
             "string, e.g. 'openai/gpt-4o'. Empty means single-model mode. "
             f"Env: {APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN (comma-separated)."
         ),

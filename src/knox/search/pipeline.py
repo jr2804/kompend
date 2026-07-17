@@ -87,14 +87,14 @@ class EnhancedRetriever:
 
         # HyDE config
         self._hyde_enabled = hyde_enabled
-        # Model for synthesis (from any agent's litellm_model)
+        # Model for synthesis (from any agent's model_string)
         self._synthesis_model = ""
         if expansion_agent is not None:
-            self._synthesis_model = expansion_agent.litellm_model
+            self._synthesis_model = expansion_agent.model_string
         elif crag_agent is not None:
-            self._synthesis_model = crag_agent.litellm_model
+            self._synthesis_model = crag_agent.model_string
         elif hyde_agent is not None:
-            self._synthesis_model = hyde_agent.litellm_model
+            self._synthesis_model = hyde_agent.model_string
 
     # ── Public API ────────────────────────────────────────────────────────
 

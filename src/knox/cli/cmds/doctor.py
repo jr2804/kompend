@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -11,11 +10,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pydantic_ai import Embedder
+
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
+from knox.rag.zvec_store import _to_pydantic_ai_embedding_string
 
 logger = get_logger(__name__)
 
@@ -151,20 +153,6 @@ def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
     return default
 
 
-def _enable_litellm_debug() -> None:
-    """Enable litellm debug output to stderr."""
-    import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
-
-    litellm._turn_on_debug()
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    for logger_name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.DEBUG)
-        if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
-            logger.addHandler(handler)
-
-
 def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: float = 60.0, retries: int | None = None) -> CheckResult:
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
@@ -172,10 +160,8 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        if verbose:
-            _enable_litellm_debug()
         agent = DoctorAgent(
-            litellm_model=model,
+            model_string=model,
             timeout=timeout,
             max_tokens=128,
             retries=retries or 2,
@@ -189,21 +175,17 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
 
 
 def _ping_embed_model(model: str | None) -> CheckResult:
-    """Ping an embedding model via ``litellm.embedding()``."""
+    """Ping an embedding model via pydantic-ai's Embedder."""
     name = "connectivity-embed"
     if not model:
         return CheckResult(name, True, "No embed model configured — skipped")
 
-    # The ``litellm:`` prefix is a KNOX convention — strip it before
-    # passing to litellm, otherwise litellm can't parse the provider.
-    effective = model.removeprefix("litellm:")
-
     try:
-        import litellm  # noqa: PLC0415 — heavy import (~3s), deferred to avoid CLI startup cost
-
-        response = litellm.embedding(model=effective, input="ping")
-        dims = len(response.data[0]["embedding"]) if response.data else 0
-        return CheckResult(name, True, f"embed OK ({effective}, {dims} dims)")
+        pydantic_ai_string = _to_pydantic_ai_embedding_string(model)
+        embedder = Embedder(pydantic_ai_string)
+        result = embedder.embed_documents_sync("ping")
+        dims = len(result.embeddings[0]) if result.embeddings else 0
+        return CheckResult(name, True, f"embed OK ({pydantic_ai_string}, {dims} dims)")
     except Exception as exc:
         return CheckResult(name, False, f"embed failed: {exc}")
 
@@ -265,7 +247,7 @@ def run_doctor(
     output_dir:
         Output directory to validate, or ``None`` to skip.
     default_model:
-        LLM model name (litellm format) for the connectivity ping.
+        LLM model name (``provider/model`` format) for the connectivity ping.
     vlm_model:
         VLM model name for the connectivity ping.
     embed_model:
@@ -274,7 +256,7 @@ def run_doctor(
         Optional resolved config dict. When provided, budget consistency
         checks are run against the discovered context window.
     verbose:
-        Enable litellm debug logging for LLM connectivity checks.
+        Enable verbose debug logging for LLM connectivity checks.
     """
     results: list[CheckResult] = []
 

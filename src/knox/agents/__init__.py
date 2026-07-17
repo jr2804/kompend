@@ -15,12 +15,12 @@ LLM. PydanticAI gives us:
   ``model_validate()`` boilerplate at every call site, auto-retry on
   mismatch, and per-model output_type negotiation.
 - **Single-turn agents** — each stage becomes a one-shot
-  ``agent.run_sync(...)`` rather than a stateless litellm wrapper.
+  ``agent.run_sync(...)`` rather than a stateless LLM wrapper.
 - **Future MCP tool injection** — PydanticAI's capabilities system
   can attach MCP servers to a specific agent without touching the
   pipeline (Phase 2 of knox-pyda).
 
-This package is **additive**. The existing litellm path in
+This package is **additive**. The existing pydantic-ai path in
 ``knox/llm/client.py`` continues to work in parallel; pipeline stages
 opt into PydanticAI via a config flag.
 """

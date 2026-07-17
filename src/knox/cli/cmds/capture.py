@@ -264,9 +264,7 @@ def _synthesize_write_page(
         timeout=timeout,
         retries=2,
     )
-    source_block = "\n\n".join(
-        f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts
-    )
+    source_block = "\n\n".join(f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts)
     loader = get_template_loader()
     prompt = loader.render(
         "capture/write_prompt.md.j2",

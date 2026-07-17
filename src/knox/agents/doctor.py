@@ -8,7 +8,7 @@ Usage::
 
     from knox.agents.doctor import DoctorAgent
 
-    agent = DoctorAgent(litellm_model="ollama/gemma4:e2b")
+    agent = DoctorAgent(model_string="ollama/gemma4:e2b")
     response: str = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
 """
 

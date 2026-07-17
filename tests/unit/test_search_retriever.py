@@ -156,7 +156,7 @@ class TestSynthesizeVerbosity:
         assert deps.question == "q"
 
     def test_brief_verbosity_renders_brief_instruction(self) -> None:
-        agent = QueryAgent(litellm_model="model")
+        agent = QueryAgent(model_string="model")
         deps = MagicMock()
         deps.question = "q"
         deps.context = "[1] Some context"
@@ -166,7 +166,7 @@ class TestSynthesizeVerbosity:
         assert "concise" in system.lower()
 
     def test_comprehensive_verbosity_renders_comprehensive_instruction(self) -> None:
-        agent = QueryAgent(litellm_model="model")
+        agent = QueryAgent(model_string="model")
         deps = MagicMock()
         deps.question = "q"
         deps.context = "[1] Some context"
@@ -176,7 +176,7 @@ class TestSynthesizeVerbosity:
         assert "comprehensive" in system.lower()
 
     def test_standard_verbosity_renders_balanced_instruction(self) -> None:
-        agent = QueryAgent(litellm_model="model")
+        agent = QueryAgent(model_string="model")
         deps = MagicMock()
         deps.question = "q"
         deps.context = "[1] Some context"
