@@ -7,6 +7,7 @@ import os
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 from knox.llm.models import _split, build_model, resolve_model_limits
@@ -79,8 +80,6 @@ class TestBuildModelNative:
         No OLLAMA_BASE_URL needed — the local default
         ``http://127.0.0.1:11434`` is used when the env var is unset.
         """
-        from pydantic_ai.models.ollama import OllamaModel
-
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         m = build_model("ollama/qwen3")
         assert isinstance(m, OllamaModel)

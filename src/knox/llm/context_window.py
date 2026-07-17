@@ -6,12 +6,11 @@ accept and generate. It is used by the agent layer and the doctor command.
 
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
+
+import ollama
 
 from knox.llm.models import resolve_model_limits
 from knox.logging import get_logger
@@ -39,15 +38,15 @@ class ContextWindow:
 
 
 def _query_ollama_num_ctx(model_name: str) -> int | None:
-    """Query Ollama for the model's context window.
+    """Query Ollama for the model's context window via ``ollama.show()``.
 
-    Checks in priority order (most restrictive wins when multiple are set):
+    Priority (most restrictive wins when multiple are set):
     1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
-    2. ``parameters.num_ctx`` from ``GET /api/show`` (per-model Modelfile setting).
-    3. ``model_info.<arch>.context_length`` from ``GET /api/show`` (native
-       GGUF metadata — the model's full context capability).
+    2. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata
+       (e.g. ``qwen35.context_length: 262144``).  Matches any key ending
+       in ``.context_length``.
 
-    Returns ``None`` if none are available or Ollama is unreachable.
+    Returns ``None`` if none are available or ``ollama.show()`` fails.
     """
     # 1. Global env var.
     env_ctx: int | None = None
@@ -60,78 +59,55 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         except ValueError:
             logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
 
-    # 2 + 3. Per-model from /api/show.
-    per_model: int | None = None
+    # 2. Native GGUF metadata from ollama.show().
     native_ctx: int | None = None
     try:
-        url = "http://localhost:11434/api/show"
-        payload = json.dumps({"name": model_name}).encode()
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-            data = json.loads(resp.read())
+        resp = ollama.show(model_name)
+        model_info = resp.modelinfo or {}
+        for key, val in model_info.items():
+            if key.endswith(".context_length") and isinstance(val, int) and val > 0:
+                native_ctx = val
+                break
+    except Exception:
+        logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
 
-        # 2. Modelfile parameter override.
-        params = data.get("parameters", {})
-        # /api/show may return parameters as a Modelfile string (not a dict)
-        # — handle both forms gracefully.
-        num_ctx_str = params.get("num_ctx") if isinstance(params, dict) else None
-        if num_ctx_str is not None:
-            per_model = int(num_ctx_str)
-
-        # 3. Native context from GGUF metadata — any key ending in
-        #    ``.context_length`` carries the model's full capability
-        #    (e.g. ``qwen35.context_length``, ``llama.context_length``).
-        model_info = data.get("model_info", {})
-        if isinstance(model_info, dict):
-            for key, val in model_info.items():
-                if key.endswith(".context_length") and isinstance(val, int) and val > 0:
-                    native_ctx = val
-                    break
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, ValueError):
-        # Ollama unreachable or returned malformed data — optional probe, degrade to None.
-        logger.debug("Ollama /api/show query failed for %s", model_name, exc_info=True)
-
-    # Most restrictive of the explicit limits wins; native capability is
-    # the baseline when no explicit limit is set.
-    candidates = [c for c in (env_ctx, per_model, native_ctx) if c is not None]
+    candidates = [c for c in (env_ctx, native_ctx) if c is not None]
     return min(candidates) if candidates else None
 
 
-def discover_context_window(  # noqa: PLR0912
+def discover_context_window(
     model: str,
     *,
-    fallback_max_input: int = 8192,
-    fallback_max_output: int = 4096,
-    num_ctx_min: int = 2048,
-    num_ctx_max: int = 131072,
+    fallback_max_input: int | None = None,
+    fallback_max_output: int | None = None,
     context_window_cap: int | None = None,
 ) -> ContextWindow:
     """Discover the context window for *model*.
 
     Strategy (first hit wins; each step fills only the values still missing):
-    1. For Ollama models, query ``GET /api/show`` for the runtime
-       ``num_ctx`` parameter (also checks ``OLLAMA_NUM_CTX`` env var).
-    2. Query the `models.dev <https://models.dev>`_ catalog — a
-       community DB that covers most providers and custom mirrors.
-    3. Fall back to *fallback_max_input* / *fallback_max_output*,
-       clamped to ``[num_ctx_min, num_ctx_max]``, and emit a warning
-       when no source could resolve the model.
+    1. For ``ollama/`` models, query via ``ollama.show()`` — checks
+       ``OLLAMA_NUM_CTX`` env var then GGUF ``context_length`` metadata.
+    2. Query the ``models.dev`` catalog — covers most cloud providers
+       and custom OpenAI-compatible mirrors.
+    3. If *fallback_max_input* is provided (from ``[compile.llm]`` config),
+       use it as-is with **no clamping** — the value the user configured.
+       If neither source resolves AND no fallback is provided, raise
+       ``LookupError`` — a missing context window usually means the model
+       name is wrong, the provider is unreachable, or config needs fixing.
 
-    Discovered values (steps 1–2) are used **as-is** — they are never
-    clamped or capped.  The ``num_ctx_min`` / ``num_ctx_max`` rails apply
-    only to the **fallback** path, never to discovered values.
+    Values from steps 1–2 are used **as-is** — never clamped or capped
+    (except by *context_window_cap* if set).  The old ``num_ctx_min`` /
+    ``num_ctx_max`` clamping (now removed) only existed for the hardcoded
+    8192 fallback default, which was silently masking misconfigurations.
 
-    If *context_window_cap* is set (non-``None``), it overrides discovered
-    values by capping ``max_input`` and ``max_output`` to the cap.  This is
-    a user-configured limit, not a hardcoded assumption.
+    If *context_window_cap* is set (non-``None``), it caps both
+    ``max_input`` and ``max_output`` to that value.  Use this when you
+    want to restrict a model's native context window.
     """
     max_input: int | None = None
     max_output: int | None = None
-    source = ContextSource.FALLBACK
+    source: ContextSource | None = None
 
-    # Validate model name before attempting discovery.
-    # Common mistake: setting KNOX_LOCAL_LLM to "ollama run <model>" (a CLI
-    # command) instead of "ollama/<model>" (``provider/model`` format).
     if " " in model:
         msg = (
             f"Invalid model name {model!r}: contains spaces. "
@@ -158,26 +134,27 @@ def discover_context_window(  # noqa: PLR0912
         except (KeyError, LookupError):
             pass
 
-    if max_input is None:
-        logger.warning(
-            "%s — context window not found in Ollama or models.dev; "
-            "using fallback_max_input=%d. Set fallback_max_input or "
-            "context_window_cap in config to match your model's actual context window",
-            model,
-            fallback_max_input,
-        )
-        max_input = max(num_ctx_min, min(fallback_max_input, num_ctx_max))
+    # Apply explicit fallback from config if provided.
+    if max_input is None and fallback_max_input is not None:
+        max_input = fallback_max_input
         source = ContextSource.FALLBACK
-    if max_output is None:
-        max_output = max(num_ctx_min, min(fallback_max_output, num_ctx_max))
+    if max_output is None and fallback_max_output is not None:
+        max_output = fallback_max_output
         source = ContextSource.FALLBACK
 
+    # Nothing resolved, no fallback configured — this indicates a real problem.
+    if max_input is None or max_output is None or source is None:
+        msg = (
+            f"Context window not found for {model!r}: "
+            "Ollama API and models.dev catalog both returned no results, "
+            "and no fallback_max_input was configured. "
+            "Check that the model name is correct, the provider is reachable, "
+            "and/or set fallback_max_input in [compile.llm] in your config."
+        )
+        raise LookupError(msg)
+
     if context_window_cap is not None:
-        if source == ContextSource.FALLBACK:
-            max_input = context_window_cap
-            max_output = context_window_cap
-        else:
-            max_input = min(max_input, context_window_cap)
-            max_output = min(max_output, context_window_cap)
+        max_input = min(max_input, context_window_cap)
+        max_output = min(max_output, context_window_cap)
 
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)

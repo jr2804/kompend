@@ -68,6 +68,7 @@ dependencies = [
     "logfire>=4.37.0",
     "pydantic-ai-harness[acp]>=0.7.0",
     "models-dev>=1.0.398",
+    "ollama>=0.6.2",
 ]
 
 [project.scripts]
