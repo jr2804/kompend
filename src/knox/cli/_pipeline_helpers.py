@@ -460,9 +460,15 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
 
     # Build vector index unless explicitly disabled (--no-index).
     # opts.index_store is None when not passed (treat as True), True, or False.
+    # This runs *after* the wiki is fully written — a failure here does NOT
+    # invalidate the compiled output. Warn instead of crashing the whole
+    # compile so the user can re-run ``knox index`` separately.
     if opts.index_store is not False:
         opts.wiki.metadata["embedding_model"] = opts.embed_model
-        _cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
+        try:
+            _cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
+        except Exception as exc:
+            logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
     if opts.compile_lint:
         _run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir)
