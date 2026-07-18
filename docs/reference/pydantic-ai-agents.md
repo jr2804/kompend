@@ -27,8 +27,7 @@ All agents inherit from
 - **Model bridge** — builds a [`KnoxModel`](#knoxmodel) from a
   `provider/model` string via `build_model()`.
 - **Template-driven prompts** — system and user prompts are Jinja2
-  templates loaded by `TemplateLoader` (see [no-text-in-code
-  rule][notext]). No prompt text lives in Python.
+  templates loaded by `TemplateLoader`. No prompt text lives in Python.
 - **Skill injection** — user-defined skills are appended to the system
   prompt at render time.
 - **Output validation + retry** — PydanticAI validates the LLM response
