@@ -62,9 +62,14 @@ description wastes context and dilutes signal.
   Do not preserve old rules with a deprecation note — delete them.
 - **Every line earns its place.** If a sentence could be removed without
   changing the agent's behavior, remove it.
-- **Child docs are local only.** A child doc must not repeat rules from its
-  parent. If it needs to reference a parent rule, write "See root AGENTS.md:
-  [rule name]" — not the full text.
+- **No tree figures.** ASCII/Unicode directory trees in AGENTS.md files are
+  a forbidden antipattern. They rot immediately and waste context. Regenerate
+  on demand: `rg --files | tree-cli --fromfile`. Agents must never insert or
+  maintain tree figures in any AGENTS.md.
+- **Child docs are local only.** No cross-level duplication — a child must
+  not repeat parent rules, and a parent must not repeat child content. Since
+  all AGENTS.md files in the DOX chain are loaded together, reference with a
+  one-liner, never copy.
 
 ## Hierarchy
 
@@ -91,6 +96,8 @@ Create a child AGENTS.md only when **all** of these hold:
    code — tests have distinct patterns and antipatterns that warrant a local
    doc, especially to prevent file-creation errors.
 
+### When NOT to create a child AGENTS.md
+
 **Counterexamples** that do not warrant child docs:
 
 - `docs/` — documentation format rules fit in a paragraph in the parent
@@ -101,28 +108,6 @@ Create a child AGENTS.md only when **all** of these hold:
 When in doubt, **keep rules in the parent**. A child doc is a commitment to
 maintain it. Delete or merge child docs when their rules become sparse or are
 absorbed by the parent.
-
-### KNOX hierarchy
-
-```text
-AGENTS.md (root)               ↤ project-wide rules
-├── src/knox/AGENTS.md         ↤ Python source: text-in-code, antipatterns
-│   ├── cli/AGENTS.md          ↤ CLI layer: thin shell over core
-│   ├── core/AGENTS.md         ↤ Core foundation: models, paths, config, pipeline
-│   │   ├── core/config/AGENTS.md     ↤ Config: resolution, precedence, TOML
-│   │   ├── core/models/AGENTS.md     ↤ Data models: enums, chunks, trees, wiki
-│   │   ├── core/pipeline/AGENTS.md   ↤ Pipeline: orchestrator, config, state, ingest
-│   │   ├── core/resolution/AGENTS.md ↤ Tier 3: entity registry, xref checker
-│   │   ├── core/cache/AGENTS.md      ↤ Content-addressed cache store
-│   │   ├── core/templates/AGENTS.md  ↤ Layered Jinja2 template loading
-│   │   ├── core/trust/AGENTS.md      ↤ Actor identity
-│   │   ├── core/reporting/AGENTS.md  ↤ CLI observability reports
-│   │   └── core/utils/AGENTS.md      ↤ Pure utilities: time, exceptions
-│   ├── memory/AGENTS.md       ↤ Memory: query store + compile lifecycle
-│   └── llm/AGENTS.md          ↤ LLM client: errors, failover, custom providers
-│       └── providers/AGENTS.md ↤ Provider registration rules and patterns
-└── tests/AGENTS.md            ↤ testing conventions, test antipatterns
-```
 
 ---
 
