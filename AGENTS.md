@@ -96,8 +96,6 @@ Create a child AGENTS.md only when **all** of these hold:
    code — tests have distinct patterns and antipatterns that warrant a local
    doc, especially to prevent file-creation errors.
 
-### When NOT to create a child AGENTS.md
-
 **Counterexamples** that do not warrant child docs:
 
 - `docs/` — documentation format rules fit in a paragraph in the parent
@@ -109,17 +107,14 @@ When in doubt, **keep rules in the parent**. A child doc is a commitment to
 maintain it. Delete or merge child docs when their rules become sparse or are
 absorbed by the parent.
 
+### KNOX hierarchy
+
+See the Child DOX Index below for all child AGENTS.md files and their scopes.
+Regenerate the full directory tree on demand: `rg --files | tree-cli --fromfile`.
+
 ---
 
-## KNOX Project Rules
-
-### Project
-
-**KNOX** = Knowledge Organizer for eXtended documents.
-
-A parser-agnostic, structure-preserving, LLM-aware knowledge base compiler.
-Follows a 5-tier pipeline:
-Preprocessing → Chunking → Resolution → Compilation → Output.
+## General Rules
 
 ### Priorities
 
@@ -147,15 +142,16 @@ If rules conflict, lower-numbered priority wins:
 
 ### Workflow
 
-1. Explore in the main agent first — read files, trace execution paths, search
+1. Explore first — read files, trace execution paths, search
    patterns — and build your own understanding. Do not delegate before you have
    seen the data.
 2. Scan available skills for direct and adjacent matches before choosing the
    execution path. When in doubt, load the skill and check.
-3. Choose one execution path after main-agent scoping:
+3. If sub-agents are supported, choose one execution path after scoping:
    - Single-track or dependent steps: stay in the main agent.
    - Small reads or searches: use parallel tool calls in the main agent.
    - 2+ independent tracks: launch all subagents in the same response.
+   If no subagent is available, stay in the main agent and plan tasks sequentially.
 4. Synthesize findings and re-read target files if context is stale.
 5. Implement the smallest correct change.
 6. Discover validation commands from local tooling, then run the narrowest
@@ -168,26 +164,6 @@ single-track work where the next step depends on the current finding.
 For review, debugging, or analysis requests, do not make code changes unless
 the user explicitly asks for a fix after seeing your findings. Report findings
 with references, conclusion, and approach.
-
-### Subagents
-
-Launch subagents only when (a) the task is scoped and self-contained,
-(b) work splits into 2+ fully independent tracks, (c) each track has a concrete
-return format. If all three are true, launch all tracks in one response.
-Otherwise, stay in the main agent.
-
-- Identify tasks and draft one prompt per subagent. Each prompt must request a
-  concrete return format — not "share your findings" or "explore the codebase,"
-  but a specific answer, list, or summary.
-- Subagents are bound by the same Boundaries, Evidence, and Safety rules as the
-  main agent. The concrete return format is in addition to, not instead of,
-  these constraints.
-- Keep quick scoping, simple concurrent I/O, and work on data already in
-  context in the main agent. Use parallel tool calls when helpful.
-- Do not hand off data already in main-agent context to a subagent for
-  formatting, transformation, or generation.
-- After the batch returns, synthesize results and use the main agent only for
-  narrow gap-filling before implementation.
 
 ### Change Constraints
 
@@ -215,6 +191,23 @@ Answer direct questions directly when possible.
 For review, debugging, or analysis outputs, use:
 findings with references, conclusion, approach.
 Mention caveats and unverified risks.
+
+### Closeout
+
+1. Run existing verification when relevant
+2. Report any docs intentionally left unchanged and why
+
+---
+
+## KNOX Project Rules
+
+### Project
+
+**KNOX** = Knowledge Organizer for eXtended documents.
+
+A parser-agnostic, structure-preserving, LLM-aware knowledge base compiler.
+Follows a 5-tier pipeline:
+Preprocessing → Chunking → Resolution → Compilation → Output.
 
 ### Conventions
 
@@ -355,11 +348,6 @@ foundation first — the alternatives are all antipatterns:
 All three are run in CI; the last two exit non-zero on any violation.
 Run them locally before pushing: `mise run check-all` (or the
 individual commands above).
-
-### Closeout
-
-1. Run existing verification when relevant
-2. Report any docs intentionally left unchanged and why
 
 ### User Preferences
 
