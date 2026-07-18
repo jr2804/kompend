@@ -21,7 +21,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
+from knox.agents.extraction_reduce import ExtractionReduceAgent
 from knox.agents.generation import GenerationAgent
 from knox.chunking.summarizer import (
     _structured_to_text,
@@ -48,6 +50,7 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
+from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
@@ -429,32 +432,24 @@ class TwoPhaseCompiler(BaseCompiler):
                 continue
 
             # Batch texts into budget-sized groups so nothing is dropped.
-            batch_parts: list[str] = []
-            batch_len = 0
+            batches = self._batch_texts(texts, extract_char_budget)
             batch_extractions: list[Extraction | None] = []
-            stop_requested = False
 
-            for text in texts:
-                if batch_len + len(text) > extract_char_budget and batch_parts:
-                    combined = "\n\n".join(batch_parts)
+            strategy = self._config.llm.extraction_strategy
+            if strategy == ExtractionStrategy.INCREMENTAL and len(batches) > 1:
+                # Incremental: thread message_history so each batch sees prior context.
+                batch_extractions, _ = self._extract_incremental(source, batches, extraction_system)
+            else:
+                for combined in batches:
                     batch_extractions.append(self._extract_one(source, combined, extraction_system))
-                    batch_parts = []
-                    batch_len = 0
                     if self._batch_tracker.should_stop():
-                        stop_requested = True
                         break
-                batch_parts.append(text)
-                batch_len += len(text)
 
-            if not stop_requested and batch_parts:
-                combined = "\n\n".join(batch_parts)
-                batch_extractions.append(self._extract_one(source, combined, extraction_system))
-
-            # Merge all batch extractions for this source (skip failed batches).
+            # Combine batch extractions for this source (skip failed batches).
             valid = [e for e in batch_extractions if e is not None]
             if not valid:
                 logger.warning("TwoPhase: all extraction batches failed for '%s' — skipped", source)
-            merged = _merge_extractions(source, valid)
+            merged = self._combine_extractions(source, valid)
             extractions.add(merged)
             self._extraction_stats.append(
                 {
@@ -875,6 +870,140 @@ class TwoPhaseCompiler(BaseCompiler):
         )
         if not self._config.no_cache:
             self._cache_store.set("extract", extract_deps, result)
+        return result
+
+    @staticmethod
+    def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
+        """Group texts into batches that fit within *char_budget* (chars)."""
+        batches: list[str] = []
+        parts: list[str] = []
+        length = 0
+        for text in texts:
+            if length + len(text) > char_budget and parts:
+                batches.append("\n\n".join(parts))
+                parts = []
+                length = 0
+            parts.append(text)
+            length += len(text)
+        if parts:
+            batches.append("\n\n".join(parts))
+        return batches
+
+    def _extract_incremental(
+        self,
+        source: str,
+        batches: list[str],
+        extraction_system: str,
+    ) -> tuple[list[Extraction | None], bool]:
+        """Run extraction with message_history threading between batches.
+
+        Each batch's agent call receives the accumulated conversation from
+        prior batches, so the model sees the evolving document context.
+        The final extraction is the last batch's output (which has seen all
+        prior context). Earlier per-batch outputs are still collected for
+        the failure tracker and stats.
+        """
+        results: list[Extraction | None] = []
+        history: list[Any] = []
+        agent: ExtractionAgent | None = None
+        for batch_idx, combined in enumerate(batches):
+            if agent is None:
+                agent = ExtractionAgent(
+                    model_string=self._model or "",
+                    timeout=self._timeout,
+                    max_tokens=self._budget.extract_output_max,
+                    skills=self._config.skills,
+                    retries=self._config.llm.output_retries,
+                    reasoning_effort=self._config.llm.reasoning_effort,
+                )
+            deps = PipelineAgentDeps(
+                text=combined,
+                source_id=f"{source}:{batch_idx}",
+                timeout=self._timeout,
+            )
+            try:
+                validated, new_messages = agent.run_with_messages(
+                    deps,
+                    message_history=history if history else None,
+                )
+                history = new_messages
+                self._batch_tracker.record(failed=False)
+                results.append(
+                    Extraction(
+                        source=source,
+                        summary=validated.summary,
+                        entities=[e.model_dump() for e in validated.entities],
+                        concepts=[c.model_dump() for c in validated.concepts],
+                        tags=validated.tags,
+                    )
+                )
+            except LLMOutputError:
+                logger.warning(
+                    "TwoPhase: incremental extraction failed for '%s' batch %d",
+                    source,
+                    batch_idx,
+                )
+                self._batch_tracker.record(failed=True)
+                results.append(None)
+                # Don't thread history from a failed batch
+            if self._batch_tracker.should_stop():
+                return results, True
+        return results, False
+
+    def _combine_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
+        """Combine per-batch extractions into one document-level Extraction.
+
+        Strategy dispatch:
+        - **reduce** (default): map-reduce — a second LLM pass merges partials.
+        - **incremental**: naive merge — used after incremental extraction
+          where the agent already accumulated context across batches.
+        - Single-batch shortcut: skip merge entirely (return as-is).
+        """
+        if not parts:
+            return Extraction(source=source)
+        if len(parts) == 1:
+            return parts[0]
+        strategy = self._config.llm.extraction_strategy
+        if strategy == ExtractionStrategy.REDUCE:
+            return self._reduce_extractions(source, parts)
+        return _merge_extractions(source, parts)
+
+    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
+        """LLM-powered reduce: merge partial extractions into a coherent whole."""
+        partial_json = json.dumps([p.to_dict() for p in parts], ensure_ascii=False)
+        reduce_deps_key = {
+            "source_text": hashlib.sha256(partial_json.encode()).hexdigest(),
+            "model": self._model,
+            "stage": "reduce",
+        }
+        if not self._config.no_cache:
+            cached = self._cache_store.get("extract", reduce_deps_key)
+            if cached is not None:
+                return cached
+
+        agent = ExtractionReduceAgent(
+            model_string=self._model or "",
+            timeout=self._timeout,
+            max_tokens=self._budget.extract_output_max,
+            skills=self._config.skills,
+            retries=self._config.llm.output_retries,
+            reasoning_effort=self._config.llm.reasoning_effort,
+        )
+        try:
+            deps = PipelineAgentDeps(text=partial_json, source_id=f"{source}:reduce", timeout=self._timeout)
+            validated = agent.run(deps)
+        except LLMOutputError:
+            logger.warning("TwoPhase: reduce failed for '%s' — falling back to naive merge", source)
+            return _merge_extractions(source, parts)
+        result = Extraction(
+            source=source,
+            summary=validated.summary,
+            entities=[e.model_dump() for e in validated.entities],
+            concepts=[c.model_dump() for c in validated.concepts],
+            tags=validated.tags,
+        )
+        if not self._config.no_cache:
+            self._cache_store.set("extract", reduce_deps_key, result)
         return result
 
     def _gen_cache_deps(self, extractions: ExtractionSet, *, pinned_facts: list[str] | None = None) -> dict[str, str]:

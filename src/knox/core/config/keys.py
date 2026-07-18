@@ -63,6 +63,7 @@ COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
 COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
 COMPILE_LLM_REASONING_EFFORT: Final[str] = "compile.llm.reasoning_effort"
+COMPILE_LLM_EXTRACTION_STRATEGY: Final[str] = "compile.llm.extraction_strategy"
 
 # ── compile.pdf sub-section ──
 COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_before_chunking"

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pydantic_ai.messages import BinaryContent
 
@@ -79,7 +80,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
             usage_tracker=usage_tracker,
         )
 
-    def run(self, deps: VlmDeps) -> str:
+    def run(self, deps: VlmDeps, *, message_history: list[Any] | None = None) -> str:  # noqa: PLR6301
         """Run VLM captioning with image input via the unified model path."""
         self._current_source_id = deps.source_id
         image_file = Path(deps.image_path)

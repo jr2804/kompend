@@ -102,6 +102,21 @@ class Verbosity(StrEnum):
     COMPREHENSIVE = "comprehensive"
 
 
+class ExtractionStrategy(StrEnum):
+    """How per-chunk extractions are combined into one document-level Extraction.
+
+    - ``reduce``: map-reduce — extract each batch independently, then a
+      second agent pass merges partial results into a coherent
+      document-level Extraction.
+    - ``incremental``: rolling — feed chunks sequentially into one agent
+      conversation via ``message_history``, so each batch sees the
+      accumulated context from prior batches.
+    """
+
+    REDUCE = "reduce"
+    INCREMENTAL = "incremental"
+
+
 # ── Compile sub-configs ──────────────────────────────────────────────────
 
 
@@ -122,6 +137,10 @@ class LLMConfig(_KnoxBaseModel):
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
     output_retries: int = Field(default=2, validation_alias="KNOX_LLM_OUTPUT_RETRIES")
     reasoning_effort: str | None = Field(default=None, validation_alias="KNOX_LLM_REASONING_EFFORT")
+    extraction_strategy: ExtractionStrategy = Field(
+        default=ExtractionStrategy.INCREMENTAL,
+        validation_alias="KNOX_LLM_EXTRACTION_STRATEGY",
+    )
 
 
 class BudgetConfig(_KnoxBaseModel):

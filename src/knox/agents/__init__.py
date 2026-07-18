@@ -36,6 +36,7 @@ from knox.agents.deps import (
 )
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.agents.extraction import ExtractionAgent
+from knox.agents.extraction_reduce import ExtractionReduceAgent
 from knox.agents.generation import GenerationAgent
 from knox.agents.query import QueryAgent
 from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
@@ -44,6 +45,7 @@ __all__ = [
     "DoctorAgent",
     "DoctorDeps",
     "ExtractionAgent",
+    "ExtractionReduceAgent",
     "GenerationAgent",
     "GenerationDeps",
     "KnoxAgentBase",

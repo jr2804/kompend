@@ -169,8 +169,19 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
 
-    def run(self, deps: DepsT) -> ResultT:
+    def run(
+        self,
+        deps: DepsT,
+        *,
+        message_history: list[Any] | None = None,
+    ) -> ResultT:
         """Single-turn agent invocation. Returns the typed result.
+
+        Args:
+            deps: Typed context dataclass for this run.
+            message_history: Optional prior conversation messages to
+                continue from (used by incremental extraction to thread
+                context across chunks of the same source).
 
         Raises:
             LLMOutputError: if the LLM call fails or returns
@@ -186,6 +197,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 user_prompt,
                 deps=deps,
                 instructions=system_prompt,
+                message_history=message_history,
             )
         except Exception as exc:
             logger.warning(
@@ -196,6 +208,40 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             )
             raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}") from exc
         return result.output
+
+    def run_with_messages(
+        self,
+        deps: DepsT,
+        *,
+        message_history: list[Any] | None = None,
+    ) -> tuple[ResultT, list[Any]]:
+        """Single-turn agent invocation that also returns the new messages.
+
+        Same as :meth:`run` but returns ``(output, new_messages)`` so callers
+        can thread the conversation history into the next call (used by the
+        incremental extraction strategy).
+        """
+        if self._agent is None:
+            self._agent = self._build_agent()
+        self._current_source_id = deps.source_id
+        user_prompt = self.render_user_prompt(deps)
+        system_prompt = self.render_system_prompt(deps)
+        try:
+            result = self._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Agent '%s' failed on '%s': %s",
+                type(self).__name__,
+                deps.source_id,
+                exc,
+            )
+            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}") from exc
+        return result.output, result.new_messages()
 
     @property
     def model_string(self) -> str:

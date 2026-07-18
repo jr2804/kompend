@@ -1,0 +1,14 @@
+Below are partial extractions from different sections of the same source document.
+Merge them into ONE coherent document-level extraction.
+
+Rules:
+- **summary**: Synthesize a 2–4 sentence overview of the ENTIRE document, not a concatenation of section summaries.
+- **entities**: Merge duplicate entities (case-insensitive name match). Prefer the richest context. Remove obvious fragments.
+- **concepts**: Merge duplicate concepts (case-insensitive name match). Keep the clearest definition.
+- **tags**: Union all tags, deduplicated, 5–15 total.
+- **findings**: Keep all unique findings, removing duplicates.
+Return only the JSON object, no markdown fences.
+
+Partial extractions (JSON array):
+
+{{ partial_json }}
