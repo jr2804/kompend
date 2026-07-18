@@ -43,7 +43,7 @@ knox query "what is the main result?"
 
 ### Key Features
 
-- **Parser-agnostic** — 14 formats via Docling + 5 legacy/text formats via Pandoc + binaryornot text fallback. [See full breakdown](document-extraction.md)
+- **Parser-agnostic** — 14 formats via Docling + 5 legacy/text formats via Pandoc + binaryornot text fallback. [See full breakdown](guides/document-extraction.md)
 - **Hybrid chunking** — Atomic elements + recursive token-aware splitting
 - **VLM enrichment** — Image/figure captioning via vision-language models (`--vlm-model`)
 - **Typed knowledge graph** — Entity relations with confidence (`uses`, `depends_on`, `contradicts`, …)
@@ -66,14 +66,14 @@ knox query "what is the main result?"
 - [Initialization](guides/initialization.md) — `knox init` project scaffolding
 - [Configuration](guides/configuration.md) — 5-layer config system, `knox config` subcommands
 - [Basic Principles](concepts/basic-principles.md) — What KNOX does and why
-- [Document Extraction](document-extraction.md) — Supported formats, parser selection, framework decisions
+- [Document Extraction](guides/document-extraction.md) — Supported formats, parser selection, framework decisions
 
 ### Pipeline & Architecture
 
 - [Architecture](architecture/index.md) — 5-tier pipeline design
 - [Pipeline Tiers](concepts/pipeline-tiers.md) — Per-tier component reference
 - [Decision Log](architecture/decisions.md) — Architectural decisions and rationale
-- [Caching](caching.md) — Multi-level content-addressed caching
+- [Caching](reference/caching.md) — Multi-level content-addressed caching
 - [Cache Layout](architecture/cache.md) — `.knox/` directory layout
 - [Output Architecture](architecture/output.md) — Output writers, renderer, flavor system
 
@@ -88,6 +88,7 @@ knox query "what is the main result?"
 ### LLM Configuration
 
 - [LLM Configuration](guides/llm-config.md) — Provider setup, role routing, failover chains
+- [PydanticAI Agents & Skills](reference/pydantic-ai-agents.md) — Agent architecture, per-role models, skill configuration
 - [Model Context Adaptation](guides/model-context.md) — Context window discovery, adaptive sizing
 
 ### Linting & Quality

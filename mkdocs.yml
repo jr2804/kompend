@@ -81,7 +81,7 @@ nav:
   - Guides:
     - CLI: guides/cli.md
     - Compilation: guides/compilation.md
-    - Document Extraction: document-extraction.md
+    - Document Extraction: guides/document-extraction.md
     - Lint: guides/lint.md
     - LLM Configuration: guides/llm-config.md
     - Model Context Adaptation: guides/model-context.md
@@ -109,9 +109,11 @@ nav:
     - Memory Lifecycle: concepts/memory-lifecycle.md
     - RAG Pipeline: concepts/rag-pipeline.md
   - Reference:
+    - Agents & Skills: reference/pydantic-ai-agents.md
     - Ecosystem Survey: reference/ecosystem.md
-    - Caching: caching.md
+    - Caching: reference/caching.md
   - Integrations:
+    - ACP Agent: integrations/acp-agent.md
     - Open WebUI: integrations/open-webui.md
   - About:
     - Motivation: about/motivation.md

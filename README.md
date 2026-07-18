@@ -1,3 +1,5 @@
+# KNOX
+
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%"
        alt="KNOX — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
@@ -116,16 +118,8 @@ See the [LLM configuration guide](./docs/guides/llm-config.md) for the full refe
 ## Documentation
 
 > **Full docs at [knox.anomalyco.dev](https://knox.anomalyco.dev)** — architecture deep-dives, tier references, WiCER loop, CLI guides, integrations.
-
-| Topic | Location |
-|---|---|
-| CLI guide · Compilation · Configuration | [`docs/guides/`](./docs/guides/) |
-| LLM config · Model context adaptation | [`docs/guides/llm-config.md`](./docs/guides/llm-config.md) · [`model-context.md`](./docs/guides/model-context.md) |
-| Pipeline tiers · WiCER loop · Memory | [`docs/concepts/`](./docs/concepts/) |
-| Architecture · Decision log · Cache | [`docs/architecture/`](./docs/architecture/) |
-| Document extraction (formats) | [`docs/document-extraction.md`](./docs/document-extraction.md) |
-| Open-WebUI integration | [`docs/integrations/open-webui.md`](./docs/integrations/open-webui.md) |
-| Ecosystem survey | [`docs/reference/ecosystem.md`](./docs/reference/ecosystem.md) |
+>
+> See [`docs/index.md`](./docs/index.md) for the complete documentation index.
 
 ## Development
 
