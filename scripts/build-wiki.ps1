@@ -9,7 +9,7 @@
 #   .\scripts\build-wiki.ps1 scripts\config-local.toml      # local LLM (128K ctx)
 #   .\scripts\build-wiki.ps1 scripts\config-local.toml -LLMModel "ollama/llama3.2"
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -VLMModel "ollama-cloud/gemma4:cloud"
-#   .\scripts\build-wiki.ps1 scripts\config-local.toml -EmbedModel "litellm:ollama/granite-embedding:278m"
+#   .\scripts\build-wiki.ps1 scripts\config-local.toml -EmbedModel "ollama/granite-embedding:278m"
 #   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -Preview
 #
 [CmdletBinding()]
@@ -62,7 +62,7 @@ $IsLocalConfig = $BaseName -like "*local*"
 if ($IsLocalConfig) {
     $env:KNOX_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
     $env:KNOX_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
-    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "litellm:ollama/granite-embedding:278m" } else { $EmbedModel }
+    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "ollama/granite-embedding:278m" } else { $EmbedModel }
 } else {
     $env:KNOX_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
     $env:KNOX_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }

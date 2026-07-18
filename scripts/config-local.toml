@@ -71,11 +71,11 @@ reasoning_effort = "none"
 # Embedding model for semantic search / RAG.
 # Set KNOX_LOCAL_EMBEDDING in your environment, or uncomment and set below.
 # Two syntaxes:
-#   "<provider>:<model>" — pydantic-ai Embedder format
-#   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
+#   "<provider>:<model>" or "<provider>/<model>" — pydantic-ai Embedder format
+#   "<model>" (no prefix) — loads a HuggingFace model via sentence-transformers
 # Leave commented to disable vector indexing.
 model = "${KNOX_LOCAL_EMBEDDING}"
-#model = "ollama:granite-embedding:278m"
+#model = "ollama/granite-embedding:278m"
 
 # ── Output ──────────────────────────────────────────────────────────────
 [compile.output]
@@ -174,10 +174,11 @@ expansion.variants = 3
 crag.enabled = true
 crag.threshold = 0.3
 
-# Neural re-ranker: cross-encoder re-ranks top-K candidates by true
-# query-passage relevance. Requires sentence-transformers.
+# Neural re-ranker: bi-encoder re-ranks top-K candidates by cosine
+# similarity using the vector store's embedding provider.
 reranker.enabled = true
-reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# reranker.model is kept for config compat; the bi-encoder uses the
+# compile.embedding.model defined above.
 reranker.top_k = 20
 
 # HyDE (Hypothetical Document Embeddings): for sparse queries, generate
