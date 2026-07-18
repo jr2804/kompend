@@ -139,6 +139,9 @@ If rules conflict, lower-numbered priority wins:
 - NEVER add secrets, API keys, or tokens to any file. Use env vars.
 - NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config
   without explicit user instruction.
+- NEVER create temporary files (scripts, test/demo data, etc.) in the
+  project root. Use `./tmp` or `tempfile.TemporaryDirectory()`.
+  Keep the repository clean of any files that do not belong to the project!
 
 ### Workflow
 
