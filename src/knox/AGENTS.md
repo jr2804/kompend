@@ -543,6 +543,7 @@ the pipeline stages:
 | Agent | Stage | Output |
 |-------|-------|--------|
 | ``ExtractionAgent`` | TwoPhase extraction | ``ExtractionOutput`` (JSON) |
+| ``ExtractionReduceAgent`` | TwoPhase extraction reduce | ``ExtractionOutput`` (JSON) |
 | ``GenerationAgent`` | TwoPhase generation | ``GenerationOutput`` (JSON) |
 | ``QueryAgent`` | RAG query synthesis | ``str`` (free text) |
 | ``WicerProbeAgent`` | WiCER probe generation | ``WicerProbeOutput`` (JSON) |
@@ -578,6 +579,10 @@ the pipeline stages:
 - ``KnoxModel`` (``knox_model.py``) wraps any native delegate, adding
   usage tracking and debug saving. ``FallbackModel`` wraps primary +
   fallback ``KnoxModel`` instances for failover.
+- ``KnoxAgentBase.run()`` accepts an optional ``message_history`` kwarg
+  for multi-turn conversations (used by incremental extraction).
+  ``run_with_messages()`` returns ``(output, new_messages)`` for callers
+  that need to thread conversation history across calls.
 - Template variables are filtered to only include those declared in the
   template's frontmatter. Add new variables to the template's
   ``variables:`` list.
