@@ -248,8 +248,8 @@ class TestDedupOrchestrator:
         results = orch.process_batch([("doc-1", "some text")])
         assert results["doc-1"].verdict == DedupVerdict.DIFFERENT
 
-    def test_litellm_prefix_translated_to_pydantic_ai_format(self, tmp_path: Path) -> None:
-        """Regression: ``litellm:`` prefix must be translated to pydantic-ai's
+    def test_provider_slash_format_translated_to_pydantic_ai_format(self, tmp_path: Path) -> None:
+        """Regression: ``provider/model`` must be translated to pydantic-ai's
         ``provider:model`` format so the Embedder can resolve the provider.
         """
         orch = DedupOrchestrator(
@@ -257,14 +257,14 @@ class TestDedupOrchestrator:
             config={
                 "dedup.enabled": True,
                 "dedup.matchers": "embedding",
-                "dedup.model": "litellm:ollama/granite-embedding:278m",
+                "dedup.model": "ollama/granite-embedding:278m",
                 "compile.embedding.dim": 384,
             },
         )
         matchers, _ = orch._build_matchers()  # noqa: SLF001 — introspect build
         emb_matcher = next(m for m in matchers if m.name == "embedding")
         assert isinstance(emb_matcher._provider, PydanticAIEmbeddingProvider)  # noqa: SLF001
-        # Prefix must be translated to pydantic-ai format
+        # Slash format must be translated to pydantic-ai colon format
         assert emb_matcher._provider._model_string == "ollama:granite-embedding:278m"  # noqa: SLF001
 
     def test_identical_docs_detected(self, tmp_path: Path) -> None:
@@ -417,7 +417,7 @@ class TestDedupOrchestrator:
             config={
                 "dedup.enabled": True,
                 "dedup.matchers": "embedding",
-                "dedup.model": "litellm:ollama/granite-embedding:278m",
+                "dedup.model": "ollama/granite-embedding:278m",
                 "compile.embedding.dim": 384,
             },
         )

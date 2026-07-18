@@ -266,8 +266,8 @@ class DedupOrchestrator:
         for name in names:
             if name == "embedding":
                 # Reuse the canonical EmbeddingProvider factory — it correctly
-                # handles the ``litellm:`` prefix (strips it before passing to
-                # LiteLLMEmbeddingProvider) and falls back to SentenceTransformer.
+                # resolves the provider/model convention and defaults to
+                # the sentence-transformers provider for bare HF names.
                 provider = _make_provider(model, dim=dim)
                 m = EmbeddingMatcher(model_name=model, dim=dim, provider=provider)
                 matchers.append(m)
