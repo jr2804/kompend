@@ -274,14 +274,50 @@ fallback_max_retries = 2
     # For Ollama models, "none"/"minimal"/"low" also set think=False.
     reasoning_effort = "none"
 
+    # Extraction strategy for multi-chunk sources:
+    # - "incremental" (default): feeds chunks sequentially into one agent
+    #   conversation via message_history, so each batch sees accumulated
+    #   context from prior batches within the same document.
+    # - "reduce": map-reduce — extract each batch independently, then a
+    #   second LLM pass merges partial results into a coherent
+    #   document-level extraction.
+    extraction_strategy = "incremental"
+
+    # Per-role model overrides — use a different model for specific LLM roles.
+    # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).
+    # Common roles: "compile.extract", "compile.generate", "wicer.probe",
+    # "wicer.judge", "vlm", "search.crag", "search.hyde", "synthesize",
+    # "verify", "capture", "organize.categorize", "doctor", "agent".
+    # When a role is not listed here, the default_model is used.
+    # [compile.llm.role_models]
+    # "compile.extract" = "ollama/gpt-oss:20b"
+    # "compile.generate" = "openai/gpt-4o"
+    # "vlm" = "openai/gpt-4o"
+    # "wicer.judge" = "anthropic/claude-sonnet-4-20250514"
+
+# ── Skills ──────────────────────────────────────────────────────────────
 # User-defined skill instructions injected into agent system prompts.
-# Defined under [compile.skills."<name>"] with an "instructions" field.
-# Skills are appended to the system prompt as additional context.
-#
+# Skills are appended to the system prompt as additional context under
+# a "## Skill: <name>" heading. All PydanticAI agents receive the same
+# set of skills — they are pipeline-global, not per-agent.
+# See docs/agents.md for the full guide.
+
+[compile.skills]
+
+# Example: domain terminology cheat-sheet for extraction + generation
 # [compile.skills."domain-terms"]
 # instructions = '''
 # - VAD: Voice Activity Detection
 # - NR: Noise Reduction
+# - DOA: Direction of Arrival
+# '''
+
+# Example: style guide for wiki generation
+# [compile.skills."style-guide"]
+# instructions = '''
+# - Use sentence-case for page titles
+# # - Cross-link related concepts with [[wikilinks]]
+# - Prefer active voice
 # '''
 
 # ── Embedding settings ──────────────────────────────────────────────────
