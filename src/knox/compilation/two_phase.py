@@ -872,23 +872,6 @@ class TwoPhaseCompiler(BaseCompiler):
             self._cache_store.set("extract", extract_deps, result)
         return result
 
-    @staticmethod
-    def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
-        """Group texts into batches that fit within *char_budget* (chars)."""
-        batches: list[str] = []
-        parts: list[str] = []
-        length = 0
-        for text in texts:
-            if length + len(text) > char_budget and parts:
-                batches.append("\n\n".join(parts))
-                parts = []
-                length = 0
-            parts.append(text)
-            length += len(text)
-        if parts:
-            batches.append("\n\n".join(parts))
-        return batches
-
     def _extract_incremental(
         self,
         source: str,
@@ -1026,6 +1009,23 @@ class TwoPhaseCompiler(BaseCompiler):
         deps["concepts_per_batch"] = str(budget.concepts_per_batch or "")
         deps["pinned_facts"] = pin_hash or ""
         return deps
+
+    @staticmethod
+    def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
+        """Group texts into batches that fit within *char_budget* (chars)."""
+        batches: list[str] = []
+        parts: list[str] = []
+        length = 0
+        for text in texts:
+            if length + len(text) > char_budget and parts:
+                batches.append("\n\n".join(parts))
+                parts = []
+                length = 0
+            parts.append(text)
+            length += len(text)
+        if parts:
+            batches.append("\n\n".join(parts))
+        return batches
 
     # -- generation checkpoint (resume after crash) ------------------------
 

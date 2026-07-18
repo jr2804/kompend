@@ -1,9 +1,9 @@
 """Typer CLI app — lazy command registration for fast startup.
 
 Command modules are imported on-demand: only the module for the invoked
-subcommand is loaded, so ``knox --version`` or ``knox config get`` never
-pay the ~16 s cost of importing ``sentence_transformers`` or the ~3 s for
-``pydantic-ai``.  ``--help`` and bare ``knox`` (no args) still load everything
+subcommand is loaded, so ``knox --version`` or ``knox config get`` avoid
+loading heavy deps (pydantic-ai, docling, MCP SDK) when not needed.
+``--help`` and bare ``knox`` (no args) still load everything
 because the full command tree must be visible.
 """
 

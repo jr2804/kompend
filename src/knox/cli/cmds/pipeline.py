@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 
@@ -29,7 +29,6 @@ from knox.cli.args import (
     DEFAULT_START_AT_TIER,
     BypassReview,
     CliSet,
-    CompileFiles,
     CompileLint,
     ConfigPath,
     EmbedModel,
@@ -311,7 +310,10 @@ def compile_cmd(  # noqa: PLR0915
 @app.command(name="ingest")
 def ingest_cmd(
     ctx: typer.Context,
-    files: CompileFiles,
+    files: Annotated[
+        list[str] | None,
+        typer.Argument(help="Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."),
+    ] = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -352,7 +354,7 @@ def ingest_cmd(
     base_dir = Path(cfg.get(PATHS_WIKI_DIR))
 
     all_input_files = _resolve_compile_inputs(
-        files,
+        files or [],
         online_urls,
         url_file,
         sources_dir,
