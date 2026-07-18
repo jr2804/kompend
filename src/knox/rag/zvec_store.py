@@ -6,14 +6,15 @@ knowledge base.
 
 Embedding providers are pluggable via ``EmbeddingProvider``. The default
 ``PydanticAIEmbeddingProvider`` wraps pydantic-ai's :class:`~pydantic_ai.Embedder`,
-which supports every provider pydantic-ai ships (openai, google, cohere,
-bedrock, sentence-transformers, and all OpenAI-compatible endpoints).
+which supports every provider pydantic-ai ships (openai, ollama, google,
+cohere, bedrock, and HuggingFace sentence-transformers).
 """
 
 from __future__ import annotations
 
 import contextlib
 import hashlib
+import os
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
@@ -21,8 +22,11 @@ from typing import Any
 
 import zvec as _zvec
 from pydantic_ai import Embedder
+from pydantic_ai.embeddings import infer_embedding_model
+from pydantic_ai.providers.ollama import OllamaProvider
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.llm.models import _OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -62,6 +66,21 @@ def _safe_id(node_id: str) -> str:
 # ── Embedding provider interface ────────────────────────────────────────
 
 
+def _build_embedder(model_string: str) -> Embedder:
+    """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
+
+    Mirrors the pattern in :mod:`knox.llm.models`: when the provider is
+    Ollama, explicitly construct ``OllamaProvider`` with the local default
+    ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
+    """
+    if model_string.startswith("ollama:"):
+        base_url = os.getenv("OLLAMA_BASE_URL") or _OLLAMA_DEFAULT_BASE_URL
+        provider = OllamaProvider(base_url=base_url)
+        model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
+        return Embedder(model)
+    return Embedder(model_string)
+
+
 class EmbeddingProvider(ABC):
     """Interface for embedding text into fixed-dimension vectors."""
 
@@ -80,15 +99,15 @@ class EmbeddingProvider(ABC):
 class PydanticAIEmbeddingProvider(EmbeddingProvider):
     """Embedding via pydantic-ai's :class:`~pydantic_ai.Embedder`.
 
-    Supports every embedding provider pydantic-ai ships a class for
-    (openai, google, cohere, bedrock, sentence-transformers, and all
-    OpenAI-compatible endpoints like Ollama). The *model_string* uses the
-    pydantic-ai ``provider:model`` convention.
+    Supports every embedding provider pydantic-ai ships (openai, ollama,
+    google, cohere, bedrock, and HuggingFace sentence-transformers).
+    The *model_string* uses the same ``provider:model`` convention as
+    :func:`knox.llm.models.build_model`.
     """
 
     def __init__(self, model_string: str) -> None:
         self._model_string = model_string
-        self._embedder = Embedder(model_string)
+        self._embedder = _build_embedder(model_string)
         self._dim: int | None = None
 
     @property
@@ -112,10 +131,9 @@ def _make_provider(
 ) -> EmbeddingProvider:
     """Select an embedding provider based on model name.
 
-    Accepts either a pydantic-ai ``provider:model`` string directly, or the
-    legacy ``litellm:<provider>/<model>`` prefix (translated to
-    ``<provider>:<model>``), or a bare HuggingFace model name (treated as
-    ``sentence-transformers:<model>``).
+    Uses the same ``provider/model`` or ``provider:model`` convention as
+    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
+    (no prefix) defaults to the ``sentence-transformers`` provider.
     """
     pydantic_ai_string = _to_pydantic_ai_embedding_string(embedding_model)
     return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
@@ -124,16 +142,34 @@ def _make_provider(
 def _to_pydantic_ai_embedding_string(embedding_model: str) -> str:
     """Translate a KNOX embedding-model config value to pydantic-ai format.
 
-    - ``litellm:<provider>/<model>`` → ``<provider>:<model>``
-    - ``<provider>:<model>``          → unchanged (already pydantic-ai format)
-    - ``<hf-model-name>``             → ``sentence-transformers:<hf-model-name>``
+    Uses the same ``provider/model`` or ``provider:model`` convention as
+    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
+    (e.g. ``BAAI/bge-small-en`` or ``all-MiniLM-L6-v2``) defaults to the
+    ``sentence-transformers`` provider.
     """
-    if embedding_model.startswith("litellm:"):
-        rest = embedding_model.removeprefix("litellm:")
-        provider, _, model = rest.partition("/")
-        return f"{provider}:{model}"
+    # Known LLM/embedding providers — anything else is a HF model name.
+    _KNOWN_PROVIDERS = frozenset(
+        {
+            "ollama",
+            "openai",
+            "google",
+            "cohere",
+            "bedrock",
+            "groq",
+            "mistral",
+            "deepseek",
+            "sentence-transformers",
+        }
+    )
+
     if ":" in embedding_model:
-        return embedding_model  # already pydantic-ai format
+        provider = embedding_model.split(":", 1)[0]
+        if provider in _KNOWN_PROVIDERS:
+            return embedding_model
+    if "/" in embedding_model:
+        provider = embedding_model.split("/", 1)[0]
+        if provider in _KNOWN_PROVIDERS:
+            return provider + ":" + embedding_model.split("/", 1)[1]
     return f"sentence-transformers:{embedding_model}"
 
 
