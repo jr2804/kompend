@@ -30,7 +30,7 @@ Command modules are NOT imported eagerly at startup. `app.py` maintains a
 `_LAZY_MODULES` dict mapping command names to `(module_path, attribute_name)`.
 Only the module for the invoked command is imported (or all for `--help`).
 
-**Why:** eager imports pulled `sentence_transformers` (~16s) and `litellm` (~3s)
+**Why:** eager imports pulled heavy deps (pydantic-ai, docling, MCP SDK)
 into every `knox` invocation. With lazy registration, `knox --version` takes
 ~1.5s instead of ~23s.
 

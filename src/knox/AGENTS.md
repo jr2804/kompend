@@ -79,22 +79,10 @@ Every template is validated at render time:
 - Single words used as enum members, dict keys, or field names
 - Docstrings and type annotations
 
-#### Known violations (T1–T10)
 
-These are filed as beads issues and must be fixed before adding new text-in-code:
+#### Known violations
 
-| Issue | File | What |
-|-------|------|------|
-| `knox-ox2` (T1) | `lint/llm_rules.py` | 3 LLM prompt strings for lint rules |
-| `knox-8b0` (T2) | `packs/base.py` | 4 default pack prompt strings |
-| `knox-1a8` (T3) | `packs/builtins/academic.py` | 3 academic pack prompt strings |
-| `knox-65z` (T4) | `packs/builtins/technical.py` | 3 technical pack prompt strings |
-| `knox-174` (T5) | `compilation/schema.py` | BUILTIN_KINDS dict with descriptions |
-| `knox-dnu` (T6) | `compilation/two_phase.py` | 4 extraction/generation prompt strings |
-| `knox-844` (T7) | `compilation/wicer.py` | 3 WiCER loop prompt strings |
-| `knox-lf5` (T8) | `verification.py` | 2 claim verification prompt strings |
-| `knox-8gj` (T9) | `output/wiki_index.py` | 1 synthesis prompt string |
-| `knox-sga` (T10) | `resolution/llm.py` | 1 default entity extraction prompt |
+Tracked via `bd` (beads). Check current status: `bd list`.
 
 ### Python Antipatterns
 
@@ -431,11 +419,10 @@ Before adding a string constant to a Python file, ask:
 
 When moving prompts out of `packs/builtins/<name>.py`, use this layout:
 
-    src/knox/packs/<name>/
-    ├── pack.toml           # manifest + prompts (see TOML schema)
-    ├── __init__.py         # optional Python registration
-    └── templates/          # optional Jinja2 templates
-        └── compile.md.j2
+- `src/knox/packs/<name>/pack.toml` — manifest + prompts (see TOML schema)
+- `src/knox/packs/<name>/__init__.py` — optional Python registration
+- `src/knox/packs/<name>/templates/` — optional Jinja2 templates
+  (e.g. `compile.md.j2`)
 
 The `pack.toml` manifest:
 

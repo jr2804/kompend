@@ -16,15 +16,12 @@ through this package — no other module reads config files or env vars directly
 
 ### Architecture
 
-```text
-src/knox/core/config/
-├── __init__.py    # Public API re-exports
-├── _core.py       # Config resolution engine (merge, precedence, discovery)
-├── generate.py    # Code-driven TOML generation from DEFAULTS
-├── keys.py        # Config key constants
-├── _configs.py    # Config dataclass definitions
-└── AGENTS.md      # This file
-```
+- `__init__.py` — Public API re-exports
+- `_core.py` — Config resolution engine (merge, precedence, discovery)
+- `generate.py` — Code-driven TOML generation from DEFAULTS
+- `keys.py` — Config key constants
+- `_configs.py` — Config dataclass definitions
+- `AGENTS.md` — This file
 
 Public API lives in `__init__.py`. Internal helpers in `_core.py` are prefixed
 with `_` and should not be imported outside this package or tests.
