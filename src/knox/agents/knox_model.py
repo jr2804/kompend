@@ -155,17 +155,18 @@ class KnoxModel(Model):
             return model_settings
         settings = cast("ModelSettings", dict(model_settings or {}))
         settings.setdefault("thinking", thinking)
-        # When thinking is disabled, also pass think=false via extra_body.
         # pydantic-ai drops the unified ``thinking`` key when the model profile
-        # doesn't declare ``supports_thinking`` (true for most Ollama HF models),
-        # so ``reasoning_effort='none'`` never reaches the API.
-        # ``extra_body`` passes through to the OpenAI-compatible /v1/chat/completions
-        # endpoint where Ollama interprets ``think: false`` natively.
+        # lacks ``supports_thinking`` (true for most Ollama HF models), so the
+        # value never reaches ``model_request_parameters.thinking`` and
+        # ``_translate_thinking`` returns OMIT — the API call omits
+        # ``reasoning_effort`` entirely.
+        #
+        # Fix: set ``openai_reasoning_effort`` directly in model_settings.
+        # ``_translate_thinking`` checks this key *before* mrp.thinking, so it
+        # bypasses the profile gate. Ollama's /v1/chat/completions endpoint
+        # respects ``reasoning_effort: 'none'`` and disables thinking.
         if thinking is False:
-            eb = settings.get('extra_body')
-            extra_body = {**(eb if isinstance(eb, dict) else {})}
-            extra_body.setdefault('think', False)
-            settings['extra_body'] = extra_body  # type: ignore[typeddict-item]
+            settings["openai_reasoning_effort"] = "none"  # ty: ignore[invalid-key]
         return settings
 
     def _track_usage(self, response: ModelResponse) -> None:
