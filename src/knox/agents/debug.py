@@ -94,7 +94,15 @@ def save_debug_prompt(
         payload["response"] = response_content
 
     try:
-        filepath.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        # errors="backslashreplace": messages may carry lone surrogates (e.g.
+        # re-loaded from parse caches written before ingestion scrubbing);
+        # they encode as \udXXX escapes — still valid, round-trippable JSON —
+        # instead of aborting the dump with a zero-byte file.
+        filepath.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
         logger.info("Debug prompt saved to %s", filepath)
     except Exception as exc:
         logger.warning("Failed to save debug prompt: %s", exc)

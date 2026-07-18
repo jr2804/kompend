@@ -7,11 +7,15 @@ registration before any assertion runs.
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
 from knox.core.models import ParsedDocument
+from knox.core.models.elements import DocumentElement
+from knox.core.models.enums import ElementType
 from knox.preprocessing.parsers._registry import (
     PARSER_BACKENDS,
     ParserBuildOptions,
@@ -22,7 +26,7 @@ from knox.preprocessing.parsers._registry import (
     get_registered_parsers,
     register_backend,
 )
-from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser
+from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -185,3 +189,49 @@ class TestWebPageParser:
         assert parser.can_parse(Path("page.html"))
         assert parser.can_parse(Path("page.HTML"))
         assert not parser.can_parse(Path("paper.pdf"))
+
+
+# ── Surrogate scrubbing (ParserRouter.parse boundary) ─────────────────────
+
+
+def _make_doc_with_surrogates() -> ParsedDocument:
+    return ParsedDocument(
+        source_file=Path("broken.pdf"),
+        elements=[
+            DocumentElement(
+                type=ElementType.TEXT,
+                content="ok \ud800 mid \udfff end",
+                metadata={"caption": ["fig \udc80"]},
+            ),
+            DocumentElement(type=ElementType.TABLE, content=[["a\ud900", "b"]]),
+        ],
+        title="t\ud83d",
+        author="a\udead",
+        metadata={"nested": {"v": "x\udabc"}},
+    )
+
+
+def test_scrub_document_replaces_lone_surrogates() -> None:
+    doc = scrub_document(_make_doc_with_surrogates())
+    assert doc.elements[0].content == "ok \ufffd mid \ufffd end"
+    assert doc.elements[0].metadata == {"caption": ["fig \ufffd"]}
+    assert doc.elements[1].content == [["a\ufffd", "b"]]
+    assert doc.title == "t\ufffd"
+    assert doc.author == "a\ufffd"
+    assert doc.metadata == {"nested": {"v": "x\ufffd"}}
+    # The whole document must now be strictly UTF-8 encodable.
+    json.dumps(asdict(doc), ensure_ascii=False, default=str).encode("utf-8")
+
+
+def test_router_parse_scrubs_parser_output(tmp_path: Path) -> None:
+    class FakeParser(BaseParser):
+        def can_parse(self, source_file: Path) -> bool:
+            return True
+
+        def parse(self, source_file: Path) -> ParsedDocument:
+            return _make_doc_with_surrogates()
+
+    router = ParserRouter()
+    router.register(FakeParser())
+    doc = router.parse(tmp_path / "broken.pdf")
+    assert doc.elements[0].content == "ok \ufffd mid \ufffd end"

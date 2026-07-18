@@ -62,7 +62,7 @@ from knox.output.base import BaseOutputWriter
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions
-from knox.preprocessing.parsers.base import ParserRouter
+from knox.preprocessing.parsers.base import ParserRouter, scrub_document
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
@@ -744,14 +744,18 @@ class WikiPipeline:
                 )
                 for el in data.get("elements", [])
             ]
-            return ParsedDocument(
-                source_file=self._abs_path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
-                elements=elements,
-                title=data.get("title", ""),
-                author=data.get("author", ""),
-                language=data.get("language", "en"),
-                page_count=data.get("page_count", 0),
-                metadata=data.get(WikiField.METADATA, {}),
+            # scrub_document: caches written before surrogate scrubbing carry
+            # lone \udXXX escapes that json.loads restores as surrogate chars.
+            return scrub_document(
+                ParsedDocument(
+                    source_file=self._abs_path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
+                    elements=elements,
+                    title=data.get("title", ""),
+                    author=data.get("author", ""),
+                    language=data.get("language", "en"),
+                    page_count=data.get("page_count", 0),
+                    metadata=data.get(WikiField.METADATA, {}),
+                )
             )
         except (json.JSONDecodeError, KeyError, OSError):
             # Corrupt/unreadable cache entry = miss: re-parse. Warn so it's visible.

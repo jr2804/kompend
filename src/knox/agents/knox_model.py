@@ -106,36 +106,6 @@ class KnoxModel(Model):
         self._save_debug(messages, response)
         return response
 
-    # ── KNOX-specific hooks ─────────────────────────────────────────────
-
-    @staticmethod
-    def _repair_tool_call_args(response: ModelResponse) -> None:
-        """Run ``json_repair`` on ``ToolCallPart.args`` strings in-place.
-
-        Small local models frequently produce tool-call arguments with
-        invalid JSON: truncated output, bad escapes, stray
-        control characters, trailing prose.  pydantic-ai's built-in
-        validator uses pydantic's strict ``validate_json`` which rejects
-        all of these, triggering a retry that wastes context window and
-        usually produces the same error.
-
-        We intercept the raw args string *before* pydantic-ai validates
-        it, run ``json_repair.loads``, and replace ``args`` with the
-        repaired dict.  When the JSON is already valid or the repair
-        fails entirely, the part is left untouched so pydantic-ai's
-        normal retry logic applies.
-        """
-        for part in response.parts:
-            if not isinstance(part, ToolCallPart):
-                continue
-            args = part.args
-            if not isinstance(args, str):
-                continue  # Already a dict, or None
-            repaired = salvage_json(args)
-            if isinstance(repaired, dict):
-                part.args = repaired
-
-
     def _merge_reasoning(self, model_settings: ModelSettings | None) -> ModelSettings | None:
         """Map the configured ``reasoning_effort`` to the unified ``thinking`` setting.
 
@@ -203,6 +173,35 @@ class KnoxModel(Model):
             content,
             str(finish_reason),
         )
+
+    # ── KNOX-specific hooks ─────────────────────────────────────────────
+
+    @staticmethod
+    def _repair_tool_call_args(response: ModelResponse) -> None:
+        """Run ``json_repair`` on ``ToolCallPart.args`` strings in-place.
+
+        Small local models frequently produce tool-call arguments with
+        invalid JSON: truncated output, bad escapes, stray
+        control characters, trailing prose.  pydantic-ai's built-in
+        validator uses pydantic's strict ``validate_json`` which rejects
+        all of these, triggering a retry that wastes context window and
+        usually produces the same error.
+
+        We intercept the raw args string *before* pydantic-ai validates
+        it, run ``json_repair.loads``, and replace ``args`` with the
+        repaired dict.  When the JSON is already valid or the repair
+        fails entirely, the part is left untouched so pydantic-ai's
+        normal retry logic applies.
+        """
+        for part in response.parts:
+            if not isinstance(part, ToolCallPart):
+                continue
+            args = part.args
+            if not isinstance(args, str):
+                continue  # Already a dict, or None
+            repaired = salvage_json(args)
+            if isinstance(repaired, dict):
+                part.args = repaired
 
 
 def _compact_messages(messages: list[ModelMessage]) -> list[ModelMessage]:

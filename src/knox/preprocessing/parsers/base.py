@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from binaryornot.check import is_binary
 
@@ -100,4 +102,42 @@ class ParserRouter:
         parser = self.route(source_file)
         if not parser:
             raise ValueError(f"No parser found for {source_file}")
-        return parser.parse(source_file)
+        return scrub_document(parser.parse(source_file))
+
+
+# PDF text extraction (broken CMaps, mojibake) can emit lone UTF-16 surrogates
+# (U+D800–U+DFFF). They are invalid in UTF-8, so any strict encode downstream
+# (debug dumps, cache writes, hashing) raises ``UnicodeEncodeError: surrogates
+# not allowed``. Scrub them once at the router boundary — every parser output
+# passes through here.
+_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
+def _scrub_text(value: str) -> str:
+    """Replace lone surrogate code points with U+FFFD."""
+    if _SURROGATE_RE.search(value):
+        return _SURROGATE_RE.sub("\ufffd", value)
+    return value
+
+
+def _scrub_value(value: Any) -> Any:
+    """Recursively scrub strings inside common container types."""
+    if isinstance(value, str):
+        return _scrub_text(value)
+    if isinstance(value, list):
+        return [_scrub_value(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub_value(v) for k, v in value.items()}
+    return value
+
+
+def scrub_document(doc: ParsedDocument) -> ParsedDocument:
+    """Scrub surrogates from all text carried by a parsed document (in place)."""
+    doc.title = _scrub_text(doc.title)
+    doc.author = _scrub_text(doc.author)
+    doc.metadata = _scrub_value(doc.metadata)
+    for element in doc.elements:
+        if isinstance(element.content, str | list):
+            element.content = _scrub_value(element.content)
+        element.metadata = _scrub_value(element.metadata)
+    return doc
