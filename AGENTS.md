@@ -13,6 +13,7 @@
 
 ## Read Before Editing
 
+0. **First time?** Read `.agents/ONBOARDING.md` for a project orientation.
 1. Read this root AGENTS.md
 2. Identify every file or folder you expect to touch
 3. Walk from the repository root to each target path
@@ -189,7 +190,7 @@ Before declaring completion, confirm:
 ### Response Format
 
 Be concise and specific by default. No filler, intros, or restated requirements.
-Answer direct questions directly when possible.
+Answer direct questions directly.
 
 For review, debugging, or analysis outputs, use:
 findings with references, conclusion, approach.
@@ -304,8 +305,8 @@ strings in test assertions.
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=120` for integration tests
 - Run `ty check src/knox` for type checking (mypy is not used)
-- Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
-- Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `uv run scripts/check_field_consistency.py` to catch hard-coded contract keys
+- Run `uv run scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
 - Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/knox/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
