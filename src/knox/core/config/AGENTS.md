@@ -1,5 +1,8 @@
 # DOX — knox.core.config
 
+<!-- on entry: loaded when agent enters src/knox/core/config -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Configuration resolution engine for KNOX. Governs how config values are

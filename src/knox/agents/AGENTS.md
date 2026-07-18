@@ -1,5 +1,8 @@
 # DOX — knox.agents
 
+<!-- on entry: loaded when agent enters src/knox/agents -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 PydanticAI-based agents for every LLM call in the KNOX pipeline. Each

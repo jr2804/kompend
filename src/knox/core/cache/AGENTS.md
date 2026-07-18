@@ -1,5 +1,8 @@
 # DOX — knox.core.cache
 
+<!-- on entry: loaded when agent enters src/knox/core/cache -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Content-addressed JSON cache with dependency validation. Serializes

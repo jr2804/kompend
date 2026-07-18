@@ -1,5 +1,8 @@
 # DOX — knox.cli.args
 
+<!-- on entry: loaded when agent enters src/knox/cli/args -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Centralize all CLI argument definitions (`Annotated` type aliases) into domain-organized modules for improved discoverability and maintainability.

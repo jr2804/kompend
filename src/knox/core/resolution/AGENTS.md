@@ -1,5 +1,8 @@
 # DOX — knox.core.resolution
 
+<!-- on entry: loaded when agent enters src/knox/core/resolution -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Programmatic Tier 3 resolution: entity extraction/deduplication and

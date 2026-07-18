@@ -1,5 +1,8 @@
 # DOX — knox.core
 
+<!-- on entry: loaded when agent enters src/knox/core -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Core data models, pipeline orchestration, configuration, caching, and shared

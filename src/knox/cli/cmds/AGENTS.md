@@ -1,5 +1,8 @@
 # DOX — knox.cli.cmds
 
+<!-- on entry: loaded when agent enters src/knox/cli/cmds -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Centralize all CLI command definitions (`@app.command` functions) into domain-organized modules for improved discoverability and maintainability.

@@ -1,5 +1,8 @@
 # DOX — knox.core.trust
 
+<!-- on entry: loaded when agent enters src/knox/core/trust -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Actor identity and trust/privacy concerns. Resolves the current OS user

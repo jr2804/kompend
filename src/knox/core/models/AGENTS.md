@@ -1,5 +1,8 @@
 # DOX — knox.core.models
 
+<!-- on entry: loaded when agent enters src/knox/core/models -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Canonical data models and serialization contracts for the KNOX pipeline.

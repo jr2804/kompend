@@ -300,7 +300,7 @@ fallback_max_retries = 2
 # Skills are appended to the system prompt as additional context under
 # a "## Skill: <name>" heading. All PydanticAI agents receive the same
 # set of skills — they are pipeline-global, not per-agent.
-# See docs/agents.md for the full guide.
+# See docs/reference/pydantic-ai-agents.md for the full guide.
 
 [compile.skills]
 
@@ -316,7 +316,7 @@ fallback_max_retries = 2
 # [compile.skills."style-guide"]
 # instructions = '''
 # - Use sentence-case for page titles
-# # - Cross-link related concepts with [[wikilinks]]
+# - Cross-link related concepts with [[wikilinks]]
 # - Prefer active voice
 # '''
 
@@ -327,10 +327,9 @@ fallback_max_retries = 2
 # Set KNOX_EMBEDDING_MODEL in your environment, or uncomment and set below.
 # Formats accepted:
 #   "<provider>:<model>" — pydantic-ai Embedder format (openai, ollama, google, cohere, etc.)
-#   "litellm:<provider>/<model>" — legacy format (auto-translated to <provider>:<model>)
-#   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
+#   "<model>" (no prefix) — loads a local embedding model from HuggingFace
 # Embedding models use pydantic-ai's Embedder for broad provider support.
-# Default: all-MiniLM-L6-v2 (sentence-transformers, 384 dim, no API key needed).
+# Default: all-MiniLM-L6-v2 (local HuggingFace model, 384 dim, no API key needed).
 # model = "all-MiniLM-L6-v2"
 # model = "ollama:granite-embedding:278m"
 
@@ -383,7 +382,7 @@ format = "markdown"
 # threshold_identical = 0.95
 # threshold_similar = 0.80
 # Embedding model override. Empty string "" is treated as unset — falls
-# back to compile.embedding.model, then all-MiniLM-L6-v2 (SentenceTransformer).
+# back to compile.embedding.model, then all-MiniLM-L6-v2 (local HuggingFace model).
 # model = ""
 # minhash_lsh_threshold = 0.8
 
@@ -454,10 +453,10 @@ history_size = 20
 # crag.enabled = false
 # crag.threshold = 0.3
 
-# Neural re-ranker: cross-encoder re-ranks top-K candidates by true
-# query-passage relevance. Requires sentence-transformers.
+# Neural re-ranker: bi-encoder cosine-similarity re-ranks top-K
+# candidates. Uses the same embedding model as the vector store.
 # reranker.enabled = false
-# reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# reranker.model = "all-MiniLM-L6-v2"
 # reranker.top_k = 20
 
 # HyDE (Hypothetical Document Embeddings): for sparse queries, generate

@@ -1,5 +1,8 @@
 # DOX — knox.core.pipeline
 
+<!-- on entry: loaded when agent enters src/knox/core/pipeline -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 5-tier pipeline orchestration: index → chunk → resolve → compile → output.

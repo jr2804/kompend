@@ -1,11 +1,14 @@
 # DOX — knox.llm
 
+<!-- on entry: loaded when agent enters src/knox/llm -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 LLM layer: model construction, context-window discovery, format
 utilities (JSON/TOON/ISON), and usage tracking. Business modules build
 models via `build_model()` — never construct pydantic-ai models or
-import litellm directly.
+import LLM SDKs directly.
 
 ## Model construction — `knox.llm.models`
 
@@ -52,7 +55,7 @@ to handle the miss.
 ## Context-window discovery
 
 `discover_context_window()` (in `context_window.py`) resolves a model's
-token limits through a first-hit chain: litellm static tables → Ollama
+token limits through a first-hit chain: bundled model tables → Ollama
 runtime `/api/show` → `models.dev` catalog → fallback (clamped, one
 WARNING) → user cap.
 
@@ -76,5 +79,5 @@ prompt templates (`encode_for_llm`).
 ## Verification
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
-- `uv run pytest tests/unit/test_litellm_model.py -x` — FunctionModel wrapper
+- `uv run pytest tests/unit/test_litellm_model.py -x` — pydantic-ai model wrapper
 - `uv run pytest tests/unit/test_context_window.py -x` — window discovery

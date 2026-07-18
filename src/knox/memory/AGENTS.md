@@ -1,5 +1,8 @@
 # DOX — knox.memory
 
+<!-- on entry: loaded when agent enters src/knox/memory -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 KNOX memory layer. Two concerns:

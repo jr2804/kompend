@@ -1,5 +1,8 @@
 # DOX — knox.core.reporting
 
+<!-- on entry: loaded when agent enters src/knox/core/reporting -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 On-demand report builders for CLI observability. Aggregates structured

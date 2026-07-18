@@ -31,8 +31,9 @@ uv.lock
 opencode.json
 .opencode
 
-# Skills directory
-/.agents
+# Skills directory — root-level .agents/*.md framework files are tracked
+/.agents/*
+!/.agents/*.md
 skills-lock.json
 
 # GrepAI config directory

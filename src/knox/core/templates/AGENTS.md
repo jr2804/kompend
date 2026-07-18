@@ -1,5 +1,8 @@
 # DOX — knox.core.templates
 
+<!-- on entry: loaded when agent enters src/knox/core/templates -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Layered Jinja2 template loading with frontmatter parsing and variable

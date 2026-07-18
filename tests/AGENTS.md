@@ -1,5 +1,8 @@
 # DOX — tests
 
+<!-- on entry: loaded when agent enters tests -->
+<!-- parent: ../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Test suites for the KNOX project. Governs how tests are structured, where they

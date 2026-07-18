@@ -1,5 +1,8 @@
 # DOX — knox.preprocessing.parsers
 
+<!-- on entry: loaded when agent enters src/knox/preprocessing/parsers -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Pluggable ingestion backends. Each backend is a `BaseParser` subclass plus a

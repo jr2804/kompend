@@ -1,5 +1,8 @@
 # DOX — knox.cli
 
+<!-- on entry: loaded when agent enters src/knox/cli -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 The CLI layer is a thin shell over the KNOX core library. It parses user input,
@@ -200,7 +203,7 @@ touched, not extended:
 | `_build_router()` → `build_default_router()` in `knox.preprocessing.parsers._registry` | Parser construction in CLI |
 | `_load_wiki()` → `load_cached_wiki()` in `knox.core.models` | JSON deserialization in CLI |
 | `_build_vector_index()` → `build_vector_index()` in `knox.rag` | RAG business logic in CLI |
-| `doctor.py` now uses `LLMClient.try_complete()` | Direct `litellm.completion()` call |
+| `doctor.py` now uses `LLMClient.try_complete()` | Direct LLM client call |
 | `status.py` now uses `find_project_config()` | Hardcoded `.knox/config.yaml` path |
 | `SUPPORTED_EXTENSIONS` → `get_supported_extensions()` querying parser registry | Duplicated extension set |
 

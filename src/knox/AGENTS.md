@@ -1,5 +1,8 @@
 # DOX — knox Python source tree
 
+<!-- on entry: loaded when agent enters src/knox/ -->
+<!-- parent: ../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Coding conventions and quality standards for the KNOX Python source tree at
@@ -79,10 +82,10 @@ Every template is validated at render time:
 - Single words used as enum members, dict keys, or field names
 - Docstrings and type annotations
 
-
 #### Known violations
 
-Tracked via `bd` (beads). Check current status: `bd list`.
+See `.agents/HISTORY.md` for the T1–T10 text-in-code violations table and
+historical design decisions.
 
 ### Python Antipatterns
 
@@ -185,7 +188,7 @@ string literal. Model names are configuration, not code.
         ...
 
     # ✅ CORRECT — model comes from config, the only place the default lives
-    def _try_litellm_json(prompt, system, model, timeout):
+    def _try_agent_json(prompt, system, model, timeout):
         # model is always provided by the caller, who reads it from LLMConfig
         ...
 
@@ -325,7 +328,7 @@ site imports the symbol. Bare literals for such names are **forbidden,
 non-negotiable**.
 
 **Scope:** This governs our own schema/contract keys only. Keys defined by an
-external API or library (e.g. a litellm response ``{"embedding": [...]}``, a
+external API or library (e.g. a pydantic-ai response ``{"embedding": [...]}``, a
 JSON field from an upstream SDK) are that API's contract, not ours to rename —
 they are read as literals. When in doubt whether a key is ours, ask: did we
 define the schema that produces it? If yes, it is ours and must be a symbol.
@@ -481,7 +484,7 @@ as ``knox agent`` on stdio.
 
 1. Client calls ``initialize`` \u2192 KNOX advertises ``providers: {}`` capability
 2. Client calls ``providers/list`` \u2192 KNOX returns current LLM endpoint info
-3. Client calls ``providers/set`` \u2192 KNOX stores the endpoint and reconfigures litellm
+3. Client calls ``providers/set`` \u2192 KNOX stores the endpoint and reconfigures the model
 4. Client calls ``session/new`` \u2192 KNOX creates a session
 5. Client sends ``/knox <command>`` in a prompt \u2192 KNOX runs the pipeline
 
@@ -507,7 +510,7 @@ as ``knox agent`` on stdio.
 **Key design decisions:**
 
 - **KNOX controls its own LLM calls.** Unlike MCP sampling (free-text only),
-  KNOX uses its full litellm + Pydantic structured output pipeline. The
+  KNOX uses its full pydantic-ai agent + structured output pipeline. The
   ``providers/set`` endpoint configures the LLM; KNOX makes direct HTTP calls.
 - **``providers/set`` is an RFD** (not yet in the stable ACP spec). The Python
   SDK v0.11.0 includes the types. When ``providers/set`` is not called, KNOX
@@ -524,7 +527,7 @@ as ``knox agent`` on stdio.
 - The ``KnoxAgent`` class implements the ``acp.Agent`` protocol. All protocol
   methods are async. Use ``asyncio.run()`` to bridge to synchronous code.
 - ``ProviderCredentials`` is thread-safe (``threading.Lock``). It reconfigures
-  litellm via env vars (``KNOX_LLM_DEFAULT_MODEL``, ``KNOX_LLM_API_BASE``,
+  the model via env vars (``KNOX_LLM_DEFAULT_MODEL``, ``KNOX_LLM_API_BASE``,
   ``KNOX_LLM_API_KEY``) and restores them on ``disable()``.
 - Slash commands are parsed by ``parse_slash_command()`` in
   ``slash_commands.py``. Add new commands there.
@@ -534,7 +537,7 @@ as ``knox agent`` on stdio.
 ### PydanticAI pipeline agents (``src/knox/agents/``)
 
 All LLM stages in the compilation pipeline now route through PydanticAI
-agents instead of direct ``litellm.completion()`` calls. Seven agents cover
+agents instead of direct LLM client calls. Seven agents cover
 the pipeline stages:
 
 | Agent | Stage | Output |

@@ -1,5 +1,8 @@
 # DOX — knox.core.utils
 
+<!-- on entry: loaded when agent enters src/knox/core/utils -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+
 ## Purpose
 
 Pure utility helpers with zero domain logic. No imports from pipeline,
