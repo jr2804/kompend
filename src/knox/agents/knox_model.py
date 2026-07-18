@@ -26,6 +26,7 @@ Failover is handled by wrapping multiple :class:`KnoxModel` instances in
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart
@@ -102,6 +103,7 @@ class KnoxModel(Model):
             )
         response = await self._delegate.request(compacted, merged_settings, model_request_parameters)
         self._repair_tool_call_args(response)
+        self._repair_text_part(response)
         self._track_usage(response)
         self._save_debug(messages, response)
         return response
@@ -202,6 +204,34 @@ class KnoxModel(Model):
             repaired = salvage_json(args)
             if isinstance(repaired, dict):
                 part.args = repaired
+
+    @staticmethod
+    def _repair_text_part(response: ModelResponse) -> None:
+        """Run ``json_repair`` on ``TextPart`` for structured-output agents.
+
+        The same class of JSON errors that tool-call repair fixes (bad
+        escapes, trailing commas, truncated output) also appear in the
+        main text response when an agent uses structured ``output_type``.
+        pydantic-ai's strict validator rejects them, triggering a retry
+        that wastes context and usually fails identically.
+
+        We intercept the raw text *before* validation, try
+        ``salvage_json``, and replace the text with the repaired JSON
+        string.  When the JSON is already valid or the repair fails,
+        the part is left untouched so pydantic-ai's normal retry logic
+        applies.
+        """
+        for part in response.parts:
+            if not isinstance(part, TextPart):
+                continue
+            content = part.content
+            if not isinstance(content, str) or not content:
+                continue
+            repaired = salvage_json(content)
+            if repaired is not None and not isinstance(repaired, (dict, list)):
+                continue  # Not a JSON object/array — likely plain text, skip
+            if repaired is not None:
+                part.content = json.dumps(repaired, ensure_ascii=False)
 
 
 def _compact_messages(messages: list[ModelMessage]) -> list[ModelMessage]:
