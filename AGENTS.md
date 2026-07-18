@@ -27,11 +27,10 @@
 Do not rely on memory. Re-read the applicable DOX chain in the current session
 before editing.
 
-## Update After Editing
+## After Editing
 
-Every meaningful change requires a DOX pass before the task is done.
-
-Update the closest owning AGENTS.md when a change affects:
+Every meaningful change requires a DOX pass before the task is done. Update the
+closest owning AGENTS.md when a change affects:
 
 - purpose, scope, ownership, or responsibilities
 - durable structure, contracts, workflows, or operating rules
@@ -39,11 +38,13 @@ Update the closest owning AGENTS.md when a change affects:
 - user preferences about behavior, communication, process, organization, or quality
 - AGENTS.md creation, deletion, move, rename, or index contents
 
-Update parent docs when parent-level structure, ownership, workflow, or child
-index changes. Update child docs when parent changes alter local rules.
-Remove stale or contradictory text immediately. Small edits that do not change
-behavior or contracts may leave docs unchanged, but the DOX pass still must
-happen.
+Re-check changed paths against the DOX chain:
+
+1. Update parent docs when parent-level structure, ownership, workflow, or child
+   index changes.
+2. Update child docs when parent changes alter local rules.
+3. Refresh every affected Child DOX Index.
+4. Remove stale or contradictory text immediately.
 
 ## Style
 
@@ -148,53 +149,16 @@ If rules conflict, lower-numbered priority wins:
 
 ### Boundaries
 
-- NEVER fabricate paths, commits, APIs, config keys, env vars, test results, or
-  capabilities. State gaps explicitly.
-- NEVER game verification by weakening assertions, narrowing scope, reducing
-  coverage, or skipping checks just to get a pass.
-- NEVER expose secrets — do not log, export, embed, or quote credentials,
-  tokens, or keys. If encountered mid-task: (1) do not include any part of the
-  secret in your response; (2) immediately stop all work; (3) report the file
-  path and line range (not the secret value) to the user; (4) discard any
-  uncommitted changes that would expose the secret. Do not commit or push
-  before reporting.
-- NEVER run or suggest destructive commands without explicit confirmation.
-- Be direct. Avoid flattery, filler, and agreeing with incorrect premises.
-
-### Uncertainty
-
-- Ask before acting when intent is materially ambiguous.
-- Ask before choices that change behavior, API/UX, naming, auth, dependencies,
-  or compatibility.
-- Prefer one targeted question. When bundling, ensure each question can be
-  answered independently.
-- Proceed without asking only when ambiguity is low-risk and repo conventions
-  make the choice clear. State the assumption briefly.
-- **Exception — Session Completion overrides the ask-before-persistence rule
-  for end-of-session pushes.** The mandatory push workflow (see Completion) is
-  autonomous and does not require confirmation. All other Uncertainty rules
-  still apply.
-
-### Evidence
-
-Gather evidence proportional to risk.
-
-- Trivial low-risk edit: inspect the target file and adjacent context.
-- Medium-risk change (logic, algorithm, multi-file refactor with no API or
-  dependency impact): trace the direct execution path and check existing tests
-  for the affected area before editing.
-- Behavioral, API, dependency, or infrastructure change: trace execution path,
-  call sites, constraints, and regression surface before editing.
-- Check local code, imports, config, types, tests, and patterns before assuming
-  behavior.
-- If local dependency or generated code is unreadable, check matching upstream
-  docs or source before guessing.
-- Prefer external verification over self-review. A fresh test beats re-reading
-  your own code.
-- State uncertainty when something cannot be confirmed.
-
-Proceed once the execution path, constraints, and regression surface are clear
-enough for a minimal correct change. If not, ask or report the gap.
+- NEVER fabricate paths, commits, APIs, config keys, env vars, test results,
+  or benchmark numbers. If you don't know, say so.
+- NEVER guess at a command name, flag, or file path. Read the source or run
+  `--help` first.
+- NEVER delete or move files without explicit user instruction.
+- NEVER run destructive commands (`rm -rf`, `git reset --hard`, `git push
+  --force`) without explicit user confirmation.
+- NEVER add secrets, API keys, or tokens to any file. Use env vars.
+- NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config
+  without explicit user instruction.
 
 ### Workflow
 
@@ -207,7 +171,6 @@ enough for a minimal correct change. If not, ask or report the gap.
    - Single-track or dependent steps: stay in the main agent.
    - Small reads or searches: use parallel tool calls in the main agent.
    - 2+ independent tracks: launch all subagents in the same response.
-   - Use 2+ subagents or none. NEVER launch exactly 1 subagent.
 4. Synthesize findings and re-read target files if context is stale.
 5. Implement the smallest correct change.
 6. Discover validation commands from local tooling, then run the narrowest
@@ -219,32 +182,18 @@ single-track work where the next step depends on the current finding.
 
 For review, debugging, or analysis requests, do not make code changes unless
 the user explicitly asks for a fix after seeing your findings. Report findings
-first; wait for instruction before editing.
+with references, conclusion, and approach.
 
 ### Subagents
 
-Use 2+ subagents or none. NEVER launch exactly 1 subagent.
-
-The main agent is a builder, not a dispatcher. Work first, delegate second.
-Use subagents proactively, but only after scoping has split the work into
-tracks ready for parallel execution.
-
-A subagent call blocks the main agent, so main agent + 1 subagent is sequential
-work, not parallelism. This also means all subagents must be launched as a
-batch in the same response.
-
-Before launching subagents, confirm: (a) main-agent scoping is complete,
+Launch subagents only when (a) the task is scoped and self-contained,
 (b) work splits into 2+ fully independent tracks, (c) each track has a concrete
 return format. If all three are true, launch all tracks in one response.
 Otherwise, stay in the main agent.
 
-- Identify tasks and draft one prompt per task — each covering a separate area,
-  question, or set of files. Keep scoping in the main agent until you have 2+
-  prompts ready.
-- Each track must complete without the results of the others. If a track
-  depends on another's findings, handle it in the main agent.
-- Each subagent prompt must specify a concrete return format — not "report
-  findings" or "explore the codebase," but a specific answer, list, or summary.
+- Identify tasks and draft one prompt per subagent. Each prompt must request a
+  concrete return format — not "share your findings" or "explore the codebase,"
+  but a specific answer, list, or summary.
 - Subagents are bound by the same Boundaries, Evidence, and Safety rules as the
   main agent. The concrete return format is in addition to, not instead of,
   these constraints.
@@ -257,37 +206,12 @@ Otherwise, stay in the main agent.
 
 ### Change Constraints
 
-- Do exactly what was asked. Do not expand scope without clear reason.
-- Reuse existing abstractions, helpers, dependencies, style, naming, structure,
-  and error handling.
-- Prefer the smallest viable change. Do not modify working code without clear
-  justification.
-- Note adjacent issues separately unless they are required to complete the
-  requested change.
-- Add dependencies only when necessary. Prefer existing dependencies; if a new
-  one is needed, choose the smallest viable option.
-
-### Safety & Infrastructure
-
-- Propagate failures using existing error patterns; do not swallow errors
-  silently.
-- Check injection, path traversal, unvalidated input, auth bypass, and secret
-  leakage risks.
-- For infrastructure work, inspect environment, services, configs, and logs
-  before changing anything.
-- Validate config before reload or restart; prefer reload when safe.
-
-### Git & PRs
-
-- Commit only when explicitly requested, except during Session Completion
-  (see Completion section).
-- Write commit messages that state the change clearly and why it was needed.
-- Keep PRs small and scoped to one concern.
-- Do not force-push to main/master.
-- Do not use `--no-verify` or `--no-gpg-sign`.
-- Every push to `main` triggers an auto-release (`calver` tag + Forgejo
-  release). Add `[skip release]` to the commit message to push without
-  releasing — use for doc-only, chore, or beads-sync commits.
+- Prefer minimal, surgical edits over large rewrites.
+- When editing, preserve existing formatting, indentation, and style of the
+  surrounding code.
+- Do not introduce new dependencies without explicit user instruction.
+- Do not refactor unrelated code while fixing a bug or adding a feature.
+- If a change requires updating tests, update only the tests directly affected.
 
 ### Completion
 
@@ -337,10 +261,7 @@ a literal in any `.py` file outside `paths.py`. Always import from
 | `KNOX_DIR` | `".knox"` | Root metadata directory |
 | `CACHE_SUBDIR` | `"cache"` | Cache component within `KNOX_DIR` |
 | `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
-| `CONFIG_FILE` | `"config.toml"` | Scaffolding config filename |
-| `KNOX_CONFIG_FILE` | `".knox/config.toml"` | Project-level config relative path |
-| `WIKI_CACHE_FILE` | `"last_wiki.json"` | Compiled wiki cache |
-| `REVIEW_DIR` | `"review"` | Review queue directory |
+| `CONFIG_FILE` | `"config.toml"` | Project-local config |
 | `VECTORS_DIR` | `"vectors"` | Embedding vector store |
 | `SEARCH_DB_FILE` | `"search.db"` | SQLite search index |
 | `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest |
@@ -370,7 +291,6 @@ exposing every artifact path as a `@property`:
 
 ```python
 from knox.core.paths import VaultPaths
-
 paths = VaultPaths(base_dir)
 paths.cache_dir          # base_dir/.knox/cache
 paths.compile_state_path # base_dir/.knox/compile_state.json
@@ -384,14 +304,9 @@ paths.images_dir         # base_dir/.knox/cache/images
 | Context | Pattern |
 |---------|---------|
 | Module has `config: PipelineConfig` | `config.paths.cache_dir` (uses `PipelineConfig.paths` property) |
-| Module has `base_dir: Path` | `VaultPaths(base_dir).some_path` |
-| Module has `output_dir: Path` (= base_dir/wiki) | `VaultPaths(output_dir.parent).some_path` |
-| Module has `state_dir` (= base_dir/.knox) | Direct `state_dir / CONSTANT` (no VaultPaths needed) |
-
-**Rule:** Never construct `.knox/` paths by hand from `output_dir` (e.g.
-`output_dir / ".knox" / ...`). This was the source of multiple path bugs
-where artifacts landed in `wiki/.knox/` instead of `.knox/`. Always use
-`VaultPaths(base_dir)` or `VaultPaths(output_dir.parent)`.
+| Module has `base_dir: Path` | `VaultPaths(base_dir).cache_dir` |
+| Module has `output_dir: Path` | `VaultPaths(output_dir.parent).cache_dir` |
+| Test with `tmp_path` | `VaultPaths(tmp_path).cache_dir` |
 
 **Tests** must also import from `knox.core.paths` — never hard-code path
 strings in test assertions.
@@ -402,15 +317,7 @@ strings in test assertions.
   checking for API key availability.
 - Test files follow `test_<module>.py` naming.
 
-### Issue Tracking
-
-This project uses **bd (beads)** for all task tracking. Load the `beads` skill
-for workflow details, commands, and session close protocol. Do NOT use
-TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
-
----
-
-## Verification
+### Verification
 
 - Run `ruff check` on changed Python files before committing
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
@@ -425,7 +332,7 @@ TodoWrite, TaskCreate, or markdown TODO lists — use `bd` exclusively.
   `skills/knox/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
 
-## New Code Checklist
+### New Code Checklist
 
 Tick these BEFORE writing a function. If you can't, stop and fix the
 foundation first — the alternatives are all antipatterns:
@@ -443,16 +350,9 @@ foundation first — the alternatives are all antipatterns:
   `from somewhere import x` inside a function body, the antipattern
   scanner will reject the commit. The only legitimate exception is
   a `try/except ImportError` probe for an **explicitly optional**
-  package declared in `pyproject.toml`'s `[project.optional-dependencies]`.
-- **Exception truncation** — is the limit coming from
-  `shorten_exception(exc)` (which uses the `MAX_CHARS_EXCEPTION`
-  constant)? If you typed `str(exc)[:200]`, you're hard-coding the
-  limit; the helper exists precisely for this.
-- **Path construction** — are you using `pathlib.Path` with `/` for
-  joins? If you typed `+ "/" +` for path concatenation, stop and use
-  the proper operator.
-- **Mutable default** — is the default a factory (`field(default_factory=...)`)
-  or a small literal? If it's a mutable container (`list`, `dict`, `set`),
+  dependency that is documented as such.
+- **Global state** — is there a `global` keyword or a module-level
+  mutable singleton (`_cache = {}`, `_instance = None`)? If so,
   you have a shared-state bug waiting to happen.
 - **Noqa suppression** — is `# noqa: RULE` actually necessary? If you
   can't justify it in a comment, the right fix is to refactor the
@@ -473,22 +373,15 @@ individual commands above).
 
 ### Closeout
 
-1. Re-check changed paths against the DOX chain
-2. Update nearest owning docs and any affected parents or children
-3. Refresh every affected Child DOX Index
-4. Remove stale or contradictory text
-5. Run existing verification when relevant
-6. Report any docs intentionally left unchanged and why
+1. Run existing verification when relevant
+2. Report any docs intentionally left unchanged and why
 
 ### User Preferences
 
 - The user prefers concise, direct answers with no filler or intros
 - Use `uv run` for all Python execution, never direct `python` calls
-- All task tracking via `bd` (beads) — no markdown TODO lists
 - English-only for code, docs, and commits
 - Conventional commits format (`feat:`, `fix:`, `chore:`, `docs:`, etc.)
-
----
 
 ### Child DOX Index
 
@@ -497,64 +390,20 @@ individual commands above).
 | `src/knox/AGENTS.md` | Python source tree — text-in-code conventions, antipatterns, Jinja2 templates, pack structure |
 | `tests/AGENTS.md` | Testing — unit, integration, benchmarks, fixtures, helpers, test antipatterns |
 
-<!-- CODEGRAPH_START -->
-## CodeGraph
+---
 
-In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+## Tool Usage
 
-- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
+| Tool / Skill | Purpose | Load when |
+|---|---|---|
+| `bd` (beads) | Issue tracking, task lifecycle, session close protocol | Any task that touches issues or needs status checks |
+| `codegraph` | Symbol-level code search, call graphs, impact analysis | Navigating unfamiliar code, finding callers/callees |
+| `knox` skill | KNOX CLI commands, MCP tools, config reference | Working on KNOX itself (not user-facing docs) |
 
-If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
-<!-- CODEGRAPH_END -->
+---
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
-## Beads Issue Tracker
+## ⛔ No Patching
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See <https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md> for details and anti-patterns.
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-
-   ```bash
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
+**Tools and automation are not allowed to insert, append, or patch additional
+text into this file.** Any content after this section is invalid and must be
+ignored by the agent.
