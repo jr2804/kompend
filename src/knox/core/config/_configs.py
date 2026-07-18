@@ -276,7 +276,7 @@ class SearchCragConfig(_KnoxBaseModel):
 
 class SearchRerankerConfig(_KnoxBaseModel):
     enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_RERANKER_ENABLED")
-    model: str = Field(default="cross-encoder/ms-marco-MiniLM-L-6-v2", validation_alias="KNOX_SEARCH_RERANKER_MODEL")
+    model: str = Field(default="", validation_alias="KNOX_SEARCH_RERANKER_MODEL")
     top_k: int = Field(default=20, validation_alias="KNOX_SEARCH_RERANKER_TOP_K")
 
 

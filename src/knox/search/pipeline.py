@@ -4,7 +4,7 @@ Wraps the existing :class:`HybridRetriever` with configurable plug-in steps:
 
 1. **Multi-Query Expansion (RAG-Fusion)** — N query variants + RRF merge
 2. **CRAG (Corrective RAG)** — LLM relevance grading, drop noise
-3. **Neural Re-ranker** — cross-encoder post-fusion ranking
+3. **Neural Re-ranker** — bi-encoder cosine-similarity post-fusion ranking
 4. **HyDE** — hypothetical answer embeddings for sparse queries
 
 Each step is optional and configurable via ``knox.toml`` under ``[search]``.
@@ -13,10 +13,9 @@ All default to **disabled** — opt-in only.
 
 from __future__ import annotations
 
-from sentence_transformers import CrossEncoder as _CrossEncoder
-
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
+from knox.compilation.two_phase import _cosine_similarity
 from knox.core.models import CompiledWiki
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.logging import get_logger
@@ -55,7 +54,7 @@ class EnhancedRetriever:
         crag_threshold: float = 0.3,
         # Neural re-ranker config
         reranker_enabled: bool = False,
-        reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        reranker_model: str = "",  # kept for config compat; bi-encoder uses vector store model
         reranker_top_k: int = 20,
         # HyDE config
         hyde_enabled: bool = False,
@@ -82,7 +81,6 @@ class EnhancedRetriever:
 
         # Neural re-ranker config
         self._reranker_enabled = reranker_enabled
-        self._reranker_model = reranker_model
         self._reranker_top_k = reranker_top_k
 
         # HyDE config
@@ -198,18 +196,27 @@ class EnhancedRetriever:
     # ── Neural Re-ranker ──────────────────────────────────────────────────
 
     def _neural_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
-        """Re-rank candidates using a cross-encoder model."""
-        try:
-            reranker = _CrossEncoder(self._reranker_model)
-            pairs: list[tuple[str, str]] = []
-            for c in candidates:
-                text = c.snippet or c.title
-                pairs.append((query, text))
+        """Re-rank candidates using bi-encoder cosine similarity.
 
-            scores = reranker.predict(pairs)
+        Uses the vector store's embedding provider (pydantic-ai ``Embedder``)
+        to embed the query and each candidate, then sorts by cosine similarity.
+        Falls back to the original order if no vector store is available.
+        """
+        try:
+            if self._retriever._vector_store is None:
+                logger.debug("Neural re-rank skipped — no vector store")
+                return candidates
+
+            provider = self._retriever._vector_store._provider
+            texts = [query] + [c.snippet or c.title for c in candidates]
+            vectors = [provider.embed(t) for t in texts]
+            query_vec = vectors[0]
+            doc_vecs = vectors[1:]
+
             scored: list[tuple[float, SearchResult]] = []
-            for i, c in enumerate(candidates):
-                scored.append((float(scores[i]), c))
+            for vec, c in zip(doc_vecs, candidates, strict=True):
+                score = _cosine_similarity(query_vec, vec)
+                scored.append((score, c))
 
             scored.sort(key=lambda x: x[0], reverse=True)
             reranked = scored[: self._reranker_top_k]
@@ -226,10 +233,9 @@ class EnhancedRetriever:
                     )
                 )
             logger.debug(
-                "Neural re-ranker: %d → %d candidates (model=%s)",
+                "Neural re-ranker: %d → %d candidates (bi-encoder cosine)",
                 len(candidates),
                 len(results),
-                self._reranker_model,
             )
             return results
         except Exception as exc:

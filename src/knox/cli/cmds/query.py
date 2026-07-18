@@ -244,7 +244,7 @@ def _build_enhanced_retriever(
         crag_threshold=cfg.get(SEARCH_CRAG_THRESHOLD, 0.3),
         # Neural re-ranker
         reranker_enabled=cfg.get(SEARCH_RERANKER_ENABLED, False),
-        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, "cross-encoder/ms-marco-MiniLM-L-6-v2"),
+        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, ""),  # bi-encoder uses embedding model
         reranker_top_k=cfg.get(SEARCH_RERANKER_TOP_K, 20),
         # HyDE
         hyde_enabled=cfg.get(SEARCH_HYDE_ENABLED, False),
