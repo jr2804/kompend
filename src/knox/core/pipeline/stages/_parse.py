@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from knox.core.models import (
@@ -24,8 +25,6 @@ from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from knox.core.pipeline.stages._pipeline import WikiPipeline
     from knox.resolution.base import BaseResolver
 
