@@ -230,6 +230,7 @@ class EnhancedRetriever:
                         snippet=r.snippet,
                         score=round(score, 6),
                         source_file=r.source_file,
+                        tags=r.tags,
                     )
                 )
             logger.debug(
@@ -308,6 +309,7 @@ class EnhancedRetriever:
                     snippet=r.snippet,
                     score=round(score, 6),
                     source_file=r.source_file,
+                    tags=r.tags,
                 )
             )
         fused.sort(key=lambda x: x.score, reverse=True)

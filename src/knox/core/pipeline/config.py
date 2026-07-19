@@ -42,6 +42,7 @@ from knox.core.config.keys import (
     COMPILE_NO_CACHE,
     COMPILE_RESPECT_GITIGNORE,
     COMPILE_SKILLS,
+    COMPILE_SOURCE_TAGS,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_PATH,
@@ -158,6 +159,7 @@ class PipelineConfig:
     notes_file: Path | None = None  # User notes file path (None = no notes)
     images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
     parser: str = "docling"  # ingestion backend name (see PARSER_BACKENDS)
+    source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -263,6 +265,7 @@ class PipelineConfig:
             pdf=pdf_config,
             display=display_config,
             skills={name: skill.get("instructions", "") for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()},
+            source_tags=cfg.get(COMPILE_SOURCE_TAGS, []),
         )
 
 

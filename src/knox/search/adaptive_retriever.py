@@ -104,6 +104,7 @@ class AdaptiveRetriever:
                     snippet=snippet,
                     score=1.0,
                     source_file=str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else None,
+                    tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
                 )
             )
         results.sort(key=lambda r: r.score, reverse=True)
@@ -150,6 +151,7 @@ class AdaptiveRetriever:
                     snippet=snippet,
                     score=float(hit.get("score", 0.0)),
                     source_file=source_file,
+                    tags=set(node.metadata.get(MetadataField.TAGS, [])) if node and node.metadata else set(),
                 )
             )
         return results

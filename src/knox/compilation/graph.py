@@ -160,6 +160,7 @@ class GraphCompiler(BaseCompiler):
                     MetadataField.SOURCE_FILE: source,
                     WikiField.CHUNK_COUNT: len(group_chunks),
                     "frontmatter": {"kind": kind},
+                    MetadataField.TAGS: list({tag for rc in group_chunks for tag in (rc.chunk.metadata.get("tags") or [])}),
                 },
             )
             nodes.append(node)

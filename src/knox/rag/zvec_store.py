@@ -49,6 +49,7 @@ class ZvecField(StrEnum):
     NODE_TYPE = "node_type"
     SOURCE_FILE = "source_file"
     CONTENT_PREVIEW = "content_preview"
+    TAGS = "tags"
     EMBEDDING = "embedding"
 
 
@@ -283,6 +284,7 @@ class ZvecWikiStore:
                 _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
                 _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
                 _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
             ],
             vectors=_zvec.VectorSchema(
                 ZvecField.EMBEDDING,
@@ -317,6 +319,7 @@ class ZvecWikiStore:
                     ZvecField.NODE_TYPE: node.node_type,
                     ZvecField.SOURCE_FILE: str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else "",
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
+                    ZvecField.TAGS: ",".join(node.metadata.get(MetadataField.TAGS, [])) if node.metadata.get(MetadataField.TAGS) else "",
                 },
             )
             docs_batch.append(doc)

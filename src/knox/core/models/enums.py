@@ -26,6 +26,7 @@ class MetadataField(StrEnum):
     PROVENANCE = "provenance"
     IMAGE_PATH = "image_path"
     IMAGE_BASE64 = "image_base64"
+    TAGS = "tags"
 
 
 class WikiField(StrEnum):

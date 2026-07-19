@@ -107,6 +107,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     no_cache: bool = False,
     config: dict[str, Any] | None = None,
     ingested_by: str = "",
+    tags: list[str] | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -147,6 +148,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             configure content-level duplicate detection.
         ingested_by: OS user to record as the ingest actor in source state
             (``compile_state.json``). Empty string records no identity.
+        tags: Optional list of source tags to attach to each parsed document's
+            metadata (stored under ``MetadataField.TAGS``).
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -204,6 +207,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             logger.debug("Failed to parse %s", source_file, exc_info=True)
             failed += 1
             continue
+
+        # Attach CLI-provided tags to the parsed document metadata.
+        if tags:
+            if doc.metadata is None:
+                doc.metadata = {}
+            doc.metadata["tags"] = tags
 
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_rel_path(Path(data[MetadataField.SOURCE_FILE])))

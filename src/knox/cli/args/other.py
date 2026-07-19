@@ -160,11 +160,15 @@ LearnText = Annotated[
     ),
 ]
 
-Tags = Annotated[
+SourceTags = Annotated[
     list[str] | None,
     typer.Option(
-        "--tag",
-        help="Tags to attach (repeatable).",
+        "--tags",
+        help=(
+            "Source tags (repeatable; comma-separated within one option is AND, "
+            "multiple --tags flags are OR). Blanks stripped from tag names; quote "
+            "tags containing spaces to preserve them."
+        ),
     ),
 ]
 

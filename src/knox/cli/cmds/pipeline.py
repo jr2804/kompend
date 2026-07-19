@@ -52,6 +52,7 @@ from knox.cli.args import (
     Progress,
     Provenance,
     ReviewMode,
+    SourceTags,
     StartAtTier,
     SynthesizeFlag,
     UrlFile,
@@ -325,6 +326,7 @@ def ingest_cmd(
     show_progress: Progress = None,
     parser: Parser = None,
     cli_set: CliSet = None,
+    tags: SourceTags = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
@@ -402,6 +404,7 @@ def ingest_cmd(
             no_cache=no_cache or False,
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
+            tags=tags,
         )
         time.monotonic() - ingest_start
     finally:

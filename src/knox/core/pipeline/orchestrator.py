@@ -876,12 +876,14 @@ class WikiPipeline:
         return resolved
 
     def _apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
-        """Attach directory-based tags to every leaf chunk in *tree*."""
-        tags = self._extract_source_tags(source_file, self.config.source_dir)
-        if tags:
+        """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
+        dir_tags = self._extract_source_tags(source_file, self.config.source_dir)
+        cli_tags = list(self.config.source_tags)  # copy
+        all_tags = dir_tags + cli_tags
+        if all_tags:
             for node in tree.leaves():
                 if node.chunk:
-                    node.chunk.metadata["tags"] = tags
+                    node.chunk.metadata["tags"] = all_tags
 
     @staticmethod
     def _extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:

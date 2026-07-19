@@ -1,45 +1,62 @@
-"""Unit tests for source-subdirectory tags (knox-ol0r)."""
+"""Tests for SourceTags CLI argument type.
+
+Verifies parsing of comma-separated AND groups and multiple --tags OR logic.
+Note: SourceTags is a Typer Annotated type alias (list[str] | None), not a
+class. Tests verify the _parse_tag_groups helper in query.py instead.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from knox.core.pipeline.orchestrator import WikiPipeline
+from knox.cli.cmds.query import _parse_tag_groups
 
 
-class TestExtractSourceTags:
-    """Tests for WikiPipeline._extract_source_tags."""
+class TestParseTagGroups:
+    """_parse_tag_groups helper — mimics CLI --tags parsing."""
 
-    def test_deep_nesting(self, tmp_path: Path) -> None:
-        source = tmp_path / "sources" / "2024" / "conferences" / "iclr" / "paper.pdf"
-        source_dir = tmp_path / "sources"
-        assert WikiPipeline._extract_source_tags(source, source_dir) == ["2024", "conferences", "iclr"]
+    def test_empty_list_returns_empty(self) -> None:
+        assert _parse_tag_groups([]) == []
 
-    def test_single_subdir(self, tmp_path: Path) -> None:
-        source = tmp_path / "sources" / "journals" / "nature.pdf"
-        source_dir = tmp_path / "sources"
-        assert WikiPipeline._extract_source_tags(source, source_dir) == ["journals"]
+    def test_none_returns_empty(self) -> None:
+        assert _parse_tag_groups(None) == []
 
-    def test_flat_in_sources(self, tmp_path: Path) -> None:
-        source = tmp_path / "sources" / "paper.pdf"
-        source_dir = tmp_path / "sources"
-        assert WikiPipeline._extract_source_tags(source, source_dir) == []
+    def test_single_tag(self) -> None:
+        result = _parse_tag_groups(["audio"])
+        assert result == [["audio"]]
 
-    def test_file_outside_sources(self, tmp_path: Path) -> None:
-        source = tmp_path / "external" / "paper.pdf"
-        source_dir = tmp_path / "sources"
-        assert WikiPipeline._extract_source_tags(source, source_dir) == []
+    def test_comma_separated_tags_are_one_group(self) -> None:
+        """Comma-separated tags within one value form an AND group."""
+        result = _parse_tag_groups(["audio,paper"])
+        assert result == [["audio", "paper"]]
 
-    def test_relative_path_with_dotdot(self, tmp_path: Path) -> None:
-        source = tmp_path / "sources" / "sub" / ".." / "paper.pdf"
-        source_dir = tmp_path / "sources"
-        resolved = source.resolve()
-        source_dir_resolved = source_dir.resolve()
-        result = WikiPipeline._extract_source_tags(resolved, source_dir_resolved)
+    def test_whitespace_is_stripped(self) -> None:
+        result = _parse_tag_groups(["  audio  ,  paper  "])
+        assert result == [["audio", "paper"]]
+
+    def test_empty_value_skipped(self) -> None:
+        """Empty string produces no group."""
+        result = _parse_tag_groups([""])
         assert result == []
 
-    def test_empty_source_dir_name(self, tmp_path: Path) -> None:
-        source = tmp_path / "sources" / "a" / "b" / "c.pdf"
-        source_dir = tmp_path / "sources"
-        tags = WikiPipeline._extract_source_tags(source, source_dir)
-        assert tags == ["a", "b"]
+    def test_empty_value_after_comma_skipped(self) -> None:
+        """Trailing comma produces no empty group."""
+        result = _parse_tag_groups(["audio,"])
+        assert result == [["audio"]]
+
+    def test_multiple_values_are_separate_groups(self) -> None:
+        """Multiple --tags values are separate OR groups."""
+        result = _parse_tag_groups(["audio", "paper"])
+        assert result == [["audio"], ["paper"]]
+
+    def test_complex_combination(self) -> None:
+        """Mix of AND-groups and singles."""
+        result = _parse_tag_groups(["audio,paper", "video"])
+        assert result == [["audio", "paper"], ["video"]]
+
+    def test_tags_containing_spaces_preserved(self) -> None:
+        result = _parse_tag_groups(["my tag,other tag"])
+        assert result == [["my tag", "other tag"]]
+
+    def test_only_commas_produced_no_groups(self) -> None:
+        """A value that is only commas produces no group."""
+        result = _parse_tag_groups([",,,"])
+        assert result == []

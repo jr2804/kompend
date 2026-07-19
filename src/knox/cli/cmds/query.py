@@ -22,6 +22,7 @@ from knox.cli.args import (
     QueryText,
     QueryTopK,
     QueryVerbosity,
+    SourceTags,
 )
 from knox.cli.args.query import SearchMode
 from knox.core.config import resolve_config
@@ -64,6 +65,30 @@ _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
     Verbosity.STANDARD.value: SEARCH_SYNTHESIS_TOKENS_STANDARD,
     Verbosity.COMPREHENSIVE.value: SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
 }
+
+
+def _parse_tag_groups(tags: list[str] | None) -> list[list[str]]:
+    """Parse --tags values into AND-groups for OR-filtering.
+
+    Each --tags VALUE is split by comma (AND within a value).
+    Multiple --tags values are OR'd together.
+    Returns groups like [["a","b"],["c"]] meaning "(a AND b) OR c".
+    """
+    if not tags:
+        return []
+    groups: list[list[str]] = []
+    for value in tags:
+        group = [t.strip() for t in value.split(",") if t.strip()]
+        if group:
+            groups.append(group)
+    return groups
+
+
+def _matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
+    """Check if node satisfies at least one AND-group (OR of ANDs)."""
+    if not tag_groups:
+        return True
+    return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
 
 
 def _is_captured_source(source_file: str | None) -> bool:
@@ -188,6 +213,7 @@ def _execute_query_search(
     search_mode: str,
     sources_dir: Path | None,
     top_k: int,
+    tag_groups: list[list[str]] | None = None,
 ) -> tuple[list[Any], bool]:
     """Dispatch to the requested search mode and return results + raw flag."""
     raw = False
@@ -204,6 +230,9 @@ def _execute_query_search(
         results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
     else:
         results = retriever.search_wiki(query, top_k=top_k)
+
+    if tag_groups:
+        results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
     return results, raw
 
 
@@ -259,6 +288,7 @@ def _handle_adaptive_search(
     sources_dir: Path | None,
     wiki: CompiledWiki,
     state_dir: Path,
+    tag_groups: list[list[str]] | None = None,
 ) -> tuple[list[Any], bool]:
     """Search using adaptive retriever."""
     retriever = AdaptiveRetriever(
@@ -267,6 +297,8 @@ def _handle_adaptive_search(
     )
     mode = search_mode if search_mode != SearchMode.HYBRID else None
     results = retriever.search(query, top_k=top_k, mode=mode)
+    if tag_groups:
+        results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
     return results, False
 
 
@@ -280,6 +312,7 @@ def _handle_enhanced_search(
     wiki: CompiledWiki,
     cfg: Any,
     model: str,
+    tag_groups: list[list[str]] | None = None,
 ) -> list[Any] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
     enhanced = _build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
@@ -294,6 +327,8 @@ def _handle_enhanced_search(
     if has_enhanced:
         expand_graph = search_mode == SearchMode.GRAPH
         results = enhanced.search(query, top_k=top_k, expand_graph=expand_graph)
+        if tag_groups:
+            results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
         return results
 
     return None
@@ -377,6 +412,7 @@ def query_cmd(
     adaptive: QueryAdaptive = False,
     remember: QueryRemember = False,
     verbosity: QueryVerbosity = None,
+    tags: SourceTags = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki.
 
@@ -406,6 +442,8 @@ def query_cmd(
     if _classify_intent(query, no_classify, format):
         return
 
+    tag_groups = _parse_tag_groups(tags)
+
     wiki = load_cached_wiki(state_dir.parent)
     if wiki is None:
         get_err_console().print(
@@ -419,10 +457,10 @@ def query_cmd(
 
     try:
         if adaptive:
-            results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir)
+            results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
             has_enhanced = False
         else:
-            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model)
+            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
             if enhanced_result is not None:
                 results = enhanced_result
                 raw = False
@@ -432,7 +470,7 @@ def query_cmd(
                     wiki,
                     vector_store=vector_store,
                 )
-                results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k)
+                results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
                 has_enhanced = False
     finally:
         if vector_store is not None:

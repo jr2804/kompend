@@ -18,7 +18,7 @@ from knox.capture.learn import learn
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
-from knox.cli.args import CaptureText, Frontmatter, LearnText, Tags
+from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceTags
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_RELATED_TITLES
 from knox.core.models import MetadataField, WikiField
@@ -38,7 +38,7 @@ logger = get_logger(__name__)
 def capture_cmd(
     ctx: typer.Context,
     text: CaptureText,
-    tag: Tags = None,
+    tag: SourceTags = None,
 ) -> None:
     """Extract knowledge items from text via LLM; save each as a source file.
 
@@ -49,7 +49,7 @@ def capture_cmd(
 
     Examples:
         knox capture "We decided to use QKV projections with RoPE"
-        knox capture "Discussion about layer norm placement" --tag architecture --tag training
+        knox capture "Discussion about layer norm placement" --tags architecture --tags training
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
@@ -74,7 +74,7 @@ def capture_cmd(
 def learn_cmd(
     ctx: typer.Context,
     text: LearnText,
-    tag: Tags = None,
+    tag: SourceTags = None,
 ) -> None:
     """Store a single fact verbatim as a source file — no LLM involved.
 
@@ -85,7 +85,7 @@ def learn_cmd(
 
     Examples:
         knox learn "The transformer uses d_model=512 and h=8"
-        knox learn "QKV with RoPE" --tag attention --tag architecture
+        knox learn "QKV with RoPE" --tags attention --tags architecture
     """
     wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))

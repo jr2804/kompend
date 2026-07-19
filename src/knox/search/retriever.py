@@ -36,6 +36,7 @@ class SearchResult:
     snippet: str
     score: float
     source_file: str | None = None
+    tags: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -222,6 +223,11 @@ class HybridRetriever:
             source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
             if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])
+            node_tags: set[str] = set()
+            if node and node.metadata:
+                raw_tags = node.metadata.get(MetadataField.TAGS)
+                if raw_tags:
+                    node_tags = {str(t) for t in raw_tags} if isinstance(raw_tags, list) else set()
             results.append(
                 SearchResult(
                     article_id=node_id,
@@ -229,6 +235,7 @@ class HybridRetriever:
                     snippet=snippet,
                     score=float(hit.get("score", 0.0)),
                     source_file=source_file,
+                    tags=node_tags,
                 )
             )
         return results
@@ -255,6 +262,7 @@ class HybridRetriever:
                                 snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
                                 score=result.score * decay_factor,
                                 source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                                tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
                             )
                     elif target_id == result.article_id and source_id not in expanded:
                         node = self._node_by_id.get(source_id)
@@ -265,6 +273,7 @@ class HybridRetriever:
                                 snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
                                 score=result.score * decay_factor,
                                 source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
+                                tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
                             )
 
         sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
