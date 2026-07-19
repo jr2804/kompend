@@ -40,7 +40,7 @@ class TestCompileWiki:
         assert "Unknown format" in result["message"]
 
     def test_vlm_model_passed_to_pipeline(self) -> None:
-        with patch.object(Path, "exists", return_value=True), patch("knox.mcp.server.build_pipeline") as mock_build:
+        with patch.object(Path, "exists", return_value=True), patch("knox.mcp.tools.knowledge.build_pipeline") as mock_build:
             mock_pipeline = mock_build.return_value
             mock_pipeline.run.return_value = type(
                 "Wiki",
