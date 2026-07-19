@@ -669,7 +669,7 @@ class TestMergeSimilarConcepts:
             {"name": "Posteriorgram", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Phoneme Posteriorgram", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.two_phase._make_provider") as mock_factory:
+        with patch("knox.compilation.flows.assembly._make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Posteriorgram"
@@ -687,7 +687,7 @@ class TestMergeSimilarConcepts:
             {"name": "Listening Effort", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Speech Intelligibility", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.two_phase._make_provider") as mock_factory:
+        with patch("knox.compilation.flows.assembly._make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Listening Effort"
@@ -756,7 +756,7 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.two_phase._try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
+        with patch("knox.compilation.flows.extraction._try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
@@ -785,7 +785,7 @@ class TestTwoPhaseCompiler:
             for i in range(n_sources)
         ]
         # Every extraction batch fails.
-        with patch("knox.compilation.two_phase._try_pydanticai_extraction", return_value=None):
+        with patch("knox.compilation.flows.extraction._try_pydanticai_extraction", return_value=None):
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
@@ -813,7 +813,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.two_phase._try_pydanticai_extraction",
+            "knox.compilation.flows.extraction._try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -850,7 +850,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.two_phase._try_pydanticai_extraction",
+            "knox.compilation.flows.extraction._try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -919,8 +919,8 @@ class TestTwoPhaseCompiler:
             ]
         )
         with (
-            patch("knox.compilation.two_phase._try_pydanticai_extraction", side_effect=shared_side_effect),
-            patch("knox.compilation.two_phase._try_pydanticai_generation", side_effect=shared_side_effect),
+            patch("knox.compilation.flows.extraction._try_pydanticai_extraction", side_effect=shared_side_effect),
+            patch("knox.compilation.flows.generation._try_pydanticai_generation", side_effect=shared_side_effect),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata

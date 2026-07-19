@@ -1180,7 +1180,7 @@ class TestTwoPhaseConceptSalvage:
         # Extraction succeeds, generation returns empty (all calls fail)
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.two_phase._try_pydanticai_generation", return_value=None),
+            patch("knox.compilation.flows.generation._try_pydanticai_generation", return_value=None),
             pytest.raises(LLMOutputError, match=r"Generation failed: 0 of 1 concept\(s\) synthesized"),
         ):
             compiler.compile(chunks)

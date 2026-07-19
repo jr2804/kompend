@@ -128,7 +128,7 @@ class TestReduceExtractions:
             concepts=[Concept(name="chunking", definition="splitting text")],
             tags=["ai", "docs"],
         )
-        with patch("knox.compilation.two_phase.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("knox.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.return_value = mock_output
             mock_agent_cls.return_value = mock_agent
@@ -149,7 +149,7 @@ class TestReduceExtractions:
             Extraction(source="doc.md", summary="B."),
         ]
 
-        with patch("knox.compilation.two_phase.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("knox.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = LLMOutputError("boom")
             mock_agent_cls.return_value = mock_agent
