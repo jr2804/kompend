@@ -10,14 +10,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from pydantic_ai import Embedder
-
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
-from knox.rag.zvec_store import _to_pydantic_ai_embedding_string
+from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string
 
 logger = get_logger(__name__)
 
@@ -182,7 +180,7 @@ def _ping_embed_model(model: str | None) -> CheckResult:
 
     try:
         pydantic_ai_string = _to_pydantic_ai_embedding_string(model)
-        embedder = Embedder(pydantic_ai_string)
+        embedder = _build_embedder(pydantic_ai_string)
         result = embedder.embed_documents_sync("ping")
         dims = len(result.embeddings[0]) if result.embeddings else 0
         return CheckResult(name, True, f"embed OK ({pydantic_ai_string}, {dims} dims)")
