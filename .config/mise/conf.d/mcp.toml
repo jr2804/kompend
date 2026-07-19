@@ -25,13 +25,13 @@ arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see
 shell = "pwsh -NoProfile -Command"
 run = [
 	"cls",
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n grepai --args mcp-serve grepai',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n cytoscnpy-mcp --args mcp-server cytoscnpy',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n codegraph --args serve --args --mcp',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n fartrun --args mcp fartrun',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n vibecheck --args --mcp vibecheck',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n aislop --args -y --args aislop-mcp npx',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n beads beads-mcp',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n repowise --args mcp --args . repowise',
-	'bun x add-mcp -y -a {{usage.ai_agent}} -n ketch --args mcp --args serve ketch',
+	'bun x add-mcp "grepai mcp-serve" -y -a {{usage.ai_agent}} -n grepai',
+	'bun x add-mcp "cytoscnpy mcp-server" -y -a {{usage.ai_agent}} -n cytoscnpy',
+	'bun x add-mcp "codegraph serve --mcp" -y -a {{usage.ai_agent}} -n codegraph',
+	'bun x add-mcp "fartrun mcp" -y -a {{usage.ai_agent}} -n fartrun',
+	'bun x add-mcp "vibecheck  --mcp" -y -a {{usage.ai_agent}} -n vibecheck',
+	'bun x add-mcp "npx -y aislop-mcp" -y -a {{usage.ai_agent}} -n aislop',
+	'bun x add-mcp "beads-mcp" -y -a {{usage.ai_agent}} -n beads',
+	'bun x add-mcp "repowise mcp ." -y -a {{usage.ai_agent}} -n repowise',
+	'bun x add-mcp "ketch mcp serve" -y -a {{usage.ai_agent}} -n ketch',
 ]
