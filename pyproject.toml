@@ -39,7 +39,7 @@ dependencies = [
     "uvicorn>=0.29.0",
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
     "chonkie>=1.0.0",
-    "crawl4ai>=0.5.0",
+    "crawl4ai[all]>=0.5.0",
     "zvec>=0.4.0",
     "rumdl>=0.2.9",
     "mcp>=1.27.2",
@@ -69,6 +69,7 @@ dependencies = [
     "pydantic-ai-harness[acp]>=0.7.0",
     "models-dev>=1.0.398",
     "ollama>=0.6.2",
+    "summarization-pydantic-ai>=0.1.10",
 ]
 
 [project.scripts]

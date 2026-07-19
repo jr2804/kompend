@@ -7,9 +7,9 @@ current architecture.
 
 See also:
 
-- [Architecture overview](architecture/index.md) — 5-tier pipeline
-- [Pipeline Tiers](concepts/pipeline-tiers.md) — Per-tier component reference
-- [LLM Configuration](guides/llm-config.md) — Provider setup and model selection
+- [Architecture overview](../architecture/index.md) — 5-tier pipeline
+- [Pipeline Tiers](../concepts/pipeline-tiers.md) — Per-tier component reference
+- [LLM Configuration](llm-config.md) — Provider setup and model selection
 
 ## Supported Formats
 
