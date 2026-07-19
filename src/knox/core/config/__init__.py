@@ -23,6 +23,7 @@ from knox.core.config._configs import (
     OutputConfig,
     OutputFormat,
     PdfConfig,
+    QueryFormat,
 )
 from knox.core.config._core import (
     DEFAULTS,
@@ -53,6 +54,7 @@ __all__ = [
     "OutputConfig",
     "OutputFormat",
     "PdfConfig",
+    "QueryFormat",
     "ResolvedConfig",
     "coerce_config_value",
     "find_all_project_configs",

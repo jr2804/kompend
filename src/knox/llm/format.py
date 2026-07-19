@@ -84,8 +84,13 @@ def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
         Python dict or list to serialize.
     fmt:
         :class:`LlmDataFormat` value or equivalent string:
-        ``"json"`` (default), ``"toon"``, or ``"ison"``.
+        ``"json"`` (default), ``"toon"``, ``"ison"``, or ``"text"``.
+        For ``"text"``/``"markdown"`` the data is returned as-is
+        (no-op) since it is already human-readable prose.
     """
+    # MARKDOWN and TEXT share value "text" — compare by value.
+    if fmt.value == "text":
+        return str(data) if not isinstance(data, str) else data
     if fmt == LlmDataFormat.JSON:
         return json.dumps(data, ensure_ascii=False)
     elif fmt == LlmDataFormat.TOON:
