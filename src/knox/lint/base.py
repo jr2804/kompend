@@ -107,3 +107,20 @@ class BaseLintRule(ABC):
         Default implementation returns results unchanged.
         """
         return list(results)
+
+
+class RemediationStatus(StrEnum):
+    APPLIED = "applied"
+    SKIPPED = "skipped"
+    RECOMMENDED = "recommended"
+
+
+@dataclass
+class RemediationAction:
+    """A single remediation action applied, skipped, or recommended."""
+
+    tier: int  # 1, 2, or 3
+    category: str
+    description: str
+    status: RemediationStatus
+    details: dict[str, Any] = field(default_factory=dict)
