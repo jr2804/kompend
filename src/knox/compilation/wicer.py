@@ -29,6 +29,13 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Fraction of the available context window (after reserves) allocated to
+# WiCER probe input text.  The chars-per-token heuristic (3.85) is too
+# optimistic for models like Gemma (actual ~2.0), causing the batch to
+# overshoot the real token limit.  A utilization factor leaves headroom
+# for tokenizer density variation across model families.
+_WICER_CONTEXT_UTILIZATION: Final[float] = 0.50
+
 # Absolute token reserve carved out of the context window for the WiCER probe
 # and evaluation prompts (system prompt + framing overhead).  Sized for the
 # compact JSON-emitting prompts used by ``probe_questions.md.j2`` and
@@ -97,10 +104,10 @@ class WiCERCompiler(BaseCompiler):
         )
         if cw is not None:
             self._probe_input_chars = _tokens_to_chars(
-                max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget),
+                max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget) * _WICER_CONTEXT_UTILIZATION)),
             )
             self._eval_input_chars = _tokens_to_chars(
-                max(1, cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget),
+                max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget) * _WICER_CONTEXT_UTILIZATION)),
             )
         else:
             self._probe_input_chars = _tokens_to_chars(self._probe_output_budget)
