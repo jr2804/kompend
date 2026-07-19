@@ -82,6 +82,15 @@ Mention caveats and unverified risks.
   no `# noqa` permitted. Refactor the code instead.
 - Use `./tmp` (gitignored) or `tempfile.TemporaryDirectory()` for temp files.
 
+### Implementation Plans
+
+- Implementation plans, refactoring plans, and design docs go in
+  `.agents/plans/` — NOT under version control (gitignored).
+- NEVER commit implementation plans to git. They are working artifacts,
+  not shipped documentation.
+- Shipped docs (user-facing guides, API references) go in `docs/` and
+  ARE committed.
+
 ### User Preferences
 
 - Concise, direct answers with no filler or intros
