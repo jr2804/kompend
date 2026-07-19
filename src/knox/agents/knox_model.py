@@ -29,7 +29,7 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
@@ -91,17 +91,14 @@ class KnoxModel(Model):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         merged_settings = self._merge_reasoning(model_settings)
-        # Compact history on retry: drop all ModelResponse (assistant
-        # attempts) to prevent the context window from growing on each
-        # validation retry. Only ModelRequest (system + user + retry
-        # prompts) carry the instructions the model needs — its own
-        # previous output is irrelevant and wastes context.
-        compacted = _compact_messages(messages)
-        if len(compacted) < len(messages):
-            logger.info(
-                "Compacted message history: %d → %d messages (dropped %d assistant responses)", len(messages), len(compacted), len(messages) - len(compacted)
-            )
-        response = await self._delegate.request(compacted, merged_settings, model_request_parameters)
+        # History compression is handled at the pydantic-ai Agent layer by
+        # ``ContextManagerCapability`` (attached in KnoxAgentBase._build_agent),
+        # which summarises when the conversation nears the context budget.
+        # Previously this method dropped all ModelResponse messages on retry
+        # (``_compact_messages``); that crude workaround lost the model's own
+        # output, defeating pydantic-ai's retry feedback loop. The capability
+        # is strictly better and preserves history on compression failure.
+        response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         self._repair_tool_call_args(response)
         self._repair_text_part(response)
         self._track_usage(response)
@@ -232,20 +229,6 @@ class KnoxModel(Model):
                 continue  # Not a JSON object/array — likely plain text, skip
             if repaired is not None:
                 part.content = json.dumps(repaired, ensure_ascii=False)
-
-
-def _compact_messages(messages: list[ModelMessage]) -> list[ModelMessage]:
-    """Drop all ModelResponse messages to prevent context window blowup on retry.
-
-    Each retry iteration adds the model's full previous attempt (a
-    ModelResponse) and a retry prompt (a ModelRequest). On a small model
-    with limited context, a single retry can exceed the budget.
-
-    ModelResponse carries the model's OWN previous output — irrelevant
-    for the next generation. Only the ModelRequest instructions (system
-    prompt, user prompt, retry instructions) matter.
-    """
-    return [m for m in messages if isinstance(m, ModelRequest)]
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:

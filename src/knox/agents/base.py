@@ -28,9 +28,15 @@ from abc import ABC
 from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai_summarization import (
+    ContextManagerCapability,
+    ContextSize,
+    SlidingWindowCapability,
+)
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.knox_model import KnoxModel
@@ -49,6 +55,17 @@ _DEFAULT_TIMEOUT_SECONDS: float = 120.0
 #: Default retries when no config value is provided. Matches the config
 #: default in ``compile.llm.output_retries``.
 _DEFAULT_RETRIES: int = 2
+
+#: ContextManagerCapability presets: name -> (compress_threshold, keep).
+#: ``keep`` uses the ``ContextSize`` shape (``("messages", N)``).
+_CONTEXT_PRESETS: dict[str, tuple[float, ContextSize]] = {
+    "default": (0.9, ("messages", 0)),
+    "aggressive": (0.7, ("messages", 5)),
+}
+
+#: SlidingWindowCapability default trigger/keep (zero-cost, no LLM call).
+_SLIDING_TRIGGER: ContextSize = ("messages", 100)
+_SLIDING_KEEP: ContextSize = ("messages", 50)
 
 ResultT = TypeVar("ResultT")
 
@@ -117,6 +134,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         fallback_models: list[str] | None = None,
         reasoning_effort: str | None = None,
         use_native_output: bool = False,
+        context_manager: str | bool = False,
+        context_window: int | None = None,
     ) -> None:
         self._model_string = model_string
         self._timeout = timeout
@@ -126,6 +145,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._usage_tracker = usage_tracker
         self._fallback_models = fallback_models
         self._use_native_output = use_native_output
+        self._context_manager = context_manager
+        self._context_window = context_window
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
@@ -281,12 +302,17 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 description=f"Structured output for {self.stage}",
             )
 
+        # Build the top-level model once and reuse it for both the Agent and
+        # the summarization capability (same failover chain).
+        top_model = self._build_top_level_model()
+        capability = self._resolve_context_capability(top_model)
         agent = Agent(
-            self._build_top_level_model(),
+            top_model,
             deps_type=self.deps_type,
             output_type=output_type,
             model_settings=model_settings,
             retries=self._retries,
+            capabilities=[capability] if capability is not None else None,
         )
         if self.output_validator_func is not None:
             agent.output_validator(self.output_validator_func)
@@ -315,6 +341,74 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 for m in self._fallback_models
             ),
         )
+
+    def _resolve_context_capability(self, model: Model) -> AbstractCapability[Any] | None:
+        """Build the context-management capability from the configured preset.
+
+        Returns ``None`` when context management is disabled, in which case the
+        pydantic-ai Agent is constructed without ``capabilities``.
+
+        Args:
+            model: The top-level (failover) model — reused as the
+                summarization model so compressions run on the same chain.
+        """
+        setting = self._context_manager
+        if setting is False or setting is None:
+            return None
+        if isinstance(setting, str):
+            normalized = setting.strip().lower()
+            if normalized in {"", "off", "false", "none", "no"}:
+                return None
+            preset = normalized
+        else:
+            preset = "default"  # ``True`` -> default preset
+
+        if preset == "sliding":
+            return SlidingWindowCapability(
+                trigger=_SLIDING_TRIGGER,
+                keep=_SLIDING_KEEP,
+            )
+        try:
+            threshold, keep = _CONTEXT_PRESETS[preset]
+        except KeyError:
+            logger.warning(
+                "Unknown context_manager preset %r — falling back to 'default'",
+                setting,
+            )
+            threshold, keep = _CONTEXT_PRESETS["default"]
+        return ContextManagerCapability(
+            max_tokens=self._context_window,
+            compress_threshold=threshold,
+            keep=keep,
+            summarization_model=model,
+            on_usage_update=self._on_usage_update,
+            on_before_compress=self._on_before_compress,
+            on_after_compress=self._on_after_compress,
+        )
+
+    # ── ContextManagerCapability callbacks ─────────────────────────────
+
+    def _on_usage_update(self, pct: float, current: int, max_tokens: int) -> None:
+        """Token-usage snapshot from the capability → UsageTracker."""
+        if self._usage_tracker is not None:
+            self._usage_tracker.record_context_usage(current, max_tokens)
+
+    @staticmethod
+    def _on_before_compress(messages: list[Any], cutoff_index: int) -> None:
+        """Fires between plan and execute — log the impending compression."""
+        logger.info(
+            "Context compression starting: %d messages, cutoff at index %d",
+            len(messages),
+            cutoff_index,
+        )
+
+    @staticmethod
+    def _on_after_compress(messages: list[Any], summarized: bool, summary: str | None) -> None:
+        """Fires after the summary LLM — log the outcome. Returns no reinject."""
+        if summarized:
+            logger.info("Context compression produced %d-char summary", len(summary or ""))
+        else:
+            logger.warning("Context compression skipped (history preserved)")
 
     @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:
