@@ -25,6 +25,7 @@ from knox.preprocessing.parsers.docling_parser import DoclingParser
 
 logger = get_logger(__name__)
 
+
 def parse_document(file_path: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
     doc_file = Path(file_path)
@@ -56,6 +57,7 @@ def parse_document(file_path: str) -> dict[str, Any]:
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
+
 
 def compile_wiki(
     sources_dir: str,
@@ -134,6 +136,7 @@ def compile_wiki(
         logger.exception("Compilation failed")
         return {"status": "error", "message": str(exc)}
 
+
 def wiki_capture(
     text: str,
     sources_dir: str = "./sources",
@@ -165,6 +168,7 @@ def wiki_capture(
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
+
 def wiki_learn(
     text: str,
     sources_dir: str = "./sources",
@@ -185,6 +189,7 @@ def wiki_learn(
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
+
 
 def wiki_distill(
     wiki_dir: str = ".",
@@ -208,4 +213,3 @@ def wiki_distill(
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
-

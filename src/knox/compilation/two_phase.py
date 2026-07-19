@@ -205,9 +205,7 @@ class TwoPhaseCompiler(BaseCompiler):
         total_elapsed = time.monotonic() - compile_start
         node_count = len(wiki.nodes)
         logger.info(
-            "TwoPhase: compile done — %d source(s) → %d concept(s) in %.1fs "
-            "(extract %.1fs, generate %.1fs), %d LLM call(s), "
-            "%d prompt + %d completion tokens",
+            "TwoPhase: compile done — %d source(s) → %d concept(s) in %.1fs (extract %.1fs, generate %.1fs), %d LLM call(s), %d prompt + %d completion tokens",
             num_sources,
             node_count,
             total_elapsed,
@@ -226,19 +224,6 @@ class TwoPhaseCompiler(BaseCompiler):
         """Phase 1: run the LLM in extraction mode for each source."""
         return ext_flow.run_extraction(self, chunks, trees=trees)
 
-    @staticmethod
-    def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
-        """Group texts into batches that fit within *char_budget* (chars)."""
-        return ext_flow.batch_texts(texts, char_budget)
-
-    def _combine_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
-        """Combine per-batch extractions into one document-level Extraction."""
-        return ext_flow.combine_extractions(self, source, parts)
-
-    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
-        """LLM-powered reduce: merge partial extractions into a coherent whole."""
-        return ext_flow.reduce_extractions(self, source, parts)
-
     def generate(
         self,
         extractions: ExtractionSet,
@@ -249,3 +234,16 @@ class TwoPhaseCompiler(BaseCompiler):
     ) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages."""
         return gen_flow.run_generation(self, extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+
+    def _combine_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
+        """Combine per-batch extractions into one document-level Extraction."""
+        return ext_flow.combine_extractions(self, source, parts)
+
+    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
+        """LLM-powered reduce: merge partial extractions into a coherent whole."""
+        return ext_flow.reduce_extractions(self, source, parts)
+
+    @staticmethod
+    def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
+        """Group texts into batches that fit within *char_budget* (chars)."""
+        return ext_flow.batch_texts(texts, char_budget)

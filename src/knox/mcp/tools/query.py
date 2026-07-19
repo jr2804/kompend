@@ -5,7 +5,7 @@ from typing import Any
 
 from knox.cli._shared import resolve_project_paths
 from knox.cli.args.query import SearchMode
-from knox.cli.cmds.status import collect_stats
+from knox.cli.cmds.pipeline.status import collect_stats
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
@@ -15,6 +15,7 @@ from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import HybridRetriever
 
 logger = get_logger(__name__)
+
 
 def query_wiki(
     query: str,
@@ -91,6 +92,7 @@ def query_wiki(
     result_dicts = [dataclasses.asdict(r) for r in results]
     return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
+
 def wiki_status(
     wiki_dir: str = ".",
 ) -> dict[str, Any]:
@@ -105,4 +107,3 @@ def wiki_status(
         return {"status": "ok", "stats": stats}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
-

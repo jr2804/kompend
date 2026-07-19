@@ -11,6 +11,7 @@ from knox.mcp.tools._helpers import _make_memory_store
 
 logger = get_logger(__name__)
 
+
 def memory_add(
     query: str,
     answer: str,
@@ -26,6 +27,7 @@ def memory_add(
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
+
 def memory_search(
     query: str,
     top_k: int = 5,
@@ -39,6 +41,7 @@ def memory_search(
         return {"status": "ok", "results": results}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
+
 
 def memory_synthesize(
     limit: int = 20,
@@ -67,4 +70,3 @@ def memory_synthesize(
         return {"status": "ok", "message": f"Synthesized context written to {context_file}"}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
-

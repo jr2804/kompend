@@ -13,7 +13,7 @@ import typer
 
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli.args.query import SearchMode
-from knox.core.config._configs import LlmDataFormat, QueryFormat, Verbosity  # type: ignore[attr-defined]
+from knox.core.config._configs import LlmDataFormat, Verbosity  # type: ignore[attr-defined]
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_OUTPUT_RETRIES,
@@ -95,16 +95,16 @@ def _structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict
     }
 
 
-def _encode_structured(payload: Any, fmt: QueryFormat) -> str:  # noqa: ANN401
+def _encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
     """Encode a structured payload as json/toon/ison for agent consumers."""
-    if fmt == QueryFormat.JSON:
+    if fmt == LlmDataFormat.JSON:
         return json.dumps(payload, indent=2)
-    if fmt == QueryFormat.ISON:
+    if fmt == LlmDataFormat.ISON:
         payload = {"answer": [{"text": payload["answer"]}], "citations": payload["citations"]}
-    return encode_for_llm(payload, LlmDataFormat(fmt.value))
+    return encode_for_llm(payload, fmt)
 
 
-def _encode_raw_results(results: list[Any], fmt: QueryFormat) -> str:
+def _encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
     """Build the raw-results payload and encode it for agent consumers."""
     payload = [
         {
@@ -135,9 +135,9 @@ def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
         return None
 
 
-def _print_raw_results(results: list[Any], format: QueryFormat) -> None:
+def _print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
     """Print raw search results to console."""
-    if format == QueryFormat.TEXT:
+    if format == LlmDataFormat.MARKDOWN:
         for r in results:
             get_console().print(f"  [{r.score:.3f}] {r.title}")
             if r.source_file:
@@ -272,7 +272,7 @@ def _handle_enhanced_search(
 def _synthesize_and_output(
     query: str,
     results: list[Any],
-    format: QueryFormat,
+    format: LlmDataFormat,
     has_enhanced: bool,
     enhanced: EnhancedRetriever | None,
     wiki: CompiledWiki,
@@ -301,10 +301,10 @@ def _synthesize_and_output(
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")
-        _print_raw_results(results, QueryFormat.TEXT)
+        _print_raw_results(results, LlmDataFormat.MARKDOWN)
         raise typer.Exit(1)
 
-    if format == QueryFormat.TEXT:
+    if format == LlmDataFormat.MARKDOWN:
         get_console().print(synthesis.answer)
         get_console().print("")
         get_console().print("Sources:")

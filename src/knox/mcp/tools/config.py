@@ -16,6 +16,7 @@ from knox.scaffolding import ScaffoldError, scaffold_project
 
 logger = get_logger(__name__)
 
+
 def init_wiki(
     target: str = ".",
     bare: bool = False,
@@ -38,6 +39,7 @@ def init_wiki(
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
+
 def config_get(
     key: str,
 ) -> dict[str, Any]:
@@ -50,6 +52,7 @@ def config_get(
         return {"status": "ok", "key": key, "value": value}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
+
 
 def config_set(
     key: str,
@@ -75,4 +78,3 @@ def config_set(
         return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}
     except (OSError, ValueError) as exc:
         return {"status": "error", "message": f"Failed to write {config_file}: {exc}"}
-

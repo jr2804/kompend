@@ -1,30 +1,27 @@
 """Command modules for KNOX CLI.
 
-This package organizes all CLI command definitions into logical modules:
+This package organizes CLI commands into three domain subpackages plus
+standalone modules:
 
-- capture.py   → /knox capture (document capture)
-- config.py    → /knox config (configuration management)
-- doctor.py    → /knox doctor (health checks)
-- init.py      → /knox init (project initialization)
-- lint.py      → /knox lint (linting and validation)
-- log.py       → /knox log (regenerate pipeline log report)
-- memory.py    → /knox memory (memory/RAG operations)
-- organize.py  → /knox organize (wiki organization)
-- pack.py      → /knox pack (archive packing)
-- pipeline.py  → /knox pipeline (tiered compilation pipeline)
-- quality.py   → /knox quality (quality diagnostics)
-- query.py     → /knox query (vector search / RAG queries)
-- review.py    → /knox review (review queue management)
-- serve.py     → /knox serve (local HTTP server)
-- status.py    → /knox status (wiki statistics)
+Subpackages:
+
+- ``pipeline/``   — ``compile``, ``ingest``, ``parse``, ``config``, ``sources``
+- ``quality/``    — ``doctor``, ``lint``, ``review``, ``log``
+- ``knowledge/``  — ``query``, ``capture``, ``learn``, ``distill``, ``write``,
+                     ``organize``, ``memory``, ``pack``
+
+Standalone modules:
+
+- ``agent.py``    — agent REPL commands
+- ``agents.py``   — agent lifecycle management
+- ``init.py``     — project scaffolding
+- ``serve.py``    — local HTTP server and MCP server
 
 All commands register themselves with the app.Typer instance on import.
-This __init__.py re-exports all modules for backward compatibility.
 
 BACKWARD COMPATIBILITY:
-- Old: from knox.cli.lint_cmds import get_lint_report
-- New: from knox.cli.cmds.lint import get_lint_report
-- Both work via re-exports below.
+- Old paths are preserved as re-export wrappers (``from knox.cli.cmds.lint import ...``
+  still works by delegating to ``knox.cli.cmds.quality.lint``).
 """
 
 from __future__ import annotations

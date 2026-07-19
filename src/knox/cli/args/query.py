@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from knox.core.config._configs import QueryFormat, Verbosity
+from knox.core.config._configs import LlmDataFormat, Verbosity
 
 
 class SearchMode(StrEnum):
@@ -45,10 +45,10 @@ QueryRaw = Annotated[
 ]
 
 QueryFormatOption = Annotated[
-    QueryFormat | None,
+    LlmDataFormat | None,
     typer.Option(
         "--format",
-        help="Output format for agents: text (default), json, toon, ison. Defaults to query.format from config.",
+        help="Output format for agents: markdown (default), json, toon, ison. Defaults to query.format from config.",
     ),
 ]
 
