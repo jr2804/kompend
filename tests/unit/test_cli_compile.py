@@ -14,6 +14,7 @@ from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
+from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.llm.context_window import ContextWindow
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
@@ -32,7 +33,7 @@ def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
     """build_pipeline wires the backend named by ``config.parser`` into the router."""
     config = _make_config(tmp_path, vlm_model="")
     config.parser = "liteparse"
-    with patch("knox.core.pipeline.orchestrator.discover_context_window", return_value=ContextWindow(max_input=128000, max_output=32768, source="test")):
+    with patch("knox.core.pipeline.stages._factory.discover_context_window", return_value=ContextWindow(max_input=128000, max_output=32768, source="test")):
         pipeline = build_pipeline(config)
     assert isinstance(pipeline.router.route(Path("a.pdf")), LiteParseParser)
 
@@ -154,7 +155,7 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
         nodes[f"n{i}"] = ChunkNode(id=f"n{i}", parent_id="root", chunk=c)
     tree = ChunkTree(root_id="root", nodes=nodes)
 
-    resolved = pipeline._resolve_chunks([tree])
+    resolved = resolve_chunks(pipeline, [tree])
 
     assert len(resolved) == 5
     # Image chunks must all be at the end, contiguous
@@ -178,8 +179,8 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("knox.cli.cmds.pipeline._check_llm_availability", lambda p: None)
-    monkeypatch.setattr("knox.cli.cmds.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline._check_llm_availability", lambda p: None)
+    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
 
     runner = CliRunner()
     result = runner.invoke(app, ["compile"])

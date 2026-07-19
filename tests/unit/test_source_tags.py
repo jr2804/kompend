@@ -7,7 +7,7 @@ class. Tests verify the _parse_tag_groups helper in query.py instead.
 
 from __future__ import annotations
 
-from knox.cli.cmds.query import _parse_tag_groups
+from knox.cli.cmds.knowledge.query import _parse_tag_groups
 
 
 class TestParseTagGroups:

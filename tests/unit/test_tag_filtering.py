@@ -5,7 +5,7 @@ Verifies AND/OR boolean logic for tag-based filtering of search results.
 
 from __future__ import annotations
 
-from knox.cli.cmds.query import _matches_tag_filter
+from knox.cli.cmds.knowledge.query import _matches_tag_filter
 
 
 class TestMatchesTagFilter:

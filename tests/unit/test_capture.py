@@ -16,7 +16,7 @@ from knox.capture.distill import (
     _parse_frontmatter,
     distill,
 )
-from knox.cli.cmds.capture import _build_references_section
+from knox.cli.cmds.knowledge.capture import _build_references_section
 from knox.core.pipeline.ingest import _extract_text_from_cached
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document

@@ -13,7 +13,11 @@ from typing import Any
 
 import toon_format as _toon
 
-from knox.cli.cmds.query import _encode_raw_results, _encode_structured, _structured_answer
+from knox.cli.cmds.knowledge.query import (
+    _encode_raw_results,
+    _encode_structured,
+    _structured_answer,
+)
 from knox.core.config._configs import QueryFormat
 
 

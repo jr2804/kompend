@@ -9,8 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
-from knox.cli.cmds.doctor import CheckResult, print_doctor_results, run_doctor
-from knox.cli.cmds.status import collect_stats, print_status
+from knox.cli.cmds.pipeline.status import collect_stats, print_status
+from knox.cli.cmds.quality.doctor import CheckResult, print_doctor_results, run_doctor
 from knox.core.paths import COMPILE_STATE_FILE
 from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 
