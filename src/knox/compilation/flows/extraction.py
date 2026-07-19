@@ -175,6 +175,8 @@ def extract_one(compiler: TwoPhaseCompiler, source: str, combined: str, extracti
         skills=compiler._config.skills,
         retries=compiler._config.llm.output_retries,
         reasoning_effort=compiler._config.llm.reasoning_effort,
+        context_manager=compiler._config.llm.context_manager,
+        context_window=compiler._context_window.max_input,
     )
     validated = _try_pydanticai_extraction(
         agent,
@@ -220,6 +222,8 @@ def extract_incremental(
                 skills=compiler._config.skills,
                 retries=compiler._config.llm.output_retries,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
+                context_manager=compiler._config.llm.context_manager,
+                context_window=compiler._context_window.max_input,
             )
         deps = PipelineAgentDeps(
             text=combined,

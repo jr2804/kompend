@@ -103,6 +103,7 @@ class WiCERCompiler(BaseCompiler):
             else None
         )
         if cw is not None:
+            self._context_window: ContextWindow | None = cw
             self._probe_input_chars = _tokens_to_chars(
                 max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget) * _WICER_CONTEXT_UTILIZATION)),
             )
@@ -110,6 +111,7 @@ class WiCERCompiler(BaseCompiler):
                 max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget) * _WICER_CONTEXT_UTILIZATION)),
             )
         else:
+            self._context_window = None
             self._probe_input_chars = _tokens_to_chars(self._probe_output_budget)
             self._eval_input_chars = _tokens_to_chars(self._eval_output_budget)
 
@@ -368,6 +370,11 @@ class WiCERCompiler(BaseCompiler):
                 retries=self._config.llm.output_retries,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
+                # WiCER probe runs in an 8-iteration loop: compress earlier
+                # (70%) and keep 5 trailing messages so prior probes stay in
+                # context. Per the migration plan Phase 4 per-agent tuning.
+                context_manager="aggressive",
+                context_window=self._context_window.max_input if self._context_window else None,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
             return [p.model_dump() for p in output.probes]
@@ -405,6 +412,8 @@ class WiCERCompiler(BaseCompiler):
                     retries=self._config.llm.output_retries,
                     timeout=self._config.llm.timeout,
                     reasoning_effort=self._config.llm.reasoning_effort,
+                    context_manager=self._config.llm.context_manager,
+                    context_window=self._context_window.max_input if self._context_window else None,
                 )
                 output = agent.run(
                     WicerEvaluateDeps(
@@ -445,6 +454,8 @@ class WiCERCompiler(BaseCompiler):
                 retries=self._config.llm.output_retries,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
+                context_manager=self._config.llm.context_manager,
+                context_window=self._context_window.max_input if self._context_window else None,
             )
             output = agent.run(
                 WicerDiagnoseDeps(
