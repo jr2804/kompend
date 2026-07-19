@@ -17,3 +17,5 @@ https://www.isca-archive.org/interspeech_2022/robach22_interspeech.pdf
 https://arxiv.org/src/2405.17364
 # a HTML source for ArxivHtmlResolver
 https://arxiv.org/html/2506.04495v1
+# IEEEXplore has a bot checker to be bypassed:
+https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11523100
