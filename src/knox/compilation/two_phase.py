@@ -28,6 +28,11 @@ from knox.agents.generation import GenerationAgent
 from knox.chunking.summarizer import (
     _structured_to_text,
 )  # ponytail: cross-module private import. Make public or move to knox.core.models if other callers appear.
+from knox.compilation._checkpoints import (
+    _delete_gen_checkpoint,
+    _load_gen_checkpoint,
+    _save_gen_checkpoint,
+)
 from knox.compilation._two_phase_core import (
     _MIN_SEGMENT_TOKENS,
     Extraction,
@@ -35,11 +40,8 @@ from knox.compilation._two_phase_core import (
     _BatchFailureTracker,
     _chars_to_tokens,
     _compute_quality_score,
-    _delete_gen_checkpoint,
     _extract_images_from_chunks,
-    _load_gen_checkpoint,
     _merge_extractions,
-    _save_gen_checkpoint,
     _segment_sources,
     _slugify,
     _tokens_to_chars,
