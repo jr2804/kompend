@@ -80,6 +80,15 @@ Mention caveats and unverified risks.
 - NEVER suppress `PLC0415` (inline imports), `ANN001` (missing return type),
   or `ANN202` (missing return type on public method). These are hard errors —
   no `# noqa` permitted. Refactor the code instead.
+- NEVER use `from typing import TYPE_CHECKING` or wrap imports in
+  `if TYPE_CHECKING:` blocks. This idiom diverges runtime from type-checker
+  behavior, hides module-boundary problems, and adds cognitive overhead.
+  Follow the `python-ultimate` skill (`references/type-checking.md`):
+  break import cycles structurally (extract shared types to a neutral module,
+  use a Protocol, or defer a genuinely runtime-only import to its call site),
+  or use `from __future__ import annotations` + forward references.
+  `if TYPE_CHECKING:` guards are forbidden in new code and must be removed
+  wherever encountered.
 - Use `./tmp` (gitignored) or `tempfile.TemporaryDirectory()` for temp files.
 
 ### Implementation Plans
