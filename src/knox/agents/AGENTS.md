@@ -56,6 +56,15 @@ The base class provides:
 - **Lazy agent construction** — the `pydantic_ai.Agent` is built on
   first `run()` call, so tests can import the class without a running
   model
+- **Context management** — `ContextManagerCapability`
+  (`summarization-pydantic-ai`) is attached from the `context_manager`
+  config preset (`"default"`/`"aggressive"`/`"sliding"`/`false`). It
+  summarises message history when it nears the model's context budget
+  (`max_tokens` = discovered `context_window.max_input`), replacing the
+  old `_compact_messages` drop. `on_usage_update` feeds
+  `UsageTracker.record_context_usage`; `on_before/after_compress` log
+  compression events. Disabled by default at the code-API level
+  (`context_manager=False`); enabled by config (`compile.llm.context_manager`).
 - **Skill injection** — user-defined skills from `compile.skills` are
   appended to the system prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
@@ -69,9 +78,16 @@ The base class provides:
 Thin delegate around any native pydantic-ai `Model`. Adds:
 
 - `_merge_reasoning()` — maps `reasoning_effort` to provider settings
-- `_compact_messages()` — drops `ModelResponse` before retries
 - `_track_usage()` — records input/output tokens
 - `_save_debug()` — writes request/response to LLM debug log
+- `_repair_tool_call_args()` / `_repair_text_part()` — `json_repair`
+  before the strict validator (fixes malformed JSON from small local models)
+
+History compression is **not** handled here. It moved up to the
+pydantic-ai Agent layer via `ContextManagerCapability` (see
+`KnoxAgentBase`); the old `_compact_messages()` workaround — which
+dropped all `ModelResponse` on retry, defeating pydantic-ai's retry
+feedback loop — was removed.
 
 ### Dependency types (`deps.py`)
 
