@@ -20,9 +20,7 @@ def _get_token() -> str | None:
     import subprocess
 
     try:
-        result = subprocess.run(
-            ["mise", "env", "--json"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             env = json.loads(result.stdout)
             return env.get("FORGEJO_TOKEN")

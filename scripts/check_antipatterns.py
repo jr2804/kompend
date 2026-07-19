@@ -37,7 +37,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -71,6 +71,7 @@ _DATA_DRIVEN_ACCESSOR_RE = re.compile(
 # hashes and UUID hex strings are intentionally truncated to short
 # prefixes for display/storage and that's not a data crop.
 _HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\]")
+
 
 # Line-length padding slices are NOT data truncation — they enforce a
 # physical output width (e.g. a Markdown hard line break at 117 chars).

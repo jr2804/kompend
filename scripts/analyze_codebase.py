@@ -133,11 +133,7 @@ def main():
         # Normalize separators so depth works on both Windows and POSIX
         d_norm = d.replace("\\", "/")
         depth = d_norm.count("/") + 1 if d_norm else 0
-        own_files = [
-            f for f in info["files"]
-            if not f["path"].endswith("__init__.py")
-            and f["path"].replace("\\", "/").count("/") == depth
-        ]
+        own_files = [f for f in info["files"] if not f["path"].endswith("__init__.py") and f["path"].replace("\\", "/").count("/") == depth]
         n = len(own_files)
         if n > 7:
             label = f"src/knox/{d}/" if d else "src/knox/"
