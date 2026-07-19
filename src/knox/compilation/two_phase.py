@@ -51,7 +51,8 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.config._configs import ExtractionStrategy
-from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiField, WikiNode
+from knox.core.models.enums import MetadataField
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
@@ -656,6 +657,8 @@ class TwoPhaseCompiler(BaseCompiler):
             )
 
         nodes = self.dedup_content_duplicate_nodes(nodes)
+        # Attach tags from chunk metadata to nodes.
+        self._attach_tags_to_nodes(nodes, chunks)
         edges = self._build_edges(nodes, extractions)
         quality = _compute_quality_score(nodes, edges)
         toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
@@ -1026,6 +1029,21 @@ class TwoPhaseCompiler(BaseCompiler):
         if parts:
             batches.append("\n\n".join(parts))
         return batches
+
+    @staticmethod
+    def _attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[Any]) -> None:
+        """Attach tags from chunk metadata to wiki nodes."""
+        # Collect all tags from all chunks.
+        all_tags: list[str] = []
+        for rc in chunks:
+            chunk_tags = rc.chunk.metadata.get("tags") if hasattr(rc, "chunk") else None
+            if chunk_tags:
+                all_tags.extend(chunk_tags)
+        # Deduplicate, preserve order.
+        unique_tags = list(dict.fromkeys(all_tags))
+        if unique_tags:
+            for node in nodes:
+                node.metadata[MetadataField.TAGS] = unique_tags
 
     # -- generation checkpoint (resume after crash) ------------------------
 
