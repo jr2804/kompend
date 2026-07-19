@@ -19,6 +19,9 @@ class UsageTracker:
     call_count: int = 0
     total_ttft_s: float = 0.0
     per_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Latest context-window utilization reported by ContextManagerCapability.
+    context_tokens: int = 0
+    context_budget: int = 0
 
     def record(self, *, prompt_tokens: int, completion_tokens: int, model: str, ttft_s: float = 0.0) -> None:
         """Record one successful completion."""
@@ -30,6 +33,16 @@ class UsageTracker:
         entry["prompt"] += prompt_tokens
         entry["completion"] += completion_tokens
         entry["calls"] += 1
+
+    def record_context_usage(self, current: int, max_tokens: int) -> None:
+        """Record the latest context-window utilization.
+
+        Called by ``ContextManagerCapability.on_usage_update`` on each token
+        update. Keeps the most-recent snapshot (the capability fires repeatedly
+        as the conversation grows).
+        """
+        self.context_tokens = current
+        self.context_budget = max_tokens
 
     @property
     def avg_ttft(self) -> float:
@@ -44,4 +57,6 @@ class UsageTracker:
             "call_count": self.call_count,
             "avg_ttft": round(self.avg_ttft, 2),
             "per_model": dict(self.per_model),
+            "context_tokens": self.context_tokens,
+            "context_budget": self.context_budget,
         }

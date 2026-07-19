@@ -283,6 +283,17 @@ fallback_max_retries = 2
     #   document-level extraction.
     extraction_strategy = "incremental"
 
+    # Context-window management for multi-turn / multi-batch agents
+    # (incremental extraction, WiCER). When the conversation history nears the
+    # model's context budget, `summarization-pydantic-ai` compresses it via an
+    # LLM summary rather than dropping messages. Replaces the old
+    # `_compact_messages` workaround.
+    #   "default"    — compress at 90% of the context window (recommended)
+    #   "aggressive" — compress at 70%, keep 5 trailing messages
+    #   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
+    #   false        — disable (history preserved verbatim)
+    context_manager = "default"
+
     # Per-role model overrides — use a different model for specific LLM roles.
     # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).
     # Common roles: "compile.extract", "compile.generate", "wicer.probe",
