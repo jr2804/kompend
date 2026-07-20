@@ -17,6 +17,7 @@ from knox.core.config import (
     resolve_config,
 )
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_MCP_ELEMENT_CHARS, PATHS_WIKI_DIR
+from knox.core.models import MetadataField, WikiField
 from knox.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.logging import get_logger
@@ -119,16 +120,16 @@ def compile_wiki(
         output_file = Path(output) / f"wiki.{ext}"
         return {
             "status": "ok",
-            "node_count": len(wiki.nodes),
-            "edge_count": len(wiki.edges),
+            MetadataField.NODE_COUNT: len(wiki.nodes),
+            MetadataField.EDGE_COUNT: len(wiki.edges),
             "toc_count": len(wiki.toc),
             "output_file": str(output_file.resolve()),
             "wiki": {
-                "nodes": [dataclasses.asdict(n) for n in wiki.nodes],
-                "edges": list(wiki.edges),
-                "toc": list(wiki.toc),
-                "quality_score": wiki.quality_score,
-                "iteration": wiki.iteration,
+                WikiField.NODES: [dataclasses.asdict(n) for n in wiki.nodes],
+                WikiField.EDGES: list(wiki.edges),
+                WikiField.TOC: list(wiki.toc),
+                WikiField.QUALITY_SCORE: wiki.quality_score,
+                WikiField.ITERATION: wiki.iteration,
                 "metadata": dict(wiki.metadata),
             },
         }

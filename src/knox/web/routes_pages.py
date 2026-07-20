@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WEB_NODES
-from knox.core.models import CompiledWiki, WikiField
+from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import PROJECT_CONFIG_FILE
 from knox.search.classifier import classify
 from knox.search.retriever import HybridRetriever
@@ -64,7 +64,7 @@ async def dashboard() -> str:
 </nav>
 <div class="container">
   <div class="cards">
-    <div class="card"><h3>Wiki Pages</h3><div class="value">{wiki["node_count"]}</div></div>
+    <div class="card"><h3>Wiki Pages</h3><div class="value">{wiki[MetadataField.NODE_COUNT]}</div></div>
     <div class="card"><h3>Sources</h3><div class="value">{source_count}</div></div>
     <div class="card"><h3>Cross-References</h3><div class="value">{len(edges)}</div></div>
     <div class="card"><h3>Quality Score</h3><div class="value">{wiki.get(WikiField.QUALITY_SCORE, 0):.0%}</div></div>

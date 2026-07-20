@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import WikiField
+from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.search.retriever import SearchResult
@@ -42,11 +42,11 @@ def load_wiki() -> dict[str, Any]:
     """Load the compiled wiki from cache."""
     cache = VaultPaths(_PROJECT_DIR).wiki_cache_path
     if not cache.exists():
-        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, "node_count": 0}
+        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, MetadataField.NODE_COUNT: 0}
     try:
         data = json.loads(cache.read_text(encoding="utf-8"))
-        data["node_count"] = len(data.get(WikiField.NODES, []))
+        data[MetadataField.NODE_COUNT] = len(data.get(WikiField.NODES, []))
         return data
     except Exception as exc:
         logger.warning("Failed to load wiki cache: %s", exc, exc_info=True)
-        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, "node_count": 0}
+        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, MetadataField.NODE_COUNT: 0}

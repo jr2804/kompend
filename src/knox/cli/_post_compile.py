@@ -178,9 +178,9 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
 
     get_console().print(f"Compiled: {', '.join(parts)}")
 
-    if meta.get("generation_skipped"):
-        reason = meta.get("skip_reason", "unknown")
-        concepts = meta.get("concepts_available", 0)
+    if meta.get(MetadataField.GENERATION_SKIPPED):
+        reason = meta.get(MetadataField.SKIP_REASON, "unknown")
+        concepts = meta.get(MetadataField.CONCEPTS_AVAILABLE, 0)
         get_err_console().print(
             f"Warning: generation skipped — 0 pages written ({reason}). "
             f"{concepts} concept(s) were extracted but could not be synthesized. "
