@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,7 +31,7 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from knox.core.pipeline.config import PipelineConfig
-from knox.llm.context_window import ContextWindow
+from knox.llm.context_window import ContextSource, ContextWindow
 
 # ===========================================================================
 #  Helpers
@@ -39,7 +40,7 @@ from knox.llm.context_window import ContextWindow
 
 def _make_test_cw() -> ContextWindow:
     """Build a minimal ContextWindow for tests (no real LLM calls)."""
-    return ContextWindow(max_input=128000, max_output=32768, source="test")
+    return ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK)
 
 
 def _chunk(
@@ -129,7 +130,7 @@ class TestGraphCompiler:
         # All chunks under same heading → one node
         assert len(wiki.nodes) == 1
         assert wiki.nodes[0].title == "Section A"
-        assert len(wiki.nodes[0].source_chunks) == 4  # all 4 merged
+        assert len(wiki.nodes[0].source_chunks or []) == 4  # all 4 merged
 
     def test_multiple_headings_multiple_nodes(self) -> None:
         chunks = _make_chunks(count=4, heading="Section A")
@@ -820,7 +821,7 @@ class TestWiCERCompilerWithMock:
     """WiCERCompiler with a mocked LLM client for full loop coverage."""
 
     @pytest.fixture(autouse=True)
-    def mock_llm(self) -> MagicMock:
+    def mock_llm(self) -> Generator[MagicMock]:
         """Patch the three WiCER PydanticAI agents used by WiCERCompiler."""
         controller = MagicMock()
         controller.probe = MagicMock(return_value=self._probe_output([]))

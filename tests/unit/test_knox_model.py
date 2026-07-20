@@ -44,7 +44,7 @@ class TestUsageTracking:
 
         # Drive a minimal request.
         params = ModelRequestParameters()
-        msgs = [ModelRequest(parts=[UserPromptPart(content="ping")])]
+        msgs: list[ModelRequest | ModelResponse] = [ModelRequest(parts=[UserPromptPart(content="ping")])]
         await wrapper.request(msgs, None, params)
 
         assert tracker.prompt_tokens >= 0
@@ -56,7 +56,7 @@ class TestUsageTracking:
         delegate = TestModel()
         wrapper = KnoxModel(delegate, usage_tracker=None)
         params = ModelRequestParameters()
-        msgs = [ModelRequest(parts=[UserPromptPart(content="ping")])]
+        msgs: list[ModelRequest | ModelResponse] = [ModelRequest(parts=[UserPromptPart(content="ping")])]
         resp = await wrapper.request(msgs, None, params)
         assert resp is not None
 
@@ -85,6 +85,7 @@ class TestReasoningEffort:
         """If thinking already in settings, wrapper doesn't clobber it."""
         wrapper = KnoxModel(TestModel(), reasoning_effort="low")
         merged = wrapper._merge_reasoning({"thinking": "high"})
+        assert merged is not None
         assert merged["thinking"] == "high"
 
     def test_effort_creates_settings_from_none(self) -> None:
@@ -123,7 +124,7 @@ class TestDelegation:
         delegate.model_name = "test-model"
         wrapper = KnoxModel(delegate)
         params = ModelRequestParameters()
-        msgs = [ModelRequest(parts=[UserPromptPart(content="x")])]
+        msgs: list[ModelRequest | ModelResponse] = [ModelRequest(parts=[UserPromptPart(content="x")])]
         result = await wrapper.request(msgs, None, params)
         assert result is expected
 
@@ -135,7 +136,7 @@ class TestDebugSaving:
         monkeypatch.setenv("KNOX_DEBUG_LLM_DIR", str(tmp_path))
         wrapper = KnoxModel(TestModel(), agent=None)
         params = ModelRequestParameters()
-        msgs = [ModelRequest(parts=[UserPromptPart(content="ping")])]
+        msgs: list[ModelRequest | ModelResponse] = [ModelRequest(parts=[UserPromptPart(content="ping")])]
         await wrapper.request(msgs, None, params)
         # No files written.
         assert list(tmp_path.iterdir()) == []

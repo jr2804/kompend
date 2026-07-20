@@ -144,12 +144,12 @@ class TestParseChunked:
     @staticmethod
     def _make_fake_doc(page_start: int, page_end: int) -> MagicMock:
         """Create a fake Docling document that yields items for given pages."""
-        TextItem = type("TextItem", (), {})
+        TextItem = type("TextItem", (), {"text": "", "prov": []})
         items: list[tuple[TextItem, int]] = []
         for page_no in range(page_start, page_end + 1):
             item = TextItem()
-            item.text = f"Content from page {page_no}"
-            item.prov = [SimpleNamespace(page_no=page_no)]
+            object.__setattr__(item, "text", f"Content from page {page_no}")
+            object.__setattr__(item, "prov", [SimpleNamespace(page_no=page_no)])
             items.append((item, 0))
 
         doc = MagicMock()

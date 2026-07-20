@@ -125,7 +125,7 @@ class TestExtractEquation:
         assert any(v.name == "f" and "frequency" in v.definition.lower() for v in result.variables)
 
     def test_empty_content(self) -> None:
-        el = DocumentElement(type=ElementType.FORMULA, content=123)
+        el = DocumentElement(type=ElementType.FORMULA, content="")
         result = extract_equation(el)
         assert result.latex == ""
         assert result.variables == []

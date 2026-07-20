@@ -124,7 +124,7 @@ class TestParserQualityBenchmark:
 
     def test_element_types_distribution(self, parsed_doc: ParsedDocument) -> None:
         """Breakdown of element types found during parsing."""
-        type_counts: Counter = Counter(getattr(e, "type", None).name if getattr(e, "type", None) else "UNKNOWN" for e in parsed_doc.elements)
+        type_counts: Counter = Counter(e.type.name if getattr(e, "type", None) is not None else "UNKNOWN" for e in parsed_doc.elements)
         print("\n  📊 Element type distribution:")
         for tname, count in type_counts.most_common():
             print(f"     {tname}: {count}")

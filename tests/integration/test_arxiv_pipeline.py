@@ -94,6 +94,7 @@ def test_arxiv_pdf_downloads_and_parses(tmp_path: Path) -> None:
 
     router = build_default_router(options=ParserBuildOptions(), names="liteparse,docling")
     parser = router.route(pdf_path)
+    assert parser is not None
     doc = parser.parse(pdf_path)
 
     assert isinstance(doc, ParsedDocument)

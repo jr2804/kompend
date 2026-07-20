@@ -93,6 +93,9 @@ def test_type_maps_from_node_type(tmp_path: Path) -> None:
     entity_fm = _parse_frontmatter((tmp_path / "concepts" / "e.md").read_text())
     overview_fm = _parse_frontmatter((tmp_path / "o.md").read_text())
 
+    assert concept_fm is not None
+    assert entity_fm is not None
+    assert overview_fm is not None
     assert concept_fm["type"] == "Concept"
     assert entity_fm["type"] == "Entity"
     assert overview_fm["type"] == "Overview"
@@ -106,6 +109,7 @@ def test_okf_recommended_fields_present(tmp_path: Path) -> None:
 
     text = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
     fm = _parse_frontmatter(text)
+    assert fm is not None
     assert fm["title"] == "Test Page"
     assert "description" in fm
     assert "tags" in fm

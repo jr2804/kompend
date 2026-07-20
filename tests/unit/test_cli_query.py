@@ -67,6 +67,7 @@ class TestEncodeStructured:
         out = _encode_structured(payload, QueryFormat.TOON)
         assert out  # non-empty
         parsed = _toon.decode(out)
+        assert isinstance(parsed, dict)
         assert parsed["answer"] == payload["answer"]
 
     def test_ison_round_trips(self) -> None:

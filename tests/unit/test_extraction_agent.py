@@ -105,16 +105,9 @@ class TestPipelineAgentDeps:
     def test_template_vars_excludes_underscore_keys(self) -> None:
         """Internal Python attributes should not leak into Jinja2 context."""
         deps = PipelineAgentDeps(text="hello", source_id="world")
-        vars_ = ExtractionAgent._deps_to_template_vars_static(deps)
+        vars_ = ExtractionAgent._deps_to_template_vars(deps)
         assert "text" in vars_
         assert "source_id" in vars_
         assert "timeout" in vars_
         for k in vars_:
             assert not k.startswith("_")
-
-
-# Static accessor for the staticmethod (Python 3.10+ allows this directly
-# but we expose a wrapper for test ergonomics).
-ExtractionAgent._deps_to_template_vars_static = staticmethod(  # type: ignore[attr-defined]
-    ExtractionAgent._deps_to_template_vars
-)

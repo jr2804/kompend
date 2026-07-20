@@ -83,8 +83,9 @@ def _validated_side_effect(dicts: list) -> Callable:
         data = next(it)
         if data is None:
             return None
-        agent = args[0]
-        return agent.result_type.model_validate(data)
+        agent_obj = args[0]
+        rt = getattr(agent_obj, "result_type", None)
+        return rt.model_validate(data) if rt else None
 
     return _impl
 

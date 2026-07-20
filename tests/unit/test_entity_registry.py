@@ -11,6 +11,7 @@ from knox.core.models import (
     ElementType,
     EquationVariable,
     StructuredEquation,
+    StructuredFigure,
     StructuredTable,
 )
 from knox.core.resolution.entity_registry import (
@@ -51,7 +52,9 @@ def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) 
     )
 
 
-def _structured_node(nid: str, parent: str, structured: object, heading: tuple[str, ...] = ()) -> ChunkNode:
+def _structured_node(
+    nid: str, parent: str, structured: StructuredTable | StructuredEquation | StructuredFigure | None, heading: tuple[str, ...] = ()
+) -> ChunkNode:
     return ChunkNode(
         id=nid,
         parent_id=parent,
@@ -90,7 +93,7 @@ class TestEntityRegistry:
         reg = EntityRegistry()
         reg.register("Signal-to-Noise Ratio", aliases=["SNR"])
         assert reg.entity_count == 1
-        assert reg.query("SNR").canonical_name == "Signal-to-Noise Ratio"
+        assert reg.query("SNR").canonical_name == "Signal-to-Noise Ratio"  # ty: ignore
 
     def test_acronym_dedup_reverse(self) -> None:
         """Registering Signal-to-Noise Ratio as alias of SNR → single record."""
@@ -98,7 +101,7 @@ class TestEntityRegistry:
         reg.register("SNR", aliases=["Signal-to-Noise Ratio"])
         assert reg.entity_count == 1
         assert reg.query("Signal-to-Noise Ratio") is not None
-        assert reg.query("signal-to-noise ratio").canonical_name == "SNR"
+        assert reg.query("signal-to-noise ratio").canonical_name == "SNR"  # ty: ignore
 
     def test_acronym_dedup_separate_registrations(self) -> None:
         """Two separate .register() calls with acronym relationship → merged."""
@@ -107,6 +110,7 @@ class TestEntityRegistry:
         reg.register("SNR", definition="Signal power to noise power ratio")
         assert reg.entity_count == 1
         rec = reg.query("SNR")
+        assert rec is not None
         assert rec.definition == "Signal power to noise power ratio"
         assert "Signal-to-Noise Ratio" in rec.aliases or rec.canonical_name == "Signal-to-Noise Ratio"
 
@@ -116,13 +120,17 @@ class TestEntityRegistry:
         reg.register("SNR", definition="Signal-to-Noise Ratio")
         assert reg.entity_count == 1
         rec = reg.query("SNR")
+        assert rec is not None
         assert len(rec.all_definitions) == 2
 
     def test_location_tracked(self) -> None:
         loc = EntityLocation(source_file="doc.md", heading_path=("Section 1",))
         reg = EntityRegistry()
         reg.register("ABC", location=loc)
-        assert reg.query("ABC").locations == [loc]
+        assert reg.query("ABC") is not None
+        rec = reg.query("ABC")
+        assert rec is not None
+        assert rec.locations == [loc]
 
     def test_text_extraction_acronyms(self) -> None:
         reg = EntityRegistry()
@@ -175,7 +183,10 @@ class TestEntityRegistry:
         reg._extract_from_structured(eq, loc)
         assert reg.query("E") is not None
         assert reg.query("m") is not None
-        assert reg.query("E").definition == "energy"
+        assert reg.query("E") is not None
+        eq_def = reg.query("E")
+        assert eq_def is not None
+        assert eq_def.definition == "energy"
 
     def test_structured_table_columns(self) -> None:
         reg = EntityRegistry()

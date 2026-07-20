@@ -5,9 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Never
-
-import pytest
+from typing import Any, Never
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.markdown import MarkdownWriter
@@ -34,7 +32,7 @@ class TestDocument:
 
     def test_with_source_chunks(self) -> None:
         doc = Document(title="Page", body="Content", source_chunks=["a.pdf:42", "b.pdf:10"])
-        assert len(doc.source_chunks) == 2  # type: ignore[arg-type]
+        assert len(doc.source_chunks or []) == 2
 
 
 class TestRenderFrontmatter:
@@ -149,7 +147,7 @@ class TestDetectFlavorFromDir:
 class TestMissingRumdlFallback:
     """Tests that DocumentRenderer gracefully handles missing rumdl."""
 
-    def test_fallback_on_import_error(self, monkeypatch: pytest.Monkeypatch) -> None:
+    def test_fallback_on_import_error(self, monkeypatch: Any) -> None:
         """When rumdl is not on PATH, render should return raw markdown."""
         original = shutil.which
         monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "rumdl" else original(cmd))
@@ -163,7 +161,7 @@ class TestMissingRumdlFallback:
         assert "# Test" in result
         assert "Some **bold** content" in result
 
-    def test_fallback_on_subprocess_error(self, monkeypatch: pytest.Monkeypatch) -> None:
+    def test_fallback_on_subprocess_error(self, monkeypatch: Any) -> None:
         """When rumdl crashes, render should return raw markdown."""
 
         def _fake_run(*args, **kwargs) -> Never:

@@ -410,8 +410,11 @@ class TestCacheBehavior:
             if orig.structured is not None and rest.structured is not None:
                 assert type(orig.structured) is type(rest.structured)
                 if isinstance(orig.structured, StructuredTable):
-                    assert orig.structured.columns == rest.structured.columns
-                    assert orig.structured.rows == rest.structured.rows
+                    assert isinstance(rest.structured, StructuredTable)
+                    orig_s = orig.structured
+                    rest_s = rest.structured
+                    assert orig_s.columns == rest_s.columns
+                    assert orig_s.rows == rest_s.rows
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert "Hello world." in leaves[0].chunk.text
+        assert "Hello world." in leaves[0].chunk.text  # ty: ignore
 
     def test_source_file_propagated(self) -> None:
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="x")])
@@ -110,7 +110,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         eqs = [n for n in _structured_leaves(tree) if isinstance(n.structured, StructuredEquation)]
         assert len(eqs) == 1
-        assert eqs[0].structured.latex == r"E = mc^2"
+        assert eqs[0].structured.latex == r"E = mc^2"  # ty: ignore
 
     # ── heading hierarchy ───────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ class TestHierarchicalChunker:
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
         assert leaves[0].heading_path == ("Chapter 1", "Section 1.1")
-        assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"
+        assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"  # ty: ignore
 
     def test_nested_heading_hierarchy(self) -> None:
         doc = _make_doc(
@@ -205,14 +205,14 @@ class TestHierarchicalChunker:
     def test_metadata_elements_skipped(self) -> None:
         doc = _make_doc(
             [
-                DocumentElement(type=ElementType.METADATA, content={"key": "val"}),
+                DocumentElement(type=ElementType.METADATA, content="key=val"),
                 DocumentElement(type=ElementType.TEXT, content="Real content."),
             ]
         )
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert "Real content." in leaves[0].chunk.text
+        assert "Real content." in leaves[0].chunk.text  # ty: ignore
 
     # ── strategy selection ──────────────────────────────────────────────
 
@@ -298,17 +298,17 @@ class TestHierarchicalChunker:
         assert chunker._effective_max == 819
 
     def test_context_window_adapts_effective_max(self) -> None:
-        cw = ContextWindow(max_input=8192, max_output=4096, source="test")
+        cw = ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
         chunker = HierarchicalChunker(max_tokens=1024, context_window=cw, reserve_tokens=1639)
         assert chunker._effective_max == 8192 - 1639
 
     def test_context_window_tiny_model(self) -> None:
-        cw = ContextWindow(max_input=512, max_output=256, source="test")
+        cw = ContextWindow(max_input=512, max_output=256, source=ContextSource.FALLBACK)
         chunker = HierarchicalChunker(context_window=cw, chunk_size_min=2048)
         assert chunker._effective_max == 2048
 
     def test_context_window_huge_model(self) -> None:
-        cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source="test")
+        cw = ContextWindow(max_input=2_000_000, max_output=2_000_000, source=ContextSource.FALLBACK)
         chunker = HierarchicalChunker(context_window=cw, chunk_size_max=131072)
         assert chunker._effective_max == 131072
 
@@ -332,7 +332,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=24, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) >= 1
-        assert any(_sentence_ends(n.chunk.text) for n in leaves)
+        assert any(_sentence_ends(n.chunk.text) for n in leaves if n.chunk is not None)  # type: ignore[union-attr]
 
     def test_no_mid_sentence_cut_when_chunk_fits(self) -> None:
         sentences = [
@@ -344,7 +344,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=12, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
-            assert _sentence_ends(n.chunk.text)
+            assert _sentence_ends(n.chunk.text)  # ty: ignore
 
     def test_long_paragraph_split_at_sentence_boundary(self) -> None:
         text = "Sentence one is moderately long. " * 6
@@ -352,7 +352,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=16, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
-            assert _sentence_ends(n.chunk.text)
+            assert _sentence_ends(n.chunk.text)  # ty: ignore
 
 
 class TestContextWindowClamp:

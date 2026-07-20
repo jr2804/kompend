@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Generator
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -21,7 +22,7 @@ from knox.cli.cmds.agents import _agents_install, _agents_remove
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_env() -> None:
+def _cleanup_env() -> Generator[None]:
     """Clean up KNOX env vars set by tests."""
     yield
     for key in ("KNOX_LLM_DEFAULT_MODEL", "KNOX_LLM_API_BASE", "KNOX_LLM_API_KEY"):
@@ -68,7 +69,9 @@ class TestProviderCredentials:
         assert retrieved is not None
         retrieved.api_type = "anthropic"
         # Original should be unchanged
-        assert store.get().api_type == "openai"
+        got = store.get()
+        assert got is not None
+        assert got.api_type == "openai"
 
     def test_disable_clears(self) -> None:
         store = ProviderCredentials()

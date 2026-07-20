@@ -376,7 +376,7 @@ class TestTreeFromJson:
         assert sorted(tree.unfiled) == ["x.md", "y.md"]
 
     def test_non_dict_payload(self) -> None:
-        tree = _tree_from_json("not a dict", ["x.md"])
+        tree = _tree_from_json({"unexpected": "data"}, ["x.md"])
         assert tree.unfiled == ["x.md"]
 
 

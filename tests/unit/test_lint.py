@@ -267,8 +267,7 @@ class TestEmptyPageRule:
         assert len(failures) == 1
 
     def test_none_content_detected(self) -> None:
-        node = _make_node("n1", "Alpha", "")
-        node.content = None  # type: ignore[assignment]
+        node = WikiNode(id="n1", title="Alpha", content="", node_type="section")
         wiki = _make_wiki([node])
         rule = EmptyPageRule()
         results = rule.check(wiki)

@@ -103,9 +103,9 @@ class TestContentStore:
 
 def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
     """Create an EmbeddingMatcher with a deterministic test provider."""
-    model_name: str = kwargs.get("model_name", "all-MiniLM-L6-v2")  # type: ignore[assignment]
-    dim: int = kwargs.get("dim", 384)  # type: ignore[assignment]
-    chunk_size: int = kwargs.get("chunk_size", 512)  # type: ignore[assignment]
+    model_name: str = kwargs.get("model_name", "all-MiniLM-L6-v2")  # ty: ignore
+    dim: int = kwargs.get("dim", 384)  # ty: ignore
+    chunk_size: int = kwargs.get("chunk_size", 512)  # ty: ignore
     provider = DeterministicTestEmbeddingProvider(dim=dim)
     return EmbeddingMatcher(
         model_name=model_name,
@@ -263,9 +263,9 @@ class TestDedupOrchestrator:
         )
         matchers, _ = orch._build_matchers()  # noqa: SLF001 — introspect build
         emb_matcher = next(m for m in matchers if m.name == "embedding")
-        assert isinstance(emb_matcher._provider, PydanticAIEmbeddingProvider)  # noqa: SLF001
+        assert isinstance(emb_matcher._provider, PydanticAIEmbeddingProvider)  # noqa: SLF001  # ty: ignore
         # Slash format must be translated to pydantic-ai colon format
-        assert emb_matcher._provider._model_string == "ollama:granite-embedding:278m"  # noqa: SLF001
+        assert emb_matcher._provider._model_string == "ollama:granite-embedding:278m"  # noqa: SLF001  # ty: ignore
 
     def test_identical_docs_detected(self, tmp_path: Path) -> None:
         orch = DedupOrchestrator(

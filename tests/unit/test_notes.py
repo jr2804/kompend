@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -125,7 +126,7 @@ class TestTemplateLoaderGlobalContext:
         assert "explicit value" in result
 
     @pytest.fixture(autouse=True)
-    def _cleanup_loader(self) -> None:
+    def _cleanup_loader(self) -> Generator[None]:
         loader = TemplateLoader()
         loader.clear_global_context()
         yield

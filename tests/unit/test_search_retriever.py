@@ -61,7 +61,7 @@ class TestHybridRetriever:
     def test_search_wiki_uses_vector_store(self) -> None:
         wiki = self._make_wiki()
         fake = _FakeVectorStore(hits=[{"id": "beta", "score": 0.99, "source_file": "beta.pdf"}])
-        retriever = HybridRetriever(wiki, vector_store=fake)
+        retriever = HybridRetriever(wiki, vector_store=fake)  # ty: ignore
         results = retriever.search_wiki("beta", top_k=5)
         beta = next((r for r in results if r.article_id == "beta"), None)
         assert beta is not None
@@ -77,7 +77,7 @@ class TestHybridRetriever:
         """Verify hybrid search returns vector results."""
         wiki = self._make_wiki()
         fake_vector = _FakeVectorStore(hits=[{"id": "beta", "score": 0.95, "source_file": "beta.pdf"}])
-        retriever = HybridRetriever(wiki, vector_store=fake_vector)
+        retriever = HybridRetriever(wiki, vector_store=fake_vector)  # ty: ignore
 
         results = retriever.search_hybrid("beta", top_k=5)
 
@@ -87,7 +87,7 @@ class TestHybridRetriever:
         """Verify graph expansion follows edges and adds related nodes with decayed score."""
         wiki = self._make_wiki_with_edges()
         fake_vector = _FakeVectorStore(hits=[{"id": "alpha", "score": 1.0}])
-        retriever = HybridRetriever(wiki, vector_store=fake_vector)
+        retriever = HybridRetriever(wiki, vector_store=fake_vector)  # ty: ignore
 
         results = retriever.search_hybrid("alpha", top_k=5, expand_graph=True)
 

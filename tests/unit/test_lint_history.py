@@ -25,7 +25,7 @@ class _StubConfig:
     """Minimal stand-in for ResolvedConfig — only .get() is needed."""
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
-        self._data = data or {}
+        self._data: dict[str, Any] = data or {}
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)
@@ -174,19 +174,16 @@ class TestPrune:
 class TestEntryFromReport:
     def test_builds_entry_with_config_snapshot(self) -> None:
         report = _make_report()
-        cfg = _StubConfig(
-            {
-                "compile.compiler": "wicer",
-                "compile.llm.default_model": "openai/gpt-4o",
-                "compile.llm.fallback_chain": ["anthropic/claude-3.5-sonnet"],
-                "compile.llm.role_models": {"resolve": "openai/gpt-4o-mini"},
-            }
-        )
         entry = entry_from_report(
             report,
             duration_seconds=2.5,
             options={"rules": ["orphan-page"], "enable_llm": True, "fix": False, "threshold": 80},
-            config=cfg,
+            config={
+                "compile.compiler": "wicer",
+                "compile.llm.default_model": "openai/gpt-4o",
+                "compile.llm.fallback_chain": ["anthropic/claude-3.5-sonnet"],
+                "compile.llm.role_models": {"resolve": "openai/gpt-4o-mini"},
+            },
             node_count=42,
             llm={"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}},
         )
@@ -201,7 +198,7 @@ class TestEntryFromReport:
 
     def test_auto_timestamp(self) -> None:
         report = _make_report()
-        entry = entry_from_report(report, duration_seconds=0.1, options={}, config=_StubConfig(), node_count=1)
+        entry = entry_from_report(report, duration_seconds=0.1, options={}, config={}, node_count=1)
         assert "+" in entry["timestamp"]
 
     def test_custom_timestamp(self) -> None:
@@ -210,7 +207,7 @@ class TestEntryFromReport:
             report,
             duration_seconds=0.1,
             options={},
-            config=_StubConfig(),
+            config={},
             node_count=1,
             timestamp="2020-01-01T00:00:00+00:00",
         )

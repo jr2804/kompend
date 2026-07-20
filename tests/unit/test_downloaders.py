@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -461,7 +462,7 @@ class TestWebCrawler:
         assert "crawler_strategy" not in captured[0][1]
 
     @pytest.fixture(autouse=True)
-    def _fake_chromium(self) -> None:
+    def _fake_chromium(self) -> Generator[None]:
         """Make WebCrawler think Chromium is installed and no real browser
         is present (stealth fallback) in every test, unless overridden.
         """

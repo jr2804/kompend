@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic_ai import Agent
 from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
 
 from knox.agents.base import KnoxAgentBase
@@ -65,8 +66,8 @@ class TestSkillInjection:
             system_template_name: str = "extraction_system.md.j2"
             result_type: type[Any] = Any
 
-            def _build_agent(self) -> None:
-                return None  # not needed for prompt rendering test
+            def _build_agent(self) -> Agent[Any, Any]:
+                return MagicMock()  # not needed for prompt rendering test
 
         agent = _TestAgent(
             "ollama/test-model",
@@ -98,8 +99,8 @@ class TestSkillInjection:
             system_template_name: str = "extraction_system.md.j2"
             result_type: type[Any] = Any
 
-            def _build_agent(self) -> None:
-                return None
+            def _build_agent(self) -> Agent[Any, Any]:
+                return MagicMock()
 
         agent = _TestAgent("ollama/test-model")
         deps = PipelineAgentDeps(text="sample", source_id="test")
