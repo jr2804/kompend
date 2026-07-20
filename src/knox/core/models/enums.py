@@ -27,6 +27,18 @@ class MetadataField(StrEnum):
     IMAGE_PATH = "image_path"
     IMAGE_BASE64 = "image_base64"
     TAGS = "tags"
+    MODEL = "model"
+    KINDS = "kinds"
+    NODE_COUNT = "node_count"
+    EDGE_COUNT = "edge_count"
+    TWO_PHASE = "two_phase"
+    GENERATION_SKIPPED = "generation_skipped"
+    CONCEPTS_AVAILABLE = "concepts_available"
+    SKIP_REASON = "skip_reason"
+    CONCEPTS_MERGED = "concepts_merged"
+    CONTEXT_WINDOW = "context_window"
+    PINNED_FACTS_COUNT = "pinned_facts_count"
+    RELATED = "related"
 
 
 class WikiField(StrEnum):
@@ -48,6 +60,60 @@ class WikiField(StrEnum):
     LLM_DEGRADATION = "llm_degradation"
     TIER_TIMINGS = "tier_timings"
     METADATA = "metadata"
+
+
+class CacheDeps(StrEnum):
+    """Dict key contract for cache store dependency hashes.
+
+    Written by ``extract_one``/``extract_incremental``/``gen_cache_deps``
+    and validated by :meth:`CacheStore.get` on every lookup. A typo here
+    silently breaks caching — the write stores under one key, the read
+    never finds it.
+    """
+
+    SOURCE_TEXT = "source_text"
+    CHUNK_SIZE_MIN = "chunk_size_min"
+    CHUNK_SIZE_MAX = "chunk_size_max"
+    EXTRACTIONS = "extractions"
+    MODEL = "model"
+    CONCEPTS_PER_BATCH = "concepts_per_batch"
+    PINNED_FACTS = "pinned_facts"
+    STAGE = "stage"
+
+
+class ExtractionField(StrEnum):
+    """Dict key contract for ``Extraction`` serialization and LLM output.
+
+    Produced by :meth:`Extraction.to_dict` and by pydantic model
+    ``model_dump()``; consumed by ``combine_extractions``, ``concept_pages``,
+    and ``gen_cache_deps``. These keys cross the extraction → cache →
+    assembly/generation boundary.
+    """
+
+    SUMMARY = "summary"
+    ENTITIES = "entities"
+    CONCEPTS = "concepts"
+    FINDINGS = "findings"
+    NAME = "name"
+    TYPE = "type"
+    CONTEXT = "context"
+    DEFINITION = "definition"
+    IMPORTANCE = "importance"
+    CLAIM = "claim"
+    EVIDENCE = "evidence"
+
+
+class EdgeField(StrEnum):
+    """Dict key contract for wiki edge dictionaries.
+
+    Produced in ``assembly.py`` (``build_edges``) and consumed by
+    wiki writers and the web server.
+    """
+
+    SOURCE = "source"
+    TARGET = "target"
+    TYPE = "type"
+    ENTITY = "entity"
 
 
 class ChunkField(StrEnum):
@@ -151,11 +217,14 @@ class ChunkStrategy(StrEnum):
 
 __all__ = [
     "ATOMIC_TYPES",
+    "CacheDeps",
     "ChunkField",
     "ChunkNodeField",
     "ChunkStrategy",
     "ChunkTreeField",
+    "EdgeField",
     "ElementType",
+    "ExtractionField",
     "MetadataField",
     "StructuredField",
     "WikiField",
