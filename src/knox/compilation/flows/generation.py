@@ -226,7 +226,7 @@ def generate_all_pages(
             gen_progress_step += 1
             batch_num = batch_start // batch_size + 1
             total_batches = (num_concepts + batch_size - 1) // batch_size
-            seg_label = f"gen batch {batch_num}/{total_batches} seg {seg_idx + 1}"
+            seg_label = f"generating [{gen_progress_step}/{gen_progress_total}] batch {batch_num}/{total_batches} seg {seg_idx + 1}"
             compiler._report(gen_progress_step, gen_progress_total, seg_label)
             logger.info("TwoPhase: %s", seg_label)
             content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)

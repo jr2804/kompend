@@ -82,13 +82,21 @@ def run_extraction(
         max(1, cw.max_input - compiler._extract_system_tokens - budget.extract_output_max),
     )
 
+    # Pre-compute total chars for weighted progress bar (larger files = more progress)
+    source_char_totals: list[int] = []
+    for _source, source_chunks in by_source.items():
+        source_char_totals.append(sum(len(rc.chunk.text or "") for rc in source_chunks))
+    total_chars_all = sum(source_char_totals) or len(by_source)
+    cumulative_chars = 0
+
     for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
         logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
         src_start = time.monotonic()
 
-        total_chars = sum(len(rc.chunk.text or "") for rc in source_chunks)
+        total_chars = source_char_totals[source_idx - 1]
+        cumulative_chars += total_chars
         source_name = Path(source).name
-        compiler._report(source_idx, num_sources, f"extracting [{source_idx}/{num_sources}] {source_name} ({total_chars} chars)")
+        compiler._report(cumulative_chars, total_chars_all, f"extracting [{source_idx}/{num_sources}] {source_name}")
 
         tree = tree_by_source.get(source)
         texts = build_tree_texts(tree) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
