@@ -32,13 +32,16 @@ from typing import Any, cast
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
-    ModelResponse as MR,
     ModelResponse,
     RetryPromptPart,
+    SystemPromptPart,
     TextPart,
     ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
+)
+from pydantic_ai.messages import (
+    ModelResponse as MR,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
