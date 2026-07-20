@@ -35,3 +35,4 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
     system_template_name: str = "extraction_system.md.j2"
     result_type: type[ExtractionOutput] = ExtractionOutput
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
+    use_delta_retry = True

@@ -523,6 +523,14 @@ def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
     """
     issues: list[str] = []
 
+    # Check if the model returned a list when the schema expects an object.
+    if isinstance(parsed, list) and hasattr(schema, "model_fields"):
+        expected = _format_schema_fields(schema)
+        issues.append(
+            f"- You returned a JSON array, but the expected output is a single JSON object with fields {expected}. "
+            f"Return one object, not a list."
+        )
+
     if isinstance(parsed, dict):
         # Check each field against the schema
         for field_name, field_info in schema.model_fields.items():

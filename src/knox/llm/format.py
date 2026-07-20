@@ -28,6 +28,46 @@ from knox.core.config._configs import LlmDataFormat
 # ── JSON salvage (re-exported; callers import salvage_json from here) ────
 
 
+def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | None:
+    """Merge a list of single-key dicts into one dict matching the schema.
+
+    Small models sometimes split a single object across multiple items:
+    ``[{"summary": "..."}, {"entities": []}, {"concepts": [...]}]``.
+    When the schema expects a Pydantic model (object), merge these into
+    one dict. Returns ``None`` if the list can't be coerced to the schema.
+    """
+    if not items:
+        return None
+
+    # Get expected field names from the schema.
+    expected_fields: set[str] | None = None
+    if hasattr(schema, "model_fields"):
+        expected_fields = set(schema.model_fields.keys())
+    elif isinstance(schema, dict):
+        props = schema.get("properties", {})
+        expected_fields = set(props.keys()) if props else None
+
+    if expected_fields is None:
+        return None  # Can't determine schema shape
+
+    merged: dict[str, Any] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            return None  # Non-dict item — can't merge
+        for key, val in item.items():
+            if key in expected_fields:
+                # Don't overwrite a non-empty value with an empty one.
+                if key not in merged or (not merged[key] and val):
+                    merged[key] = val
+            else:
+                return None  # Unknown field — this isn't a split-object pattern
+
+    # Must have at least one expected field.
+    if not any(k in expected_fields for k in merged):
+        return None
+    return merged
+
+
 def salvage_json(content: str, schema: Any | None = None) -> Any | None:
     """Best-effort parse of JSON that small LLMs may truncate or malform.
 
@@ -65,7 +105,18 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
         return None
     # json_repair returns "" for prose-only input; normalize to None so
     # callers' `is None` checks behave as before.
-    return None if parsed == "" else parsed
+    if parsed == "":
+        return None
+
+    # Coerce list-of-dicts to dict when schema expects an object.
+    # Small models sometimes return [{"summary": "..."}, {"entities": []}]
+    # instead of {"summary": "...", "entities": []}. Merge them.
+    if schema is not None and isinstance(parsed, list):
+        coerced = _coerce_list_to_object(parsed, schema)
+        if coerced is not None:
+            return coerced
+
+    return parsed
 
 
 # ── Format encode / decode ────────────────────────────────────────────────
