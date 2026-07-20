@@ -20,7 +20,6 @@ from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.schema import LLMOutputError
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.templates import get_template_loader
-from knox.core.utils.exceptions import shorten_exception
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -470,10 +469,10 @@ def _try_pydanticai_extraction(
         deps = PipelineAgentDeps(text=text, source_id=source_id, timeout=timeout)
         return agent.run(deps)
     except LLMOutputError as exc:
-        logger.warning("PydanticAI extraction failed for '%s': %s", source_id, shorten_exception(exc))
+        logger.warning("PydanticAI extraction failed for '%s': %s", source_id, exc)
         return None
     except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
-        logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, shorten_exception(exc))
+        logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, exc)
         return None
 
 
@@ -513,10 +512,10 @@ def _try_pydanticai_generation(
         )
         return agent.run(deps)
     except LLMOutputError as exc:
-        logger.warning("PydanticAI generation failed for '%s': %s", source_id, shorten_exception(exc))
+        logger.warning("PydanticAI generation failed for '%s': %s", source_id, exc)
         return None
     except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
-        logger.warning("PydanticAI generation unexpected error for '%s': %s", source_id, shorten_exception(exc))
+        logger.warning("PydanticAI generation unexpected error for '%s': %s", source_id, exc)
         return None
 
 

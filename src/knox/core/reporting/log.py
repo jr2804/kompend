@@ -23,7 +23,6 @@ from typing import Any
 
 from knox.core.models import load_cached_wiki
 from knox.core.paths import VaultPaths
-from knox.core.utils.exceptions import shorten_string
 from knox.lint.history import history_to_text, load_lint_history
 from knox.logging import get_logger
 from knox.output.wiki_index import generate_log_entry
@@ -125,7 +124,7 @@ def _load_runs(runs_path: Path) -> list[dict[str, Any]]:
         try:
             out.append(json.loads(stripped))
         except json.JSONDecodeError:
-            logger.debug("skipping unparseable run entry: %s", shorten_string(stripped), exc_info=True)
+            logger.debug("skipping unparseable run entry: %s", stripped, exc_info=True)
     return out
 
 

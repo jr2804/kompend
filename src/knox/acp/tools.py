@@ -32,8 +32,6 @@ from knox.mcp import server as _mcp
 
 logger = get_logger(__name__)
 
-_MAX_TOOL_RESULT_CHARS = 4000
-
 
 class ToolName(StrEnum):
     """All tool names exposed to the conversational agent."""
@@ -44,13 +42,6 @@ class ToolName(StrEnum):
     WIKI_CAPTURE = "wiki_capture"
     CONFIG_GET = "config_get"
     CONFIG_SET = "config_set"
-
-
-def _truncate(text: str) -> str:
-    """Truncate tool result to protect context window."""
-    if len(text) > _MAX_TOOL_RESULT_CHARS:
-        return text[:_MAX_TOOL_RESULT_CHARS] + "\n...(truncated)"
-    return text
 
 
 def build_toolset(
@@ -88,7 +79,7 @@ def build_toolset(
         async def wiki_status() -> str:
             """Check vault health: whether a wiki is compiled, how many pages, source count."""
             result = await asyncio.to_thread(_mcp.wiki_status, wiki_dir=str(base))
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── compile_wiki ───────────────────────────────────────────────────
 
@@ -108,7 +99,7 @@ def build_toolset(
                 output=str(base / output_dir),
                 compiler=comp.value,
             )
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── query_wiki ─────────────────────────────────────────────────────
 
@@ -128,7 +119,7 @@ def build_toolset(
                 wiki_dir=str(base),
                 top_k=top_k,
             )
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── wiki_capture ───────────────────────────────────────────────────
 
@@ -146,7 +137,7 @@ def build_toolset(
                 text=text,
                 sources_dir=str(base / sources_dir),
             )
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── config_get ─────────────────────────────────────────────────────
 
@@ -160,7 +151,7 @@ def build_toolset(
                 key: Dotted config key.
             """
             result = await asyncio.to_thread(_mcp.config_get, key=key)
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── config_set ─────────────────────────────────────────────────────
 
@@ -175,6 +166,6 @@ def build_toolset(
                 value: Value to set (as string).
             """
             result = await asyncio.to_thread(_mcp.config_set, key=key, value=value)
-            return _truncate(json.dumps(result, ensure_ascii=False, default=str))
+            return json.dumps(result, ensure_ascii=False, default=str)
 
     return toolset
