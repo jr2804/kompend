@@ -42,9 +42,9 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
 
     Priority (most restrictive wins when multiple are set):
     1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
-    2. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata
-       (e.g. ``qwen35.context_length: 262144``).  Matches any key ending
-       in ``.context_length``.
+    2. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata.
+       Prefers ``original_context_length`` (base context before RoPE scaling)
+       over the scaled ``context_length`` when both are present.
 
     Returns ``None`` if none are available or ``ollama.show()`` fails.
     """
@@ -60,14 +60,23 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
             logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
 
     # 2. Native GGUF metadata from ollama.show().
+    #    Prefer original_context_length (base before RoPE scaling) over
+    #    the scaled context_length.
     native_ctx: int | None = None
     try:
         resp = ollama.show(model_name)
         model_info = resp.modelinfo or {}
+        # First pass: look for original_context_length (base context before RoPE)
         for key, val in model_info.items():
-            if key.endswith(".context_length") and isinstance(val, int) and val > 0:
+            if key.endswith(".original_context_length") and isinstance(val, int) and val > 0:
                 native_ctx = val
                 break
+        # Second pass: fall back to scaled context_length
+        if native_ctx is None:
+            for key, val in model_info.items():
+                if key.endswith(".context_length") and isinstance(val, int) and val > 0:
+                    native_ctx = val
+                    break
     except Exception:
         logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
 

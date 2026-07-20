@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
-from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES
+from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers._registry import build_default_router
@@ -66,14 +66,14 @@ def _check_parsers() -> CheckResult:
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
 
-def _check_context_window(model: str | None, label: str) -> CheckResult:
+def _check_context_window(model: str | None, label: str, context_window_cap: int | None = None) -> CheckResult:
     """Discover and report the context window for a model."""
     name = f"context-window-{label}"
     if not model:
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        cw = discover_context_window(model)
+        cw = discover_context_window(model, context_window_cap=context_window_cap)
         source_label = cw.source.value if hasattr(cw.source, "value") else str(cw.source)
         if cw.source == "fallback":
             return CheckResult(
@@ -90,14 +90,14 @@ def _check_context_window(model: str | None, label: str) -> CheckResult:
         return CheckResult(name, False, f"{label} context window discovery failed: {exc}")
 
 
-def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None) -> CheckResult:
+def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None, context_window_cap: int | None = None) -> CheckResult:
     """Check that budget config values don't exceed the model's context window."""
     name = "budget-consistency"
     if not model or cfg is None:
         return CheckResult(name, True, "No model or config — skipped")
 
     try:
-        cw = discover_context_window(model)
+        cw = discover_context_window(model, context_window_cap=context_window_cap)
     except Exception as exc:
         return CheckResult(name, False, f"Cannot discover context window: {exc}")
 
@@ -263,9 +263,12 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
-    results.append(_check_context_window(default_model, "llm"))
-    results.append(_check_context_window(vlm_model, "vlm"))
-    results.append(_check_budget_consistency(default_model, cfg))
+    context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
+    if context_window_cap == 0:
+        context_window_cap = None
+    results.append(_check_context_window(default_model, "llm", context_window_cap))
+    results.append(_check_context_window(vlm_model, "vlm", context_window_cap))
+    results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
     llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
     _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
     results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
