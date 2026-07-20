@@ -255,20 +255,18 @@ class KnoxModel(Model):
                     "Converted ThinkingPart to TextPart (%d chars of JSON)",
                     len(response.parts[i].content),
                 )
-        """Run ``json_repair`` on ``TextPart`` for structured-output agents.
-
-        The same class of JSON errors that tool-call repair fixes (bad
-        escapes, trailing commas, truncated output) also appear in the
-        main text response when an agent uses structured ``output_type``.
-        pydantic-ai's strict validator rejects them, triggering a retry
-        that wastes context and usually fails identically.
-
-        We intercept the raw text *before* validation, try
-        ``salvage_json``, and replace the text with the repaired JSON
-        string.  When the JSON is already valid or the repair fails,
-        the part is left untouched so pydantic-ai's normal retry logic
-        applies.
-        """
+        # Second pass: repair TextPart content for structured-output agents.
+        # The same class of JSON errors that tool-call repair fixes (bad
+        # escapes, trailing commas, truncated output) also appear in the
+        # main text response when an agent uses structured ``output_type``.
+        # pydantic-ai's strict validator rejects them, triggering a retry
+        # that wastes context and usually fails identically.
+        #
+        # We intercept the raw text *before* validation, try
+        # ``salvage_json``, and replace the text with the repaired JSON
+        # string.  When the JSON is already valid or the repair fails,
+        # the part is left untouched so pydantic-ai's normal retry logic
+        # applies.
         for part in response.parts:
             if not isinstance(part, TextPart):
                 continue
@@ -280,6 +278,11 @@ class KnoxModel(Model):
                 continue  # Not a JSON object/array — likely plain text, skip
             if repaired is not None:
                 part.content = json.dumps(repaired, ensure_ascii=False)
+                logger.info(
+                    "Repaired TextPart content via salvage_json (%d chars -> %d chars)",
+                    len(content),
+                    len(part.content),
+                )
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:
