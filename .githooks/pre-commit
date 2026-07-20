@@ -1,0 +1,36 @@
+#!/bin/sh
+# Pre-commit hook — block commit on forbidden ruff rules.
+#
+# Installed by: mise run install-hooks  (or copy to .git/hooks/pre-commit)
+#
+# Forbidden rules (hard block, no auto-fix):
+#   ANN001  — missing type annotation for function argument
+#   ANN201  — missing return type annotation for public function
+#   ANN202  — missing return type annotation for private function
+#   PLC0415 — import placed outside module top level
+#
+# These are checked with --no-fix so the commit is blocked until
+# the developer addresses them manually.
+
+set -e
+
+# If no staged Python files, skip
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+if [ -z "$staged" ]; then
+    exit 0
+fi
+
+echo "--- ruff: checking forbidden rules (ANN001, ANN201, ANN202, PLC0415) ---"
+
+if echo "$staged" | tr '\n' '\0' | xargs -0 uv run ruff check \
+    --select ANN001,ANN201,ANN202,PLC0415 \
+    --no-fix \
+    --quiet; then
+    echo "✓ No forbidden rule violations in staged files."
+    exit 0
+else
+    echo ""
+    echo "✗ Commit blocked — fix the violations above, then commit again."
+    echo "  Run: uv run ruff check --select ANN001,ANN201,ANN202,PLC0415 <file>"
+    exit 1
+fi

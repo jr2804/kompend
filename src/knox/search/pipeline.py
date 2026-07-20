@@ -208,6 +208,9 @@ class EnhancedRetriever:
                 return candidates
 
             provider = self._retriever._vector_store._provider
+            if provider is None:
+                logger.debug("Neural re-rank skipped — no embedding provider")
+                return candidates
             texts = [query] + [c.snippet or c.title for c in candidates]
             vectors = [provider.embed(t) for t in texts]
             query_vec = vectors[0]
