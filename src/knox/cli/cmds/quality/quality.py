@@ -11,17 +11,13 @@ import typer
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import ConfigPath, JsonOutput, Verbose
-from knox.cli.cmds.doctor import print_doctor_results, run_doctor
-from knox.cli.cmds.status import collect_stats, print_status
 from knox.core.config import resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,
 )
-from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 from knox.logging import get_console, get_err_console
-from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 
 # ── doctor ──────────────────────────────────────────────────────────────
 
@@ -56,6 +52,8 @@ def doctor_cmd(
             f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
         )
         raise typer.Exit(1)
+
+    from knox.cli.cmds.doctor import print_doctor_results, run_doctor
 
     results = run_doctor(
         sources_dir=sources_dir,
@@ -180,6 +178,7 @@ def trace_cmd(
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     base_dir = output_dir.parent
+    from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:

@@ -10,12 +10,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
-from knox.preprocessing.parsers._registry import build_default_router
-from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string
 
 logger = get_logger(__name__)
 
@@ -62,6 +59,8 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 def _check_parsers() -> CheckResult:
     """Check parser availability via the shared registry factory."""
     name = "parsers"
+    from knox.preprocessing.parsers._registry import build_default_router
+
     router = build_default_router()
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
 
@@ -158,6 +157,8 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
+        from knox.agents.doctor import DoctorAgent, DoctorDeps
+
         agent = DoctorAgent(
             model_string=model,
             timeout=timeout,
@@ -179,6 +180,8 @@ def _ping_embed_model(model: str | None) -> CheckResult:
         return CheckResult(name, True, "No embed model configured — skipped")
 
     try:
+        from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string
+
         pydantic_ai_string = _to_pydantic_ai_embedding_string(model)
         embedder = _build_embedder(pydantic_ai_string)
         result = embedder.embed_documents_sync("ping")
