@@ -43,6 +43,9 @@ def save_debug_prompt(
     kwargs: dict[str, Any],
     response_content: str,
     finish_reason: str | None,
+    *,
+    user_turns: int = 0,
+    assistant_turns: int = 0,
 ) -> None:
     """Save the LLM prompt and response to a debug file.
 
@@ -72,11 +75,8 @@ def save_debug_prompt(
     model_slug = model_slug.replace("/", "_").replace(":", "")
     filepath = debug_path / f"llm_{ts}_{model_slug}.json"
 
-    user_turns = sum(1 for m in messages if m.get("role") == "user")
-    assistant_turns = sum(1 for m in messages if m.get("role") == "assistant")
-
     parsed = salvage_json(response_content)
-    parsed_str = json.dumps(parsed, ensure_ascii=False) if parsed is not None else None
+    parsed_obj = parsed if isinstance(parsed, (dict, list)) else None
 
     payload: dict[str, Any] = {
         "model": model_string,
@@ -87,15 +87,10 @@ def save_debug_prompt(
         "assistant_turns": assistant_turns,
         "messages": messages,
         "kwargs": {k: v for k, v in kwargs.items() if k not in ("messages", "model")},
-        "response_parsed": parsed_str,
+        "response_parsed": parsed_obj,
+        "response": response_content,
         "finish_reason": finish_reason,
     }
-    # Only keep the raw response when it diverges from the parsed result.
-    # For a clean one-shot exchange (one prompt, one valid reply) the two are
-    # equivalent and the raw field is redundant. When the model needed repair
-    # or emitted unexpected text, the divergence is preserved for diagnosis.
-    if parsed is None or salvage_json(response_content) != parsed:
-        payload["response"] = response_content
 
     try:
         # errors="backslashreplace": messages may carry lone surrogates (e.g.

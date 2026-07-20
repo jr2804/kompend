@@ -112,7 +112,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
         save_debug_prompt(
             self,
             self._model_string,
-            [{"role": "user", "content": deps.prompt}],
+            [{"role": "user", "parts": [{"type": "text", "content": deps.prompt}]}],
             {"model": self._model_string, "image_bytes": len(image_bytes)},
             caption,
             "stop",

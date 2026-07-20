@@ -29,7 +29,17 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse as MR,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
@@ -161,16 +171,24 @@ class KnoxModel(Model):
                 content = part.content
                 break
         finish_reason = getattr(response, "finish_reason", None) or "stop"
-        # save_debug_prompt expects message-dict message dicts; pydantic-ai
-        # ModelMessage objects serialize via their to_dict. We pass a minimal
-        # payload — the debug file is for manual inspection, not replay.
+
+        # Count turns from the original ModelMessage objects (not serialised dicts)
+        user_turns = sum(1 for m in messages if isinstance(m, ModelRequest))
+        assistant_turns = sum(1 for m in messages if isinstance(m, MR))
+
+        # Append the final response to the messages list so the debug file
+        # shows the complete conversation including the model's last reply.
+        all_messages = list(messages) + [response]
+
         save_debug_prompt(
             self._agent,
             self.model_name,
-            _messages_to_debug_dicts(messages),
+            _messages_to_debug_dicts(all_messages),
             {"model": self.model_name},
             content,
             str(finish_reason),
+            user_turns=user_turns,
+            assistant_turns=assistant_turns,
         )
 
     # ── KNOX-specific hooks ─────────────────────────────────────────────
@@ -232,18 +250,49 @@ class KnoxModel(Model):
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:
-    """Convert pydantic-ai ModelMessages to debug-friendly dicts."""
+    """Convert pydantic-ai ModelMessages to debug-friendly dicts.
+
+    Each message is serialised with its role (``ModelRequest`` / ``ModelResponse``)
+    and a list of structured part dicts.  Parts are serialised with their type
+    (``text``, ``thinking``, ``tool_call``, ``retry_prompt``) and type-specific
+    content so the debug file is readable without mental parsing of ``str(part)``.
+    """
     result: list[dict[str, Any]] = []
     for msg in messages:
         kind = type(msg).__name__
-        parts_text: list[str] = []
+        parts_list: list[dict[str, Any]] = []
         for part in getattr(msg, "parts", []):
-            if isinstance(part, TextPart):
-                parts_text.append(part.content)
-            else:
-                parts_text.append(str(part))
-        result.append({"role": kind, "content": "\n".join(parts_text)})
+            parts_list.append(_part_to_debug_dict(part))
+        result.append({"role": kind, "parts": parts_list})
     return result
+
+
+def _part_to_debug_dict(part: Any) -> dict[str, Any]:
+    """Convert a single ModelPart to a debug-friendly dict."""
+    if isinstance(part, TextPart):
+        return {"type": "text", "content": part.content}
+    if isinstance(part, ThinkingPart):
+        return {"type": "thinking", "content": part.content}
+    if isinstance(part, ToolCallPart):
+        return {
+            "type": "tool_call",
+            "tool_name": part.tool_name,
+            "args": part.args,
+            "tool_call_id": part.tool_call_id,
+        }
+    if isinstance(part, ToolReturnPart):
+        return {
+            "type": "tool_return",
+            "tool_name": part.tool_name,
+            "content": part.content,
+        }
+    if isinstance(part, RetryPromptPart):
+        content = part.content
+        # RetryPromptPart.content can be a list of validation errors
+        if isinstance(content, list):
+            return {"type": "retry_prompt", "errors": content}
+        return {"type": "retry_prompt", "content": str(content)}
+    return {"type": type(part).__name__, "content": str(part)}
 
 
 __all__ = ["KnoxModel"]
