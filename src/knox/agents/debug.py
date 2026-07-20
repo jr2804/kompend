@@ -65,7 +65,11 @@ def save_debug_prompt(
     debug_path = Path(debug_dir)
     debug_path.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    model_slug = model_string.replace("/", "_").replace(":", "")
+    # Normalise model string for filename: strip provider prefix (e.g. "ollama/")
+    # so the same model always produces the same slug regardless of how it was
+    # passed (with or without provider prefix).
+    model_slug = model_string.split("/", 1)[-1] if "/" in model_string else model_string
+    model_slug = model_slug.replace("/", "_").replace(":", "")
     filepath = debug_path / f"llm_{ts}_{model_slug}.json"
 
     user_turns = sum(1 for m in messages if m.get("role") == "user")
