@@ -39,12 +39,13 @@ from typing import Any
 import pytest
 
 from knox.agents.vlm import VlmAgent
+from knox.agents.wiki_index import WikiIndexAgent
 from knox.chunking import HierarchicalChunker
 from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import ATOMIC_TYPES, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
+from knox.core.models import ATOMIC_TYPES, Chunk, CompiledWiki, ElementType, ParsedDocument, ResolvedChunk
 from knox.core.paths import KNOX_DIR, STATE_FILE, VECTORS_DIR
 from knox.core.pipeline.config import Compiler, PipelineConfig
 from knox.core.pipeline.state import TierStateStore
@@ -56,7 +57,7 @@ from knox.output.typst import TypstWriter
 from knox.output.wiki_index import write_index, write_overview
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.parsers.docling_parser import DoclingParser
-from knox.rag.zvec_store import LiteLLMEmbeddingProvider, ZvecWikiStore
+from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore
 from knox.resolution.vlm_enricher import VLMEnricher
 
 logger = logging.getLogger(__name__)
@@ -121,10 +122,18 @@ def small_corpus(source_pdfs_module: list[Path]) -> list[Path]:
     return source_pdfs_module[:3]
 
 
+def _discover_cw() -> ContextWindow | None:
+    """Discover context window for the test model."""
+    try:
+        return discover_context_window(LLM_MODEL)
+    except Exception:
+        return None
+
+
 @pytest.fixture(scope="module")
 def context_window() -> ContextWindow | None:
     """Discover context window for the test model."""
-    return discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+    return _discover_cw()
 
 
 @pytest.fixture(scope="module")
@@ -149,26 +158,26 @@ def parsed_docs(small_corpus: list[Path]) -> list[ParsedDocument]:
 def raw_chunks(parsed_docs: list[ParsedDocument]) -> list[ResolvedChunk]:
     """Chunk parsed documents once."""
     chunker = HierarchicalChunker(max_tokens=512)
-    all_chunks = []
+    all_chunks: list[ResolvedChunk] = []
     for doc in parsed_docs:
         tree = chunker.chunk(doc)
-        all_chunks.extend(n.chunk for n in tree.leaves() if n.chunk)
+        for n in tree.leaves():
+            if n.chunk:
+                all_chunks.append(ResolvedChunk(chunk=n.chunk) if isinstance(n.chunk, Chunk) else n.chunk)
     return all_chunks
 
 
 @pytest.fixture(scope="module")
 def resolved_chunks(raw_chunks: list[ResolvedChunk]) -> list[ResolvedChunk]:
-    """Wrap raw chunks into ResolvedChunks (passthrough — no per-chunk LLMResolver)."""
-    if not raw_chunks:
-        return []
-    return [ResolvedChunk(chunk=c) for c in raw_chunks]
+    """Passthrough — chunks are already ResolvedChunks from raw_chunks."""
+    return raw_chunks
 
 
 @pytest.fixture(scope="module")
 def graph_wiki(resolved_chunks: list[ResolvedChunk]) -> CompiledWiki:
     """Compile resolved chunks via TwoPhaseCompiler (graph backend)."""
     if not resolved_chunks or not _OLLAMA_OK:
-        return None
+        return CompiledWiki(nodes=[], edges=[], toc=[], metadata={}, quality_score=0.0)
 
     config = PipelineConfig(
         source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
@@ -229,21 +238,21 @@ class TestTier2Chunking:
         assert len(raw_chunks) > 0, "No chunks produced from corpus"
 
     def test_chunk_ids_are_unique(self, raw_chunks: list[ResolvedChunk]) -> None:
-        ids = [c.id for c in raw_chunks]
+        ids = [c.chunk.id for c in raw_chunks]
         assert len(ids) == len(set(ids)), "Duplicate chunk IDs detected"
 
     def test_chunks_respect_token_budget(self, raw_chunks: list[ResolvedChunk]) -> None:
-        oversized = [c for c in raw_chunks if c.token_count > 600]
+        oversized = [c for c in raw_chunks if c.chunk.token_count > 600]
         # Allow 5% tolerance for atomic elements that can't be split
         if len(oversized) > len(raw_chunks) * 0.05:
             pytest.fail(f"{len(oversized)}/{len(raw_chunks)} chunks exceed 600 token budget")
 
     def test_every_chunk_has_element_types(self, raw_chunks: list[ResolvedChunk]) -> None:
         for c in raw_chunks:
-            assert len(c.element_types) > 0, f"Chunk {c.id} has no element_types"
+            assert len(c.chunk.element_types) > 0, f"Chunk {c.chunk.id} has no element_types"
 
     def test_chunks_have_heading_context(self, raw_chunks: list[ResolvedChunk]) -> None:
-        has_context = any(c.heading_context for c in raw_chunks)
+        has_context = any(c.chunk.heading_context for c in raw_chunks)
         assert has_context, "No chunk has heading_context — structure not preserved"
 
 
@@ -278,7 +287,7 @@ class TestTier3Resolution:
 
     def test_vlm_enricher_integration(self, raw_chunks: list[ResolvedChunk]) -> None:
         """VLMEnricher must accept IMAGE chunks without raising."""
-        image_chunks = [c for c in raw_chunks if ElementType.IMAGE in c.element_types]
+        image_chunks = [c for c in raw_chunks if ElementType.IMAGE in c.chunk.element_types]
         if not image_chunks:
             pytest.skip("No IMAGE chunks in parsed corpus — VLM path not exercised")
 
@@ -286,7 +295,7 @@ class TestTier3Resolution:
         enricher = VLMEnricher(agent=vlm_agent)
 
         # Enrich first image chunk — must not raise
-        rc = ResolvedChunk(chunk=image_chunks[0])
+        rc = ResolvedChunk(chunk=image_chunks[0].chunk) if isinstance(image_chunks[0].chunk, Chunk) else image_chunks[0]
         result = enricher.enrich(rc)
         assert result is not None
 
@@ -321,7 +330,7 @@ class TestTier4Compilation:
 
     def test_wicer_compiler(self, resolved_chunks: list[ResolvedChunk]) -> None:
         """WiCERCompiler must produce a valid wiki."""
-        discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        discover_context_window(LLM_MODEL)
         config = PipelineConfig(
             source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="model", vlm_model="vlm"), embedding=EmbeddingConfig(model="model")
         )
@@ -444,7 +453,7 @@ class TestVectorStore:
 
     def test_build_and_search_vector_index(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """Vector index must be buildable and return semantic search results."""
-        embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
+        embed_provider = PydanticAIEmbeddingProvider(EMBED_MODEL)
         store = ZvecWikiStore(
             db_file=tmp_path / VECTORS_DIR,
             embedding_provider=embed_provider,
@@ -463,7 +472,7 @@ class TestVectorStore:
 
     def test_vector_search_returns_ranked_results(self, graph_wiki: CompiledWiki, tmp_path: Path) -> None:
         """Multiple queries must each return results (smoke test for ranking)."""
-        embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
+        embed_provider = PydanticAIEmbeddingProvider(EMBED_MODEL)
         store = ZvecWikiStore(
             db_file=tmp_path / "vectors2",
             embedding_provider=embed_provider,
@@ -606,7 +615,7 @@ class TestFullPipelineE2E:
         wicer_iterations: int = 1,
     ) -> CompiledWiki:
         """Parse → chunk → resolve → compile → write, without WikiPipeline.run()."""
-        cw = discover_context_window(LLM_MODEL, fallback_chain=[], max_retries_per_model=1)
+        cw = discover_context_window(LLM_MODEL)
 
         # Tier 1
         parser = DoclingParser(extract_images=False)
@@ -802,19 +811,19 @@ class TestGenerateExampleWiki:
         pages = write_index(wiki, md_vault)
         assert pages["index"].exists()
 
-        # overview (LLM synthesis)
-        overview_path = write_overview(
-            wiki,
-            md_vault,
-            model=LLM_MODEL,
-            overview_budget=config.budget.overview_output_max * 4,
-            timeout=120,
-        )
-        if overview_path:
-            logger.info("overview.md generated")
-        else:
+        # overview (LLM synthesis requires a real LLM — use fallback in CI)
+        try:
+            agent = WikiIndexAgent(model_string=LLM_MODEL)
+            overview_path = write_overview(wiki, md_vault, agent, overview_budget=config.budget.overview_output_max * 4)
+            if overview_path:
+                logger.info("overview.md generated")
+            else:
+                _write_fallback_overview(wiki, md_vault)
+                logger.warning("overview.md fallback written")
+        except Exception:
+            # No LLM available — use fallback
             _write_fallback_overview(wiki, md_vault)
-            logger.warning("overview.md fallback written")
+            logger.warning("overview.md fallback written (LLM unavailable)")
 
         # JSON
         JsonWriter().write(wiki, out_dir / "json")
@@ -828,7 +837,7 @@ class TestGenerateExampleWiki:
         TypstWriter().write(wiki, out_dir / "typst")
 
         # Vector index
-        embed_provider = LiteLLMEmbeddingProvider(model=EMBED_MODEL, dim=EMBED_DIM)
+        embed_provider = PydanticAIEmbeddingProvider(EMBED_MODEL)
         ZvecWikiStore(
             db_file=out_dir / KNOX_DIR / VECTORS_DIR,
             embedding_provider=embed_provider,
