@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import pkgutil
 
+import pydantic_ai.providers
 from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.ollama import OllamaModel
@@ -118,8 +119,6 @@ def _discover_provider_ids() -> set[str]:
     ships in its installed version. ``sentence_transformers`` is excluded
     because it's an embedding-only backend, not an LLM provider.
     """
-    import pydantic_ai.providers
-
     return {m.name for m in pkgutil.iter_modules(pydantic_ai.providers.__path__) if not m.name.startswith("_") and m.name != "sentence_transformers"}
 
 
