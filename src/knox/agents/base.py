@@ -25,8 +25,10 @@ The base class handles:
 from __future__ import annotations
 
 import json
+import json
 import typing
 from abc import ABC
+from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput
@@ -169,6 +171,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._current_source_id: str = ""
         #: Accumulated valid data across delta-retry attempts, keyed by run_step.
         self._delta_retry_state: dict[int, Any] = {}
+        #: Path to the last debug file written by KnoxModel (for error messages).
+        self._last_debug_path: Path | None = None
 
     def render_user_prompt(self, deps: DepsT) -> str:
         """Render the user-prompt template with the agent's deps.
@@ -233,13 +237,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 message_history=message_history,
             )
         except Exception as exc:
+            debug_hint = f" (debug: {self._last_debug_path})" if self._last_debug_path else ""
             logger.warning(
-                "Agent '%s' failed on '%s': %s",
+                "Agent '%s' failed on '%s': %s%s",
                 type(self).__name__,
                 deps.source_id,
                 exc,
+                debug_hint,
             )
-            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}") from exc
+            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}{debug_hint}") from exc
         return result.output
 
     def run_with_messages(
@@ -267,13 +273,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 message_history=message_history,
             )
         except Exception as exc:
+            debug_hint = f" (debug: {self._last_debug_path})" if self._last_debug_path else ""
             logger.warning(
-                "Agent '%s' failed on '%s': %s",
+                "Agent '%s' failed on '%s': %s%s",
                 type(self).__name__,
                 deps.source_id,
                 exc,
+                debug_hint,
             )
-            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}") from exc
+            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}{debug_hint}") from exc
         return result.output, result.new_messages()
 
     @property

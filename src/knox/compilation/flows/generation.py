@@ -253,11 +253,22 @@ def generate_all_pages(
             compiler._batch_tracker.record(failed=gen_output is None)
 
             if gen_output is None:
+                # Quantify the impact: which concepts were skipped, how many total.
+                concept_names = [c.get("name", f"concept-{batch_start + i}") for i, c in enumerate(batch)]
+                total_concepts = len(concepts)
+                skipped_str = ", ".join(concept_names[:3])
+                if len(concept_names) > 3:
+                    skipped_str += f", +{len(concept_names) - 3} more"
                 logger.warning(
-                    "TwoPhase: LLM returned no valid data for batch %d-%d, segment %d after retries — skipping",
+                    "TwoPhase: generation failed for batch %d-%d/%d (segment %d) — "
+                    "%d/%d concepts will have no wiki page: [%s]",
                     batch_start,
                     batch_start + len(batch),
+                    total_concepts,
                     seg_idx,
+                    len(batch),
+                    total_concepts,
+                    skipped_str,
                 )
                 failed_count += 1
                 if compiler._batch_tracker.should_stop():

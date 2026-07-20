@@ -183,7 +183,7 @@ class KnoxModel(Model):
         # shows the complete conversation including the model's last reply.
         all_messages = list(messages) + [response]
 
-        save_debug_prompt(
+        filepath = save_debug_prompt(
             self._agent,
             self.model_name,
             _messages_to_debug_dicts(all_messages),
@@ -193,6 +193,9 @@ class KnoxModel(Model):
             user_turns=user_turns,
             assistant_turns=assistant_turns,
         )
+        # Store the debug path on the agent so error messages can reference it.
+        if filepath is not None:
+            self._agent._last_debug_path = filepath
 
     # ── KNOX-specific hooks ─────────────────────────────────────────────
 

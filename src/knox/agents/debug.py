@@ -46,7 +46,7 @@ def save_debug_prompt(
     *,
     user_turns: int = 0,
     assistant_turns: int = 0,
-) -> None:
+) -> Path | None:
     """Save the LLM prompt and response to a debug file.
 
     Triggered by ``KNOX_DEBUG_LLM_DIR`` env var. Each call creates a
@@ -103,5 +103,7 @@ def save_debug_prompt(
             errors="backslashreplace",
         )
         logger.info("Debug prompt saved to %s", filepath)
+        return filepath
     except Exception as exc:
         logger.warning("Failed to save debug prompt: %s", exc)
+        return None
