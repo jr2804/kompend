@@ -111,7 +111,6 @@ class KnoxModel(Model):
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         self._repair_tool_call_args(response)
         self._repair_thinking_part(response)
-        self._repair_text_part(response)
         self._track_usage(response)
         self._save_debug(messages, response)
         return response
