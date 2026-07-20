@@ -253,24 +253,33 @@ def generate_all_pages(
             compiler._batch_tracker.record(failed=gen_output is None)
 
             if gen_output is None:
-                # Quantify the impact: which concepts were skipped, how many total.
-                concept_names = [c.get("name", f"concept-{batch_start + i}") for i, c in enumerate(batch)]
-                total_concepts = len(concepts)
-                skipped_str = ", ".join(concept_names[:3])
-                if len(concept_names) > 3:
-                    skipped_str += f", +{len(concept_names) - 3} more"
-                logger.warning(
-                    "TwoPhase: generation failed for batch %d-%d/%d (segment %d) — "
-                    "%d/%d concepts will have no wiki page: [%s]",
-                    batch_start,
-                    batch_start + len(batch),
-                    total_concepts,
-                    seg_idx,
-                    len(batch),
-                    total_concepts,
-                    skipped_str,
-                )
+                # This segment failed — but the batch will be retried against the
+                # next source segment. Only log at debug level here.
+                remaining = num_segments - seg_idx - 1
+                if remaining > 0:
+                    logger.debug(
+                        "TwoPhase: segment %d/%d failed for concepts #%d-%d — will retry with %d remaining segment(s)",
+                        seg_idx + 1,
+                        num_segments,
+                        batch_start,
+                        batch_start + len(batch) - 1,
+                        remaining,
+                    )
                 failed_count += 1
+                if failed_count >= MAX_FAILED or seg_idx == num_segments - 1:
+                    # All segments exhausted — these concepts are truly missing.
+                    concept_names = [c.get("name", f"concept-{batch_start + i}") for i, c in enumerate(batch)]
+                    skipped_str = ", ".join(concept_names)
+                    logger.warning(
+                        "TwoPhase: %d/%d concepts will have no wiki page "
+                        "(all %d source segment(s) failed for batch #%d-%d): [%s]",
+                        len(batch),
+                        num_concepts,
+                        num_segments,
+                        batch_start,
+                        batch_start + len(batch) - 1,
+                        skipped_str,
+                    )
                 if compiler._batch_tracker.should_stop():
                     logger.error(
                         "TwoPhase: stopping generation early — %d/%d batches failed (model '%s' is not suitable for structured JSON output)",
