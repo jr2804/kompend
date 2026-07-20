@@ -87,3 +87,4 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     #: Semantic output validator: catches empty pages, empty content,
     #: empty slugs, and duplicate slugs before they reach the pipeline.
     output_validator_func = _validate_generation_output
+    use_delta_retry = True

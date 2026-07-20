@@ -25,10 +25,14 @@ The base class handles:
 from __future__ import annotations
 
 from abc import ABC
+import json
+import typing
 from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities import AbstractCapability, Hooks
+from pydantic_ai.exceptions import ModelRetry
+from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
@@ -42,6 +46,7 @@ from knox.agents.deps import PipelineAgentDeps
 from knox.agents.knox_model import KnoxModel
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
+from knox.llm.format import salvage_json
 from knox.llm.models import build_model
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
@@ -122,6 +127,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """
         return self.__class__.__name__.removesuffix("Agent").lower()
 
+    #: Enable delta-retry: when the model returns partially valid structured
+    #: output, extract the valid parts and ask the model to fix only the
+    #: broken ones, instead of regenerating everything from scratch.
+    use_delta_retry: bool = False
+
     def __init__(
         self,
         model_string: str,
@@ -157,6 +167,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._template_loader = get_template_loader()
         # Current source_id for debug logging (set per run() call)
         self._current_source_id: str = ""
+        #: Accumulated valid data across delta-retry attempts, keyed by run_step.
+        self._delta_retry_state: dict[int, Any] = {}
 
     def render_user_prompt(self, deps: DepsT) -> str:
         """Render the user-prompt template with the agent's deps.
@@ -306,13 +318,18 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # the summarization capability (same failover chain).
         top_model = self._build_top_level_model()
         capability = self._resolve_context_capability(top_model)
+        capabilities: list[AbstractCapability[Any]] = []
+        if capability is not None:
+            capabilities.append(capability)
+        if self.use_delta_retry:
+            capabilities.append(self._make_delta_retry_hook())
         agent = Agent(
             top_model,
             deps_type=self.deps_type,
             output_type=output_type,
             model_settings=model_settings,
             retries=self._retries,
-            capabilities=[capability] if capability is not None else None,
+            capabilities=capabilities or None,
         )
         if self.output_validator_func is not None:
             agent.output_validator(self.output_validator_func)
@@ -341,6 +358,64 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 for m in self._fallback_models
             ),
         )
+
+    def _make_delta_retry_hook(self) -> Hooks:
+        """Create an ``after_model_request`` hook for delta-retry.
+
+        When the model returns partially valid structured output, this hook
+        extracts the valid parts and raises ``ModelRetry`` with a message
+        that tells the model exactly which parts need fixing and what the
+        expected structure looks like.  On retry, valid parts from previous
+        attempts are accumulated and merged.
+
+        Only fires for agents with ``use_delta_retry = True`` and a Pydantic
+        ``result_type`` (structured output).
+        """
+        schema = self.result_type
+        state = self._delta_retry_state
+
+        hooks = Hooks()
+
+        @hooks.on.after_model_request
+        async def _delta_retry_hook(
+            ctx: Any,
+            *,
+            request_context: Any,
+            response: ModelResponse,
+        ) -> ModelResponse:
+            # Only handle structured output (TextPart with JSON)
+            text = _get_response_text(response)
+            if not text:
+                return response
+
+            # Try to parse with schema-aware salvage
+            parsed = salvage_json(text, schema=schema)
+            if parsed is None:
+                return response  # Can't parse — let PydanticAI handle it
+
+            # Try to validate against the schema
+            try:
+                validated = schema.model_validate(parsed)
+            except Exception:
+                # Validation failed — build a delta message
+                step = ctx.run_step if hasattr(ctx, "run_step") else 0
+                delta_msg = _build_delta_message(parsed, schema)
+                if delta_msg:
+                    # Store the partial data for potential merge on retry
+                    state[step] = parsed
+                    raise ModelRetry(delta_msg)
+                return response
+
+            # Fully valid — merge with any accumulated state from previous retries
+            step = ctx.run_step if hasattr(ctx, "run_step") else 0
+            if step in state:
+                merged = _merge_valid_data(state[step], validated, schema)
+                if merged is not None:
+                    _set_response_text(response, merged)
+                del state[step]
+            return response
+
+        return hooks
 
     def _resolve_context_capability(self, model: Model) -> AbstractCapability[Any] | None:
         """Build the context-management capability from the configured preset.
@@ -416,3 +491,102 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if hasattr(deps, "__dict__"):
             return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
         return {}
+
+
+# ── Delta-retry helpers ────────────────────────────────────────────────
+
+
+def _get_response_text(response: ModelResponse) -> str | None:
+    """Extract the text content from a ModelResponse."""
+    for part in response.parts:
+        if isinstance(part, TextPart) and part.content:
+            return part.content
+    return None
+
+
+def _set_response_text(response: ModelResponse, data: Any) -> None:
+    """Replace the text content of a ModelResponse with serialized data."""
+    text = json.dumps(data, ensure_ascii=False, default=str)
+    for part in response.parts:
+        if isinstance(part, TextPart):
+            part.content = text
+            return
+    response.parts.append(TextPart(content=text))
+
+
+def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
+    """Build a delta-retry message describing what needs fixing.
+
+    Examines the parsed (but invalid) output against the schema and
+    produces a message that tells the model exactly which parts are
+    broken and what the expected structure looks like.
+    """
+    issues: list[str] = []
+
+    if isinstance(parsed, dict):
+        # Check each field against the schema
+        for field_name, field_info in schema.model_fields.items():
+            if field_name not in parsed:
+                issues.append(f"- missing field '{field_name}'")
+                continue
+            value = parsed[field_name]
+            # Check if the value is a list with type errors
+            if hasattr(field_info, "annotation"):
+                inner_type = _get_list_inner_type(field_info.annotation)
+                if inner_type and isinstance(value, list):
+                    for i, item in enumerate(value):
+                        if not isinstance(item, dict):
+                            expected = _format_schema_fields(inner_type)
+                            issues.append(
+                                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))[:80]})"
+                            )
+
+    if not issues:
+        return None
+
+    issue_text = "\n".join(issues)
+    return (
+        "The following parts of your output need correction:\n"
+        f"{issue_text}\n\n"
+        "Return the COMPLETE corrected output. Keep all valid parts unchanged "
+        "and fix only the listed issues."
+    )
+
+
+def _get_list_inner_type(annotation: Any) -> type[Any] | None:
+    """Extract the inner type from a ``list[X]`` annotation."""
+    origin = typing.get_origin(annotation)
+    if origin is not list:
+        return None
+    args = typing.get_args(annotation)
+    return args[0] if args else None
+
+
+def _format_schema_fields(model: type[Any]) -> str:
+    """Format the field names of a Pydantic model for display."""
+    if hasattr(model, "model_fields"):
+        return "{" + ", ".join(model.model_fields.keys()) + "}"
+    return "{...}"
+
+
+def _merge_valid_data(previous: Any, current: Any, schema: type[Any]) -> Any | None:
+    """Merge valid data from a previous retry attempt with the current one.
+
+    When the model returns fewer items on retry (e.g., only the corrected
+    pages), merge them with the previously valid items by replacing the
+    tail of the previous list with the new items.
+    """
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return None
+
+    merged = dict(current)
+    for field_name in schema.model_fields:
+        if field_name not in previous or field_name not in current:
+            continue
+        prev_val = previous[field_name]
+        curr_val = current[field_name]
+        if isinstance(prev_val, list) and isinstance(curr_val, list) and len(curr_val) < len(prev_val):
+            # New response has fewer items — replace the tail of previous
+            merged[field_name] = prev_val[: len(prev_val) - len(curr_val)] + curr_val
+
+    return merged
