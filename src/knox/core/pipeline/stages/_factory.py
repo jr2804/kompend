@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
@@ -11,17 +11,14 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache.store import CacheStore
-from knox.core.pipeline.config import TIER_LEVEL, Compiler, Tier
+from knox.core.pipeline.config import TIER_LEVEL, Compiler, PipelineConfig, Tier
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.pipeline.stages._parse import build_resolver_chain
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
 from knox.resolution.base import BaseResolver
-
-if TYPE_CHECKING:
-    from knox.core.pipeline.config import PipelineConfig
-    from knox.core.pipeline.stages._pipeline import WikiPipeline
 
 logger = get_logger(__name__)
 
@@ -46,9 +43,6 @@ def build_pipeline(
     config:
         Pipeline configuration.
     """
-    # Late import to avoid circular dependency.
-    from knox.core.pipeline.stages._pipeline import WikiPipeline  # noqa: PLC0415
-
     writer_cls = BaseOutputWriter.get(config.output.format)
     if writer_cls is None:
         available = ", ".join(BaseOutputWriter.available_formats())

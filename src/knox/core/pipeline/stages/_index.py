@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from knox.core.pipeline.config import TIER_LEVEL
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.preprocessing.parsers._registry import get_all_extensions
-
-if TYPE_CHECKING:
-    from knox.core.pipeline.stages._pipeline import WikiPipeline
 
 
 def iter_sources(pipeline: WikiPipeline) -> list:

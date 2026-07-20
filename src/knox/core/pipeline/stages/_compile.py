@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from knox.core.models import (
     CompiledWiki,
@@ -11,15 +12,11 @@ from knox.core.models import (
     WikiField,
     WikiNode,
 )
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.logging import get_logger
 from knox.trust import filter_wiki
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from knox.core.pipeline.stages._pipeline import WikiPipeline
 
 logger = get_logger(__name__)
 

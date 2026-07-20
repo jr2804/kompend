@@ -6,8 +6,9 @@ import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from knox.agents.vlm import VlmAgent
 from knox.core.models import (
     ChunkTree,
     DocumentElement,
@@ -17,16 +18,14 @@ from knox.core.models import (
     WikiField,
 )
 from knox.core.pipeline.ingest import parse_cache_name
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.parsers.base import scrub_document
+from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive
-
-if TYPE_CHECKING:
-    from knox.core.pipeline.stages._pipeline import WikiPipeline
-    from knox.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
 
@@ -327,8 +326,6 @@ def build_resolver_chain(config: Any) -> BaseResolver:
     When a VLM model is configured, a :class:`VLMEnricher` enriches
     image chunks with generated captions.
     """
-    from knox.agents.vlm import VlmAgent  # noqa: PLC0415
-
     resolvers: list[BaseResolver] = []
 
     if config.llm.vlm_model:

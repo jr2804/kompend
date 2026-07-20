@@ -7,16 +7,14 @@ on extracted data without depending on compiler instance state.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from knox.chunking.summarizer import _structured_to_text
+from knox.compilation._two_phase_core import ExtractionSet
 from knox.core.models import ChunkTree, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.logging import get_logger
 from knox.rag.zvec_store import _make_provider
-
-if TYPE_CHECKING:
-    from knox.compilation._two_phase_core import ExtractionSet
 
 logger = get_logger(__name__)
 

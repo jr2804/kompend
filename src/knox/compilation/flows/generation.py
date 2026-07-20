@@ -10,7 +10,7 @@ import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from knox.agents.generation import GenerationAgent
 from knox.compilation._checkpoints import (
@@ -30,15 +30,13 @@ from knox.compilation._two_phase_core import (
     _upsert_node,
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
+from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from knox.compilation.two_phase import TwoPhaseCompiler
 
 logger = get_logger(__name__)
 

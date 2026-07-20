@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from knox.core.pipeline.stages._pipeline import WikiPipeline
 
 logger = get_logger(__name__)
 

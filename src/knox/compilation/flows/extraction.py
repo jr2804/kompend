@@ -11,7 +11,7 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
@@ -24,14 +24,12 @@ from knox.compilation._two_phase_core import (
     _try_pydanticai_extraction,
 )
 from knox.compilation.flows.assembly import build_tree_texts
+from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
-
-if TYPE_CHECKING:
-    from knox.compilation.two_phase import TwoPhaseCompiler
 
 logger = get_logger(__name__)
 

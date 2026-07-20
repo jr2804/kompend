@@ -11,9 +11,11 @@ import hashlib
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from knox.chunking.hierarchical import HierarchicalChunker
+from knox.chunking.summarizer import NodeSummarizer
+from knox.compilation.base import BaseCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_TIER_SAMPLE_SIZE
@@ -25,29 +27,20 @@ from knox.core.models import (
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.config import (
     ALL_TIERS,
+    PipelineConfig,
     TIER_DESCRIPTIONS,
     TIER_LEVEL,
     Tier,
 )
-from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
-from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
-from knox.core.pipeline.stages._parse import parse_and_chunk
-from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
-from knox.core.pipeline.state import TierStateStore
+from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 from knox.memory.lifecycle import update_memory_for_compile
 from knox.output.base import BaseOutputWriter
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import ParserRouter
+from knox.resolution.base import BaseResolver
 from knox.trust import filter_wiki
-
-if TYPE_CHECKING:
-    from knox.chunking.summarizer import NodeSummarizer
-    from knox.compilation.base import BaseCompiler
-    from knox.core.pipeline.config import PipelineConfig
-    from knox.core.pipeline.state import TierState
-    from knox.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
 
@@ -388,3 +381,17 @@ class WikiPipeline:
     def _apply_tags_to_tree(self, tree: Any, source_file: Path) -> None:
         """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
         apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)
+
+
+# Deferred import: the stage modules (``_compile``/``_index``/``_parse``/
+# ``_resolve``) reference ``WikiPipeline`` in their signatures, so importing
+# them at module top would create a partial-initialization cycle
+# (``_pipeline`` -> stages -> ``_pipeline.WikiPipeline`` while ``_pipeline``
+# is still loading). They are called only at pipeline-run time (inside the
+# methods above), so a bottom-of-module import is runtime-accurate and breaks
+# the cycle without ``if TYPE_CHECKING`` guards. See
+# ``.agents/skills/python-ultimate/references/type-checking.md`` §3.4.
+from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
+from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
+from knox.core.pipeline.stages._parse import parse_and_chunk
+from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
