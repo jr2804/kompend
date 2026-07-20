@@ -157,7 +157,8 @@ Write-Host ""
 if (-not $Preview) {
     & $DoctorArgs[0] $DoctorArgs[1..($DoctorArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "knox doctor reported issues --- continuing build"
+        Write-Error "knox doctor failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
     }
 }
 

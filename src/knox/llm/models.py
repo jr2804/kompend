@@ -32,12 +32,14 @@ from the env vars the provider/catalog advertises.
 from __future__ import annotations
 
 import os
+import pkgutil
 
 from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers import infer_provider_class
+from pydantic_ai.providers import __path__ as _providers_path
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -76,10 +78,15 @@ def build_model(model_string: str) -> Model:
     except _NotInCatalog:
         pass
 
+    # Build a helpful list of known providers for the error message.
+    known = _discover_provider_ids()
+    known_str = ", ".join(sorted(known))
     msg = (
         f"Unknown provider {provider_id!r}: not natively supported by "
         f"pydantic-ai and not in the models-dev catalog. "
-        f"Check the provider prefix (before the first '/' or ':')."
+        f"Model strings use the format 'provider/model' (e.g. 'ollama/{model_string}').\n"
+        f"  Known providers: {known_str}\n"
+        f"  Got: {model_string!r} -> provider={provider_id!r}, model={model_name!r}"
     )
     raise ValueError(msg)
 
@@ -103,6 +110,20 @@ def resolve_model_limits(model_id: str) -> tuple[int, int]:
 
 
 # ── parsing ────────────────────────────────────────────────────────────
+
+
+def _discover_provider_ids() -> set[str]:
+    """Discover all native provider IDs by scanning pydantic_ai.providers submodules.
+
+    No hard-coded provider list — the scan discovers whatever pydantic-ai
+    ships in its installed version. ``sentence_transformers`` is excluded
+    because it's an embedding-only backend, not an LLM provider.
+    """
+    return {
+        m.name
+        for m in pkgutil.iter_modules(_providers_path)
+        if not m.name.startswith("_") and m.name != "sentence_transformers"
+    }
 
 
 def _split(model_string: str) -> tuple[str, str]:
