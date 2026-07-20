@@ -164,7 +164,6 @@ def extract_one(compiler: Any, source: str, combined: str, extraction_system: st
     budget = compiler._budget
     extract_deps: dict[str, str] = {
         "source_text": hashlib.sha256(combined.encode()).hexdigest(),
-        "model": compiler._model,
         "chunk_size_min": str(budget.chunk_size_min),
         "chunk_size_max": str(budget.chunk_size_max),
     }
