@@ -79,7 +79,7 @@ def save_debug_prompt(
     parsed_obj = parsed if isinstance(parsed, (dict, list)) else None
 
     payload: dict[str, Any] = {
-        "model": model_string,
+        "model": model_string,  # nocheck: debug log dict, not wiki metadata
         "stage": agent.stage,
         "source_id": agent.current_source_id,
         "timestamp": datetime.now().isoformat(),

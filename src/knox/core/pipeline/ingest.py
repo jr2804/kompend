@@ -212,7 +212,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         if tags:
             if doc.metadata is None:
                 doc.metadata = {}
-            doc.metadata["tags"] = tags
+            doc.metadata["tags"] = tags  # nocheck: chunk metadata, not wiki metadata
 
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_rel_path(Path(data[MetadataField.SOURCE_FILE])))

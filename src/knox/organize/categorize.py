@@ -196,7 +196,7 @@ def _build_files_payload(extractions: dict[str, Extraction]) -> str:
             {
                 "filename": source,
                 "summary": ext.summary,
-                "tags": list(ext.tags),
+                "tags": list(ext.tags),  # nocheck: categorize output, not wiki metadata
             }
         )
     return json.dumps(payload, ensure_ascii=False)

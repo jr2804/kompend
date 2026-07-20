@@ -169,7 +169,7 @@ class OkfWriter(MarkdownWriter):
             if description:
                 frontmatter["description"] = description
             if source_list:
-                frontmatter["tags"] = source_list
+                frontmatter["tags"] = source_list  # nocheck: OKF frontmatter, not wiki metadata
             frontmatter["timestamp"] = compiled_at
             # KNOX extensions (§4.1 permits additional keys)
             frontmatter["kind"] = node.node_type or "page"

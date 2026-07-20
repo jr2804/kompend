@@ -187,7 +187,7 @@ class KnoxModel(Model):
             self._agent,
             self.model_name,
             _messages_to_debug_dicts(all_messages),
-            {"model": self.model_name},
+            {"model": self.model_name},  # nocheck: debug log dict, not wiki metadata
             content,
             str(finish_reason),
             user_turns=user_turns,

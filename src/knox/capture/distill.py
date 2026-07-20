@@ -90,7 +90,7 @@ def _load_captured_notes(captured_dir: Path) -> list[CapturedNote]:
         text = filepath.read_text(encoding="utf-8")
         meta, body = _parse_frontmatter(text)
         title = meta.get("title") or make_title(body)
-        tags_raw = meta.get("tags") or []
+        tags_raw = meta.get("tags") or []  # nocheck: frontmatter dict, not wiki metadata
         tags = [str(t) for t in tags_raw] if isinstance(tags_raw, list) else []
         captured_at = str(meta.get("captured_at") or "")
         notes.append(
@@ -171,7 +171,7 @@ def _synthesize_with_agent(
     return {
         "title": result.title or tag.replace("-", " ").replace("_", " ").title(),
         "content": result.content or "",
-        "tags": result.tags or [tag],
+        "tags": result.tags or [tag],  # nocheck: frontmatter dict, not wiki metadata
     }
 
 
@@ -184,7 +184,7 @@ def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
     return {
         "title": tag.replace("-", " ").replace("_", " ").title(),
         "content": body.strip(),
-        "tags": [tag],
+        "tags": [tag],  # nocheck: frontmatter dict, not wiki metadata
     }
 
 
@@ -198,7 +198,7 @@ def _write_page(
     timestamp: str,
 ) -> None:
     """Write a distilled page with frontmatter."""
-    tag_lines = "\n".join(f"  - {t}" for t in page["tags"])
+    tag_lines = "\n".join(f"  - {t}" for t in page["tags"])  # nocheck: frontmatter dict, not wiki metadata
     source_lines = "\n".join(f"  - {s}" for s in source_files)
     frontmatter = (
         f"---\n"

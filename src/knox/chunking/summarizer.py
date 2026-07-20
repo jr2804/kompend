@@ -173,7 +173,7 @@ class NodeSummarizer:
         return {
             "content_hash": content_hash,
             "heading_path": hashlib.sha256(heading_path.encode()).hexdigest()[:16],
-            "model": model,
+            "model": model,  # nocheck: summarizer cache deps, not wiki metadata
         }
 
     @staticmethod

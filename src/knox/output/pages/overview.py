@@ -113,7 +113,7 @@ def write_overview(
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
-        "model": agent._model_string,
+        "model": agent._model_string,  # nocheck: overview cache deps, not wiki metadata
         "overview_budget": str(overview_budget),
     }
     cached = cache_store.get("overview", overview_deps)

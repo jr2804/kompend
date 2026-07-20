@@ -55,7 +55,7 @@ def entry_from_report(
         "options": dict(options),
         "llm": llm,
         "config_snapshot": _build_config_snapshot(config),
-        "wiki_meta": {"node_count": node_count},
+        "wiki_meta": {"node_count": node_count},  # nocheck: lint-history schema, not wiki metadata
         "report": report_to_dict(report),
     }
 
@@ -152,7 +152,7 @@ def history_to_text(
         passes = report.get("passes", 0)
         skips = report.get("skips", 0)
         llm = entry.get("llm")
-        model_tag = f"  [{llm.get('model')}]" if llm else ""
+        model_tag = f"  [{llm.get('model')}]" if llm else ""  # nocheck: lint-history schema, not wiki metadata
         lines.append(f"  {entry['timestamp']}  score={score:.0f}%  {passes} pass / {fails} fail / {skips} skip{model_tag}")
 
     if show_trend and len(entries) >= 2:

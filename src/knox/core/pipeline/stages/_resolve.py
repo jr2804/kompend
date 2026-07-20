@@ -124,4 +124,4 @@ def apply_tags_to_tree(tree: Any, source_file: Path, source_dir: Path, source_ta
     if all_tags:
         for node in tree.leaves():
             if node.chunk:
-                node.chunk.metadata["tags"] = all_tags
+                node.chunk.metadata["tags"] = all_tags  # nocheck: chunk metadata, not wiki metadata

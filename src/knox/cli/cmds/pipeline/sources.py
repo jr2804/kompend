@@ -38,7 +38,7 @@ def _get_source_tags(file_path: str, cache_data: dict[str, Any]) -> list[str]:
     """Extract tags for a source file from the parse cache."""
     entry = cache_data.get(file_path, {})
     source_meta = entry.get("source_metadata", {})
-    return source_meta.get("tags", [])
+    return source_meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
 
 
 @app.command(name="sources")
@@ -119,14 +119,14 @@ def sources_tag(
 
     entry = cache_data.get(file_path, {})
     source_meta = entry.get("source_metadata", {})
-    existing_tags = source_meta.get("tags", [])
+    existing_tags = source_meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
 
     if tag in existing_tags:
         get_console().print(f"[yellow]Tag '{tag}' already present on {file_path}[/]")
         return
 
     existing_tags.append(tag)
-    source_meta["tags"] = existing_tags
+    source_meta["tags"] = existing_tags  # nocheck: source metadata, not wiki metadata
     entry["source_metadata"] = source_meta
     cache_data[file_path] = entry
 
@@ -169,14 +169,14 @@ def sources_untag(
 
     entry = cache_data.get(file_path, {})
     source_meta = entry.get("source_metadata", {})
-    existing_tags = source_meta.get("tags", [])
+    existing_tags = source_meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
 
     if tag not in existing_tags:
         get_console().print(f"[yellow]Tag '{tag}' not found on {file_path}[/]")
         return
 
     existing_tags.remove(tag)
-    source_meta["tags"] = existing_tags
+    source_meta["tags"] = existing_tags  # nocheck: source metadata, not wiki metadata
     entry["source_metadata"] = source_meta
     cache_data[file_path] = entry
 

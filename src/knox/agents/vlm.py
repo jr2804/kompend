@@ -113,7 +113,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
             self,
             self._model_string,
             [{"role": "user", "parts": [{"type": "text", "content": deps.prompt}]}],
-            {"model": self._model_string, "image_bytes": len(image_bytes)},
+            {"model": self._model_string, "image_bytes": len(image_bytes)},  # nocheck: debug log dict, not wiki metadata
             caption,
             "stop",
         )

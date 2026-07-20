@@ -206,7 +206,7 @@ def lint_run(
     llm_meta: dict | None = None
     if lint_agent is not None and lint_agent.usage is not None:
         llm_meta = {
-            "model": default_model,
+            "model": default_model,  # nocheck: lint metadata, not wiki metadata
             "usage": lint_agent.usage.to_dict(),
         }
 
