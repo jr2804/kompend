@@ -413,7 +413,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                     raise ModelRetry(delta_msg)
                 return response
 
-            # Fully valid — merge with any accumulated state from previous retries
+            # Fully valid — replace response text with corrected JSON so
+            # PydanticAI validates the fixed version, not the original broken one.
+            # salvage_json may have restructured fields, added defaults, or coerced
+            # types — without this, PydanticAI re-validates the original text.
+            corrected_json = validated.model_dump_json()
+            if corrected_json != text:
+                _set_response_text(response, corrected_json)
+
+            # Merge with any accumulated state from previous retries
             step = ctx.run_step if hasattr(ctx, "run_step") else 0
             if step in state:
                 merged = _merge_valid_data(state[step], validated, schema)
