@@ -24,9 +24,9 @@ The base class handles:
 
 from __future__ import annotations
 
-from abc import ABC
 import json
 import typing
+from abc import ABC
 from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput

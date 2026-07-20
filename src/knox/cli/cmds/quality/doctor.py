@@ -59,7 +59,7 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 def _check_parsers() -> CheckResult:
     """Check parser availability via the shared registry factory."""
     name = "parsers"
-    from knox.preprocessing.parsers._registry import build_default_router
+    from knox.preprocessing.parsers._registry import build_default_router  # noqa: PLC0415
 
     router = build_default_router()
     return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
@@ -157,7 +157,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        from knox.agents.doctor import DoctorAgent, DoctorDeps
+        from knox.agents.doctor import DoctorAgent, DoctorDeps  # noqa: PLC0415
 
         agent = DoctorAgent(
             model_string=model,
@@ -180,7 +180,7 @@ def _ping_embed_model(model: str | None) -> CheckResult:
         return CheckResult(name, True, "No embed model configured — skipped")
 
     try:
-        from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string
+        from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string  # noqa: PLC0415
 
         pydantic_ai_string = _to_pydantic_ai_embedding_string(model)
         embedder = _build_embedder(pydantic_ai_string)

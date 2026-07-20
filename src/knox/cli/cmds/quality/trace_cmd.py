@@ -1,4 +1,4 @@
-"""Doctor, status, list-parsers, and trace (provenance) diagnostic commands."""
+"""``knox trace`` — trace compiled wiki pages back to their source chunks."""
 
 from __future__ import annotations
 
@@ -10,118 +10,10 @@ import typer
 
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
-from knox.cli.args import ConfigPath, JsonOutput, Verbose
+from knox.cli.args import JsonOutput
 from knox.core.config import resolve_config
-from knox.core.config.keys import (
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_VLM_MODEL,
-)
+from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 from knox.logging import get_console, get_err_console
-
-# ── doctor ──────────────────────────────────────────────────────────────
-
-
-@app.command(name="doctor")
-def doctor_cmd(
-    ctx: typer.Context,
-    wiki_dir: str | None = typer.Option(
-        None,
-        "--wiki-dir",
-        "-w",
-        help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
-        envvar="KNOX_WIKI_DIR",
-    ),
-    verbose: Verbose = False,
-    json_output: JsonOutput = False,
-    config: ConfigPath = None,
-) -> None:
-    """Validate configuration and connectivity for a wiki.
-
-    Requires a wiki context: either ``--wiki-dir`` must be set explicitly,
-    or the current directory must contain a compiled wiki (i.e. the
-    resolved output directory must exist).
-    """
-    # Prefer explicit --wiki-dir on this subcommand over the root callback value
-    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
-    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
-
-    if not wiki_dir_override and not output_dir.exists():
-        get_err_console().print(
-            f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
-        )
-        raise typer.Exit(1)
-
-    from knox.cli.cmds.doctor import print_doctor_results, run_doctor
-
-    results = run_doctor(
-        sources_dir=sources_dir,
-        output_dir=output_dir,
-        default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
-        vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
-        embed_model=cfg.get(COMPILE_EMBEDDING_MODEL),
-        cfg=cfg.raw,
-        verbose=verbose,
-    )
-    exit_code = print_doctor_results(results, json_output=json_output)
-    if exit_code:
-        raise typer.Exit(1)
-
-
-# ── status ──────────────────────────────────────────────────────────────
-
-
-@app.command(name="status")
-def status_cmd(
-    ctx: typer.Context,
-    json_output: JsonOutput = False,
-) -> None:
-    """Show per-wiki statistics.
-
-    Displays source count, article count, word count, last compile time,
-    and config path.
-    """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    stats = collect_stats(
-        sources_dir=sources_dir if sources_dir.exists() else None,
-        output_dir=output_dir if output_dir.exists() else None,
-        state_dir=state_dir if state_dir.exists() else None,
-    )
-    print_status(stats, json_output=json_output)
-
-
-# ── list-parsers ────────────────────────────────────────────────────────
-
-
-@app.command(name="list-parsers")
-def list_parsers_cmd(
-    json_output: JsonOutput = False,
-) -> None:
-    """List all registered parsers (built-in + external + HTTP)."""
-    build_default_router()
-
-    parsers = get_registered_parsers()
-
-    if json_output:
-        json.dump(parsers, sys.stdout, indent=2, default=str)
-        sys.stdout.write("\n")
-        return
-
-    if not parsers:
-        get_console().print("No parsers registered.")
-        return
-
-    get_console().print(f"Registered parsers ({len(parsers)}):")
-    for p in parsers:
-        exts = ", ".join(p.get("extensions", []) or [])
-        ptype = p.get("type", "built-in")
-        get_console().print(f"  • {p['name']} ({ptype})  [{exts}]", markup=False)
-
-
-# ── trace (provenance) ──────────────────────────────────────────────────────────────
 
 
 def _shorten(source: str, sources_dir: Path) -> str:
@@ -152,9 +44,6 @@ def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:
     return [_shorten(s, sources_dir) for s in chunks]
 
 
-# ── trace (provenance) ──────────────────────────────────────────────────
-
-
 @app.command(name="trace")
 def trace_cmd(
     ctx: typer.Context,
@@ -178,7 +67,6 @@ def trace_cmd(
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     base_dir = output_dir.parent
-    from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
@@ -222,8 +110,6 @@ def trace_cmd(
             missing.append(slug)
 
     if json_output:
-        # Single slug → one object for backward-friendly parsing;
-        # multiple slugs → array of objects.
         entries = [{"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)} for n in matched]
         data = entries[0] if len(entries) == 1 else entries
         json.dump(data, sys.stdout, indent=2)
