@@ -30,7 +30,6 @@ from knox.compilation._two_phase_core import (
     _upsert_node,
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
-from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.templates import get_template_loader
@@ -44,7 +43,7 @@ _loader = get_template_loader()
 
 
 def run_generation(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     extractions: ExtractionSet,
     chunks: list[ResolvedChunk],
     *,
@@ -90,7 +89,7 @@ def run_generation(
     return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
 
 
-def prepare_concepts(compiler: TwoPhaseCompiler, extractions: ExtractionSet) -> list[dict[str, Any]]:
+def prepare_concepts(compiler: Any, extractions: ExtractionSet) -> list[dict[str, Any]]:
     """Merge and validate concepts from extractions. Returns empty list if none."""
     concepts = extractions.concept_pages()
     embed_model = compiler._config.embedding.model
@@ -115,7 +114,7 @@ def prepare_concepts(compiler: TwoPhaseCompiler, extractions: ExtractionSet) -> 
     return concepts
 
 
-def prepare_source_segments(compiler: TwoPhaseCompiler, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
+def prepare_source_segments(compiler: Any, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
     """Build source segments sized to the context window."""
     by_source: dict[str, str] = defaultdict(str)
     for rc in chunks:
@@ -147,7 +146,7 @@ def prepare_source_segments(compiler: TwoPhaseCompiler, chunks: list[ResolvedChu
 
 
 def run_generation_with_checkpoint(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -182,7 +181,7 @@ def run_generation_with_checkpoint(
 
 
 def generate_all_pages(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -312,7 +311,7 @@ def generate_all_pages(
 
 
 def assemble_wiki(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],
     chunks: list[ResolvedChunk],
@@ -374,7 +373,7 @@ def assemble_wiki(
 
 
 def gen_cache_deps(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     extractions: ExtractionSet,
     *,
     pinned_facts: list[str] | None = None,

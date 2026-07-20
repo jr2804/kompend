@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from knox.core.pipeline.config import TIER_LEVEL
-from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.preprocessing.parsers._registry import get_all_extensions
 
 
-def iter_sources(pipeline: WikiPipeline) -> list:
+def iter_sources(pipeline: Any) -> list:
     """Yield source files to process.
 
     Always scans ``config.source_dir`` for supported file types.
@@ -26,14 +27,14 @@ def iter_sources(pipeline: WikiPipeline) -> list:
     return sources
 
 
-def run_index_tier(pipeline: WikiPipeline) -> None:
+def run_index_tier(pipeline: Any) -> None:
     """Tier 0: download online sources and record state for local files."""
     if pipeline.downloader and pipeline.config.online_sources:
         for url in pipeline.config.online_sources:
             pipeline.downloader.download(url, pipeline.config.source_dir)
 
 
-def detect_resume_tier(pipeline: WikiPipeline) -> str | None:
+def detect_resume_tier(pipeline: Any) -> str | None:
     """Check compile_state.json for previous progress.
 
     Returns the tier to resume at, or ``None`` if no previous run

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import Chunk, ElementType, ResolvedChunk
-from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.logging import get_logger
@@ -14,7 +13,7 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def resolve_chunks(pipeline: WikiPipeline, trees: list[Any]) -> list[Any]:
+def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
     """Resolve leaf chunks from trees and build entity registry + xref.
 
     VLM enrichment (image captions) runs per-leaf when configured.

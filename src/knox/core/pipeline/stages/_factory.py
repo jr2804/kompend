@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -12,8 +10,8 @@ from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.pipeline.config import TIER_LEVEL, Compiler, PipelineConfig, Tier
-from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.pipeline.stages._parse import build_resolver_chain
+from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter

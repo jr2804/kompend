@@ -18,7 +18,6 @@ from knox.core.models import (
     WikiField,
 )
 from knox.core.pipeline.ingest import parse_cache_name
-from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.parsers.base import scrub_document
@@ -39,7 +38,7 @@ def apply_privacy_filter(elements: list[Any]) -> None:
             el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
 
 
-def parse_and_chunk(pipeline: WikiPipeline) -> list[Any]:
+def parse_and_chunk(pipeline: Any) -> list[Any]:
     """Parse documents and chunk them, with optional caching and parallelism.
 
     When tier state is available, sources that already match the
@@ -100,7 +99,7 @@ def parse_and_chunk(pipeline: WikiPipeline) -> list[Any]:
 
 
 def _process_single_source(
-    pipeline: WikiPipeline,
+    pipeline: Any,
     source_file: Path,
     dedup_similar: dict[str, dict[str, Any]],
 ) -> ChunkTree | None:
@@ -159,7 +158,7 @@ def _process_single_source(
     return tree
 
 
-def _try_load_parsed_cache(pipeline: WikiPipeline, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> Any | None:
+def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> Any | None:
     """Try to load a parsed document from cache. Returns *None* on miss."""
     if not use_cache:
         return None
@@ -174,7 +173,7 @@ def _try_load_parsed_cache(pipeline: WikiPipeline, source_file: Path, stem: str,
     return None
 
 
-def _parse_source(pipeline: WikiPipeline, source_file: Path, use_cache: bool, content_hash: str) -> Any | None:
+def _parse_source(pipeline: Any, source_file: Path, use_cache: bool, content_hash: str) -> Any | None:
     """Parse a source file via the router and optionally cache the result."""
     if pipeline.router is None:
         return None
@@ -208,7 +207,7 @@ def _attach_dedup_warning(parsed: Any, stem: str, dedup_similar: dict[str, dict[
     parsed.metadata["_dedup_warning"] = warning
 
 
-def _try_load_chunk_cache(pipeline: WikiPipeline, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
+def _try_load_chunk_cache(pipeline: Any, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
     """Try to load a chunked tree from cache. Returns *None* on miss."""
     if not (use_cache and content_hash):
         return None
@@ -226,7 +225,7 @@ def _try_load_chunk_cache(pipeline: WikiPipeline, source_file: Path, content_has
     return tree
 
 
-def _load_cache(pipeline: WikiPipeline, source_file: Path) -> ParsedDocument | None:
+def _load_cache(pipeline: Any, source_file: Path) -> ParsedDocument | None:
     """Load a cached ParsedDocument if available."""
     cache_path = pipeline._cache_dir() / f"{cache_key(source_file)}.json"
     if not cache_path.exists():
@@ -263,7 +262,7 @@ def _load_cache(pipeline: WikiPipeline, source_file: Path) -> ParsedDocument | N
         return None
 
 
-def _save_cache(pipeline: WikiPipeline, source_file: Path, doc: ParsedDocument) -> None:
+def _save_cache(pipeline: Any, source_file: Path, doc: ParsedDocument) -> None:
     """Write a ParsedDocument to cache."""
     cache_dir = pipeline._cache_dir()
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -293,7 +292,7 @@ def _save_cache(pipeline: WikiPipeline, source_file: Path, doc: ParsedDocument) 
         logger.debug("Cache write failed for %s — ignoring", cache_path, exc_info=True)
 
 
-def _load_dedup_state(pipeline: WikiPipeline) -> tuple[set[str], dict[str, dict[str, Any]]]:
+def _load_dedup_state(pipeline: Any) -> tuple[set[str], dict[str, dict[str, Any]]]:
     """Best-effort load of dedup store.
 
     Returns ``(dedup_skip, dedup_similar)``.

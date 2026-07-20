@@ -12,7 +12,6 @@ from knox.core.models import (
     WikiField,
     WikiNode,
 )
-from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.logging import get_logger
@@ -21,7 +20,7 @@ from knox.trust import filter_wiki
 logger = get_logger(__name__)
 
 
-def run_compile_tier(pipeline: WikiPipeline) -> CompiledWiki | None:
+def run_compile_tier(pipeline: Any) -> CompiledWiki | None:
     """Tier 2+3: resolve leaf chunks from ChunkTree and compile into CompiledWiki."""
     trees = parse_and_chunk(pipeline)
     resolved = resolve_chunks(pipeline, trees)
@@ -35,7 +34,7 @@ def run_compile_tier(pipeline: WikiPipeline) -> CompiledWiki | None:
     return wiki
 
 
-def run_output_tier(pipeline: WikiPipeline) -> None:
+def run_output_tier(pipeline: Any) -> None:
     """Tier 4: write the compiled wiki to the output directory."""
     wiki = load_compiled_wiki(pipeline)
     if wiki is None or not pipeline.output_writer:
@@ -45,12 +44,12 @@ def run_output_tier(pipeline: WikiPipeline) -> None:
     pipeline.output_writer.write(wiki, pipeline.config.output_dir)
 
 
-def compiled_wiki_path(pipeline: WikiPipeline) -> Path:
+def compiled_wiki_path(pipeline: Any) -> Path:
     """Resolve the compiled wiki JSON path."""
     return pipeline.config.paths.compiled_wiki_path
 
 
-def save_compiled_wiki(pipeline: WikiPipeline, wiki: CompiledWiki) -> None:
+def save_compiled_wiki(pipeline: Any, wiki: CompiledWiki) -> None:
     """Serialize CompiledWiki to JSON on disk."""
     path = compiled_wiki_path(pipeline)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +74,7 @@ def save_compiled_wiki(pipeline: WikiPipeline, wiki: CompiledWiki) -> None:
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
-def load_compiled_wiki(pipeline: WikiPipeline) -> CompiledWiki | None:
+def load_compiled_wiki(pipeline: Any) -> CompiledWiki | None:
     """Load CompiledWiki from JSON on disk. Returns *None* on cache miss."""
     path = compiled_wiki_path(pipeline)
     if not path.exists():

@@ -27,11 +27,15 @@ from knox.core.models import (
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.config import (
     ALL_TIERS,
-    PipelineConfig,
     TIER_DESCRIPTIONS,
     TIER_LEVEL,
+    PipelineConfig,
     Tier,
 )
+from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
+from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
+from knox.core.pipeline.stages._parse import parse_and_chunk
+from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
@@ -381,17 +385,3 @@ class WikiPipeline:
     def _apply_tags_to_tree(self, tree: Any, source_file: Path) -> None:
         """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
         apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)
-
-
-# Deferred import: the stage modules (``_compile``/``_index``/``_parse``/
-# ``_resolve``) reference ``WikiPipeline`` in their signatures, so importing
-# them at module top would create a partial-initialization cycle
-# (``_pipeline`` -> stages -> ``_pipeline.WikiPipeline`` while ``_pipeline``
-# is still loading). They are called only at pipeline-run time (inside the
-# methods above), so a bottom-of-module import is runtime-accurate and breaks
-# the cycle without ``if TYPE_CHECKING`` guards. See
-# ``.agents/skills/python-ultimate/references/type-checking.md`` §3.4.
-from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
-from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
-from knox.core.pipeline.stages._parse import parse_and_chunk
-from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks

@@ -32,13 +32,21 @@ from knox.compilation._two_phase_core import (
     _tokens_to_chars,
 )
 from knox.compilation.base import BaseCompiler
-from knox.compilation.flows import extraction as ext_flow
-from knox.compilation.flows import generation as gen_flow
 from knox.compilation.flows.assembly import (
     _cosine_similarity,
 )
 from knox.compilation.flows.assembly import (
     merge_similar_concepts as _merge_similar_concepts,
+)
+from knox.compilation.flows.extraction import (
+    batch_texts,
+    combine_extractions,
+    reduce_extractions,
+    run_extraction,
+)
+from knox.compilation.flows.generation import (
+    gen_cache_deps,
+    run_generation,
 )
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
@@ -165,7 +173,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 sum(ct for _, ct in self._llm_stats),
             )
 
-        gen_deps = gen_flow.gen_cache_deps(self, extractions, pinned_facts=pinned_facts)
+        gen_deps = gen_cache_deps(self, extractions, pinned_facts=pinned_facts)
         if not self._config.no_cache:
             cached = self._cache_store.get("generate", gen_deps)
             if cached is not None:
@@ -222,7 +230,7 @@ class TwoPhaseCompiler(BaseCompiler):
 
     def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source."""
-        return ext_flow.run_extraction(self, chunks, trees=trees)
+        return run_extraction(self, chunks, trees=trees)
 
     def generate(
         self,
@@ -233,17 +241,17 @@ class TwoPhaseCompiler(BaseCompiler):
         pinned_facts: list[str] | None = None,
     ) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages."""
-        return gen_flow.run_generation(self, extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+        return run_generation(self, extractions, chunks, trees=trees, pinned_facts=pinned_facts)
 
     def _combine_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
         """Combine per-batch extractions into one document-level Extraction."""
-        return ext_flow.combine_extractions(self, source, parts)
+        return combine_extractions(self, source, parts)
 
     def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
         """LLM-powered reduce: merge partial extractions into a coherent whole."""
-        return ext_flow.reduce_extractions(self, source, parts)
+        return reduce_extractions(self, source, parts)
 
     @staticmethod
     def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
         """Group texts into batches that fit within *char_budget* (chars)."""
-        return ext_flow.batch_texts(texts, char_budget)
+        return batch_texts(texts, char_budget)

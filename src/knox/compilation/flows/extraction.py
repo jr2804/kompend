@@ -24,7 +24,6 @@ from knox.compilation._two_phase_core import (
     _try_pydanticai_extraction,
 )
 from knox.compilation.flows.assembly import build_tree_texts
-from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
 from knox.core.templates import get_template_loader
@@ -54,7 +53,7 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
 
 
 def run_extraction(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     chunks: list[ResolvedChunk],
     *,
     trees: list[ChunkTree] | None = None,
@@ -152,7 +151,7 @@ def run_extraction(
     return extractions
 
 
-def extract_one(compiler: TwoPhaseCompiler, source: str, combined: str, extraction_system: str) -> Extraction | None:
+def extract_one(compiler: Any, source: str, combined: str, extraction_system: str) -> Extraction | None:
     """Run a single extraction LLM call with cache."""
     budget = compiler._budget
     extract_deps: dict[str, str] = {
@@ -202,7 +201,7 @@ def extract_one(compiler: TwoPhaseCompiler, source: str, combined: str, extracti
 
 
 def extract_incremental(
-    compiler: TwoPhaseCompiler,
+    compiler: Any,
     source: str,
     batches_list: list[str],
     extraction_system: str,
@@ -257,7 +256,7 @@ def extract_incremental(
     return results, False
 
 
-def combine_extractions(compiler: TwoPhaseCompiler, source: str, parts: list[Extraction]) -> Extraction:
+def combine_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
     """Combine per-batch extractions into one document-level Extraction."""
     if not parts:
         return Extraction(source=source)
@@ -269,7 +268,7 @@ def combine_extractions(compiler: TwoPhaseCompiler, source: str, parts: list[Ext
     return _merge_extractions(source, parts)
 
 
-def reduce_extractions(compiler: TwoPhaseCompiler, source: str, parts: list[Extraction]) -> Extraction:
+def reduce_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
     """LLM-powered reduce: merge partial extractions into a coherent whole."""
     partial_json = json.dumps([p.to_dict() for p in parts], ensure_ascii=False)
     reduce_deps_key: dict[str, str] = {
