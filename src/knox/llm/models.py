@@ -38,8 +38,8 @@ from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers import __path__ as _providers_path
+from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -119,11 +119,7 @@ def _discover_provider_ids() -> set[str]:
     ships in its installed version. ``sentence_transformers`` is excluded
     because it's an embedding-only backend, not an LLM provider.
     """
-    return {
-        m.name
-        for m in pkgutil.iter_modules(_providers_path)
-        if not m.name.startswith("_") and m.name != "sentence_transformers"
-    }
+    return {m.name for m in pkgutil.iter_modules(_providers_path) if not m.name.startswith("_") and m.name != "sentence_transformers"}
 
 
 def _split(model_string: str) -> tuple[str, str]:

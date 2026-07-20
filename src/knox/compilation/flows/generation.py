@@ -271,8 +271,7 @@ def generate_all_pages(
                     concept_names = [c.get("name", f"concept-{batch_start + i}") for i, c in enumerate(batch)]
                     skipped_str = ", ".join(concept_names)
                     logger.warning(
-                        "TwoPhase: %d/%d concepts will have no wiki page "
-                        "(all %d source segment(s) failed for batch #%d-%d): [%s]",
+                        "TwoPhase: %d/%d concepts will have no wiki page (all %d source segment(s) failed for batch #%d-%d): [%s]",
                         len(batch),
                         num_concepts,
                         num_segments,

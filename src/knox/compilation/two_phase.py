@@ -193,7 +193,17 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
         gen_elapsed = time.monotonic() - gen_start
 
-        _delete_gen_checkpoint(self._config, gen_deps)
+        has_failures = self._batch_tracker.failed > 0
+        # When batches failed, keep the checkpoint so a re-run can resume and
+        # retry only the failed batches. Don't cache the incomplete wiki.
+        if has_failures:
+            logger.info(
+                "TwoPhase: %d/%d batch(es) failed — checkpoint preserved, wiki not cached. Re-run to retry failed batches only.",
+                self._batch_tracker.failed,
+                self._batch_tracker.total,
+            )
+        else:
+            _delete_gen_checkpoint(self._config, gen_deps)
 
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats
@@ -224,7 +234,7 @@ class TwoPhaseCompiler(BaseCompiler):
             total_comp,
         )
 
-        if not self._config.no_cache:
+        if not self._config.no_cache and not has_failures:
             self._cache_store.set("generate", gen_deps, wiki)
         return wiki
 

@@ -25,7 +25,6 @@ The base class handles:
 from __future__ import annotations
 
 import json
-import json
 import typing
 from abc import ABC
 from pathlib import Path
@@ -534,10 +533,7 @@ def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
     # Check if the model returned a list when the schema expects an object.
     if isinstance(parsed, list) and hasattr(schema, "model_fields"):
         expected = _format_schema_fields(schema)
-        issues.append(
-            f"- You returned a JSON array, but the expected output is a single JSON object with fields {expected}. "
-            f"Return one object, not a list."
-        )
+        issues.append(f"- You returned a JSON array, but the expected output is a single JSON object with fields {expected}. Return one object, not a list.")
 
     if isinstance(parsed, dict):
         # Check each field against the schema

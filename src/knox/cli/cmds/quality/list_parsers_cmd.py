@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import sys
 
-import typer
-
 from knox.cli.app import app
 from knox.cli.args import JsonOutput
 from knox.logging import get_console
