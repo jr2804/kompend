@@ -90,6 +90,20 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
     if not content or not content.strip():
         return None
 
+    content = content.strip()
+
+    # Detect double-encoded JSON: the model wrapped a JSON object in extra
+    # quotes, producing a JSON string literal like '{"summary":"..."}'.
+    # This happens when small models confuse "return JSON" with "return a
+    # string containing JSON". Unwrap the outer string before parsing.
+    if content.startswith('"') and content.endswith('"') and len(content) > 2 and ("{" in content or "[" in content):
+        try:
+            inner = json.loads(content)  # Parse the outer string literal
+            if isinstance(inner, str) and inner.strip().startswith(("{", "[")):
+                content = inner.strip()  # Use the unwrapped JSON
+        except (json.JSONDecodeError, ValueError):
+            pass  # Not a string literal — proceed with original content
+
     if schema is not None:
         try:
             parsed = json_repair.loads(content, schema=schema, schema_repair_mode="salvage")
