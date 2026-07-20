@@ -90,7 +90,7 @@ def _okf_type(node_type: str | None) -> str:
 def _okf_description(node: Any) -> str:
     """Extract a one-line description from a wiki node.
 
-    Uses the first non-empty line of content, truncated to ~120 chars.
+    Uses the first non-empty line of content.
     """
     content = (node.content or "").strip()
     if not content:
@@ -98,8 +98,6 @@ def _okf_description(node: Any) -> str:
     first_line = content.split("\n")[0].strip()
     # Strip [[wikilinks]] to plain text (use alias or target name).
     first_line = _WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
-    if len(first_line) > 120:
-        return first_line[:117].rstrip() + "…"
     return first_line
 
 

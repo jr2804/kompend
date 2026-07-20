@@ -550,7 +550,7 @@ def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
                         if not isinstance(item, dict):
                             expected = _format_schema_fields(inner_type)
                             issues.append(
-                                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))[:80]})"
+                                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})"
                             )
 
     if not issues:

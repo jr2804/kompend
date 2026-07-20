@@ -86,11 +86,8 @@ def _short_source(path: str) -> str:
 
 
 def _display_title(text: str, max_chars: int = 80) -> str:
-    """Truncate summary text for table display (not content processing)."""
-    text = text.strip().replace("\n", " ").replace("|", "\\|")
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars].rstrip() + "…"
+    """Format summary text for table display (no truncation)."""
+    return text.strip().replace("\n", " ").replace("|", "\\|")
 
 
 def _format_sources_table(sources: list[str], titles: dict[str, str] | None = None) -> list[str]:

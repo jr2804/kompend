@@ -120,11 +120,7 @@ def _discover_provider_ids() -> set[str]:
     """
     import pydantic_ai.providers
 
-    return {
-        m.name
-        for m in pkgutil.iter_modules(pydantic_ai.providers.__path__)
-        if not m.name.startswith("_") and m.name != "sentence_transformers"
-    }
+    return {m.name for m in pkgutil.iter_modules(pydantic_ai.providers.__path__) if not m.name.startswith("_") and m.name != "sentence_transformers"}
 
 
 def _split(model_string: str) -> tuple[str, str]:
