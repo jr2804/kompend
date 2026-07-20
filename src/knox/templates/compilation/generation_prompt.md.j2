@@ -10,17 +10,7 @@ role: compile.generate
 response_format: json_object
 ---
 
-You are a technical knowledge-base writer. Using the source content and extracted concepts below, generate one comprehensive wiki page per concept.
-
-Rules:
-- Each page must be 150–400 words of well-structured prose (no bullet dumps).
-- Use ## subheadings to organise: Definition, Key Properties, Related Work / Context,
-  Applications / Findings.
-- After each factual claim, append inline provenance: [filename:page] — use the
-  source filename from the content block.
-- Cross-reference related concepts using [[Concept Name]] wikilink syntax.
-- Do NOT repeat the same information across multiple pages — each page should focus on its own concept.
-- If a concept only appears in one source, note that explicitly.
+Using the source content and extracted concepts below, generate one comprehensive wiki page per concept.
 {% if pinned_facts %}
 
 MUST-PRESERVE FACTS (hard constraint, WiCER refinement input):

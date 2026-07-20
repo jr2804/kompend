@@ -297,6 +297,8 @@ def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any
 
 def _part_to_debug_dict(part: Any) -> dict[str, Any]:
     """Convert a single ModelPart to a debug-friendly dict."""
+    if isinstance(part, SystemPromptPart):
+        return {"type": "system_prompt", "content": part.content}
     if isinstance(part, TextPart):
         return {"type": "text", "content": part.content}
     if isinstance(part, ThinkingPart):

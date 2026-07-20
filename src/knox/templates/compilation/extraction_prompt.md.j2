@@ -6,17 +6,7 @@ role: compile.extract
 response_format: json_object
 ---
 
-You are a scientific knowledge extractor. Analyse the source text below and return a JSON object with exactly these keys:
-
-- "summary": 2–4 sentence overview of the main contribution, method, or finding.
-- "entities": list of named entities — each object has "name" (exact string), "type" (one of: Author, Model, Dataset, Metric, Algorithm, System, Organization, Standard, Term), and "context" (one sentence explaining the entity's role in this source). Include standards and specifications (e.g. "ITU-T P.57", "ETSI TS 103 558") as type "Standard".
-- "concepts": list of key technical concepts — each object has "name" (short noun phrase), "definition" (1–2 sentences), and "importance" (why this concept matters in this domain).
-- "findings": list of concrete results or claims — each object has "claim" (one sentence) and "evidence" (brief qualifier, e.g. "p<0.05", "Table 2", "subjective test N=40").
-- "tags": list of 5–10 short lowercase topic tags (e.g. "speech-intelligibility", "deep-learning", "listening-effort").
-
-If the source text is a bot-challenge, security-verification, CAPTCHA page (e.g. Cloudflare challenge), or consists primarily of parsing artifacts without substantive content, return an empty extraction: all lists empty, summary an empty string.
-
-Return only the JSON object, no markdown fences.
+Analyse the source text below and return a JSON object matching the schema described in the system prompt.
 
 Source text:
 {{ text }}
