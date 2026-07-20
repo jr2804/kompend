@@ -37,6 +37,12 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-commit, manual]
+      - id: ruff-forbidden-rules
+        name: ruff forbidden rules (ANN001, ANN201, ANN202, PLC0415)
+        entry: uv run ruff check --select ANN001,ANN201,ANN202,PLC0415 --no-fix
+        language: system
+        types: [python]
+        stages: [pre-commit, manual]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

@@ -18,3 +18,7 @@ run = "uv run python scripts/check_antipatterns.py"
 [tasks.check-all]
 description = "Run all AST-based antipattern checkers"
 depends = ["check-field-consistency", "check-antipatterns"]
+
+[tasks.install-hooks]
+description = "Install native git hooks (pre-commit, pre-push)"
+run = "git config --replace-all core.hooksPath .githooks"
