@@ -26,6 +26,7 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.flows.assembly import build_tree_texts
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
+from knox.core.models.enums import CacheDeps
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
@@ -163,14 +164,22 @@ def extract_one(compiler: Any, source: str, combined: str, extraction_system: st
     """Run a single extraction LLM call with cache."""
     budget = compiler._budget
     extract_deps: dict[str, str] = {
-        "source_text": hashlib.sha256(combined.encode()).hexdigest(),
-        "chunk_size_min": str(budget.chunk_size_min),
-        "chunk_size_max": str(budget.chunk_size_max),
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(combined.encode()).hexdigest(),
+        CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
+        CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
     }
     if not compiler._config.no_cache:
         cached = compiler._cache_store.get("extract", extract_deps)
         if cached is not None:
+            logger.info("TwoPhase: extraction cache hit for '%s'", source)
             return cached
+        logger.info(
+            "TwoPhase: extraction cache miss for '%s' (text_hash=%.16s, chunk_min=%s, chunk_max=%s)",
+            source,
+            extract_deps[CacheDeps.SOURCE_TEXT],
+            extract_deps[CacheDeps.CHUNK_SIZE_MIN],
+            extract_deps[CacheDeps.CHUNK_SIZE_MAX],
+        )
 
     agent = ExtractionAgent(
         model_string=compiler._model or "",
@@ -213,11 +222,36 @@ def extract_incremental(
     batches_list: list[str],
     extraction_system: str,
 ) -> tuple[list[Extraction | None], bool]:
-    """Run extraction with message_history threading between batches."""
+    """Run extraction with message_history threading between batches.
+
+    Per-batch cache is checked first — cached batches skip the LLM call
+    entirely. Only uncached batches are sent to the model, and the
+    message history threads between consecutive uncached batches.
+    """
+    budget = compiler._budget
     results: list[Extraction | None] = []
     history: list[Any] = []
     agent: ExtractionAgent | None = None
     for batch_idx, combined in enumerate(batches_list):
+        # Per-batch cache (same key as extract_one)
+        extract_deps: dict[str, str] = {
+            CacheDeps.SOURCE_TEXT: hashlib.sha256(combined.encode()).hexdigest(),
+            CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
+            CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
+        }
+        if not compiler._config.no_cache:
+            cached = compiler._cache_store.get("extract", extract_deps)
+            if cached is not None:
+                logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
+                results.append(cached)
+                continue
+            logger.info(
+                "TwoPhase: extraction cache miss for '%s' batch %d (text_hash=%.16s)",
+                source,
+                batch_idx,
+                extract_deps[CacheDeps.SOURCE_TEXT],
+            )
+
         if agent is None:
             agent = ExtractionAgent(
                 model_string=compiler._model or "",
@@ -241,15 +275,16 @@ def extract_incremental(
             )
             history = new_messages
             compiler._batch_tracker.record(failed=False)
-            results.append(
-                Extraction(
-                    source=source,
-                    summary=validated.summary,
-                    entities=[e.model_dump() for e in validated.entities],
-                    concepts=[c.model_dump() for c in validated.concepts],
-                    tags=validated.tags,
-                )
+            result = Extraction(
+                source=source,
+                summary=validated.summary,
+                entities=[e.model_dump() for e in validated.entities],
+                concepts=[c.model_dump() for c in validated.concepts],
+                tags=validated.tags,
             )
+            if not compiler._config.no_cache:
+                compiler._cache_store.set("extract", extract_deps, result)
+            results.append(result)
         except LLMOutputError:
             logger.warning(
                 "TwoPhase: incremental extraction failed for '%s' batch %d",
@@ -279,9 +314,9 @@ def reduce_extractions(compiler: Any, source: str, parts: list[Extraction]) -> E
     """LLM-powered reduce: merge partial extractions into a coherent whole."""
     partial_json = json.dumps([p.to_dict() for p in parts], ensure_ascii=False)
     reduce_deps_key: dict[str, str] = {
-        "source_text": hashlib.sha256(partial_json.encode()).hexdigest(),
-        "model": compiler._model,
-        "stage": "reduce",
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(partial_json.encode()).hexdigest(),
+        CacheDeps.MODEL: compiler._model,
+        CacheDeps.STAGE: "reduce",
     }
     if not compiler._config.no_cache:
         cached = compiler._cache_store.get("extract", reduce_deps_key)

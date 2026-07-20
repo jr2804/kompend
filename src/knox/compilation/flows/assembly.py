@@ -169,7 +169,7 @@ def attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[Any]) -> None:
     """Attach tags from chunk metadata to wiki nodes."""
     all_tags: list[str] = []
     for rc in chunks:
-        chunk_tags = rc.chunk.metadata.get("tags") if hasattr(rc, "chunk") else None
+        chunk_tags = rc.chunk.metadata.get(MetadataField.TAGS) if hasattr(rc, "chunk") else None
         if chunk_tags:
             all_tags.extend(chunk_tags)
     unique_tags = list(dict.fromkeys(all_tags))
@@ -221,7 +221,7 @@ def build_edges(
     # Also wire up explicit "related" links from the LLM response.
     title_to_id = {n.title: n.id for n in nodes}
     for node in nodes:
-        for related_title in node.metadata.get("related", []):
+        for related_title in node.metadata.get(MetadataField.RELATED, []):
             target_id = title_to_id.get(related_title)
             if target_id and target_id != node.id:
                 pair = (min(node.id, target_id), max(node.id, target_id))

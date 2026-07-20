@@ -80,8 +80,8 @@ class GraphCompiler(BaseCompiler):
                     WikiField.CHUNK_COUNT: 0,
                     MetadataField.SOURCE_COUNT: 0,
                     MetadataField.SOURCE_NAMES: [],
-                    "model": self.model,
-                    "kinds": [],
+                    MetadataField.MODEL: self.model,
+                    MetadataField.KINDS: [],
                 },
             )
 
@@ -126,10 +126,10 @@ class GraphCompiler(BaseCompiler):
                 WikiField.CHUNK_COUNT: len(chunks),
                 MetadataField.SOURCE_COUNT: source_count,
                 MetadataField.SOURCE_NAMES: source_names,
-                "node_count": len(nodes),
-                "edge_count": len(edges),
-                "model": self.model,
-                "kinds": dict(kind_counts),
+                MetadataField.NODE_COUNT: len(nodes),
+                MetadataField.EDGE_COUNT: len(edges),
+                MetadataField.MODEL: self.model,
+                MetadataField.KINDS: dict(kind_counts),
             },
         )
 
@@ -160,7 +160,7 @@ class GraphCompiler(BaseCompiler):
                     MetadataField.SOURCE_FILE: source,
                     WikiField.CHUNK_COUNT: len(group_chunks),
                     "frontmatter": {"kind": kind},
-                    MetadataField.TAGS: list({tag for rc in group_chunks for tag in (rc.chunk.metadata.get("tags") or [])}),
+                    MetadataField.TAGS: list({tag for rc in group_chunks for tag in (rc.chunk.metadata.get(MetadataField.TAGS) or [])}),
                 },
             )
             nodes.append(node)

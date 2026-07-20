@@ -31,7 +31,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
-from knox.core.models.enums import MetadataField
+from knox.core.models.enums import CacheDeps, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import encode_for_llm
@@ -59,11 +59,11 @@ def run_generation(
             toc=[],
             metadata={
                 WikiField.CHUNK_COUNT: len(chunks),
-                "two_phase": True,
-                "generation_skipped": True,
-                "concepts_available": 0,
-                "skip_reason": "extraction returned no concepts",
-                "node_count": 0,
+                MetadataField.TWO_PHASE: True,
+                MetadataField.GENERATION_SKIPPED: True,
+                MetadataField.CONCEPTS_AVAILABLE: 0,
+                MetadataField.SKIP_REASON: "extraction returned no concepts",
+                MetadataField.NODE_COUNT: 0,
             },
         )
 
@@ -300,8 +300,8 @@ def generate_all_pages(
                         source_chunks=[],
                         metadata={
                             MetadataField.PROVENANCE: page.provenance,
-                            "related": page.related,
-                            "two_phase": True,
+                            MetadataField.RELATED: page.related,
+                            MetadataField.TWO_PHASE: True,
                             "images": all_images,
                             "frontmatter": {
                                 "title": page.title or f"Concept {batch_start + idx}",
@@ -362,10 +362,10 @@ def assemble_wiki(
             toc=[],
             metadata={
                 WikiField.CHUNK_COUNT: len(chunks),
-                "two_phase": True,
-                "generation_skipped": True,
-                "skip_reason": "all pages filtered as empty",
-                "node_count": 0,
+                MetadataField.TWO_PHASE: True,
+                MetadataField.GENERATION_SKIPPED: True,
+                MetadataField.SKIP_REASON: "all pages filtered as empty",
+                MetadataField.NODE_COUNT: 0,
             },
         )
 
@@ -381,12 +381,12 @@ def assemble_wiki(
         quality_score=quality,
         metadata={
             WikiField.CHUNK_COUNT: len(chunks),
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-            "two_phase": True,
-            "concepts_merged": len(concepts),
-            "context_window": cw.max_input,
-            "pinned_facts_count": len(pinned_clean),
+            MetadataField.NODE_COUNT: len(nodes),
+            MetadataField.EDGE_COUNT: len(edges),
+            MetadataField.TWO_PHASE: True,
+            MetadataField.CONCEPTS_MERGED: len(concepts),
+            MetadataField.CONTEXT_WINDOW: cw.max_input,
+            MetadataField.PINNED_FACTS_COUNT: len(pinned_clean),
         },
     )
 
@@ -404,10 +404,10 @@ def gen_cache_deps(
     pin_hash = hashlib.sha256(pin_blob.encode()).hexdigest()
     budget = compiler._budget
     deps: dict[str, str] = {}
-    deps["extractions"] = ext_hash or ""
-    deps["model"] = compiler._model or ""
-    deps["chunk_size_min"] = str(budget.chunk_size_min or "")
-    deps["chunk_size_max"] = str(budget.chunk_size_max or "")
-    deps["concepts_per_batch"] = str(budget.concepts_per_batch or "")
-    deps["pinned_facts"] = pin_hash or ""
+    deps[CacheDeps.EXTRACTIONS] = ext_hash or ""
+    deps[CacheDeps.MODEL] = compiler._model or ""
+    deps[CacheDeps.CHUNK_SIZE_MIN] = str(budget.chunk_size_min or "")
+    deps[CacheDeps.CHUNK_SIZE_MAX] = str(budget.chunk_size_max or "")
+    deps[CacheDeps.CONCEPTS_PER_BATCH] = str(budget.concepts_per_batch or "")
+    deps[CacheDeps.PINNED_FACTS] = pin_hash or ""
     return deps

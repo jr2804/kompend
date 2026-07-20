@@ -50,7 +50,7 @@ from knox.compilation.flows.generation import (
 )
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiField
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.llm.context_window import ContextWindow, discover_context_window
@@ -150,7 +150,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 nodes=[],
                 edges=[],
                 toc=[],
-                metadata={WikiField.CHUNK_COUNT: 0, "two_phase": True, "llm_calls": 0},
+                metadata={WikiField.CHUNK_COUNT: 0, MetadataField.TWO_PHASE: True, "llm_calls": 0},
             )
 
         num_sources = len({str(rc.chunk.source_file or "unknown") for rc in chunks})

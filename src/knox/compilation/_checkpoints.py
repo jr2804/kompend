@@ -53,7 +53,7 @@ def _load_gen_checkpoint(
         logger.debug("Generation checkpoint deps mismatch -- ignoring")
         return None
     try:
-        nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]
+        nodes: list[WikiNode] = [_decode_json(n) for n in raw.get("nodes", [])]  # nocheck: checkpoint format, not wiki metadata
     except Exception:
         logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
         return None
@@ -76,7 +76,7 @@ def _save_gen_checkpoint(
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "deps": gen_deps,
-        "nodes": [_encode_json(n) for n in nodes],
+        "nodes": [_encode_json(n) for n in nodes],  # nocheck: checkpoint format, not wiki metadata
         "slug_to_idx": slug_to_idx,
         "completed_batches": list(completed_batches),
     }
