@@ -20,14 +20,21 @@ through this package — no other module reads config files or env vars directly
 ### Architecture
 
 - `__init__.py` — Public API re-exports
-- `_core.py` — Config resolution engine (merge, precedence, discovery)
+- `_core.py` — Config resolution entry point (merge, precedence, discovery)
 - `generate.py` — Code-driven TOML generation from DEFAULTS
-- `keys.py` — Config key constants
+- `keys.py` — Config key constants (StrEnum)
 - `_configs.py` — Config dataclass definitions
+- `engine/` — Split resolution engine (discrete stages):
+  - `_env.py` — Env var loading (``KNOX_*``)
+  - `_loading.py` — TOML file loading
+  - `_overlay.py` — Config overlay merging
+  - `_precedence.py` — Precedence ordering and final resolution
+  - `_schema.py` — Config schema validation
+  - `__init__.py` — Public re-exports for the engine
 - `AGENTS.md` — This file
 
-Public API lives in `__init__.py`. Internal helpers in `_core.py` are prefixed
-with `_` and should not be imported outside this package or tests.
+Public API lives in `__init__.py`. Internal helpers are prefixed with `_`
+and should not be imported outside this package or tests.
 
 `generate.py` provides `generate_scaffold_config()` (used by `knox init` to
 write `.knox/config.toml` from `DEFAULTS` — no Jinja2 template involved) and

@@ -18,15 +18,19 @@ Every command entry point lives here — commands are the only way users invoke 
 
 ### File organization
 
-Commands organized by domain/functional grouping:
+Commands organized by domain/functional grouping. Top-level modules are
+individual entry points; ``knowledge/`` and ``pipeline/`` are group sub-apps:
 
-| Module | Purpose | Entry Point(s) |
-|--------|---------|-----------------|
+| Module(s) | Purpose | Entry Point(s) |
+|-----------|---------|-----------------|
+| `agent.py` | Agent CLI (ACP interactive) | `/knox agent` |
+| `agents.py` | Agent management | `/knox agents` |
 | `capture.py` | Document capture | `/knox capture` |
 | `config.py` | Configuration management | `/knox config` (sub-app: get, set, validate, show) |
 | `doctor.py` | Health/diagnostic checks | `/knox doctor` |
 | `init.py` | Project initialization | `/knox init` (sub-app: bare, scaffold, bootstrap) |
 | `lint.py` | Linting and validation | `/knox lint` (sub-app: run, history, prune) |
+| `log.py` | Run log viewer | `/knox log` |
 | `memory.py` | Memory/RAG operations | `/knox memory` (sub-app: query, add, feedback) |
 | `organize.py` | Wiki organization | `/knox organize` |
 | `pack.py` | Archive packing | `/knox pack` |
@@ -35,7 +39,10 @@ Commands organized by domain/functional grouping:
 | `query.py` | Vector search / RAG queries | `/knox query` |
 | `review.py` | Review queue management | `/knox review` |
 | `serve.py` | Local HTTP server | `/knox serve` |
+| `sources.py` | Source management | `/knox sources` |
 | `status.py` | Wiki statistics | `/knox status` |
+| `knowledge/` | Knowledge sub-app | capture, learn, distill, memory, organize, pack, query |
+| `pipeline/` | Pipeline sub-app | compile, config, sources, status |
 
 ### Command function patterns
 
