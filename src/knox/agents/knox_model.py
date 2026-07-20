@@ -110,6 +110,7 @@ class KnoxModel(Model):
         # is strictly better and preserves history on compression failure.
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         self._repair_tool_call_args(response)
+        self._repair_thinking_part(response)
         self._repair_text_part(response)
         self._track_usage(response)
         self._save_debug(messages, response)
@@ -221,7 +222,34 @@ class KnoxModel(Model):
                 part.args = repaired
 
     @staticmethod
-    def _repair_text_part(response: ModelResponse) -> None:
+    def _repair_thinking_part(response: ModelResponse) -> None:
+        """Convert ThinkingPart with valid JSON to TextPart.
+
+        Some Ollama models return thinking content even when
+        ``reasoning_effort: none`` is set.  PydanticAI only validates
+        ``TextPart`` for structured output, so a response with only a
+        ``ThinkingPart`` (even one containing valid JSON) is treated as
+        invalid, triggering a retry that wastes context and usually fails
+        identically.
+
+        We intercept the response *before* PydanticAI validates it, check
+        if the ThinkingPart contains valid JSON, and if so, convert it to
+        a TextPart so the structured output validator can process it.
+        """
+        for i, part in enumerate(response.parts):
+            if not isinstance(part, ThinkingPart):
+                continue
+            content = part.content
+            if not content:
+                continue
+            repaired = salvage_json(content)
+            if isinstance(repaired, (dict, list)):
+                # Replace the ThinkingPart with a TextPart containing the JSON
+                response.parts[i] = TextPart(content=json.dumps(repaired, ensure_ascii=False))
+                logger.info(
+                    "Converted ThinkingPart to TextPart (%d chars of JSON)",
+                    len(response.parts[i].content),
+                )
         """Run ``json_repair`` on ``TextPart`` for structured-output agents.
 
         The same class of JSON errors that tool-call repair fixes (bad
