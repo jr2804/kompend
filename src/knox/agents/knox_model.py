@@ -197,35 +197,6 @@ class KnoxModel(Model):
         if filepath is not None:
             self._agent._last_debug_path = filepath
 
-    # ── KNOX-specific hooks ─────────────────────────────────────────────
-
-    @staticmethod
-    def _repair_tool_call_args(response: ModelResponse) -> None:
-        """Run ``json_repair`` on ``ToolCallPart.args`` strings in-place.
-
-        Small local models frequently produce tool-call arguments with
-        invalid JSON: truncated output, bad escapes, stray
-        control characters, trailing prose.  pydantic-ai's built-in
-        validator uses pydantic's strict ``validate_json`` which rejects
-        all of these, triggering a retry that wastes context window and
-        usually produces the same error.
-
-        We intercept the raw args string *before* pydantic-ai validates
-        it, run ``json_repair.loads``, and replace ``args`` with the
-        repaired dict.  When the JSON is already valid or the repair
-        fails entirely, the part is left untouched so pydantic-ai's
-        normal retry logic applies.
-        """
-        for part in response.parts:
-            if not isinstance(part, ToolCallPart):
-                continue
-            args = part.args
-            if not isinstance(args, str):
-                continue  # Already a dict, or None
-            repaired = salvage_json(args)
-            if isinstance(repaired, dict):
-                part.args = repaired
-
     def _repair_thinking_part(self, response: ModelResponse) -> None:
         """Convert ThinkingPart/TextPart with valid JSON to ToolCallPart.
 
@@ -250,9 +221,7 @@ class KnoxModel(Model):
         """
         # Check if this agent uses structured output (not free-text str)
         is_structured = (
-            self._agent is not None
-            and getattr(self._agent, "result_type", None) is not None
-            and getattr(self._agent, "result_type", None) is not str
+            self._agent is not None and getattr(self._agent, "result_type", None) is not None and getattr(self._agent, "result_type", None) is not str
         )
 
         for i, part in enumerate(response.parts):
@@ -307,6 +276,35 @@ class KnoxModel(Model):
                     len(content),
                     len(part.content),
                 )
+
+    # ── KNOX-specific hooks ─────────────────────────────────────────────
+
+    @staticmethod
+    def _repair_tool_call_args(response: ModelResponse) -> None:
+        """Run ``json_repair`` on ``ToolCallPart.args`` strings in-place.
+
+        Small local models frequently produce tool-call arguments with
+        invalid JSON: truncated output, bad escapes, stray
+        control characters, trailing prose.  pydantic-ai's built-in
+        validator uses pydantic's strict ``validate_json`` which rejects
+        all of these, triggering a retry that wastes context window and
+        usually produces the same error.
+
+        We intercept the raw args string *before* pydantic-ai validates
+        it, run ``json_repair.loads``, and replace ``args`` with the
+        repaired dict.  When the JSON is already valid or the repair
+        fails entirely, the part is left untouched so pydantic-ai's
+        normal retry logic applies.
+        """
+        for part in response.parts:
+            if not isinstance(part, ToolCallPart):
+                continue
+            args = part.args
+            if not isinstance(args, str):
+                continue  # Already a dict, or None
+            repaired = salvage_json(args)
+            if isinstance(repaired, dict):
+                part.args = repaired
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:
