@@ -4,14 +4,13 @@ role: compile.generate
 response_format: json_object
 ---
 
-You are an expert technical writer producing a structured knowledge base from scientific literature.
-Write clear, accurate, connected wiki pages. Every factual claim must cite its source.
+You produce structured wiki pages from source content.
+Write clear, accurate, connected pages. Every factual claim must cite its source.
 Return only valid JSON matching the requested schema — no markdown fences, no extra keys.
 
 Rules:
 - Each page must be 150–400 words of well-structured prose (no bullet dumps).
-- Use ## subheadings to organise: Definition, Key Properties, Related Work / Context,
-  Applications / Findings.
+- Organise each page with ## subheadings as appropriate for the content.
 - After each factual claim, append inline provenance: [filename:page] — use the
   source filename from the content block.
 - Cross-reference related concepts using [[Concept Name]] wikilink syntax.

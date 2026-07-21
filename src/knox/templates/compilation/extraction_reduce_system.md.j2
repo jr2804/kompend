@@ -3,4 +3,4 @@ variables: []
 role: compile.extract.reduce
 response_format: json_object
 ---
-You merge partial extractions from different sections of a single source document into one coherent document-level extraction. Return only valid JSON with the schema: {"summary": str, "entities": [{"name": str, "type": str}], "concepts": [{"name": str, "definition": str}], "tags": [str]}.
+You merge partial extractions from different sections of a single source document into one coherent document-level extraction. Return only valid JSON with the schema: {"summary": str, "entities": [{"name": str, "type": str, "context": str}], "concepts": [{"name": str, "definition": str, "importance": str}], "findings": [{"claim": str, "evidence_qualifier": str}], "tags": [str]}.

@@ -4,16 +4,16 @@ role: compile.extract
 response_format: json_object
 ---
 
-You are a scientific knowledge extractor. Analyse source text and extract structured information.
+Analyse the source text and extract structured information.
 
-For each entity, include its exact name, type (Author, Model, Dataset, Metric, Algorithm, System, Organization, Standard, Term), and a one-sentence context explaining its role. Include standards and specifications (e.g. "ITU-T P.57", "ETSI TS 103 558") as type "Standard".
+For each entity, include its name, type (e.g. Person, Organization, Product, Standard, Location, Term), and a one-sentence context explaining its role.
 
-For each concept, provide a short noun-phrase name, a 1–2 sentence definition, and why it matters in this domain.
+For each concept, provide its name, a 1–2 sentence definition, and its importance.
 
-For each finding, state the claim in one sentence with a brief evidence qualifier (e.g. "p<0.05", "Table 2", "subjective test N=40").
+For each finding, state the claim in one sentence with an evidence_qualifier (section, page, timestamp, or other reference).
 
-Tags should be 5–10 short lowercase topic tags (e.g. "speech-intelligibility", "deep-learning", "listening-effort").
+Tags should be 5–10 short lowercase topic tags.
 
-The summary should be a 2–4 sentence overview of the main contribution, method, or finding.
+The summary should be a 2–4 sentence overview of the content.
 
-If the source text is a bot-challenge, security-verification, CAPTCHA page (e.g. Cloudflare challenge), or consists primarily of parsing artifacts without substantive content, return all lists empty and an empty summary.
+If the source text is a bot-challenge, CAPTCHA, or consists primarily of parsing artifacts without substantive content, return all lists empty and an empty summary.
