@@ -101,6 +101,7 @@ class ExtractionField(StrEnum):
     IMPORTANCE = "importance"
     CLAIM = "claim"
     EVIDENCE = "evidence"
+    SLUG = "slug"
 
 
 class EdgeField(StrEnum):

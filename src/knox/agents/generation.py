@@ -40,10 +40,14 @@ def _validate_generation_output(
 ) -> GenerationOutput:
     """Semantic output validator for generation results.
 
-    Checks for common issues that Pydantic structural validation can't
-    catch: empty pages list, pages with empty content, empty slugs,
-    and duplicate slugs.  Raises ``ModelRetry`` with actionable
-    feedback so the model can fix the problem.
+    Checks for structural issues that Pydantic can't catch: empty pages
+    list, empty slugs, and duplicate slugs.  Raises ``ModelRetry`` with
+    actionable feedback so the model can fix the problem.
+
+    Empty content is NOT rejected here — small models frequently return
+    pages with valid titles/slugs but empty content, and retrying causes
+    degradation rather than improvement.  Empty-content pages are filtered
+    out after generation in the compilation flow.
     """
     if not output.pages:
         raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
@@ -52,8 +56,6 @@ def _validate_generation_output(
     issues: list[str] = []
 
     for i, page in enumerate(output.pages):
-        if not page.content.strip():
-            issues.append(f"page {i} ('{page.title}') has empty content")
         if not page.slug.strip():
             issues.append(f"page {i} ('{page.title}') has an empty slug")
         if page.slug in seen_slugs:
@@ -63,7 +65,7 @@ def _validate_generation_output(
     if issues:
         issue_list = "\n".join(f"- {issue}" for issue in issues)
         raise ModelRetry(
-            "The following pages need correction:\n" + issue_list + "\n\nProvide corrected content ONLY for the listed pages. "
+            "The following pages need correction:\n" + issue_list + "\n\nProvide corrected slugs ONLY for the listed pages. "
             "Return the full page list, but keep other pages' content unchanged."
         )
 

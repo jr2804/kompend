@@ -31,7 +31,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
-from knox.core.models.enums import CacheDeps, MetadataField
+from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import encode_for_llm
@@ -100,7 +100,7 @@ def prepare_concepts(compiler: Any, extractions: ExtractionSet) -> list[dict[str
         logger.info(
             "TwoPhase: %d concept(s) ready for generation (sample: %s)",
             len(concepts),
-            [c["name"] for c in concepts[:sample_limit]],
+            [c[ExtractionField.NAME] for c in concepts[:sample_limit]],
         )
     else:
         sample_keys: set[str] = set()
@@ -268,7 +268,7 @@ def generate_all_pages(
                 failed_count += 1
                 if failed_count >= MAX_FAILED or seg_idx == num_segments - 1:
                     # All segments exhausted — these concepts are truly missing.
-                    concept_names = [c.get("name", f"concept-{batch_start + i}") for i, c in enumerate(batch)]
+                    concept_names = [c.get(ExtractionField.NAME, f"concept-{batch_start + i}") for i, c in enumerate(batch)]
                     skipped_str = ", ".join(concept_names)
                     logger.warning(
                         "TwoPhase: %d/%d concepts will have no wiki page (all %d source segment(s) failed for batch #%d-%d): [%s]",
@@ -289,7 +289,24 @@ def generate_all_pages(
                     return nodes, slug_to_idx
                 continue
 
-            for idx, page in enumerate(gen_output.pages):
+            # Filter out pages with empty content — small models frequently
+            # produce valid titles/slugs but empty content when overwhelmed.
+            # Retrying causes degradation, so accept and filter instead.
+            empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]
+            valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
+            if empty_pages:
+                names = ", ".join(p.title or "(untitled)" for p in empty_pages)
+                logger.warning(
+                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]). "
+                    "Consider reducing compile.budget.concepts_per_batch for this model.",
+                    batch_start,
+                    batch_start + len(batch) - 1,
+                    len(empty_pages),
+                    len(gen_output.pages),
+                    names,
+                )
+
+            for idx, page in enumerate(valid_pages):
                 node_id = _slugify(page.title or f"concept-{batch_start + idx}")
                 _upsert_node(
                     WikiNode(
