@@ -10,6 +10,7 @@ Use by including ``"web"`` in the parser list, before ``"docling"``::
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,20 @@ import trafilatura
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
+
+
+class TrafilaturaFormat(StrEnum):
+    """Valid trafilatura output format strings.
+
+    Prevents typos like ``"text"`` instead of ``"txt"`` that crash
+    at runtime. See trafilatura docs for the full list.
+    """
+
+    TXT = "txt"
+    MARKDOWN = "markdown"
+    HTML = "html"
+    XML = "xml"
+    JSON = "json"
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = get_logger(__name__)
@@ -58,7 +73,7 @@ class WebPageParser(BaseParser):
         # lists, tables, and code — much cleaner than docling on raw HTML.
         markdown = trafilatura.extract(
             html,
-            output_format="markdown",
+            output_format=TrafilaturaFormat.MARKDOWN,
             include_tables=self.include_tables,
             include_links=self.include_links,
             include_comments=False,
@@ -71,7 +86,7 @@ class WebPageParser(BaseParser):
 
         if not markdown:
             # Fallback: emit the raw HTML-stripped text as a single element.
-            markdown = trafilatura.extract(html, output_format="text") or html
+            markdown = trafilatura.extract(html, output_format=TrafilaturaFormat.TXT) or html
 
         elements = _markdown_to_elements(markdown, source_file)
 
