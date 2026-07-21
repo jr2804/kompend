@@ -226,21 +226,35 @@ class KnoxModel(Model):
             if isinstance(repaired, dict):
                 part.args = repaired
 
-    @staticmethod
-    def _repair_thinking_part(response: ModelResponse) -> None:
-        """Convert ThinkingPart with valid JSON to TextPart.
+    def _repair_thinking_part(self, response: ModelResponse) -> None:
+        """Convert ThinkingPart/TextPart with valid JSON to ToolCallPart.
 
-        Some Ollama models return thinking content even when
-        ``reasoning_effort: none`` is set.  PydanticAI only validates
-        ``TextPart`` for structured output, so a response with only a
-        ``ThinkingPart`` (even one containing valid JSON) is treated as
-        invalid, triggering a retry that wastes context and usually fails
-        identically.
+        Small Ollama models frequently return structured output as raw text
+        (``TextPart``) instead of a tool call (``ToolCallPart``). PydanticAI's
+        ``AutoOutputSchema`` has two validation paths:
 
-        We intercept the response *before* PydanticAI validates it, check
-        if the ThinkingPart contains valid JSON, and if so, convert it to
-        a TextPart so the structured output validator can process it.
+        - **Tool path:** receives ``ToolCallPart.args`` as a dict, calls
+          ``validate_python(dict)`` — always works.
+        - **Text path:** receives ``TextPart.content`` as a string, calls
+          ``validate_json(string)`` — fails on double-encoded JSON because
+          ``validate_json`` parses the outer string literal and gets a Python
+          ``str``, not a ``dict``, producing ``Input should be an object``.
+
+        We intercept the response *before* PydanticAI validates it, parse the
+        text content via ``salvage_json``, and convert the ``TextPart`` to a
+        ``ToolCallPart`` with the parsed dict as ``args``. This forces the tool
+        validation path, which always works correctly.
+
+        Only applies to agents with structured output (``result_type`` is not
+        ``str``). Free-text agents keep the original ``TextPart``.
         """
+        # Check if this agent uses structured output (not free-text str)
+        is_structured = (
+            self._agent is not None
+            and getattr(self._agent, "result_type", None) is not None
+            and getattr(self._agent, "result_type", None) is not str
+        )
+
         for i, part in enumerate(response.parts):
             if not isinstance(part, ThinkingPart):
                 continue
@@ -255,28 +269,38 @@ class KnoxModel(Model):
                     "Converted ThinkingPart to TextPart (%d chars of JSON)",
                     len(response.parts[i].content),
                 )
-        # Second pass: repair TextPart content for structured-output agents.
-        # The same class of JSON errors that tool-call repair fixes (bad
-        # escapes, trailing commas, truncated output) also appear in the
-        # main text response when an agent uses structured ``output_type``.
-        # pydantic-ai's strict validator rejects them, triggering a retry
-        # that wastes context and usually fails identically.
-        #
-        # We intercept the raw text *before* validation, try
-        # ``salvage_json``, and replace the text with the repaired JSON
-        # string.  When the JSON is already valid or the repair fails,
-        # the part is left untouched so pydantic-ai's normal retry logic
-        # applies.
-        for part in response.parts:
+
+        # If the response already has a ToolCallPart, the model used the tool
+        # path correctly — no need to convert TextParts.
+        has_tool_call = any(isinstance(p, ToolCallPart) for p in response.parts)
+
+        for i, part in enumerate(response.parts):
             if not isinstance(part, TextPart):
                 continue
             content = part.content
             if not isinstance(content, str) or not content:
                 continue
             repaired = salvage_json(content)
-            if repaired is not None and not isinstance(repaired, (dict, list)):
+            if repaired is None:
+                continue
+            if not isinstance(repaired, (dict, list)):
                 continue  # Not a JSON object/array — likely plain text, skip
-            if repaired is not None:
+
+            if is_structured and not has_tool_call and isinstance(repaired, dict):
+                # Convert TextPart → ToolCallPart to force the tool validation
+                # path. This avoids the text-path ``validate_json`` failure on
+                # double-encoded JSON strings.
+                response.parts[i] = ToolCallPart(
+                    tool_name="final_result",
+                    args=repaired,
+                )
+                logger.info(
+                    "Converted TextPart to ToolCallPart (final_result, %d keys)",
+                    len(repaired),
+                )
+            else:
+                # Free-text agent or tool call already present: just repair
+                # the JSON text in-place.
                 part.content = json.dumps(repaired, ensure_ascii=False)
                 logger.info(
                     "Repaired TextPart content via salvage_json (%d chars -> %d chars)",
