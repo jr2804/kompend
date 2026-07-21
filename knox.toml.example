@@ -132,13 +132,8 @@ workers = 1
 
 # Keep source files at their original location instead of copying to sources/.
 # URLs/downloads are always copied. Files already inside sources/ are left as-is.
-# CLI: --in-place | Env: KNOX_IN_PLACE_SOURCES
+# CLI: --in-place
 # in_place_sources = false
-
-# Page kind for N9 schema-driven compilation:
-# concept | entity | comparison | overview | custom
-# When unset, page kind is auto-detected from content.
-# page_kind = "concept"
 
 # ── Memory lifecycle ──────────────────────────────────────────────────────
 #
@@ -238,19 +233,6 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 # of what Ollama or models-dev report. Useful for limiting context usage
 # on slower/local models. None = no cap (use full discovered window).
 # context_window_cap = 65536
-
-# Custom API endpoint (e.g. for proxies, Ollama Cloud, or self-hosted gateways).
-# Only used by custom providers (claudinio, ollama-cloud, opencode-zen/go)
-# which read their own env vars. Standard providers (openai, anthropic, etc.)
-# use their default endpoints.
-# api_base = "https://ollama.com"
-
-# API key for the primary provider. Supports $VARNAME env-var indirection
-# to avoid embedding secrets in the config file.
-# Custom providers read their own env vars (CLAUDINIO_API_KEY, OLLAMA_API_KEY,
-# OPENCODE_API_KEY). Standard providers use their default env vars
-# (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.).
-# api_key = "$OPENAI_API_KEY"
 
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 2
@@ -352,8 +334,11 @@ fallback_max_retries = 2
 # ── Output settings ─────────────────────────────────────────────────────
 
 [compile.output]
-# Output format: markdown | json | typst
-format = "markdown"
+# Output format: okf (default, Open Knowledge Format v0.1) | markdown | json | typst
+# OKF is the recommended format — it adds compliant frontmatter, absolute
+# bundle-relative links, reserved files (index.md, log.md), and citations.
+# Use "markdown" only for legacy Obsidian vault compatibility.
+# format = "okf"
 
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
 # Set to auto-detect when omitted.
@@ -498,13 +483,3 @@ history_size = 20
 #   (30-70% fewer tokens than json)
 [query]
 # format = "text"
-
-# ── Event hooks ─────────────────────────────────────────────────────────
-# Register Python callables that fire on pipeline events.
-# Each value is a list of "module:attribute" import paths.
-# Events: pre_compile, post_compile, on_capture, on_query, on_lint
-
-[hooks]
-# post_compile = ["mypkg.hooks:auto_lint"]
-# on_capture = ["mypkg.hooks:notify"]
-# on_query = ["mypkg.hooks:log_query"]

@@ -1,130 +1,43 @@
-# config-cloud.toml — Cloud LLM via Ollama Cloud (~1M context)
+# config-cloud.toml — Cloud LLM demo overlay
 #
-# Uses the ollama-cloud provider (https://ollama.com) registered by
-# Knox at startup. Set OLLAMA_API_KEY in your environment.
+# Only values that differ from DEFAULTS. Everything else is filled in
+# automatically by the config system (see knox.toml.example for full docs).
 #
-# Usage:
-#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml
-
-# ── Paths ───────────────────────────────────────────────────────────────
-# All paths are relative to the wiki root (directory containing
-# `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
-[paths]
-# Root directory for resolving all relative paths. When unset, uses
-# the directory containing this config file, or the value of --wiki-dir.
-# wiki_dir = "."
-sources_dir = "sources"
-output_dir  = "wiki"
-cache_dir   = ".knox/cache"
-state_dir   = ".knox"
-
-# ── Ingestion ────────────────────────────────────────────────────────────
-# Backend(s) for parsing sources. A single name ("docling") or a
-# comma-separated priority list — first backend supporting a file's
-# format wins. "liteparse,docling" = fast liteparse for PDF/office,
-# docling for HTML/EPUB/TEX/MD/CSV it doesn't handle, pandoc (auto)
-# for legacy text formats. Run `knox doctor` to list available backends.
-# CLI: --parser | Env: KNOX_INGEST_PARSER
+# Required env vars: KNOX_CLOUD_LLM, KNOX_CLOUD_VLM, KNOX_CLOUD_EMBEDDING
+# Optional env vars: KNOX_CLOUD_CTX_CAP (caps context window + chunk size)
+#
+# Usage: .\scripts\build-wiki.ps1 scripts\config-cloud.toml
 
 [ingest]
-parser = "web,liteparse"
+parser = "web,liteparse,docling,pandoc"
 
-# ── LLM settings ────────────────────────────────────────────────────────
-[compile.llm]
-# Primary model — set KNOX_CLOUD_LLM in your environment, or
-# uncomment and set a model below:
-default_model      = "${KNOX_CLOUD_LLM}"
-#default_model     = "ollama-cloud/deepseek-v4-flash"
-#default_model     = "ollama-cloud/qwen3.5"
-#default_model     = "opencode-zen/deepseek-v4-flash-free"
-#default_model     = "opencode-zen/gpt-5.4-nano"
-#default_model     = "openrouter/openrouter/free"
-
-# Vision model for VLM captioning (optional — set KNOX_CLOUD_VLM in env).
-vlm_model             = "${KNOX_CLOUD_VLM}"
-#vlm_model            = "ollama-cloud/gemma4:31b"
-context_window_cap   = "${KNOX_CLOUD_CTX_CAP}"   # optional cap; auto-discovered from model by default
-
-# Transient-error retries before advancing to next fallback model
-fallback_max_retries = 3
-
-# LLM communication data format: json (default) | toon | ison
-# Compact formats reduce input token count by 30-70%
-data_format = "ison"
-
-# LLM call timeout
-timeout            = 300.0
-
-# PydanticAI output retries (retries when LLM output fails schema validation)
-output_retries = 2
-
-# Reasoning effort: minimal thinking for cloud models
-reasoning_effort = "low"
-
-# ── Embedding ───────────────────────────────────────────────────────────
-[compile.embedding]
-# Embedding model for semantic search / RAG.
-# Set KNOX_CLOUD_EMBEDDING in your environment, or uncomment and set below.
-# Two syntaxes:
-#   "<provider>:<model>" — pydantic-ai Embedder format
-#   "<model>" (no prefix) — loads a sentence-transformers model from HuggingFace
-# Leave commented to disable vector indexing.
-model = "${KNOX_CLOUD_EMBEDDING}"
-#model = "ollama/granite-embedding:278m"
-
-# ── Output ──────────────────────────────────────────────────────────────
-[compile.output]
-# Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
-# Set to auto-detect when omitted.
-flavor = "obsidian"
-# Max related-links per page in vault mode (0 = unlimited)
-max_related_links = 15
-
-# ── Query settings ───────────────────────────────────────────────────────
-[query]
-# Default output format for `knox query`. Override per-run with --format.
-# text = human-readable prose (default)
-# json = structured {answer, citations}, pretty-printed
-# toon / ison = compact structured encodings for LLM/agent consumers
-#   (30-70% fewer tokens than json)
-# format = "text"
-
-# ── Compile settings ────────────────────────────────────────────────────
 [compile]
-# Output format: markdown | json | typst
-format = "markdown"
-
-# Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
 compiler = "wicer"
 
-# Image handling: file (extract to disk) | base64 (inline)
-image_mode = "file"
-# VLM pre-filter thresholds (bytes / pixels)
-# vlm_min_image_bytes = 2048
-# vlm_min_image_dimension = 64
-# in_place_sources = false
-# page_kind = "concept"
+[compile.llm]
+default_model = "${KNOX_CLOUD_LLM}"
+vlm_model = "${KNOX_CLOUD_VLM}"
+data_format = "ison"
+timeout = 300.0
+fallback_max_retries = 3
+reasoning_effort = "low"
+# Cap discovered context window (tokens). Set KNOX_CLOUD_CTX_CAP env var
+# to enable. When unset, auto-discovers from the model.
+# context_window_cap = "${KNOX_CLOUD_CTX_CAP}"
 
-# ── Budget (cloud model has huge context, relax safety rails) ────────────
+[compile.embedding]
+model = "${KNOX_CLOUD_EMBEDDING}"
+
+[compile.output]
+flavor = "obsidian"
+
 [compile.budget]
-concepts_per_batch = 8
-verify_min_ngram = 3
-wicer_max_iterations = 3
-min_content_length = 50
-min_concept_sources = 2
-max_concept_pages = 50
-chunk_size_min = 2048
-chunk_size_max = "${KNOX_CLOUD_CTX_CAP}"
 extract_output_max = 16384
 gen_output_max = 32768
-verify_output_max = 4096
 lint_output_max = 16384
-summary_max_content_chars = 8000
-summary_target_chars = 600
+# chunk_size_max = "${KNOX_CLOUD_CTX_CAP}"   # uncomment with env var set
 
-# ── Lint (all structural rules enabled for demo) ───────────────────────
 [lint]
-# Rules to run (null = all structural rules)
 enabled = [
     "broken-wikilinks",
     "missing-frontmatter",
@@ -136,59 +49,12 @@ enabled = [
     "source-not-found",
 ]
 
-# ── Search / RAG enhancements (optional plug-in steps) ─────────────────
-# Enhanced retrieval pipeline features. All default to disabled.
-# Each is an optional plug-in step — enable only what you need.
-[search]
-# Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
-# retrieve independently for each, then merge via RRF.
-expansion.enabled = true
-expansion.variants = 3
-
-# CRAG (Corrective RAG): LLM grades each retrieved chunk for relevance.
-# Chunks below threshold are dropped before synthesis.
-crag.enabled = true
-crag.threshold = 0.3
-
-# Neural re-ranker: bi-encoder re-ranks top-K candidates by cosine
-# similarity using the vector store's embedding provider.
-reranker.enabled = true
-# reranker.model is kept for config compat; the bi-encoder uses the
-# compile.embedding.model defined above.
-reranker.top_k = 20
-
-# HyDE (Hypothetical Document Embeddings): for sparse queries, generate
-# a hypothetical answer first, then use its embedding for retrieval.
-hyde.enabled = true
-
-# Contextual Retrieval: during T2 chunking, prepend situating context
-# to each chunk before embedding. Improves both compilation and query.
-contextual.enabled = true
-contextual.model = ""
-
-# Synthesis verbosity: brief | standard | comprehensive (override per-run
-# with `knox query --verbosity`). Token budgets are clamped to the model's
-# max_output.
-synthesis.verbosity = "standard"
-synthesis.tokens.brief = 300
-synthesis.tokens.standard = 800
-synthesis.tokens.comprehensive = 2000
-
-# ── Trust settings ──────────────────────────────────────────────────────
-[trust]
-# user_tracking = true
-
-# ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]
-# Enable duplicate detection during ingestion
 enabled = true
-# Matcher backends: embedding, minhash, or both
-matchers = "embedding,minhash"
-# Similarity threshold for treating documents as near-identical
-threshold_identical = 0.95
-# Similarity threshold for flagging documents as similar
-threshold_similar = 0.80
-# Embedding model override; empty string falls back to compile.embedding.model
-# model = ""
-# MinHash LSH threshold used by the minhash matcher
-minhash_lsh_threshold = 0.8
+
+[search]
+expansion.enabled = true
+crag.enabled = true
+reranker.enabled = true
+hyde.enabled = true
+contextual.enabled = true

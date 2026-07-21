@@ -1,135 +1,44 @@
-# config-local.toml — Local LLM
+# config-local.toml — Local LLM demo overlay
 #
-# Uses ollama/gemma4:e4b running locally. Context window auto-discovered.
-# Embedding from local granite-embedding.
+# Only values that differ from DEFAULTS. Everything else is filled in
+# automatically by the config system (see knox.toml.example for full docs).
 #
-# Usage:
-#   .\scripts\build-wiki.ps1 scripts\config-local.toml
-
-# ── Paths ───────────────────────────────────────────────────────────────
-# All paths are relative to the wiki root (directory containing
-# `.knox/config.toml` or `knox.toml`, or the value of `--wiki-dir`).
-[paths]
-# Root directory for resolving all relative paths. When unset, uses
-# the directory containing this config file, or the value of --wiki-dir.
-# wiki_dir = "."
-sources_dir = "sources"
-output_dir = "wiki"
-cache_dir = ".knox/cache"
-state_dir = ".knox"
-
-# ── Ingestion ────────────────────────────────────────────────────────────
-# Backend(s) for parsing sources. A single name ("docling") or a
-# comma-separated priority list — first backend supporting a file's
-# format wins. "liteparse,docling" = fast liteparse for PDF/office,
-# docling for HTML/EPUB/TEX/MD/CSV it doesn't handle, pandoc (auto)
-# for legacy text formats. Run `knox doctor` to list available backends.
-# CLI: --parser | Env: KNOX_INGEST_PARSER
+# Required env vars: KNOX_LOCAL_LLM, KNOX_LOCAL_VLM, KNOX_LOCAL_EMBEDDING
+# Optional env vars: KNOX_LOCAL_CTX_CAP (caps context window + chunk size)
+#
+# Usage: .\scripts\build-wiki.ps1 scripts\config-local.toml
 
 [ingest]
-parser = "web,liteparse,docling"
+parser = "web,liteparse,docling,pandoc"
 
-# ── LLM settings ────────────────────────────────────────────────────────
-[compile.llm]
-# Primary model — set KNOX_LLM_DEFAULT_MODEL in your environment, or
-# uncomment and set a model below. Examples:
-#default_model = "ollama/lfm2.5"
-#default_model = "ollama/hf.co/unsloth/Qwen3.5-2B-MTP-GGUF:UD-Q8_K_XL"
-#default_model = "ollama/hf.co/Jackrong/Qwen3.5-2B-Claude-4.6-Opus-Reasoning-Distilled-GGUF:Q8_0"  # cannot produce JSON output
-#default_model = "ollama/hf.co/khazarai/Qwen3.5-2B-Qwen3.6-plus-Distilled-GGUF:Q8_0"
-#default_model = "ollama/gemma4:e2b"
-default_model = "${KNOX_LOCAL_LLM}"
-
-# Vision model for VLM captioning (optional — set KNOX_LOCAL_VLM in env).
-# Examples:
-#vlm_model = "ollama/hf.co/LiquidAI/LFM2-VL-1.6B-GGUF:Q4_0"
-#vlm_model = "ollama/gemma4:e4b"
-vlm_model = "${KNOX_LOCAL_VLM}"
-
-# User-configured cap on discovered context window (tokens).
-# None = no cap (use full discovered window).
-context_window_cap = "${KNOX_LOCAL_CTX_CAP}"   # optional cap; auto-discovered from model by default
-
-# Transient-error retries before advancing to next fallback model
-fallback_max_retries = 2
-
-# LLM communication data format: json (default) | toon | ison
-# Compact formats reduce input token count by 30-70%
-data_format = "ison"
-
-# LLM call timeout
-timeout = 600.0
-
-# PydanticAI output retries (retries when LLM output fails schema validation)
-output_retries = 4
-
-# Reasoning effort: suppress thinking for local models
-reasoning_effort = "none"
-
-# ── Embedding ───────────────────────────────────────────────────────────
-[compile.embedding]
-# Embedding model for semantic search / RAG.
-# Set KNOX_LOCAL_EMBEDDING in your environment, or uncomment and set below.
-# Two syntaxes:
-#   "<provider>:<model>" or "<provider>/<model>" — pydantic-ai Embedder format
-#   "<model>" (no prefix) — loads a HuggingFace model via sentence-transformers
-# Leave commented to disable vector indexing.
-model = "${KNOX_LOCAL_EMBEDDING}"
-#model = "ollama/granite-embedding:278m"
-
-# ── Output ──────────────────────────────────────────────────────────────
-[compile.output]
-# Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
-# Set to auto-detect when omitted.
-flavor = "obsidian"
-# Max related-links per page in vault mode (0 = unlimited)
-max_related_links = 15
-
-# ── Query settings ───────────────────────────────────────────────────────
-[query]
-# Default output format for `knox query`. Override per-run with --format.
-# text = human-readable prose (default)
-# json = structured {answer, citations}, pretty-printed
-# toon / ison = compact structured encodings for LLM/agent consumers
-#   (30-70% fewer tokens than json)
-# format = "text"
-
-# ── Compile settings ────────────────────────────────────────────────────
 [compile]
-# Output format: markdown | json | typst
-format = "markdown"
-
-# Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
 compiler = "wicer"
 
-# Image handling: file (extract to disk) | base64 (inline)
-image_mode = "file"
-# VLM pre-filter thresholds (bytes / pixels)
-# vlm_min_image_bytes = 2048
-# vlm_min_image_dimension = 64
-# in_place_sources = false
-# page_kind = "concept"
+[compile.llm]
+default_model = "${KNOX_LOCAL_LLM}"
+vlm_model = "${KNOX_LOCAL_VLM}"
+data_format = "ison"
+timeout = 600.0
+output_retries = 4
+reasoning_effort = "none"
+# Cap discovered context window (tokens). Set KNOX_LOCAL_CTX_CAP env var
+# to enable. When unset, auto-discovers from the model.
+# context_window_cap = "${KNOX_LOCAL_CTX_CAP}"
 
-# ── Budgets  ───────────────────────────────
+[compile.embedding]
+model = "${KNOX_LOCAL_EMBEDDING}"
+
+[compile.output]
+flavor = "obsidian"
+
 [compile.budget]
-concepts_per_batch = 4
-verify_min_ngram = 3
-wicer_max_iterations = 3
-min_content_length = 50
-min_concept_sources = 2
-max_concept_pages = 50
-chunk_size_min = 2048
-chunk_size_max = "${KNOX_LOCAL_CTX_CAP}"
+concepts_per_batch = 2
 extract_output_max = 16384
 gen_output_max = 32768
-verify_output_max = 4096
 lint_output_max = 16384
-summary_max_content_chars = 8000
-summary_target_chars = 600
+# chunk_size_max = "${KNOX_LOCAL_CTX_CAP}"   # uncomment with env var set
 
-# ── Lint (all structural rules enabled for demo) ───────────────────────
 [lint]
-# Rules to run (null = all structural rules)
 enabled = [
     "broken-wikilinks",
     "missing-frontmatter",
@@ -141,59 +50,12 @@ enabled = [
     "source-not-found",
 ]
 
-# ── Trust settings ──────────────────────────────────────────────────────
-[trust]
-# user_tracking = true
-
-# ── Dedup (content-level duplicate detection) ────────────────────────────
 [dedup]
-# Enable duplicate detection during ingestion
 enabled = true
-# Matcher backends: embedding, minhash, or both
-matchers = "embedding,minhash"
-# Similarity threshold for treating documents as near-identical
-threshold_identical = 0.95
-# Similarity threshold for flagging documents as similar
-threshold_similar = 0.80
-# Embedding model override; empty string falls back to compile.embedding.model
-# model = ""
-# MinHash LSH threshold used by the minhash matcher
-minhash_lsh_threshold = 0.8
 
-# ── Search / RAG enhancements (optional plug-in steps) ─────────────────
-# Enhanced retrieval pipeline features. All default to disabled.
-# Each is an optional plug-in step — enable only what you need.
 [search]
-# Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
-# retrieve independently for each, then merge via RRF.
 expansion.enabled = true
-expansion.variants = 3
-
-# CRAG (Corrective RAG): LLM grades each retrieved chunk for relevance.
-# Chunks below threshold are dropped before synthesis.
 crag.enabled = true
-crag.threshold = 0.3
-
-# Neural re-ranker: bi-encoder re-ranks top-K candidates by cosine
-# similarity using the vector store's embedding provider.
 reranker.enabled = true
-# reranker.model is kept for config compat; the bi-encoder uses the
-# compile.embedding.model defined above.
-reranker.top_k = 20
-
-# HyDE (Hypothetical Document Embeddings): for sparse queries, generate
-# a hypothetical answer first, then use its embedding for retrieval.
 hyde.enabled = true
-
-# Contextual Retrieval: during T2 chunking, prepend situating context
-# to each chunk before embedding. Improves both compilation and query.
 contextual.enabled = true
-contextual.model = ""
-
-# Synthesis verbosity: brief | standard | comprehensive (override per-run
-# with `knox query --verbosity`). Token budgets are clamped to the model's
-# max_output.
-synthesis.verbosity = "standard"
-synthesis.tokens.brief = 300
-synthesis.tokens.standard = 800
-synthesis.tokens.comprehensive = 2000
