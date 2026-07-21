@@ -32,11 +32,12 @@ model = "${KNOX_LOCAL_EMBEDDING}"
 flavor = "obsidian"
 
 [compile.budget]
-concepts_per_batch = 2
+wicer_max_iterations = 2
+concepts_per_batch = 1
 extract_output_max = 16384
 gen_output_max = 32768
 lint_output_max = 16384
-# chunk_size_max = "${KNOX_LOCAL_CTX_CAP}"   # uncomment with env var set
+chunk_size_max = "${KNOX_LOCAL_CTX_CAP}"   # uncomment with env var set
 
 [lint]
 enabled = [

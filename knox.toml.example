@@ -245,45 +245,45 @@ fallback_max_retries = 2
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"
 
-    # LLM call timeout (seconds)
-    timeout = 120.0
+# LLM call timeout (seconds)
+timeout = 120.0
 
-    # PydanticAI output retries (retries when LLM output fails schema validation)
-    output_retries = 2
+# PydanticAI output retries (retries when LLM output fails schema validation)
+output_retries = 2
 
-    # Reasoning effort: controls how much the model "thinks" before responding.
-    # Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
-    # For Ollama models, "none"/"minimal"/"low" also set think=False.
-    reasoning_effort = "none"
+# Reasoning effort: controls how much the model "thinks" before responding.
+# Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
+# For Ollama models, "none"/"minimal"/"low" also set think=False.
+reasoning_effort = "none"
 
-    # Extraction strategy for multi-chunk sources:
-    # - "incremental" (default): feeds chunks sequentially into one agent
-    #   conversation via message_history, so each batch sees accumulated
-    #   context from prior batches within the same document.
-    # - "reduce": map-reduce — extract each batch independently, then a
-    #   second LLM pass merges partial results into a coherent
-    #   document-level extraction.
-    extraction_strategy = "incremental"
+# Extraction strategy for multi-chunk sources:
+# - "incremental" (default): feeds chunks sequentially into one agent
+#   conversation via message_history, so each batch sees accumulated
+#   context from prior batches within the same document.
+# - "reduce": map-reduce — extract each batch independently, then a
+#   second LLM pass merges partial results into a coherent
+#   document-level extraction.
+extraction_strategy = "incremental"
 
-    # Context-window management for multi-turn / multi-batch agents
-    # (incremental extraction, WiCER). When the conversation history nears the
-    # model's context budget, `summarization-pydantic-ai` compresses it via an
-    # LLM summary rather than dropping messages. Replaces the old
-    # `_compact_messages` workaround.
-    #   "default"    — compress at 90% of the context window (recommended)
-    #   "aggressive" — compress at 70%, keep 5 trailing messages
-    #   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
-    #   false        — disable (history preserved verbatim)
-    context_manager = "default"
+# Context-window management for multi-turn / multi-batch agents
+# (incremental extraction, WiCER). When the conversation history nears the
+# model's context budget, `summarization-pydantic-ai` compresses it via an
+# LLM summary rather than dropping messages. Replaces the old
+# `_compact_messages` workaround.
+#   "default"    — compress at 90% of the context window (recommended)
+#   "aggressive" — compress at 70%, keep 5 trailing messages
+#   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
+#   false        — disable (history preserved verbatim)
+context_manager = "default"
 
-    # Per-role model overrides — use a different model for specific LLM roles.
-    # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).
-    # Common roles: "compile.extract", "compile.generate", "wicer.probe",
-    # "wicer.judge", "vlm", "search.crag", "search.hyde", "synthesize",
-    # "verify", "capture", "organize.categorize", "doctor", "agent".
-    # When a role is not listed here, the default_model is used.
-    # [compile.llm.role_models]
-    # "compile.extract" = "ollama/gpt-oss:20b"
+# Per-role model overrides — use a different model for specific LLM roles.
+# Keys are LLMRole enum values (see knox.llm.roles.LLMRole).
+# Common roles: "compile.extract", "compile.generate", "wicer.probe",
+# "wicer.judge", "vlm", "search.crag", "search.hyde", "synthesize",
+# "verify", "capture", "organize.categorize", "doctor", "agent".
+# When a role is not listed here, the default_model is used.
+# [compile.llm.role_models]
+# "compile.extract" = "ollama/gpt-oss:20b"
     # "compile.generate" = "openai/gpt-4o"
     # "vlm" = "openai/gpt-4o"
     # "wicer.judge" = "anthropic/claude-sonnet-4-20250514"
