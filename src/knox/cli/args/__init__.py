@@ -28,7 +28,6 @@ from .common import (
 
 # Compile command
 from .compile import (
-    CompileFiles,
     CompileLint,
     EmbedModel,
     Frontmatter,
@@ -58,7 +57,6 @@ from .memory import (
 from .other import (
     BypassReview,
     CaptureText,
-    IncludePrivate,
     IngestTarget,
     LearnText,
     LintDryRun,
@@ -75,7 +73,6 @@ from .other import (
     LlmRoleModel,
     MemoryEnabled,
     NoPrivacy,
-    NoUserTracking,
     OrganizeCollapseSingle,
     OrganizeDryRun,
     OrganizeMaxDepth,
@@ -126,7 +123,6 @@ __all__ = [
     "CaptureText",
     "CliSet",
     # Compile
-    "CompileFiles",
     "CompileLint",
     # Config
     "ConfigGlobalOpt",
@@ -139,7 +135,6 @@ __all__ = [
     "Frontmatter",
     "Ignore",
     "InPlaceFlag",
-    "IncludePrivate",
     "IndexStore",
     "IngestTarget",
     # Init
@@ -173,7 +168,6 @@ __all__ = [
     "MemoryTopK",
     "NoCacheFlag",
     "NoPrivacy",
-    "NoUserTracking",
     "OnlineUrls",
     "OrganizeCollapseSingle",
     "OrganizeDryRun",

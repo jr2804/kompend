@@ -223,27 +223,11 @@ NoPrivacy = Annotated[
     ),
 ]
 
-NoUserTracking = Annotated[
-    bool,
-    typer.Option(
-        "--no-user-tracking",
-        help="Do not record the OS user (ingested_by / memory_by) in metadata. Env: KNOX_USER_TRACKING=false.",
-    ),
-]
-
 Verify = Annotated[
     bool | None,
     typer.Option(
         "--verify/--no-verify",
         help="Run grounding verification on each claim. Default: on; --no-verify skips.",
-    ),
-]
-
-IncludePrivate = Annotated[
-    bool,
-    typer.Option(
-        "--include-private",
-        help="Include private pages in search/queries.",
     ),
 ]
 

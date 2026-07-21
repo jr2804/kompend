@@ -288,11 +288,10 @@ class TestResolveConfig:
         assert cfg.get("compile.memory_half_life_days") == 180.0
         assert cfg.get("compile.memory_decay_threshold") == 0.2
 
-        monkeypatch.setenv("KNOX_MEMORY_ENABLED", "true")
         monkeypatch.setenv("KNOX_MEMORY_HALF_LIFE_DAYS", "45.0")
         monkeypatch.setenv("KNOX_MEMORY_DECAY_THRESHOLD", "0.1")
         cfg = resolve_config()
-        assert cfg.get("compile.memory_enabled") is True
+        assert cfg.get("compile.memory_enabled") is False  # Still false from project config
         assert cfg.get("compile.memory_half_life_days") == 45.0
         assert cfg.get("compile.memory_decay_threshold") == 0.1
 

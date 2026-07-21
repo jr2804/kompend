@@ -9,13 +9,6 @@ import typer
 
 # ── `compile` command surface ───────────────────────────────────────────
 
-CompileFiles = Annotated[
-    list[str],
-    typer.Argument(
-        help="Files, glob patterns, or directories to compile. If only directories are given, all supported files inside are used.",
-    ),
-]
-
 OnlineUrls = Annotated[
     list[str] | None,
     typer.Option(

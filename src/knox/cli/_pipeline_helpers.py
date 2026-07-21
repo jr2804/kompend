@@ -31,7 +31,6 @@ from knox.cli._post_compile import (  # noqa: F401  # re-exported for backward c
 from knox.cli._progress import PipelineProgress
 from knox.cli._sources import download_urls, ensure_in_sources, resolve_files
 from knox.cli.args import (
-    CompileFiles,
     Ignore,
     Recursive,
     UrlFile,
@@ -133,7 +132,7 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
 
 
 def _resolve_compile_inputs(
-    files: CompileFiles,
+    files: list[str],
     online_urls: list[str],
     url_file: UrlFile,
     sources_dir: Path,

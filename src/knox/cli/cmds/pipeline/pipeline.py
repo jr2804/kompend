@@ -147,7 +147,6 @@ def compile_cmd(  # noqa: PLR0915
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
-    recursive: bool = False,
     embed_model: EmbedModel = None,
     ignore: Ignore = None,
     show_progress: Progress = None,

@@ -225,7 +225,7 @@ class EmbeddingConfig(_KnoxBaseModel):
     instantiated yet.
     """
 
-    model: str = Field(default="all-MiniLM-L6-v2", validation_alias="KNOX_EMBEDDING_MODEL")
+    model: str = Field(default="all-MiniLM-L6-v2")
     batch_size: int = Field(default=10, validation_alias="KNOX_EMBEDDING_BATCH_SIZE")
     dim: int = 384
 
@@ -282,7 +282,7 @@ class DedupConfig(_KnoxBaseModel):
 class TrustConfig(_KnoxBaseModel):
     """Privacy and trust configuration."""
 
-    privacy_filter: bool = Field(default=True, validation_alias="KNOX_PRIVACY_FILTER")
+    privacy_filter: bool = Field(default=True)
     user_tracking: bool = Field(default=True, validation_alias="KNOX_USER_TRACKING")
 
 
@@ -424,8 +424,8 @@ class CompileConfig(_KnoxBaseModel):
     workers: int = Field(default=1, validation_alias="KNOX_WORKERS")
     no_cache: bool = Field(default=False, validation_alias="KNOX_NO_CACHE")
     force: bool = Field(default=False, validation_alias="KNOX_FORCE")
-    in_place_sources: bool = Field(default=False, validation_alias="KNOX_IN_PLACE_SOURCES")
-    memory_enabled: bool = Field(default=True, validation_alias="KNOX_MEMORY_ENABLED")
+    in_place_sources: bool = Field(default=False)
+    memory_enabled: bool = Field(default=True)
     memory_half_life_days: float = Field(default=90.0, validation_alias="KNOX_MEMORY_HALF_LIFE_DAYS")
     memory_decay_threshold: float = Field(default=0.3, validation_alias="KNOX_MEMORY_DECAY_THRESHOLD")
     review: bool = False
@@ -435,7 +435,7 @@ class CompileConfig(_KnoxBaseModel):
     verify: bool = True
     synthesize: bool = True
     index: bool = True
-    lint: bool = Field(default=False, validation_alias="KNOX_LINT")
+    lint: bool = Field(default=False)
 
     # Nested sub-configs
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
