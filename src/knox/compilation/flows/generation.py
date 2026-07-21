@@ -249,6 +249,7 @@ def generate_all_pages(
                 pinned_facts=pinned_facts,
                 timeout=compiler._timeout,
             )
+            debug_path = getattr(agent, "_last_debug_path", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
 
@@ -296,14 +297,16 @@ def generate_all_pages(
             valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
             if empty_pages:
                 names = ", ".join(p.title or "(untitled)" for p in empty_pages)
+                debug_hint = f" (debug: {debug_path})" if debug_path else ""
                 logger.warning(
-                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]). "
+                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]).%s "
                     "Consider reducing compile.budget.concepts_per_batch for this model.",
                     batch_start,
                     batch_start + len(batch) - 1,
                     len(empty_pages),
                     len(gen_output.pages),
                     names,
+                    debug_hint,
                 )
 
             for idx, page in enumerate(valid_pages):
