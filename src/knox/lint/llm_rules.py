@@ -1,6 +1,6 @@
 """LLM-powered lint rules — opt-in via ``--llm``.
 
-These rules call an LLM (via :class:`LLMClient`) to detect semantic
+These rules call an LLM (via :class:`LintRuleAgent`) to detect semantic
 quality issues. They are slow and expensive, so they are disabled by
 default and only run when the user passes ``--llm``.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from pydantic import BaseModel, Field
 from slugify import slugify
 
 from knox.agents.deps import PipelineAgentDeps
@@ -21,6 +22,60 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+
+# ── Pydantic output schemas for lint rules ───────────────────────────────
+
+
+class ClarityScoreOutput(BaseModel):
+    """Expected LLM output for the clarity-score rule."""
+
+    score: int = Field(description="Clarity score from 1-10")
+    feedback: str = Field(description="Brief feedback on readability, coherence, conciseness")
+
+
+class FactualIssue(BaseModel):
+    """A single factual inconsistency found in a page."""
+
+    claim: str = Field(description="The inconsistent claim")
+    reason: str = Field(description="Why it contradicts the source")
+
+
+class FactualConsistencyOutput(BaseModel):
+    """Expected LLM output for the factual-consistency rule."""
+
+    issues: list[FactualIssue] = Field(default_factory=list, description="Factual inconsistencies found")
+
+
+class CoverageGap(BaseModel):
+    """A single coverage gap — concept missing from the wiki."""
+
+    concept: str = Field(description="The missing concept name")
+    reason: str = Field(description="Why this concept is important")
+    aliases: list[str] = Field(default_factory=list, description="Alternative names for this concept")
+
+
+class CoverageGapOutput(BaseModel):
+    """Expected LLM output for the coverage-gap rule."""
+
+    gaps: list[CoverageGap] = Field(default_factory=list, description="Coverage gaps detected")
+
+
+class Contradiction(BaseModel):
+    """A single contradiction between two wiki pages."""
+
+    page_a: str = Field(description="Title of the first page")
+    page_b: str = Field(description="Title of the second page")
+    claim_a: str = Field(description="The conflicting claim from page_a")
+    claim_b: str = Field(description="The conflicting claim from page_b")
+    explanation: str = Field(description="Why the claims contradict")
+    confidence: float = Field(default=0.0, description="Confidence 0.0-1.0")
+
+
+class ContradictionOutput(BaseModel):
+    """Expected LLM output for the contradiction-detection rule."""
+
+    contradictions: list[Contradiction] = Field(default_factory=list, description="Contradictions detected")
 
 
 class LlmLintRule(BaseLintRule):
@@ -35,26 +90,18 @@ class LlmLintRule(BaseLintRule):
         self._agent = agent
         self.lint_page_budget = lint_page_budget
 
-    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
+    def _call_agent(self, template_name: str, *, result_type: type | None = None, **kwargs: Any) -> Any:
         """Call the LintRuleAgent with a rendered template.
 
-        Returns parsed JSON dict from the LLM's text response, or *None* on
-        failure.  Uses ``str`` output from the agent (not structured output)
-        so the prompt template controls the JSON schema without pydantic-ai
-        injecting a ``response`` wrapper key.
+        Returns the structured pydantic model instance directly when
+        *result_type* is provided, or the raw string result otherwise.
         """
         if self._agent is None:
             return None
         prompt = _loader.render(template_name, **kwargs)
         deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
         try:
-            result = self._agent.run(deps)
-            if isinstance(result, dict):
-                return result
-            if not result or not result.strip():
-                logger.warning("%s returned empty string", self.name)
-                return None
-            return json.loads(result)
+            return self._agent.run(deps, result_type=result_type)
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
             return None
@@ -98,6 +145,7 @@ class FactualConsistencyRule(LlmLintRule):
                 try:
                     llm_result = self._call_agent(
                         "lint/factual-consistency.md.j2",
+                        result_type=FactualConsistencyOutput,
                         title=node.title,
                         content=segment,
                     )
@@ -116,16 +164,16 @@ class FactualConsistencyRule(LlmLintRule):
                 if llm_result is None:
                     continue
 
-                issues = llm_result.get("issues", [])
+                issues = llm_result.issues
                 for issue in issues:
                     results.append(
                         LintResult(
                             rule=self.name,
                             outcome=LintRuleOutcome.FAIL,
                             severity=Severity.ERROR,
-                            message=f"Inconsistent claim in '{node.title}': {issue.get('reason', '')}",
+                            message=f"Inconsistent claim in '{node.title}': {issue.reason}",
                             page_id=node.id,
-                            details={"claim": issue.get("claim", ""), "reason": issue.get("reason", "")},
+                            details={"claim": issue.claim, "reason": issue.reason},
                         )
                     )
 
@@ -163,6 +211,7 @@ class ClarityScoreRule(LlmLintRule):
                 try:
                     llm_result = self._call_agent(
                         "lint/clarity-score.md.j2",
+                        result_type=ClarityScoreOutput,
                         title=node.title,
                         content=segment,
                     )
@@ -181,8 +230,8 @@ class ClarityScoreRule(LlmLintRule):
                 if llm_result is None:
                     continue
 
-                score = llm_result.get("score", 0)
-                feedback = llm_result.get("feedback", "")
+                score = llm_result.score
+                feedback = llm_result.feedback
                 if score > best_score:
                     best_score = score
                     best_feedback = feedback
@@ -239,6 +288,7 @@ class CoverageGapRule(LlmLintRule):
             try:
                 llm_result = self._call_agent(
                     "lint/coverage-gap.md.j2",
+                    result_type=CoverageGapOutput,
                     wiki_summary=wiki_summary,
                 )
             except Exception as exc:
@@ -248,9 +298,9 @@ class CoverageGapRule(LlmLintRule):
             if llm_result is None:
                 continue
 
-            gaps = llm_result.get("gaps", [])
+            gaps = llm_result.gaps
             if isinstance(gaps, list):
-                all_gaps.extend(gaps)
+                all_gaps.extend(gap.model_dump() for gap in gaps)
 
         # Cross-batch dedup: merge concepts that refer to the same thing
         # under different names (e.g., "ETSI TS 103 558" = "ABLE Model").
@@ -311,6 +361,7 @@ class CoverageGapRule(LlmLintRule):
         try:
             llm_result = self._call_agent(
                 "lint/coverage-gap-dedup.md.j2",
+                result_type=CoverageGapOutput,
                 gaps_json=gaps_json,
             )
         except Exception as exc:
@@ -318,8 +369,8 @@ class CoverageGapRule(LlmLintRule):
             return gaps
         if llm_result is None:
             return gaps
-        merged = llm_result.get("gaps", [])
-        return merged if isinstance(merged, list) and merged else gaps
+        merged = llm_result.gaps
+        return [g.model_dump() for g in merged] if merged else gaps
 
     @staticmethod
     def _suppress_existing_gaps(gaps: list[dict], wiki: Any) -> list[dict]:
@@ -383,6 +434,7 @@ class ContradictionDetectionRule(LlmLintRule):
             try:
                 llm_result = self._call_agent(
                     "lint/contradiction-detection.md.j2",
+                    result_type=ContradictionOutput,
                     wiki_summary=wiki_summary,
                 )
             except Exception as exc:
@@ -399,21 +451,19 @@ class ContradictionDetectionRule(LlmLintRule):
             if llm_result is None:
                 continue
 
-            contradictions = llm_result.get("contradictions", [])
-            if not isinstance(contradictions, list):
+            contradictions = llm_result.contradictions
+            if not contradictions:
                 continue
 
             for contradiction in contradictions:
-                if not isinstance(contradiction, dict):
-                    continue
-                page_a_title = contradiction.get("page_a", "")
-                page_b_title = contradiction.get("page_b", "")
+                page_a_title = contradiction.page_a
+                page_b_title = contradiction.page_b
                 node_a = title_to_node.get(page_a_title.lower())
                 node_b = title_to_node.get(page_b_title.lower())
                 if node_a is None or node_b is None:
                     continue
 
-                severity = Severity.ERROR if str(contradiction.get("severity", "")).lower() == "error" else Severity.WARNING
+                severity = Severity.ERROR if contradiction.confidence >= 0.8 else Severity.WARNING
 
                 # Deduplicate: skip if this page pair was already reported.
                 pair_key = frozenset({node_a.id, node_b.id})
@@ -426,17 +476,17 @@ class ContradictionDetectionRule(LlmLintRule):
                         rule=self.name,
                         outcome=LintRuleOutcome.FAIL,
                         severity=severity,
-                        message=(f"Contradiction between '{node_a.title}' and '{node_b.title}': {contradiction.get('explanation', '')}"),
+                        message=(f"Contradiction between '{node_a.title}' and '{node_b.title}': {contradiction.explanation}"),
                         page_id=node_a.id,
                         details={
                             "page_a_id": node_a.id,
                             "page_a_title": node_a.title,
                             "page_b_id": node_b.id,
                             "page_b_title": node_b.title,
-                            "claim_a": contradiction.get("claim_a", ""),
-                            "claim_b": contradiction.get("claim_b", ""),
-                            "explanation": contradiction.get("explanation", ""),
-                            "confidence": contradiction.get("confidence"),
+                            "claim_a": contradiction.claim_a,
+                            "claim_b": contradiction.claim_b,
+                            "explanation": contradiction.explanation,
+                            "confidence": contradiction.confidence,
                         },
                     )
                 )

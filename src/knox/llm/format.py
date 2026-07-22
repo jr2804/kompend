@@ -68,7 +68,7 @@ def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | No
     return merged
 
 
-def salvage_json(content: str, schema: Any | None = None) -> Any | None:
+def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool = False) -> Any | None:
     """Best-effort parse of JSON that small LLMs may truncate or malform.
 
     Delegates to ``json_repair`` (stdlib ``json.loads`` fast path, then a
@@ -80,6 +80,12 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
     fills missing fields toward the schema. That mode raises ``ValueError`` on
     wrong field names (treated as a missing required key), so on any error it
     falls back to plain schema-less repair — callers never see a raised error.
+
+    When *unwrap_list* is ``True`` (default) and the result is a single-element
+    list containing a dict, the dict is returned instead. Small models
+    frequently wrap expected JSON objects in an array: ``[{"score": 5}]``
+    instead of ``{"score": 5}``. Pass ``unwrap_list=False`` when the caller
+    legitimately expects a list.
 
     Pathological deeply-nested input raises ``RecursionError`` from BOTH
     stdlib and ``json_repair``'s recursive parsers, so it is caught here;
@@ -129,6 +135,12 @@ def salvage_json(content: str, schema: Any | None = None) -> Any | None:
         coerced = _coerce_list_to_object(parsed, schema)
         if coerced is not None:
             return coerced
+
+    # Unwrap single-element list to dict when caller expects an object.
+    # Small models frequently wrap JSON objects in an array:
+    # [{"score": 5, "feedback": "..."}] instead of {"score": 5, ...}.
+    if unwrap_list and isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
+        return parsed[0]
 
     return parsed
 

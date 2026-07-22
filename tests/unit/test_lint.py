@@ -15,6 +15,12 @@ from knox.compilation._two_phase_core import Extraction
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from knox.lint.llm_rules import (
+    Contradiction,
+    ContradictionOutput,
+    CoverageGap,
+    CoverageGapOutput,
+)
 from knox.lint.remediation import remediate
 from knox.lint.runner import LintRunner, _build_report, report_to_json, report_to_text
 from knox.lint.structural import (
@@ -570,7 +576,7 @@ class TestContradictionDetectionRule:
 
     def test_passes_with_single_page(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x")])
-        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client({"contradictions": []}))
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client(ContradictionOutput(contradictions=[])))
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.PASS and "at least two pages" in r.message for r in report.results)
 
@@ -582,19 +588,18 @@ class TestContradictionDetectionRule:
             ]
         )
         client = _mock_llm_client(
-            {
-                "contradictions": [
-                    {
-                        "page_a": "Page A",
-                        "page_b": "Page B",
-                        "claim_a": "The sky is blue.",
-                        "claim_b": "The sky is green.",
-                        "explanation": "Colors differ",
-                        "severity": "error",
-                        "confidence": 0.9,
-                    }
+            ContradictionOutput(
+                contradictions=[
+                    Contradiction(
+                        page_a="Page A",
+                        page_b="Page B",
+                        claim_a="The sky is blue.",
+                        claim_b="The sky is green.",
+                        explanation="Colors differ",
+                        confidence=0.9,
+                    )
                 ]
-            }
+            )
         )
         runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
@@ -606,13 +611,13 @@ class TestContradictionDetectionRule:
 
     def test_passes_when_none_found(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
-        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client({"contradictions": []}))
+        runner = LintRunner(rules=["contradiction-detection"], lint_agent=_mock_llm_client(ContradictionOutput(contradictions=[])))
         report = runner.run(wiki)
         assert any(r.outcome == LintRuleOutcome.PASS and "No contradictions detected" in r.message for r in report.results)
 
     def test_handles_llm_failure(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
-        client = _mock_llm_client({"contradictions": []})
+        client = _mock_llm_client(ContradictionOutput(contradictions=[]))
         runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
         assert not any(r.outcome == LintRuleOutcome.SKIP for r in report.results)
@@ -625,17 +630,16 @@ class TestContradictionDetectionRule:
                 _make_node("n2", "Page B", "No auditory models needed."),
             ]
         )
-        contradiction = {
-            "page_a": "Page A",
-            "page_b": "Page B",
-            "claim_a": "uses auditory models",
-            "claim_b": "avoids auditory models",
-            "explanation": "Mutually exclusive methodology",
-            "severity": "error",
-            "confidence": 0.95,
-        }
+        contradiction = Contradiction(
+            page_a="Page A",
+            page_b="Page B",
+            claim_a="uses auditory models",
+            claim_b="avoids auditory models",
+            explanation="Mutually exclusive methodology",
+            confidence=0.95,
+        )
         # LLM returns the same contradiction 5 times in one batch.
-        client = _mock_llm_client({"contradictions": [contradiction] * 5})
+        client = _mock_llm_client(ContradictionOutput(contradictions=[contradiction] * 5))
         runner = LintRunner(rules=["contradiction-detection"], lint_agent=client)
         report = runner.run(wiki)
         failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
@@ -858,17 +862,17 @@ class TestCoverageGapRuleDedup:
         wiki = _make_wiki([_make_node("n1", "A", "content"), _make_node("n2", "B", "content")])
         client = MagicMock()
         client.run.side_effect = [
-            {
-                "gaps": [
-                    {"concept": "ETSI TS 103 558", "reason": "not discussed"},
-                    {"concept": "ABLE Model", "reason": "never mentioned"},
+            CoverageGapOutput(
+                gaps=[
+                    CoverageGap(concept="ETSI TS 103 558", reason="not discussed"),
+                    CoverageGap(concept="ABLE Model", reason="never mentioned"),
                 ]
-            },
-            {
-                "gaps": [
-                    {"concept": "ETSI TS 103 558", "reason": "not discussed", "aliases": ["ABLE Model"]},
+            ),
+            CoverageGapOutput(
+                gaps=[
+                    CoverageGap(concept="ETSI TS 103 558", reason="not discussed", aliases=["ABLE Model"]),
                 ]
-            },
+            ),
         ]
         runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
         report = runner.run(wiki)
@@ -881,12 +885,12 @@ class TestCoverageGapRuleDedup:
         wiki = _make_wiki([_make_node("n1", "A", "content"), _make_node("n2", "B", "content")])
         client = MagicMock()
         client.run.side_effect = [
-            {
-                "gaps": [
-                    {"concept": "Concept A", "reason": "missing"},
-                    {"concept": "Concept B", "reason": "absent"},
+            CoverageGapOutput(
+                gaps=[
+                    CoverageGap(concept="Concept A", reason="missing"),
+                    CoverageGap(concept="Concept B", reason="absent"),
                 ]
-            },
+            ),
             Exception("LLM dedup failed"),
         ]
         runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
@@ -902,18 +906,18 @@ class TestCoverageGapSuppression:
         wiki = _make_wiki([_make_node("leap-model", "LEAP Model", "content about LEAP")])
         client = MagicMock()
         client.run.side_effect = [
-            {
-                "gaps": [
-                    {"concept": "LEAP Model", "reason": "not discussed"},
-                    {"concept": "Truly Missing", "reason": "absent"},
+            CoverageGapOutput(
+                gaps=[
+                    CoverageGap(concept="LEAP Model", reason="not discussed"),
+                    CoverageGap(concept="Truly Missing", reason="absent"),
                 ]
-            },
-            {
-                "gaps": [
-                    {"concept": "LEAP Model", "reason": "not discussed"},
-                    {"concept": "Truly Missing", "reason": "absent"},
+            ),
+            CoverageGapOutput(
+                gaps=[
+                    CoverageGap(concept="LEAP Model", reason="not discussed"),
+                    CoverageGap(concept="Truly Missing", reason="absent"),
                 ]
-            },
+            ),
         ]
         runner = LintRunner(rules=["coverage-gap"], lint_agent=client)
         report = runner.run(wiki)

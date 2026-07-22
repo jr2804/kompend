@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic_ai.agent import Agent
+
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
 
@@ -9,17 +13,23 @@ from knox.agents.deps import PipelineAgentDeps
 class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     """PydanticAI agent for LLM-powered lint rules.
 
-    Returns JSON text matching the rule's expected schema.
     Each rule (factual-consistency, clarity-score, coverage-gap,
-    contradiction-detection) has its own template and output schema.
+    contradiction-detection) has its own template and expected output schema.
     The prompt is rendered by the rule itself and passed via ``deps.text``.
-    The caller parses the string result as JSON.
+
+    To support multiple output schemas with a single agent instance,
+    :meth:`run` accepts an optional ``result_type`` keyword. When the type
+    changes, the underlying PydanticAI Agent is rebuilt (cached per type).
     """
 
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = ""  # not used; system prompt is empty
     result_type: type = str
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
+
+    def __init__(self, model_string: str, **kwargs: Any) -> None:
+        super().__init__(model_string, **kwargs)
+        self._agents_by_type: dict[type, Agent[Any, Any]] = {}
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
         """Return the pre-rendered prompt from deps.text.
@@ -29,3 +39,21 @@ class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
         rendering is bypassed.
         """
         return deps.text
+
+    def run(  # type: ignore[override]
+        self,
+        deps: PipelineAgentDeps,
+        *,
+        result_type: type | None = None,
+        message_history: list[Any] | None = None,
+    ) -> Any:
+        """Single-turn agent invocation with optional per-call result type.
+
+        When *result_type* differs from the cached agent's type, a new
+        PydanticAI Agent is built and cached. This lets lint rules share
+        a single LintRuleAgent while using different output schemas.
+        """
+        if result_type is not None and result_type != self.result_type:
+            self.result_type = result_type
+            self._agent = None  # force rebuild in super().run()
+        return super().run(deps, message_history=message_history)
