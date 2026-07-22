@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -77,12 +78,27 @@ class LintRunner:
         self.fix = fix
         self.sources_dir = sources_dir
 
-    def run(self, wiki: Any) -> LintReport:
-        """Execute all enabled rules and return an aggregated report."""
+    def run(
+        self,
+        wiki: Any,
+        *,
+        on_rule: Callable[[str, int, int], None] | None = None,
+    ) -> LintReport:
+        """Execute all enabled rules and return an aggregated report.
+
+        Parameters
+        ----------
+        on_rule:
+            Optional callback ``(rule_name, current, total)`` called before each
+            rule starts. Used by the CLI to drive a progress bar.
+        """
         active_rules = self._resolve_rules()
         all_results: list[LintResult] = []
+        total = len(active_rules)
 
-        for rule in active_rules:
+        for idx, rule in enumerate(active_rules):
+            if on_rule is not None:
+                on_rule(rule.name, idx + 1, total)
             try:
                 results = rule.check(wiki, sources_dir=self.sources_dir)
             except Exception as exc:

@@ -20,6 +20,7 @@ from typing import Any
 
 import typer
 import yaml
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
@@ -190,7 +191,37 @@ def lint_run(
         sources_dir=sources_dir_str,
     )
     lint_start = time.monotonic()
-    report = runner.run(wiki)
+    progress = (
+        Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=get_err_console(),
+            transient=False,
+            refresh_per_second=2,
+        )
+        if not json_output
+        else None
+    )
+    if progress is not None:
+        progress.start()
+    lint_task = progress.add_task("linting", total=0) if progress is not None else None
+
+    def _on_rule(rule_name: str, current: int, total: int) -> None:
+        if progress is not None and lint_task is not None:
+            progress.update(
+                lint_task,
+                total=total,
+                completed=current - 1,
+                description=f"linting [{current}/{total}] {rule_name}",
+            )
+
+    report = runner.run(wiki, on_rule=_on_rule)
+    if progress is not None and lint_task is not None:
+        progress.update(lint_task, completed=progress.tasks[lint_task].total or 0, description="linting complete")
+        progress.stop()
     lint_elapsed = time.monotonic() - lint_start
 
     fixes_applied = 0
