@@ -184,9 +184,9 @@ if (-not $Preview) {
     }
 }
 
-# ------ Stage 2b: Ingest batch 2 (incremental sources) ------------------------------------------------------
+# ------ Stage 3: Ingest batch 2 (incremental sources) ------------------------------------------------------
 Write-Host ""
-Write-Host "=== Stage 2b: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 3: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
 
 $Ingest2Args = @(
     "uv", "run", "knox",
@@ -209,9 +209,9 @@ if (-not $Preview) {
     }
 }
 
-# ------ Stage 2c: Re-compile with batch 2 content ------------------------------------------------------------------------
+# ------ Stage 4: Re-compile with batch 2 content ------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== Stage 2c: Re-compile (with batch 2 content) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 4: Re-compile (with batch 2 content) ===" -ForegroundColor Cyan
 $Compile2Args = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -231,9 +231,9 @@ if (-not $Preview) {
     }
 }
 
-# ------ Lint (Structural + LLM rules, saves to lint_history.jsonl) ---------------------------
+# ------ Stage 5: Lint (Structural + LLM rules, saves to lint_history.jsonl) ---------------------------
 Write-Host ""
-Write-Host "=== Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 5: Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -252,9 +252,9 @@ if (-not $Preview) {
     }
 }
 
-# ------ Gap Analysis (source recommendations from lint results) ---------------------------------
+# ------ Stage 6: Gap Analysis (source recommendations from lint results) ---------------------------------
 Write-Host ""
-Write-Host "=== Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 6: Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
 $GapsArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -269,9 +269,9 @@ if (-not $Preview) {
     # gaps exits 0 regardless --- it's informational
 }
 
-# ------ Remediate (auto-fix + LLM-generated concept pages) ------------------------------------------------
+# ------ Stage 7: Remediate (auto-fix + LLM-generated concept pages) ------------------------------------------------
 Write-Host ""
-Write-Host "=== Remediate (auto-fix + concept generation) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 7: Remediate (auto-fix + concept generation) ===" -ForegroundColor Cyan
 $RemediateArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -285,9 +285,9 @@ if (-not $Preview) {
     & $RemediateArgs[0] $RemediateArgs[1..($RemediateArgs.Length - 1)]
 }
 
-# ------ Lint History (trend across builds) ------------------------------------------------------------------------------------------------
+# ------ Stage 8: Lint History (trend across builds) ------------------------------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== Lint History (trend) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 8: Lint History (trend) ===" -ForegroundColor Cyan
 $HistoryArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -321,10 +321,10 @@ function Format-CmdDisplay {
     }) -join ' '
 }
 
-# ------ Stage 3: Capture workflow demo (learn + capture + write) ---------------------------
+# ------ Stage 9: Capture workflow demo (learn + capture + write) ---------------------------
 if ($DemoContent) {
     Write-Host ""
-    Write-Host "=== Stage 3: Capture workflow demo ===" -ForegroundColor Cyan
+    Write-Host "=== Stage 9: Capture workflow demo ===" -ForegroundColor Cyan
 
     # learn
     if ($DemoContent.learn) {
@@ -395,10 +395,10 @@ if ($DemoContent) {
         }
     }
 
-    # ------ Stage 4: Query demo (RAG queries) ------------------------------------------------------------------------------------------
+    # ------ Stage 10: Query demo (RAG queries) ------------------------------------------------------------------------------------------
     if ($DemoContent.query) {
         Write-Host ""
-        Write-Host "=== Stage 4: Query demo ===" -ForegroundColor Cyan
+        Write-Host "=== Stage 10: Query demo ===" -ForegroundColor Cyan
 
         foreach ($item in $DemoContent.query) {
             $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "query", $item.question)
@@ -415,9 +415,9 @@ if ($DemoContent) {
     }
 }
 
-# ------ Stage 5: Status + Trace (diagnostics) ------------------------------------------------------------------------------------------
+# ------ Stage 11: Status + Trace (diagnostics) ------------------------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== Stage 5: Status + Trace ===" -ForegroundColor Cyan
+Write-Host "=== Stage 11: Status + Trace ===" -ForegroundColor Cyan
 
 $StatusArgs = @(
     "uv", "run", "knox",
@@ -443,9 +443,9 @@ if (-not $Preview) {
     & $TraceArgs[0] $TraceArgs[1..($TraceArgs.Length - 1)]
 }
 
-# ------ Stage 6: Organize (dry-run source categorisation) ------------------------------------------------------
+# ------ Stage 12: Organize (dry-run source categorisation) ------------------------------------------------------
 Write-Host ""
-Write-Host "=== Stage 6: Organize (dry-run) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 12: Organize (dry-run) ===" -ForegroundColor Cyan
 $OrganizeArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -461,13 +461,13 @@ if (-not $Preview) {
     }
 }
 
-# ------ Stage 7: Final Lint Check (score after all remediation + write) ----------
+# ------ Stage 13: Final Lint Check (score after all remediation + write) ----------
 # Re-runs the linter read-only (no --fix) so the post-remediation score is
 # visible, then re-prints history to show the improvement trend including
 # this final run. New pages from `knox write` / concept generation are
 # re-evaluated here too.
 Write-Host ""
-Write-Host "=== Stage 7: Final Lint Check (post-remediation score) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 13: Final Lint Check (post-remediation score) ===" -ForegroundColor Cyan
 $FinalLintArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
@@ -494,12 +494,12 @@ if (-not $Preview) {
     & $HistoryArgs[0] $HistoryArgs[1..($HistoryArgs.Length - 1)]
 }
 
-# ------ Stage 8: Pipeline Log (on-demand report: compile + runs + lint trend) ----
+# ------ Stage 14: Pipeline Log (on-demand report: compile + runs + lint trend) ----
 # log.md is no longer auto-written; regenerate it on demand from the
 # structured stores (runs.jsonl, lint_history.jsonl, last_wiki.json) and
 # print the full report so the build ends with a complete picture.
 Write-Host ""
-Write-Host "=== Stage 8: Pipeline Log (regenerated report) ===" -ForegroundColor Cyan
+Write-Host "=== Stage 14: Pipeline Log (regenerated report) ===" -ForegroundColor Cyan
 $LogArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
