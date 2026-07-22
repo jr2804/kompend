@@ -36,7 +36,6 @@ class TrafilaturaFormat(StrEnum):
     JSON = "json"
 
 
-
 logger = get_logger(__name__)
 
 

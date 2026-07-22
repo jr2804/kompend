@@ -36,13 +36,25 @@ class LlmLintRule(BaseLintRule):
         self.lint_page_budget = lint_page_budget
 
     def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
-        """Call the LintRuleAgent with a rendered template."""
+        """Call the LintRuleAgent with a rendered template.
+
+        Returns parsed JSON dict from the LLM's text response, or *None* on
+        failure.  Uses ``str`` output from the agent (not structured output)
+        so the prompt template controls the JSON schema without pydantic-ai
+        injecting a ``response`` wrapper key.
+        """
         if self._agent is None:
             return None
         prompt = _loader.render(template_name, **kwargs)
         deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
         try:
-            return self._agent.run(deps)
+            result = self._agent.run(deps)
+            if isinstance(result, dict):
+                return result
+            if not result or not result.strip():
+                logger.warning("%s returned empty string", self.name)
+                return None
+            return json.loads(result)
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
             return None
@@ -270,18 +282,6 @@ class CoverageGapRule(LlmLintRule):
         else:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No coverage gaps detected"))
         return results
-
-    def _call_agent(self, template_name: str, **kwargs: Any) -> dict | None:
-        """Call the LintRuleAgent with a rendered template."""
-        if self._agent is None:
-            return None
-        prompt = _loader.render(template_name, **kwargs)
-        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
-        try:
-            return self._agent.run(deps)
-        except Exception as exc:
-            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
-            return None
 
     def _dedup_gaps(self, gaps: list[dict]) -> list[dict]:
         """Merge semantically equivalent concepts via a single LLM pass.

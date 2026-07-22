@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
 
 
-class LintRuleAgent(KnoxAgentBase[dict[str, Any], PipelineAgentDeps]):
+class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     """PydanticAI agent for LLM-powered lint rules.
 
-    Returns free-form JSON (dict) matching the rule's expected schema.
+    Returns JSON text matching the rule's expected schema.
     Each rule (factual-consistency, clarity-score, coverage-gap,
     contradiction-detection) has its own template and output schema.
     The prompt is rendered by the rule itself and passed via ``deps.text``.
+    The caller parses the string result as JSON.
     """
 
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = ""  # not used; system prompt is empty
-    result_type: type = dict  # type: ignore[arg-type]
+    result_type: type = str
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
