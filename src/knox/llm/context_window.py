@@ -72,8 +72,8 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         params_str: str = resp.parameters or ""
         for line in params_str.split("\n"):
             stripped = line.strip()
-            if stripped.startswith("num_ctx") and stripped[len("num_ctx"):].strip().isdigit():
-                param_ctx = int(stripped[len("num_ctx"):].strip())
+            if stripped.startswith("num_ctx") and stripped[len("num_ctx") :].strip().isdigit():
+                param_ctx = int(stripped[len("num_ctx") :].strip())
                 break
 
         # 3a. Native GGUF metadata.

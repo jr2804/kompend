@@ -96,8 +96,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     Subclasses MUST set:
 
-    - ``template_name`` — the filename under ``templates/compilation/``
-      (or ``templates/query/`` for the query agent).
+    - ``template_name`` — the filename under ``templates/<prefix>/``
+      where ``prefix`` is set by ``template_prefix`` (default ``compilation/``).
     - ``system_template_name`` — the filename of the system prompt.
     - ``result_type`` — a Pydantic model class (or ``str`` for free-text
       output) that the LLM output will be validated against.
@@ -107,6 +107,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     template_name: str
     system_template_name: str
+    #: Subdirectory under ``templates/`` where this agent's templates live.
+    #: Override in subclasses whose templates are not under ``compilation/``
+    #: (e.g. ``"search/"``, ``"capture/"``, ``"organize/"``).
+    template_prefix: str = "compilation/"
     result_type: type
     deps_type: type[AgentDeps] = PipelineAgentDeps
     temperature: float | None = None
@@ -179,7 +183,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         Only variables declared in the template's frontmatter are passed,
         avoiding warnings about unused variables.
         """
-        template_path = f"compilation/{self.template_name}"
+        template_path = f"{self.template_prefix}{self.template_name}"
         meta = self._template_loader.get_meta(template_path)
         declared = meta.declared_variable_names()
         vars_dict = self._deps_to_template_vars(deps)
@@ -196,7 +200,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if not self.system_template_name:
             return ""
         prompt = self._template_loader.render(
-            f"compilation/{self.system_template_name}",
+            f"{self.template_prefix}{self.system_template_name}",
         )
         if self._skills:
             skill_blocks = []

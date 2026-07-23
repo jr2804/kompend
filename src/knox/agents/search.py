@@ -26,6 +26,7 @@ class QueryExpansionAgent(KnoxAgentBase[QueryExpansionOutput, PipelineAgentDeps]
 
     template_name: str = "expand_query.md.j2"
     system_template_name: str = "expand_query.md.j2"
+    template_prefix: str = "search/"
     result_type: type = QueryExpansionOutput
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0
@@ -36,6 +37,7 @@ class CragGradeAgent(KnoxAgentBase[CragGradeOutput, PipelineAgentDeps]):
 
     template_name: str = "crag_grade.md.j2"
     system_template_name: str = "crag_grade.md.j2"
+    template_prefix: str = "search/"
     result_type: type = CragGradeOutput
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0
@@ -46,6 +48,7 @@ class HydeAgent(KnoxAgentBase[str, PipelineAgentDeps]):
 
     template_name: str = "hyde_generate.md.j2"
     system_template_name: str = "hyde_generate.md.j2"
+    template_prefix: str = "search/"
     result_type: type = str
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.7

@@ -12,6 +12,7 @@ class CategorizeAgent(KnoxAgentBase[CategoryTree, PipelineAgentDeps]):
 
     template_name: str = "categorize_prompt.md.j2"
     system_template_name: str = "categorize_system.md.j2"
+    template_prefix: str = "organize/"
     result_type: type = CategoryTree
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0

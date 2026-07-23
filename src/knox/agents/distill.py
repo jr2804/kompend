@@ -12,6 +12,7 @@ class DistillAgent(KnoxAgentBase[DistillOutput, PipelineAgentDeps]):
 
     template_name: str = "distill.md.j2"
     system_template_name: str = "distill.md.j2"
+    template_prefix: str = "capture/"
     result_type: type = DistillOutput
     deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.2
