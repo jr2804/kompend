@@ -11,6 +11,7 @@ from typing import Any
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import CONFIG_FILE, KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
+from knox.types import ConfigValue
 
 logger = get_logger(__name__)
 
@@ -33,7 +34,7 @@ def _expand_env_vars(value: str) -> str:
     return re.sub(r"\$(\w+)|\$\{(\w+)\}", _replace, value)
 
 
-def _expand_env_vars_recursive(data: Any) -> Any:
+def _expand_env_vars_recursive(data: ConfigValue) -> ConfigValue:
     """Recursively expand env vars in all string values."""
     if isinstance(data, str):
         return _expand_env_vars(data)
@@ -44,7 +45,7 @@ def _expand_env_vars_recursive(data: Any) -> Any:
     return data
 
 
-def _strip_strings_recursive(data: Any) -> Any:
+def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
     """Recursively strip leading/trailing whitespace from all string values."""
     if isinstance(data, str):
         return data.strip()

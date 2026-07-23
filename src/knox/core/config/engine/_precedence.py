@@ -22,6 +22,7 @@ from knox.core.config.keys import (
     PATHS_SOURCES_DIR,
 )
 from knox.logging import get_logger
+from knox.types import ConfigValue
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,7 @@ class ConfigSource:
         return self.path
 
 
-def _get_dot(data: dict[str, Any], key: str, default: Any = None) -> Any:
+def _get_dot(data: dict[str, ConfigValue], key: str, default: ConfigValue = None) -> ConfigValue:
     """Retrieve a dotted key from a nested dict."""
     parts = key.split(".")
     current: Any = data
@@ -61,7 +62,7 @@ class ResolvedConfig:
     project_config_paths: list[Path] = field(default_factory=list)
     global_config_file: Path | None = None
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: ConfigValue = None) -> ConfigValue:
         """Get a dotted key from the resolved config."""
         return _get_dot(self.raw, key, default)
 

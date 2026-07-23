@@ -17,6 +17,7 @@ from knox.core.config.keys import (
     COMPILE_TIER_STATE_PATH,
 )
 from knox.logging import get_logger
+from knox.types import ConfigValue
 
 logger = get_logger(__name__)
 
@@ -97,7 +98,7 @@ def _resolve_field_info(key: str) -> FieldInfo | None:
     return cls.model_fields.get(parts[-1])
 
 
-def coerce_config_value(value: str, key: str) -> Any:
+def coerce_config_value(value: str, key: str) -> ConfigValue:
     """Coerce a CLI string to the config schema type for *key*.
 
     Raises:

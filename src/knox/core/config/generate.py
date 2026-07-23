@@ -13,6 +13,7 @@ from typing import Any, cast
 import tomli_w
 
 from knox.core.config._core import DEFAULTS, _flat_keys
+from knox.types import ConfigValue
 
 _HIDDEN_KEYS: frozenset[str] = frozenset(
     {
@@ -41,7 +42,7 @@ _SECTION_RE = re.compile(r"^\s*\[+([^\]]+)\]+")
 _KEY_RE = re.compile(r"^#?\s*([\w.\-]+)\s*=")
 
 
-def _clean_defaults(data: Any, prefix: str = "") -> Any:
+def _clean_defaults(data: ConfigValue, prefix: str = "") -> ConfigValue:
     """Deep-copy *data*, dropping ``None`` values and hidden keys.
 
     Empty dicts after cleaning are also removed — they would produce
