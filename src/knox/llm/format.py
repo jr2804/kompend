@@ -22,6 +22,7 @@ from typing import Any
 import ison_parser as _ison
 import json_repair
 import toon_format as _toon
+from pydantic import BaseModel
 
 from knox.core.config._configs import LlmDataFormat
 
@@ -42,6 +43,74 @@ def _strip_empty_strings(data: Any) -> Any:
     if isinstance(data, list):
         return [_strip_empty_strings(item) for item in data if item != ""]
     return data
+
+
+def _coerce_nulls_for_schema(data: Any, schema: Any) -> Any:
+    """Replace ``None`` with type-appropriate defaults for known schema fields.
+
+    ``json_repair`` schema mode raises ``ValueError`` when it encounters
+    ``null`` for a ``string`` field (e.g. ``"slug": null``), so
+    :func:`salvage_json` falls back to schema-less repair — which preserves
+    the ``null``, causing pydantic to reject the entire item and trigger a
+    model retry.  Small models frequently emit ``null`` where a string or
+    list is expected, and retrying produces worse output.
+
+    This function walks the parsed data alongside the pydantic schema and
+    coerces ``None`` to the field's default: ``""`` for ``str``, ``[]`` for
+    ``list``.  It only touches keys that exist in the schema — unknown keys
+    are passed through unchanged.  This is the minimal post-fix for the one
+    gap json_repair leaves open.
+    """
+    if not hasattr(schema, "model_fields"):
+        return data
+
+    if isinstance(data, dict):
+        result = dict(data)
+        for key, value in data.items():
+            field_info = schema.model_fields.get(key)
+            if field_info is None:
+                continue
+            annotation = field_info.annotation
+            if value is None:
+                result[key] = _default_for_annotation(annotation)
+            else:
+                # Recurse into nested model fields.
+                inner = _inner_model_type(annotation)
+                if inner is not None and isinstance(value, dict):
+                    result[key] = _coerce_nulls_for_schema(value, inner)
+                # Recurse into list-of-model fields.
+                item_model = _list_inner_model_type(annotation)
+                if item_model is not None and isinstance(value, list):
+                    result[key] = [
+                        _coerce_nulls_for_schema(item, item_model) if isinstance(item, dict) else item
+                        for item in value
+                    ]
+        return result
+
+    return data
+
+
+def _default_for_annotation(annotation: Any) -> Any:
+    """Return the default value for a field annotation (``""`` or ``[]``)."""
+    origin = getattr(annotation, "__origin__", None)
+    if origin is list or str(annotation).startswith("list["):
+        return []
+    return ""  # str and anything else
+
+
+def _inner_model_type(annotation: Any) -> Any | None:
+    """If *annotation* is a pydantic BaseModel subclass, return it; else None."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    return None
+
+
+def _list_inner_model_type(annotation: Any) -> Any | None:
+    """If *annotation* is ``list[Model]``, return the Model type; else None."""
+    args = getattr(annotation, "__args__", None)
+    if args and len(args) == 1:
+        return _inner_model_type(args[0])
+    return None
 
 
 def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | None:
@@ -140,7 +209,7 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
         try:
             parsed = json_repair.loads(content, schema=schema, schema_repair_mode="salvage")
             if parsed != "":
-                return _strip_empty_strings(parsed)
+                return _coerce_nulls_for_schema(_strip_empty_strings(parsed), schema)
         except (json.JSONDecodeError, ValueError, RecursionError):
             logging.getLogger(__name__).debug("salvage_json schema-mode failed", exc_info=True)
 
@@ -161,15 +230,15 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
     if schema is not None and isinstance(parsed, list):
         coerced = _coerce_list_to_object(parsed, schema)
         if coerced is not None:
-            return _strip_empty_strings(coerced)
+            return _coerce_nulls_for_schema(_strip_empty_strings(coerced), schema)
 
     # Unwrap single-element list to dict when caller expects an object.
     # Small models frequently wrap JSON objects in an array:
     # [{"score": 5, "feedback": "..."}] instead of {"score": 5, ...}.
     if unwrap_list and isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-        return _strip_empty_strings(parsed[0])
+        return _coerce_nulls_for_schema(_strip_empty_strings(parsed[0]), schema) if schema is not None else _strip_empty_strings(parsed[0])
 
-    return _strip_empty_strings(parsed)
+    return _coerce_nulls_for_schema(_strip_empty_strings(parsed), schema) if schema is not None else _strip_empty_strings(parsed)
 
 
 # ── Format encode / decode ────────────────────────────────────────────────

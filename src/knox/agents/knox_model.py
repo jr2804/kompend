@@ -216,13 +216,12 @@ class KnoxModel(Model):
         ``ToolCallPart`` with the parsed dict as ``args``. This forces the tool
         validation path, which always works correctly.
 
-        Only applies to agents with structured output (``result_type`` is not
+        Only applies to agents with structured output (``output_type`` is not
         ``str``). Free-text agents keep the original ``TextPart``.
         """
         # Check if this agent uses structured output (not free-text str)
-        is_structured = (
-            self._agent is not None and getattr(self._agent, "result_type", None) is not None and getattr(self._agent, "result_type", None) is not str
-        )
+        schema = self._get_result_schema()
+        is_structured = schema is not None
 
         for i, part in enumerate(response.parts):
             if not isinstance(part, ThinkingPart):
@@ -315,15 +314,17 @@ class KnoxModel(Model):
     def _get_result_schema(self) -> Any | None:
         """Return the agent's structured-output schema, or ``None`` for free-text.
 
-        Free-text agents (``result_type is str``) have no schema to
+        Free-text agents (``output_type is str``) have no schema to
         repair against — their output is plain text.
         """
         if not self._agent:
             return None
-        rt = getattr(self._agent, "result_type", None)
-        if rt is None or rt is str:
+        # pydantic-ai 2.x uses ``output_type`` (renamed from ``result_type``
+        # in 1.x).  Check both for safety across versions.
+        ot = getattr(self._agent, "output_type", None) or getattr(self._agent, "result_type", None)
+        if ot is None or ot is str:
             return None
-        return rt
+        return ot
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:

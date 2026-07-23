@@ -27,11 +27,44 @@ Usage::
 
 from __future__ import annotations
 
+import re
+from typing import Any
+
 from pydantic_ai import ModelRetry, RunContext
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import GenerationDeps
 from knox.compilation.schema import GenerationOutput
+
+
+def _slugify_title(title: str) -> str:
+    """Convert a title to a filesystem-safe slug (lowercase, hyphenated)."""
+    slug = re.sub(r"[^\w\s-]", "", title.lower()).strip()
+    slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
+    return slug or "concept"
+
+
+def _fix_slugs_locally(pages: list[Any]) -> None:
+    """Auto-fix empty and duplicate slugs without triggering a model retry.
+
+    Small models (Qwen3.5-2B) interpret delta-only retry prompts literally —
+    when asked to "provide corrected slugs ONLY", they return only
+    slug/title and **drop all content**.  Since slugs are deterministic
+    (derived from the title), we fix them locally instead of asking the
+    model to fix them.
+    """
+    seen: set[str] = set()
+    for page in pages:
+        if not page.slug.strip():
+            page.slug = _slugify_title(page.title)
+        # De-duplicate: append numeric suffix if slug already seen.
+        if page.slug in seen:
+            base = page.slug
+            counter = 2
+            while page.slug in seen:
+                page.slug = f"{base}-{counter}"
+                counter += 1
+        seen.add(page.slug)
 
 
 def _validate_generation_output(
@@ -40,35 +73,15 @@ def _validate_generation_output(
 ) -> GenerationOutput:
     """Semantic output validator for generation results.
 
-    Checks for structural issues that Pydantic can't catch: empty pages
-    list, empty slugs, and duplicate slugs.  Raises ``ModelRetry`` with
-    actionable feedback so the model can fix the problem.
-
-    Empty content is NOT rejected here — small models frequently return
-    pages with valid titles/slugs but empty content, and retrying causes
-    degradation rather than improvement.  Empty-content pages are filtered
-    out after generation in the compilation flow.
+    Checks for empty pages list (the only issue that warrants a model retry).
+    Empty and duplicate slugs are auto-fixed locally — asking the model to
+    fix them triggers content loss on small models (Qwen3.5-2B interprets
+    "provide slugs ONLY" literally and drops all content).
     """
     if not output.pages:
         raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
 
-    seen_slugs: set[str] = set()
-    issues: list[str] = []
-
-    for i, page in enumerate(output.pages):
-        if not page.slug.strip():
-            issues.append(f"page {i} ('{page.title}') has an empty slug")
-        if page.slug in seen_slugs:
-            issues.append(f"duplicate slug '{page.slug}' on page {i} ('{page.title}')")
-        seen_slugs.add(page.slug)
-
-    if issues:
-        issue_list = "\n".join(f"- {issue}" for issue in issues)
-        raise ModelRetry(
-            "The following pages need correction:\n" + issue_list + "\n\nProvide corrected slugs ONLY for the listed pages. "
-            "Return the full page list, but keep other pages' content unchanged."
-        )
-
+    _fix_slugs_locally(output.pages)
     return output
 
 
