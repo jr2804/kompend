@@ -51,6 +51,7 @@ from knox.llm.format import salvage_json
 from knox.llm.models import build_model
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
+from knox.types import AgentResult
 
 logger = get_logger(__name__)
 
@@ -593,7 +594,7 @@ def _format_schema_fields(model: type[Any]) -> str:
     return "{...}"
 
 
-def _merge_valid_data(previous: Any, current: Any, schema: type[Any]) -> Any | None:
+def _merge_valid_data(previous: AgentResult, current: AgentResult, schema: type[Any]) -> AgentResult | None:
     """Merge valid data from a previous retry attempt with the current one.
 
     When the model returns fewer items on retry (e.g., only the corrected

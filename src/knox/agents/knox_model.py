@@ -50,6 +50,7 @@ from knox.agents.debug import save_debug_prompt
 from knox.llm.format import salvage_json
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
+from knox.types import AgentResult
 
 # KNOX config ``reasoning_effort`` string → pydantic-ai unified ``thinking``.
 # ``none`` disables thinking entirely (``False``); the five named levels map
@@ -311,7 +312,7 @@ class KnoxModel(Model):
                 if isinstance(repaired, dict):
                     part.args = repaired
 
-    def _get_result_schema(self) -> Any | None:
+    def _get_result_schema(self) -> AgentResult | None:
         """Return the agent's structured-output schema, or ``None`` for free-text.
 
         Free-text agents (``output_type is str``) have no schema to
