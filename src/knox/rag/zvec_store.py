@@ -18,6 +18,7 @@ import os
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import zvec as _zvec
 from pydantic_ai import Embedder

@@ -34,6 +34,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader, S
 
 from knox.core.config._core import find_project_config
 from knox.logging import get_logger
+from knox.types import Jinja2Env, Jinja2Loader
 
 logger = get_logger(__name__)
 
