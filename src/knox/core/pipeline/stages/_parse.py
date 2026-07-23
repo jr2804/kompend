@@ -25,6 +25,7 @@ from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive
+from knox.types import ParsedResult
 
 logger = get_logger(__name__)
 
@@ -158,7 +159,7 @@ def _process_single_source(
     return tree
 
 
-def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> Any | None:
+def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:
     """Try to load a parsed document from cache. Returns *None* on miss."""
     if not use_cache:
         return None
@@ -173,7 +174,7 @@ def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_
     return None
 
 
-def _parse_source(pipeline: Any, source_file: Path, use_cache: bool, content_hash: str) -> Any | None:
+def _parse_source(pipeline: Any, source_file: Path, use_cache: bool, content_hash: str) -> ParsedResult | None:
     """Parse a source file via the router and optionally cache the result."""
     if pipeline.router is None:
         return None
