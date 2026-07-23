@@ -9,6 +9,7 @@ from typing import Any
 
 from knox.core.config.keys import COMPILE_EMBEDDING_DIM
 from knox.logging import get_logger
+from knox.types import CacheValue
 
 logger = get_logger(__name__)
 
@@ -77,7 +78,7 @@ class DedupStore:
         self.store_file.parent.mkdir(parents=True, exist_ok=True)
         self.store_file.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")
 
-    def get(self, slug: str, default: Any = None) -> Any:
+    def get(self, slug: str, default: CacheValue = None) -> CacheValue:
         """Return fingerprint data for *slug*, or *default*."""
         return self._data.get(slug, default)
 

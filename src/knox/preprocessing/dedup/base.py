@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any
 
+from knox.types import CacheValue
+
 
 class DedupVerdict(StrEnum):
     """Verdict for a single document after duplicate detection."""
@@ -25,7 +27,7 @@ class ContentMatcher(ABC):
     name: str = "base"
 
     @abstractmethod
-    def fingerprint(self, text: str) -> Any:
+    def fingerprint(self, text: str) -> CacheValue:
         """Compute a fingerprint for a document's text content.
 
         The fingerprint type is matcher-specific — an embedding vector
@@ -47,7 +49,7 @@ class ContentMatcher(ABC):
         ...
 
     @abstractmethod
-    def deserialize(self, data: list) -> Any:
+    def deserialize(self, data: list) -> CacheValue:
         """Restore a fingerprint from a serialised list."""
         ...
 

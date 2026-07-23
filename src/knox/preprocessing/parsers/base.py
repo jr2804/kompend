@@ -6,11 +6,11 @@ import re
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from binaryornot.check import is_binary
 
 from knox.core.models import ParsedDocument
+from knox.types import ParsedResult
 
 # Parser-layer image-resolution defaults. Lives here (the neutral parser base)
 # so both individual parsers and the registry's build-options share one source.
@@ -120,7 +120,7 @@ def _scrub_text(value: str) -> str:
     return value
 
 
-def _scrub_value(value: Any) -> Any:
+def _scrub_value(value: ParsedResult) -> ParsedResult:
     """Recursively scrub strings inside common container types."""
     if isinstance(value, str):
         return _scrub_text(value)
