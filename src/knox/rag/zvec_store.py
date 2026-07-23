@@ -18,7 +18,6 @@ import os
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 import zvec as _zvec
 from pydantic_ai import Embedder
@@ -28,6 +27,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.llm.models import _OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
+from knox.types import ZvecCollection
 
 logger = get_logger(__name__)
 
@@ -274,7 +274,7 @@ class ZvecWikiStore:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
-    def _create_collection(self) -> Any:
+    def _create_collection(self) -> ZvecCollection:
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
         schema = _zvec.CollectionSchema(
             name=_ZVEC_COLLECTION_NAME,
