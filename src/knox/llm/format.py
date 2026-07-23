@@ -25,11 +25,12 @@ import toon_format as _toon
 from pydantic import BaseModel
 
 from knox.core.config._configs import LlmDataFormat
+from knox.types import JSON, JSONDict, TypeType
 
 # ── JSON salvage (json_repair is the single source of truth) ─────────────
 
 
-def _strip_empty_strings(data: Any) -> Any:
+def _strip_empty_strings(data: JSON) -> JSON:
     """Recursively remove empty-string items from lists in parsed JSON.
 
     ``json_repair`` schema mode converts ``"related": ""`` to
@@ -45,7 +46,7 @@ def _strip_empty_strings(data: Any) -> Any:
     return data
 
 
-def _coerce_nulls_for_schema(data: Any, schema: Any) -> Any:
+def _coerce_nulls_for_schema(data: JSON, schema: Any) -> JSON:
     """Replace ``None`` with type-appropriate defaults for known schema fields.
 
     ``json_repair`` schema mode raises ``ValueError`` when it encounters
@@ -81,16 +82,13 @@ def _coerce_nulls_for_schema(data: Any, schema: Any) -> Any:
                 # Recurse into list-of-model fields.
                 item_model = _list_inner_model_type(annotation)
                 if item_model is not None and isinstance(value, list):
-                    result[key] = [
-                        _coerce_nulls_for_schema(item, item_model) if isinstance(item, dict) else item
-                        for item in value
-                    ]
+                    result[key] = [_coerce_nulls_for_schema(item, item_model) if isinstance(item, dict) else item for item in value]
         return result
 
     return data
 
 
-def _default_for_annotation(annotation: Any) -> Any:
+def _default_for_annotation(annotation: Any) -> JSON:
     """Return the default value for a field annotation (``""`` or ``[]``)."""
     origin = getattr(annotation, "__origin__", None)
     if origin is list or str(annotation).startswith("list["):
@@ -98,14 +96,14 @@ def _default_for_annotation(annotation: Any) -> Any:
     return ""  # str and anything else
 
 
-def _inner_model_type(annotation: Any) -> Any | None:
+def _inner_model_type(annotation: Any) -> TypeType:
     """If *annotation* is a pydantic BaseModel subclass, return it; else None."""
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return annotation
     return None
 
 
-def _list_inner_model_type(annotation: Any) -> Any | None:
+def _list_inner_model_type(annotation: Any) -> TypeType:
     """If *annotation* is ``list[Model]``, return the Model type; else None."""
     args = getattr(annotation, "__args__", None)
     if args and len(args) == 1:
@@ -113,7 +111,7 @@ def _list_inner_model_type(annotation: Any) -> Any | None:
     return None
 
 
-def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | None:
+def _coerce_list_to_object(items: list[Any], schema: Any) -> JSONDict | None:
     """Merge a list of single-key dicts into one dict matching the schema.
 
     Small models sometimes split a single object across multiple items:
@@ -153,7 +151,7 @@ def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | No
     return merged
 
 
-def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool = False) -> Any | None:
+def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool = False) -> JSON | None:
     """Best-effort parse of JSON that small LLMs may truncate or malform.
 
     **json_repair is the single source of truth** for parsing and schema-guided
@@ -244,7 +242,7 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
 # ── Format encode / decode ────────────────────────────────────────────────
 
 
-def encode_for_llm(data: Any, fmt: LlmDataFormat) -> str:
+def encode_for_llm(data: JSON, fmt: LlmDataFormat) -> str:
     """Serialize *data* to the LLM communication format *fmt*.
 
     Use this to serialize structured context data before injecting into

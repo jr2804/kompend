@@ -40,6 +40,7 @@ from knox.core.models import (
 )
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
+from knox.types import CacheValue
 
 logger = get_logger(__name__)
 
@@ -58,7 +59,7 @@ _CACHE_ENUMS: dict[str, type[StrEnum]] = {
 }
 
 
-def _encode_json(obj: Any) -> Any:  # noqa: PLR0911
+def _encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     """Recursively encode cache values for JSON serialization.
 
     Dataclasses, ``Path``, ``StrEnum``, ``bytes`` and tuples are tagged so
@@ -83,7 +84,7 @@ def _encode_json(obj: Any) -> Any:  # noqa: PLR0911
     return obj
 
 
-def _decode_json(obj: Any) -> Any:  # noqa: PLR0911
+def _decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     """Recursively decode JSON values produced by ``_encode_json``."""
     if isinstance(obj, dict):
         if "__dataclass__" in obj:
@@ -137,7 +138,7 @@ class CacheStore:
     def __init__(self, cache_dir: Path) -> None:
         self._cache_dir = cache_dir
 
-    def get(self, layer: str, deps: dict[str, str]) -> Any | None:
+    def get(self, layer: str, deps: dict[str, str]) -> CacheValue | None:
         """Look up a cached value.
 
         Parameters
@@ -174,7 +175,7 @@ class CacheStore:
 
         return entry.get("value")
 
-    def set(self, layer: str, deps: dict[str, str], value: Any) -> None:
+    def set(self, layer: str, deps: dict[str, str], value: CacheValue) -> None:
         """Store a value with its dependency hashes.
 
         Uses an atomic write-to-temp-then-rename so concurrent writers
