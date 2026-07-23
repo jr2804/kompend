@@ -385,7 +385,7 @@ class TemplateLoader:
         self._search_cache[normalized] = ("not_found", "")
         raise FileNotFoundError(f"Template not found: {normalized} (searched project={project_tpl_dir}, user={user_tpl_dir}, builtin={_BUILTIN_TEMPLATE_DIR})")
 
-    def _get_env(self) -> Any:
+    def _get_env(self) -> Jinja2Env:
         """Build and cache the Jinja2 environment (no frontmatter stripping).
 
         This environment uses ``StrictUndefined`` and expects templates
@@ -419,7 +419,7 @@ class TemplateLoader:
         )
         return self._jinja_env
 
-    def _make_template_source_loader(self) -> Any:
+    def _make_template_source_loader(self) -> Jinja2Loader:
         loaders: list[Any] = []
 
         project_dir = _project_templates_dir(self.project_dir)
