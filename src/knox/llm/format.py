@@ -25,7 +25,23 @@ import toon_format as _toon
 
 from knox.core.config._configs import LlmDataFormat
 
-# ── JSON salvage (re-exported; callers import salvage_json from here) ────
+# ── JSON salvage (json_repair is the single source of truth) ─────────────
+
+
+def _strip_empty_strings(data: Any) -> Any:
+    """Recursively remove empty-string items from lists in parsed JSON.
+
+    ``json_repair`` schema mode converts ``"related": ""`` to
+    ``"related": [""]`` (an array with one empty string).  While pydantic
+    accepts this, empty strings in lists are never useful LLM output.
+    This one-pass cleanup improves data quality without adding a full
+    custom normalizer on top of json_repair.
+    """
+    if isinstance(data, dict):
+        return {k: _strip_empty_strings(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_strip_empty_strings(item) for item in data if item != ""]
+    return data
 
 
 def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | None:
@@ -71,15 +87,25 @@ def _coerce_list_to_object(items: list[Any], schema: Any) -> dict[str, Any] | No
 def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool = False) -> Any | None:
     """Best-effort parse of JSON that small LLMs may truncate or malform.
 
-    Delegates to ``json_repair`` (stdlib ``json.loads`` fast path, then a
-    forgiving repair parser that closes truncated brackets, strips prose and
-    markdown fences, and tolerates raw control chars inside strings).
+    **json_repair is the single source of truth** for parsing and schema-guided
+    repair.  This function is a thin wrapper that adds three small post-fixes
+    for gaps json_repair doesn't cover:
+
+    1. **Double-encoded JSON unwrapping** — models sometimes wrap JSON in
+       extra quotes (``'"{"key": 1}"'``).  ``json_repair`` doesn't detect this.
+    2. **List-of-dicts → object coercion** — models sometimes return
+       ``[{"a": 1}, {"b": 2}]`` instead of ``{"a": 1, "b": 2}``.
+       ``json_repair`` schema mode raises ``ValueError`` on this.
+    3. **Empty-string filtering** — ``json_repair`` schema mode converts
+       ``"field": ""`` to ``"field": [""]`` for array fields.  The empty
+       string is stripped post-parse for data quality.
 
     When *schema* is given (a pydantic v2 model or JSON Schema dict), the
-    ``salvage`` schema-repair mode runs first: it completes truncated JSON and
-    fills missing fields toward the schema. That mode raises ``ValueError`` on
-    wrong field names (treated as a missing required key), so on any error it
-    falls back to plain schema-less repair — callers never see a raised error.
+    ``salvage`` schema-repair mode runs first: it completes truncated JSON,
+    fills missing fields, filters garbled items, and coerces types toward
+    the schema.  That mode raises ``ValueError`` on wrong field names, so on
+    any error it falls back to plain schema-less repair — callers never see
+    a raised error.
 
     When *unwrap_list* is ``True`` (default) and the result is a single-element
     list containing a dict, the dict is returned instead. Small models
@@ -98,10 +124,9 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
 
     content = content.strip()
 
-    # Detect double-encoded JSON: the model wrapped a JSON object in extra
-    # quotes, producing a JSON string literal like '{"summary":"..."}'.
-    # This happens when small models confuse "return JSON" with "return a
-    # string containing JSON". Unwrap the outer string before parsing.
+    # Post-fix 1: Detect double-encoded JSON — the model wrapped a JSON
+    # object in extra quotes, producing a JSON string literal like
+    # '{"summary":"..."}'.  json_repair doesn't detect this.
     if content.startswith('"') and content.endswith('"') and len(content) > 2 and ("{" in content or "[" in content):
         try:
             inner = json.loads(content)  # Parse the outer string literal
@@ -110,15 +135,16 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
         except (json.JSONDecodeError, ValueError):
             pass  # Not a string literal — proceed with original content
 
+    # Primary path: json_repair with schema-guided repair.
     if schema is not None:
         try:
             parsed = json_repair.loads(content, schema=schema, schema_repair_mode="salvage")
             if parsed != "":
-                return parsed
+                return _strip_empty_strings(parsed)
         except (json.JSONDecodeError, ValueError, RecursionError):
             logging.getLogger(__name__).debug("salvage_json schema-mode failed", exc_info=True)
 
-    # try repairing without schema; this is the fallback path for any error above
+    # Fallback: schema-less repair.
     try:
         parsed = json_repair.loads(content)
     except (json.JSONDecodeError, RecursionError):
@@ -128,21 +154,22 @@ def salvage_json(content: str, schema: Any | None = None, *, unwrap_list: bool =
     if parsed == "":
         return None
 
-    # Coerce list-of-dicts to dict when schema expects an object.
+    # Post-fix 2: Coerce list-of-dicts to dict when schema expects an object.
     # Small models sometimes return [{"summary": "..."}, {"entities": []}]
-    # instead of {"summary": "...", "entities": []}. Merge them.
+    # instead of {"summary": "...", "entities": []}.  json_repair schema mode
+    # raises ValueError on this; the schemaless fallback returns the raw list.
     if schema is not None and isinstance(parsed, list):
         coerced = _coerce_list_to_object(parsed, schema)
         if coerced is not None:
-            return coerced
+            return _strip_empty_strings(coerced)
 
     # Unwrap single-element list to dict when caller expects an object.
     # Small models frequently wrap JSON objects in an array:
     # [{"score": 5, "feedback": "..."}] instead of {"score": 5, ...}.
     if unwrap_list and isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-        return parsed[0]
+        return _strip_empty_strings(parsed[0])
 
-    return parsed
+    return _strip_empty_strings(parsed)
 
 
 # ── Format encode / decode ────────────────────────────────────────────────

@@ -279,32 +279,51 @@ class KnoxModel(Model):
 
     # ── KNOX-specific hooks ─────────────────────────────────────────────
 
-    @staticmethod
-    def _repair_tool_call_args(response: ModelResponse) -> None:
-        """Run ``json_repair`` on ``ToolCallPart.args`` strings in-place.
+    def _repair_tool_call_args(self, response: ModelResponse) -> None:
+        """Run ``json_repair`` schema-guided repair on tool-call args.
 
-        Small local models frequently produce tool-call arguments with
-        invalid JSON: truncated output, bad escapes, stray
-        control characters, trailing prose.  pydantic-ai's built-in
-        validator uses pydantic's strict ``validate_json`` which rejects
-        all of these, triggering a retry that wastes context window and
-        usually produces the same error.
+        Small local models produce tool-call arguments with invalid JSON
+        (truncation, bad escapes, stray control chars) and type mismatches
+        (``"related": ""`` instead of ``[]``, garbled string fragments as
+        page dicts).  pydantic-ai's built-in validator uses pydantic's strict
+        ``validate_json`` which rejects all of these, triggering a retry
+        that wastes context window and usually produces worse output.
 
-        We intercept the raw args string *before* pydantic-ai validates
-        it, run ``json_repair.loads``, and replace ``args`` with the
-        repaired dict.  When the JSON is already valid or the repair
-        fails entirely, the part is left untouched so pydantic-ai's
-        normal retry logic applies.
+        We intercept the raw args *before* pydantic-ai validates them.
+        Both string args and dict args (already parsed by the provider)
+        go through ``salvage_json`` with the agent's result schema for
+        json_repair schema-guided repair + type coercion.  When the schema
+        is unknown (free-text agents) or repair fails, the part is left
+        untouched so pydantic-ai's normal retry logic applies.
         """
+        schema = self._get_result_schema()
         for part in response.parts:
             if not isinstance(part, ToolCallPart):
                 continue
             args = part.args
-            if not isinstance(args, str):
-                continue  # Already a dict, or None
-            repaired = salvage_json(args)
-            if isinstance(repaired, dict):
-                part.args = repaired
+            if isinstance(args, str):
+                repaired = salvage_json(args, schema=schema)
+                if isinstance(repaired, dict):
+                    part.args = repaired
+            elif isinstance(args, dict) and schema is not None:
+                # Dict args (already parsed by provider) — round-trip through
+                # json_repair schema mode for type coercion.
+                repaired = salvage_json(json.dumps(args, ensure_ascii=False), schema=schema)
+                if isinstance(repaired, dict):
+                    part.args = repaired
+
+    def _get_result_schema(self) -> Any | None:
+        """Return the agent's structured-output schema, or ``None`` for free-text.
+
+        Free-text agents (``result_type is str``) have no schema to
+        repair against — their output is plain text.
+        """
+        if not self._agent:
+            return None
+        rt = getattr(self._agent, "result_type", None)
+        if rt is None or rt is str:
+            return None
+        return rt
 
 
 def _messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:
