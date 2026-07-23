@@ -42,7 +42,9 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
 
     Priority (most restrictive wins when multiple are set):
     1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
-    2. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata.
+    2. ``parameters.num_ctx`` from ``ollama.show()`` — Modelfile override
+       (what Ollama is actually configured to enforce at runtime).
+    3. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata.
        Prefers ``original_context_length`` (base context before RoPE scaling)
        over the scaled ``context_length`` when both are present.
 
@@ -59,12 +61,22 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         except ValueError:
             logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
 
-    # 2. Native GGUF metadata from ollama.show().
-    #    Prefer original_context_length (base before RoPE scaling) over
-    #    the scaled context_length.
+    # 2. Modelfile parameters from ollama.show() — what Ollama enforces.
+    param_ctx: int | None = None
+    # 3. Native GGUF metadata from ollama.show().
     native_ctx: int | None = None
     try:
         resp = ollama.show(model_name)
+
+        # 2a. Parse parameters string for num_ctx (Modelfile override).
+        params_str: str = resp.parameters or ""
+        for line in params_str.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("num_ctx") and stripped[len("num_ctx"):].strip().isdigit():
+                param_ctx = int(stripped[len("num_ctx"):].strip())
+                break
+
+        # 3a. Native GGUF metadata.
         model_info = resp.modelinfo or {}
         # First pass: look for original_context_length (base context before RoPE)
         for key, val in model_info.items():
@@ -80,7 +92,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     except Exception:
         logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
 
-    candidates = [c for c in (env_ctx, native_ctx) if c is not None]
+    candidates = [c for c in (env_ctx, param_ctx, native_ctx) if c is not None]
     return min(candidates) if candidates else None
 
 

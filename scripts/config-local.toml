@@ -23,7 +23,7 @@ output_retries = 4
 reasoning_effort = "none"
 # Cap discovered context window (tokens). Set KNOX_LOCAL_CTX_CAP env var
 # to enable. When unset, auto-discovers from the model.
-# context_window_cap = "${KNOX_LOCAL_CTX_CAP}"
+context_window_cap = "${KNOX_LOCAL_CTX_CAP}"
 
 [compile.embedding]
 model = "${KNOX_LOCAL_EMBEDDING}"
