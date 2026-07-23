@@ -18,6 +18,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from pydantic_ai import ModelMessage
+from pydantic_ai.messages import (
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
+
 from knox.llm.format import salvage_json
 from knox.logging import get_logger
 
@@ -107,3 +117,55 @@ def save_debug_prompt(
     except Exception as exc:
         logger.warning("Failed to save debug prompt: %s", exc)
         return None
+
+
+# ── Message serialisation helpers ───────────────────────────────────────
+
+
+def messages_to_debug_dicts(messages: list[ModelMessage]) -> list[dict[str, Any]]:
+    """Convert pydantic-ai ModelMessages to debug-friendly dicts.
+
+    Each message is serialised with its role (``ModelRequest`` / ``ModelResponse``)
+    and a list of structured part dicts.  Parts are serialised with their type
+    (``text``, ``thinking``, ``tool_call``, ``retry_prompt``) and type-specific
+    content so the debug file is readable without mental parsing of ``str(part)``.
+    """
+    result: list[dict[str, Any]] = []
+    for msg in messages:
+        kind = type(msg).__name__
+        parts_list: list[dict[str, Any]] = []
+        for part in getattr(msg, "parts", []):
+            parts_list.append(_part_to_debug_dict(part))
+        result.append({"role": kind, "parts": parts_list})
+    return result
+
+
+def _part_to_debug_dict(part: Any) -> dict[str, Any]:  # noqa: PLR0911
+    """Convert a single ModelPart to a debug-friendly dict."""
+    if isinstance(part, SystemPromptPart):
+        return {"type": "system_prompt", "content": part.content}
+    if isinstance(part, TextPart):
+        return {"type": "text", "content": part.content}
+    if isinstance(part, ThinkingPart):
+        return {"type": "thinking", "content": part.content}
+    if isinstance(part, ToolCallPart):
+        return {
+            "type": "tool_call",
+            "tool_name": part.tool_name,
+            "args": part.args,
+            "tool_call_id": part.tool_call_id,
+        }
+    if isinstance(part, ToolReturnPart):
+        return {
+            "type": "tool_return",
+            "tool_name": part.tool_name,
+            "content": part.content,
+        }
+    if isinstance(part, RetryPromptPart):
+        content = part.content
+        # RetryPromptPart.content can be a list of validation errors
+        if isinstance(content, list):
+            return {"type": "retry_prompt", "errors": content}
+        return {"type": "retry_prompt", "content": str(content)}
+    return {"type": type(part).__name__, "content": str(part)}
+

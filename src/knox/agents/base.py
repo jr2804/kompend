@@ -407,7 +407,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
             # Try to validate against the schema
             try:
-                validated = schema.model_validate(parsed)
+                validated = schema.model_validate(parsed)  # ty: ignore[unresolved-attribute]
             except Exception:
                 # Validation failed — build a delta message
                 step = ctx.run_step if hasattr(ctx, "run_step") else 0
@@ -531,7 +531,7 @@ def _set_response_text(response: ModelResponse, data: Any) -> None:
         if isinstance(part, TextPart):
             part.content = text
             return
-    response.parts.append(TextPart(content=text))
+    response.parts.append(TextPart(content=text))  # ty: ignore[unresolved-attribute]
 
 
 def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
