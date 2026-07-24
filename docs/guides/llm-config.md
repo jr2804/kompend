@@ -36,14 +36,14 @@ There is no `api_base` / `api_key` config field. API keys are read from
 the environment variable(s) the models-dev catalog advertises for each
 provider. For example:
 
-| Provider | Env var |
-|----------|---------|
-| `claudinio/` | `CLAUDINIO_API_KEY` |
-| `opencode/` | `OPENCODE_API_KEY` |
-| `deepseek/` | `DEEPSEEK_API_KEY` |
-| `openai/` | `OPENAI_API_KEY` (pydantic-ai native) |
-| `anthropic/` | `ANTHROPIC_API_KEY` (pydantic-ai native) |
-| `ollama/` | none (local); requires `OLLAMA_BASE_URL` if not default |
+| Provider     | Env var                                                 |
+| ------------ | ------------------------------------------------------- |
+| `claudinio/` | `CLAUDINIO_API_KEY`                                     |
+| `opencode/`  | `OPENCODE_API_KEY`                                      |
+| `deepseek/`  | `DEEPSEEK_API_KEY`                                      |
+| `openai/`    | `OPENAI_API_KEY` (pydantic-ai native)                   |
+| `anthropic/` | `ANTHROPIC_API_KEY` (pydantic-ai native)                |
+| `ollama/`    | none (local); requires `OLLAMA_BASE_URL` if not default |
 
 ```bash
 export OPENCODE_API_KEY="oc-..."
@@ -97,6 +97,65 @@ fallback_chain = ["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]
 fallback_max_retries = 2
 ```
 
+## Context window requirements
+
+KNOX auto-detects each model's context window (Ollama `num_ctx` →
+[models.dev](https://models.dev) catalog → `fallback_max_input`) and sizes
+every LLM call to fit. So there is **no hard minimum** that the pipeline
+enforces — but a model that's too small produces tiny, low-quality chunks.
+
+### How input is budgeted
+
+Each compile stage carves out its output reserve _before_ sizing input:
+
+```text
+stage_input_tokens = context_window − system_prompt − stage_output_max
+```
+
+System prompts are small (~200 tokens). The per-stage output reserves
+(`BudgetConfig`):
+
+| Stage                    | Output reserve (tokens)              |
+| ------------------------ | ------------------------------------ |
+| **Generation** (binding) | `gen_output_max` = **16 384**        |
+| Extraction               | `extract_output_max` = 8 192         |
+| Overview                 | `overview_output_max` = 4 096        |
+| Lint                     | `lint_output_max` = 8 192            |
+| Verify / WiCER           | 4 096                                |
+| Summary                  | bounded at 8 000 chars (~2 K tokens) |
+
+### Recommended minimums
+
+| Context window | Verdict                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| **< 16 K**     | ❌ Not enough headroom after the generation reserve; chunks become near-empty. Avoid for compilation.        |
+| **16 K–20 K**  | ⚠️ Absolute functional floor. Generation gets ~2 K tokens of input — usable but cramped for dense documents. |
+| **32 K**       | ✅ Comfortable minimum for typical PDFs and web pages. The default `fallback_max_input`.                     |
+| **128 K+**     | ✅ Recommended for large/long documents. The chunker ceiling is 131 072 tokens.                              |
+
+The **binding stage is generation** (largest reserve at 16 384 tokens). The
+practical floor so a model can both receive a meaningful chunk _and_ emit a
+full page is:
+
+```text
+chunk_size_min (2 048) + gen_output_max (16 384) + overhead (~512) ≈ 19 000
+```
+
+For best results use a model with **≥ 32 K** context. Set
+`fallback_max_input` if your provider isn't in the catalog:
+
+```toml
+[compile.llm]
+fallback_max_input = 32768    # used when auto-detection fails
+```
+
+Cap an over-large window (e.g. to bound memory) with `context_window_cap`:
+
+```toml
+[compile.llm]
+context_window_cap = 65536    # hard ceiling on effective window
+```
+
 ## Retry and structured output
 
 PydanticAI validates structured output against the result type's schema.
@@ -144,13 +203,13 @@ Every successful call feeds a shared
 [`UsageTracker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/usage.py)
 which accumulates token counts across the whole pipeline run:
 
-| Field | Meaning |
-|-------|---------|
-| `prompt_tokens` | Total input tokens across all calls |
-| `completion_tokens` | Total output tokens across all calls |
-| `call_count` | Number of successful calls |
-| `per_model` | Per-model breakdown: `{prompt, completion, calls}` |
-| `avg_ttft` | Average time-to-first-token |
+| Field               | Meaning                                            |
+| ------------------- | -------------------------------------------------- |
+| `prompt_tokens`     | Total input tokens across all calls                |
+| `completion_tokens` | Total output tokens across all calls               |
+| `call_count`        | Number of successful calls                         |
+| `per_model`         | Per-model breakdown: `{prompt, completion, calls}` |
+| `avg_ttft`          | Average time-to-first-token                        |
 
 After a compile run, the tracker's data is attached to the wiki's
 metadata for the [`knox log`](cli.md) command to render.
