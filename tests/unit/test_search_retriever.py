@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from knox.agents.query import QueryAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.llm.context_window import ContextSource, ContextWindow
-from knox.search.retriever import HybridRetriever, _extract_snippet, synthesize_results
+from knox.search.retriever import HybridRetriever, extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -19,7 +19,7 @@ class TestExtractSnippet:
         # algorithm must move best_start forward rather than stay at zero.
         content = "filler " * 70 + "the quick brown fox jumps over the lazy dog. " + "trailing " * 20
         query_tokens = {"fox", "dog", "jumps"}
-        snippet = _extract_snippet(content, query_tokens, max_chars=200)
+        snippet = extract_snippet(content, query_tokens, max_chars=200)
         assert "fox" in snippet.lower()
         assert "dog" in snippet.lower()
         assert not snippet.startswith("filler")
@@ -27,13 +27,13 @@ class TestExtractSnippet:
 
     def test_fallback_when_no_query_tokens_match(self) -> None:
         content = "Alpha beta gamma delta epsilon."
-        snippet = _extract_snippet(content, {"xyz", "zzz"}, max_chars=20)
+        snippet = extract_snippet(content, {"xyz", "zzz"}, max_chars=20)
         assert snippet.startswith("Alpha")
         assert snippet.endswith("...")
 
     def test_respects_max_chars(self) -> None:
         content = "word " * 200
-        snippet = _extract_snippet(content, {"word"}, max_chars=50)
+        snippet = extract_snippet(content, {"word"}, max_chars=50)
         assert len(snippet) <= 55  # allow for trailing ellipsis and rsplit
         assert "word" in snippet.lower()
 

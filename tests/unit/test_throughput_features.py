@@ -15,9 +15,9 @@ from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     TwoPhaseCompiler,
-    _cosine_similarity,
-    _merge_similar_concepts,
-    _segment_sources,
+    cosine_similarity,
+    merge_similar_concepts,
+    segment_sources,
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
@@ -632,18 +632,18 @@ class TestCosineSimilarity:
     """_cosine_similarity helper."""
 
     def test_identical(self) -> None:
-        assert _cosine_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
+        assert cosine_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
 
     def test_orthogonal(self) -> None:
-        assert _cosine_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
+        assert cosine_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
 
     def test_similar(self) -> None:
-        sim = _cosine_similarity([1.0, 2.0, 3.0], [1.1, 2.1, 2.9])
+        sim = cosine_similarity([1.0, 2.0, 3.0], [1.1, 2.1, 2.9])
         assert sim > 0.99
 
     def test_zero_vector(self) -> None:
-        assert _cosine_similarity([], []) == 0.0
-        assert _cosine_similarity([1.0], [0.0]) == 0.0
+        assert cosine_similarity([], []) == 0.0
+        assert cosine_similarity([1.0], [0.0]) == 0.0
 
 
 class TestMergeSimilarConcepts:
@@ -652,16 +652,16 @@ class TestMergeSimilarConcepts:
     def test_skip_when_hash(self) -> None:
         """'hash' model skips embedding merge."""
         concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
-        result = _merge_similar_concepts(concepts, "hash")
+        result = merge_similar_concepts(concepts, "hash")
         assert result == concepts  # unchanged
 
     def test_skip_when_empty_model(self) -> None:
-        result = _merge_similar_concepts([], "")
+        result = merge_similar_concepts([], "")
         assert result == []
 
     def test_provider_failure_returns_unchanged(self) -> None:
         concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
-        result = _merge_similar_concepts(concepts, "nonexistent-model-xyz")
+        result = merge_similar_concepts(concepts, "nonexistent-model-xyz")
         assert result == concepts
 
     def test_merge_similar_names(self) -> None:
@@ -670,13 +670,13 @@ class TestMergeSimilarConcepts:
             {"name": "Posteriorgram", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Phoneme Posteriorgram", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.flows.assembly._make_provider") as mock_factory:
+        with patch("knox.compilation.flows.assembly.make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Posteriorgram"
                 [0.9, 0.1, 0.0],  # "Phoneme Posteriorgram" — very similar
             ]
-            result = _merge_similar_concepts(concepts, "any")
+            result = merge_similar_concepts(concepts, "any")
 
         assert len(result) == 1
         # Longest name wins as canonical
@@ -688,33 +688,33 @@ class TestMergeSimilarConcepts:
             {"name": "Listening Effort", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Speech Intelligibility", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.flows.assembly._make_provider") as mock_factory:
+        with patch("knox.compilation.flows.assembly.make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Listening Effort"
                 [0.0, 1.0, 0.0],  # "Speech Intelligibility" — orthogonal
             ]
-            result = _merge_similar_concepts(concepts, "any")
+            result = merge_similar_concepts(concepts, "any")
 
         assert len(result) == 2
 
     """Source segmentation — splits content without data loss."""
 
     def test_empty_sources_returns_empty(self) -> None:
-        assert _segment_sources([], 1000) == []
+        assert segment_sources([], 1000) == []
 
     def test_under_segment_size_returns_single_segment(self) -> None:
-        result = _segment_sources([("a", "short")], 100)
+        result = segment_sources([("a", "short")], 100)
         assert len(result) == 1
         assert result[0] == [("a", "short")]
 
     def test_large_source_split_across_segments(self) -> None:
-        result = _segment_sources([("a", "x" * 100)], 30)
+        result = segment_sources([("a", "x" * 100)], 30)
         total_content = "".join(content for segment in result for _, content in segment)
         assert len(total_content) == 100  # no data loss
 
     def test_multiple_sources_packed_efficiently(self) -> None:
-        result = _segment_sources(
+        result = segment_sources(
             [("a", "x" * 20), ("b", "y" * 20)],
             30,
         )
@@ -741,7 +741,10 @@ class TestTwoPhaseCompiler:
     def test_extraction_failure_skips_source(self) -> None:
         """When extraction LLM fails for a source, the source is skipped — pipeline continues."""
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="hash")
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", batch_retry_attempts=0),
+            embedding=EmbeddingConfig(model="hash"),
         )
         config.no_cache = True
         compiler = TwoPhaseCompiler(config=config)
@@ -757,7 +760,7 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.flows.extraction._try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
+        with patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
@@ -786,7 +789,7 @@ class TestTwoPhaseCompiler:
             for i in range(n_sources)
         ]
         # Every extraction batch fails.
-        with patch("knox.compilation.flows.extraction._try_pydanticai_extraction", return_value=None):
+        with patch("knox.compilation.flows.extraction.try_pydanticai_extraction", return_value=None):
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
@@ -814,7 +817,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.flows.extraction._try_pydanticai_extraction",
+            "knox.compilation.flows.extraction.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -851,7 +854,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.flows.extraction._try_pydanticai_extraction",
+            "knox.compilation.flows.extraction.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -920,8 +923,8 @@ class TestTwoPhaseCompiler:
             ]
         )
         with (
-            patch("knox.compilation.flows.extraction._try_pydanticai_extraction", side_effect=shared_side_effect),
-            patch("knox.compilation.flows.generation._try_pydanticai_generation", side_effect=shared_side_effect),
+            patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=shared_side_effect),
+            patch("knox.compilation.flows.generation.try_pydanticai_generation", side_effect=shared_side_effect),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata

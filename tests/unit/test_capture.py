@@ -17,7 +17,7 @@ from knox.capture.distill import (
     distill,
 )
 from knox.cli.cmds.knowledge.capture import _build_references_section
-from knox.core.pipeline.ingest import _extract_text_from_cached
+from knox.core.pipeline.ingest import extract_text_from_cached
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 
@@ -189,7 +189,7 @@ class TestWriteCmd:
             '{"elements": [{"content": "This is clean extracted text from the PDF."}]}',
             encoding="utf-8",
         )
-        text = _extract_text_from_cached(cache_file)
+        text = extract_text_from_cached(cache_file)
         assert "clean extracted text" in text
         assert "%PDF" not in text
 

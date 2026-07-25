@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from knox.cli._sources import (
-    _looks_like_html_url,
     _unique_path,
     ensure_in_sources,
     get_supported_extensions,
+    looks_like_html_url,
     resolve_files,
 )
 
@@ -262,7 +262,7 @@ class TestLooksLikeHtmlUrl:
         ],
     )
     def test_html_urls_routed_to_browser(self, url: str) -> None:
-        assert _looks_like_html_url(url) is True
+        assert looks_like_html_url(url) is True
 
     @pytest.mark.parametrize(
         "url",
@@ -282,4 +282,4 @@ class TestLooksLikeHtmlUrl:
         ],
     )
     def test_binary_urls_routed_to_http(self, url: str) -> None:
-        assert _looks_like_html_url(url) is False
+        assert looks_like_html_url(url) is False

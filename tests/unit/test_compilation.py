@@ -14,11 +14,11 @@ from knox.compilation import GraphCompiler, WiCERCompiler
 from knox.compilation._two_phase_core import (
     _FAILURE_THRESHOLD_MIN,
     _SLUG_MAX_LENGTH,
+    BatchFailureTracker,
     Extraction,
     ExtractionSet,
-    _BatchFailureTracker,
     _merge_node,
-    _slugify,
+    slugify,
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.schema import (
@@ -1181,7 +1181,7 @@ class TestTwoPhaseConceptSalvage:
         # Extraction succeeds, generation returns empty (all calls fail)
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.flows.generation._try_pydanticai_generation", return_value=None),
+            patch("knox.compilation.flows.generation.try_pydanticai_generation", return_value=None),
             pytest.raises(LLMOutputError, match=r"Generation failed: 0 of 1 concept\(s\) synthesized"),
         ):
             compiler.compile(chunks)
@@ -1233,14 +1233,14 @@ class TestBatchFailureTracker:
     """_BatchFailureTracker: per-batch retry failure accounting → stop threshold."""
 
     def test_below_minimum_does_not_stop(self) -> None:
-        tracker = _BatchFailureTracker()
+        tracker = BatchFailureTracker()
         # All fail but below the minimum sample size — must not stop (small compile)
         for _ in range(_FAILURE_THRESHOLD_MIN - 1):
             tracker.record(failed=True)
         assert tracker.should_stop() is False
 
     def test_clears_threshold_at_high_failure_rate(self) -> None:
-        tracker = _BatchFailureTracker()
+        tracker = BatchFailureTracker()
         # 6 batches, 4 failed (>50%) → stop
         for failed in [True, True, False, True, True, False]:
             tracker.record(failed=failed)
@@ -1249,7 +1249,7 @@ class TestBatchFailureTracker:
         assert tracker.should_stop() is True
 
     def test_low_failure_rate_does_not_stop(self) -> None:
-        tracker = _BatchFailureTracker()
+        tracker = BatchFailureTracker()
         # 6 batches, 2 failed (33%) → under 50%, keep going
         for failed in [True, True, False, False, False, False]:
             tracker.record(failed=failed)
@@ -1265,7 +1265,7 @@ class TestSlugifyLengthCap:
     """
 
     def test_short_title_unchanged(self) -> None:
-        assert _slugify("Stochastic Gradient Descent") == "stochastic-gradient-descent"
+        assert slugify("Stochastic Gradient Descent") == "stochastic-gradient-descent"
 
     def test_long_title_is_capped(self) -> None:
         sentence = (
@@ -1275,13 +1275,13 @@ class TestSlugifyLengthCap:
             "lower than 0.01. These changes were the only modifications to an "
             "otherwise vanilla stochastic gradient descent optimizer."
         )
-        slug = _slugify(sentence)
+        slug = slugify(sentence)
         assert len(slug) <= _SLUG_MAX_LENGTH
         assert len(slug) > 0
 
     def test_distinct_long_titles_get_distinct_slugs(self) -> None:
         base = "word " * 50  # well over the cap
-        a = _slugify(base + " alpha ending")
-        b = _slugify(base + " beta ending")
+        a = slugify(base + " alpha ending")
+        b = slugify(base + " beta ending")
         # Same prefix, different long titles → different hash suffixes
         assert a != b

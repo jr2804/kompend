@@ -12,7 +12,7 @@ from jinja2 import UndefinedError as Jinja2UndefinedError
 from knox.core.templates import (
     TemplateLoader,
     TemplateMeta,
-    _parse_frontmatter,
+    parse_frontmatter,
 )
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ def user_templates(tmp_path: Any, monkeypatch: Any) -> Path:
 class TestFrontmatterParsing:
     def test_no_frontmatter(self) -> None:
         text = "Hello {{ name }}!"
-        fm, body = _parse_frontmatter(text)
+        fm, body = parse_frontmatter(text)
         assert fm == {}
         assert body == text
 
@@ -59,26 +59,26 @@ role: lint.test
 
 Page: {{ title }}
 """
-        fm, body = _parse_frontmatter(text)
+        fm, body = parse_frontmatter(text)
         assert fm["role"] == "lint.test"
         assert len(fm["variables"]) == 2
         assert "Page: {{ title }}" in body
 
     def test_frontmatter_empty_body(self) -> None:
         text = "---\nrole: test\n---\n"
-        fm, body = _parse_frontmatter(text)
+        fm, body = parse_frontmatter(text)
         assert fm["role"] == "test"
         assert body == ""
 
     def test_invalid_yaml_returns_empty(self) -> None:
         text = "---\n{{invalid: yaml: broken\n---\nbody"
-        fm, body = _parse_frontmatter(text)
+        fm, body = parse_frontmatter(text)
         assert fm == {}
         assert "body" in body
 
     def test_no_leading_separator(self) -> None:
         text = "not frontmatter\n---\nbody"
-        fm, body = _parse_frontmatter(text)
+        fm, body = parse_frontmatter(text)
         assert fm == {}  # no leading ---
         assert body == text
 

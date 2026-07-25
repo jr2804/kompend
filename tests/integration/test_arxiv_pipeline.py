@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.cli._sources import _extract_archive
+from knox.cli._sources import extract_archive
 from knox.core.models import ParsedDocument
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.downloaders.url_resolver import (
@@ -171,7 +171,7 @@ def test_arxiv_source_downloads_tarball_then_extracts_tex(tmp_path: Path) -> Non
     name_lower = archive_path.name.lower()
     assert any(name_lower.endswith(s) for s in (".tar.gz", ".gz", ".tar", ".tgz")), f"Expected a tar.gz file, got {archive_path.name}"
 
-    extracted = _extract_archive(archive_path, tmp_path)
+    extracted = extract_archive(archive_path, tmp_path)
     assert extracted is not None, "_extract_archive should find a .tex file"
     assert extracted.suffix.lower() == ".tex", f"Expected a .tex file, extracted {extracted.name}"
     assert not archive_path.exists(), "Original archive should be removed after extraction"
@@ -188,7 +188,7 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     archive_path = downloader.download(resolved.download_url, tmp_path)
     assert archive_path is not None
 
-    extracted = _extract_archive(archive_path, tmp_path)
+    extracted = extract_archive(archive_path, tmp_path)
     assert extracted is not None
     assert extracted.suffix.lower() == ".tex"
 

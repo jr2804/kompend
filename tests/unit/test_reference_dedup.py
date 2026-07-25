@@ -148,7 +148,7 @@ class TestFuzzyMerge:
             _ref(id="a", title="Deep Learning for NLP", family="Alpha", issued="2020"),
             _ref(id="b", title="Deep Learning for Natural Language Processing", family="Beta", issued="2021"),
         ]
-        with patch("knox.core.pipeline.references._make_provider", return_value=_FakeProvider()):
+        with patch("knox.core.pipeline.references.make_provider", return_value=_FakeProvider()):
             result = merge_similar_references(refs, embedding_model="fake-model", threshold=0.5)
         assert len(result) == 1
 
@@ -174,7 +174,7 @@ class TestFuzzyMerge:
             _ref(id="a", title="Quantum Mechanics abc", family="Z"),
             _ref(id="b", title="Macroeconomics xyz", family="Y"),
         ]
-        with patch("knox.core.pipeline.references._make_provider", return_value=_FakeProvider()):
+        with patch("knox.core.pipeline.references.make_provider", return_value=_FakeProvider()):
             result = merge_similar_references(refs, embedding_model="fake-model", threshold=0.99)
         assert len(result) == 2
 
@@ -183,7 +183,7 @@ class TestFuzzyMerge:
             _ref(id="a", title="Paper A", family="Smith"),
             _ref(id="b", title="Paper B", family="Doe"),
         ]
-        with patch("knox.core.pipeline.references._make_provider", side_effect=RuntimeError("no model")):
+        with patch("knox.core.pipeline.references.make_provider", side_effect=RuntimeError("no model")):
             result = merge_similar_references(refs, embedding_model="fake-model")
         assert len(result) == 2
 
@@ -201,7 +201,7 @@ class TestFuzzyMerge:
             def embed(self, text: str) -> list[float]:
                 raise RuntimeError("embed failed")
 
-        with patch("knox.core.pipeline.references._make_provider", return_value=_BrokenProvider()):
+        with patch("knox.core.pipeline.references.make_provider", return_value=_BrokenProvider()):
             result = merge_similar_references(refs, embedding_model="fake-model")
         assert len(result) == 2
 
@@ -215,7 +215,7 @@ class TestFuzzyMerge:
             _ref(id="c", title="Attention Is All You Need", family="Vaswani", issued="2017"),
             _ref(id="d", title="Attention is All You Need", family="Other", issued="2018"),
         ]
-        with patch("knox.core.pipeline.references._make_provider", return_value=_FakeProvider()):
+        with patch("knox.core.pipeline.references.make_provider", return_value=_FakeProvider()):
             result = merge_similar_references(refs, embedding_model="fake-model", threshold=0.9)
         # 4 → 2 (one exact pair + one fuzzy pair)
         assert len(result) == 2
@@ -364,7 +364,7 @@ class TestLintRuleFuzzy:
         rule.embedding_model = "fake-model"
         rule.fuzzy_threshold = 0.5
 
-        with patch("knox.core.pipeline.references._make_provider", return_value=_FakeProvider()):
+        with patch("knox.core.pipeline.references.make_provider", return_value=_FakeProvider()):
             results = rule.check(wiki=None, sources_dir=str(src_dir))  # type: ignore[arg-type]
 
         assert len(results) == 1

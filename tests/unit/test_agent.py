@@ -17,7 +17,7 @@ from knox.acp.provider_store import (
     ProviderConfig,
     ProviderCredentials,
 )
-from knox.cli._pipeline_helpers import _emit_json_done, _make_json_progress_callback
+from knox.cli._pipeline_helpers import emit_json_done, make_json_progress_callback
 from knox.cli.cmds.agents import _agents_install, _agents_remove
 
 
@@ -134,7 +134,7 @@ class TestJsonProgressCallback:
 
     def test_progress_writes_jsonl(self) -> None:
         """Each progress event is one JSON line on stdout."""
-        cb = _make_json_progress_callback()
+        cb = make_json_progress_callback()
         fake_stdout = StringIO()
         with patch("sys.stdout", fake_stdout):
             cb("parse", 5, 40, "[5/40] file.pdf")
@@ -151,7 +151,7 @@ class TestJsonProgressCallback:
         """_emit_json_done writes a single done event."""
         fake_stdout = StringIO()
         with patch("sys.stdout", fake_stdout):
-            _emit_json_done(123.4, "Compiled wiki written to /tmp/wiki")
+            emit_json_done(123.4, "Compiled wiki written to /tmp/wiki")
         event = json.loads(fake_stdout.getvalue().strip())
         assert event["event"] == "done"
         assert event["duration"] == 123.4

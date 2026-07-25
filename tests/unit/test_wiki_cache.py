@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from knox.cli._pipeline_helpers import _write_wiki_cache
+from knox.cli._pipeline_helpers import write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
 
@@ -34,7 +34,7 @@ def _make_wiki() -> CompiledWiki:
 class TestWriteWikiCache:
     def test_writes_cache_file(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
-        _write_wiki_cache(wiki, tmp_path)
+        write_wiki_cache(wiki, tmp_path)
 
         cache_file = tmp_path / KNOX_DIR / WIKI_CACHE_FILE
         assert cache_file.exists()
@@ -48,15 +48,15 @@ class TestWriteWikiCache:
     def test_creates_knox_dir(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
         assert not (tmp_path / KNOX_DIR).exists()
-        _write_wiki_cache(wiki, tmp_path)
+        write_wiki_cache(wiki, tmp_path)
         assert (tmp_path / KNOX_DIR).exists()
 
     def test_overwrites_existing(self, tmp_path: Any) -> None:
         wiki1 = _make_wiki()
-        _write_wiki_cache(wiki1, tmp_path)
+        write_wiki_cache(wiki1, tmp_path)
 
         wiki2 = CompiledWiki(nodes=[], edges=[], toc=[], quality_score=0.5)
-        _write_wiki_cache(wiki2, tmp_path)
+        write_wiki_cache(wiki2, tmp_path)
 
         loaded = load_cached_wiki(tmp_path)
         assert loaded is not None
@@ -71,7 +71,7 @@ class TestLoadCachedWiki:
 
     def test_round_trip(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
-        _write_wiki_cache(wiki, tmp_path)
+        write_wiki_cache(wiki, tmp_path)
 
         loaded = load_cached_wiki(tmp_path)
         assert loaded is not None

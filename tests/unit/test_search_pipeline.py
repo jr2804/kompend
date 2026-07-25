@@ -125,8 +125,8 @@ class TestSynthesize:
 
         results = [_search_result("alpha")]
         # Patch inner synthesizer to avoid full pipeline
-        with patch("knox.search.pipeline.TokenOverlapRetriever") as mock_tok:
-            mock_tok.return_value.synthesize.return_value = SynthesisResult(
+        with patch("knox.search.pipeline.synthesize_results") as mock_synth:
+            mock_synth.return_value = SynthesisResult(
                 answer="the answer",
                 citations=[{"article": "alpha"}],
             )

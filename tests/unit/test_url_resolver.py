@@ -8,7 +8,7 @@ from pathlib import Path
 
 import py7zr
 
-from knox.cli._sources import _extract_archive
+from knox.cli._sources import extract_archive
 from knox.preprocessing.downloaders.url_resolver import (
     ArxivHtmlResolver,
     ArxivPdfResolver,
@@ -150,7 +150,7 @@ class TestExtractArchive:
         archive = tmp_path / "paper.tar.gz"
         archive.write_bytes(buf.getvalue())
 
-        extracted = _extract_archive(archive, tmp_path)
+        extracted = extract_archive(archive, tmp_path)
         assert extracted is not None
         assert extracted.suffix == ".tex"
         assert extracted.read_bytes() == tex_content
@@ -167,14 +167,14 @@ class TestExtractArchive:
         archive = tmp_path / "src.tar.gz"
         archive.write_bytes(buf.getvalue())
 
-        extracted = _extract_archive(archive, tmp_path)
+        extracted = extract_archive(archive, tmp_path)
         assert extracted is not None
         assert extracted.suffix == ".tex"
 
     def test_returns_none_for_non_archive(self, tmp_path: Path) -> None:
         pdf = tmp_path / "paper.pdf"
         pdf.write_bytes(b"%PDF-1.7")
-        assert _extract_archive(pdf, tmp_path) is None
+        assert extract_archive(pdf, tmp_path) is None
         assert pdf.exists()  # untouched
 
 
@@ -186,7 +186,7 @@ class TestExtractArchive7z:
         archive = tmp_path / "paper.7z"
         with py7zr.SevenZipFile(archive, mode="w") as szf:
             szf.writef(io.BytesIO(tex_content), "ms.tex")
-        extracted = _extract_archive(archive, tmp_path)
+        extracted = extract_archive(archive, tmp_path)
         assert extracted is not None
         assert extracted.suffix == ".tex"
         assert extracted.read_bytes() == tex_content
@@ -196,7 +196,7 @@ class TestExtractArchive7z:
         """_extract_archive attempts .rar (bad content -> None, not silent passthrough)."""
         f = tmp_path / "file.rar"
         f.write_bytes(b"not a real rar")
-        result = _extract_archive(f, tmp_path)
+        result = extract_archive(f, tmp_path)
         assert result is None  # bad content, but suffix was recognised (unrar tried)
 
     def test_returns_none_for_truly_unsupported(self, tmp_path: Path) -> None:
@@ -204,4 +204,4 @@ class TestExtractArchive7z:
         for ext in (".cab", ".exe", ".dmg"):
             f = tmp_path / f"file{ext}"
             f.write_bytes(b"binary")
-            assert _extract_archive(f, tmp_path) is None, f"{ext} should be unsupported"
+            assert extract_archive(f, tmp_path) is None, f"{ext} should be unsupported"

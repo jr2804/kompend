@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from knox.chunking import HierarchicalChunker
-from knox.chunking.summarizer import _structured_to_text
+from knox.chunking.summarizer import structured_to_text
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import (
     ChunkStrategy,
@@ -177,7 +177,7 @@ class TestStructuredContentPreservation:
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)
         for n in _structured_leaves(tree):
-            text = _structured_to_text(n.structured)
+            text = structured_to_text(n.structured)
             assert len(text) > 0
             if isinstance(n.structured, StructuredTable):
                 assert "Baseline" in text

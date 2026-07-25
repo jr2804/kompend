@@ -183,7 +183,7 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline._check_llm_availability", lambda p: None)
+    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
     monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
 
     runner = CliRunner()

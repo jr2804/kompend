@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, _to_pydantic_ai_embedding_string
+from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -187,16 +187,16 @@ class TestEmbeddingStringConversion:
     """Tests for _to_pydantic_ai_embedding_string format translation."""
 
     def test_provider_slash_format_translated_to_colon(self) -> None:
-        assert _to_pydantic_ai_embedding_string("openai/text-embedding-3-small") == "openai:text-embedding-3-small"
+        assert to_pydantic_ai_embedding_string("openai/text-embedding-3-small") == "openai:text-embedding-3-small"
 
     def test_ollama_slash_format_translated(self) -> None:
-        assert _to_pydantic_ai_embedding_string("ollama/nomic-embed-text") == "ollama:nomic-embed-text"
+        assert to_pydantic_ai_embedding_string("ollama/nomic-embed-text") == "ollama:nomic-embed-text"
 
     def test_provider_colon_format_unchanged(self) -> None:
-        assert _to_pydantic_ai_embedding_string("openai:text-embedding-3-small") == "openai:text-embedding-3-small"
+        assert to_pydantic_ai_embedding_string("openai:text-embedding-3-small") == "openai:text-embedding-3-small"
 
     def test_bare_hf_name_gets_default_provider_prefix(self) -> None:
-        assert _to_pydantic_ai_embedding_string("BAAI/bge-small-en") == "sentence-transformers:BAAI/bge-small-en"
+        assert to_pydantic_ai_embedding_string("BAAI/bge-small-en") == "sentence-transformers:BAAI/bge-small-en"
 
 
 class TestPydanticAIEmbeddingProvider:

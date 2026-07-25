@@ -11,20 +11,20 @@ from typing import Any
 import pytest
 
 from knox.core.config._core import (
-    _deep_merge,
-    _flat_keys,
-    _get_dot,
-    _load_toml,
-    _read_env_vars,
-    _set_dot,
     coerce_config_value,
+    deep_merge,
     find_all_project_configs,
     find_global_config,
     find_project_config,
+    flat_keys,
+    get_dot,
     get_global_config_path,
     get_project_config_path,
+    load_toml,
+    read_env_vars,
     resolve_config,
     set_config_file_value,
+    set_dot,
     validate_config_key,
 )
 from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
@@ -37,32 +37,32 @@ from knox.core.paths import KNOX_DIR
 class TestDeepMerge:
     def test_empty_override(self) -> None:
         base = {"a": 1, "b": {"c": 2}}
-        result = _deep_merge(base, {})
+        result = deep_merge(base, {})
         assert result == base
 
     def test_flat_override(self) -> None:
         base = {"a": 1, "b": 2}
-        result = _deep_merge(base, {"b": 99})
+        result = deep_merge(base, {"b": 99})
         assert result["a"] == 1
         assert result["b"] == 99
 
     def test_nested_override(self) -> None:
         base = {"compile": {"budget": {"chunk_size_min": 512}, "format": "markdown"}}
         override = {"compile": {"budget": {"chunk_size_min": 256}}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result["compile"]["budget"]["chunk_size_min"] == 256
         assert result["compile"]["format"] == "markdown"
 
     def test_deep_nested(self) -> None:
         base = {"a": {"b": {"c": 1, "d": 2}}}
         override = {"a": {"b": {"c": 99}}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result["a"]["b"]["c"] == 99
         assert result["a"]["b"]["d"] == 2
 
     def test_does_not_mutate_base(self) -> None:
         base = {"a": {"b": 1}}
-        _deep_merge(base, {"a": {"b": 2}})
+        deep_merge(base, {"a": {"b": 2}})
         assert base["a"]["b"] == 1
 
 
@@ -72,28 +72,28 @@ class TestDeepMerge:
 class TestDotPath:
     def test_get_top_level(self) -> None:
         data = {"key": "value"}
-        assert _get_dot(data, "key") == "value"
+        assert get_dot(data, "key") == "value"
 
     def test_get_nested(self) -> None:
         data = {"compile": {"llm": {"model": "gpt-4"}}}
-        assert _get_dot(data, "compile.llm.model") == "gpt-4"
+        assert get_dot(data, "compile.llm.model") == "gpt-4"
 
     def test_get_missing_returns_default(self) -> None:
         data = {"a": 1}
-        assert _get_dot(data, "b", "fallback") == "fallback"
+        assert get_dot(data, "b", "fallback") == "fallback"
 
     def test_get_partial_path_returns_default(self) -> None:
         data = {"a": {"b": 1}}
-        assert _get_dot(data, "a.c", "missing") == "missing"
+        assert get_dot(data, "a.c", "missing") == "missing"
 
     def test_set_creates_intermediate(self) -> None:
         data: dict[str, Any] = {}
-        _set_dot(data, "a.b.c", 42)
+        set_dot(data, "a.b.c", 42)
         assert data["a"]["b"]["c"] == 42
 
     def test_set_overwrites(self) -> None:
         data: dict[str, Any] = {"a": {"b": 1}}
-        _set_dot(data, "a.b", 99)
+        set_dot(data, "a.b", 99)
         assert data["a"]["b"] == 99
 
 
@@ -103,15 +103,15 @@ class TestDotPath:
 class TestFlatKeys:
     def test_flat_dict(self) -> None:
         data = {"a": 1, "b": 2}
-        assert sorted(_flat_keys(data)) == ["a", "b"]
+        assert sorted(flat_keys(data)) == ["a", "b"]
 
     def test_nested_dict(self) -> None:
         data = {"compile": {"budget": {"chunk_size_min": 512}, "output": {"format": "md"}}}
-        assert sorted(_flat_keys(data)) == ["compile.budget.chunk_size_min", "compile.output.format"]
+        assert sorted(flat_keys(data)) == ["compile.budget.chunk_size_min", "compile.output.format"]
 
     def test_deeply_nested(self) -> None:
         data = {"a": {"b": {"c": 1}}}
-        assert _flat_keys(data) == ["a.b.c"]
+        assert flat_keys(data) == ["a.b.c"]
 
 
 # ── Env vars ────────────────────────────────────────────────────────────
@@ -121,49 +121,49 @@ class TestEnvVars:
     def test_no_vars_returns_empty(self) -> None:
         # Unset all KNOX vars to ensure clean state
         {k: v for k, v in os.environ.items() if not k.startswith("KNOX_")}
-        result = _read_env_vars()
+        result = read_env_vars()
         # May still have values from the test environment, but should not crash
         assert isinstance(result, dict)
 
     def test_integer_coercion(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "256")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["budget"]["chunk_size_min"] == 256
 
     def test_boolean_coercion_true(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_NO_CACHE", "true")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["no_cache"] is True
 
     def test_boolean_coercion_false(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_FORCE", "false")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["force"] is False
 
     def test_comma_list(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_LLM_FALLBACK_CHAIN", "openai/gpt-4o, anthropic/claude")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["llm"]["fallback_chain"] == ["openai/gpt-4o", "anthropic/claude"]
 
     def test_string_value(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "openai/gpt-4o")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
     def test_string_value_stripped(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "  openai/gpt-4o  ")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
     def test_vlm_model_env(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["compile"]["llm"]["vlm_model"] == "openai/gpt-4o"
 
     def test_user_tracking_env_false(self, monkeypatch: Any) -> None:
         # knox-gsb5: KNOX_USER_TRACKING=false disables user tracking.
         monkeypatch.setenv("KNOX_USER_TRACKING", "false")
-        result = _read_env_vars()
+        result = read_env_vars()
         assert result["trust"]["user_tracking"] is False
 
 
@@ -418,24 +418,24 @@ class TestTomlLoading:
     def test_valid_toml(self, tmp_path: Any) -> None:
         f = tmp_path / "test.toml"
         f.write_text('[compile.budget]\nchunk_size_min = 256\n[compile]\nformat = "json"\n')
-        data = _load_toml(f)
+        data = load_toml(f)
         assert data["compile"]["budget"]["chunk_size_min"] == 256
         assert data["compile"]["format"] == "json"
 
     def test_missing_file(self, tmp_path: Any) -> None:
-        data = _load_toml(tmp_path / "nonexistent.toml")
+        data = load_toml(tmp_path / "nonexistent.toml")
         assert data == {}
 
     def test_invalid_toml(self, tmp_path: Any) -> None:
         f = tmp_path / "bad.toml"
         f.write_text("this is not [valid toml {{{")
-        data = _load_toml(f)
+        data = load_toml(f)
         assert data == {}
 
     def test_nested_tables(self, tmp_path: Any) -> None:
         f = tmp_path / "nested.toml"
         f.write_text('[compile.llm]\ndefault_model = "openai/gpt-4o"\nfallback_chain = ["anthropic/claude"]\n')
-        data = _load_toml(f)
+        data = load_toml(f)
         assert data["compile"]["llm"]["default_model"] == "openai/gpt-4o"
         assert data["compile"]["llm"]["fallback_chain"] == ["anthropic/claude"]
 
@@ -649,21 +649,21 @@ class TestSetConfigFileValue:
     def test_creates_file_and_sets_key(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
         set_config_file_value(path, "compile.budget.chunk_size_min", 1024)
-        data = _load_toml(path)
+        data = load_toml(path)
         assert data["compile"]["budget"]["chunk_size_min"] == 1024
 
     def test_updates_existing_key(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
         path.write_text("[compile.budget]\nchunk_size_min = 512\n")
         set_config_file_value(path, "compile.budget.chunk_size_min", 256)
-        data = _load_toml(path)
+        data = load_toml(path)
         assert data["compile"]["budget"]["chunk_size_min"] == 256
 
     def test_adds_key_to_existing_section(self, tmp_path: Any) -> None:
         path = tmp_path / "config.toml"
         path.write_text('[compile]\nformat = "markdown"\n')
         set_config_file_value(path, "compile.budget.chunk_size_min", 128)
-        data = _load_toml(path)
+        data = load_toml(path)
         assert data["compile"]["format"] == "markdown"
         assert data["compile"]["budget"]["chunk_size_min"] == 128
 
