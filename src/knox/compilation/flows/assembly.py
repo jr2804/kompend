@@ -9,12 +9,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from knox.chunking.summarizer import _structured_to_text
+from knox.chunking.summarizer import structured_to_text
 from knox.compilation._two_phase_core import ExtractionSet
 from knox.core.models import ChunkTree, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.logging import get_logger
-from knox.rag.zvec_store import _make_provider
+from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 _CONCEPT_MERGE_THRESHOLD = 0.85
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
+def cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two vectors (no numpy needed)."""
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = sum(x * x for x in a) ** 0.5
@@ -53,7 +53,7 @@ def merge_similar_concepts(
         return concepts
 
     try:
-        provider = _make_provider(embedding_model, dim=None)
+        provider = make_provider(embedding_model, dim=None)
     except Exception as exc:
         logger.debug(
             "Embedding merge disabled: could not create provider for %s: %s",
@@ -88,7 +88,7 @@ def merge_similar_concepts(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if _cosine_similarity(vecs[i], vecs[j]) >= threshold:
+            if cosine_similarity(vecs[i], vecs[j]) >= threshold:
                 _union(i, j)
 
     # Group by leader.
@@ -155,7 +155,7 @@ def build_tree_texts(tree: ChunkTree) -> list[str]:
             texts.append(f"{heading_prefix}{node.chunk.text}")
         elif node.structured is not None:
             # Leaf structured node — text representation.
-            texts.append(f"{heading_prefix}{_structured_to_text(node.structured)}")
+            texts.append(f"{heading_prefix}{structured_to_text(node.structured)}")
         elif node.summary:
             # Internal node — summary only.
             texts.append(f"{heading_prefix}[summary: {node.summary}]")

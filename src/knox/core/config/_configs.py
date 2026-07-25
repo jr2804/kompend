@@ -153,12 +153,20 @@ class LLMConfig(_KnoxBaseModel):
     role_models: dict[str, str] = Field(default_factory=dict)
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
     output_retries: int = Field(default=2, validation_alias="KNOX_LLM_OUTPUT_RETRIES")
+    output_retries_enabled: bool = Field(default=True, validation_alias="KNOX_LLM_OUTPUT_RETRIES_ENABLED")
+    delta_retry_enabled: bool = Field(default=True, validation_alias="KNOX_LLM_DELTA_RETRY_ENABLED")
+    batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias="KNOX_LLM_BATCH_FAILURE_THRESHOLD_RATIO")
+    batch_failure_threshold_min: int = Field(default=5, validation_alias="KNOX_LLM_BATCH_FAILURE_THRESHOLD_MIN")
     reasoning_effort: str | None = Field(default=None, validation_alias="KNOX_LLM_REASONING_EFFORT")
     context_manager: str | bool = Field(default="default", validation_alias="KNOX_LLM_CONTEXT_MANAGER")
     extraction_strategy: ExtractionStrategy = Field(
         default=ExtractionStrategy.INCREMENTAL,
         validation_alias="KNOX_LLM_EXTRACTION_STRATEGY",
     )
+    slug_max_length: int = Field(default=80, validation_alias="KNOX_LLM_SLUG_MAX_LENGTH")
+    batch_retry_attempts: int = Field(default=3, validation_alias="KNOX_LLM_BATCH_RETRY_ATTEMPTS")
+    min_segment_tokens: int = Field(default=512, validation_alias="KNOX_LLM_MIN_SEGMENT_TOKENS")
+    default_chars_per_token: float = Field(default=3.85, validation_alias="KNOX_LLM_DEFAULT_CHARS_PER_TOKEN")
 
 
 class BudgetConfig(_KnoxBaseModel):

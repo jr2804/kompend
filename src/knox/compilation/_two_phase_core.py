@@ -12,7 +12,7 @@ import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any
 
 from slugify import slugify as _slugify_impl
 
@@ -31,53 +31,57 @@ _loader = get_template_loader()
 # 300+ chars and crashes ``write_text`` with ``OSError: [Errno 22]``. Cap the
 # slug and suffix a short hash of the full slug so distinct long titles stay
 # distinct (avoids _upsert_node merging two different concepts into one).
-_SLUG_MAX_LENGTH: Final[int] = 80
+# Default slug max length. Configurable via ``compile.llm.slug_max_length``.
+_SLUG_MAX_LENGTH: int = 80
 
-# Bounded retry per batch before giving up — captures the non-determinism of
-# small models (the same prompt often succeeds on a fresh attempt). The
-# global failure tracker (_BatchFailureTracker) is what makes a
-# systematically broken model fail hard.
-_BATCH_RETRY_ATTEMPTS: Final[int] = 3
-# A model failing more than this fraction of batches (after retries) is
-# treated as not suitable for structured JSON compilation — compile stops
-# early and the partial result is preserved (flagged incomplete).
-_FAILURE_THRESHOLD_RATIO: Final[float] = 0.5
-# Minimum batches before the threshold can fire — one failure in two batches
-# shouldn't abort a small compile.
-_FAILURE_THRESHOLD_MIN: Final[int] = 5
+# Default failure thresholds. Configurable via ``compile.llm.batch_failure_threshold_ratio``
+# and ``compile.llm.batch_failure_threshold_min``.
+_FAILURE_THRESHOLD_RATIO: float = 0.5
+_FAILURE_THRESHOLD_MIN: int = 5
 
-# Minimum input tokens per generation segment.  Prevents absurdly tiny segments
-# when the model's context window is unknown or the fallback max_input is small
-# enough that ``max_input - system - gen_output_max`` rounds to 1 token.
-_MIN_SEGMENT_TOKENS = 512
+# Default minimum input tokens per generation segment.
+# Configurable via ``compile.llm.min_segment_tokens``.
+MIN_SEGMENT_TOKENS: int = 512
 
-_DEFAULT_CHARS_PER_TOKEN: Final[float] = 3.85
+# Default chars-per-token heuristic. Configurable via ``compile.llm.default_chars_per_token``
+# and the ``KNOX_CHARS_PER_TOKEN`` env var.
+_DEFAULT_CHARS_PER_TOKEN: float = 3.85
 
 
 @functools.cache
-def _chars_per_token() -> float:
+def _get_chars_per_token(*, default: float | None = None) -> float:
     """Return the characters-per-token heuristic used for budget estimation.
 
-    Override via the ``KNOX_CHARS_PER_TOKEN`` environment variable.
-    The value is parsed as a float and returned as-is.
-    Falls back to _DEFAULT_CHARS_PER_TOKEN when unset or invalid.
+    Priority: ``KNOX_CHARS_PER_TOKEN`` env var > *default* argument >
+    ``_DEFAULT_CHARS_PER_TOKEN`` module constant > ``compile.llm.default_chars_per_token`` config.
     """
-    raw = os.environ.get("KNOX_CHARS_PER_TOKEN", str(_DEFAULT_CHARS_PER_TOKEN))
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using default %s", raw, _DEFAULT_CHARS_PER_TOKEN)
-        return _DEFAULT_CHARS_PER_TOKEN
+    env_raw = os.environ.get("KNOX_CHARS_PER_TOKEN")
+    if env_raw is not None:
+        try:
+            return float(env_raw)
+        except ValueError:
+            logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using fallback", env_raw)
+    return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
 
 
-def _tokens_to_chars(tokens: int) -> int:
-    """Convert token count to approximate character count."""
-    return int(tokens * _chars_per_token())
+def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
+    """Convert token count to approximate character count.
+
+    Args:
+        tokens: Token count to convert.
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
+    """
+    return int(tokens * _get_chars_per_token(default=chars_per_token))
 
 
-def _chars_to_tokens(chars: int) -> int:
-    """Convert character count to approximate token count."""
-    return max(1, int(chars / _chars_per_token()))
+def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
+    """Convert character count to approximate token count.
+
+    Args:
+        chars: Character count to convert.
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
+    """
+    return max(1, int(chars / _get_chars_per_token(default=chars_per_token)))
 
 
 _ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
@@ -113,18 +117,24 @@ def _normalize_concept_key(name: str) -> str:
     return " ".join(words).strip()
 
 
-def _slugify(text: str) -> str:
+def slugify(text: str, max_length: int | None = None) -> str:
     """Convert a title to a lowercase hyphenated slug (capped for filesystem safety).
 
-    When the slug exceeds :data:`_SLUG_MAX_LENGTH` (e.g. the LLM emitted a full
-    sentence as a concept title), it is truncated at a word boundary and a short
-    hash of the *full* slug is appended so two distinct long titles don't collide
-    (which would otherwise be merged by :func:`_upsert_node`).
+    When the slug exceeds *max_length* (defaults to ``compile.llm.slug_max_length``),
+    it is truncated at a word boundary and a short hash of the *full* slug is
+    appended so two distinct long titles don't collide (which would otherwise be
+    merged by :func:`_upsert_node`).
+
+    Args:
+        text: The title to slugify.
+        max_length: Maximum slug length. Defaults to ``_SLUG_MAX_LENGTH`` (80),
+            which is the fallback for ``compile.llm.slug_max_length``.
     """
+    cap = max_length if max_length is not None else _SLUG_MAX_LENGTH
     slug = _slugify_impl(text) or "concept"
-    if len(slug) <= _SLUG_MAX_LENGTH:
+    if len(slug) <= cap:
         return slug
-    truncated = slug[: _SLUG_MAX_LENGTH - 5].rstrip("-")
+    truncated = slug[: cap - 5].rstrip("-")
     return f"{truncated}-{hashlib.sha256(slug.encode()).hexdigest()[:4]}"
 
 
@@ -139,7 +149,7 @@ def _dedup_id(node_id: str, seen: set[str]) -> str:
     return candidate
 
 
-def _extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
+def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
     """Extract image metadata from IMAGE chunks.
 
     Returns a list of dicts with keys: path, caption, element_type.
@@ -221,7 +231,7 @@ def _merge_sections(existing: dict[str, str], incoming: dict[str, str]) -> str:
     return result.strip()
 
 
-def _compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
+def compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
     """Compute a 0–100 quality score for a compiled wiki.
 
     Weighted average of three sub-scores:
@@ -404,7 +414,7 @@ class ExtractionSet:
         return dict(out)
 
 
-class _BatchFailureTracker:
+class BatchFailureTracker:
     """Counts successful/failed batches; signals an unsuitable model.
 
     A model that fails too high a fraction of batches — even after per-batch
@@ -419,13 +429,16 @@ class _BatchFailureTracker:
     def __init__(
         self,
         *,
-        ratio: float = _FAILURE_THRESHOLD_RATIO,
-        min_batches: int = _FAILURE_THRESHOLD_MIN,
+        ratio: float | None = None,
+        min_batches: int | None = None,
     ) -> None:
         self.total = 0
         self.failed = 0
-        self._ratio = ratio
-        self._min_batches = min_batches
+        # Fall back to module defaults when no config value is passed.
+        # Callers should pass ``compile.llm.batch_failure_threshold_ratio``
+        # and ``compile.llm.batch_failure_threshold_min``.
+        self._ratio = _FAILURE_THRESHOLD_RATIO if ratio is None else ratio
+        self._min_batches = _FAILURE_THRESHOLD_MIN if min_batches is None else min_batches
 
     def record(self, *, failed: bool) -> None:
         self.total += 1
@@ -437,7 +450,7 @@ class _BatchFailureTracker:
         return self.total >= self._min_batches and self.failed / self.total > self._ratio
 
 
-def _try_pydanticai_extraction(
+def try_pydanticai_extraction(
     agent: Any,
     *,
     text: str,
@@ -476,7 +489,7 @@ def _try_pydanticai_extraction(
         return None
 
 
-def _try_pydanticai_generation(
+def try_pydanticai_generation(
     agent: Any,
     *,
     concepts_json: str,
@@ -519,7 +532,7 @@ def _try_pydanticai_generation(
         return None
 
 
-def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
+def merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
     """Merge multiple batch extractions for the same source into one."""
     if not parts:
         return Extraction(source=source)
@@ -551,7 +564,7 @@ def _merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
     return Extraction(source=source, summary=summary, entities=entities, concepts=concepts, tags=tags)
 
 
-def _segment_sources(
+def segment_sources(
     sources: list[tuple[str, str]],
     segment_size: int,
 ) -> list[list[tuple[str, str]]]:
@@ -595,7 +608,7 @@ def _segment_sources(
     return segments
 
 
-def _upsert_node(
+def upsert_node(
     new_node: WikiNode,
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],

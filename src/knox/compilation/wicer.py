@@ -18,7 +18,7 @@ from typing import Any, Final
 
 from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
 from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
-from knox.compilation._two_phase_core import _tokens_to_chars
+from knox.compilation._two_phase_core import tokens_to_chars
 from knox.compilation.base import BaseCompiler
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
@@ -104,16 +104,19 @@ class WiCERCompiler(BaseCompiler):
         )
         if cw is not None:
             self._context_window: ContextWindow | None = cw
-            self._probe_input_chars = _tokens_to_chars(
+            cpt = config.llm.default_chars_per_token
+            self._probe_input_chars = tokens_to_chars(
                 max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget) * _WICER_CONTEXT_UTILIZATION)),
+                chars_per_token=cpt,
             )
-            self._eval_input_chars = _tokens_to_chars(
+            self._eval_input_chars = tokens_to_chars(
                 max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget) * _WICER_CONTEXT_UTILIZATION)),
+                chars_per_token=cpt,
             )
         else:
             self._context_window = None
-            self._probe_input_chars = _tokens_to_chars(self._probe_output_budget)
-            self._eval_input_chars = _tokens_to_chars(self._eval_output_budget)
+            self._probe_input_chars = tokens_to_chars(self._probe_output_budget)
+            self._eval_input_chars = tokens_to_chars(self._eval_output_budget)
 
     # ------------------------------------------------------------------
     # Public API

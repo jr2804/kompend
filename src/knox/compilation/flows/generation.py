@@ -14,20 +14,19 @@ from typing import Any
 
 from knox.agents.generation import GenerationAgent
 from knox.compilation._checkpoints import (
-    _delete_gen_checkpoint,
-    _load_gen_checkpoint,
-    _save_gen_checkpoint,
+    delete_gen_checkpoint,
+    load_gen_checkpoint,
+    save_gen_checkpoint,
 )
 from knox.compilation._two_phase_core import (
-    _MIN_SEGMENT_TOKENS,
     ExtractionSet,
-    _compute_quality_score,
-    _extract_images_from_chunks,
-    _segment_sources,
-    _slugify,
-    _tokens_to_chars,
-    _try_pydanticai_generation,
-    _upsert_node,
+    compute_quality_score,
+    extract_images_from_chunks,
+    segment_sources,
+    slugify,
+    tokens_to_chars,
+    try_pydanticai_generation,
+    upsert_node,
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
@@ -67,7 +66,7 @@ def run_generation(
             },
         )
 
-    all_images = _extract_images_from_chunks(chunks)
+    all_images = extract_images_from_chunks(chunks)
     source_segments = prepare_source_segments(compiler, chunks)
     pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
     generation_system = _loader.get_body("compilation/generation_system.md.j2")
@@ -125,8 +124,9 @@ def prepare_source_segments(compiler: Any, chunks: list[ResolvedChunk]) -> list[
 
     cw = compiler._context_window
     budget = compiler._budget
-    segment_char_size = _tokens_to_chars(
-        max(_MIN_SEGMENT_TOKENS, cw.max_input - compiler._gen_system_tokens - budget.gen_output_max),
+    segment_char_size = tokens_to_chars(
+        max(compiler._config.llm.min_segment_tokens, cw.max_input - compiler._gen_system_tokens - budget.gen_output_max),
+        chars_per_token=compiler._config.llm.default_chars_per_token,
     )
     logger.info(
         "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d)",
@@ -135,7 +135,7 @@ def prepare_source_segments(compiler: Any, chunks: list[ResolvedChunk]) -> list[
         compiler._gen_system_tokens,
         budget.gen_output_max,
     )
-    source_segments = _segment_sources(sources, segment_char_size)
+    source_segments = segment_sources(sources, segment_char_size)
     logger.info(
         "TwoPhase: %d source(s) split into %d segment(s) (total content %d chars)",
         len(sources),
@@ -154,7 +154,7 @@ def run_generation_with_checkpoint(
     pinned_clean: list[str],
 ) -> tuple[list[WikiNode], dict[str, int]]:
     """Run generation with checkpoint support, returning nodes and slug map."""
-    checkpoint = _load_gen_checkpoint(compiler._config, compiler._active_gen_deps)
+    checkpoint = load_gen_checkpoint(compiler._config, compiler._active_gen_deps)
     if checkpoint is not None:
         ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
         logger.info(
@@ -176,7 +176,7 @@ def run_generation_with_checkpoint(
         initial_slug_to_idx=ck_slug_to_idx,
         completed_batches=ck_completed,
     )
-    _delete_gen_checkpoint(compiler._config, compiler._active_gen_deps)
+    delete_gen_checkpoint(compiler._config, compiler._active_gen_deps)
     return nodes, slug_to_idx
 
 
@@ -236,12 +236,13 @@ def generate_all_pages(
                 timeout=compiler._timeout,
                 max_tokens=compiler._budget.gen_output_max,
                 skills=compiler._config.skills,
-                retries=compiler._config.llm.output_retries,
+                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+                delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_manager=compiler._config.llm.context_manager,
                 context_window=compiler._context_window.max_input,
             )
-            gen_output = _try_pydanticai_generation(
+            gen_output = try_pydanticai_generation(
                 agent,
                 concepts_json=encode_for_llm(batch, compiler._config.llm.data_format),
                 content=content_block,
@@ -310,8 +311,8 @@ def generate_all_pages(
                 )
 
             for idx, page in enumerate(valid_pages):
-                node_id = _slugify(page.title or f"concept-{batch_start + idx}")
-                _upsert_node(
+                node_id = slugify(page.title or f"concept-{batch_start + idx}", max_length=compiler._config.llm.slug_max_length)
+                upsert_node(
                     WikiNode(
                         id=node_id,
                         title=page.title or f"Concept {batch_start + idx}",
@@ -337,7 +338,7 @@ def generate_all_pages(
 
             # Checkpoint after each completed batch so interrupted runs can resume.
         completed.add(batch_start)
-        _save_gen_checkpoint(
+        save_gen_checkpoint(
             compiler._config,
             compiler._active_gen_deps,
             nodes,
@@ -392,7 +393,7 @@ def assemble_wiki(
     nodes = compiler.dedup_content_duplicate_nodes(nodes)
     attach_tags_to_nodes(nodes, chunks)
     edges = build_edges(nodes, extractions)
-    quality = _compute_quality_score(nodes, edges)
+    quality = compute_quality_score(nodes, edges)
     toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
     return CompiledWiki(
         nodes=nodes,

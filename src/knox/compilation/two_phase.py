@@ -22,21 +22,19 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from knox.compilation._checkpoints import _delete_gen_checkpoint
+from knox.compilation._checkpoints import delete_gen_checkpoint
 from knox.compilation._two_phase_core import (
+    BatchFailureTracker,
     Extraction,
     ExtractionSet,
-    _BatchFailureTracker,
-    _chars_to_tokens,
-    _segment_sources,
-    _tokens_to_chars,
+    chars_to_tokens,
+    segment_sources,
+    tokens_to_chars,
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.flows.assembly import (
-    _cosine_similarity,
-)
-from knox.compilation.flows.assembly import (
-    merge_similar_concepts as _merge_similar_concepts,
+    cosine_similarity,
+    merge_similar_concepts,
 )
 from knox.compilation.flows.extraction import (
     batch_texts,
@@ -67,11 +65,11 @@ __all__ = [
     "Extraction",
     "ExtractionSet",
     "TwoPhaseCompiler",
-    "_chars_to_tokens",
-    "_cosine_similarity",
-    "_merge_similar_concepts",
-    "_segment_sources",
-    "_tokens_to_chars",
+    "chars_to_tokens",
+    "cosine_similarity",
+    "merge_similar_concepts",
+    "segment_sources",
+    "tokens_to_chars",
 ]
 
 
@@ -104,7 +102,10 @@ class TwoPhaseCompiler(BaseCompiler):
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
         self._extraction_stats: list[dict[str, Any]] = []
-        self._batch_tracker = _BatchFailureTracker()
+        self._batch_tracker = BatchFailureTracker(
+            ratio=self._config.llm.batch_failure_threshold_ratio,
+            min_batches=self._config.llm.batch_failure_threshold_min,
+        )
 
         if context_window is not None:
             cw = context_window
@@ -223,7 +224,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._batch_tracker.total,
             )
         else:
-            _delete_gen_checkpoint(self._config, gen_deps)
+            delete_gen_checkpoint(self._config, gen_deps)
 
         if getattr(self, "_extraction_stats", None):
             wiki.metadata["extraction_stats"] = self._extraction_stats

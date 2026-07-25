@@ -19,9 +19,9 @@ from knox.agents.extraction_reduce import ExtractionReduceAgent
 from knox.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
-    _merge_extractions,
-    _tokens_to_chars,
-    _try_pydanticai_extraction,
+    merge_extractions,
+    tokens_to_chars,
+    try_pydanticai_extraction,
 )
 from knox.compilation.flows.assembly import build_tree_texts
 from knox.core.config._configs import ExtractionStrategy
@@ -79,8 +79,9 @@ def run_extraction(
 
     cw = compiler._context_window
     budget = compiler._budget
-    extract_char_budget = _tokens_to_chars(
+    extract_char_budget = tokens_to_chars(
         max(1, cw.max_input - compiler._extract_system_tokens - budget.extract_output_max),
+        chars_per_token=compiler._config.llm.default_chars_per_token,
     )
 
     # Pre-compute total chars for weighted progress bar (larger files = more progress)
@@ -186,22 +187,43 @@ def extract_one(compiler: Any, source: str, combined: str, extraction_system: st
         timeout=compiler._timeout,
         max_tokens=compiler._budget.extract_output_max,
         skills=compiler._config.skills,
-        retries=compiler._config.llm.output_retries,
+        retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+        delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
         reasoning_effort=compiler._config.llm.reasoning_effort,
         context_manager=compiler._config.llm.context_manager,
         context_window=compiler._context_window.max_input,
     )
-    validated = _try_pydanticai_extraction(
-        agent,
-        text=combined,
-        source_id=source,
-        timeout=compiler._timeout,
-    )
+
+    # Per-batch retry: the agent already retries internally (via PydanticAI's
+    # ``retries``), but this loop retries at the batch level when the entire
+    # agent call returns None (e.g. transient timeout, empty response that
+    # exhausts internal retries). ``compile.llm.batch_retry_attempts`` is
+    # configurable — set to 0 to disable.
+    batch_retries = compiler._config.llm.batch_retry_attempts
+    validated: Any | None = None
+    for attempt in range(1 + batch_retries):
+        validated = try_pydanticai_extraction(
+            agent,
+            text=combined,
+            source_id=source,
+            timeout=compiler._timeout,
+        )
+        if validated is not None:
+            break
+        if attempt < batch_retries:
+            logger.info(
+                "TwoPhase: extraction batch retry %d/%d for '%s'",
+                attempt + 1,
+                batch_retries,
+                source,
+            )
+
     compiler._batch_tracker.record(failed=validated is None)
     if validated is None:
         logger.warning(
-            "TwoPhase: extraction skipped for source '%s' — agent returned no result",
+            "TwoPhase: extraction skipped for source '%s' — agent returned no result after %d batch attempt(s)",
             source,
+            1 + batch_retries,
         )
         return None
     result = Extraction(
@@ -258,7 +280,8 @@ def extract_incremental(
                 timeout=compiler._timeout,
                 max_tokens=compiler._budget.extract_output_max,
                 skills=compiler._config.skills,
-                retries=compiler._config.llm.output_retries,
+                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+                delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_manager=compiler._config.llm.context_manager,
                 context_window=compiler._context_window.max_input,
@@ -307,7 +330,7 @@ def combine_extractions(compiler: Any, source: str, parts: list[Extraction]) -> 
     strategy = compiler._config.llm.extraction_strategy
     if strategy == ExtractionStrategy.REDUCE:
         return compiler._reduce_extractions(source, parts)
-    return _merge_extractions(source, parts)
+    return merge_extractions(source, parts)
 
 
 def reduce_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
@@ -336,7 +359,7 @@ def reduce_extractions(compiler: Any, source: str, parts: list[Extraction]) -> E
         validated = agent.run(deps)
     except LLMOutputError:
         logger.warning("TwoPhase: reduce failed for '%s' — falling back to naive merge", source)
-        return _merge_extractions(source, parts)
+        return merge_extractions(source, parts)
     result = Extraction(
         source=source,
         summary=validated.summary,
