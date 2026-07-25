@@ -18,6 +18,7 @@ ripgrep = "latest"
 
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
+"pipx:git+https://codeberg.org/jr2804/clean-sort.git" = "latest"
 
 [settings.npm]
 package_manager = "bun"
