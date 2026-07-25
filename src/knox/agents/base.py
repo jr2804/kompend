@@ -152,6 +152,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         use_native_output: bool = False,
         context_manager: str | bool = False,
         context_window: int | None = None,
+        delta_retry_enabled: bool = True,
     ) -> None:
         self._model_string = model_string
         self._timeout = timeout
@@ -163,6 +164,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._use_native_output = use_native_output
         self._context_manager = context_manager
         self._context_window = context_window
+        self._delta_retry_enabled = delta_retry_enabled
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
@@ -333,7 +335,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         capabilities: list[AbstractCapability[Any]] = []
         if capability is not None:
             capabilities.append(capability)
-        if self.use_delta_retry:
+        if self._delta_retry_enabled and self.use_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         agent = Agent(
             top_model,
@@ -571,10 +573,15 @@ def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
 
     issue_text = "\n".join(issues)
     return (
-        "The following parts of your output need correction:\n"
+        "[CORRECTION REQUEST — This is NOT a new task. Your previous output had "
+        "the following structural issues. Fix them and return the COMPLETE corrected "
+        "output, keeping all valid parts unchanged.]\n\n"
         f"{issue_text}\n\n"
-        "Return the COMPLETE corrected output. Keep all valid parts unchanged "
-        "and fix only the listed issues."
+        "Return the COMPLETE corrected output as a single valid JSON object matching "
+        "the expected schema exactly. Do not add explanations, markdown formatting, "
+        "or extra fields. If this keeps failing, your model may not support structured "
+        "JSON output — consider disabling delta-retry in the config "
+        "(`compile.llm.delta_retry_enabled = false`)."
     )
 
 
