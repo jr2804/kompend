@@ -9,6 +9,7 @@ from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from knox.core.config.engine._schema import _ENV_MAP, _resolve_field_info
+from knox.core.utils.dicts import set_dot as _set_dot
 
 # Env vars that carry comma-separated lists.
 _ENV_LIST_VARS: frozenset[str] = frozenset(
@@ -64,15 +65,6 @@ def _read_env_vars() -> dict[str, Any]:
     """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
     settings = _get_env_settings_model()()  # ty: ignore
     result: dict[str, Any] = {}
-
-    def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
-        parts = key.split(".")
-        current = data
-        for part in parts[:-1]:
-            if part not in current or not isinstance(current[part], dict):
-                current[part] = {}
-            current = current[part]
-        current[parts[-1]] = value
 
     for dotted_key, env_name in _ENV_MAP.items():
         field_name = env_name.removeprefix("KNOX_").lower()

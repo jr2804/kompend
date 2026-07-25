@@ -106,16 +106,6 @@ class LlmDataFormat(StrEnum):
     TEXT = "text"
 
 
-QueryFormat: type[LlmDataFormat] = LlmDataFormat
-"""Backward-compatible type alias for query output format.
-
-Points to :class:`LlmDataFormat` — query output uses the same compact
-formats as LLM input because structured query output is often consumed
-by downstream agents (not humans), making token efficiency equally
-important.
-"""
-
-
 class Verbosity(StrEnum):
     """Synthesis verbosity for the ``query`` command.
 

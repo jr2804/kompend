@@ -9,20 +9,10 @@ import tomli_w
 
 from knox.core.config.engine._loading import _load_toml
 from knox.core.config.engine._schema import validate_config_key
+from knox.core.utils.dicts import set_dot as _set_dot
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
-    """Set a dotted key in a nested dict, creating intermediate dicts."""
-    parts = key.split(".")
-    current = data
-    for part in parts[:-1]:
-        if part not in current or not isinstance(current[part], dict):
-            current[part] = {}
-        current = current[part]
-    current[parts[-1]] = value
 
 
 def _atomic_write_toml(toml_file: Path, data: dict[str, Any]) -> None:

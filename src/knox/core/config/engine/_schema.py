@@ -16,6 +16,7 @@ from knox.core.config.keys import (
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_PATH,
 )
+from knox.core.utils.dicts import flat_keys as _flat_keys
 from knox.logging import get_logger
 from knox.types import ConfigValue
 
@@ -28,18 +29,6 @@ def _build_defaults() -> dict[str, Any]:
 
 
 DEFAULTS: dict[str, Any] = _build_defaults()
-
-
-def _flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:
-    """Return all dotted keys in a nested dict."""
-    keys: list[str] = []
-    for key, value in data.items():
-        full = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict):
-            keys.extend(_flat_keys(value, full))
-        else:
-            keys.append(full)
-    return keys
 
 
 def _build_env_map() -> dict[str, str]:

@@ -1,8 +1,9 @@
 """5-layer config precedence: merge, resolve, and provenance tracking."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,12 @@ from knox.core.config.keys import (
     PATHS_OUTPUT_DIR,
     PATHS_SOURCES_DIR,
 )
+from knox.core.utils.dicts import (
+    deep_merge as _deep_merge,
+    get_dot as _get_dot,
+    nest_flat as _nest_flat,
+    set_dot as _set_dot,
+)
 from knox.logging import get_logger
 from knox.types import ConfigValue
 
@@ -38,18 +45,6 @@ class ConfigSource:
         if self.location:
             return f"{self.path} ({self.location})"
         return self.path
-
-
-def _get_dot(data: dict[str, ConfigValue], key: str, default: ConfigValue = None) -> ConfigValue:
-    """Retrieve a dotted key from a nested dict."""
-    parts = key.split(".")
-    current: Any = data
-    for part in parts:
-        if isinstance(current, dict):
-            current = current.get(part)
-        else:
-            return default
-    return current if current is not None else default
 
 
 @dataclass
@@ -73,49 +68,9 @@ class ResolvedConfig:
     def flat(self) -> dict[str, Any]:
         """Return a flat dotted-key dict of all values."""
         result: dict[str, Any] = {}
-        self._flatten(self.raw, "", result)
+        for key in _flat_keys(self.raw):
+            result[key] = _get_dot(self.raw, key)
         return result
-
-    def _flatten(self, data: dict[str, Any], prefix: str, out: dict[str, Any]) -> None:
-        for key, value in data.items():
-            full = f"{prefix}.{key}" if prefix else key
-            if isinstance(value, dict):
-                self._flatten(value, full, out)
-            else:
-                out[full] = value
-
-
-# ── Deep merge ──────────────────────────────────────────────────────────
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    """Recursively merge *override* into *base*, returning a new dict."""
-    result = copy.deepcopy(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = copy.deepcopy(value) if isinstance(value, dict) else value
-    return result
-
-
-def _set_dot(data: dict[str, Any], key: str, value: Any) -> None:
-    """Set a dotted key in a nested dict, creating intermediate dicts."""
-    parts = key.split(".")
-    current = data
-    for part in parts[:-1]:
-        if part not in current or not isinstance(current[part], dict):
-            current[part] = {}
-        current = current[part]
-    current[parts[-1]] = value
-
-
-def _nest_flat(flat: dict[str, Any]) -> dict[str, Any]:
-    """Convert a flat dotted-key dict to a nested dict."""
-    result: dict[str, Any] = {}
-    for key, value in flat.items():
-        _set_dot(result, key, value)
-    return result
 
 
 # ── Layer application ────────────────────────────────────────────────────

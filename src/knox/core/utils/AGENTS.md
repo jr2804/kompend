@@ -10,10 +10,11 @@ config, or models — only standard library and `knox.logging`.
 
 ## Modules
 
-| Module | Contents |
-|--------|----------|
-| `time.py` | Local-timezone timestamp helpers: `now_local`, `iso_local`, `display_local` |
-| `exceptions.py` | `shorten_exception`, `shorten_string`, `MAX_CHARS_EXCEPTION`, `LLMOutputError` |
+| Module          | Contents                                                                              |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `time.py`       | Local-timezone timestamp helpers: `now_local`, `iso_local`, `display_local`           |
+| `exceptions.py` | `shorten_exception`, `shorten_string`, `MAX_CHARS_EXCEPTION`, `LLMOutputError`        |
+| `dicts.py`      | Dotted-key dict helpers: `get_dot`, `set_dot`, `nest_flat`, `flat_keys`, `deep_merge` |
 
 ## Rules
 
