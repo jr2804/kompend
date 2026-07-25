@@ -50,7 +50,7 @@ class OutputFormat(StrEnum):
     """Output format for the compiled wiki.
 
     - ``OKF``: Open Knowledge Format v0.1 bundle (default)
-    - ``MARKDOWN``: Markdown files (Obsidian vault mode, legacy)
+    - ``MARKDOWN``: Markdown files (Obsidian-flavored vault mode)
     - ``JSON``: JSON file
     - ``TYPST``: Typst file
     """

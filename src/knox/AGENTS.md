@@ -35,24 +35,24 @@ This rule exists because:
 
 #### What goes where
 
-| Content | Format | Location |
-|---------|--------|----------|
-| LLM system prompts | Jinja2 (`.md.j2`) | `<module>/templates/<role>_system.md.j2` |
-| LLM user prompts / templates | Jinja2 (`.md.j2`) | `<module>/templates/<role>_prompt.md.j2` |
-| Page kind definitions (N9) | TOML | `<module>/kinds.toml` or config |
-| Pack prompts and roles | TOML | `packs/<name>/pack.toml` |
-| Any other human-readable string | TOML / Jinja2 | appropriate config dir |
+| Content                         | Format            | Location                                 |
+| ------------------------------- | ----------------- | ---------------------------------------- |
+| LLM system prompts              | Jinja2 (`.md.j2`) | `<module>/templates/<role>_system.md.j2` |
+| LLM user prompts / templates    | Jinja2 (`.md.j2`) | `<module>/templates/<role>_prompt.md.j2` |
+| Page kind definitions (N9)      | TOML              | `<module>/kinds.toml` or config          |
+| Pack prompts and roles          | TOML              | `packs/<name>/pack.toml`                 |
+| Any other human-readable string | TOML / Jinja2     | appropriate config dir                   |
 
 #### How templates are loaded
 
 All templates go through `knox.core.templates.TemplateLoader`, which
 searches three locations in order (project > user > built-in):
 
-| Priority | Location | Example path |
-|----------|----------|-------------|
-| 1 (highest) | Project overrides | `./knox/templates/` (next to `knox.toml`) |
-| 2 | User global overrides | `~/.config/knox/templates/` |
-| 3 (lowest) | Built-in (package) | `importlib.resources` in `knox/templates/` |
+| Priority    | Location              | Example path                               |
+| ----------- | --------------------- | ------------------------------------------ |
+| 1 (highest) | Project overrides     | `./knox/templates/` (next to `knox.toml`)  |
+| 2           | User global overrides | `~/.config/knox/templates/`                |
+| 3 (lowest)  | Built-in (package)    | `importlib.resources` in `knox/templates/` |
 
 Usage:
 
@@ -104,7 +104,7 @@ historical design decisions.
 3. **No try/except ImportError guards for core dependencies.** Every package
    listed in `[project.dependencies]` in `pyproject.toml` is guaranteed to be
    installed. Wrapping `import mylib` in `try: ... except ImportError: mylib =
-   None` is pointless boilerplate — it obscures the real dependency, adds dead
+None` is pointless boilerplate — it obscures the real dependency, adds dead
    branches, and masks actual install failures. Import at module level,
    unconditionally.
 
@@ -133,13 +133,13 @@ messages (e.g. "run compile first" when the real cause is a corrupt cache).
 
 #### When `X | None` is correct vs an antipattern
 
-| `None` means… | Verdict |
-|---|---|
-| **Absence / lookup miss** (`registry.get(name)`, optional value not set) | ✅ correct |
-| **"I tried and failed"** (mute of an exception) | ❌ raise instead |
+| `None` means…                                                            | Verdict          |
+| ------------------------------------------------------------------------ | ---------------- |
+| **Absence / lookup miss** (`registry.get(name)`, optional value not set) | ✅ correct       |
+| **"I tried and failed"** (mute of an exception)                          | ❌ raise instead |
 
 A function may return `X | None` only when `None` means the thing was
-*absent*, never to mean the operation *failed*. `load_cached_wiki` returning
+_absent_, never to mean the operation _failed_. `load_cached_wiki` returning
 `None` for a **missing** file is correct; returning `None` for a **corrupt**
 file is the antipattern.
 
@@ -147,9 +147,9 @@ file is the antipattern.
 
 1. **Trust boundary** — translate a low-level error to a user-facing message
    at the CLI/MCP top level. Catch narrowly, report the real cause.
-2. **Optional-feature probe** — narrow to the *specific* exception
+2. **Optional-feature probe** — narrow to the _specific_ exception
    (`ImportError`, `FileNotFoundError`), never bare `Exception`.
-3. **Best-effort enrichment** — per-item catch that *records* the failure
+3. **Best-effort enrichment** — per-item catch that _records_ the failure
    (SKIP result, warning log) and continues a batch.
 4. **Cache miss** — corrupt/unreadable cache entry treated as a miss is
    correct, BUT narrow to `(json.JSONDecodeError, OSError)` and log at
@@ -253,7 +253,7 @@ what the effective fallback is in the docstring:
 
 **Never** crop text (LLM output, page content, entity-matching input, prompt
 context) to a hard-coded number of characters or tokens. A magic number like
-``content[:200]`` silently discards the tail of every input — links, entities,
+`content[:200]` silently discards the tail of every input — links, entities,
 and facts that live past the cutoff are lost forever, producing false negatives
 (orphan pages, missing edges, dropped citations) that look like compiler bugs.
 
@@ -284,7 +284,7 @@ The two failure modes are equally bad:
 **Rule:** If you must bound input size (context window, output token budget),
 the limit comes from the model's discovered limits or config — never a literal
 in code — and the code must **batch or paginate** so no content is silently
-lost. Hard-coded ``[:N]`` / ``[:tokens]`` crops are **forbidden,
+lost. Hard-coded `[:N]` / `[:tokens]` crops are **forbidden,
 non-negotiable**. No exceptions.
 
 ### Antipattern 5 — Hard-coded schema/field-name strings
@@ -328,7 +328,7 @@ site imports the symbol. Bare literals for such names are **forbidden,
 non-negotiable**.
 
 **Scope:** This governs our own schema/contract keys only. Keys defined by an
-external API or library (e.g. a pydantic-ai response ``{"embedding": [...]}``, a
+external API or library (e.g. a pydantic-ai response `{"embedding": [...]}`, a
 JSON field from an upstream SDK) are that API's contract, not ours to rename —
 they are read as literals. When in doubt whether a key is ours, ask: did we
 define the schema that produces it? If yes, it is ours and must be a symbol.
@@ -338,37 +338,37 @@ define the schema that produces it? If yes, it is ours and must be a symbol.
 An AST scanner enforces this antipattern at CI time. Run it with
 `mise run check-field-consistency` (or
 `uv run python scripts/check_field_consistency.py`). It exits non-zero on any
-bare-string literal used as a dict key, subscript, or ``.get()`` argument
-that matches a member value of a policed StrEnum (currently ``MetadataField``,
-``WikiField``, ``MemoryField``, plus the module-local ``FtsField``/``ZvecField``
+bare-string literal used as a dict key, subscript, or `.get()` argument
+that matches a member value of a policed StrEnum (currently `MetadataField`,
+`WikiField`, `MemoryField`, plus the module-local `FtsField`/`ZvecField`
 scoped to their own modules). The scan is **0 violations** and must stay there.
 
 Notes for working with the checker:
 
-- **Per-enum consumer scoping.** ``MetadataField``/``WikiField`` apply
-  repo-wide; ``FtsField``/``ZvecField`` apply only to their defining modules
-  (their members — ``"content"``, ``"title"``, ``"id"`` — are too generic to
+- **Per-enum consumer scoping.** `MetadataField`/`WikiField` apply
+  repo-wide; `FtsField`/`ZvecField` apply only to their defining modules
+  (their members — `"content"`, `"title"`, `"id"` — are too generic to
   police across unrelated dicts like chat-message payloads).
-- **Generic values are in a denylist.** ``"source"`` and ``"metadata"`` are
+- **Generic values are in a denylist.** `"source"` and `"metadata"` are
   overloaded across unrelated contracts (edge dicts, parser config, stats) and
   are not policed as bare literals — the enum members remain for explicit use.
 - **`# nocheck` per-line opt-out.** When a bare literal legitimately parses an
   external schema (LLM JSON output, checkpoint files, lint-history records),
-  append ``# nocheck`` to the line with a short reason. Use sparingly — every
-  ``nocheck`` is an unpoliced contract and should be reviewed.
+  append `# nocheck` to the line with a short reason. Use sparingly — every
+  `nocheck` is an unpoliced contract and should be reviewed.
 - When you **add a new StrEnum** of contract keys, register it in
-  ``ENFORCED_ENUMS`` in the script (with the right consumer scope) so it is
+  `ENFORCED_ENUMS` in the script (with the right consumer scope) so it is
   policed going forward.
 
 ### Summary
 
-| Pattern | Forbidden | Correct approach |
-|---------|-----------|-----------------|
-| `model="ollama/llama3.2"` | ❌ | Config object / explicit param |
-| `budget: int = 6000` | ❌ | Config object with grouped defaults |
-| `x \| None = None` → `x = x or SECRET` | ❌ | Default in config dataclass, or document fallback in docstring |
-| ``content[:200]`` / ``text[:4096]`` | ❌ | Full content, or batch with a config/model-derived limit |
-| Bare schema/field-name literals (``hit.get("source_file")``) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
+| Pattern                                                    | Forbidden | Correct approach                                               |
+| ---------------------------------------------------------- | --------- | -------------------------------------------------------------- |
+| `model="ollama/llama3.2"`                                  | ❌        | Config object / explicit param                                 |
+| `budget: int = 6000`                                       | ❌        | Config object with grouped defaults                            |
+| `x \| None = None` → `x = x or SECRET`                     | ❌        | Default in config dataclass, or document fallback in docstring |
+| `content[:200]` / `text[:4096]`                            | ❌        | Full content, or batch with a config/model-derived limit       |
+| Bare schema/field-name literals (`hit.get("source_file")`) | ❌        | `StrEnum` / `Final[str]` symbol imported at every site         |
 
 #### Jinja2 conventions
 
@@ -382,15 +382,12 @@ Notes for working with the checker:
 
 ---
 
-  variables:
-      - name: title
-  required: true
-      - name: content
-  required: true
-      - name: context_budget
-  required: false
-  role: lint.factual-consistency
-  response_format: json_object
+variables: - name: title
+required: true - name: content
+required: true - name: context_budget
+required: false
+role: lint.factual-consistency
+response_format: json_object
 
 ### temperature: 0.0
 
@@ -454,141 +451,140 @@ The spec is at <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ma
 
 **All output-related code must maintain OKF v0.1 conformance:**
 
-1. **Default format is OKF.** The ``compile.output.format`` config key defaults to
-   ``"okf"``. Legacy formats (``"markdown"``, ``"json"``, ``"typst"``) are opt-in.
+1. **Default format is OKF.** The `compile.output.format` config key defaults to
+   `"okf"`. Other formats (`"markdown"`, `"json"`, `"typst"`) are opt-in.
 2. **Every concept file** must have parseable YAML frontmatter with a non-empty
-   ``type`` field (OKF \u00a79.2).
+   `type` field (OKF \u00a79.2).
 3. **Cross-links** use standard markdown absolute bundle-relative paths:
-   ``[Title](/concepts/title.md)`` \u2014 never ``[[wikilinks]]`` (OKF \u00a75.1).
-4. **Reserved filenames** (``index.md``, ``log.md``) follow OKF structure (\u00a76, \u00a77).
-   Root ``index.md`` MAY declare ``okf_version: "0.1"`` in frontmatter (\u00a711).
-5. **``log.md``** uses ISO 8601 date headings (``## YYYY-MM-DD``) with bold action
+   `[Title](/concepts/title.md)` \u2014 never `[[wikilinks]]` (OKF \u00a75.1).
+4. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (\u00a76, \u00a77).
+   Root `index.md` MAY declare `okf_version: "0.1"` in frontmatter (\u00a711).
+5. **`log.md`** uses ISO 8601 date headings (`## YYYY-MM-DD`) with bold action
    prefix (\u00a77).
-6. **Citations** from provenance are rendered as a ``# Citations`` section with
-   numbered ``[N]`` refs (\u00a78).
-7. **Consumers MUST tolerate** missing optional fields, unknown ``type`` values,
-   unknown frontmatter keys, broken cross-links, and missing ``index.md`` files
+6. **Citations** from provenance are rendered as a `# Citations` section with
+   numbered `[N]` refs (\u00a78).
+7. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
+   unknown frontmatter keys, broken cross-links, and missing `index.md` files
    (\u00a79 \u2014 permissive consumption model).
 
 **When adding a new output writer or modifying an existing one**, verify
-conformance against the OKF spec. The legacy ``MarkdownWriter`` (Obsidian vault
-mode) is exempt from rules 2\u20136 but must remain functional.
+conformance against the OKF spec. The Obsidian-flavored `MarkdownWriter` is exempt from rules 2\u20136 but must remain functional.
 
 ### ACP agent — credential-free LLM injection and conversational agents
 
 KNOX implements the **Agent Client Protocol (ACP)** to let editors and AI
 agents inject their LLM endpoint without sharing credentials. The agent runs
-as ``knox agent`` on stdio.
+as `knox agent` on stdio.
 
 **Protocol flow:**
 
-1. Client calls ``initialize`` \u2192 KNOX advertises ``providers: {}`` capability
-2. Client calls ``providers/list`` \u2192 KNOX returns current LLM endpoint info
-3. Client calls ``providers/set`` \u2192 KNOX stores the endpoint and reconfigures the model
-4. Client calls ``session/new`` \u2192 KNOX creates a session
-5. Client sends ``/knox <command>`` in a prompt \u2192 KNOX runs the pipeline
+1. Client calls `initialize` \u2192 KNOX advertises `providers: {}` capability
+2. Client calls `providers/list` \u2192 KNOX returns current LLM endpoint info
+3. Client calls `providers/set` \u2192 KNOX stores the endpoint and reconfigures the model
+4. Client calls `session/new` \u2192 KNOX creates a session
+5. Client sends `/knox <command>` in a prompt \u2192 KNOX runs the pipeline
 
 **Two prompt paths:**
 
 - **Conversational agent** (default when LLM is configured): prompts go through
-  a tool-calling loop driven by TOML-defined agents (``builtin/*.toml`` +
-  ``.knox/agents/*.toml``). The LLM reasons over available tools and calls
-  them as needed. See ``knox agents list`` for available agents.
-- **Subprocess dispatch** (degraded mode, no LLM): ``/knox`` slash commands
+  a tool-calling loop driven by TOML-defined agents (`builtin/*.toml` +
+  `.knox/agents/*.toml`). The LLM reasons over available tools and calls
+  them as needed. See `knox agents list` for available agents.
+- **Subprocess dispatch** (degraded mode, no LLM): `/knox` slash commands
   launch the corresponding CLI subcommand. Free-text prompts are rejected.
 
 **Key modules:**
 
-- ``knox_agent.py`` — ACP protocol handler, routes prompts to conversational or subprocess path
-- ``definitions.py`` — ``AgentDefinition`` pydantic model loaded from TOML
-- ``registry.py`` — ``AgentRegistry`` discovers agents from builtin + vault
-- ``tools.py`` — ``ToolDispatcher`` wraps existing MCP server functions as agent-callable tools
-- ``conversational.py`` — ``ConversationalAgent`` tool-calling loop
-- ``provider_store.py`` — thread-safe LLM credential store for providers/set
-- ``slash_commands.py`` — slash command parsing and structured definitions
+- `knox_agent.py` — ACP protocol handler, routes prompts to conversational or subprocess path
+- `definitions.py` — `AgentDefinition` pydantic model loaded from TOML
+- `registry.py` — `AgentRegistry` discovers agents from builtin + vault
+- `tools.py` — `ToolDispatcher` wraps existing MCP server functions as agent-callable tools
+- `conversational.py` — `ConversationalAgent` tool-calling loop
+- `provider_store.py` — thread-safe LLM credential store for providers/set
+- `slash_commands.py` — slash command parsing and structured definitions
 
 **Key design decisions:**
 
 - **KNOX controls its own LLM calls.** Unlike MCP sampling (free-text only),
   KNOX uses its full pydantic-ai agent + structured output pipeline. The
-  ``providers/set`` endpoint configures the LLM; KNOX makes direct HTTP calls.
-- **``providers/set`` is an RFD** (not yet in the stable ACP spec). The Python
-  SDK v0.11.0 includes the types. When ``providers/set`` is not called, KNOX
+  `providers/set` endpoint configures the LLM; KNOX makes direct HTTP calls.
+- **`providers/set` is an RFD** (not yet in the stable ACP spec). The Python
+  SDK v0.11.0 includes the types. When `providers/set` is not called, KNOX
   falls back to env vars \u2192 config.toml \u2192 DEFAULTS (unchanged).
-- **Slash commands** (``/knox compile``, ``/knox query``, etc.) are parsed from
+- **Slash commands** (`/knox compile`, `/knox query`, etc.) are parsed from
   the prompt text and dispatched via subprocess. The agent runs on asyncio.
 - **Sessions are stateless.** Each prompt turn runs independently. No
   conversation history is accumulated between turns.
-- **MCP companion mode is v2.** The existing ``knox mcp`` subcommand is
+- **MCP companion mode is v2.** The existing `knox mcp` subcommand is
   unchanged. The ACP agent does not bridge to MCP in v1.
 
-**When modifying the agent module (``src/knox/acp/``):**
+**When modifying the agent module (`src/knox/acp/`):**
 
-- The ``KnoxAgent`` class implements the ``acp.Agent`` protocol. All protocol
-  methods are async. Use ``asyncio.run()`` to bridge to synchronous code.
-- ``ProviderCredentials`` is thread-safe (``threading.Lock``). It reconfigures
-  the model via env vars (``KNOX_LLM_DEFAULT_MODEL``, ``KNOX_LLM_API_BASE``,
-  ``KNOX_LLM_API_KEY``) and restores them on ``disable()``.
-- Slash commands are parsed by ``parse_slash_command()`` in
-  ``slash_commands.py``. Add new commands there.
-- The ``ext_method()`` handler on ``KnoxAgent`` receives unknown ACP methods
-  (including ``providers/*``). Add new provider methods there.
+- The `KnoxAgent` class implements the `acp.Agent` protocol. All protocol
+  methods are async. Use `asyncio.run()` to bridge to synchronous code.
+- `ProviderCredentials` is thread-safe (`threading.Lock`). It reconfigures
+  the model via env vars (`KNOX_LLM_DEFAULT_MODEL`, `KNOX_LLM_API_BASE`,
+  `KNOX_LLM_API_KEY`) and restores them on `disable()`.
+- Slash commands are parsed by `parse_slash_command()` in
+  `slash_commands.py`. Add new commands there.
+- The `ext_method()` handler on `KnoxAgent` receives unknown ACP methods
+  (including `providers/*`). Add new provider methods there.
 
-### PydanticAI pipeline agents (``src/knox/agents/``)
+### PydanticAI pipeline agents (`src/knox/agents/`)
 
 All LLM stages in the compilation pipeline now route through PydanticAI
 agents instead of direct LLM client calls. Seven agents cover
 the pipeline stages:
 
-| Agent | Stage | Output |
-|-------|-------|--------|
-| ``ExtractionAgent`` | TwoPhase extraction | ``ExtractionOutput`` (JSON) |
-| ``ExtractionReduceAgent`` | TwoPhase extraction reduce | ``ExtractionOutput`` (JSON) |
-| ``GenerationAgent`` | TwoPhase generation | ``GenerationOutput`` (JSON) |
-| ``QueryAgent`` | RAG query synthesis | ``str`` (free text) |
-| ``WicerProbeAgent`` | WiCER probe generation | ``WicerProbeOutput`` (JSON) |
-| ``WicerEvaluateAgent`` | WiCER evaluation | ``WicerEvaluateOutput`` (JSON) |
-| ``WicerDiagnoseAgent`` | WiCER diagnosis | ``WicerDiagnoseOutput`` (JSON) |
-| ``VlmAgent`` | VLM image captioning | ``str`` (caption) |
+| Agent                   | Stage                      | Output                       |
+| ----------------------- | -------------------------- | ---------------------------- |
+| `ExtractionAgent`       | TwoPhase extraction        | `ExtractionOutput` (JSON)    |
+| `ExtractionReduceAgent` | TwoPhase extraction reduce | `ExtractionOutput` (JSON)    |
+| `GenerationAgent`       | TwoPhase generation        | `GenerationOutput` (JSON)    |
+| `QueryAgent`            | RAG query synthesis        | `str` (free text)            |
+| `WicerProbeAgent`       | WiCER probe generation     | `WicerProbeOutput` (JSON)    |
+| `WicerEvaluateAgent`    | WiCER evaluation           | `WicerEvaluateOutput` (JSON) |
+| `WicerDiagnoseAgent`    | WiCER diagnosis            | `WicerDiagnoseOutput` (JSON) |
+| `VlmAgent`              | VLM image captioning       | `str` (caption)              |
 
 **Key design:**
 
 - Agents use native pydantic-ai models via
   :func:`knox.llm.models.build_model`, wrapped in :class:`KnoxModel`
   (usage tracking + debug saving) and :class:`FallbackModel` (failover).
-  Custom providers (``claudinio/``, ``ollama-cloud/``, ``opencode-zen/``,
-  ``opencode-go/``) construct native models pointed at the provider's
-  endpoint; standard prefixes (``ollama/``, ``openai/``, ``anthropic/``,
-  etc.) resolve via pydantic-ai's ``infer_model()``.
-- ``KnoxAgentBase`` handles lazy agent construction, template rendering,
-  skill injection, and error wrapping. ``_build_agent()`` is concrete —
-  subclasses only declare class vars (``template_name``,
-  ``system_template_name``, ``result_type``, ``deps_type``).
+  Custom providers (`claudinio/`, `ollama-cloud/`, `opencode-zen/`,
+  `opencode-go/`) construct native models pointed at the provider's
+  endpoint; standard prefixes (`ollama/`, `openai/`, `anthropic/`,
+  etc.) resolve via pydantic-ai's `infer_model()`.
+- `KnoxAgentBase` handles lazy agent construction, template rendering,
+  skill injection, and error wrapping. `_build_agent()` is concrete —
+  subclasses only declare class vars (`template_name`,
+  `system_template_name`, `result_type`, `deps_type`).
 - Structured output uses ToolOutput mode (default) — tool-call arguments
   are validated directly by pydantic-ai, so no JSON-text salvage is
   needed.
 
-**When modifying agents (``src/knox/agents/``):**
+**When modifying agents (`src/knox/agents/`):**
 
-- Add new agents in ``src/knox/agents/<name>.py``, following the existing
-  pattern (subclass ``KnoxAgentBase``, set ``result_type`` and
-  ``template_name``, implement ``_build_agent()``).
-- Model strings use the ``provider/model`` convention (split at first
-  ``/``); ``build_model()`` translates to native pydantic-ai models.
+- Add new agents in `src/knox/agents/<name>.py`, following the existing
+  pattern (subclass `KnoxAgentBase`, set `result_type` and
+  `template_name`, implement `_build_agent()`).
+- Model strings use the `provider/model` convention (split at first
+  `/`); `build_model()` translates to native pydantic-ai models.
   Never construct pydantic-ai models directly in business code.
-- ``KnoxModel`` (``knox_model.py``) wraps any native delegate, adding
-  usage tracking and debug saving. ``FallbackModel`` wraps primary +
-  fallback ``KnoxModel`` instances for failover.
-- ``KnoxAgentBase.run()`` accepts an optional ``message_history`` kwarg
+- `KnoxModel` (`knox_model.py`) wraps any native delegate, adding
+  usage tracking and debug saving. `FallbackModel` wraps primary +
+  fallback `KnoxModel` instances for failover.
+- `KnoxAgentBase.run()` accepts an optional `message_history` kwarg
   for multi-turn conversations (used by incremental extraction).
-  ``run_with_messages()`` returns ``(output, new_messages)`` for callers
+  `run_with_messages()` returns `(output, new_messages)` for callers
   that need to thread conversation history across calls.
 - Template variables are filtered to only include those declared in the
   template's frontmatter. Add new variables to the template's
-  ``variables:`` list.
-- ``debug.py`` holds ``save_debug_prompt(...)`` — the per-LLM-call dump
-  triggered by ``KNOX_DEBUG_LLM_DIR``. ``KnoxModel`` calls it after each
-  request; ``VlmAgent.run()`` sets ``current_source_id`` then calls it.
+  `variables:` list.
+- `debug.py` holds `save_debug_prompt(...)` — the per-LLM-call dump
+  triggered by `KNOX_DEBUG_LLM_DIR`. `KnoxModel` calls it after each
+  request; `VlmAgent.run()` sets `current_source_id` then calls it.
 
 ### Work Guidance
 
@@ -611,12 +607,12 @@ the pipeline stages:
 
 ### Child DOX Index
 
-| Path | Scope |
-|------|-------|
-| `acp/` | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands |
-| `agents/` | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through native pydantic-ai models via `build_model()` + `KnoxModel` wrapper. |
-| `cli/AGENTS.md` | CLI layer — thin shell over core, Typer commands, argument declarations |
-| `core/AGENTS.md` | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution |
-| `llm/AGENTS.md` | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`) |
-| `memory/AGENTS.md` | Memory layer — query memory store + compile-time lifecycle |
-| `preprocessing/parsers/AGENTS.md` | Pluggable ingestion backends — registration, ParserBuildOptions, figure_enrichment semantics |
+| Path                              | Scope                                                                                                                                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `acp/`                            | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands                                                                                                                           |
+| `agents/`                         | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through native pydantic-ai models via `build_model()` + `KnoxModel` wrapper. |
+| `cli/AGENTS.md`                   | CLI layer — thin shell over core, Typer commands, argument declarations                                                                                                                                                                           |
+| `core/AGENTS.md`                  | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution                                                                                                                                          |
+| `llm/AGENTS.md`                   | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`)                                                                                                                                                        |
+| `memory/AGENTS.md`                | Memory layer — query memory store + compile-time lifecycle                                                                                                                                                                                        |
+| `preprocessing/parsers/AGENTS.md` | Pluggable ingestion backends — registration, ParserBuildOptions, figure_enrichment semantics                                                                                                                                                      |
