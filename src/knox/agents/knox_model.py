@@ -76,9 +76,7 @@ class KnoxModel(Model):
         def _schema_resolver() -> Any | None:
             if not self._agent:
                 return None
-            ot = getattr(self._agent, "output_type", None) or getattr(
-                self._agent, "result_type", None
-            )
+            ot = getattr(self._agent, "output_type", None) or getattr(self._agent, "result_type", None)
             if ot is None or ot is str:
                 return None
             return ot
@@ -118,6 +116,7 @@ class KnoxModel(Model):
         # Apply the per-request post-processing pipeline: surrogate scrubbing,
         # JSON repair, usage recording, and debug dump.
         from knox.llm.postprocess import default_pipeline  # noqa: PLC0415
+
         pipeline = default_pipeline(
             schema_resolver=self._schema_resolver,
             agent=self._agent,
@@ -160,5 +159,6 @@ class KnoxModel(Model):
         if thinking is False:
             settings["openai_reasoning_effort"] = "none"  # ty: ignore[invalid-key]
         return settings
+
 
 __all__ = ["KnoxModel"]

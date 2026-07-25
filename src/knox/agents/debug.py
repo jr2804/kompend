@@ -168,4 +168,3 @@ def _part_to_debug_dict(part: Any) -> dict[str, Any]:  # noqa: PLR0911
             return {"type": "retry_prompt", "errors": content}
         return {"type": "retry_prompt", "content": str(content)}
     return {"type": type(part).__name__, "content": str(part)}
-

@@ -337,8 +337,7 @@ def register_postprocessor(name: str) -> Callable[[type[ResponsePostprocessor]],
 
         @register_postprocessor("my_repair")
         class MyRepair:
-            def __call__(self, response: ModelResponse) -> None:
-                ...
+            def __call__(self, response: ModelResponse) -> None: ...
     """
 
     def decorator(processor_class: type[ResponsePostprocessor]) -> type[ResponsePostprocessor]:
@@ -374,7 +373,7 @@ def pipeline_from_registry(names: Sequence[str], **kwargs: Any) -> ResponsePipel
         prefix = f"{name}__"
         for key, val in kwargs.items():
             if key.startswith(prefix):
-                instance_kwargs[key[len(prefix):]] = val
+                instance_kwargs[key[len(prefix) :]] = val
         processors.append(processor_class(**instance_kwargs))
     return ResponsePipeline(processors)
 
