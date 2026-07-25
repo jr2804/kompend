@@ -14,7 +14,7 @@ from knox.core.models.enums import (
     ChunkTreeField,
     MetadataField,
 )
-from knox.core.models.structured import StructuredData, _structured_from_dict
+from knox.core.models.structured import StructuredData, structured_from_dict
 
 CHUNK_TREE_CACHE_VERSION: int = 1
 """Increment when ``ChunkTree.to_dict`` / ``ChunkTree.from_dict`` format changes."""
@@ -65,7 +65,7 @@ class ChunkNode:
             depth=d.get(ChunkNodeField.DEPTH, 0),
             heading_path=tuple(d.get(ChunkNodeField.HEADING_PATH, ())),
             chunk=Chunk.from_dict(d[ChunkNodeField.CHUNK]) if d.get(ChunkNodeField.CHUNK) else None,
-            structured=_structured_from_dict(d[ChunkNodeField.STRUCTURED]) if d.get(ChunkNodeField.STRUCTURED) else None,
+            structured=structured_from_dict(d[ChunkNodeField.STRUCTURED]) if d.get(ChunkNodeField.STRUCTURED) else None,
             summary=d.get(ChunkNodeField.SUMMARY, ""),
             token_count=d.get(ChunkNodeField.TOKEN_COUNT, 0),
         )

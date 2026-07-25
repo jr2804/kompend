@@ -59,14 +59,14 @@ _CACHE_ENUMS: dict[str, type[StrEnum]] = {
 }
 
 
-def _encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
+def encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     """Recursively encode cache values for JSON serialization.
 
     Dataclasses, ``Path``, ``StrEnum``, ``bytes`` and tuples are tagged so
     they can be reconstructed safely without ``pickle``.
     """
     if is_dataclass(obj) and not isinstance(obj, type):
-        data = {f.name: _encode_json(getattr(obj, f.name)) for f in fields(obj)}
+        data = {f.name: encode_json(getattr(obj, f.name)) for f in fields(obj)}
         data["__dataclass__"] = type(obj).__name__
         return data
     if isinstance(obj, Path):
@@ -76,15 +76,15 @@ def _encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     if isinstance(obj, bytes):
         return {"__bytes__": b64encode(obj).decode("ascii")}
     if isinstance(obj, tuple):
-        return {"__tuple__": [_encode_json(v) for v in obj]}
+        return {"__tuple__": [encode_json(v) for v in obj]}
     if isinstance(obj, dict):
-        return {k: _encode_json(v) for k, v in obj.items()}
+        return {k: encode_json(v) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_encode_json(v) for v in obj]
+        return [encode_json(v) for v in obj]
     return obj
 
 
-def _decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
+def decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     """Recursively decode JSON values produced by ``_encode_json``."""
     if isinstance(obj, dict):
         if "__dataclass__" in obj:
@@ -92,7 +92,7 @@ def _decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
             cls = _CACHE_DATACLASSES.get(cls_name)
             if cls is None:
                 raise ValueError(f"Unknown dataclass tag: {cls_name}")
-            decoded = {k: _decode_json(v) for k, v in obj.items()}
+            decoded = {k: decode_json(v) for k, v in obj.items()}
             return cls(**decoded)
         if "__path__" in obj:
             return Path(obj["__path__"])
@@ -104,10 +104,10 @@ def _decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
         if "__bytes__" in obj:
             return b64decode(obj["__bytes__"])
         if "__tuple__" in obj:
-            return tuple(_decode_json(v) for v in obj["__tuple__"])
-        return {k: _decode_json(v) for k, v in obj.items()}
+            return tuple(decode_json(v) for v in obj["__tuple__"])
+        return {k: decode_json(v) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [_decode_json(v) for v in obj]
+        return [decode_json(v) for v in obj]
     return obj
 
 
@@ -161,7 +161,7 @@ class CacheStore:
             return None
 
         try:
-            entry: dict[str, Any] = _decode_json(json.loads(path.read_text(encoding="utf-8")))
+            entry: dict[str, Any] = decode_json(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
             logger.debug("Cache read error for %s - treating as miss", path, exc_info=True)
             return None
@@ -207,7 +207,7 @@ class CacheStore:
         try:
             fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(_encode_json(entry), f)
+                json.dump(encode_json(entry), f)
             os.replace(tmp, path)
             logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, path.stat().st_size)
         except OSError:

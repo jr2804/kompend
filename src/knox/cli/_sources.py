@@ -14,9 +14,9 @@ from pathlib import Path
 
 from knox.cli._ignore import filter_files
 from knox.cli._sources_io import (
-    _extract_archive,
-    _looks_like_html_url,
     download_urls,
+    extract_archive,
+    looks_like_html_url,
 )
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import get_all_extensions
@@ -25,11 +25,11 @@ from knox.preprocessing.parsers.base import FileExtension
 logger = get_logger(__name__)
 
 __all__ = [
-    "_extract_archive",
-    "_looks_like_html_url",
     "download_urls",
     "ensure_in_sources",
+    "extract_archive",
     "get_supported_extensions",
+    "looks_like_html_url",
     "resolve_files",
 ]
 

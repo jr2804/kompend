@@ -67,7 +67,7 @@ def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
     return text or source_file.read_text(errors="replace")
 
 
-def _extract_text_from_cached(json_path: Path) -> str:
+def extract_text_from_cached(json_path: Path) -> str:
     """Extract plain text from a cached parsed JSON document.
 
     Concatenates string-type element content. Falls back to reading the
@@ -240,7 +240,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             cached_file = cache_dir / parse_cache_name(source_file)
             if not cached_file.exists():
                 continue
-            text = _extract_text_from_cached(cached_file)
+            text = extract_text_from_cached(cached_file)
             dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
 
     # ── Content-level duplicate comparison (end of ingest) ──────────

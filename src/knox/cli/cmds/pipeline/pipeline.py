@@ -12,14 +12,14 @@ from typing import Annotated, Any
 import typer
 
 from knox.cli._pipeline_helpers import (
-    _check_llm_availability,
-    _emit_json_done,
-    _make_json_progress_callback,
-    _make_progress_callback,
-    _post_compile_actions,
-    _PostCompileOptions,
-    _print_tier_listing,
-    _resolve_compile_inputs,
+    PostCompileOptions,
+    check_llm_availability,
+    emit_json_done,
+    make_json_progress_callback,
+    make_progress_callback,
+    post_compile_actions,
+    print_tier_listing,
+    resolve_compile_inputs,
 )
 from knox.cli._progress import PipelineProgress
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
@@ -121,7 +121,7 @@ def parse_cmd(
 
     Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
     """
-    resolved = _resolve_compile_inputs(
+    resolved = resolve_compile_inputs(
         files=files,
         online_urls=[],
         url_file=None,
@@ -236,20 +236,20 @@ def compile_cmd(  # noqa: PLR0915
 
     pipeline = build_pipeline(pipeline_config)
 
-    _check_llm_availability(pipeline)
+    check_llm_availability(pipeline)
 
     if list_tiers:
-        _print_tier_listing(pipeline)
+        print_tier_listing(pipeline)
         return
 
     if json_progress:
-        progress_cb = _make_json_progress_callback()
+        progress_cb = make_json_progress_callback()
     else:
         tracker = PipelineProgress.create(
             total_files=len(source_files),
             force_progress=show_progress,
         )
-        progress_cb = _make_progress_callback(tracker) if tracker.enabled else None
+        progress_cb = make_progress_callback(tracker) if tracker.enabled else None
         # Start the bar eagerly (idempotent). The parse handler also calls start(),
         # but when parsing is skipped (--start-at-tier >= resolve) only this call
         # guarantees the live display is running before any phase.
@@ -265,7 +265,7 @@ def compile_cmd(  # noqa: PLR0915
         wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[: cfg.get(DISPLAY_SOURCE_NAMES, 20)]]
 
         if json_progress:
-            _emit_json_done(elapsed, f"Compiled wiki written to {output_dir}")
+            emit_json_done(elapsed, f"Compiled wiki written to {output_dir}")
             console = get_err_console()
         else:
             tracker.finish()
@@ -275,8 +275,8 @@ def compile_cmd(  # noqa: PLR0915
         lint_config = LintConfig(
             fuzzy_threshold=float(cfg.get(LINT_FUZZY_THRESHOLD, 0.85)),
         )
-        _post_compile_actions(
-            _PostCompileOptions(
+        post_compile_actions(
+            PostCompileOptions(
                 wiki=wiki,
                 pipeline_config=pipeline_config,
                 output_dir=output_dir,
@@ -360,7 +360,7 @@ def ingest_cmd(
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
     base_dir = Path(cfg.get(PATHS_WIKI_DIR))
 
-    all_input_files = _resolve_compile_inputs(
+    all_input_files = resolve_compile_inputs(
         files or [],
         online_urls,
         url_file,

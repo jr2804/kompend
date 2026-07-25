@@ -24,7 +24,7 @@ from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.store import DedupStore
-from knox.rag.zvec_store import _make_provider
+from knox.rag.zvec_store import make_provider
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
@@ -268,7 +268,7 @@ class DedupOrchestrator:
                 # Reuse the canonical EmbeddingProvider factory — it correctly
                 # resolves the provider/model convention and defaults to
                 # the sentence-transformers provider for bare HF names.
-                provider = _make_provider(model, dim=dim)
+                provider = make_provider(model, dim=dim)
                 m = EmbeddingMatcher(model_name=model, dim=dim, provider=provider)
                 matchers.append(m)
                 by_name[name] = m

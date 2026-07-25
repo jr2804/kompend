@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from io import StringIO
 
-from knox.core.models.references import _YEAR_DIGITS, Reference
+from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,7 +96,7 @@ def _make_citation_key(ref: Reference, index: int) -> str:
     year = ""
     if ref.issued:
         digits = "".join(c for c in ref.issued if c.isdigit())
-        year = digits[:_YEAR_DIGITS]
+        year = digits[:YEAR_DIGITS]
 
     if first_author and year:
         key = f"{first_author}{year}"
@@ -138,7 +138,7 @@ def _format_bibtex_authors(authors: list) -> str:
 def _extract_year(issued: str) -> str:
     """Extract the 4-digit year from the ``issued`` field."""
     digits = "".join(c for c in issued if c.isdigit())
-    return digits[:_YEAR_DIGITS] if len(digits) >= _YEAR_DIGITS else issued
+    return digits[:YEAR_DIGITS] if len(digits) >= YEAR_DIGITS else issued
 
 
 def reference_to_bibtex_entry(ref: Reference, index: int = 0) -> str:

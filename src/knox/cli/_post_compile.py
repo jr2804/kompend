@@ -33,7 +33,7 @@ from knox.verification import verify_wiki
 logger = get_logger(__name__)
 
 
-def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
+def write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``."""
     paths = VaultPaths(base_dir)
     cache_file = paths.wiki_cache_path
@@ -66,25 +66,25 @@ def _write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     cache_file.write_text(json.dumps(data, default=str, indent=2), encoding="utf-8")
 
 
-def _send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
+def send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
     queue = ReviewQueue(review_dir=VaultPaths(base_dir).review_dir)
     for node in wiki.nodes:
         queue.enqueue(node)
 
 
-def _annotate_provenance(wiki: CompiledWiki, output_dir: Path) -> None:
+def annotate_provenance(wiki: CompiledWiki, output_dir: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
     annotated = annotate_wiki_with_provenance(wiki, output_dir)
     get_console().print(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
 
-def _mark_private(wiki: CompiledWiki, output_dir: Path) -> None:
+def mark_private(wiki: CompiledWiki, output_dir: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
     mark_wiki_private(wiki, output_dir)
 
 
-def _verify_claims(
+def verify_claims(
     wiki: CompiledWiki,
     output_dir: Path,
     *,
@@ -96,7 +96,7 @@ def _verify_claims(
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
 
-def _run_post_compile_lint(
+def run_post_compile_lint(
     wiki: CompiledWiki,
     sources_dir: Path,
     *,
@@ -131,7 +131,7 @@ def _run_post_compile_lint(
         )
 
 
-def _cli_build_vector_index(
+def cli_build_vector_index(
     wiki: CompiledWiki,
     output_dir: Path,
     embed_model: str | None,
@@ -150,7 +150,7 @@ def _cli_build_vector_index(
         get_err_console().print("Warning: no nodes indexed — vector index skipped")
 
 
-def _print_compile_summary(wiki: CompiledWiki) -> None:
+def print_compile_summary(wiki: CompiledWiki) -> None:
     """Print a one-line compilation summary with timing and LLM usage."""
     meta = wiki.metadata
     parts = [f"{len(wiki.nodes)} page(s)"]
@@ -193,7 +193,7 @@ def _print_compile_summary(wiki: CompiledWiki) -> None:
         )
 
 
-def _run_overview_synthesis(
+def run_overview_synthesis(
     *,
     wiki: CompiledWiki,
     pipeline_config: PipelineConfig,
@@ -233,7 +233,7 @@ def _run_overview_synthesis(
 
 
 @dataclasses.dataclass
-class _PostCompileOptions:
+class PostCompileOptions:
     """Options for post-compilation actions, grouped to reduce parameter count."""
 
     wiki: CompiledWiki
@@ -253,30 +253,30 @@ class _PostCompileOptions:
     lint_config: LintConfig | None = None
 
 
-def _post_compile_actions(opts: _PostCompileOptions) -> None:
+def post_compile_actions(opts: PostCompileOptions) -> None:
     """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
     base_dir = opts.pipeline_config.resolved_base_dir()
-    _write_wiki_cache(opts.wiki, base_dir)
-    _print_compile_summary(opts.wiki)
+    write_wiki_cache(opts.wiki, base_dir)
+    print_compile_summary(opts.wiki)
 
     if opts.review and not opts.bypass_review:
-        _send_to_review_queue(opts.wiki, base_dir)
+        send_to_review_queue(opts.wiki, base_dir)
         get_console().print(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
     elif opts.bypass_review and opts.review:
         get_console().print("--bypass-review overrides --review; writing pages directly.")
 
     if opts.provenance:
-        _annotate_provenance(opts.wiki, opts.output_dir)
+        annotate_provenance(opts.wiki, opts.output_dir)
 
     if opts.private:
-        _mark_private(opts.wiki, opts.output_dir)
+        mark_private(opts.wiki, opts.output_dir)
 
     if opts.verify:
         model = opts.pipeline_config.llm.default_model
         if not model:
             get_err_console().print("Warning: --verify requires an LLM model — skipping verification")
         else:
-            _verify_claims(
+            verify_claims(
                 opts.wiki,
                 opts.output_dir,
                 agent=VerificationAgent(
@@ -292,7 +292,7 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
     get_console().print(f"Index: {generated['index']}")
 
     if opts.synthesize:
-        _run_overview_synthesis(
+        run_overview_synthesis(
             wiki=opts.wiki,
             pipeline_config=opts.pipeline_config,
             base_dir=base_dir,
@@ -303,11 +303,11 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
     if opts.index_store is not False:
         opts.wiki.metadata["embedding_model"] = opts.embed_model
         try:
-            _cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
+            cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
         except Exception as exc:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
     if opts.compile_lint:
-        _run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
+        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
 
-    _write_wiki_cache(opts.wiki, base_dir)
+    write_wiki_cache(opts.wiki, base_dir)

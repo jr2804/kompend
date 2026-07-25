@@ -26,7 +26,7 @@ from pydantic_ai.embeddings import infer_embedding_model
 from pydantic_ai.providers.ollama import OllamaProvider
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
-from knox.llm.models import _OLLAMA_DEFAULT_BASE_URL
+from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
 from knox.types import ZvecCollection
 
@@ -68,7 +68,7 @@ def _safe_id(node_id: str) -> str:
 # ── Embedding provider interface ────────────────────────────────────────
 
 
-def _build_embedder(model_string: str) -> Embedder:
+def build_embedder(model_string: str) -> Embedder:
     """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
 
     Mirrors the pattern in :mod:`knox.llm.models`: when the provider is
@@ -76,7 +76,7 @@ def _build_embedder(model_string: str) -> Embedder:
     ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
     """
     if model_string.startswith("ollama:"):
-        base_url = os.getenv("OLLAMA_BASE_URL") or _OLLAMA_DEFAULT_BASE_URL
+        base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
         provider = OllamaProvider(base_url=base_url)
         model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
         return Embedder(model)
@@ -109,7 +109,7 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self, model_string: str) -> None:
         self._model_string = model_string
-        self._embedder = _build_embedder(model_string)
+        self._embedder = build_embedder(model_string)
         self._dim: int | None = None
 
     @property
@@ -127,7 +127,7 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         return vector
 
 
-def _make_provider(
+def make_provider(
     embedding_model: str,
     dim: int | None = None,
 ) -> EmbeddingProvider:
@@ -137,11 +137,11 @@ def _make_provider(
     :func:`knox.llm.models.build_model`. A bare HuggingFace model name
     (no prefix) defaults to the ``sentence-transformers`` provider.
     """
-    pydantic_ai_string = _to_pydantic_ai_embedding_string(embedding_model)
+    pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
     return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
 
 
-def _to_pydantic_ai_embedding_string(embedding_model: str) -> str:
+def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
     """Translate a KNOX embedding-model config value to pydantic-ai format.
 
     Uses the same ``provider/model`` or ``provider:model`` convention as
@@ -209,7 +209,7 @@ class ZvecWikiStore:
         """Index compiled wiki nodes into the zvec store.
 
         If no provider was set at construction, ``embedding_model`` must be
-        given to create one via :func:`_make_provider`.
+        given to create one via :func:`make_provider`.
         """
         if not wiki.nodes:
             return 0
@@ -217,7 +217,7 @@ class ZvecWikiStore:
         if self._provider is None:
             if not embedding_model:
                 raise ValueError("embedding_model is required when no provider was injected")
-            self._provider = _make_provider(embedding_model, dim=self._embedding_dim)
+            self._provider = make_provider(embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 
         self._collection = self._create_collection()
@@ -261,9 +261,9 @@ class ZvecWikiStore:
 
         The collection must have been created previously with
         :meth:`build_index`. Either pass ``embedding_provider`` directly,
-        or pass ``embedding_model`` to create one via :func:`_make_provider`.
+        or pass ``embedding_model`` to create one via :func:`make_provider`.
         """
-        provider = embedding_provider or _make_provider(embedding_model or "", dim=embedding_dim or 384)
+        provider = embedding_provider or make_provider(embedding_model or "", dim=embedding_dim or 384)
         store = cls(db_file=db_file, embedding_provider=provider, embedding_dim=provider.dim)
         coll_dir = Path(store.db_file)
         if coll_dir.exists():

@@ -213,13 +213,13 @@ class HybridRetriever:
         except Exception as exc:
             logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
-        query_tokens = set(_tokenize(query))
+        query_tokens = set(tokenize(query))
         results: list[SearchResult] = []
         for hit in hits:
             node_id = hit.get("id", "")
             node = self._node_by_id.get(node_id)
             title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-            snippet = _extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+            snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
             source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
             if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])
@@ -283,12 +283,12 @@ class HybridRetriever:
 # ── Utilities ──────────────────────────────────────────────────────────
 
 
-def _tokenize(text: str) -> list[str]:
+def tokenize(text: str) -> list[str]:
     """Split text into lowercase alphanumeric tokens."""
     return [t for t in TOKEN_SPLIT_RE.split(text.lower()) if t]
 
 
-def _extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:
+def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:
     """Extract a snippet around the first query token match."""
     if max_chars is None:
         max_chars = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)

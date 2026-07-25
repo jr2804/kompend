@@ -18,7 +18,7 @@ from typing import Any
 
 from knox.core.models.references import Reference
 from knox.logging import get_logger
-from knox.rag.zvec_store import _make_provider
+from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
@@ -297,7 +297,7 @@ def _fuzzy_dedup_references(
         return references
 
     try:
-        provider = _make_provider(embedding_model, dim=None)
+        provider = make_provider(embedding_model, dim=None)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Reference fuzzy merge disabled: provider creation failed: %s", exc)
         return references

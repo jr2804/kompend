@@ -45,7 +45,7 @@ _HTML_PATH_SUFFIXES: frozenset[str] = frozenset({"", ".html", ".htm", ".aspx", "
 _BINARY_PATH_SEGMENTS: frozenset[str] = frozenset({"/pdf/"})
 
 
-def _looks_like_html_url(url: str) -> bool:
+def looks_like_html_url(url: str) -> bool:
     """Heuristic: does *url*'s path suggest server-rendered HTML?"""
     path = urlparse(url).path.lower()
     if not path or path.endswith("/"):
@@ -154,7 +154,7 @@ def _clean_single_file_extract(dest: Path, is_single_file: bool) -> Path | None:
     return dest
 
 
-def _extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
+def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
     """Expand a compressed archive and return the best inner file.
 
     Supported formats (stdlib only, no extra dependencies):
@@ -289,7 +289,7 @@ def _download_single_url(
         logger.debug("Skipping already-downloaded URL: %s", resolved.original_url)
         return None
 
-    use_crawler = not resolved.prefer_http and _looks_like_html_url(resolved.download_url)
+    use_crawler = not resolved.prefer_http and looks_like_html_url(resolved.download_url)
     downloader: HTTPDownloader | WebCrawler = web_crawler if use_crawler else http_downloader
     downloaded_file = downloader.download(resolved.download_url, sources_dir)
     if downloaded_file is None and use_crawler:
@@ -298,7 +298,7 @@ def _download_single_url(
     if not downloaded_file:
         return None
 
-    downloaded_file = _extract_archive(downloaded_file, sources_dir) or downloaded_file
+    downloaded_file = extract_archive(downloaded_file, sources_dir) or downloaded_file
     content = downloaded_file.read_bytes()
     content_hash = hashlib.sha256(content).hexdigest()
     detector.mark_downloaded(resolved.original_url, content_hash)

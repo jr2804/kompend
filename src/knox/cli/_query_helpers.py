@@ -51,41 +51,41 @@ _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
 }
 
 
-def _matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
+def matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
     """Check if node satisfies at least one AND-group (OR of ANDs)."""
     if not tag_groups:
         return True
     return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
 
 
-def _is_captured_source(source_file: str | None) -> bool:
+def is_captured_source(source_file: str | None) -> bool:
     """Return True if *source_file* is a learn/capture note (``_captured/…``)."""
     return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
 
 
-def _node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
+def node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
     """Map every wiki node id → its ``node_type`` (the wiki sub-directory)."""
     if wiki is None:
         return {}
     return {n.id: n.node_type for n in wiki.nodes}
 
 
-def _wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
+def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
     """Build a relative path into the compiled wiki."""
     if not article_id or article_id not in node_types:
         return None
     return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
 
 
-def _structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
+def structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
     """Build the structured ``{answer, citations}`` payload for agent output."""
-    node_types = _node_type_index(wiki)
+    node_types = node_type_index(wiki)
     return {
         "answer": synthesis.answer,
         "citations": [
             {
                 "article": c["article"],
-                "wiki_link": _wiki_link(c.get("article_id"), node_types),
+                "wiki_link": wiki_link(c.get("article_id"), node_types),
                 "source": c.get("source"),
                 "snippet": c["snippet"],
                 "score": c["score"],
@@ -95,7 +95,7 @@ def _structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict
     }
 
 
-def _encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
+def encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
     """Encode a structured payload as json/toon/ison for agent consumers."""
     if fmt == LlmDataFormat.JSON:
         return json.dumps(payload, indent=2)
@@ -104,7 +104,7 @@ def _encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
     return encode_for_llm(payload, fmt)
 
 
-def _encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
+def encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
     """Build the raw-results payload and encode it for agent consumers."""
     payload = [
         {
@@ -115,10 +115,10 @@ def _encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
         }
         for r in results
     ]
-    return _encode_structured(payload, fmt)
+    return encode_structured(payload, fmt)
 
 
-def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
+def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
     db_file = knox_dir / VECTORS_DIR
     if not db_file.exists():
@@ -135,7 +135,7 @@ def _open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | No
         return None
 
 
-def _print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
+def print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
     """Print raw search results to console."""
     if format == LlmDataFormat.MARKDOWN:
         for r in results:
@@ -146,10 +146,10 @@ def _print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
             get_console().print("")
         return
 
-    get_console().print(_encode_raw_results(results, format))
+    get_console().print(encode_raw_results(results, format))
 
 
-def _execute_query_search(
+def execute_query_search(
     retriever: HybridRetriever,
     query: str,
     search_mode: str,
@@ -174,11 +174,11 @@ def _execute_query_search(
         results = retriever.search_wiki(query, top_k=top_k)
 
     if tag_groups:
-        results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+        results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
     return results, raw
 
 
-def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
+def save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
     """Persist a query/answer pair to the memory store."""
     try:
         mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
@@ -189,7 +189,7 @@ def _save_query_memory(state_dir: Path, query: str, answer: str, embedding_model
         get_err_console().print(f"\nWarning: Failed to save to memory: {exc}")
 
 
-def _build_enhanced_retriever(
+def build_enhanced_retriever(
     wiki: CompiledWiki,
     vector_store: ZvecWikiStore | None,
     state_dir: Path,
@@ -218,7 +218,7 @@ def _build_enhanced_retriever(
     )
 
 
-def _handle_adaptive_search(
+def handle_adaptive_search(
     query: str,
     top_k: int,
     search_mode: str,
@@ -233,11 +233,11 @@ def _handle_adaptive_search(
     mode = search_mode if search_mode != SearchMode.HYBRID else None
     results = retriever.search(query, top_k=top_k, mode=mode)
     if tag_groups:
-        results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+        results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
     return results, False
 
 
-def _handle_enhanced_search(
+def handle_enhanced_search(
     query: str,
     top_k: int,
     search_mode: str,
@@ -250,7 +250,7 @@ def _handle_enhanced_search(
     tag_groups: list[list[str]] | None = None,
 ) -> list[Any] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
-    enhanced = _build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
+    enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
 
     has_enhanced = (
         cfg.get(SEARCH_EXPANSION_ENABLED, False)
@@ -263,13 +263,13 @@ def _handle_enhanced_search(
         expand_graph = search_mode == SearchMode.GRAPH
         results = enhanced.search(query, top_k=top_k, expand_graph=expand_graph)
         if tag_groups:
-            results = [r for r in results if _matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+            results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
         return results
 
     return None
 
 
-def _synthesize_and_output(
+def synthesize_and_output(
     query: str,
     results: list[Any],
     format: LlmDataFormat,
@@ -283,7 +283,7 @@ def _synthesize_and_output(
     cfg: Any,
 ) -> None:
     """Synthesize results and output the answer."""
-    results = [r for r in results if not _is_captured_source(r.source_file)]
+    results = [r for r in results if not is_captured_source(r.source_file)]
     if not results:
         get_console().print("No relevant content found.")
         raise typer.Exit(0)
@@ -301,20 +301,20 @@ def _synthesize_and_output(
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")
-        _print_raw_results(results, LlmDataFormat.MARKDOWN)
+        print_raw_results(results, LlmDataFormat.MARKDOWN)
         raise typer.Exit(1)
 
     if format == LlmDataFormat.MARKDOWN:
         get_console().print(synthesis.answer)
         get_console().print("")
         get_console().print("Sources:")
-        node_types = _node_type_index(wiki)
+        node_types = node_type_index(wiki)
         for i, c in enumerate(synthesis.citations, 1):
-            link = _wiki_link(c.get("article_id"), node_types)
+            link = wiki_link(c.get("article_id"), node_types)
             ref = link or f"{DEFAULT_OUTPUT_DIR_NAME}/{c['article']}"
             get_console().print(f"  [{i}] {c['article']} — {ref}", markup=False)
     else:
-        get_console().print(_encode_structured(_structured_answer(synthesis, wiki), format))
+        get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
 
     if remember:
-        _save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+        save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))

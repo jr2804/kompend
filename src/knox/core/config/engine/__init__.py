@@ -12,16 +12,15 @@ Sub-modules (load in dependency order):
 # _schema has no engine deps → _env needs _schema → _loading has no engine deps
 # → _precedence needs _schema, _env, _loading → _overlay needs _loading, _schema
 #
-# Generic dict helpers live in knox.core.utils.dicts; re-exported here under
-# their historical underscore aliases for backward compatibility.
-from knox.core.config.engine._env import _read_env_vars
+# Generic dict helpers live in knox.core.utils.dicts.
+from knox.core.config.engine._env import read_env_vars
 from knox.core.config.engine._loading import (
-    _load_toml,
     find_all_project_configs,
     find_global_config,
     find_project_config,
     get_global_config_path,
     get_project_config_path,
+    load_toml,
 )
 from knox.core.config.engine._overlay import set_config_file_value
 from knox.core.config.engine._precedence import (
@@ -34,28 +33,25 @@ from knox.core.config.engine._schema import (
     coerce_config_value,
     validate_config_key,
 )
-from knox.core.utils.dicts import deep_merge as _deep_merge
-from knox.core.utils.dicts import flat_keys as _flat_keys
-from knox.core.utils.dicts import get_dot as _get_dot
-from knox.core.utils.dicts import set_dot as _set_dot
+from knox.core.utils.dicts import deep_merge, flat_keys, get_dot, set_dot
 
 __all__ = [
     "DEFAULTS",
     "ConfigSource",
     "ResolvedConfig",
-    "_deep_merge",
-    "_flat_keys",
-    "_get_dot",
-    "_load_toml",
-    "_read_env_vars",
-    "_set_dot",
     "coerce_config_value",
+    "deep_merge",
     "find_all_project_configs",
     "find_global_config",
     "find_project_config",
+    "flat_keys",
+    "get_dot",
     "get_global_config_path",
     "get_project_config_path",
+    "load_toml",
+    "read_env_vars",
     "resolve_config",
     "set_config_file_value",
+    "set_dot",
     "validate_config_key",
 ]

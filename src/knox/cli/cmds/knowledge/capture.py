@@ -23,10 +23,10 @@ from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_RELATED_TITLES
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
-from knox.core.pipeline.ingest import _extract_text_from_cached, parse_cache_glob
+from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
 from knox.core.templates import get_template_loader
 from knox.core.utils.time import iso_local
-from knox.llm.format import strip_reasoning as _strip_reasoning
+from knox.llm.format import strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
@@ -166,7 +166,7 @@ def write_cmd(
             matches = sorted(VaultPaths(base_dir).cache_dir.glob(parse_cache_glob(stem)))
             cached = matches[0] if matches else None
             try:
-                text = _extract_text_from_cached(cached) if cached and cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
+                text = extract_text_from_cached(cached) if cached and cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
                 source_texts.append((stem, text.strip()))
             except Exception as exc:
                 get_err_console().print(f"Warning: could not read {sf}: {exc}")
@@ -278,7 +278,7 @@ def _synthesize_write_page(
     )
     try:
         content = agent.run(deps)
-        content = _strip_reasoning(content)
+        content = strip_reasoning(content)
         if content.strip():
             return content.strip() + "\n\n" + references_section
         raise RuntimeError("LLM returned empty content for write page")

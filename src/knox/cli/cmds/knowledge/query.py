@@ -9,21 +9,21 @@ from __future__ import annotations
 import typer
 
 from knox.cli._query_helpers import (  # noqa: F401  # re-exported for backward compat
-    _build_enhanced_retriever,
-    _encode_raw_results,
-    _encode_structured,
-    _execute_query_search,
-    _handle_adaptive_search,
-    _handle_enhanced_search,
-    _is_captured_source,
-    _matches_tag_filter,
-    _node_type_index,
-    _open_vector_store,
-    _print_raw_results,
-    _save_query_memory,
-    _structured_answer,
-    _synthesize_and_output,
-    _wiki_link,
+    build_enhanced_retriever,
+    encode_raw_results,
+    encode_structured,
+    execute_query_search,
+    handle_adaptive_search,
+    handle_enhanced_search,
+    is_captured_source,
+    matches_tag_filter,
+    node_type_index,
+    open_vector_store,
+    print_raw_results,
+    save_query_memory,
+    structured_answer,
+    synthesize_and_output,
+    wiki_link,
 )
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
@@ -87,7 +87,7 @@ def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bo
     if format == LlmDataFormat.MARKDOWN:
         get_console().print(result.response)
     else:
-        get_console().print(_encode_structured({"intent": result.intent.value, "response": result.response}, format))
+        get_console().print(encode_structured({"intent": result.intent.value, "response": result.response}, format))
     return True
 
 
@@ -131,23 +131,23 @@ def query_cmd(
         )
         raise typer.Exit(1)
 
-    vector_store = _open_vector_store(state_dir, wiki)
+    vector_store = open_vector_store(state_dir, wiki)
     model = cfg.get("compile.llm.default_model", "")
     cw = discover_context_window(model, context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP)) if model else None
 
     try:
         if adaptive:
-            results, raw = _handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
+            results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
             has_enhanced = False
         else:
-            enhanced_result = _handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
+            enhanced_result = handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
             if enhanced_result is not None:
                 results = enhanced_result
                 raw = False
                 has_enhanced = True
             else:
                 retriever = HybridRetriever(wiki, vector_store=vector_store)
-                results, raw = _execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
+                results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
                 has_enhanced = False
     finally:
         if vector_store is not None:
@@ -158,13 +158,13 @@ def query_cmd(
         raise typer.Exit(0)
 
     if raw:
-        _print_raw_results(results, format)
+        print_raw_results(results, format)
         return
 
     if not model:
         get_err_console().print("Warning: No LLM configured. Showing raw context instead.")
-        _print_raw_results(results, LlmDataFormat.MARKDOWN)
+        print_raw_results(results, LlmDataFormat.MARKDOWN)
         return
 
-    enhanced = _build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
-    _synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)
+    enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
+    synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)

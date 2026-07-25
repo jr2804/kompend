@@ -8,8 +8,8 @@ from typing import Any, get_origin
 from pydantic import Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from knox.core.config.engine._schema import _ENV_MAP, _resolve_field_info
-from knox.core.utils.dicts import set_dot as _set_dot
+from knox.core.config.engine._schema import ENV_MAP, resolve_field_info
+from knox.core.utils.dicts import set_dot
 
 # Env vars that carry comma-separated lists.
 _ENV_LIST_VARS: frozenset[str] = frozenset(
@@ -39,12 +39,12 @@ def _classify_env_field(ann: Any) -> tuple[Any, Any]:
 def _get_env_settings_model() -> BaseSettings:
     """Build pydantic-settings model dynamically from _ENV_MAP."""
     _KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
-    for _env_name in _ENV_MAP.values():
+    for _env_name in ENV_MAP.values():
         _fn = _env_name.removeprefix("KNOX_").lower()
         if _env_name in _ENV_LIST_VARS:
             _KnoxEnvFields[_fn] = (str | None, Field(None))
             continue
-        _field_info = _resolve_field_info(_env_map_key_for(_env_name))
+        _field_info = resolve_field_info(_env_map_key_for(_env_name))
         _ann = _field_info.annotation if _field_info is not None else None
         _KnoxEnvFields[_fn] = _classify_env_field(_ann)
 
@@ -58,15 +58,15 @@ def _get_env_settings_model() -> BaseSettings:
 
 def _env_map_key_for(env_name: str) -> str:
     """Return the dotted config key for an env var name (reverse _ENV_MAP lookup)."""
-    return next((key for key, name in _ENV_MAP.items() if name == env_name), "")
+    return next((key for key, name in ENV_MAP.items() if name == env_name), "")
 
 
-def _read_env_vars() -> dict[str, Any]:
+def read_env_vars() -> dict[str, Any]:
     """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
     settings = _get_env_settings_model()()  # ty: ignore
     result: dict[str, Any] = {}
 
-    for dotted_key, env_name in _ENV_MAP.items():
+    for dotted_key, env_name in ENV_MAP.items():
         field_name = env_name.removeprefix("KNOX_").lower()
         value = getattr(settings, field_name, None)
         if value is not None:
@@ -74,5 +74,5 @@ def _read_env_vars() -> dict[str, Any]:
                 value = value.strip()
             if env_name in _ENV_LIST_VARS and isinstance(value, str):
                 value = [v.strip() for v in value.split(",") if v.strip()]
-            _set_dot(result, dotted_key, value)
+            set_dot(result, dotted_key, value)
     return result

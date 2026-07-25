@@ -18,7 +18,7 @@ from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.compilation.flows.references import resolve_unresolved_references
 from knox.core.config import resolve_config
-from knox.core.models.references import _SHORT_LABEL_TITLE_MAX
+from knox.core.models.references import SHORT_LABEL_TITLE_MAX
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_console, get_err_console, get_logger
@@ -76,7 +76,7 @@ def references_list(
 
     for i, ref in enumerate(refs, 1):
         label = ref.short_label() or ref.id or "(untitled)"
-        title = ref.title or ref.raw[:_SHORT_LABEL_TITLE_MAX] if ref.raw else ""
+        title = ref.title or ref.raw[:SHORT_LABEL_TITLE_MAX] if ref.raw else ""
         doi_or_url = ref.doi or ref.url or ""
         get_console().print(f"  [cyan]{i:3d}.[/cyan] {label}")
         if title:

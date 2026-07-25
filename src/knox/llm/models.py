@@ -52,7 +52,7 @@ logger = get_logger(__name__)
 # when neither ``base_url`` nor ``OLLAMA_BASE_URL`` is given). pydantic-ai's
 # OllamaModel uses the OpenAI-compatible endpoint, so ``/v1`` is required in
 # the base URL (the OpenAI SDK appends ``/chat/completions`` to it).
-_OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
+OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 
 # Placeholder satisfies the OpenAI SDK's non-empty api_key requirement for
 # local / keyless OpenAI-compatible endpoints.
@@ -175,7 +175,7 @@ def _build_ollama(model_name: str) -> OllamaModel:
     otherwise we fall back to the local default ``http://127.0.0.1:11434``
     so a stock local install works without any configuration.
     """
-    base_url = os.getenv("OLLAMA_BASE_URL") or _OLLAMA_DEFAULT_BASE_URL
+    base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
     provider = OllamaProvider(base_url=base_url)
     return OllamaModel(model_name, provider=provider)
 

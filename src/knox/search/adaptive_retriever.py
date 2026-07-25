@@ -15,7 +15,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 from knox.search.budget import BudgetPlan, ContextBudgetManager
-from knox.search.retriever import SearchResult, _extract_snippet, _tokenize
+from knox.search.retriever import SearchResult, extract_snippet, tokenize
 
 logger = get_logger(__name__)
 
@@ -84,7 +84,7 @@ class AdaptiveRetriever:
         top_k: int,
     ) -> list[SearchResult]:
         """Build SearchResults from a BudgetPlan node_ids. Handles all modes."""
-        query_tokens = set(_tokenize(query)) if query else set()
+        query_tokens = set(tokenize(query)) if query else set()
         results: list[SearchResult] = []
         for nid in plan.node_ids:
             node = self._node_by_id.get(nid)
@@ -92,7 +92,7 @@ class AdaptiveRetriever:
                 continue
             snippet_limit = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
             if node.content and query_tokens:
-                snippet = _extract_snippet(node.content, query_tokens)
+                snippet = extract_snippet(node.content, query_tokens)
             elif node.content:
                 snippet = node.content[:snippet_limit]
             else:
@@ -134,13 +134,13 @@ class AdaptiveRetriever:
         except Exception as exc:
             logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
-        query_tokens = set(_tokenize(query))
+        query_tokens = set(tokenize(query))
         results: list[SearchResult] = []
         for hit in hits:
             node_id = hit.get("id", "")
             node = self._node_by_id.get(node_id)
             title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-            snippet = _extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+            snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
             source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
             if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])

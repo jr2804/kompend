@@ -144,7 +144,7 @@ class TemplateMeta:
 _FRONTMATTER_RE: Any = None
 
 
-def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if not match:
         return {}, text
@@ -307,7 +307,7 @@ class TemplateLoader:
             return self._meta_cache[template_path]
 
         text = self.get_text(template_path)
-        fm, _ = _parse_frontmatter(text)
+        fm, _ = parse_frontmatter(text)
         meta = TemplateMeta.from_yaml_block("\n".join(f"{k}: {v}" for k, v in fm.items()))
         self._meta_cache[template_path] = meta
         return meta
@@ -331,7 +331,7 @@ class TemplateLoader:
     def _get_body(self, template_path: str) -> str:
         """Return template body with frontmatter stripped."""
         text = self.get_text(template_path)
-        _, body = _parse_frontmatter(text)
+        _, body = parse_frontmatter(text)
         return body
 
     def _find_undeclared_variables(self, template_path: str) -> set[str]:

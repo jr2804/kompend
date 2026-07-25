@@ -16,7 +16,7 @@ from knox.core.config.keys import (
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_PATH,
 )
-from knox.core.utils.dicts import flat_keys as _flat_keys
+from knox.core.utils.dicts import flat_keys
 from knox.logging import get_logger
 from knox.types import ConfigValue
 
@@ -59,12 +59,12 @@ def _build_env_map() -> dict[str, str]:
     return env_map
 
 
-_ENV_MAP: dict[str, str] = _build_env_map()
+ENV_MAP: dict[str, str] = _build_env_map()
 
 
 def _flat_schema() -> set[str]:
     """Return all leaf dotted keys present in :data:`DEFAULTS`."""
-    return set(_flat_keys(DEFAULTS))
+    return set(flat_keys(DEFAULTS))
 
 
 def validate_config_key(key: str) -> bool:
@@ -72,7 +72,7 @@ def validate_config_key(key: str) -> bool:
     return key in _flat_schema()
 
 
-def _resolve_field_info(key: str) -> FieldInfo | None:
+def resolve_field_info(key: str) -> FieldInfo | None:
     """Resolve a dotted config key to its pydantic FieldInfo in :class:`KnoxConfig`."""
     parts = key.split(".")
     cls: type[BaseModel] = KnoxConfig
@@ -94,7 +94,7 @@ def coerce_config_value(value: str, key: str) -> ConfigValue:
         ValueError: when *value* cannot be coerced to the expected type.
     """
     value = value.strip()
-    field_info = _resolve_field_info(key)
+    field_info = resolve_field_info(key)
     if field_info is None:
         with contextlib.suppress(ValueError):
             return int(value)

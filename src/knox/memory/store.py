@@ -16,7 +16,7 @@ from knox.core.config.keys import DISPLAY_MEMORY_QUERY_CHARS
 from knox.core.paths import VaultPaths
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
-from knox.rag.zvec_store import EmbeddingProvider, _make_provider
+from knox.rag.zvec_store import EmbeddingProvider, make_provider
 
 logger = get_logger(__name__)
 
@@ -171,7 +171,7 @@ class MemoryStore:
         if self._provider is None:
             if not self._embedding_model:
                 raise RuntimeError("No embedding model configured for memory store")
-            self._provider = _make_provider(self._embedding_model, dim=self._embedding_dim)
+            self._provider = make_provider(self._embedding_model, dim=self._embedding_dim)
             self._embedding_dim = self._provider.dim
 
         self.db_file.parent.mkdir(parents=True, exist_ok=True)

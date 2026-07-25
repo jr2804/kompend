@@ -28,7 +28,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from knox.core.config import DEFAULTS
 from knox.core.pipeline.config import Compiler
 from knox.logging import get_logger
-from knox.mcp import server as _mcp
+from knox.mcp import server as mcp_server
 
 logger = get_logger(__name__)
 
@@ -78,7 +78,7 @@ def build_toolset(
         @toolset.tool_plain
         async def wiki_status() -> str:
             """Check vault health: whether a wiki is compiled, how many pages, source count."""
-            result = await asyncio.to_thread(_mcp.wiki_status, wiki_dir=str(base))
+            result = await asyncio.to_thread(mcp_server.wiki_status, wiki_dir=str(base))
             return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── compile_wiki ───────────────────────────────────────────────────
@@ -94,7 +94,7 @@ def build_toolset(
             """
             comp = Compiler(compiler) if compiler else Compiler.GRAPH
             result = await asyncio.to_thread(
-                _mcp.compile_wiki,
+                mcp_server.compile_wiki,
                 sources_dir=str(base / sources_dir),
                 output=str(base / output_dir),
                 compiler=comp.value,
@@ -114,7 +114,7 @@ def build_toolset(
                 top_k: Number of results to retrieve.
             """
             result = await asyncio.to_thread(
-                _mcp.query_wiki,
+                mcp_server.query_wiki,
                 query=query,
                 wiki_dir=str(base),
                 top_k=top_k,
@@ -133,7 +133,7 @@ def build_toolset(
                 text: The note text to capture.
             """
             result = await asyncio.to_thread(
-                _mcp.wiki_capture,
+                mcp_server.wiki_capture,
                 text=text,
                 sources_dir=str(base / sources_dir),
             )
@@ -150,7 +150,7 @@ def build_toolset(
             Args:
                 key: Dotted config key.
             """
-            result = await asyncio.to_thread(_mcp.config_get, key=key)
+            result = await asyncio.to_thread(mcp_server.config_get, key=key)
             return json.dumps(result, ensure_ascii=False, default=str)
 
     # ── config_set ─────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ def build_toolset(
                 key: Dotted config key.
                 value: Value to set (as string).
             """
-            result = await asyncio.to_thread(_mcp.config_set, key=key, value=value)
+            result = await asyncio.to_thread(mcp_server.config_set, key=key, value=value)
             return json.dumps(result, ensure_ascii=False, default=str)
 
     return toolset

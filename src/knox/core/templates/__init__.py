@@ -6,14 +6,14 @@ from knox.core.templates.loader import (
     TemplateLoader,
     TemplateMeta,
     TemplateSource,
-    _parse_frontmatter,
     get_template_loader,
+    parse_frontmatter,
 )
 
 __all__ = [
     "TemplateLoader",
     "TemplateMeta",
     "TemplateSource",
-    "_parse_frontmatter",
     "get_template_loader",
+    "parse_frontmatter",
 ]

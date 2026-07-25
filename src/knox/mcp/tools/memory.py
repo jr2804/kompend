@@ -7,7 +7,7 @@ from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_MEMORY_ENTRIES
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
-from knox.mcp.tools._helpers import _make_memory_store
+from knox.mcp.tools._helpers import make_memory_store
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,7 @@ def memory_add(
 ) -> dict[str, Any]:
     """Add a query/answer pair to the memory store for long-term context."""
     try:
-        store, actor = _make_memory_store(wiki_dir)
+        store, actor = make_memory_store(wiki_dir)
         store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         store.close()
         return {"status": "ok", "message": "Memory entry added successfully."}
@@ -35,7 +35,7 @@ def memory_search(
 ) -> dict[str, Any]:
     """Search past memory entries semantically by query."""
     try:
-        store, _actor = _make_memory_store(wiki_dir)
+        store, _actor = make_memory_store(wiki_dir)
         results = store.search(query=query, top_k=top_k)
         store.close()
         return {"status": "ok", "results": results}
@@ -49,7 +49,7 @@ def memory_synthesize(
 ) -> dict[str, Any]:
     """Synthesize recent memory entries into a system context file."""
     try:
-        store, _actor = _make_memory_store(wiki_dir)
+        store, _actor = make_memory_store(wiki_dir)
         entries = store.get_recent_entries(limit=limit)
         if not entries:
             store.close()

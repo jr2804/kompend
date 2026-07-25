@@ -7,9 +7,9 @@ from typing import Any
 
 import tomli_w
 
-from knox.core.config.engine._loading import _load_toml
+from knox.core.config.engine._loading import load_toml
 from knox.core.config.engine._schema import validate_config_key
-from knox.core.utils.dicts import set_dot as _set_dot
+from knox.core.utils.dicts import set_dot
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,6 +34,6 @@ def set_config_file_value(config_file: Path, key: str, value: Any) -> None:
     """
     if not validate_config_key(key):
         raise KeyError(f"unknown config key: {key}")
-    data = _load_toml(config_file) if config_file.is_file() else {}
-    _set_dot(data, key, value)
+    data = load_toml(config_file) if config_file.is_file() else {}
+    set_dot(data, key, value)
     _atomic_write_toml(config_file, data)

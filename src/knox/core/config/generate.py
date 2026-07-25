@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import tomli_w
 
-from knox.core.config._core import DEFAULTS, _flat_keys
+from knox.core.config._core import DEFAULTS, flat_keys
 from knox.types import ConfigValue
 
 _HIDDEN_KEYS: frozenset[str] = frozenset(
@@ -95,7 +95,7 @@ def get_default_keys() -> set[str]:
     are excluded. Used by the sync test to verify ``knox.toml.example``
     documents every key the config system knows about.
     """
-    return {k for k in _flat_keys(DEFAULTS) if k not in _HIDDEN_KEYS}
+    return {k for k in flat_keys(DEFAULTS) if k not in _HIDDEN_KEYS}
 
 
 def extract_toml_keys(text: str) -> set[str]:

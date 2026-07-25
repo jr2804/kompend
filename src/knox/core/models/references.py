@@ -23,9 +23,9 @@ __all__ = [
 ]
 
 #: Maximum length of a short display label title fallback.
-_SHORT_LABEL_TITLE_MAX = 40
+SHORT_LABEL_TITLE_MAX = 40
 #: Number of digits in a year (used for label extraction from issued date).
-_YEAR_DIGITS = 4
+YEAR_DIGITS = 4
 
 
 class Author(BaseModel):
@@ -132,11 +132,11 @@ class Reference(BaseModel):
         if self.issued:
             # Extract just the year digits for the label
             digits = "".join(c for c in self.issued if c.isdigit())
-            year = digits[:_YEAR_DIGITS]
+            year = digits[:YEAR_DIGITS]
         parts = [p for p in (first_author, year) if p]
         if parts:
             return " ".join(parts)
-        return self.title[:_SHORT_LABEL_TITLE_MAX] if self.title else self.id
+        return self.title[:SHORT_LABEL_TITLE_MAX] if self.title else self.id
 
 
 class ReferenceExtractionOutput(BaseModel):

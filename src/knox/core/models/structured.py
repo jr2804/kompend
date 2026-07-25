@@ -134,7 +134,7 @@ def _structured_to_dict(s: StructuredData) -> dict[str, Any]:
     raise TypeError(f"Unknown StructuredData type: {type(s).__name__}")
 
 
-def _structured_from_dict(d: dict[str, Any]) -> StructuredData:
+def structured_from_dict(d: dict[str, Any]) -> StructuredData:
     """Deserialize a StructuredData variant using the canonical discriminator."""
     kind = d.get(StructuredField._TYPE)
     if kind == StructuredField.TYPE_TABLE.value:

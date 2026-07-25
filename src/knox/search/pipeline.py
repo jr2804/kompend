@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
-from knox.compilation.two_phase import _cosine_similarity
+from knox.compilation.two_phase import cosine_similarity
 from knox.core.models import CompiledWiki
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.logging import get_logger
@@ -218,7 +218,7 @@ class EnhancedRetriever:
 
             scored: list[tuple[float, SearchResult]] = []
             for vec, c in zip(doc_vecs, candidates, strict=True):
-                score = _cosine_similarity(query_vec, vec)
+                score = cosine_similarity(query_vec, vec)
                 scored.append((score, c))
 
             scored.sort(key=lambda x: x[0], reverse=True)

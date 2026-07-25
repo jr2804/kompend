@@ -16,17 +16,17 @@ import typer
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.cli._post_compile import (  # noqa: F401  # re-exported for backward compat
-    _annotate_provenance,
-    _cli_build_vector_index,
-    _mark_private,
-    _post_compile_actions,
-    _PostCompileOptions,
-    _print_compile_summary,
-    _run_overview_synthesis,
-    _run_post_compile_lint,
-    _send_to_review_queue,
-    _verify_claims,
-    _write_wiki_cache,
+    PostCompileOptions,
+    annotate_provenance,
+    cli_build_vector_index,
+    mark_private,
+    post_compile_actions,
+    print_compile_summary,
+    run_overview_synthesis,
+    run_post_compile_lint,
+    send_to_review_queue,
+    verify_claims,
+    write_wiki_cache,
 )
 from knox.cli._progress import PipelineProgress
 from knox.cli._sources import download_urls, ensure_in_sources, resolve_files
@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 # ── progress callbacks ─────────────────────────────────────────────────
 
 
-def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:  # noqa: PLR0915
+def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:  # noqa: PLR0915
     """Build a progress callback that translates pipeline events into Rich updates.
 
     The overall bar resets per phase. Each phase has a flat handler keyed by
@@ -131,7 +131,7 @@ def _make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, in
     return _cb
 
 
-def _resolve_compile_inputs(
+def resolve_compile_inputs(
     files: list[str],
     online_urls: list[str],
     url_file: UrlFile,
@@ -169,7 +169,7 @@ def _resolve_compile_inputs(
     return all_input_files
 
 
-def _print_tier_listing(pipeline: WikiPipeline) -> None:
+def print_tier_listing(pipeline: WikiPipeline) -> None:
     """Print the tier listing from a WikiPipeline."""
     if not hasattr(pipeline, "list_tiers"):
         get_err_console().print("Pipeline does not support tier listing.")
@@ -181,7 +181,7 @@ def _print_tier_listing(pipeline: WikiPipeline) -> None:
 # ── JSON progress callback ──────────────────────────────────────────────
 
 
-def _make_json_progress_callback() -> Callable[[str, int, int, str], None]:
+def make_json_progress_callback() -> Callable[[str, int, int, str], None]:
     """Build a progress callback that writes JSONL events to stdout.
 
     Each event is one JSON line::
@@ -216,7 +216,7 @@ def _make_json_progress_callback() -> Callable[[str, int, int, str], None]:
     return _json_cb
 
 
-def _emit_json_done(duration: float, message: str) -> None:
+def emit_json_done(duration: float, message: str) -> None:
     r"""Write the final ``{\"event\":\"done\", ...}`` line to stdout."""
     payload = {
         "event": "done",
@@ -227,7 +227,7 @@ def _emit_json_done(duration: float, message: str) -> None:
     sys.stdout.flush()
 
 
-def _check_llm_availability(pipeline: WikiPipeline) -> None:
+def check_llm_availability(pipeline: WikiPipeline) -> None:
     """Pre-flight LLM connectivity check — fail fast before processing documents."""
     model = pipeline.config.llm.default_model
     if not model:

@@ -13,7 +13,7 @@ from knox.memory import MemoryStore
 logger = get_logger(__name__)
 
 
-def _make_memory_store(wiki_dir: str) -> tuple[MemoryStore, str]:
+def make_memory_store(wiki_dir: str) -> tuple[MemoryStore, str]:
     """Create a MemoryStore and resolve the acting user from config."""
     cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
     embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)

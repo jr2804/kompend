@@ -8,26 +8,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from knox.core.config.engine._env import _read_env_vars
+from knox.core.config.engine._env import read_env_vars
 from knox.core.config.engine._loading import (
-    _load_toml,
-    _wiki_dir_for_discovery,
+    load_toml,
+    wiki_dir_for_discovery,
     find_all_project_configs,
     find_global_config,
 )
-from knox.core.config.engine._schema import DEFAULTS, _flat_keys
+from knox.core.config.engine._schema import DEFAULTS, flat_keys
 from knox.core.config.keys import (
     COMPILE_OUTPUT_DIR,
     COMPILE_SOURCES_DIR,
     PATHS_OUTPUT_DIR,
     PATHS_SOURCES_DIR,
 )
-from knox.core.utils.dicts import (
-    deep_merge as _deep_merge,
-    get_dot as _get_dot,
-    nest_flat as _nest_flat,
-    set_dot as _set_dot,
-)
+from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
 from knox.types import ConfigValue
 
@@ -59,7 +54,7 @@ class ResolvedConfig:
 
     def get(self, key: str, default: ConfigValue = None) -> ConfigValue:
         """Get a dotted key from the resolved config."""
-        return _get_dot(self.raw, key, default)
+        return get_dot(self.raw, key, default)
 
     def source_of(self, key: str) -> ConfigSource:
         """Return where a specific key's value came from."""
@@ -68,8 +63,8 @@ class ResolvedConfig:
     def flat(self) -> dict[str, Any]:
         """Return a flat dotted-key dict of all values."""
         result: dict[str, Any] = {}
-        for key in _flat_keys(self.raw):
-            result[key] = _get_dot(self.raw, key)
+        for key in flat_keys(self.raw):
+            result[key] = get_dot(self.raw, key)
         return result
 
 
@@ -83,9 +78,9 @@ def _apply_layer(
     source: ConfigSource,
 ) -> dict[str, Any]:
     """Merge *layer* into *result* and stamp provenance for its keys."""
-    merged = _deep_merge(result, layer)
-    for key in _flat_keys(layer):
-        if _get_dot(layer, key) is not None:
+    merged = deep_merge(result, layer)
+    for key in flat_keys(layer):
+        if get_dot(layer, key) is not None:
             provenance[key] = source
     return merged
 
@@ -97,10 +92,10 @@ def _merge_project_configs(
     merged: dict[str, Any] = {}
     prov: dict[str, ConfigSource] = {}
     for config_file in reversed(project_configs):  # closest wins
-        file_data = _load_toml(config_file)
-        for key in _flat_keys(file_data):
+        file_data = load_toml(config_file)
+        for key in flat_keys(file_data):
             prov[key] = ConfigSource("project", str(config_file))
-        merged = _deep_merge(merged, file_data)
+        merged = deep_merge(merged, file_data)
     return merged, prov
 
 
@@ -116,12 +111,12 @@ def _resolve_paths(
         (COMPILE_SOURCES_DIR, PATHS_SOURCES_DIR),
         (COMPILE_OUTPUT_DIR, PATHS_OUTPUT_DIR),
     ):
-        old_val = _get_dot(result, old_key)
-        new_val = _get_dot(result, new_key)
-        old_default = _get_dot(DEFAULTS, old_key)
-        new_default = _get_dot(DEFAULTS, new_key)
+        old_val = get_dot(result, old_key)
+        new_val = get_dot(result, new_key)
+        old_default = get_dot(DEFAULTS, old_key)
+        new_default = get_dot(DEFAULTS, new_key)
         if old_val is not None and old_val != old_default and new_val == new_default:
-            _set_dot(result, new_key, old_val)
+            set_dot(result, new_key, old_val)
             provenance[new_key] = ConfigSource(
                 provenance.get(old_key, ConfigSource("project")).path,
                 f"deprecated {old_key}",
@@ -135,7 +130,7 @@ def _resolve_paths(
         dotted = f"paths.{key}"
         value = paths.get(key)
         if value is None:
-            value = _get_dot(DEFAULTS, dotted)
+            value = get_dot(DEFAULTS, dotted)
         resolved_dir = Path(value).expanduser()
         if not resolved_dir.is_absolute():
             resolved_dir = base_dir / resolved_dir
@@ -164,14 +159,14 @@ def resolve_config(
     provenance: dict[str, ConfigSource] = {}
 
     # Layer 5: defaults
-    result: dict[str, Any] = _deep_merge({}, DEFAULTS)
-    for key in _flat_keys(DEFAULTS):
+    result: dict[str, Any] = deep_merge({}, DEFAULTS)
+    for key in flat_keys(DEFAULTS):
         provenance[key] = ConfigSource("default")
 
     # Layer 4: global config
     global_path = find_global_config()
     if global_path is not None:
-        global_data = _load_toml(global_path)
+        global_data = load_toml(global_path)
         if global_data:
             result = _apply_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
 
@@ -181,29 +176,29 @@ def resolve_config(
     if config_path is not None:
         project_dir = Path(config_path)
         if project_dir.is_file():
-            project_data = _load_toml(project_dir)
+            project_data = load_toml(project_dir)
             if project_data:
                 result = _apply_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
         else:
             logger.warning("Config file not found: %s", config_path)
     else:
-        start_dir = _wiki_dir_for_discovery(cli_overrides)
+        start_dir = wiki_dir_for_discovery(cli_overrides)
         project_configs = find_all_project_configs(start_dir)
         if project_configs:
             merged_project, project_provenance = _merge_project_configs(project_configs)
             if merged_project:
-                result = _deep_merge(result, merged_project)
+                result = deep_merge(result, merged_project)
                 provenance.update(project_provenance)
 
     # Layer 2: env vars
-    env_data = _read_env_vars()
+    env_data = read_env_vars()
     if env_data:
         result = _apply_layer(result, env_data, provenance, ConfigSource("env", "KNOX_*"))
 
     # Layer 1: CLI overrides
     cli = cli_overrides or {}
     if cli:
-        cli_nested = _nest_flat(cli)
+        cli_nested = nest_flat(cli)
         result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
 
     _resolve_paths(result, provenance)

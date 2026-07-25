@@ -184,7 +184,7 @@ class NodeSummarizer:
         if child.chunk is not None:
             return child.chunk.text
         if child.structured is not None:
-            return _structured_to_text(child.structured)
+            return structured_to_text(child.structured)
         return ""
 
     @staticmethod
@@ -202,7 +202,7 @@ class NodeSummarizer:
         return " ".join(sentences)
 
 
-def _structured_to_text(s: StructuredData) -> str:
+def structured_to_text(s: StructuredData) -> str:
     """Flatten a :class:`StructuredData` variant to a text representation."""
     if isinstance(s, StructuredTable):
         header = " | ".join(s.columns)

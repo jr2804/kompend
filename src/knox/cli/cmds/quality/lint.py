@@ -24,7 +24,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
-from knox.cli._pipeline_helpers import _write_wiki_cache
+from knox.cli._pipeline_helpers import write_wiki_cache
 from knox.cli._shared import build_cli_overrides, resolve_project_paths
 from knox.cli.app import app
 from knox.cli.args import (
@@ -123,7 +123,7 @@ def _persist_lint_fixes(
             md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
             updated += 1
 
-    _write_wiki_cache(wiki, base_dir)
+    write_wiki_cache(wiki, base_dir)
     return updated
 
 
@@ -450,7 +450,7 @@ def lint_remediate(
     # Persist changes unless dry-run
     applied_count = sum(1 for a in actions if a.status == RemediationStatus.APPLIED)
     if applied_count > 0 and not dry_run:
-        _write_wiki_cache(wiki, base_dir)
+        write_wiki_cache(wiki, base_dir)
         get_console().print(f"Persisted {applied_count} remediation(s) to wiki cache.\n")
 
     if json_output:

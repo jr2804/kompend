@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from knox.core.models.references import _YEAR_DIGITS, Reference
+from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_logger
 
@@ -93,7 +93,7 @@ def build_reference_key_index(
         if ref.author and ref.issued:
             a0 = ref.author[0]
             family = (a0.literal or a0.family or "").lower()
-            year_digits = "".join(c for c in ref.issued if c.isdigit())[:_YEAR_DIGITS]
+            year_digits = "".join(c for c in ref.issued if c.isdigit())[:YEAR_DIGITS]
             if family and year_digits:
                 index.setdefault(f"{family}{year_digits}", ref)
         if ref.doi:

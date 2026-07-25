@@ -56,7 +56,7 @@ def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
     return data
 
 
-def _load_toml(toml_file: Path) -> dict[str, Any]:
+def load_toml(toml_file: Path) -> dict[str, Any]:
     """Load a TOML file, returning an empty dict on failure."""
     try:
         raw = toml_file.read_bytes()
@@ -112,7 +112,7 @@ def find_global_config() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
+def wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
     """Return the dir to start project-config discovery from.
 
     Reflects explicit vault selection (``--wiki-dir`` or ``KNOX_WIKI_DIR``).
