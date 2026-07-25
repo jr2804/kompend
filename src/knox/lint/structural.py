@@ -452,11 +452,23 @@ class DuplicateReferencesRule(BaseLintRule):
     name = "duplicate-references"
     description = "Bibliographic references cited by more than one source"
 
-    #: When non-empty, enables fuzzy dedup via embedding cosine similarity.
-    embedding_model: str = ""
+    def __init__(
+        self,
+        *,
+        embedding_model: str = "",
+        fuzzy_threshold: float = 0.85,
+    ) -> None:
+        """Initialize the rule.
 
-    #: Similarity threshold for fuzzy matching (0.0–1.0).
-    fuzzy_threshold: float = 0.85
+        Parameters
+        ----------
+        embedding_model:
+            When non-empty, enables fuzzy dedup via embedding cosine similarity.
+        fuzzy_threshold:
+            Similarity threshold for fuzzy matching (0.0–1.0).
+        """
+        self.embedding_model = embedding_model
+        self.fuzzy_threshold = fuzzy_threshold
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: ARG002, PLR0915
         results: list[LintResult] = []
@@ -584,7 +596,12 @@ STRUCTURAL_RULES: list[Any] = [
     HeadingSkipRule(),
     StalePageRule(),
     SourceNotFoundRule(),
-    DuplicateReferencesRule(),
 ]
 
+# DuplicateReferencesRule is NOT a singleton — it accepts config via __init__.
+# It is instantiated in LintRunner._resolve_rules when the rule is requested.
+
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}
+# DuplicateReferencesRule is not a singleton — register a factory reference
+# so it can be looked up by name in LintRunner._resolve_rules.
+RULE_BY_NAME["duplicate-references"] = DuplicateReferencesRule

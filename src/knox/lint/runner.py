@@ -8,9 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from knox.agents.lint import LintRuleAgent
+from knox.core.config._configs import LintConfig
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
-from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES
+from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,7 @@ class LintRunner:
         lint_page_budget: int | None = None,
         fix: bool = False,
         sources_dir: str | None = None,
+        lint_config: LintConfig | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
@@ -77,6 +79,7 @@ class LintRunner:
         self.lint_page_budget = lint_page_budget or 100000
         self.fix = fix
         self.sources_dir = sources_dir
+        self._lint_config = lint_config
 
     def run(
         self,
@@ -129,16 +132,36 @@ class LintRunner:
 
         llm_kwargs = {"agent": self._lint_agent, "lint_page_budget": self.lint_page_budget}
 
+        # Config-derived values for DuplicateReferencesRule
+        ref_kwargs: dict[str, Any] = {}
+        if self._lint_config is not None:
+            ref_kwargs["fuzzy_threshold"] = self._lint_config.fuzzy_threshold
+
+        def _resolve_entry(name: str) -> Any:
+            """Resolve a rule name to an instance, handling class-vs-singleton."""
+            if name == "duplicate-references":
+                return DuplicateReferencesRule(**ref_kwargs)
+            entry = RULE_BY_NAME.get(name)
+            if entry is None:
+                return None
+            if isinstance(entry, type):
+                return entry(**ref_kwargs)
+            return entry
+
         if self.requested_rules:
             for name in self.requested_rules:
-                if name in RULE_BY_NAME:
-                    rules.append(RULE_BY_NAME[name])
-                elif name in LLM_RULE_BY_NAME:
+                if name in LLM_RULE_BY_NAME:
                     rules.append(LLM_RULE_BY_NAME[name](**llm_kwargs))
                 else:
-                    logger.warning("Unknown lint rule: %s", name)
+                    rule = _resolve_entry(name)
+                    if rule is not None:
+                        rules.append(rule)
+                    else:
+                        logger.warning("Unknown lint rule: %s", name)
         else:
             rules.extend(STRUCTURAL_RULES)
+            # DuplicateReferencesRule is not a singleton — instantiate with config
+            rules.append(DuplicateReferencesRule(**ref_kwargs))
 
         if self.enable_llm:
             existing_names = {r.name for r in rules}
