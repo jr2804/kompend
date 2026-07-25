@@ -407,6 +407,9 @@ context_manager = "default"
 # Rules to run (null = all structural rules)
 # enabled = ["broken-wikilinks", "orphan-page", "duplicate-title"]
 
+# Cosine-similarity threshold for reference fuzzy dedup (0.0–1.0).
+# fuzzy_threshold = 0.85
+
 # ── Eval settings ───────────────────────────────────────────────────────
 
 [eval]

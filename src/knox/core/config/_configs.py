@@ -259,6 +259,7 @@ class LintConfig(_KnoxBaseModel):
     """Lint configuration. ``enabled=None`` means all structural rules."""
 
     enabled: list[str] | None = None
+    fuzzy_threshold: float = Field(default=0.85, validation_alias="KNOX_LINT_FUZZY_THRESHOLD")
 
 
 class EvalConfig(_KnoxBaseModel):
