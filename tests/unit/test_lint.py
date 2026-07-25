@@ -538,8 +538,8 @@ class TestEdgeCases:
         assert len(failures) == 0
 
     def test_structural_rules_registry_complete(self) -> None:
-        """All 8 structural rules should be registered."""
-        assert len(STRUCTURAL_RULES) == 8
+        """All 9 structural rules should be registered."""
+        assert len(STRUCTURAL_RULES) == 9
         expected = {
             "broken-wikilinks",
             "missing-frontmatter",
@@ -549,6 +549,7 @@ class TestEdgeCases:
             "heading-skip",
             "stale-page",
             "source-not-found",
+            "duplicate-references",
         }
         assert set(RULE_BY_NAME.keys()) == expected
 
