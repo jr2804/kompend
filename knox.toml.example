@@ -251,6 +251,39 @@ timeout = 120.0
 # PydanticAI output retries (retries when LLM output fails schema validation)
 output_retries = 2
 
+# Enable/disable output retries. When disabled, the agent gives up immediately
+# on schema validation failure rather than retrying with a correction prompt.
+# Disabling can help small models (<3B params) that spin on retry loops.
+# output_retries_enabled = true
+
+# Delta retry: when the model returns partially valid structured output,
+# extract the valid parts and ask the model to fix only the broken ones,
+# instead of regenerating everything from scratch. Recommended for large
+# models (>7B); disable for small models that struggle with structured output.
+# delta_retry_enabled = true
+
+# Batch failure threshold: when a model fails more than this fraction of
+# extraction batches (after per-batch retries), compilation stops early.
+# batch_failure_threshold_ratio = 0.5
+# batch_failure_threshold_min = 5
+
+# Per-batch retry attempts: when an extraction batch fails (returns no result
+# after internal agent retries), retry the batch this many additional times
+# before counting it as failed. Set to 0 to disable per-batch retries.
+# batch_retry_attempts = 3
+
+# Slug max length for concept page filenames. Windows limits path components
+# to 255 chars; LLMs sometimes emit full sentences as titles.
+# slug_max_length = 80
+
+# Chars-per-token heuristic for budget estimation. Also overridable via the
+# KNOX_CHARS_PER_TOKEN environment variable.
+# default_chars_per_token = 3.85
+
+# Minimum input tokens per generation segment. Prevents absurdly tiny segments
+# when the model's context window is small.
+# min_segment_tokens = 512
+
 # Reasoning effort: controls how much the model "thinks" before responding.
 # Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
 # For Ollama models, "none"/"minimal"/"low" also set think=False.

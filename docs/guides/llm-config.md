@@ -160,12 +160,61 @@ context_window_cap = 65536    # hard ceiling on effective window
 
 PydanticAI validates structured output against the result type's schema.
 When validation fails, the agent retries before surfacing the error.
-Control this with:
+
+### Retry controls
 
 ```toml
 [compile.llm]
-output_retries = 2   # 3 total attempts (1 initial + 2 retries)
+output_retries = 2                  # PydanticAI retry count (N = N+1 total attempts)
+output_retries_enabled = true       # Master switch — set false to disable all retries
+delta_retry_enabled = true          # Delta-retry: fix partial output instead of regenerating
 ```
+
+When `output_retries_enabled = false`, the agent makes a single attempt with
+no retries regardless of `output_retries`.
+
+`delta_retry_enabled` controls the delta-retry hook: when the model returns
+partially valid JSON, the hook sends a **correction message** identifying
+exactly which fields are broken, rather than asking for a full regeneration.
+**For smaller models (< 3 B parameters), disabling delta-retry is
+recommended** — the correction message often confuses small models further,
+increasing latency without improving results:
+
+```toml
+[compile.llm]
+delta_retry_enabled = false  # recommended for small models
+```
+
+### Batch failure detection
+
+The two-phase compiler tracks per-batch success/failure via a circuit
+breaker (`BatchFailureTracker`). When too many batches fail, it stops early
+and logs that the model is unsuitable for structured JSON output:
+
+```toml
+[compile.llm]
+batch_failure_threshold_ratio = 0.5  # stop when >50 % of batches fail
+batch_failure_threshold_min   = 5    # minimum batches before the ratio is trusted
+batch_retry_attempts          = 3    # extra per-batch retries before counting as failed
+```
+
+For small corpora (fewer than 5 sources), lower `batch_failure_threshold_min`
+so the circuit breaker can trigger:
+
+```toml
+[compile.llm]
+batch_failure_threshold_min = 2
+```
+
+### Pre-compilation check
+
+Run `knox doctor` before compiling to verify the configured model can
+produce structured JSON. The doctor command probes the model with a trivial
+request and reports pass/fail — catching the "empty string" failure mode
+before it wastes a full pipeline run.
+
+See [Architecture Decisions → Extraction Retry](../architecture/decisions.md)
+for the full failure-cascade diagram.
 
 ## Reasoning effort
 

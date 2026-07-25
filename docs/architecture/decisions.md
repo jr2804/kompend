@@ -208,3 +208,64 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 - 5-phase implementation: data structures (Phase 0) → chunker (Phase 1) → extraction + summaries (Phase 2) → entity registry + xref (Phase 3) → adaptive retrieval (Phase 4) → multi-resolution compilation (Phase 5).
 
 **Related:** knox-evmg, knox-ctwe, knox-hhf5, knox-rves, knox-96qo, knox-ne47
+
+## Extraction Retry & Failure Detection (2026-03)
+
+### Decision: Layered retry with circuit breaker and model pre-check
+
+**Date:** Mar 19, 2026  
+**Context:** Small (<3B param) or unsuitable models fail extraction by returning empty strings or structurally invalid JSON. PydanticAI's built-in retry loops exhaust attempts (default 4 retries = 5 attempts) without producing valid output, leading to confusing "Exceeded maximum output retries" errors. The circuit breaker (BatchFailureTracker) was designed to stop early but its defaults (50% failure, minimum 5 batches) masked the problem for small source sets.
+
+**Failure cascade (captured during investigation of gemma4:e2b on 3 PDFs):**
+
+```mermaid
+flowchart LR
+    A["Source text"] --> B["Model call<br/>(pydantic-ai)"]
+    B --> C{"Valid JSON?"}
+    C -- Yes --> D["Pydantic<br/>validation"]
+    D --> E{"Valid?"}
+    E -- Yes --> F["✅ Extraction<br/>output"]
+    E -- No --> G["Delta-retry<br/>hook fires"]
+    G --> H["Build correction<br/>message"]
+    H --> I["ModelRetry<br/>raised"]
+    I --> J["PydanticAI<br/>retry loop"]
+    J --> B
+    C -- No --> K["PydanticAI<br/>validation error<br/>→ UserPrompt"]
+    K --> J
+    F --> L["BatchFailureTracker<br/>.record(failed=False)"]
+    L --> M{"should_stop()?"}
+    M -- No --> N["Continue next<br/>batch"]
+    B --> O["Empty string<br/>or timeout"]
+    O --> P["LLMOutputError"]
+    P --> Q["BatchFailureTracker<br/>.record(failed=True)"]
+    Q --> M
+    M -- Yes --> R["⏹️ Stop: model<br/>unsuitable for<br/>structured JSON"]
+    N --> S["All batches<br/>done"]
+    S --> T["Merge extractions<br/>(naive or LLM)"]
+    T --> U["Compiled wiki"]
+```
+
+**Key parameters added/standardized (all configurable in `[compile.llm]`):**
+
+| Parameter                       | Default | Purpose                                                   |
+| ------------------------------- | ------- | --------------------------------------------------------- |
+| `output_retries`                | 2       | PydanticAI retry count (N attempts = N+1 total)           |
+| `output_retries_enabled`        | true    | Master switch for all retries                             |
+| `delta_retry_enabled`           | true    | Enable delta-retry (fix partial output vs regenerate)     |
+| `batch_failure_threshold_ratio` | 0.5     | Stop when >50% batches fail                               |
+| `batch_failure_threshold_min`   | 5       | Minimum batches before stopping (lower for small corpora) |
+| `batch_retry_attempts`          | 3       | Extra per-batch retries before counting as failed         |
+| `slug_max_length`               | 80      | Max concept-page slug length                              |
+| `min_segment_tokens`            | 512     | Min tokens per generation segment                         |
+| `default_chars_per_token`       | 3.85    | Token budget estimation heuristic                         |
+
+**Rationale:** Rather than increasing retries (which makes the problem worse for unsuitable models), we detect unsuitability early, fail fast, and expose every threshold to user configuration. The doctor command now includes a structured-output pre-check that probes for model capability before compilation begins.
+
+**Consequences:**
+
+- User must configure thresholds for their corpus size and model
+- Doctor pre-check catches "empty string" failure before compile
+- Delta-retry hint directs users to disable for small models
+- POLICIES.md now requires all magic numbers to be config fields
+
+**Related:** Investigation session (2026-03-19, gemma4:e2b on listening-effort corpus)
