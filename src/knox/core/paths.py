@@ -97,6 +97,9 @@ RUNS_FILE: Final[str] = "runs.jsonl"
 # ── Organize (LLM-based file categorisation) ─────────────────────────────
 ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
 
+# ── References (bibliographic citation extraction) ───────────────────────
+REFERENCES_FILE: Final[str] = "references.json"
+
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
 
@@ -140,6 +143,7 @@ class VaultPaths:
         │   ├── downloaded.json     ← downloaded_path
     │   ├── last_organize.json  ← organize_report_path
     │   ├── lint_history.jsonl  ← lint_history_path
+    │   ├── references.json     ← references_path
     │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── wiki/                   ← output_dir
@@ -265,6 +269,11 @@ class VaultPaths:
     def organize_report_path(self) -> Path:
         """Last ``knox organize`` report."""
         return self.knox_dir / ORGANIZE_REPORT_FILE
+
+    @property
+    def references_path(self) -> Path:
+        """Bibliographic references store (CSL JSON-aligned)."""
+        return self.knox_dir / REFERENCES_FILE
 
     @property
     def state_file(self) -> Path:

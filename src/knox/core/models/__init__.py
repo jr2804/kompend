@@ -31,6 +31,12 @@ from knox.core.models.enums import (
     StructuredField,
     WikiField,
 )
+from knox.core.models.references import (
+    Author,
+    Reference,
+    ReferenceExtractionOutput,
+    ReferenceResolutionOutput,
+)
 from knox.core.models.structured import (
     EquationVariable,
     StructuredData,
@@ -56,6 +62,7 @@ __all__ = [
     "LIFECYCLE_STALE",
     "LIFECYCLE_VERIFIED",
     "VALID_LIFECYCLE_STATES",
+    "Author",
     "Chunk",
     "ChunkField",
     "ChunkNode",
@@ -72,6 +79,9 @@ __all__ = [
     "EquationVariable",
     "MetadataField",
     "ParsedDocument",
+    "Reference",
+    "ReferenceExtractionOutput",
+    "ReferenceResolutionOutput",
     "ResolvedChunk",
     "StructuredData",
     "StructuredEquation",

@@ -126,6 +126,7 @@ def build_pipeline(
             frontmatter_defaults=config.output.frontmatter or {},
             rumdl_config=config.output.rumdl_config,
             max_related_links=config.output.max_related_links,
+            references_file=config.paths.references_path,
         ),
         summarizer=NodeSummarizer(
             cache_store=CacheStore(config.paths.cache_dir),
