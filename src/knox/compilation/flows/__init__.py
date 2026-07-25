@@ -3,6 +3,7 @@
 - :mod:`assembly` — wiki assembly, edge building, concept merging (pure)
 - :mod:`extraction` — LLM extraction from source documents
 - :mod:`generation` — per-concept page generation and wiki assembly
+- :mod:`references` — bibliographic reference detection and extraction
 """
 
 from knox.compilation.flows.assembly import (

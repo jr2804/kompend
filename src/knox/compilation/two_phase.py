@@ -48,10 +48,12 @@ from knox.compilation.flows.generation import (
     gen_cache_deps,
     run_generation,
 )
+from knox.compilation.flows.references import run_reference_extraction
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from knox.core.pipeline.config import PipelineConfig
+from knox.core.pipeline.references import ReferenceStore
 from knox.core.templates import get_template_loader
 from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.logging import get_logger
@@ -130,7 +132,7 @@ class TwoPhaseCompiler(BaseCompiler):
             cw.source,
         )
 
-    def compile(
+    def compile(  # noqa: PLR0915
         self,
         chunks: list[ResolvedChunk],
         *,
@@ -155,6 +157,24 @@ class TwoPhaseCompiler(BaseCompiler):
 
         num_sources = len({str(rc.chunk.source_file or "unknown") for rc in chunks})
         self._report(0, num_sources, "Compiling wiki…")
+
+        # ── Reference extraction (pre-extraction pass) ─────────────────
+        # Detect and parse bibliographic references before the main
+        # extraction phase so the LLM sees content, not bibliographies.
+        ref_store = ReferenceStore(self._config.paths.references_path)
+        ref_start = time.monotonic()
+        try:
+            run_reference_extraction(self, chunks, ref_store)
+        except Exception as exc:  # noqa: BLE001 — reference extraction is non-fatal
+            logger.warning("TwoPhase: reference extraction failed (non-fatal): %s", exc)
+        ref_elapsed = time.monotonic() - ref_start
+        if ref_store.total_count() > 0:
+            logger.info(
+                "TwoPhase: references parsed in %.1fs — %d from %d source(s)",
+                ref_elapsed,
+                ref_store.total_count(),
+                ref_store.source_count(),
+            )
 
         extract_start = time.monotonic()
         extractions = self.extract(chunks, trees=trees)

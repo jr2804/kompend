@@ -1,0 +1,37 @@
+"""ReferenceExtractionAgent — PydanticAI wrapper for bibliographic reference parsing.
+
+Follows the same pattern as :class:`~knox.agents.extraction.ExtractionAgent`.
+The agent's ``output_type`` is
+:class:`~knox.core.models.references.ReferenceExtractionOutput`, so the LLM
+must produce a validated list of :class:`~knox.core.models.references.Reference`
+objects.
+
+Usage::
+
+    from knox.agents.reference_extraction import ReferenceExtractionAgent
+
+    agent = ReferenceExtractionAgent(model_string="ollama/gpt-oss:20b")
+    result = agent.run(PipelineAgentDeps(text=ref_section, source_id=stem))
+    for ref in result.references:
+        print(ref.raw, ref.doi)
+"""
+
+from __future__ import annotations
+
+from knox.agents.base import KnoxAgentBase
+from knox.agents.deps import PipelineAgentDeps
+from knox.core.models.references import ReferenceExtractionOutput
+
+
+class ReferenceExtractionAgent(KnoxAgentBase[ReferenceExtractionOutput, PipelineAgentDeps]):
+    """PydanticAI agent for extracting bibliographic references.
+
+    The agent's system + user prompts come from Jinja2 templates
+    (``reference_extraction_system.md.j2``,
+    ``reference_extraction_prompt.md.j2``) under ``compilation/``.
+    """
+
+    template_name: str = "reference_extraction_prompt.md.j2"
+    system_template_name: str = "reference_extraction_system.md.j2"
+    result_type: type[ReferenceExtractionOutput] = ReferenceExtractionOutput
+    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps

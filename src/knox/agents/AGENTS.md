@@ -27,6 +27,7 @@ All agents extend `KnoxAgentBase[ResultT, DepsT]` (ABC):
 
 - `ExtractionAgent`, `ExtractionReduceAgent`
 - `GenerationAgent`
+- `ReferenceExtractionAgent` (bibliographic reference parsing)
 - `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
 - `QueryAgent`
 - `QueryExpansionAgent`, `CragGradeAgent`, `HydeAgent`
@@ -91,15 +92,15 @@ feedback loop — was removed.
 
 ### Dependency types (`deps.py`)
 
-| Deps class | Used by |
-|------------|---------|
+| Deps class          | Used by                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------- |
 | `PipelineAgentDeps` | extraction, search, capture, lint, verification, categorize, summarize, context-chunk |
-| `GenerationDeps` | GenerationAgent (adds `concepts_json`, `wicer_findings`) |
-| `QueryDeps` | QueryAgent (adds `retrieved_context`, `query`, `mode`) |
-| `WicerProbeDeps` | WicerProbeAgent |
-| `WicerEvaluateDeps` | WicerEvaluateAgent |
-| `WicerDiagnoseDeps` | WicerDiagnoseAgent |
-| `DoctorDeps` | DoctorAgent |
+| `GenerationDeps`    | GenerationAgent (adds `concepts_json`, `wicer_findings`)                              |
+| `QueryDeps`         | QueryAgent (adds `retrieved_context`, `query`, `mode`)                                |
+| `WicerProbeDeps`    | WicerProbeAgent                                                                       |
+| `WicerEvaluateDeps` | WicerEvaluateAgent                                                                    |
+| `WicerDiagnoseDeps` | WicerDiagnoseAgent                                                                    |
+| `DoctorDeps`        | DoctorAgent                                                                           |
 
 ## Local Contracts
 
