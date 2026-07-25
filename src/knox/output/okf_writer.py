@@ -4,7 +4,7 @@ Produces wiki output compatible with the Google Open Knowledge Format spec:
 https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 
 This is the **default** output format. Use ``--format markdown`` or
-``compile.output.format = "markdown"`` to select the legacy Obsidian vault mode.
+``compile.output.format = "markdown"`` to select the Obsidian-flavored vault mode.
 
 OKF conformance requirements (§9):
 1. Every .md file has parseable YAML frontmatter.
@@ -34,9 +34,14 @@ import yaml
 
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import INDEX_FILE, LOG_FILE
+from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
+from knox.output.reference_links import (
+    format_bibliography_entry,
+    rewrite_source_references,
+)
 
 # OKF spec version this writer targets.
 _OKF_VERSION = "0.1"
@@ -213,6 +218,11 @@ class OkfWriter(MarkdownWriter):
         node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
         related_edges = self._build_related_edges(wiki.edges, node_map)
 
+        # Load reference store once for citation link rewriting.
+        ref_store: ReferenceStore | None = None
+        if self._references_file and self._references_file.exists():
+            ref_store = ReferenceStore(self._references_file)
+
         for doc in docs:
             folder = self._folder_for_kind(doc.node_type)
             target_dir = output_dir / folder if folder else output_dir
@@ -224,8 +234,18 @@ class OkfWriter(MarkdownWriter):
             prefix = "#" * min(doc.heading_level, 6)
             rendered += f"{prefix} {doc.title}\n\n"
 
+            # Rewrite in-text citation markers to reference links.
+            body = doc.body
+            if ref_store is not None:
+                sources = doc.frontmatter.get("sources") or []
+                for source_key in self._candidate_source_keys(sources, ref_store):
+                    rewritten = rewrite_source_references(body, source_key, ref_store)
+                    if rewritten != body:
+                        body = rewritten
+                        break
+
             # Convert wikilinks to OKF absolute links.
-            body = convert_wikilinks(doc.body, slug_to_path)
+            body = convert_wikilinks(body, slug_to_path)
             rendered += body
             if body and not body.endswith("\n"):
                 rendered += "\n"
@@ -253,6 +273,10 @@ class OkfWriter(MarkdownWriter):
                     rendered += "\n" + citations
 
             (target_dir / filename).write_text(rendered, encoding="utf-8")
+
+        # Generate references page if store has entries.
+        if ref_store is not None and ref_store.total_count() > 0:
+            self._write_okf_references_page(ref_store, output_dir)
 
         # OKF-compliant index and log.
         self._write_okf_index(docs, output_dir, wiki)
@@ -298,6 +322,33 @@ class OkfWriter(MarkdownWriter):
             lines.append("")
 
         (output_dir / INDEX_FILE).write_text("\n".join(lines), encoding="utf-8")
+
+    @staticmethod
+    def _write_okf_references_page(store: ReferenceStore, output_dir: Path) -> None:
+        """Write ``references.md`` per OKF §4 with a formatted bibliography.
+
+        Includes all references across all sources, sorted alphabetically.
+        Each entry has an anchor for citation link targets.
+        """
+        all_refs = store.all_references()
+        if not all_refs:
+            return
+        all_refs.sort(key=lambda r: r.short_label().lower())
+
+        frontmatter = {
+            "okf_version": _OKF_VERSION,
+            "type": "Reference",
+            "title": "References",
+        }
+        lines: list[str] = [_okf_frontmatter(frontmatter)]
+        lines.append("# References\n")
+        for i, ref in enumerate(all_refs, 1):
+            lines.append(format_bibliography_entry(ref, number=i))
+
+        (output_dir / "references.md").write_text(
+            "\n".join(lines),
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _write_okf_log(output_dir: Path, wiki: CompiledWiki) -> None:

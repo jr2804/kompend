@@ -54,6 +54,7 @@ from knox.cli.args import CompileFiles, TargetFormat
 from knox.cli._shared import resolve_project_paths
 from knox.logging import get_console, get_err_console
 
+
 @app.command()
 def compile(
     files: CompileFiles,
@@ -100,11 +101,14 @@ Each sub-app has its own Typer instance and set of sub-commands:
 ```python
 config_app = typer.Typer()
 
+
 @config_app.command()
 def get(key: str) -> None: ...
 
+
 @config_app.command()
 def set(key: str, value: str) -> None: ...
+
 
 app.add_typer(config_app, name="config")
 ```

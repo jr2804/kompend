@@ -136,6 +136,7 @@ _LAZY_MODULES: dict[str, str] = {
     "compile": "knox.cli.cmds.pipeline.pipeline",
     "ingest": "knox.cli.cmds.pipeline.pipeline",
     "query": "knox.cli.cmds.knowledge.query",
+    "references": "knox.cli.cmds.knowledge.references",
     "review": "knox.cli.cmds.quality.review",
     "sources": "knox.cli.cmds.pipeline.sources",
     "sources-tag": "knox.cli.cmds.pipeline.sources",
