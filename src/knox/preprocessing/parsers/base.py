@@ -82,6 +82,9 @@ class ParserRouter:
         self._parsers: list[BaseParser] = []
         self._text_fallback: BaseParser | None = None
 
+    def __len__(self) -> int:
+        return len(self._parsers)
+
     def register(self, parser: BaseParser) -> None:
         self._parsers.append(parser)
 

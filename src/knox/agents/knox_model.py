@@ -35,6 +35,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
+from knox.llm.postprocess import default_pipeline
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
@@ -51,6 +52,9 @@ _EFFORT_TO_THINKING: dict[str, ThinkingLevel] = {
 }
 
 logger = get_logger(__name__)
+
+
+__all__ = ["KnoxModel"]
 
 
 class KnoxModel(Model):
@@ -113,9 +117,6 @@ class KnoxModel(Model):
         # output, defeating pydantic-ai's retry feedback loop. The capability
         # is strictly better and preserves history on compression failure.
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
-        # Apply the per-request post-processing pipeline: surrogate scrubbing,
-        # JSON repair, usage recording, and debug dump.
-        from knox.llm.postprocess import default_pipeline  # noqa: PLC0415
 
         pipeline = default_pipeline(
             schema_resolver=self._schema_resolver,
@@ -159,6 +160,3 @@ class KnoxModel(Model):
         if thinking is False:
             settings["openai_reasoning_effort"] = "none"  # ty: ignore[invalid-key]
         return settings
-
-
-__all__ = ["KnoxModel"]

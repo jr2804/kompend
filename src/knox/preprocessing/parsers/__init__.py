@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 from knox.preprocessing.parsers.base import BaseParser, ParserRouter
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
@@ -15,4 +16,6 @@ __all__ = [
     "PandocParser",
     "ParserRouter",
     "WebPageParser",
+    "build_default_router",
+    "get_registered_parsers",
 ]

@@ -5,17 +5,31 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
+from pydantic import BaseModel as _BM
+from pydantic_ai import Agent as _Agent
+
+from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
+from knox.llm.models import build_model
 from knox.logging import get_console, get_logger
+from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 
 logger = get_logger(__name__)
+
+
+class _CapabilityCheck(_BM):
+    """Structured output schema for the structured-output doctor check."""
+
+    ok: bool
+    message: str
+
 
 # ── Check results ───────────────────────────────────────────────────────
 
@@ -36,6 +50,7 @@ class CheckResult:
 
 
 def _check_sources_dir(sources_dir: Path | None) -> CheckResult:
+    """Validate that the sources directory exists and is a directory."""
     name = "sources-directory"
     if sources_dir is None:
         return CheckResult(name, True, "No sources dir configured — skipped")
@@ -47,12 +62,13 @@ def _check_sources_dir(sources_dir: Path | None) -> CheckResult:
 
 
 def _check_output_dir(output_dir: Path | None) -> CheckResult:
+    """Validate that the output directory exists and is writable."""
     name = "output-directory"
     if output_dir is None:
         return CheckResult(name, True, "No output dir configured — skipped")
     if not output_dir.exists():
         return CheckResult(name, False, f"Output dir does not exist: {output_dir}")
-    if not os.access(str(output_dir), os.W_OK):
+    if not os.access(output_dir, os.W_OK):
         return CheckResult(name, False, f"Output dir not writable: {output_dir}")
     return CheckResult(name, True, f"Output dir OK: {output_dir}")
 
@@ -60,10 +76,9 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 def _check_parsers() -> CheckResult:
     """Check parser availability via the shared registry factory."""
     name = "parsers"
-    from knox.preprocessing.parsers._registry import build_default_router  # noqa: PLC0415
 
     router = build_default_router()
-    return CheckResult(name, True, f"{len(router._parsers)} parser(s) registered")
+    return CheckResult(name, True, f"{len(router)} parser(s) registered")
 
 
 def _check_context_window(model: str | None, label: str, context_window_cap: int | None = None) -> CheckResult:
@@ -158,8 +173,6 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        from knox.agents.doctor import DoctorAgent, DoctorDeps  # noqa: PLC0415
-
         agent = DoctorAgent(
             model_string=model,
             timeout=timeout,
@@ -208,24 +221,15 @@ def _check_structured_output(
         return CheckResult(name, True, f"No {label} model configured — skipped")
 
     try:
-        import time as _time  # noqa: PLC0415
-
-        from pydantic import BaseModel as _BM  # noqa: PLC0415
-        from pydantic_ai import Agent as _Agent  # noqa: PLC0415
-
-        class _CapabilityCheck(_BM):  # type: ignore[misc]
-            ok: bool
-            message: str
-
         agent = _Agent(
-            model,
-            result_type=_CapabilityCheck,
+            build_model(model),
+            output_type=_CapabilityCheck,
             retries=retries or 1,
             model_settings={"timeout": timeout, "max_tokens": 128},
         )
-        start = _time.monotonic()
+        start = monotonic()
         result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")
-        elapsed = _time.monotonic() - start
+        elapsed = monotonic() - start
         validated = result.output
         if isinstance(validated, _CapabilityCheck) and validated.ok:
             return CheckResult(
@@ -245,22 +249,16 @@ def _check_structured_output(
 def _check_git_repo() -> CheckResult:
     """Check if we are inside a git repository."""
     name = "git-repo"
-    git_bin = shutil.which("git")
-    if git_bin is None:
-        return CheckResult(name, True, "Git not installed — OK")
+    # Traverse up from cwd looking for a .git directory.
+    # Pure-Path check avoids subprocess entirely (no S603 false positive).
     try:
-        result = subprocess.run(  # noqa: S603
-            [git_bin, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if result.returncode == 0:
-            return CheckResult(name, True, "Inside a git repository")
+        current = Path.cwd().resolve()
+        for parent in [current, *current.parents]:
+            if (parent / ".git").is_dir():
+                return CheckResult(name, True, "Inside a git repository")
         return CheckResult(name, True, "Not a git repository — OK")
-    except subprocess.TimeoutExpired:
-        return CheckResult(name, True, "Git check timed out — OK")
+    except Exception as exc:
+        return CheckResult(name, True, f"Git check failed ({exc}) — OK")
 
 
 def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
@@ -273,8 +271,8 @@ def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
         if free_mb < 500:
             return CheckResult(name, False, f"Low disk space: {free_mb:.0f} MB free (< 500 MB)")
         return CheckResult(name, True, f"{free_mb:.0f} MB free")
-    except Exception:
-        return CheckResult(name, True, "Could not check disk space — skipped")
+    except Exception as exc:
+        return CheckResult(name, True, f"Could not check disk space ({exc}) — skipped")
 
 
 # ── Doctor runner ───────────────────────────────────────────────────────
@@ -350,7 +348,7 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
         sys.stdout.write("\n")
     else:
         for r in results:
-            icon = "[OK]" if r.passed else "[!!]"
+            icon = "[OK]" if r.passed else "[!]"
             get_console().print(f"  {icon} {r.name}: {r.message}", markup=False)
 
         total = len(results)
