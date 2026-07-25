@@ -16,6 +16,7 @@ import typer
 from knox.agents.verification import VerificationAgent
 from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
+from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
@@ -101,9 +102,13 @@ def _run_post_compile_lint(
     *,
     base_dir: Path,
     json_output: bool = False,
+    lint_config: LintConfig | None = None,
 ) -> None:
     """Run lint after compilation, persist to history, and print a summary."""
-    runner = LintRunner(sources_dir=str(sources_dir) if sources_dir.exists() else None)
+    runner = LintRunner(
+        sources_dir=str(sources_dir) if sources_dir.exists() else None,
+        lint_config=lint_config,
+    )
     lint_start = time.monotonic()
     report = runner.run(wiki)
     lint_elapsed = time.monotonic() - lint_start
@@ -245,6 +250,7 @@ class _PostCompileOptions:
     compile_lint: bool | None = None
     embed_model: str | None = None
     show_progress: bool | None = None
+    lint_config: LintConfig | None = None
 
 
 def _post_compile_actions(opts: _PostCompileOptions) -> None:
@@ -302,6 +308,6 @@ def _post_compile_actions(opts: _PostCompileOptions) -> None:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
     if opts.compile_lint:
-        _run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir)
+        _run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
 
     _write_wiki_cache(opts.wiki, base_dir)

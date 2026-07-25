@@ -40,7 +40,8 @@ from knox.cli.args import (
     LintRule,
 )
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT
+from knox.core.config._configs import LintConfig
+from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT, LINT_FUZZY_THRESHOLD
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
@@ -183,12 +184,16 @@ def lint_run(
         )
         llm = False
 
+    lint_config = LintConfig(
+        fuzzy_threshold=float(cfg.get(LINT_FUZZY_THRESHOLD, 0.85)),
+    )
     runner = LintRunner(
         rules=list(rule) if rule else None,
         enable_llm=llm,
         lint_agent=lint_agent,
         fix=fix,
         sources_dir=sources_dir_str,
+        lint_config=lint_config,
     )
     lint_start = time.monotonic()
     progress = (

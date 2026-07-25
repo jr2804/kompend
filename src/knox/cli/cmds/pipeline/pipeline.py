@@ -61,12 +61,14 @@ from knox.cli.args import (
     Workers,
 )
 from knox.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
+from knox.core.config._configs import LintConfig
 from knox.core.config.keys import (
     COMPILE_IN_PLACE_SOURCES,
     DISPLAY_CLI_ELEMENT_CHARS,
     DISPLAY_SOURCE_NAMES,
     DOWNLOADER_UNDETECTED,
     INGEST_PARSER,
+    LINT_FUZZY_THRESHOLD,
     PATHS_WIKI_DIR,
 )
 from knox.core.models import MetadataField, WikiField
@@ -270,6 +272,9 @@ def compile_cmd(  # noqa: PLR0915
             console = get_console()
         console.print(f"Compiled wiki written to {output_dir}")
 
+        lint_config = LintConfig(
+            fuzzy_threshold=float(cfg.get(LINT_FUZZY_THRESHOLD, 0.85)),
+        )
         _post_compile_actions(
             _PostCompileOptions(
                 wiki=wiki,
@@ -286,6 +291,7 @@ def compile_cmd(  # noqa: PLR0915
                 compile_lint=compile_lint,
                 embed_model=embed_model,
                 show_progress=show_progress,
+                lint_config=lint_config,
             )
         )
 
