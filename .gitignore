@@ -73,3 +73,7 @@ nul
 plan*.md
 .repowise/
 mcporter.json
+
+# Pandoc installer (downloaded by build script, not tracked)
+*.msi
+
