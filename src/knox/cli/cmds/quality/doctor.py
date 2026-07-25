@@ -13,6 +13,7 @@ from typing import Any
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_logger
+from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 
 logger = get_logger(__name__)
 
@@ -180,15 +181,65 @@ def _ping_embed_model(model: str | None) -> CheckResult:
         return CheckResult(name, True, "No embed model configured — skipped")
 
     try:
-        from knox.rag.zvec_store import _build_embedder, _to_pydantic_ai_embedding_string  # noqa: PLC0415
-
-        pydantic_ai_string = _to_pydantic_ai_embedding_string(model)
-        embedder = _build_embedder(pydantic_ai_string)
+        pydantic_ai_string = to_pydantic_ai_embedding_string(model)
+        embedder = build_embedder(pydantic_ai_string)
         result = embedder.embed_documents_sync("ping")
         dims = len(result.embeddings[0]) if result.embeddings else 0
         return CheckResult(name, True, f"embed OK ({pydantic_ai_string}, {dims} dims)")
     except Exception as exc:
         return CheckResult(name, False, f"embed failed: {exc}")
+
+
+def _check_structured_output(
+    model: str | None,
+    label: str,
+    timeout: float = 120.0,
+    retries: int | None = None,
+) -> CheckResult:
+    """Probe a model's ability to produce valid structured JSON output.
+
+    Creates a trivial PydanticAI agent with a simple schema and checks
+    whether the model can return valid structured data. This catches the
+    "model returns empty string" failure mode that small or unsuitable
+    models exhibit.
+    """
+    name = f"structured-output-{label}"
+    if not model:
+        return CheckResult(name, True, f"No {label} model configured — skipped")
+
+    try:
+        import time as _time  # noqa: PLC0415
+
+        from pydantic import BaseModel as _BM  # noqa: PLC0415
+        from pydantic_ai import Agent as _Agent  # noqa: PLC0415
+
+        class _CapabilityCheck(_BM):  # type: ignore[misc]
+            ok: bool
+            message: str
+
+        agent = _Agent(
+            model,
+            result_type=_CapabilityCheck,
+            retries=retries or 1,
+            model_settings={"timeout": timeout, "max_tokens": 128},
+        )
+        start = _time.monotonic()
+        result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")
+        elapsed = _time.monotonic() - start
+        validated = result.output
+        if isinstance(validated, _CapabilityCheck) and validated.ok:
+            return CheckResult(
+                name,
+                True,
+                f"{label} OK ({elapsed:.1f}s, model={model})",
+            )
+        return CheckResult(
+            name,
+            False,
+            f"{label} returned invalid structured output after {elapsed:.1f}s",
+        )
+    except Exception as exc:
+        return CheckResult(name, False, f"{label} structured output test failed: {exc}")
 
 
 def _check_git_repo() -> CheckResult:
@@ -277,6 +328,8 @@ def run_doctor(
     results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
     results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
     results.append(_ping_embed_model(embed_model))
+    results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
+    results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
 
     return results
 
