@@ -538,8 +538,13 @@ class TestEdgeCases:
         assert len(failures) == 0
 
     def test_structural_rules_registry_complete(self) -> None:
-        """All 9 structural rules should be registered."""
-        assert len(STRUCTURAL_RULES) == 9
+        """All 9 structural rules should be registered.
+
+        ``DuplicateReferencesRule`` is NOT a singleton — it is instantiated
+        by ``LintRunner._resolve_rules`` with config values. The singleton
+        list has 8 entries; ``RULE_BY_NAME`` still maps all 9 names.
+        """
+        assert len(STRUCTURAL_RULES) == 8
         expected = {
             "broken-wikilinks",
             "missing-frontmatter",
