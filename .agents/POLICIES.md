@@ -25,7 +25,7 @@ If rules conflict, lower-numbered priority wins:
   `--help` first.
 - NEVER delete or move files without explicit user instruction.
 - NEVER run destructive commands (`rm -rf`, `git reset --hard`, `git push
-  --force`) without explicit user confirmation.
+--force`) without explicit user confirmation.
 - NEVER add secrets, API keys, or tokens to any file. Use env vars.
 - NEVER create temporary files in the project root. Use the project's
   temp directory or `tempfile.TemporaryDirectory()`.
@@ -63,11 +63,11 @@ Mention caveats and unverified risks.
 
 ### Extension
 
-| Who | When | What |
-|-----|------|------|
-| Project maintainer | Adopting new boundary rules | Boundaries |
+| Who                | When                         | What               |
+| ------------------ | ---------------------------- | ------------------ |
+| Project maintainer | Adopting new boundary rules  | Boundaries         |
 | Project maintainer | Changing workflow philosophy | Change Constraints |
-| Any contributor | Noticing a missing policy | Add accordingly |
+| Any contributor    | Noticing a missing policy    | Add accordingly    |
 
 ---
 
@@ -75,6 +75,15 @@ Mention caveats and unverified risks.
 
 ### Boundaries
 
+- NEVER hardcode magic numbers, magic strings, or threshold constants in
+  production code. Every parameter that affects behavior (token limits,
+  failure thresholds, retry counts, timeouts, sizes) must be declared as a
+  config field in the appropriate `_KnoxBaseModel` (e.g. `LLMConfig`,
+  `BudgetConfig`) with a `Field(validation_alias=...)`. The production
+  code reads the value from the config object — never from a bare literal or
+  a module-level `Final` constant that duplicates what the config already
+  owns. This rule applies even when the default matches the current hardcoded
+  value — the field is the single source of truth.
 - NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config
   without explicit user instruction.
 - NEVER suppress `PLC0415` (inline imports), `ANN001` (missing return type),
