@@ -1,4 +1,3 @@
-sync.remote: "git+https://codeberg.org/jr2804/knox.git" 
 # Beads Configuration File
 # This file configures default behavior for all bd commands in this repository
 # All settings can also be set via environment variables (BD_* prefix)
@@ -7,7 +6,7 @@ sync.remote: "git+https://codeberg.org/jr2804/knox.git"
 # Issue prefix for this repository (used by bd init)
 # If not set, bd init will auto-detect from directory name
 # Example: issue-prefix: "myproject" creates issues like "myproject-1", "myproject-2", etc.
-# issue-prefix: ""
+issue-prefix: "knox"
 
 # Use no-db mode: JSONL-only, no Dolt database
 # When true, bd will use .beads/issues.jsonl as the source of truth
@@ -56,5 +55,5 @@ sync.remote: "git+https://codeberg.org/jr2804/knox.git"
 # - github.token    → use GITHUB_TOKEN env var instead
 
 # sync.remote temporarily disabled for local reinit (remote has no Dolt data)
-# sync.remote: "git+https://codeberg.org/jr2804/knox.git" 
+# sync.remote: "git+https://codeberg.org/jr2804/knox.git"
 
