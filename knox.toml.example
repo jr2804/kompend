@@ -80,7 +80,9 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]
-# Compiler backend: graph (two-phase extract-then-generate) | wicer (iterative compile-evaluate-refine)
+# Compiler backend: graph (heading-based extraction) | wicer (iterative compile-evaluate-refine).
+# Both wrap the TwoPhaseCompiler, which runs bibliographic reference extraction
+# as a pre-pass before the main extraction phase.
 compiler = "graph"
 
 # Image handling: file (extract to disk) | base64 (inline)
