@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.agents.debug import save_debug_prompt
+from knox.llm.debug import save_debug_prompt
 
 
 class _FakeAgent:

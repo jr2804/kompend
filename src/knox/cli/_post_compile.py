@@ -13,6 +13,7 @@ from typing import Any
 
 import typer
 
+from knox import __version__ as _KNOX_VERSION
 from knox.agents.verification import VerificationAgent
 from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
@@ -20,6 +21,7 @@ from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
+from knox.core.utils.time import iso_local
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
@@ -29,6 +31,9 @@ from knox.rag import build_vector_index
 from knox.review import ReviewQueue
 from knox.trust import mark_wiki_private
 from knox.verification import verify_wiki
+
+# OKF v0.2 (§5.2/§7) trust actor identifying the producer of a verification pass.
+_VERIFIED_BY = f"knox/{_KNOX_VERSION or '0.0.0'}"
 
 logger = get_logger(__name__)
 
@@ -91,9 +96,19 @@ def verify_claims(
     agent: VerificationAgent,
     verify_budget: int = 3000,
 ) -> None:
-    """Run grounding verification over wiki claims."""
+    """Run grounding verification over wiki claims.
+
+    Records the verification pass as an OKF v0.2 ``verified`` trust event
+    (§5.2) on ``wiki.metadata`` so output writers can surface it. The actor
+    follows the §7 convention (``<producer>/<version>``).
+    """
     result = verify_wiki(wiki, output_dir, agent=agent, verify_budget=verify_budget)
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
+
+    # Stamp the OKF v0.2 ``verified`` trust event (§5.2).
+    verified_events = list(wiki.metadata.get("verified") or [])
+    verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})
+    wiki.metadata["verified"] = verified_events
 
 
 def run_post_compile_lint(

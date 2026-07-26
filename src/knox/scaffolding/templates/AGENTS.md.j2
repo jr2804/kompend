@@ -1,6 +1,6 @@
 # KNOX Vault — Agent Instructions
 
-This vault is a **KNOX** knowledge base. It produces **OKF v0.1** (Open Knowledge
+This vault is a **KNOX** knowledge base. It produces **OKF v0.2** (Open Knowledge
 Format) bundles — a directory of markdown files with YAML frontmatter.
 
 ## Quick Reference
@@ -16,14 +16,15 @@ Format) bundles — a directory of markdown files with YAML frontmatter.
 | Start ACP agent (credential-free LLM) | `knox agent` |
 | Start MCP server | `knox mcp` |
 
-## OKF v0.1 Conformance
+## OKF v0.2 Conformance
 
 - Every concept file has parseable YAML frontmatter with a non-empty `type` field
+- Trust fields: `generated: {by, at}` (supersedes v0.1 `timestamp`), `status`
 - Cross-links use absolute bundle-relative paths: `[Title](/concepts/title.md)`
 - Reserved filenames (`index.md`, `log.md`) follow OKF structure
-- Root `index.md` declares `okf_version: "0.1"`
+- Root `index.md` declares `okf_version: "0.2"`
 - `log.md` uses ISO 8601 date headings with bold action prefix
-- Citations rendered as `# Citations` section with numbered `[N]` refs
+- Per-claim attribution via footnotes `[^id]` keyed to structured `sources[].id`
 
 ## ACP Agent Mode
 
@@ -45,7 +46,7 @@ slash commands. See `knox agent --help` for details.
 ├── sources/            ← source documents (PDF, DOCX, markdown, URLs)
 │   ├── _captured/      ← knowledge items extracted from conversation
 │   └── _distilled/     ← LLM-synthesized wiki pages
-└── wiki/               ← compiled output (OKF v0.1 bundle)
+└── wiki/               ← compiled output (OKF v0.2 bundle)
     ├── index.md        ← table of contents
     ├── log.md          ← change log
     └── concepts/       ← concept/entity/comparison pages

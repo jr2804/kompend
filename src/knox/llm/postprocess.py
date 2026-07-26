@@ -18,7 +18,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic_ai import ModelMessage, ModelResponse
 from pydantic_ai.messages import ModelRequest, TextPart, ThinkingPart, ToolCallPart
 
-from knox.agents.debug import messages_to_debug_dicts, save_debug_prompt
+from knox.llm.debug import messages_to_debug_dicts, save_debug_prompt
 from knox.llm.format import salvage_json
 from knox.llm.usage import UsageTracker
 
@@ -258,7 +258,7 @@ class DebugSaver:
 
         The *agent* argument is a pydantic-ai ``Agent`` instance with
         ``stage`` and ``current_source_id`` properties (protocol defined
-        in ``knox.agents.debug``).  Its ``_last_debug_path`` attribute is
+        in ``knox.llm.debug``).  Its ``_last_debug_path`` attribute is
         set after a successful save.
         """
         self._agent = agent

@@ -1,4 +1,4 @@
-"""Tests for the OKF (Open Knowledge Format) v0.1 output writer."""
+"""Tests for the OKF (Open Knowledge Format) v0.2 output writer."""
 
 from __future__ import annotations
 
@@ -53,11 +53,11 @@ def test_okf_writer_registered() -> None:
     assert "okf" in BaseOutputWriter.available_formats()
 
 
-# ── Frontmatter conformance (§9 item 2) ─────────────────────────────────
+# ── Frontmatter conformance (§11 item 2) ────────────────────────────────
 
 
 def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
-    """OKF §9.2: every frontmatter must contain a non-empty ``type`` field."""
+    """OKF §11.2: every frontmatter must contain a non-empty ``type`` field."""
     wiki = _make_wiki(
         [
             _make_node("alpha", "Alpha", "Content A"),
@@ -102,7 +102,7 @@ def test_type_maps_from_node_type(tmp_path: Path) -> None:
 
 
 def test_okf_recommended_fields_present(tmp_path: Path) -> None:
-    """OKF recommended fields: title, description, tags, timestamp."""
+    """OKF v0.2 recommended fields: title, description, status, generated."""
     wiki = _make_wiki([_make_node("test", "Test Page", "A test description.", provenance=["src.pdf"])])
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
@@ -112,15 +112,73 @@ def test_okf_recommended_fields_present(tmp_path: Path) -> None:
     assert fm is not None
     assert fm["title"] == "Test Page"
     assert "description" in fm
-    assert "tags" in fm
-    assert "timestamp" in fm
+    # v0.2 lifecycle field (§5.4).
+    assert fm["status"] == "stable"
+    # v0.2 trust field supersedes the v0.1 ``timestamp`` (§13.1).
+    assert "timestamp" not in fm, "v0.1 timestamp must not be emitted under v0.2"
+    assert "generated" in fm
+    assert "by" in fm["generated"]
+    assert "at" in fm["generated"]
+    assert fm["generated"]["by"].startswith("knox/")
 
 
-# ── Cross-link conformance (§5) ─────────────────────────────────────────
+def test_tags_not_overloaded_with_source_files(tmp_path: Path) -> None:
+    """OKF v0.2 §4.1: ``tags`` are topic tags, not provenance filename stems.
+
+    Source-filename provenance lives in the KNOX ``source_files`` extension,
+    freeing ``tags`` (and avoiding the ``sources`` shape collision of §5.1).
+    """
+    wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "report.pdf"])])
+    writer = OkfWriter()
+    writer.write(wiki, tmp_path)
+
+    fm = _parse_frontmatter((tmp_path / "concepts" / "test.md").read_text())
+    assert fm is not None
+    # Provenance stems appear in source_files, not tags.
+    assert fm.get("source_files") == ["paper", "report"]
+    tags = fm.get("tags") or []
+    assert "paper" not in tags
+    assert "report" not in tags
+
+
+def test_sources_are_structured_objects(tmp_path: Path) -> None:
+    """OKF v0.2 §5.1: ``sources`` is a list of objects, never bare strings."""
+    wiki = _make_wiki(
+        [_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])]
+    )
+    writer = OkfWriter()
+    writer.write(wiki, tmp_path)
+
+    fm = _parse_frontmatter((tmp_path / "concepts" / "test.md").read_text())
+    assert fm is not None
+    sources = fm.get("sources")
+    assert sources is not None, "structured sources must be emitted when provenance exists"
+    assert isinstance(sources, list)
+    for entry in sources:
+        assert isinstance(entry, dict), "each sources entry must be an object (§5.1)"
+        # Each entry has an id (footnote key) and a resource.
+        assert "id" in entry
+        assert "resource" in entry
+
+
+def test_generated_actor_convention(tmp_path: Path) -> None:
+    """OKF v0.2 §7: ``generated.by`` follows the ``<producer>/<version>`` convention."""
+    wiki = _make_wiki([_make_node("test", "Test", "Content.")])
+    writer = OkfWriter()
+    writer.write(wiki, tmp_path)
+
+    fm = _parse_frontmatter((tmp_path / "concepts" / "test.md").read_text())
+    assert fm is not None
+    by = fm["generated"]["by"]
+    # ``knox/<version>`` per §7 actor convention.
+    assert re.match(r"^knox/.+$", by), f"generated.by '{by}' not a §7 producer/version actor"
+
+
+# ── Cross-link conformance (§6) ─────────────────────────────────────────
 
 
 def test_wikilinks_converted_to_absolute_markdown_links(tmp_path: Path) -> None:
-    """OKF §5: cross-links use standard markdown, not [[wikilinks]]."""
+    """OKF §6: cross-links use standard markdown, not [[wikilinks]]."""
     wiki = _make_wiki(
         [
             _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type="concept"),
@@ -160,7 +218,7 @@ def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
 
 
 def test_convert_wikilinks_unknown_target_left_as_text() -> None:
-    """OKF §5.3: broken links are valid — unknown targets become plain text."""
+    """OKF §6.1: broken links are valid — unknown targets become plain text."""
     result = convert_wikilinks("See [[nonexistent]] here", {})
     assert "[[nonexistent]]" not in result
     assert "nonexistent" in result
@@ -173,22 +231,22 @@ def test_convert_wikilinks_with_alias() -> None:
     assert "[Custom Title](/concepts/target.md)" in result
 
 
-# ── Index conformance (§6) ──────────────────────────────────────────────
+# ── Index conformance (§8) ──────────────────────────────────────────────
 
 
 def test_index_has_okf_version_frontmatter(tmp_path: Path) -> None:
-    """OKF §11: root index.md MAY declare okf_version in frontmatter."""
+    """OKF §12: root index.md MAY declare okf_version in frontmatter."""
     writer = OkfWriter()
     writer.write(_make_wiki([_make_node()]), tmp_path)
 
     index_text = (tmp_path / "index.md").read_text(encoding="utf-8")
     fm = _parse_frontmatter(index_text)
     assert fm is not None
-    assert fm.get("okf_version") == "0.1"
+    assert fm.get("okf_version") == "0.2"
 
 
 def test_index_has_grouped_sections(tmp_path: Path) -> None:
-    """OKF §6: index uses grouped sections with descriptions."""
+    """OKF §8: index uses grouped sections with descriptions."""
     wiki = _make_wiki(
         [
             _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
@@ -209,19 +267,11 @@ def test_index_has_grouped_sections(tmp_path: Path) -> None:
     assert "First concept." in index_text
 
 
-def test_non_root_index_has_no_frontmatter() -> None:
-    """OKF §6: index.md files contain no frontmatter (except root with okf_version)."""
-    # This test verifies the concept is enforced — only the root index
-    # gets frontmatter. Currently OkfWriter only writes a root index.
-    # If per-directory indices are added later, this test enforces the rule.
-    pass  # placeholder — OkfWriter currently only writes root index
-
-
-# ── Log conformance (§7) ────────────────────────────────────────────────
+# ── Log conformance (§9) ────────────────────────────────────────────────
 
 
 def test_log_uses_iso_date_headings(tmp_path: Path) -> None:
-    """OKF §7: log.md uses ISO 8601 YYYY-MM-DD date headings."""
+    """OKF §9: log.md uses ISO 8601 YYYY-MM-DD date headings."""
     writer = OkfWriter()
     writer.write(_make_wiki([_make_node()]), tmp_path)
 
@@ -232,7 +282,7 @@ def test_log_uses_iso_date_headings(tmp_path: Path) -> None:
 
 
 def test_log_has_bold_action_prefix(tmp_path: Path) -> None:
-    """OKF §7 convention: log entries use bold action prefix."""
+    """OKF §9 convention: log entries use bold action prefix."""
     writer = OkfWriter()
     writer.write(_make_wiki([_make_node()]), tmp_path)
 
@@ -240,35 +290,42 @@ def test_log_has_bold_action_prefix(tmp_path: Path) -> None:
     assert "**Creation**" in log_text or "**Update**" in log_text
 
 
-# ── Citations (§8) ──────────────────────────────────────────────────────
+# ── Per-claim attribution (§5.1) ────────────────────────────────────────
 
 
-def test_citations_section_from_provenance(tmp_path: Path) -> None:
-    """OKF §8: citations rendered as numbered [N] references."""
+def test_source_footnotes_emitted_for_provenance(tmp_path: Path) -> None:
+    """OKF §5.1: per-claim attribution via footnote definitions keyed to sources[].id.
+
+    Replaces the v0.1 body ``# Citations`` numbered list (§13.1).
+    """
     wiki = _make_wiki(
-        [
-            _make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"]),
-        ]
+        [_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])]
     )
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
     text = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
-    assert "# Citations" in text
-    assert "[1]" in text
-    assert "[2]" in text
-    assert "paper.pdf" in text
-    assert "example.com" in text
+    # v0.1 numbered Citations section must NOT appear.
+    assert "# Citations" not in text
+    # Footnote definitions (``[^id]: label``) for each source id.
+    fm = _parse_frontmatter(text)
+    assert fm is not None
+    for src in fm["sources"]:
+        sid = src["id"]
+        assert f"[^{sid}]:" in text, f"missing footnote definition for source id '{sid}'"
 
 
-def test_no_citations_section_without_provenance(tmp_path: Path) -> None:
-    """Pages without provenance should not have a Citations section."""
+def test_no_attribution_section_without_provenance(tmp_path: Path) -> None:
+    """Pages without provenance emit no sources and no footnote definitions."""
     wiki = _make_wiki([_make_node("test", "Test", "Content.")])
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
     text = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
-    assert "# Citations" not in text
+    fm = _parse_frontmatter(text)
+    assert fm is not None
+    assert "sources" not in fm, "sources must be omitted (not empty) when no provenance"
+    assert "[^" not in text
 
 
 # ── YAML alias prevention ───────────────────────────────────────────────

@@ -20,7 +20,7 @@ wiki page previews.
 | ``base.py`` | ``BaseOutputWriter`` ABC with plugin registry (``register`` / ``get``) |
 | ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering via rumdl |
 | ``markdown.py`` | ``MarkdownWriter`` — Markdown output (obsidian, gfm flavors) |
-| ``okf_writer.py`` | ``OkfWriter`` — OKF v0.1 compliant bundle output |
+| ``okf_writer.py`` | ``OkfWriter`` — OKF v0.2 compliant bundle output |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
 | ``typst.py`` | ``TypstWriter`` — Typst output |
 | ``wiki_index.py`` | Wiki index page construction |

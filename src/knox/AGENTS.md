@@ -446,26 +446,33 @@ The `pack.toml` manifest:
 
 ### OKF compliance — output format rules
 
-KNOX produces **OKF v0.1** (Open Knowledge Format) bundles by default.
+KNOX produces **OKF v0.2** (Open Knowledge Format) bundles by default.
 The spec is at <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
 
-**All output-related code must maintain OKF v0.1 conformance:**
+**All output-related code must maintain OKF v0.2 conformance:**
 
 1. **Default format is OKF.** The `compile.output.format` config key defaults to
    `"okf"`. Other formats (`"markdown"`, `"json"`, `"typst"`) are opt-in.
-2. **Every concept file** must have parseable YAML frontmatter with a non-empty
-   `type` field (OKF \u00a79.2).
-3. **Cross-links** use standard markdown absolute bundle-relative paths:
-   `[Title](/concepts/title.md)` \u2014 never `[[wikilinks]]` (OKF \u00a75.1).
-4. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (\u00a76, \u00a77).
-   Root `index.md` MAY declare `okf_version: "0.1"` in frontmatter (\u00a711).
-5. **`log.md`** uses ISO 8601 date headings (`## YYYY-MM-DD`) with bold action
-   prefix (\u00a77).
-6. **Citations** from provenance are rendered as a `# Citations` section with
-   numbered `[N]` refs (\u00a78).
-7. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
+2. **Frontmatter** is built once by `VaultWriter.okf_frontmatter()` — every
+   vault writer MUST delegate to it (single source of truth). Every concept
+   file has parseable YAML frontmatter with a non-empty `type` field (§11.2).
+3. **Trust fields:** `generated: {by, at}` (§5.2; `by` uses the §7 actor
+   convention `knox/<version>`) supersedes the v0.1 `timestamp`. `verified`
+   (§5.2) is emitted only when a verification pass ran; `status` defaults to
+   `stable` (§5.4).
+4. **Provenance fields are distinct:** `tags` = topic tags only (no filename
+   overload); `source_files` = KNOX extension (provenance filename stems);
+   `sources` = OKF §5.1 structured objects `{id, resource, title, author}` from
+   the reference store — NEVER bare strings.
+5. **Cross-links** use standard markdown absolute bundle-relative paths:
+   `[Title](/concepts/title.md)` — never `[[wikilinks]]` (OKF §6.1).
+6. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (§8, §9).
+   Root `index.md` MAY declare `okf_version: "0.2"` in frontmatter (§12).
+7. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
+   `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list.
+8. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
    unknown frontmatter keys, broken cross-links, and missing `index.md` files
-   (\u00a79 \u2014 permissive consumption model).
+   (§10 — permissive consumption model).
 
 **When adding a new output writer or modifying an existing one**, verify
 conformance against the OKF spec. The Obsidian-flavored `MarkdownWriter` is exempt from rules 2\u20136 but must remain functional.

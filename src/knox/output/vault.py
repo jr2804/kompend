@@ -5,7 +5,7 @@ stale-file clearing, related-edge resolution, in-text citation rewriting, and
 the references/index/log page orchestration — is implemented exactly once
 here in :class:`VaultWriter`.
 
-OKF (Open Knowledge Format v0.1) frontmatter is the **unique, canonical
+OKF (Open Knowledge Format v0.2) frontmatter is the **unique, canonical
 standard** every vault writer emits. Markdown *flavors* (Obsidian
 ``[[wikilinks]]``, GFM, …) change only the link *syntax* in the page body —
 never the frontmatter. There is one frontmatter schema; build it with
@@ -27,6 +27,7 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
+from knox import __version__ as _KNOX_VERSION
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.paths import INDEX_FILE
 from knox.core.pipeline.references import ReferenceStore
@@ -35,7 +36,11 @@ from knox.output.models import Document
 from knox.output.reference_links import rewrite_source_references
 
 # OKF spec version every vault writer targets.
-OKF_VERSION = "0.1"
+OKF_VERSION = "0.2"
+
+# OKF actor convention (§7) for the producer of generated content.
+# ``<producer>/<version>`` for agents and tools.
+_GENERATED_BY = f"knox/{_KNOX_VERSION or '0.0.0'}"
 
 # Map KNOX node_type values to OKF ``type`` values. OKF types are free-form
 # strings (§4.1); these are descriptive and self-explanatory per the spec.
@@ -115,36 +120,82 @@ class VaultWriter(BaseOutputWriter):
         node: WikiNode,
         compiled_at: str,
         frontmatter_defaults: dict[str, Any] | None = None,
+        *,
+        sources: list[dict[str, Any]] | None = None,
+        verified: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Build the canonical OKF frontmatter for a wiki node.
+        """Build the canonical OKF v0.2 frontmatter for a wiki node.
 
-        The result is OKF §9-compliant (parseable YAML, non-empty ``type``)
-        and carries KNOX extensions (``kind``, ``compiled_at``, ``sources``)
-        permitted by OKF §4.1. Config ``frontmatter_defaults`` and per-node
-        ``metadata['frontmatter']`` overrides are merged in.
+        The result is OKF §11-conformant (parseable YAML, non-empty ``type``)
+        and carries KNOX extensions permitted by OKF §4.1. Config
+        ``frontmatter_defaults`` and per-node ``metadata['frontmatter']``
+        overrides are merged in.
+
+        OKF v0.2 fields emitted:
+        - ``type``, ``title``, ``description``, ``tags``, ``status`` (§4.1, §5.4)
+        - ``generated: {by, at}`` — supersedes the v0.1 ``timestamp`` (§5.2, §13.1)
+        - ``verified`` — trust events, only when ``verified`` is provided (§5.2)
+        - ``sources`` — structured provenance objects (§5.1), only when
+          ``sources`` is provided; bare filename provenance is NOT emitted
+          here under the reserved ``sources`` key (it would collide with the
+          v0.2 object shape) — see the ``source_files`` extension below.
+
+        KNOX extensions (OKF §4.1 permits additional keys):
+        - ``kind`` — original KNOX node_type
+        - ``source_files`` — provenance filename stems (distinct from OKF
+          ``sources`` to avoid shape collision; freed ``tags`` from this overload)
         """
         provenance = node.metadata.get(MetadataField.PROVENANCE) or []
-        source_list = sorted({Path(str(p)).stem for p in provenance if p}) if provenance else []
+        source_files = (
+            sorted({Path(str(p)).stem for p in provenance if p}) if provenance else []
+        )
+        node_tags = node.metadata.get(MetadataField.TAGS) or []
 
         frontmatter: dict[str, Any] = dict(frontmatter_defaults or {})
         # Per-node frontmatter overrides config defaults.
         frontmatter.update(node.metadata.get("frontmatter", {}))
 
-        # OKF-mandated fields (always present, spec-compliant).
+        # OKF v0.2 consolidation: the node ``frontmatter`` override is a legacy
+        # escape hatch and may carry v0.1 bare-string ``sources`` (filename
+        # stems) or ``tags`` overloaded with provenance. Drop both so the only
+        # ``sources`` that survives is the structured §5.1 list passed in below,
+        # and ``tags`` stays topic-only (provenance stems live in ``source_files``).
+        frontmatter.pop("sources", None)
+        frontmatter.pop("compiled_at", None)
+        frontmatter.pop("timestamp", None)
+
+        # OKF-required fields (always present, spec-compliant).
         frontmatter["type"] = frontmatter.get("type") or VaultWriter.okf_type(node.node_type)
         frontmatter.setdefault("title", node.title or "Untitled")
         description = VaultWriter.okf_description(node)
         if description:
             frontmatter.setdefault("description", description)
-        if source_list:
-            frontmatter.setdefault("tags", source_list)
-        frontmatter["timestamp"] = compiled_at
+        # OKF lifecycle (§5.4): default stable; absence ⇒ stable per spec.
+        frontmatter.setdefault("status", "stable")
+        # OKF tags (§4.1): cross-cutting topic tags from compilation.
+        # Source-filename provenance no longer overloads ``tags``; it lives in
+        # the ``source_files`` extension to match OKF v0.2 semantics.
+        if node_tags:
+            merged_tags = sorted(set(frontmatter.get("tags", [])) | {str(t) for t in node_tags})  # nocheck: OKF frontmatter key, not wiki metadata
+            frontmatter["tags"] = merged_tags  # nocheck: OKF frontmatter key, not wiki metadata
+
+        # OKF trust (§5.2): ``generated`` records how/when content was produced.
+        # Supersedes the v0.1 ``timestamp`` field (§13.1).
+        frontmatter["generated"] = {"by": _GENERATED_BY, "at": compiled_at}
+        # ``verified`` only when trust events are known (absence ⇒ unverified tier).
+        if verified:
+            frontmatter["verified"] = verified
+
+        # OKF structured provenance (§5.1): list of objects with at least
+        # ``resource``. Only emitted when callers supply real structured sources
+        # (from the ReferenceStore); never populated with bare filename strings.
+        if sources:
+            frontmatter.setdefault("sources", sources)
 
         # KNOX extensions (OKF §4.1 permits additional keys).
         frontmatter["kind"] = node.metadata.get("frontmatter", {}).get("kind", node.node_type or "page")
-        frontmatter["compiled_at"] = compiled_at
-        if source_list:
-            frontmatter["sources"] = source_list
+        if source_files:
+            frontmatter["source_files"] = source_files
 
         return frontmatter
 
@@ -188,10 +239,10 @@ class VaultWriter(BaseOutputWriter):
             body = doc.body
             if ref_store is not None:
                 # Determine the source file from provenance metadata.
-                sources = doc.frontmatter.get("sources") or []
-                if sources:
+                source_files = doc.frontmatter.get("source_files") or []
+                if source_files:
                     # Try each source stem against the store's keys.
-                    for source_key in self._candidate_source_keys(sources, ref_store):
+                    for source_key in self._candidate_source_keys(source_files, ref_store):
                         rewritten = rewrite_source_references(body, source_key, ref_store)
                         if rewritten != body:
                             body = rewritten

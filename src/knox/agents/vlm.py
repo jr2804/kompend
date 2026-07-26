@@ -18,8 +18,8 @@ from typing import Any
 from pydantic_ai.messages import BinaryContent
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.debug import save_debug_prompt
 from knox.core.utils.exceptions import LLMOutputError
+from knox.llm.debug import save_debug_prompt
 from knox.llm.format import strip_reasoning
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger

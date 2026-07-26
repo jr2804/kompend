@@ -8,6 +8,7 @@ via :func:`knox.llm.models.build_model` — never construct pydantic-ai models d
 from __future__ import annotations
 
 from knox.llm.context_window import ContextSource, ContextWindow, discover_context_window
+from knox.llm.debug import messages_to_debug_dicts, save_debug_prompt
 from knox.llm.format import salvage_json, strip_reasoning
 from knox.llm.models import build_model
 from knox.llm.postprocess import (
@@ -42,8 +43,10 @@ __all__ = [
     "discover_context_window",
     "get_registered_processor",
     "list_registered_processors",
+    "messages_to_debug_dicts",
     "pipeline_from_registry",
     "register_postprocessor",
     "salvage_json",
+    "save_debug_prompt",
     "strip_reasoning",
 ]

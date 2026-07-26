@@ -289,8 +289,8 @@ class TestFrontmatterEmission:
             assert content.startswith("---\n"), f"{slug}.md missing frontmatter"
             assert "title:" in content.split("---\n")[1]
 
-    def test_vault_pages_have_kind_and_compiled_at(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
-        """knox-rxod: every compiled page carries kind and compiled_at."""
+    def test_vault_pages_have_kind_and_generated(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        """OKF v0.2: every compiled page carries kind and generated.{by,at}."""
         writer = MarkdownWriter(vault_mode=True)
         writer.write(sample_wiki, temp_output)
 
@@ -299,10 +299,12 @@ class TestFrontmatterEmission:
             page_path = (temp_output / folder / f"{node.id}.md") if folder else (temp_output / f"{node.id}.md")
             fm_block = page_path.read_text(encoding="utf-8").split("---\n")[1]
             assert "kind:" in fm_block, f"{node.id}.md missing kind"
-            assert "compiled_at:" in fm_block, f"{node.id}.md missing compiled_at"
+            assert "generated:" in fm_block, f"{node.id}.md missing generated"
+            assert "by:" in fm_block, f"{node.id}.md missing generated.by"
+            assert "at:" in fm_block, f"{node.id}.md missing generated.at"
 
-    def test_vault_pages_sources_from_provenance(self, temp_output: Path) -> None:
-        """knox-rxod: sources field is derived from node provenance."""
+    def test_vault_pages_source_files_from_provenance(self, temp_output: Path) -> None:
+        """OKF v0.2: source_files extension is derived from node provenance."""
         wiki = CompiledWiki(
             nodes=[
                 WikiNode(
@@ -318,7 +320,7 @@ class TestFrontmatterEmission:
         )
         MarkdownWriter(vault_mode=True).write(wiki, temp_output)
         content = (temp_output / "concepts" / "c1.md").read_text(encoding="utf-8")
-        assert "sources:" in content
+        assert "source_files:" in content
         assert "paper_a" in content
         assert "paper_b" in content
 
