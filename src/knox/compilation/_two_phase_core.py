@@ -346,6 +346,36 @@ _CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
+# Structural artifacts from spreadsheet/table-heavy sources that the LLM
+# frequently mis-extracts as concepts (e.g. "Table Data", "data_id value",
+# "Name", "Source Filename"). Matched against the normalized concept key
+# (lowercase, hyphens → spaces, stripped of parentheticals). Underscores
+# are kept by the normalizer so the regex uses [._ ] to cover both.
+_STRUCTURAL_CONCEPT_RE = re.compile(
+    r"^(?:"
+    r"table[._ ]?data(?:[._ ]?(?:sources?|definitions?|sources? definitions?|definition schema))?s?"
+    r"|data[._ ]?(?:id|source|definition)s?"
+    r"|data[._ ]?id[._ ]?value(?:[._ ]?source[._ ]?filename)?"
+    r"|name"
+    r"|source(?:[._ ]?filename)?"
+    r"|value"
+    r"|definition"
+    r"|source[._ ]?table"
+    r")$"
+)
+
+
+def _is_structural_concept(name: str) -> bool:
+    """Return True if *name* is a table/spreadsheet structural artifact.
+
+    These are column headers, field labels, and metadata labels that
+    small models extract from table-heavy sources but which never
+    warrant a wiki page. The check uses the normalized key so that
+    casing, punctuation, and parenthetical acronyms don't bypass it.
+    """
+    key = _normalize_concept_key(name)
+    return bool(_STRUCTURAL_CONCEPT_RE.match(key))
+
 
 def _concept_name(concept: dict[str, Any]) -> str:
     """Salvage a concept name, tolerating schema drift.
@@ -387,6 +417,8 @@ class ExtractionSet:
             for concept in ext.concepts:
                 name = _concept_name(concept)
                 if not name or name in _RESERVED_CONCEPT_NAMES or name.startswith("vlm_"):
+                    continue
+                if _is_structural_concept(name):
                     continue
                 key = _normalize_concept_key(name)
                 if not key:
