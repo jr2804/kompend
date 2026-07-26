@@ -5,9 +5,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.core.models.assets import AssetRecord
+from knox.core.models.enums import AssetKind
+from knox.core.models.structured import StructuredFigure, StructuredTable
+from knox.core.pipeline.assets import AssetStore
 from knox.output.base import BaseOutputWriter
 from knox.output.okf_writer import OkfWriter, convert_wikilinks
 
@@ -143,9 +148,7 @@ def test_tags_not_overloaded_with_source_files(tmp_path: Path) -> None:
 
 def test_sources_are_structured_objects(tmp_path: Path) -> None:
     """OKF v0.2 §5.1: ``sources`` is a list of objects, never bare strings."""
-    wiki = _make_wiki(
-        [_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])]
-    )
+    wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])])
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -298,9 +301,7 @@ def test_source_footnotes_emitted_for_provenance(tmp_path: Path) -> None:
 
     Replaces the v0.1 body ``# Citations`` numbered list (§13.1).
     """
-    wiki = _make_wiki(
-        [_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])]
-    )
+    wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])])
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
@@ -340,6 +341,92 @@ def test_no_yaml_anchors_in_frontmatter(tmp_path: Path) -> None:
     text = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
     assert "&id" not in text
     assert "*id" not in text
+
+
+# ── Asset footnotes ──────────────────────────────────────────────────────
+
+
+class TestAssetFootnotes:
+    """Asset references (``¶ <id>``) in body text become ``[^<id>]`` footnotes."""
+
+    @pytest.fixture
+    def asset_store(self, tmp_path: Path) -> Path:
+        p = tmp_path / "assets.json"
+        store = AssetStore(p)
+        store.put(
+            AssetRecord(
+                id="tab-a1b2c3",
+                kind=AssetKind.TABLE,
+                source="src.pdf",
+                data=StructuredTable(columns=["h1", "h2"], rows=[{"h1": "v1", "h2": "v2"}]),
+                summary="A sample table",
+            )
+        )
+        store.put(
+            AssetRecord(
+                id="fig-9c2e",
+                kind=AssetKind.FIGURE,
+                source="src.pdf",
+                data=StructuredFigure(caption="Figure 1"),
+                summary="Architecture diagram",
+            )
+        )
+        store.save()
+        return p
+
+    def test_footnote_appears_for_asset_reference(self, tmp_path: Path, asset_store: Path) -> None:
+        """A ``¶ tab-a1b2c3`` in body text produces ``[^tab-a1b2c3]: ...``."""
+        node = _make_node(
+            node_id="asset-page",
+            title="Asset Test",
+            content="This references ¶ tab-a1b2c3 in the text.",
+        )
+        wiki = _make_wiki([node])
+        writer = OkfWriter(assets_file=asset_store)
+        writer.write(wiki, tmp_path)
+
+        text = (tmp_path / "concepts" / "asset-page.md").read_text(encoding="utf-8")
+        assert "[^tab-a1b2c3]: A sample table" in text
+
+    def test_multiple_asset_footnotes(self, tmp_path: Path, asset_store: Path) -> None:
+        """Multiple ``¶ <id>`` markers each get their own footnote."""
+        node = _make_node(
+            node_id="multi-asset",
+            title="Multi Asset",
+            content="See ¶ tab-a1b2c3 and ¶ fig-9c2e.",
+        )
+        wiki = _make_wiki([node])
+        writer = OkfWriter(assets_file=asset_store)
+        writer.write(wiki, tmp_path)
+
+        text = (tmp_path / "concepts" / "multi-asset.md").read_text(encoding="utf-8")
+        assert "[^tab-a1b2c3]: A sample table" in text
+        assert "[^fig-9c2e]: Architecture diagram" in text
+
+    def test_no_footnotes_without_asset_refs(self, tmp_path: Path) -> None:
+        """Body without ``¶ <id>`` markers does not produce asset footnotes."""
+        node = _make_node(node_id="plain", title="Plain", content="No asset references here.")
+        wiki = _make_wiki([node])
+        writer = OkfWriter()
+        writer.write(wiki, tmp_path)
+
+        text = (tmp_path / "concepts" / "plain.md").read_text(encoding="utf-8")
+        # No ``[^...]`` lines in the output.
+        assert "[^" not in text or "[^plain]" not in text
+
+    def test_no_assets_file_passed_safely(self, tmp_path: Path) -> None:
+        """Writer without ``assets_file`` does not crash (graceful omission)."""
+        node = _make_node(
+            node_id="safe",
+            title="Safe",
+            content="References ¶ tab-nonexistent here.",
+        )
+        wiki = _make_wiki([node])
+        writer = OkfWriter()  # no assets_file
+        writer.write(wiki, tmp_path)
+        text = (tmp_path / "concepts" / "safe.md").read_text(encoding="utf-8")
+        # No footnotes — store not loaded.
+        assert "[^tab-nonexistent]" not in text
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
