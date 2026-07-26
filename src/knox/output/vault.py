@@ -80,11 +80,13 @@ class VaultWriter(BaseOutputWriter):
         *,
         max_related_links: int = 15,
         references_file: Path | None = None,
+        assets_file: Path | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.max_related_links = max_related_links
         self._references_file = references_file
+        self._assets_file = assets_file
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -146,9 +148,7 @@ class VaultWriter(BaseOutputWriter):
           ``sources`` to avoid shape collision; freed ``tags`` from this overload)
         """
         provenance = node.metadata.get(MetadataField.PROVENANCE) or []
-        source_files = (
-            sorted({Path(str(p)).stem for p in provenance if p}) if provenance else []
-        )
+        source_files = sorted({Path(str(p)).stem for p in provenance if p}) if provenance else []
         node_tags = node.metadata.get(MetadataField.TAGS) or []
 
         frontmatter: dict[str, Any] = dict(frontmatter_defaults or {})

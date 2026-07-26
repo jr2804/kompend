@@ -38,6 +38,7 @@ import yaml
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.paths import INDEX_FILE, LOG_FILE
+from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
 from knox.output.markdown import MarkdownWriter
@@ -47,6 +48,9 @@ from knox.output.vault import OKF_VERSION, VaultWriter
 
 # Regex to find [[wikilinks]] or [[wikilinks|alias]] in body text.
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+
+# Match in-text asset references: ``¶ <id>``.
+_ASSET_FOOTNOTE_RE = re.compile(r"¶ ([\w-]+)")
 
 
 # Custom YAML Dumper that never emits anchors/aliases (avoids &id001/*id001
@@ -167,6 +171,30 @@ def _format_source_footnotes(sources: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _format_asset_footnotes(body: str, store: AssetStore) -> str:
+    """Render asset footnote definitions for ``¶ <id>`` references in *body*.
+
+    Scans *body* for asset references like ``¶ tab-a1f3`` and ``¶ fig-9c2e``,
+    collects the unique asset ids, looks up their summaries from *store*,
+    and emits ``[^<id>]: <summary>`` lines OKF-style.
+    """
+    if not body:
+        return ""
+    ids_found: set[str] = set()
+    for m in _ASSET_FOOTNOTE_RE.finditer(body):
+        ids_found.add(m.group(1))
+    if not ids_found:
+        return ""
+    lines: list[str] = []
+    for aid in sorted(ids_found):
+        record = store.get(aid)
+        if record is None:
+            continue
+        label = record.summary or record.kind.value or aid
+        lines.append(f"[^{aid}]: {label}")
+    return "\n".join(lines) + "\n"
+
+
 class OkfWriter(MarkdownWriter):
     """Write compiled wiki as an OKF v0.2 knowledge bundle.
 
@@ -267,6 +295,15 @@ class OkfWriter(MarkdownWriter):
             footnotes = _format_source_footnotes(sources)
             if footnotes:
                 rendered += "\n" + footnotes
+
+        # Asset footnotes: ¶ <id> references in body → [^<id>]: <summary>.
+        asset_store: AssetStore | None = None
+        if self._assets_file and self._assets_file.exists():
+            asset_store = AssetStore(self._assets_file)
+        if asset_store:
+            asset_footnotes = _format_asset_footnotes(rendered, asset_store)
+            if asset_footnotes:
+                rendered += "\n" + asset_footnotes
 
         return rendered
 

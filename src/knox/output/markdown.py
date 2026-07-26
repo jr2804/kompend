@@ -40,8 +40,14 @@ class MarkdownWriter(VaultWriter):
         vault_mode: bool = True,
         max_related_links: int = 15,
         references_file: Path | None = None,
+        assets_file: Path | None = None,
     ) -> None:
-        super().__init__(max_related_links=max_related_links, references_file=references_file, flavor=flavor)
+        super().__init__(
+            max_related_links=max_related_links,
+            references_file=references_file,
+            assets_file=assets_file,
+            flavor=flavor,
+        )
         self.frontmatter_defaults = frontmatter_defaults or {}
         self.renderer = DocumentRenderer(flavor=flavor, rumdl_config=rumdl_config)
         self.vault_mode = vault_mode
