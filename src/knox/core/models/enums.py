@@ -7,6 +7,7 @@ boundary lives here as a ``StrEnum`` member — never as a bare literal.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Final
 
 
 class MetadataField(StrEnum):
@@ -178,6 +179,46 @@ class StructuredField(StrEnum):
     ALT_TEXT = "alt_text"
     IMAGE_REF = "image_ref"
     DESCRIPTION = "description"
+
+
+class AssetField(StrEnum):
+    """Dict key contract for ``AssetRecord`` JSON serialization.
+
+    Asset records store separated tables/figures (and, when enabled later,
+    equations) under content-addressed ids so extraction input can reference
+    them by id + summary instead of inlining full content.
+    """
+
+    ID = "id"
+    KIND = "kind"
+    SOURCE = "source"
+    DATA = "data"
+    SUMMARY = "summary"
+    REF_COUNT = "ref_count"
+
+
+class AssetKind(StrEnum):
+    """Kinds of separated structured assets.
+
+    The prefix is used in asset ids (``tab-<hash>``, ``fig-<hash>``).
+    Equations are deferred (Phase 1 leaves them inlined).
+    """
+
+    TABLE = "table"
+    FIGURE = "figure"
+    EQUATION = "equation"
+
+    @property
+    def prefix(self) -> str:
+        """Id prefix for this asset kind (``tab``/``fig``/``eq``)."""
+        return _ASSET_PREFIX[self]
+
+
+_ASSET_PREFIX: Final[dict[AssetKind, str]] = {
+    AssetKind.TABLE: "tab",
+    AssetKind.FIGURE: "fig",
+    AssetKind.EQUATION: "eq",
+}
 
 
 class ElementType(StrEnum):

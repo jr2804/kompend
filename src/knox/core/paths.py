@@ -100,6 +100,9 @@ ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
 # ── References (bibliographic citation extraction) ───────────────────────
 REFERENCES_FILE: Final[str] = "references.json"
 
+# ── Assets (separated tables/figures) ────────────────────────────────────
+ASSETS_FILE: Final[str] = "assets.json"
+
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
 
@@ -273,6 +276,12 @@ class VaultPaths:
     @property
     def references_path(self) -> Path:
         """Bibliographic references store (CSL JSON-aligned)."""
+        return self.knox_dir / REFERENCES_FILE
+
+    @property
+    def assets_path(self) -> Path:
+        """Separated structured-asset store (tables/figures, JSON)."""
+        return self.knox_dir / ASSETS_FILE
         return self.knox_dir / REFERENCES_FILE
 
     @property
