@@ -11,8 +11,11 @@ from typing import Any
 
 from knox.chunking.summarizer import structured_to_text
 from knox.compilation._two_phase_core import ExtractionSet
+from knox.compilation.asset_registry import AssetIdMap
+from knox.compilation.asset_summarizer import summarize_asset
 from knox.core.models import ChunkTree, WikiNode
 from knox.core.models.enums import MetadataField
+from knox.core.models.structured import StructuredEquation
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -196,13 +199,37 @@ def merge_similar_concepts(
 # ── Tree text building ──────────────────────────────────────────────────
 
 
-def build_tree_texts(tree: ChunkTree) -> list[str]:
+def build_tree_texts(
+    tree: ChunkTree,
+    *,
+    asset_mode: str = "inline",
+    asset_id_map: AssetIdMap | None = None,
+) -> list[str]:
     """Build hierarchical text blocks from a ChunkTree.
 
     Internal nodes produce heading + summary. Leaf nodes produce
     full text. The result is a list of text blocks that preserve
     the document's heading hierarchy.
+
+    Parameters
+    ----------
+    asset_mode:
+        How to render structured leaves (tables/figures):
+
+        - ``"inline"`` (default): full text via :func:`structured_to_text`
+          — the legacy behavior, kept for parity / A-B testing.
+        - ``"ref"``: emit ``¶ <asset-id> (summary: …)`` and elide full
+          content, so extraction input is not polluted by large tables /
+          figures. Requires ``asset_id_map`` to resolve node ids to asset ids.
+
+        Equations are always inlined (Phase 1 defers them as assets).
+    asset_id_map:
+        Mapping from :class:`ChunkNode` id to asset id (the output of
+        :func:`assign_asset_ids`). Required when ``asset_mode == "ref"``;
+        ignored otherwise.
     """
+    if asset_mode == "ref" and asset_id_map is None:
+        asset_mode = "inline"
     texts: list[str] = []
     for node in tree.walk():
         if node.chunk is None and not node.structured and not node.summary:
@@ -214,8 +241,22 @@ def build_tree_texts(tree: ChunkTree) -> list[str]:
             # Leaf prose node — full text.
             texts.append(f"{heading_prefix}{node.chunk.text}")
         elif node.structured is not None:
-            # Leaf structured node — text representation.
-            texts.append(f"{heading_prefix}{structured_to_text(node.structured)}")
+            # Leaf structured node — equation always inlined; table/figure
+            # depends on asset_mode.
+            if (
+                asset_mode == "ref"
+                and asset_id_map is not None
+                and not isinstance(node.structured, StructuredEquation)
+                and asset_id_map.get(node.id) is not None
+            ):
+                asset_id = asset_id_map.get(node.id)
+                if asset_id is None:
+                    texts.append(f"{heading_prefix}{structured_to_text(node.structured)}")
+                    continue
+                summary = summarize_asset(node.structured)
+                texts.append(f"{heading_prefix}¶ {asset_id} (summary: {summary})")
+            else:
+                texts.append(f"{heading_prefix}{structured_to_text(node.structured)}")
         elif node.summary:
             # Internal node — summary only.
             texts.append(f"{heading_prefix}[summary: {node.summary}]")

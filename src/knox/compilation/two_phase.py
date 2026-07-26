@@ -31,6 +31,7 @@ from knox.compilation._two_phase_core import (
     segment_sources,
     tokens_to_chars,
 )
+from knox.compilation.asset_registry import AssetIdMap, assign_asset_ids
 from knox.compilation.base import BaseCompiler
 from knox.compilation.flows.assembly import (
     cosine_similarity,
@@ -50,6 +51,7 @@ from knox.compilation.flows.references import run_reference_extraction
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
+from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.templates import get_template_loader
@@ -102,6 +104,8 @@ class TwoPhaseCompiler(BaseCompiler):
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
         self._extraction_stats: list[dict[str, Any]] = []
+        self._asset_store: AssetStore | None = None
+        self._asset_id_maps: dict[str, AssetIdMap] = {}
         self._batch_tracker = BatchFailureTracker(
             ratio=self._config.llm.batch_failure_threshold_ratio,
             min_batches=self._config.llm.batch_failure_threshold_min,
@@ -176,6 +180,27 @@ class TwoPhaseCompiler(BaseCompiler):
                 ref_store.total_count(),
                 ref_store.source_count(),
             )
+
+        # ── Asset separation (pre-extraction pass) ───────────────────
+        # Register tables/figures under content-addressed ids so the
+        # extraction input references them by id + summary instead of
+        # inlining full (potentially huge) content. See
+        # ``.agents/plans/structured-asset-separation.md``.
+        self._asset_store = AssetStore(self._config.paths.assets_path)
+        self._asset_id_maps = {}
+        if trees:
+            for t in trees:
+                if t.source_file is not None:
+                    id_map = assign_asset_ids(t, self._asset_store, source=str(t.source_file))
+                    if len(id_map) > 0:
+                        self._asset_id_maps[str(t.source_file)] = id_map
+            self._asset_store.save()
+            if self._asset_store.total_count() > 0:
+                logger.info(
+                    "TwoPhase: %d structured asset(s) separated across %d source(s)",
+                    self._asset_store.total_count(),
+                    len(self._asset_id_maps),
+                )
 
         extract_start = time.monotonic()
         extractions = self.extract(chunks, trees=trees)
@@ -261,7 +286,12 @@ class TwoPhaseCompiler(BaseCompiler):
 
     def extract(self, chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None) -> ExtractionSet:
         """Phase 1: run the LLM in extraction mode for each source."""
-        return run_extraction(self, chunks, trees=trees)
+        return run_extraction(
+            self,
+            chunks,
+            trees=trees,
+            asset_id_maps=self._asset_id_maps,
+        )
 
     def generate(
         self,

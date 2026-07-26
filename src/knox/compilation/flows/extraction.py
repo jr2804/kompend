@@ -23,6 +23,8 @@ from knox.compilation._two_phase_core import (
     tokens_to_chars,
     try_pydanticai_extraction,
 )
+from knox.compilation.asset_mention_rewriter import rewrite_asset_mentions as _rewrite_asset_mentions
+from knox.compilation.asset_registry import AssetIdMap
 from knox.compilation.flows.assembly import build_tree_texts
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
@@ -53,15 +55,36 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     return batches
 
 
-def run_extraction(
+def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     compiler: Any,
     chunks: list[ResolvedChunk],
     *,
     trees: list[ChunkTree] | None = None,
-) -> ExtractionSet:  # noqa: PLR0915
-    """Phase 1: run the LLM in extraction mode for each source."""
+    asset_id_maps: dict[str, AssetIdMap] | None = None,
+) -> ExtractionSet:
+    """Phase 1: run the LLM in extraction mode for each source.
+
+    When *asset_id_maps* is provided, structured leaves (tables/figures) are
+    elided from the extraction text and replaced by ``¶ <id> (summary: …)``
+    references — reducing noise and context-window pressure.
+    """
     compiler._llm_stats = []
     extractions = ExtractionSet()
+
+    def _rewrite_extraction_mentions(ext: Extraction, id_map: AssetIdMap | None) -> None:
+        """Mutate *ext* in place, rewriting figure/table mentions to asset refs."""
+        if id_map is None:
+            return
+        ext.summary = _rewrite_asset_mentions(ext.summary, id_map)
+        for c in ext.concepts:
+            for field in ("name", "definition", "description", "context"):
+                if field in c:
+                    c[field] = _rewrite_asset_mentions(c[field], id_map)
+        for e in ext.entities:
+            for field in ("name", "description", "context"):
+                if field in e:
+                    e[field] = _rewrite_asset_mentions(e[field], id_map)
+
     by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
     for rc in chunks:
         label = str(rc.chunk.source_file or "unknown")
@@ -101,10 +124,17 @@ def run_extraction(
         compiler._report(cumulative_chars, total_chars_all, f"extracting [{source_idx}/{num_sources}] {source_name}")
 
         tree = tree_by_source.get(source)
-        texts = build_tree_texts(tree) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+        id_map = asset_id_maps.get(source) if asset_id_maps else None
+        texts = (
+            build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map)
+            if tree is not None
+            else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+        )
 
         if not texts:
-            extractions.add(Extraction(source=source))
+            empty_ext = Extraction(source=source)
+            _rewrite_extraction_mentions(empty_ext, id_map)
+            extractions.add(empty_ext)
             compiler._extraction_stats.append(
                 {
                     "source": source,
@@ -136,6 +166,7 @@ def run_extraction(
         if not valid:
             logger.warning("TwoPhase: all extraction batches failed for '%s' — skipped", source)
         merged = combine_extractions(compiler, source, valid)
+        _rewrite_extraction_mentions(merged, id_map)
         extractions.add(merged)
         compiler._extraction_stats.append(
             {
