@@ -202,6 +202,12 @@ summary_chunk_threshold = 10
 # Capture / write-page synthesis: per-source LLM input char cap
 capture_source_char_max = 4000
 
+# Concept dedup thresholds (Phase 1 — name+definition embedding merge)
+concept_merge_threshold = 0.82       # cosine similarity to merge concepts
+concept_string_merge_threshold = 0.70  # Jaccard fallback when no embeddings
+jaccard_min_token_len = 1            # ignore tokens shorter than this in Jaccard
+edge_min_title_len = 4               # min title chars to create a cross-source edge
+
 # ── LLM settings ────────────────────────────────────────────────────────
 
 [compile.llm]

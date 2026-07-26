@@ -210,10 +210,10 @@ class OrphanPageRule(BaseLintRule):
 
 
 class DuplicateTitleRule(BaseLintRule):
-    """Detect pages with duplicate or very similar titles."""
+    """Detect pages with duplicate titles (case-insensitive exact match)."""
 
     name = "duplicate-title"
-    description = "Two or more pages with the same or similar title"
+    description = "Two or more pages with the exact same title (case-insensitive)"
 
     def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []

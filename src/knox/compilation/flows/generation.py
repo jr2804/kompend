@@ -92,8 +92,14 @@ def prepare_concepts(compiler: Any, extractions: ExtractionSet) -> list[dict[str
     """Merge and validate concepts from extractions. Returns empty list if none."""
     concepts = extractions.concept_pages()
     embed_model = compiler._config.embedding.model
-    if embed_model and embed_model != "hash":
-        concepts = merge_similar_concepts(concepts, embed_model)
+    budget = compiler._config.budget
+    concepts = merge_similar_concepts(
+        concepts,
+        embed_model,
+        threshold=budget.concept_merge_threshold,
+        string_threshold=budget.concept_string_merge_threshold,
+        jaccard_min_token_len=budget.jaccard_min_token_len,
+    )
     if concepts:
         sample_limit = compiler._config.display.concept_names
         logger.info(
@@ -369,6 +375,11 @@ def assemble_wiki(
             f"Check that model '{compiler._model}' can produce structured JSON output."
         )
 
+    compiler.merge_duplicate_nodes(
+        nodes,
+        compiler._config.embedding.model,
+        threshold=compiler._config.budget.concept_merge_threshold,
+    )
     compiler.disambiguate_duplicate_titles(nodes, chunks)
     nodes = compiler.filter_empty_nodes(nodes, min_content_length=compiler._config.budget.min_content_length)
 
@@ -392,7 +403,7 @@ def assemble_wiki(
 
     nodes = compiler.dedup_content_duplicate_nodes(nodes)
     attach_tags_to_nodes(nodes, chunks)
-    edges = build_edges(nodes, extractions)
+    edges = build_edges(nodes, extractions, min_title_len=compiler._config.budget.edge_min_title_len)
     quality = compute_quality_score(nodes, edges)
     toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
     return CompiledWiki(

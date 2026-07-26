@@ -8,8 +8,11 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
+from knox.compilation._two_phase_core import _merge_node
+from knox.compilation.flows.assembly import cosine_similarity
 from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.logging import get_logger
+from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
@@ -54,6 +57,98 @@ class BaseCompiler(ABC):
             ignore this parameter.
         """
         ...
+
+    def merge_duplicate_nodes(
+        self,
+        nodes: list[WikiNode],
+        embedding_model: str,
+        *,
+        threshold: float = 0.82,  # set from BudgetConfig.concept_merge_threshold at call site
+    ) -> list[WikiNode]:
+        """Merge nodes whose title embeddings exceed *threshold*.
+
+        Post-generation fuzzy merge: clusters concept nodes by title
+        embedding cosine similarity and merges each cluster via
+        :func:`_merge_node` (section-aware content merge, provenance/
+        related/source_chunks unioned). This catches near-duplicate
+        concepts that survived the concept-stage merge under slightly
+        different surface forms.
+
+        When embeddings are unavailable (``embedding_model == 'hash'``
+        or provider failure), nodes are returned unchanged —
+        :meth:`disambiguate_duplicate_titles` handles exact-title
+        collisions as a fallback.
+        """
+        if len(nodes) < 2 or not embedding_model or embedding_model == "hash":
+            return nodes
+
+        concept_nodes = [n for n in nodes if n.node_type == "concept"]
+        if len(concept_nodes) < 2:
+            return nodes
+
+        try:
+            provider = make_provider(embedding_model, dim=None)
+            titles = [n.title for n in concept_nodes]
+            vecs = [provider.embed(t) for t in titles]
+        except Exception as exc:
+            logger.warning(
+                "Node merge disabled (%s): %s — falling through to disambiguation",
+                embedding_model,
+                exc,
+            )
+            return nodes
+
+        n = len(concept_nodes)
+        parent = list(range(n))
+
+        def _find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def _union(x: int, y: int) -> None:
+            rx, ry = _find(x), _find(y)
+            if rx < ry:
+                parent[ry] = rx
+            else:
+                parent[rx] = ry
+
+        merged_pairs = 0
+        for i in range(n):
+            for j in range(i + 1, n):
+                if cosine_similarity(vecs[i], vecs[j]) >= threshold:
+                    _union(i, j)
+                    merged_pairs += 1
+
+        if merged_pairs == 0:
+            return nodes
+
+        groups: dict[int, list[int]] = {}
+        for i in range(n):
+            groups.setdefault(_find(i), []).append(i)
+
+        merged_concepts: list[WikiNode] = []
+        for members in groups.values():
+            if len(members) == 1:
+                merged_concepts.append(concept_nodes[members[0]])
+            else:
+                survivor = concept_nodes[members[0]]
+                for m in members[1:]:
+                    survivor = _merge_node(survivor, concept_nodes[m])
+                merged_concepts.append(survivor)
+
+        non_concept = [n for n in nodes if n.node_type != "concept"]
+        result = non_concept + merged_concepts
+
+        logger.info(
+            "Node merge: %d concept pairs merged (%d → %d concept nodes, threshold=%.2f)",
+            merged_pairs,
+            n,
+            len(merged_concepts),
+            threshold,
+        )
+        return result
 
     @staticmethod
     def effective_content_length(text: str) -> int:
@@ -128,17 +223,39 @@ class BaseCompiler(ABC):
         identical content for both (e.g. ``phoneme-posteriorgram`` /
         ``phoneme-posteriorgrams``). Exact-body match only — no fuzzy
         heuristic, so no false merges of genuinely distinct concepts.
+
+        Before dropping a duplicate, its ``source_chunks``, provenance,
+        and related lists are unioned into the survivor so no provenance
+        is lost.
         """
-        seen: set[str] = set()
+        seen: dict[str, int] = {}  # body-key -> index in kept
         kept: list[WikiNode] = []
         for node in nodes:
             key = " ".join((node.content or "").split()).lower()
             if not key or key not in seen:
                 if key:
-                    seen.add(key)
+                    seen[key] = len(kept)
                 kept.append(node)
             else:
-                logger.debug("Deduped content-duplicate node '%s'", node.title)
+                survivor = kept[seen[key]]
+                survivor.source_chunks = list(
+                    dict.fromkeys(
+                        (survivor.source_chunks or []) + (node.source_chunks or []),
+                    ),
+                )
+                ex_prov = {str(x) for x in (survivor.metadata.get("provenance") or [])}
+                inc_prov = {str(x) for x in (node.metadata.get("provenance") or [])}
+                if ex_prov or inc_prov:
+                    survivor.metadata["provenance"] = sorted(ex_prov | inc_prov)
+                ex_rel = {str(x) for x in (survivor.metadata.get("related") or [])}
+                inc_rel = {str(x) for x in (node.metadata.get("related") or [])}
+                if ex_rel or inc_rel:
+                    survivor.metadata["related"] = sorted(ex_rel | inc_rel)
+                logger.debug(
+                    "Deduped content-duplicate node '%s' (merged into '%s')",
+                    node.title,
+                    survivor.title,
+                )
         return kept
 
     @staticmethod

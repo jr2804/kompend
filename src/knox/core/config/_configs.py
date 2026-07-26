@@ -200,6 +200,10 @@ class BudgetConfig(_KnoxBaseModel):
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
     capture_source_char_max: int = Field(default=4000, validation_alias="KNOX_BUDGET_CAPTURE_SOURCE_CHAR_MAX")
+    concept_merge_threshold: float = Field(default=0.82, validation_alias="KNOX_BUDGET_CONCEPT_MERGE_THRESHOLD")
+    concept_string_merge_threshold: float = Field(default=0.70, validation_alias="KNOX_BUDGET_CONCEPT_STRING_MERGE_THRESHOLD")
+    jaccard_min_token_len: int = Field(default=1, validation_alias="KNOX_BUDGET_JACCARD_MIN_TOKEN_LEN")
+    edge_min_title_len: int = Field(default=4, validation_alias="KNOX_BUDGET_EDGE_MIN_TITLE_LEN")
 
 
 class OutputConfig(_KnoxBaseModel):

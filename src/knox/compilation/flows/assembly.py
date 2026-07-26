@@ -19,8 +19,8 @@ from knox.rag.zvec_store import make_provider
 logger = get_logger(__name__)
 
 # ── Concept name-embedding merge (Option C) ─────────────────────────────
-
-_CONCEPT_MERGE_THRESHOLD = 0.85
+# All thresholds/limits live in BudgetConfig — the single source of truth.
+# Callers must pass them explicitly; no defaults are assumed here.
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -33,44 +33,41 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def merge_similar_concepts(
-    concepts: list[dict[str, Any]],
-    embedding_model: str,
-    *,
-    threshold: float = _CONCEPT_MERGE_THRESHOLD,
-) -> list[dict[str, Any]]:
-    """Merge concept pages whose name embeddings are above *threshold*.
+def _concept_embed_text(concept: dict[str, Any]) -> str:
+    """Build the text to embed for a concept: name + first definition.
 
-    Uses the configured embedding provider (SentenceTransformer either
-    locally or via LiteLLM). Groups concepts greedily: for every pair
-    with cosine similarity >= threshold, sources and definitions are
-    unioned and the longest name is kept as canonical.
-
-    When the embedding provider fails (e.g. model not found), concepts
-    are returned unchanged and a warning is logged.
+    Embedding the definition alongside the name catches surface-variant
+    duplicates (e.g. ``"MTD"`` ↔ ``"Mean Temporal Distance"``) whose
+    definitions reveal they are the same concept.
     """
-    if not embedding_model or embedding_model == "hash":
-        return concepts
+    name = concept.get("name", "")
+    defs = concept.get("definitions") or concept.get("definition")
+    first_def = ""
+    if isinstance(defs, list) and defs:
+        first_def = defs[0]
+    elif isinstance(defs, str):
+        first_def = defs
+    combined = f"{name}. {first_def}".strip(". ")
+    return combined or name
 
-    try:
-        provider = make_provider(embedding_model, dim=None)
-    except Exception as exc:
-        logger.debug(
-            "Embedding merge disabled: could not create provider for %s: %s",
-            embedding_model,
-            exc,
-        )
-        return concepts
 
-    names = [c["name"] for c in concepts]
-    try:
-        vecs = [provider.embed(n) for n in names]
-    except Exception as exc:
-        logger.debug("Embedding merge disabled: embedding call failed: %s", exc)
-        return concepts
+def _token_jaccard(a: str, b: str, *, min_token_len: int) -> float:
+    """Token-overlap ratio (Jaccard) between two strings.
 
-    # Union-Find to group similar concepts.
-    n = len(concepts)
+    Pure-Python fallback for when no embedding model is available.
+    Catches near-duplicate concept names like ``"Mean Temporal Distance
+    Measure"`` ↔ ``"Mean Temporal Distance"`` whose token sets overlap
+    heavily. Tokens shorter than *min_token_len* are ignored.
+    """
+    ta = {t for t in a.lower().split() if len(t) > min_token_len}
+    tb = {t for t in b.lower().split() if len(t) > min_token_len}
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _union_find_groups(n: int, similar: list[tuple[int, int]]) -> dict[int, list[int]]:
+    """Union-Find clustering: return leader → member-index mapping."""
     parent = list(range(n))
 
     def _find(x: int) -> int:
@@ -86,22 +83,24 @@ def merge_similar_concepts(
         else:
             parent[rx] = ry
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            if cosine_similarity(vecs[i], vecs[j]) >= threshold:
-                _union(i, j)
+    for i, j in similar:
+        _union(i, j)
 
-    # Group by leader.
     groups: dict[int, list[int]] = {}
     for i in range(n):
-        leader = _find(i)
-        groups.setdefault(leader, []).append(i)
+        groups.setdefault(_find(i), []).append(i)
+    return groups
 
-    # Merge each multi-member group.
+
+def _merge_groups(
+    concepts: list[dict[str, Any]],
+    groups: dict[int, list[int]],
+) -> list[dict[str, Any]]:
+    """Merge concept groups: longest name wins, sources/definitions unioned."""
     result: list[dict[str, Any]] = []
-    for leader, members in groups.items():
+    for members in groups.values():
         if len(members) == 1:
-            result.append(concepts[leader])
+            result.append(concepts[members[0]])
             continue
         merged: dict[str, Any] = {
             "name": max((concepts[m]["name"] for m in members), key=len),
@@ -120,15 +119,76 @@ def merge_similar_concepts(
                     merged["definitions"].append(d)
                     seen_defs.add(d)
         result.append(merged)
+    return result
 
+
+def merge_similar_concepts(
+    concepts: list[dict[str, Any]],
+    embedding_model: str,
+    *,
+    threshold: float,
+    string_threshold: float,
+    jaccard_min_token_len: int,
+) -> list[dict[str, Any]]:
+    """Merge concept pages whose name+definition embeddings exceed *threshold*.
+
+    Uses the configured embedding provider. Groups concepts greedily:
+    for every pair with cosine similarity >= threshold, sources and
+    definitions are unioned and the longest name is kept as canonical.
+
+    When embeddings are unavailable (``embedding_model == "hash"`` or
+    provider creation/embedding fails), falls back to a pure-Python
+    token-overlap (Jaccard) merge at *string_threshold* so dedup still
+    works offline.
+    """
+    if len(concepts) < 2:
+        return concepts
+
+    embed_texts = [_concept_embed_text(c) for c in concepts]
+    vecs: list[list[float]] | None = None
+
+    if embedding_model and embedding_model != "hash":
+        try:
+            provider = make_provider(embedding_model, dim=None)
+            vecs = [provider.embed(t) for t in embed_texts]
+        except Exception as exc:
+            logger.warning(
+                "Embedding merge disabled (%s); falling back to string similarity: %s",
+                embedding_model,
+                exc,
+            )
+            vecs = None
+
+    if vecs is not None:
+        n = len(concepts)
+        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine_similarity(vecs[i], vecs[j]) >= threshold]
+        groups = _union_find_groups(n, similar)
+        result = _merge_groups(concepts, groups)
+        merged_count = n - len(result)
+        if merged_count:
+            logger.info(
+                "Embedding merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
+                merged_count,
+                n,
+                len(result),
+                threshold,
+            )
+        return result
+
+    # Fallback: string-similarity (token Jaccard) merge.
+    n = len(concepts)
+    names = [c["name"] for c in concepts]
+    similar = [(i, j) for i in range(n) for j in range(i + 1, n) if _token_jaccard(names[i], names[j], min_token_len=jaccard_min_token_len) >= string_threshold]
+    groups = _union_find_groups(n, similar)
+    result = _merge_groups(concepts, groups)
     merged_count = n - len(result)
     if merged_count:
         logger.info(
-            "Embedding merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
+            "String merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
             merged_count,
             n,
             len(result),
-            threshold,
+            string_threshold,
         )
     return result
 
@@ -184,6 +244,8 @@ def attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[Any]) -> None:
 def build_edges(
     nodes: list[WikiNode],
     extractions: ExtractionSet,
+    *,
+    min_title_len: int,
 ) -> list[dict[str, Any]]:
     """Build cross-source entity and explicit related edges."""
     edges: list[dict[str, Any]] = []
@@ -240,7 +302,7 @@ def build_edges(
             if other.id == node.id:
                 continue
             other_title = other.title.lower().strip()
-            if len(other_title) < 4:  # ponytail: skip very short generic titles
+            if len(other_title) < min_title_len:  # skip very short generic titles
                 continue
             if other_title in content_lower:
                 pair = (min(node.id, other.id), max(node.id, other.id))

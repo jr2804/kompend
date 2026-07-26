@@ -652,16 +652,22 @@ class TestMergeSimilarConcepts:
     def test_skip_when_hash(self) -> None:
         """'hash' model skips embedding merge."""
         concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
-        result = merge_similar_concepts(concepts, "hash")
+        result = merge_similar_concepts(concepts, "hash", threshold=0.82, string_threshold=0.70, jaccard_min_token_len=1)
         assert result == concepts  # unchanged
 
     def test_skip_when_empty_model(self) -> None:
-        result = merge_similar_concepts([], "")
+        result = merge_similar_concepts([], "", threshold=0.82, string_threshold=0.70, jaccard_min_token_len=1)
         assert result == []
 
     def test_provider_failure_returns_unchanged(self) -> None:
         concepts = [{"name": "A", "sources": ["a.pdf"], "definitions": ["x"]}]
-        result = merge_similar_concepts(concepts, "nonexistent-model-xyz")
+        result = merge_similar_concepts(
+            concepts,
+            "nonexistent-model-xyz",
+            threshold=0.82,
+            string_threshold=0.70,
+            jaccard_min_token_len=1,
+        )
         assert result == concepts
 
     def test_merge_similar_names(self) -> None:
@@ -676,7 +682,13 @@ class TestMergeSimilarConcepts:
                 [1.0, 0.0, 0.0],  # "Posteriorgram"
                 [0.9, 0.1, 0.0],  # "Phoneme Posteriorgram" — very similar
             ]
-            result = merge_similar_concepts(concepts, "any")
+            result = merge_similar_concepts(
+                concepts,
+                "any",
+                threshold=0.82,
+                string_threshold=0.70,
+                jaccard_min_token_len=1,
+            )
 
         assert len(result) == 1
         # Longest name wins as canonical
@@ -694,7 +706,13 @@ class TestMergeSimilarConcepts:
                 [1.0, 0.0, 0.0],  # "Listening Effort"
                 [0.0, 1.0, 0.0],  # "Speech Intelligibility" — orthogonal
             ]
-            result = merge_similar_concepts(concepts, "any")
+            result = merge_similar_concepts(
+                concepts,
+                "any",
+                threshold=0.82,
+                string_threshold=0.70,
+                jaccard_min_token_len=1,
+            )
 
         assert len(result) == 2
 
