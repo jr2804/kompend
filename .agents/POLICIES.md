@@ -1,14 +1,8 @@
-# AGENTS.md — Policies
+# AGENTS.md — POLICIES
 
-Boundary rules, change constraints, and response format. Always applies.
+Always applicable. Boundaries, priorities, verification, checklist.
 
-## General Policies
-
-These rules apply to any project using the AGENTS.md framework.
-
-### Priorities
-
-If rules conflict, lower-numbered priority wins:
+## Priorities
 
 1. Correctness
 2. Evidence
@@ -17,57 +11,75 @@ If rules conflict, lower-numbered priority wins:
 5. Consistency
 6. Performance
 
-### Boundaries
+## Boundaries
 
 - NEVER fabricate paths, commits, APIs, config keys, env vars, test results,
   or benchmark numbers. If you don't know, say so.
-- NEVER guess at a command name, flag, or file path. Read the source or run
-  `--help` first.
-- NEVER delete or move files without explicit user instruction.
-- NEVER run destructive commands (`rm -rf`, `git reset --hard`, `git push
---force`) without explicit user confirmation.
-- NEVER add secrets, API keys, or tokens to any file. Use env vars.
-- NEVER create temporary files in the project root. Use the project's
-  temp directory or `tempfile.TemporaryDirectory()`.
+- NEVER guess at command names, flags, or paths. Read source or run `--help`.
+- NEVER add secrets, API keys, or tokens to files. Use env vars.
+- NEVER run destructive commands (`rm -rf`, `git reset --hard`,
+  `git push --force`) without explicit confirmation.
+- NEVER delete or move files without explicit instruction.
+- NEVER create temp files in project root. Use dedicated temp dir.
 
-### Change Constraints
+## Change constraints
 
-- Prefer minimal, surgical edits over large rewrites.
-- When editing, preserve existing formatting, indentation, and style.
-- Do not introduce new dependencies without explicit user instruction.
-- Do not refactor unrelated code while fixing a bug or adding a feature.
-- If a change requires updating tests, update only the tests directly affected.
+- Minimal, surgical edits. Preserve existing style.
+- No new dependencies without explicit instruction.
+- No unrelated refactoring while fixing a bug.
+- When changing tests, update only directly affected tests.
 
-### Completion
+## Code quality
 
-Before declaring completion, confirm:
+Universal defaults. Project-specific standards live in child AGENTS.md.
 
-- The change solves the stated problem
-- Relevant validation ran or gaps are stated
-- No known unintended side effects were introduced
-- No secrets were added or exposed
+- **SRP** — one reason to change per module/function. If a name needs "and",
+  split it.
+- **DRY** — before adding a function/constant/config block, check whether one
+  already exists. Extract on the _third_ occurrence (Rule of Three), not earlier.
+- **Redundant code** — remove dead branches, unreachable conditions, and unused
+  params/imports before finishing.
+- **Duplication vs. abstraction** — prefer a little duplication over the wrong
+  premature abstraction.
+- No new code-quality tooling, patterns, or value-object rules by default — opt
+  in per project.
 
-### Response Format
+## Completion checklist
 
-Be concise and specific. No filler, intros, sycophantic openers ("Great
-question!"), or restated requirements. Answer direct questions directly.
+- Change solves the stated problem
+- Relevant validation ran (or gaps explicitly stated)
+- No unintended side effects introduced
+- No secrets added or exposed
 
-For review, debugging, or analysis outputs, use:
-findings with references, conclusion, approach.
-Mention caveats and unverified risks.
+## Content rules (keep AGENTS.md lean)
 
-### Closeout
+- **No tree views.** Generate on demand with `rg --files | tree-cli --fromfile`.
+- **No history.** Git log has it. Only record decisions costly to rediscover
+  (in `.agents/HISTORY.md` with commit refs).
+- **No TODO lists.** Use issue trackers or beads.
 
-1. Run existing verification when relevant
-2. Report any docs intentionally left unchanged and why
+## Verification
 
-### Extension
+- Run `ruff check` on changed Python files before committing
+- Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
+- Run `uv run pytest tests/integration -x --timeout=120` for integration tests
+- Run `ty check src/knox` for type checking (mypy is not used)
+- Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
+- Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `mise run check-all` for the full local enforcement suite
 
-| Who                | When                         | What               |
-| ------------------ | ---------------------------- | ------------------ |
-| Project maintainer | Adopting new boundary rules  | Boundaries         |
-| Project maintainer | Changing workflow philosophy | Change Constraints |
-| Any contributor    | Noticing a missing policy    | Add accordingly    |
+## Response format
+
+Concise and specific. No filler, intros, or restated requirements.
+Answer direct questions directly.
+
+For review/debugging/analysis: findings with references, conclusion,
+approach. Mention caveats.
+
+## Closeout
+
+1. Run verification
+2. Report docs intentionally left unchanged and why
 
 ---
 

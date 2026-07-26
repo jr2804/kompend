@@ -9,6 +9,7 @@ run = [
 	"bun x skills add https://github.com/FlorianBruniaux/claude-code-ultimate-guide/tree/main/examples -s rtk-optimizer -a universal -y",
 	"bun x skills add shadcn/improve -a universal -y",
 	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-codegraph -a universal -y",
+	
 	# AI code review skills
 	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-fartrun -a universal -y",
 	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-sloppylint -a universal -y",
@@ -24,6 +25,8 @@ run = [
 	# Python coding
 	"bun x skills add https://github.com/jr2804/prompts -s python-ultimate -a universal -y",
 	"bun x skills add https://github.com/s2005/uv-skill -a universal -y",
+	"bun x skills add https://github.com/ramziddin/solid-skills -a universal -y",
+
 	# documentation skills
 	"bun x skills add https://github.com/nicobailon/visual-explainer -a universal -y",
 	"bun x skills add plannotator/effective-html -a universal -y",
