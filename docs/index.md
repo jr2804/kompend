@@ -52,7 +52,7 @@ knox query "what is the main result?"
 - **Distill** — Synthesize captured notes into coherent wiki pages
 - **Event hooks** — Pluggable callbacks at compile/capture/query/lint lifecycle points
 - **WiCER compilation** — Iterative compile-evaluate-refine loop for quality
-- **Multi-format output** — [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (default), Markdown (incl. Obsidian vault), JSON, Typst
+- **Multi-format output** — [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (default), Markdown (incl. Obsidian vault), JSON, Typst
 - **LLM-powered linting** — 8 structural rules + 4 LLM rules (incl. contradiction detection)
 
 ---

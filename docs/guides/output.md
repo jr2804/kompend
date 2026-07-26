@@ -3,35 +3,28 @@
 KNOX supports multiple output formats for the compiled wiki, controlled by the
 `compile.output.format` config key (default: ``okf``).
 
-## Open Knowledge Format (OKF) v0.1 (default)
+## Open Knowledge Format (OKF) v0.2 (default)
 
-KNOX produces **OKF v0.1**-compliant knowledge bundles by default. OKF is an open,
+KNOX produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an open,
 human- and agent-friendly format for representing knowledge — a directory of
-markdown files with YAML frontmatter.
+markdown files with YAML frontmatter. See the [OKF concept page](../concepts/open-knowledge-format.md)
+for the full field reference, trust signals, and the v0.1→v0.2 migration table.
 
 **Spec:** <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
 
-**Conformance (§9):**
+**Conformance (§11):**
 
-- Every concept file has parseable YAML frontmatter with a non-empty ``type`` field
-- Reserved filenames (``index.md``, ``log.md``) follow OKF structure
+- Frontmatter is built once by `VaultWriter.okf_frontmatter()`; every concept
+  file has parseable YAML with a non-empty ``type`` field
+- Trust fields: ``generated: {by, at}`` (supersedes v0.1 ``timestamp``),
+  ``status`` (default ``stable``), optional ``verified``
+- ``tags`` = topic tags only; ``source_files`` = provenance filename stems
+  (KNOX extension); ``sources`` = §5.1 structured objects — never bare strings
 - Cross-links use absolute bundle-relative paths: ``[Title](/concepts/title.md)``
-- ``index.md`` has grouped sections with descriptions; root declares ``okf_version: "0.1"``
+- ``index.md`` has grouped sections with descriptions; root declares ``okf_version: "0.2"``
 - ``log.md`` uses ISO date headings with bold action prefix
-- ``# Citations`` section with numbered ``[N]`` refs from provenance
-
-**Frontmatter fields:**
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| ``type`` | ✅ | OKF concept type (mapped from KNOX ``node_type``) |
-| ``title`` | ✅ | Human-readable page title |
-| ``description`` | ✅ | One-line summary (first line of content) |
-| ``tags`` | ✅ | Source filenames as cross-cutting tags |
-| ``timestamp`` | ✅ | ISO 8601 compile timestamp |
-| ``kind`` | — | KNOX extension: original node type |
-| ``compiled_at`` | — | KNOX extension: compile timestamp |
-| ``sources`` | — | KNOX extension: source filenames |
+- Per-claim attribution via footnotes ``[^id]`` keyed to ``sources[].id``
+  (replaces the v0.1 body ``# Citations`` numbered list)
 
 ## Legacy formats
 
@@ -63,7 +56,7 @@ or override one run with ``--set compile.output.flavor=<flavor>``).
 ## Examples
 
 ```bash
-# OKF v0.1 bundle (default)
+# OKF v0.2 bundle (default)
 knox compile
 
 # Legacy Obsidian vault mode

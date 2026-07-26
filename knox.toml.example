@@ -373,7 +373,7 @@ context_manager = "default"
 # ── Output settings ─────────────────────────────────────────────────────
 
 [compile.output]
-# Output format: okf (default, Open Knowledge Format v0.1) | markdown | json | typst
+# Output format: okf (default, Open Knowledge Format v0.2) | markdown | json | typst
 # OKF is the recommended format — it adds compliant frontmatter, absolute
 # bundle-relative links, reserved files (index.md, log.md), and citations.
 # Use "markdown" only for legacy Obsidian vault compatibility.
