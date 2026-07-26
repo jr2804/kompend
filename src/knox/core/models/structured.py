@@ -123,7 +123,7 @@ class StructuredFigure:
 StructuredData: TypeAlias = StructuredTable | StructuredEquation | StructuredFigure  # noqa: UP040
 
 
-def _structured_to_dict(s: StructuredData) -> dict[str, Any]:
+def structured_to_dict(s: StructuredData) -> dict[str, Any]:
     """Serialize a StructuredData variant with the canonical discriminator."""
     if isinstance(s, StructuredTable):
         return s.to_dict()
@@ -132,6 +132,9 @@ def _structured_to_dict(s: StructuredData) -> dict[str, Any]:
     if isinstance(s, StructuredFigure):
         return s.to_dict()
     raise TypeError(f"Unknown StructuredData type: {type(s).__name__}")
+
+
+_structured_to_dict = structured_to_dict  # backward-compat alias
 
 
 def structured_from_dict(d: dict[str, Any]) -> StructuredData:
