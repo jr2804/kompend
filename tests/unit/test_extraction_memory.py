@@ -47,9 +47,11 @@ def test_ingest_increments_ref_count_for_duplicate() -> None:
 
 def test_ingest_adds_entities() -> None:
     memory = ExtractionMemory()
-    memory.ingest(_extraction(
-        entities=[{"name": "Alice", "type": "person"}],
-    ))
+    memory.ingest(
+        _extraction(
+            entities=[{"name": "Alice", "type": "person"}],
+        )
+    )
     assert "alice" in memory.entities  # normalised key
     assert memory.entities["alice"].entity_type == "person"
 
@@ -86,13 +88,15 @@ def test_summarize_empty_returns_empty() -> None:
 
 def test_summarize_includes_top_concepts() -> None:
     memory = ExtractionMemory()
-    memory.ingest(_extraction(
-        concepts=[
-            {"name": "ai", "definition": "artificial intelligence"},
-            {"name": "ml", "definition": "machine learning"},
-        ],
-        tags=["tech"],
-    ))
+    memory.ingest(
+        _extraction(
+            concepts=[
+                {"name": "ai", "definition": "artificial intelligence"},
+                {"name": "ml", "definition": "machine learning"},
+            ],
+            tags=["tech"],
+        )
+    )
     summary = memory.summarize()
     assert "ai" in summary
     assert "ml" in summary
@@ -102,10 +106,12 @@ def test_summarize_includes_top_concepts() -> None:
 def test_summarize_respects_max_tokens() -> None:
     memory = ExtractionMemory()
     for i in range(10):
-        memory.ingest(_extraction(
-            concepts=[{"name": f"concept{i}", "definition": "x" * 200}],
-            tags=[f"tag{i}"],
-        ))
+        memory.ingest(
+            _extraction(
+                concepts=[{"name": f"concept{i}", "definition": "x" * 200}],
+                tags=[f"tag{i}"],
+            )
+        )
     unlimited = memory.summarize()
     limited = memory.summarize(max_tokens=20)
     assert len(limited) < len(unlimited)
@@ -118,10 +124,12 @@ def test_compact_keeps_last_three_section_summaries() -> None:
     """Compact keeps at most 3 most recent section summaries."""
     memory = ExtractionMemory()
     for i in range(5):
-        memory.ingest(_extraction(
-            concepts=[{"name": f"c{i}", "definition": "x"}],
-            summary=f"section {i}",
-        ))
+        memory.ingest(
+            _extraction(
+                concepts=[{"name": f"c{i}", "definition": "x"}],
+                summary=f"section {i}",
+            )
+        )
     assert len(memory.section_summaries) == 5
     memory.compact()
     assert len(memory.section_summaries) == 3
@@ -143,14 +151,18 @@ def test_compact_drops_singleton_concepts() -> None:
 def test_compact_reduces_to_title_only() -> None:
     """Compact clears definitions and context on remaining digests."""
     memory = ExtractionMemory()
-    memory.ingest(_extraction(
-        concepts=[{"name": "keep", "definition": "definition text"}],
-        entities=[{"name": "entity", "type": "person", "context": "context text"}],
-    ))
-    memory.ingest(_extraction(
-        concepts=[{"name": "keep", "definition": "definition text"}],
-        entities=[{"name": "entity", "type": "person", "context": "context text"}],
-    ))
+    memory.ingest(
+        _extraction(
+            concepts=[{"name": "keep", "definition": "definition text"}],
+            entities=[{"name": "entity", "type": "person", "context": "context text"}],
+        )
+    )
+    memory.ingest(
+        _extraction(
+            concepts=[{"name": "keep", "definition": "definition text"}],
+            entities=[{"name": "entity", "type": "person", "context": "context text"}],
+        )
+    )
     memory.compact()
     assert memory.concepts["keep"].definition == ""
     assert memory.entities["entity"].context == ""
@@ -161,12 +173,14 @@ def test_compact_reduces_to_title_only() -> None:
 
 def test_to_extraction_returns_valid_extraction() -> None:
     memory = ExtractionMemory()
-    memory.ingest(_extraction(
-        summary="test summary",
-        concepts=[{"name": "foo", "definition": "bar"}],
-        entities=[{"name": "Alice", "type": "person", "context": "ctx"}],
-        tags=["test"],
-    ))
+    memory.ingest(
+        _extraction(
+            summary="test summary",
+            concepts=[{"name": "foo", "definition": "bar"}],
+            entities=[{"name": "Alice", "type": "person", "context": "ctx"}],
+            tags=["test"],
+        )
+    )
     result = memory.to_extraction("test_source")
     assert result.source == "test_source"
     assert "foo" in [c["name"] for c in result.concepts]
@@ -190,7 +204,9 @@ def test_to_extraction_empty_memory_returns_empty() -> None:
 def test_token_estimate_grows_with_content() -> None:
     memory = ExtractionMemory()
     assert memory._estimate_tokens() == 0
-    memory.ingest(_extraction(
-        concepts=[{"name": "foo", "definition": "bar"}],
-    ))
+    memory.ingest(
+        _extraction(
+            concepts=[{"name": "foo", "definition": "bar"}],
+        )
+    )
     assert memory._estimate_tokens() > 0

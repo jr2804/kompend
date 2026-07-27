@@ -89,11 +89,7 @@ def extract_agentic(
         )
 
     # Build agent — with asset lookup tools when the store is populated
-    tools = (
-        build_asset_tools(compiler._asset_store)
-        if compiler._asset_store and compiler._asset_store.total_count() > 0
-        else None
-    )
+    tools = build_asset_tools(compiler._asset_store) if compiler._asset_store and compiler._asset_store.total_count() > 0 else None
     agent = ExtractionAgent(
         model_string=compiler._model or "",
         timeout=compiler._timeout,

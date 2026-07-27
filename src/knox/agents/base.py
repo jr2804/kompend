@@ -346,7 +346,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings=model_settings,
             retries=self._retries,
             capabilities=capabilities or None,
-            
         )
         if self.output_validator_func is not None:
             agent.output_validator(self.output_validator_func)

@@ -123,15 +123,11 @@ class ExtractionMemory:
         lines: list[str] = []
 
         if self.section_summaries:
-            line = "Section summary: " + " | ".join(
-                s[:120] for s in self.section_summaries
-            )
+            line = "Section summary: " + " | ".join(s[:120] for s in self.section_summaries)
             lines.append(line)
 
         if self.concepts:
-            concepts_sorted = sorted(
-                self.concepts.values(), key=lambda d: d.ref_count, reverse=True
-            )
+            concepts_sorted = sorted(self.concepts.values(), key=lambda d: d.ref_count, reverse=True)
             parts: list[str] = []
             for d in concepts_sorted:
                 label = d.title
@@ -141,9 +137,7 @@ class ExtractionMemory:
             lines.append("Concepts: " + "; ".join(parts))
 
         if self.entities:
-            entities_sorted = sorted(
-                self.entities.values(), key=lambda d: d.ref_count, reverse=True
-            )
+            entities_sorted = sorted(self.entities.values(), key=lambda d: d.ref_count, reverse=True)
             eparts: list[str] = []
             for d in entities_sorted:
                 label = d.name
@@ -180,41 +174,16 @@ class ExtractionMemory:
             self.section_summaries = self.section_summaries[-3:]
 
         # Drop low-ref concepts
-        self.concepts = {
-            k: v
-            for k, v in self.concepts.items()
-            if v.ref_count > 1
-        }
+        self.concepts = {k: v for k, v in self.concepts.items() if v.ref_count > 1}
         # Strip definitions
         for d in self.concepts.values():
             d.definition = ""
 
         # Drop low-ref entities
-        self.entities = {
-            k: v
-            for k, v in self.entities.items()
-            if v.ref_count > 1
-        }
+        self.entities = {k: v for k, v in self.entities.items() if v.ref_count > 1}
         # Strip context
         for d in self.entities.values():
             d.context = ""
-
-    def _estimate_tokens(self) -> int:
-        """Rough token estimate based on accumulated content.
-
-        Used by the agentic flow to decide when compaction is needed.
-        This is intentionally a fast approximation (~4 chars/token).
-        """
-        total_chars = 0
-        for d in self.concepts.values():
-            total_chars += len(d.title) + len(d.definition)
-        for d in self.entities.values():
-            total_chars += len(d.name) + len(d.entity_type) + len(d.context)
-        total_chars += sum(len(s) for s in self.section_summaries)
-        total_chars += len(" ".join(self.tags))
-        if not total_chars:
-            return 0
-        return total_chars // 4
 
     # ── Finalization ───────────────────────────────────────────────
 
@@ -253,15 +222,32 @@ class ExtractionMemory:
             tags=sorted(self.tags),
         )
 
+    def __len__(self) -> int:
+        return len(self.concepts) + len(self.entities)
+
+    def __bool__(self) -> bool:
+        return bool(self.concepts or self.entities or self.tags)
+
+    def _estimate_tokens(self) -> int:
+        """Rough token estimate based on accumulated content.
+
+        Used by the agentic flow to decide when compaction is needed.
+        This is intentionally a fast approximation (~4 chars/token).
+        """
+        total_chars = 0
+        for d in self.concepts.values():
+            total_chars += len(d.title) + len(d.definition)
+        for d in self.entities.values():
+            total_chars += len(d.name) + len(d.entity_type) + len(d.context)
+        total_chars += sum(len(s) for s in self.section_summaries)
+        total_chars += len(" ".join(self.tags))
+        if not total_chars:
+            return 0
+        return total_chars // 4
+
     # ── Helpers ────────────────────────────────────────────────────
 
     @staticmethod
     def _norm(title: str) -> str:
         """Normalize a title/name for dedup keys."""
         return title.strip().lower()
-
-    def __len__(self) -> int:
-        return len(self.concepts) + len(self.entities)
-
-    def __bool__(self) -> bool:
-        return bool(self.concepts or self.entities or self.tags)

@@ -126,11 +126,7 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
 
         tree = tree_by_source.get(source)
         id_map = asset_id_maps.get(source) if asset_id_maps else None
-        texts = (
-            build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map)
-            if tree is not None
-            else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
-        )
+        texts = build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
 
         if not texts:
             empty_ext = Extraction(source=source)

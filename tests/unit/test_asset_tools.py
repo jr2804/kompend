@@ -15,7 +15,7 @@ import pytest
 from knox.compilation.asset_tools import build_asset_tools
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
-from knox.core.models.structured import StructuredTable, StructuredFigure
+from knox.core.models.structured import StructuredFigure, StructuredTable
 from knox.core.pipeline.assets import AssetStore
 
 # ---------------------------------------------------------------------------
