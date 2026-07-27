@@ -96,12 +96,37 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     return min(candidates) if candidates else None
 
 
+def _coerce_context_window_cap(value: int | str | None) -> int | None:
+    """Coerce a raw config ``context_window_cap`` value to ``int | None``.
+
+    Config values reach this point as strings when loaded from TOML with
+    env-var interpolation (e.g. ``context_window_cap = "${CTX_CAP}"``),
+    since the surrounding quotes force a string type. Unset env vars
+    leave a literal ``${...}`` placeholder, which is treated as "unset"
+    (returns ``None``) rather than crashing.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text or "$" in text:
+        # Empty string or an unexpanded ``${VAR}`` placeholder — treat as unset.
+        logger.warning("context_window_cap %r is not a valid integer; ignoring", value)
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        logger.warning("context_window_cap %r is not a valid integer; ignoring", value)
+        return None
+
+
 def discover_context_window(
     model: str,
     *,
     fallback_max_input: int | None = None,
     fallback_max_output: int | None = None,
-    context_window_cap: int | None = None,
+    context_window_cap: int | str | None = None,
 ) -> ContextWindow:
     """Discover the context window for *model*.
 
@@ -174,8 +199,9 @@ def discover_context_window(
         )
         raise LookupError(msg)
 
-    if context_window_cap is not None:
-        max_input = min(max_input, context_window_cap)
-        max_output = min(max_output, context_window_cap)
+    cap = _coerce_context_window_cap(context_window_cap)
+    if cap is not None:
+        max_input = min(max_input, cap)
+        max_output = min(max_output, cap)
 
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)
