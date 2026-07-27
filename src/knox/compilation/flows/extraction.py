@@ -25,6 +25,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.asset_mention_rewriter import rewrite_asset_mentions as _rewrite_asset_mentions
 from knox.compilation.asset_registry import AssetIdMap
+from knox.compilation.flows.agentic import extract_agentic
 from knox.compilation.flows.assembly import build_tree_texts
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
@@ -154,6 +155,31 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         batch_extractions: list[Extraction | None] = []
 
         strategy = compiler._config.llm.extraction_strategy
+
+        if strategy == ExtractionStrategy.AGENTIC:
+            # Agentic: structured memory with compaction — sections are
+            # processed sequentially, not batched/merged.
+            agentic_result = extract_agentic(compiler, source, texts, extraction_system)
+            if agentic_result is not None:
+                _rewrite_extraction_mentions(agentic_result, id_map)
+                extractions.add(agentic_result)
+            compiler._extraction_stats.append(
+                {
+                    "source": source,
+                    "summary": agentic_result.summary if agentic_result else "",
+                    "duration_s": round(time.monotonic() - src_start, 1),
+                    "summary_chars": len(agentic_result.summary) if agentic_result else 0,
+                    "summary_words": len(agentic_result.summary.split()) if agentic_result else 0,
+                    "entity_count": len(agentic_result.entities) if agentic_result else 0,
+                    "concept_count": len(agentic_result.concepts) if agentic_result else 0,
+                    "tag_count": len(agentic_result.tags) if agentic_result else 0,
+                    "batches": len(texts),
+                }
+            )
+            if compiler._batch_tracker.should_stop():
+                break
+            continue
+
         if strategy == ExtractionStrategy.INCREMENTAL and len(batches_list) > 1:
             batch_extractions, _ = extract_incremental(compiler, source, batches_list, extraction_system)
         else:
