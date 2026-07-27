@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from knox.compilation.base import BaseCompiler
+from knox.compilation.concept_keys import is_structural_concept
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_EXCERPT_CHARS
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
@@ -362,10 +363,19 @@ class GraphCompiler(BaseCompiler):
         for entity_name, node_indices in entity_location.items():
             if not entity_name or not entity_name.strip():
                 continue
+            # Drop table/spreadsheet structural artifacts (column headers,
+            # field labels, generic metadata labels) the same way the
+            # TwoPhase backend does, so they never become concept pages on
+            # either compiler.
+            if is_structural_concept(entity_name):
+                continue
             sources: set[str] = set()
             for idx in node_indices:
                 src = node_sources.get(nodes[idx].id)
-                if src is not None:
+                # Skip pseudo-source ids emitted by the table layer (e.g.
+                # ``table.data_sources``) — they are not real files and
+                # only pollute concept provenance.
+                if src is not None and not src.startswith("table"):
                     sources.add(src)
             if len(sources) >= min_sources:
                 candidates.append((entity_name, node_indices, sources))

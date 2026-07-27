@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, _normalize_concept_key
+from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -528,33 +528,33 @@ class TestNormalizeConceptKey:
 
     def test_strip_acronym(self) -> None:
 
-        assert _normalize_concept_key("Deep Neural Networks (DNNs)") == "deep neural network"
-        assert _normalize_concept_key("Short-Time Objective Intelligibility (STOI)") == "short time objective intelligibility"
-        assert _normalize_concept_key("Binaural Unmasking (BU)") == "binaural unmasking"
+        assert normalize_concept_key("Deep Neural Networks (DNNs)") == "deep neural network"
+        assert normalize_concept_key("Short-Time Objective Intelligibility (STOI)") == "short time objective intelligibility"
+        assert normalize_concept_key("Binaural Unmasking (BU)") == "binaural unmasking"
 
     def test_strip_mixed_case_acronym(self) -> None:
 
-        assert _normalize_concept_key("Mean Temporal Distance (M-Measure)") == "mean temporal distance"
-        assert _normalize_concept_key("Mean Temporal Distance (MTD)") == "mean temporal distance"
+        assert normalize_concept_key("Mean Temporal Distance (M-Measure)") == "mean temporal distance"
+        assert normalize_concept_key("Mean Temporal Distance (MTD)") == "mean temporal distance"
 
     def test_keep_year_in_parens(self) -> None:
 
-        assert _normalize_concept_key("ITU-T P.58 (2023)") == "itu t p.58 (2023)"
+        assert normalize_concept_key("ITU-T P.58 (2023)") == "itu t p.58 (2023)"
 
     def test_hyphen_to_space(self) -> None:
 
-        assert _normalize_concept_key("Short-Time") == "short time"
+        assert normalize_concept_key("Short-Time") == "short time"
 
     def test_case_fold(self) -> None:
 
-        assert _normalize_concept_key("Deep Neural Network") == "deep neural network"
-        assert _normalize_concept_key("Deep neural network") == "deep neural network"
+        assert normalize_concept_key("Deep Neural Network") == "deep neural network"
+        assert normalize_concept_key("Deep neural network") == "deep neural network"
 
     def test_plural_collapse(self) -> None:
 
         # -s → singular
-        assert _normalize_concept_key("Networks") == "network"
-        assert _normalize_concept_key("Posteriorgrams") == "posteriorgram"
+        assert normalize_concept_key("Networks") == "network"
+        assert normalize_concept_key("Posteriorgrams") == "posteriorgram"
 
 
 class TestConceptPagesMerge:

@@ -9,7 +9,6 @@ from __future__ import annotations
 import functools
 import hashlib
 import os
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +16,10 @@ from typing import Any
 from slugify import slugify as _slugify_impl
 
 from knox.agents.deps import GenerationDeps, PipelineAgentDeps
+from knox.compilation.concept_keys import (
+    is_structural_concept,
+    normalize_concept_key,
+)
 from knox.compilation.schema import LLMOutputError
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.templates import get_template_loader
@@ -82,39 +85,6 @@ def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
         chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
     """
     return max(1, int(chars / _get_chars_per_token(default=chars_per_token)))
-
-
-_ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
-
-
-def _normalize_concept_key(name: str) -> str:
-    """Normalize a concept name for merge-key deduplication.
-
-    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
-    and collapses English plurals on the last word (heuristic).
-    ``name`` is the output of :func:`_concept_name` so it is never empty.
-
-    Examples::
-
-        "Deep Neural Networks (DNNs)"  → "deep neural network"
-        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
-        "Deep neural network"  → "deep neural network"
-        "Phoneme posteriorgrams" → "phoneme posteriorgram"
-    """
-    text = _ACRONYM_RE.sub("", name)
-    text = text.replace("-", " ").lower().strip()
-    if not text:
-        return ""
-    words = text.split()
-    last = words[-1]
-    if len(last) > 3:
-        if last.endswith("ies"):
-            words[-1] = last[:-3] + "y"
-        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
-            words[-1] = last[:-2]
-        elif last.endswith("s") and not last.endswith("ss"):
-            words[-1] = last[:-1]
-    return " ".join(words).strip()
 
 
 def slugify(text: str, max_length: int | None = None) -> str:
@@ -346,35 +316,10 @@ _CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
-# Structural artifacts from spreadsheet/table-heavy sources that the LLM
-# frequently mis-extracts as concepts (e.g. "Table Data", "data_id value",
-# "Name", "Source Filename"). Matched against the normalized concept key
-# (lowercase, hyphens → spaces, stripped of parentheticals). Underscores
-# are kept by the normalizer so the regex uses [._ ] to cover both.
-_STRUCTURAL_CONCEPT_RE = re.compile(
-    r"^(?:"
-    r"table[._ ]?data(?:[._ ]?(?:sources?|definitions?|sources? definitions?|definition schema))?s?"
-    r"|data[._ ]?(?:id|source|definition)s?"
-    r"|data[._ ]?id[._ ]?value(?:[._ ]?source[._ ]?filename)?"
-    r"|name"
-    r"|source(?:[._ ]?filename)?"
-    r"|value"
-    r"|definition"
-    r"|source[._ ]?table"
-    r")$"
-)
-
-
-def _is_structural_concept(name: str) -> bool:
-    """Return True if *name* is a table/spreadsheet structural artifact.
-
-    These are column headers, field labels, and metadata labels that
-    small models extract from table-heavy sources but which never
-    warrant a wiki page. The check uses the normalized key so that
-    casing, punctuation, and parenthetical acronyms don't bypass it.
-    """
-    key = _normalize_concept_key(name)
-    return bool(_STRUCTURAL_CONCEPT_RE.match(key))
+# Structural-concept filtering lives in :mod:`knox.compilation.concept_keys`
+# so the ``wicer`` (GraphCompiler) and TwoPhase backends share one
+# implementation. Re-exported here for callers that already import it
+# from this module.
 
 
 def _concept_name(concept: dict[str, Any]) -> str:
@@ -405,7 +350,7 @@ class ExtractionSet:
 
         Output schema: ``{name, definition, sources: [str], definitions: [str]}``
 
-        Concepts whose ``_normalize_concept_key`` collides are merged into one.
+        Concepts whose ``normalize_concept_key`` collides are merged into one.
         The canonical name is the longest variant (most descriptive).
         Concept names are salvaged tolerantly: the extraction prompt asks for
         ``name``, but LLMs sometimes return ``concept``/``title``/``term``.
@@ -418,9 +363,9 @@ class ExtractionSet:
                 name = _concept_name(concept)
                 if not name or name in _RESERVED_CONCEPT_NAMES or name.startswith("vlm_"):
                     continue
-                if _is_structural_concept(name):
+                if is_structural_concept(name):
                     continue
-                key = _normalize_concept_key(name)
+                key = normalize_concept_key(name)
                 if not key:
                     continue
                 if key not in merged:
