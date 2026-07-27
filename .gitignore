@@ -77,3 +77,4 @@ mcporter.json
 # Pandoc installer (downloaded by build script, not tracked)
 *.msi
 
+.beads/.auto-import-issues.jsonl
