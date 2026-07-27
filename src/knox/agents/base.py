@@ -30,7 +30,7 @@ from abc import ABC
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
-from pydantic_ai import Agent, NativeOutput
+from pydantic_ai import Agent, NativeOutput, Tool
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -153,6 +153,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         context_manager: str | bool = False,
         context_window: int | None = None,
         delta_retry_enabled: bool = True,
+        tools: list[Tool] | None = None,
     ) -> None:
         self._model_string = model_string
         self._timeout = timeout
@@ -165,6 +166,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self._context_manager = context_manager
         self._context_window = context_window
         self._delta_retry_enabled = delta_retry_enabled
+        self._tools = tools or []
         # User-defined skills (skill_name -> instructions, injected into system prompt)
         self._skills: dict[str, str] = skills or {}
         # The PydanticAI Agent is constructed lazily (on first run() call)
@@ -344,6 +346,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model_settings=model_settings,
             retries=self._retries,
             capabilities=capabilities or None,
+            
         )
         if self.output_validator_func is not None:
             agent.output_validator(self.output_validator_func)
