@@ -18,16 +18,14 @@ from pathlib import Path
 from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.deps import CategorizeDeps
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths, is_protected_source
-from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
-_loader = get_template_loader()
 
 _FILENAME_RE = re.compile(r"[^a-z0-9-]+")
 
@@ -215,19 +213,15 @@ def propose_categories(
     if not extractions:
         return CategoryTree()
 
-    _loader.render(
-        "organize/categorize_system.md.j2",
+    files_json = _build_files_payload(extractions)
+
+    deps = CategorizeDeps(
+        files_json=files_json,
         max_depth=config.max_depth,
         min_subcategories=config.min_subcategories,
         min_files_per_category=config.min_files_per_category,
+        timeout=categorize_agent._timeout,
     )
-    files_json = _build_files_payload(extractions)
-    prompt = _loader.render(
-        "organize/categorize_prompt.md.j2",
-        files_json=files_json,
-    )
-
-    deps = PipelineAgentDeps(text=prompt, source_id="categorize", timeout=categorize_agent._timeout)
     try:
         result = categorize_agent.run(deps)
     except Exception:

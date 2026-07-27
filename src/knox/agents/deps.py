@@ -158,3 +158,33 @@ class WicerDiagnoseDeps:
     failures_json: str
     source_id: str
     timeout: float = 120.0
+
+
+@dataclass
+class CategorizeDeps:
+    """Runtime context for the ``knox organize`` categorisation stage.
+
+    The categorise agent proposes a hierarchical directory tree for the
+    files in ``sources/``. The prompt template
+    ``organize/categorize_prompt.md.j2`` expects ``files_json``, and the
+    system template ``organize/categorize_system.md.j2`` expects the
+    three tree-constraint values (``max_depth``, ``min_subcategories``,
+    ``min_files_per_category``).
+
+    Attributes:
+        files_json: Serialised file/summary/tags payload for the prompt
+            (built by :func:`knox.organize.categorize._build_files_payload`).
+        max_depth: Maximum category tree depth.
+        min_subcategories: Minimum sibling subcategories for a non-leaf
+            category.
+        min_files_per_category: Minimum files a leaf category must hold.
+        source_id: Log/provenance label (always ``"categorize"``).
+        timeout: Per-call timeout in seconds.
+    """
+
+    files_json: str
+    max_depth: int = 3
+    min_subcategories: int = 2
+    min_files_per_category: int = 2
+    source_id: str = "categorize"
+    timeout: float = 120.0
