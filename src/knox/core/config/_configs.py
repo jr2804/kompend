@@ -128,10 +128,16 @@ class ExtractionStrategy(StrEnum):
     - ``incremental``: rolling — feed chunks sequentially into one agent
       conversation via ``message_history``, so each batch sees the
       accumulated context from prior batches.
+    - ``agentic``: stateful — one agent per source walks sections in
+      order, accumulating a structured ``ExtractionMemory`` (concepts,
+      entities, tags) with compaction-managed digest injection between
+      sections. Best coherence for long/high-value sources; sequential
+      within a source, not cacheable per-batch.
     """
 
     REDUCE = "reduce"
     INCREMENTAL = "incremental"
+    AGENTIC = "agentic"
 
 
 # ── Compile sub-configs ──────────────────────────────────────────────────

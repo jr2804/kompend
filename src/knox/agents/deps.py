@@ -32,11 +32,16 @@ class PipelineAgentDeps:
         timeout: Per-call timeout in seconds. Forwarded to
             PydanticAI's model settings so a single slow call doesn't
             stall the pipeline.
+        extra_context: Optional structured context string injected
+            as a system message before the user prompt (used by the
+            AGENTIC extraction strategy to inject the memory digest).
+            Empty by default; ignored by non-agentic strategies.
     """
 
     text: str
     source_id: str
     timeout: float = 120.0
+    extra_context: str = ""
 
 
 @dataclass
