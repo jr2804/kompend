@@ -30,6 +30,7 @@ from pydantic_ai.messages import ModelRequest, SystemPromptPart
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
 from knox.compilation._two_phase_core import Extraction
+from knox.compilation.asset_tools import build_asset_tools
 from knox.compilation.extraction_memory import ExtractionMemory
 from knox.core.models.enums import CacheDeps
 from knox.core.utils.exceptions import LLMOutputError
@@ -87,6 +88,12 @@ def extract_agentic(
             full_text_hash,
         )
 
+    # Build agent — with asset lookup tools when the store is populated
+    tools = (
+        build_asset_tools(compiler._asset_store)
+        if compiler._asset_store and compiler._asset_store.total_count() > 0
+        else None
+    )
     agent = ExtractionAgent(
         model_string=compiler._model or "",
         timeout=compiler._timeout,
@@ -97,6 +104,7 @@ def extract_agentic(
         reasoning_effort=compiler._config.llm.reasoning_effort,
         context_manager=compiler._config.llm.context_manager,
         context_window=compiler._context_window.max_input,
+        tools=tools,
     )
 
     memory = ExtractionMemory()
@@ -115,6 +123,20 @@ def extract_agentic(
         # Build message history with memory digest injected as a system message
         memory_digest = memory.summarize(max_tokens=budget.extract_output_max)
         message_history: list[Any] = []
+        if tools:
+            message_history.append(
+                ModelRequest(
+                    parts=[
+                        SystemPromptPart(
+                            content="You have access to on-demand asset lookup tools: "
+                            "`get_table(asset_id)` returns pipe-delimited table text; "
+                            "`get_figure_description(asset_id)` returns figure caption/alt-text. "
+                            "Use them when you need full table data or figure details "
+                            "beyond the compact `\u00b6` reference in the section text."
+                        )
+                    ]
+                )
+            )
         if memory_digest.strip():
             msg = ModelRequest(parts=[SystemPromptPart(content=f"=== Context from prior sections ===\n{memory_digest}")])
             message_history.append(msg)
