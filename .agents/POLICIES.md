@@ -115,8 +115,10 @@ approach. Mention caveats.
 ### Implementation Plans
 
 - Implementation plans, refactoring plans, and design docs go in
-  `.agents/plans/` — NOT under version control (gitignored).
-- NEVER commit implementation plans to git. They are working artifacts,
+  `.agents/plans/<feature>/` — NOT under version control (gitignored).
+- Name plans descriptively and prefix them with phase numbers, so that the file order
+  corresponds to implementation order, e.g. `01-citation-extraction.md`, `02-refactoring-llm-agent.md`.
+- NEVER commit implementation plans to git. They are highly-mutable working artifacts,
   not shipped documentation.
 - Shipped docs (user-facing guides, API references) go in `docs/` and
   ARE committed.
