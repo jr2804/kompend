@@ -35,7 +35,10 @@ flavor = "obsidian"
 extract_output_max = 16384
 gen_output_max = 32768
 lint_output_max = 16384
-# chunk_size_max = "${KNOX_CLOUD_CTX_CAP}"   # uncomment with env var set
+# chunk_size_max is left at its default (131072). The chunker already clamps
+# the effective chunk size to the discovered context window
+# (clamp(context_window - reserve, chunk_size_min, chunk_size_max)), so there
+# is no need to mirror KNOX_*_CTX_CAP here.
 
 [lint]
 enabled = [

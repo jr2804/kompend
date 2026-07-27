@@ -35,8 +35,13 @@ $ErrorActionPreference = "Stop"
 Write-Host "=== Syncing environment (uv sync) ===" -ForegroundColor Cyan
 $ProjectRoot = $PSScriptRoot | Split-Path -Parent
 
+# Anchor cwd to the repo root so every relative path and `uv run` (which uses
+# the venv in $ProjectRoot) resolves correctly, regardless of where the script
+# is invoked from.
+Set-Location $ProjectRoot
+
 if (-not $Preview) {
-    & uv sync -U --directory $ProjectRoot
+    & uv sync -U
     if ($LASTEXITCODE -ne 0) {
         Write-Error "uv sync failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
@@ -44,7 +49,12 @@ if (-not $Preview) {
 }
 
 # ------ Validate config ---------------------------------------------------------------------------------------------------------------------------------------------------------------
-$ConfigPath = Resolve-Path $ConfigFile -ErrorAction Stop
+# Validate the config exists (relative to cwd = $ProjectRoot). Keep $ConfigFile
+# in its original (relative) form for passing to `init --config` — an absolute
+# resolved path would carry backslashes that get mangled by the native-command
+# call layer on Windows.
+$null = Resolve-Path $ConfigFile -ErrorAction Stop
+$ConfigPath = $ConfigFile
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
 # ------ Default models (per-config env-var overrides) ------------------------------------------------
@@ -73,16 +83,19 @@ if ($IsLocalConfig) {
 #   scripts\config-cloud.toml  →  demo-wiki-cloud
 #   scripts\config-local.toml   →  demo-wiki-local
 $OutputName = $BaseName -replace "^config-", "demo-wiki-"
-$OutputPath = Join-Path $ProjectRoot $OutputName
+# Relative to cwd ($ProjectRoot) — avoids backslash-mangling when passed to
+# native commands via `--wiki-dir`. knox resolves it against cwd.
+$OutputPath = $OutputName
 
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
-$InputFiles = Join-Path $ProjectRoot "tests/data/sources/*.pdf"
-$UrlFile = Join-Path $ProjectRoot "tests/data/sources/urls.txt"
+# Input sources are relative to cwd as well.
+$InputFiles = "tests/data/sources/*.pdf"
+$UrlFile = "tests/data/sources/urls.txt"
 
-$Batch2Dir = Join-Path $ProjectRoot "tests/data/batch2"
-$Batch2Pdf = Join-Path $ProjectRoot "tests/data/batch2/*.pdf"
-$Batch2Urls = Join-Path $Batch2Dir "urls.txt"
+$Batch2Dir = "tests/data/batch2"
+$Batch2Pdf = "tests/data/batch2/*.pdf"
+$Batch2Urls = "$Batch2Dir/urls.txt"
 
 # ------ Clean ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # --force --keep-cache on knox init handles directory reset + cache
@@ -121,8 +134,7 @@ $IngestArgs = @(
     "--wiki-dir", $OutputPath,
     "ingest",
     $InputFiles,
-    "--url-file", $UrlFile,
-    "--workers", "1"
+    "--url-file", $UrlFile
 )
 
 # $Force no longer forces re-parse. The cache-skip logic in ingest
@@ -168,8 +180,7 @@ Write-Host "=== Stage 2: Compile (index + chunk + resolve + compile + output) ==
 $CompileArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "compile",
-    "--workers", "1"
+    "compile"
 )
 
 Write-Host ""
@@ -193,8 +204,7 @@ $Ingest2Args = @(
     "--wiki-dir", $OutputPath,
     "ingest",
     $Batch2Pdf,
-    "--url-file", $Batch2Urls,
-    "--workers", "1"
+    "--url-file", $Batch2Urls
 )
 
 Write-Host ""
@@ -215,8 +225,7 @@ Write-Host "=== Stage 4: Re-compile (with batch 2 content) ===" -ForegroundColor
 $Compile2Args = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "compile",
-    "--workers", "1"
+    "compile"
 )
 
 Write-Host ""
@@ -332,7 +341,7 @@ if ($DemoContent) {
             $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "learn", $item.text)
             if ($item.tags) {
                 foreach ($tag in $item.tags) {
-                    $cmd += @("--tag", $tag)
+                    $cmd += @("--tags", $tag)
                 }
             }
             Write-Host ""
@@ -370,9 +379,13 @@ if ($DemoContent) {
             $resolvedCount = 0
             if ($item.sources) {
                 foreach ($src in $item.sources) {
-                    $resolved = Get-ChildItem -Path (Join-Path $OutputPath "sources") -Filter $src -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+                    # Resolve within the vault's sources/ dir; emit a path relative
+                    # to cwd ($ProjectRoot) with forward slashes to avoid the
+                    # native-command backslash-mangling on Windows.
+                    $resolved = Get-ChildItem -Path "$OutputPath/sources" -Filter $src -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
                     if ($resolved) {
-                        $writeArgs += @("--source", $resolved)
+                        $rel = $resolved.Replace((Get-Location).Path + [System.IO.Path]::DirectorySeparatorChar, "").Replace("\", "/")
+                        $writeArgs += @("--source", $rel)
                         $resolvedCount++
                     } else {
                         Write-Host "  Warning: source '$src' not found in vault" -ForegroundColor Yellow
@@ -449,7 +462,8 @@ Write-Host "=== Stage 12: Organize (dry-run) ===" -ForegroundColor Cyan
 $OrganizeArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "organize"
+    "organize",
+    "--dry-run"
 )
 Write-Host ""
 Write-Host ($OrganizeArgs -join " ") -ForegroundColor DarkGray
