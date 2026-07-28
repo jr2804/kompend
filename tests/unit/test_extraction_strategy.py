@@ -13,7 +13,16 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+
 from knox.compilation._two_phase_core import Extraction
+from knox.compilation.flows import extraction as ext_module
+from knox.compilation.flows.extraction import (
+    _compact_history_inplace,
+    _estimate_history_tokens,
+    _estimate_tokens,
+    _synthetic_history_response,
+)
 from knox.compilation.schema import Concept, Entity, ExtractionOutput
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.core.config._configs import (
@@ -158,3 +167,121 @@ class TestReduceExtractions:
             # Falls back to naive merge
             assert "A." in result.summary
             assert "B." in result.summary
+
+
+# ── History compaction helpers (extract_incremental regression guard) ────
+
+
+class TestHistoryCompaction:
+    """Regression tests for the message-history compaction added to fix
+    the empty-response bug in long-document incremental extraction.
+
+    These tests exercise the helpers directly — no LLM call, no agent.
+    """
+
+    def test_estimate_tokens_is_chars_div_4(self) -> None:
+
+        assert _estimate_tokens("") == 1  # min 1
+        assert _estimate_tokens("abcd") == 1
+        assert _estimate_tokens("abcdefgh") == 2
+
+    def test_estimate_history_tokens_sums_part_contents(self) -> None:
+
+
+        history = [
+            ModelRequest(parts=[UserPromptPart(content="hello world!")]),  # 12 chars → 3 tokens
+            ModelResponse(parts=[TextPart(content="reply here")]),  # 10 chars → 2 tokens
+        ]
+        # 22 chars / 4 = 5 tokens
+        assert _estimate_history_tokens(history) == 5
+
+    def test_compact_drops_oldest_pair_until_under_budget(self) -> None:
+
+
+        # Two pairs of (request, response). Budget set so the oldest pair
+        # must be dropped but the most-recent pair survives.
+        history = [
+            ModelRequest(parts=[UserPromptPart(content="x" * 400)]),  # 100 tokens
+            ModelResponse(parts=[TextPart(content="y" * 400)]),  # 100 tokens
+            ModelRequest(parts=[UserPromptPart(content="a" * 40)]),  # 10 tokens
+            ModelResponse(parts=[TextPart(content="b" * 40)]),  # 10 tokens
+        ]
+        # Total = 220 tokens. Budget = 50 → must drop the first pair.
+        _compact_history_inplace(history, max_tokens=50)
+        assert len(history) == 2
+        # The most-recent pair is retained.
+        first_content = getattr(history[0].parts[0], "content", "")
+        assert isinstance(first_content, str)
+        assert first_content.startswith("a")
+
+    def test_compact_keeps_at_least_last_pair_when_still_over_budget(self) -> None:
+
+
+        # One pair that alone exceeds the budget. Compaction must not
+        # delete everything — the agent needs at least one pair to continue.
+        history = [
+            ModelRequest(parts=[UserPromptPart(content="x" * 1000)]),
+            ModelResponse(parts=[TextPart(content="y" * 1000)]),
+        ]
+        _compact_history_inplace(history, max_tokens=10)
+        assert len(history) == 2  # nothing dropped
+
+    def test_compact_empty_history_is_noop(self) -> None:
+
+        history: list[object] = []
+        _compact_history_inplace(history, max_tokens=10)
+        assert history == []
+
+    def test_synthetic_history_response_summarises_extraction(self) -> None:
+
+        ext = Extraction(
+            source="doc.md",
+            summary="Doc is about X.",
+            entities=[{"name": "Entity1"}, {"name": "Entity2"}],
+            concepts=[{"name": "ConceptA"}, {"name": "ConceptB"}],
+            tags=["x"],
+        )
+        msg = _synthetic_history_response(ext)
+        assert isinstance(msg, ModelResponse)
+        text = getattr(msg.parts[0], "content", "")
+        assert isinstance(text, str)
+        assert "Doc is about X." in text
+        assert "ConceptA" in text
+        assert "Entity1" in text
+
+
+class TestExtractIncrementalHistoryCompaction:
+    """End-to-end check: extract_incremental invokes the compaction helper
+    between batches and on cache hits. Mocks the agent so no real LLM call.
+    """
+
+    def test_cache_hit_appends_synthetic_response(self) -> None:
+        """When a batch is served from cache, history gains a synthetic summary."""
+        compiler = _make_compiler()
+        compiler._config.no_cache = False
+
+        cached_ext = Extraction(
+            source="doc.md",
+            summary="Cached summary.",
+            entities=[],
+            concepts=[{"name": "CachedConcept"}],
+            tags=[],
+        )
+        # Patch the cache store to always hit on the first batch.
+        compiler._cache_store.get = MagicMock(return_value=cached_ext)
+
+        # Patch _synthetic_history_response so we can assert it was called.
+        with patch.object(ext_module, "_synthetic_history_response") as synth_mock, \
+             patch.object(ext_module, "_compact_history_inplace") as compact_mock:
+            results, stopped = ext_module.extract_incremental(
+                compiler,
+                source="doc.md",
+                batches_list=["batch 1 text"],
+                extraction_system="sys",
+            )
+
+        assert stopped is False
+        assert len(results) == 1
+        assert results[0] is cached_ext
+        synth_mock.assert_called_once_with(cached_ext)
+        compact_mock.assert_called_once()
