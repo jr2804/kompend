@@ -300,17 +300,28 @@ reasoning_effort = "none"
 # Extraction strategy for multi-chunk sources:
 # - "incremental" (default): feeds chunks sequentially into one agent
 #   conversation via message_history, so each batch sees accumulated
-#   context from prior batches within the same document.
+#   context from prior batches within the same document. History is
+#   compacted when its token estimate exceeds 2x extract_output_max
+#   (oldest batches dropped first) so the context window never
+#   overflows — which would otherwise cause empty model responses.
 # - "reduce": map-reduce — extract each batch independently, then a
 #   second LLM pass merges partial results into a coherent
 #   document-level extraction.
+# - "agentic": stateful — one agent per source walks sections in
+#   order, accumulating a structured ExtractionMemory (concepts,
+#   entities, tags) with explicit compaction (drop ref_count==1,
+#   keep last 3 section summaries, strip definitions on survivors).
+#   Cross-section context is injected as a compact SystemPromptPart
+#   digest rather than raw message history, so it stays bounded
+#   regardless of document length. Best coherence for long/high-value
+#   sources; source-level cache only (no per-batch cache).
 extraction_strategy = "incremental"
 
 # Context-window management for multi-turn / multi-batch agents
-# (incremental extraction, WiCER). When the conversation history nears the
-# model's context budget, `summarization-pydantic-ai` compresses it via an
-# LLM summary rather than dropping messages. Replaces the old
-# `_compact_messages` workaround.
+# (WiCER probe/judge loops; NOT incremental extraction, which has its
+# own compaction). When the conversation history nears the model's
+# context budget, `summarization-pydantic-ai` compresses it via an
+# LLM summary rather than dropping messages.
 #   "default"    — compress at 90% of the context window (recommended)
 #   "aggressive" — compress at 70%, keep 5 trailing messages
 #   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)

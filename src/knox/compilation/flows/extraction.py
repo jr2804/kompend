@@ -13,6 +13,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from pydantic_ai.messages import ModelResponse, TextPart
+
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
 from knox.agents.extraction_reduce import ExtractionReduceAgent
@@ -302,8 +304,17 @@ def extract_incremental(
     Per-batch cache is checked first — cached batches skip the LLM call
     entirely. Only uncached batches are sent to the model, and the
     message history threads between consecutive uncached batches.
+
+    History compaction: the threaded ``message_history`` is compacted
+    when its estimated token cost exceeds ``extract_output_max * 2``.
+    The oldest (request, response) pair is dropped first, preserving
+    the most recent context the model actually needs. Without this
+    guard, long documents with many batches fill the model's context
+    window and the model returns empty (``finish_reason: stop``, no
+    content) — see commit history for the regression this fixed.
     """
     budget = compiler._budget
+    compaction_threshold = budget.extract_output_max * 2
     results: list[Extraction | None] = []
     history: list[Any] = []
     agent: ExtractionAgent | None = None
@@ -319,6 +330,11 @@ def extract_incremental(
             if cached is not None:
                 logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
                 results.append(cached)
+                # Inject a synthetic summary of the cached result so the
+                # next uncached batch sees coherent cross-batch context
+                # (otherwise the agent loses the document thread).
+                history.append(_synthetic_history_response(cached))
+                _compact_history_inplace(history, compaction_threshold)
                 continue
             logger.info(
                 "TwoPhase: extraction cache miss for '%s' batch %d (text_hash=%.16s)",
@@ -350,6 +366,7 @@ def extract_incremental(
                 message_history=history if history else None,
             )
             history = new_messages
+            _compact_history_inplace(history, compaction_threshold)
             compiler._batch_tracker.record(failed=False)
             result = Extraction(
                 source=source,
@@ -372,6 +389,75 @@ def extract_incremental(
         if compiler._batch_tracker.should_stop():
             return results, True
     return results, False
+
+
+# Roughly 4 characters per token — the standard quick estimate for mixed
+# English prose. Over-estimating slightly is safe (compacts sooner).
+_CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(text: str) -> int:
+    """Coarse char-based token estimate (~4 chars/token)."""
+    return max(1, len(text) // _CHARS_PER_TOKEN)
+
+
+def _estimate_history_tokens(history: list[Any]) -> int:
+    """Estimate total tokens across all messages in ``history``.
+
+    Walks every ``ModelRequest`` / ``ModelResponse`` and sums the string
+    length of each part's ``content`` field. Non-string parts (images,
+    tool calls) are ignored — they're rare in the extraction path.
+    """
+    total = 0
+    for msg in history:
+        parts = getattr(msg, "parts", [])
+        for part in parts:
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                total += _estimate_tokens(content)
+    return total
+
+
+def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
+    """Drop the oldest messages from ``history`` until under budget.
+
+    Mutates the list in place. Messages come in (request, response) pairs
+    in pydantic-ai, so dropping the two oldest preserves pairing. Keeps
+    at least the last (request, response) pair so the agent always has
+    some context to continue from.
+    """
+    if not history:
+        return
+    while _estimate_history_tokens(history) > max_tokens and len(history) > 2:
+        # Drop the oldest request or response. Remove two at a time when
+        # possible to keep request/response pairing intact.
+        drop_n = 2 if len(history) > 2 else 1
+        del history[:drop_n]
+    if _estimate_history_tokens(history) > max_tokens and len(history) >= 2:
+        logger.debug(
+            "TwoPhase: history still over budget after compaction "
+            "(%d tokens, %d messages) — keeping tail",
+            _estimate_history_tokens(history),
+            len(history),
+        )
+
+
+def _synthetic_history_response(extraction: Extraction) -> ModelResponse:
+    """Build a synthetic ``ModelResponse`` summarising a cached extraction.
+
+    When a batch is served from the per-batch cache, we still want the
+    next uncached batch to see what concepts/entities were extracted
+    upstream. Rather than replaying the original (potentially huge)
+    assistant turn, we inject a compact one-line summary.
+    """
+    concepts = ", ".join(c.get("name", "?") for c in extraction.concepts[:5])
+    entities = ", ".join(e.get("name", "?") for e in extraction.entities[:5])
+    summary_bits = [f"summary: {extraction.summary}"]
+    if concepts:
+        summary_bits.append(f"concepts: {concepts}")
+    if entities:
+        summary_bits.append(f"entities: {entities}")
+    return ModelResponse(parts=[TextPart(content=" | ".join(summary_bits))])
 
 
 def combine_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
