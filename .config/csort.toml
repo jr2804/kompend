@@ -1,0 +1,20 @@
+# csort (clean-sort) configuration — structural sorter for Python source.
+# Discovered automatically by csort via .config/csort.toml.
+
+[module]
+sections = ["imports", "typing_imports", "module_constants", "enums",
+            "dataclasses", "classes", "functions", "main_block"]
+
+[strategy]
+# Step-down reads top-to-bottom like prose (caller before callee) and
+# matches KNOX's narrative style in compilation/two_phase_core.py et al.
+functions = "stepdown"
+# Alpha is safe for enums (no runtime-order coupling in KNOX enums).
+enums = "alpha"
+
+[class_methods]
+# Undersort-style method ordering within each class.
+# (Replaces the legacy [tool.undersort] block previously in pyproject.toml.)
+enabled = true
+order = ["public", "protected", "private"]
+method_type_order = ["instance", "class", "static"]
