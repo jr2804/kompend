@@ -10,7 +10,7 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from knox.llm.models import _split, build_model, resolve_model_limits
+from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -194,6 +194,75 @@ class TestBuildModelErrors:
     def test_no_separator_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid model string"):
             build_model("justamodelname")
+
+
+# ── _resolve_env_ref ───────────────────────────────────────────────────
+
+
+class TestResolveEnvRef:
+    def test_resolves_known_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MY_KEY", "sk-real-value")
+        assert _resolve_env_ref("${MY_KEY}") == "sk-real-value"
+
+    def test_unset_var_returns_original(self) -> None:
+        result = _resolve_env_ref("${UNSET_VAR}")
+        assert result == "${UNSET_VAR}"
+
+    def test_no_ref_returns_original(self) -> None:
+        assert _resolve_env_ref("plain-string") == "plain-string"
+
+    def test_empty_string(self) -> None:
+        assert _resolve_env_ref("") == ""
+
+
+# ── build_model: user-defined providers ────────────────────────────────
+
+
+class TestBuildModelUserProvider:
+    """User-defined providers from [providers] in knox.toml."""
+
+    def setup_method(self) -> None:
+        set_user_providers(
+            {
+                "my-llama": {
+                    "base_url": "http://localhost:8081/v1",
+                    "api_key": "${MY_LLAMA_KEY}",
+                },
+                "keyless": {
+                    "base_url": "http://localhost:9999/v1",
+                },
+            }
+        )
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+
+    def test_user_provider_returns_openai_chat_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MY_LLAMA_KEY", "sk-llama-key")
+        m = build_model("my-llama/mistral-nemo")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "mistral-nemo"
+        assert str(m.base_url).rstrip("/") == "http://localhost:8081/v1"
+
+    def test_user_provider_api_key_resolved_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MY_LLAMA_KEY", "sk-resolved-key")
+        m = build_model("my-llama/mistral-nemo")
+        assert isinstance(m, OpenAIChatModel)
+
+    def test_user_provider_no_api_key_uses_placeholder(self) -> None:
+        m = build_model("keyless/some-model")
+        assert isinstance(m, OpenAIChatModel)
+        assert m.model_name == "some-model"
+
+    def test_user_provider_missing_base_url_raises(self) -> None:
+        set_user_providers({"broken": {"api_key": "sk-key"}})
+        with pytest.raises(ValueError, match="no base_url"):
+            build_model("broken/model")
+
+    def test_user_provider_unknown_provider_falls_through(self) -> None:
+        """A provider not in _user_providers should still raise the standard error."""
+        with pytest.raises(ValueError, match="Unknown provider"):
+            build_model("not-registered/some-model")
 
 
 # ── resolve_model_limits ───────────────────────────────────────────────

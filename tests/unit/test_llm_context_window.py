@@ -13,8 +13,10 @@ from unittest.mock import patch
 from knox.llm.context_window import (
     ContextSource,
     _coerce_context_window_cap,
+    _split_model,
     discover_context_window,
 )
+from knox.llm.models import set_user_providers
 
 
 class TestCoerceContextWindowCap:
@@ -80,3 +82,73 @@ class TestDiscoverContextWindowCap:
             return_value=(100000, 50000),
         )
         patcher.start()
+
+
+# ── _split_model ───────────────────────────────────────────────────────
+
+
+class TestSplitModel:
+    def test_slash_separator(self) -> None:
+        assert _split_model("my-llama/mistral-nemo") == ("my-llama", "mistral-nemo")
+
+    def test_colon_separator(self) -> None:
+        assert _split_model("my-llama:mistral-nemo") == ("my-llama", "mistral-nemo")
+
+    def test_multi_slash(self) -> None:
+        assert _split_model("my-llama/hf.co/qwen3") == ("my-llama", "hf.co/qwen3")
+
+    def test_slash_with_colon_in_model(self) -> None:
+        assert _split_model("my-llama/gemma4:e2b") == ("my-llama", "gemma4:e2b")
+
+    def test_no_separator_returns_empty_provider(self) -> None:
+        assert _split_model("justamodel") == ("", "justamodel")
+
+
+# ── discover_context_window: user-defined providers ───────────────────
+
+
+class TestDiscoverContextWindowUserProvider:
+    """User-defined providers supply context_window_cap from config."""
+
+    def setup_method(self) -> None:
+        set_user_providers(
+            {
+                "my-llama": {
+                    "base_url": "http://localhost:8081/v1",
+                    "context_window_cap": 32768,
+                },
+                "no-cap": {
+                    "base_url": "http://localhost:9999/v1",
+                },
+            }
+        )
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+
+    def test_user_provider_cap_used(self) -> None:
+        """User-defined provider with context_window_cap uses that value."""
+        cw = discover_context_window("my-llama/mistral-nemo")
+        assert cw.max_input == 32768
+        assert cw.max_output == 32768
+        assert cw.source == ContextSource.FALLBACK
+
+    def test_user_provider_no_cap_falls_through(self) -> None:
+        """User-defined provider without context_window_cap falls through to fallback."""
+        cw = discover_context_window("no-cap/some-model", fallback_max_input=64000, fallback_max_output=32000)
+        assert cw.max_input == 64000
+        assert cw.max_output == 32000
+        assert cw.source == ContextSource.FALLBACK
+
+    def test_user_provider_cap_with_global_cap(self) -> None:
+        """Global context_window_cap can further clamp the user-provider cap."""
+        cw = discover_context_window("my-llama/mistral-nemo", context_window_cap=16000)
+        assert cw.max_input == 16000
+        assert cw.max_output == 16000
+
+    def test_user_provider_unknown_falls_through(self) -> None:
+        """Unknown provider falls through to fallback."""
+        cw = discover_context_window("unknown/model", fallback_max_input=64000, fallback_max_output=32000)
+        assert cw.max_input == 64000
+        assert cw.max_output == 32000
+        assert cw.source == ContextSource.FALLBACK
