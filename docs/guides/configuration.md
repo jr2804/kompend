@@ -119,6 +119,7 @@ The main configuration sections:
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
 | `[compile.embedding]` | Embedding model for vector index (`litellm:` prefix or sentence-transformers name; `null` disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
+| `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
 | `[notes]` | User notes file configuration |
 | `[hooks]` | Event hook callbacks |
 

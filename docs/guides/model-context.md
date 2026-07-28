@@ -46,7 +46,8 @@ flowchart TD
 | 1 — litellm | `litellm.get_model_info()` database | All major hosted models (OpenAI, Anthropic, Google, etc.) |
 | 2 — Ollama | `OLLAMA_NUM_CTX` env var or Modelfile `parameters.num_ctx` | Local Ollama models |
 | 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Custom-provider models absent from litellm (e.g. some Ollama Cloud models) |
-| 4 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **32768** | Unknown providers with no catalog entry |
+| 4 — User-defined | `context_window_cap` from `[providers.<id>]` in `knox.toml` | Self-hosted OpenAI-compatible endpoints (llama.cpp, vLLM, TGI) |
+| 5 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **32768** | Unknown providers with no catalog entry |
 
 The most restrictive value wins for Ollama: if litellm reports 128K but the
 Ollama Modelfile sets `num_ctx 8192`, KNOX uses 8192.

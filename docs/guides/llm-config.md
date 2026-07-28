@@ -18,17 +18,56 @@ from a `provider/model` string. This guide covers:
 
 KNOX uses the `provider/model` convention everywhere (e.g.
 `ollama/qwen3`, `openai/gpt-4o`, `claudinio/claude-4`). `build_model()`
-resolves a string to a native pydantic-ai `Model` in two steps:
+resolves a string to a native pydantic-ai `Model` in three steps:
 
-1. **models-dev catalog** — if the provider has a known API base URL in
-   the [models.dev](https://models.dev) catalog (e.g. `claudinio`,
-   `opencode`, `deepseek`), an OpenAI-compatible `OpenAIChatModel` is
-   constructed with the catalog-advertised endpoint.
-2. **pydantic-ai native** — otherwise, pydantic-ai's `infer_model()`
-   handles standard providers (`ollama`, `openai`, `anthropic`,
-   `google`, `groq`, `mistral`, `cohere`).
+1. **pydantic-ai native providers** — pydantic-ai's `infer_model()` handles
+   standard providers (`ollama`, `openai`, `anthropic`, `google`, `groq`,
+   `mistral`, `cohere`, …).
+2. **models-dev catalog** — if the provider has a known API base URL in the
+   [models.dev](https://models.dev) catalog (e.g. `claudinio`, `opencode`,
+   `deepseek`), an OpenAI-compatible `OpenAIChatModel` is constructed with
+   the catalog-advertised endpoint.
+3. **User-defined providers** — any OpenAI-compatible endpoint declared under
+   `[providers.<name>]` in `knox.toml`. The name becomes the `provider/`
+   prefix, e.g. `default_model = "my-llama/mistral-nemo"`. See below.
 
-If neither path resolves, `build_model()` raises `ValueError`.
+If no path resolves, `build_model()` raises `ValueError`.
+
+## User-defined providers
+
+Use this when your model host is not a native pydantic-ai provider and not
+in the models-dev catalog — typical cases are a self-hosted `llama.cpp`
+server, vLLM, text-generation-inference, or a private OpenAI-compatible
+mirror.
+
+```toml
+[providers.my-llama]
+base_url = "http://localhost:8081/v1"
+api_key = "${MY_API_KEY}"          # optional; resolved from env var
+context_window_cap = 32768          # optional
+
+[compile.llm]
+default_model = "my-llama/mistral-nemo"
+```
+
+The provider `id` (`my-llama` above) is just the TOML table key. It must
+not collide with a native or catalog provider id. Any OpenAI-compatible
+endpoint can be referenced as `<id>/<model_name>` everywhere `build_model()`
+is used, including `default_model`, `fallback_chain`, and CLI overrides.
+
+| Field                | Required | Notes                                                |
+| -------------------- | -------- | ---------------------------------------------------- |
+| `base_url`           | yes      | Full OpenAI `/v1` URL, without a trailing slash      |
+| `api_key`            | no       | Literal value or `${ENV_VAR}` reference              |
+| `context_window_cap` | no       | Token cap; wins over auto-discovery                  |
+
+`api_key` supports the same `${ENV_VAR}` interpolation KNOX uses elsewhere.
+A plain literal works too. Omit `api_key` entirely for keyless endpoints;
+KNOX sends a placeholder token because pydantic-ai/OpenAI SDK require one.
+
+Set `context_window_cap` so KNOX knows the model's token budget — without
+it, KNOX falls back to `fallback_max_input` from `[compile.llm]` (since
+self-hosted endpoints are not in the models.dev catalog).
 
 ## API key discovery
 
