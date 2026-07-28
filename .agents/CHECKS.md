@@ -37,7 +37,7 @@ All exit non-zero on violations; all run in CI.
 
 - Run `ruff check` on changed Python files before committing
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
-- Run `uv run pytest tests/integration -x --timeout=120` for integration tests
+- Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
 - Run `ty check src/knox` for type checking (mypy is not used)
 - Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
 - Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage

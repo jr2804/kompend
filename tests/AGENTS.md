@@ -45,9 +45,20 @@ go, and what patterns are forbidden.
    `knox.core.paths`. The string `".knox"` must never appear in test
    assertions.
 
-4. **No real LLM calls in unit tests.** Mock external dependencies via
-   `pytest.monkeypatch` or `unittest.mock`. Integration tests that call LLMs
-   must use `@pytest.mark.skipif` to guard against missing API keys.
+4. **No real LLM/VLM/embedding calls in any test.** Mock external
+   dependencies via `pytest.monkeypatch`. The canonical pattern is to
+   patch ``knox.llm.models.build_model`` to return pydantic-ai's
+   ``TestModel`` (which generates valid output for any result schema with
+   no network or model load). Embedding must be replaced by an in-process
+   provider (e.g. ``DeterministicTestEmbeddingProvider`` from
+   ``tests/conftest.py``). For VLM, monkey-patch
+   ``knox.agents.vlm.VlmAgent.run`` or the relevant codepath. **No real
+   LLM, VLM, or embedding call may reach an external engine from any
+   test, ever.** This applies to integration tests too. See
+   ``tests/integration/test_pipeline_mock.py`` for the canonical mock
+   pattern and ``tests/integration/test_real_corpus.py`` /
+   ``test_arxiv_pipeline.py`` for the only permitted exception: network
+   downloads for preprocessing data (no LLM/VLM/embed calls).
 
 5. **No filesystem litter.** Use `tmp_path` fixture for all filesystem
    operations. Never write to the real project tree.
