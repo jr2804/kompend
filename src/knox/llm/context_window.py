@@ -12,7 +12,7 @@ from enum import StrEnum
 
 import ollama
 
-from knox.llm.models import resolve_model_limits
+from knox.llm.models import _user_providers, resolve_model_limits
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -121,6 +121,17 @@ def _coerce_context_window_cap(value: int | str | None) -> int | None:
         return None
 
 
+def _split_model(model_string: str) -> tuple[str, str]:
+    """Split ``provider/model`` into *(provider, model_name)*."""
+    slash = model_string.find("/")
+    colon = model_string.find(":")
+    candidates = [p for p in (slash, colon) if p > 0]
+    if not candidates:
+        return ("", model_string)
+    pos = min(candidates)
+    return model_string[:pos], model_string[pos + 1 :]
+
+
 def discover_context_window(
     model: str,
     *,
@@ -168,6 +179,17 @@ def discover_context_window(
             max_input = ollama_ctx
             max_output = ollama_ctx
             source = ContextSource.OLLAMA
+
+    # 1b. User-defined provider (from [providers] in knox.toml)?
+    if max_input is None:
+        provider_id, _ = _split_model(model)
+        if provider_id in _user_providers:
+            cfg = _user_providers[provider_id]
+            user_cap = cfg.get("context_window_cap")
+            if user_cap is not None:
+                max_input = int(user_cap)
+                max_output = int(user_cap)
+                source = ContextSource.FALLBACK
 
     if max_input is None or max_output is None:
         try:

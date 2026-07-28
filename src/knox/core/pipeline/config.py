@@ -160,6 +160,7 @@ class PipelineConfig:
     images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
     parser: str = "docling"  # ingestion backend name (see PARSER_BACKENDS)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
+    providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
     def resolved_base_dir(self) -> Path:
         """Return the effective base directory."""
@@ -266,6 +267,7 @@ class PipelineConfig:
             display=display_config,
             skills={name: skill.get("instructions", "") for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()},
             source_tags=cfg.get(COMPILE_SOURCE_TAGS, []),
+            providers=cfg.get("providers", {}),
         )
 
 

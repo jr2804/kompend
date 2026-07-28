@@ -77,6 +77,28 @@ query_expansions = 7      # max multi-query-expansion variants per search
 web_nodes = 10            # max nodes shown in the web server's node preview
 search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / hybrid)
 
+# ── Custom providers ─────────────────────────────────────────────────────
+#
+# Define OpenAI-compatible endpoints that are not natively supported by
+# pydantic-ai or listed in the models.dev catalog.  Each provider gets a
+# short name that becomes the ``provider/`` prefix in model strings.
+#
+# Example — self-hosted llama.cpp server:
+#
+#   [providers.my-llama]
+#   base_url = "http://localhost:8081/v1"
+#   api_key = "${MY_API_KEY}"          # optional; resolved from env var
+#   context_window_cap = 32768          # optional; overrides auto-discovery
+#
+# Then use it in [compile.llm]:
+#
+#   default_model = "my-llama/mistral-nemo"
+#
+# The ``api_key`` value supports ``${VAR_NAME}`` env-var references.
+# If omitted, a placeholder key is sent (works for keyless endpoints).
+# ``context_window_cap`` is optional — if set, it caps the model's
+# context window for both input and output.
+
 # ── Compile settings ────────────────────────────────────────────────────
 
 [compile]

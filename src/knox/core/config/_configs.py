@@ -401,6 +401,27 @@ class DownloaderConfig(_KnoxBaseModel):
     undetected: bool = Field(default=True, validation_alias="KNOX_DOWNLOADER_UNDETECTED")
 
 
+class ProviderEndpoint(_KnoxBaseModel):
+    """A user-defined OpenAI-compatible provider endpoint.
+
+    Defined under ``[providers.<name>]`` in ``knox.toml``:
+
+    .. code-block:: toml
+
+        [providers.my-llama]
+        base_url = "http://localhost:8081/v1"
+        api_key = "${MY_API_KEY}"          # optional; env var reference
+        context_window_cap = 32768           # optional; overrides auto-discovery
+
+    The provider name (``my-llama``) becomes the ``provider`` part in
+    ``provider/model`` strings, e.g. ``my-llama/mistral-nemo``.
+    """
+
+    base_url: str = Field(description="OpenAI-compatible base URL (e.g. http://localhost:8081/v1)")
+    api_key: str | None = Field(default=None, description="API key or env var reference like ${VAR_NAME}")
+    context_window_cap: int | None = Field(default=None, description="Optional override for context window size")
+
+
 class SkillConfig(_KnoxBaseModel):
     """A named skill — user-defined instructions injected into the PydanticAI agent's system prompt.
 
@@ -480,3 +501,4 @@ class KnoxConfig(_KnoxBaseModel):
     notes: NotesConfig = Field(default_factory=NotesConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)
+    providers: dict[str, ProviderEndpoint] = Field(default_factory=dict)

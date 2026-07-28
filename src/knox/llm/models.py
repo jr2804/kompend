@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import pkgutil
+import re
 
 import pydantic_ai.providers
 from models_dev import Provider, get_model_by_id, get_provider
@@ -62,6 +63,22 @@ _NO_KEY_PLACEHOLDER = "api-key-not-set"
 # ── public API ─────────────────────────────────────────────────────────
 
 
+#: Module-level store for user-defined providers (set once during pipeline init).
+#: Maps provider_id -> dict with keys: base_url, api_key (optional), context_window_cap (optional).
+_user_providers: dict[str, dict] = {}
+
+
+def set_user_providers(providers: dict[str, dict]) -> None:
+    """Register user-defined providers for ``build_model()`` resolution.
+
+    Called once during pipeline initialization from the resolved config.
+    Each entry is a ``{provider_id: {base_url: str, api_key: str | None, context_window_cap: int | None}}``
+    dict matching the ``[providers.<name>]`` TOML section.
+    """
+    _user_providers.clear()
+    _user_providers.update(providers)
+
+
 def build_model(model_string: str) -> Model:
     """Build a native pydantic-ai Model from a KNOX ``provider/model`` string."""
     provider_id, model_name = _split(model_string)
@@ -77,6 +94,10 @@ def build_model(model_string: str) -> Model:
         return _build_catalog(provider_id, model_name)
     except _NotInCatalog:
         pass
+
+    # 3. User-defined provider (from [providers] in knox.toml)?
+    if provider_id in _user_providers:
+        return _build_user_provider(provider_id, model_name)
 
     # Build a helpful list of known providers for the error message.
     known = _discover_provider_ids()
@@ -227,4 +248,39 @@ def _catalog_api_key(catalog: Provider) -> str:
     return _NO_KEY_PLACEHOLDER
 
 
-__all__ = ["build_model", "resolve_model_limits"]
+# ── path 3: user-defined provider (from [providers] in knox.toml) ──────
+
+
+def _resolve_env_ref(value: str) -> str:
+    """Resolve ``${VAR_NAME}`` references in a string to their env var value.
+
+    Returns the original string if the env var is unset or the pattern
+    doesn't match.
+    """
+    def _replace(m: re.Match) -> str:
+        var = m.group(1) or ""
+        return os.environ.get(var, m.group(0))
+
+    return re.sub(r"\$\{(\w+)\}", _replace, value)
+
+
+def _build_user_provider(provider_id: str, model_name: str) -> Model:
+    """Build an OpenAI-compatible model from a user-defined provider config.
+
+    The provider config is registered via :func:`set_user_providers` and
+    must have a ``base_url`` key. Optional ``api_key`` is resolved from
+    env var references (``${VAR_NAME}``).
+    """
+    cfg = _user_providers[provider_id]
+    base_url = cfg.get("base_url", "")
+    if not base_url:
+        raise ValueError(f"User-defined provider {provider_id!r} has no base_url configured.")
+
+    raw_key = cfg.get("api_key")
+    api_key = _resolve_env_ref(raw_key) if raw_key else _NO_KEY_PLACEHOLDER
+
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+    return OpenAIChatModel(model_name, provider=provider)
+
+
+__all__ = ["build_model", "resolve_model_limits", "set_user_providers"]

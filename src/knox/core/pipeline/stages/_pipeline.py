@@ -38,6 +38,7 @@ from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.templates import get_template_loader
+from knox.llm.models import set_user_providers
 from knox.logging import get_logger
 from knox.memory.lifecycle import update_memory_for_compile
 from knox.output.base import BaseOutputWriter
@@ -81,6 +82,7 @@ class WikiPipeline:
         summarizer: NodeSummarizer | None = None,
     ) -> None:
         self.config = config
+        set_user_providers(config.providers)
         self.downloader = downloader
         self.router = router
         self.chunker = chunker
