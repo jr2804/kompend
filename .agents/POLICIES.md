@@ -110,6 +110,17 @@ approach. Mention caveats.
   or use `from __future__ import annotations` + forward references.
   `if TYPE_CHECKING:` guards are forbidden in new code and must be removed
   wherever encountered.
+- NEVER persist absolute filesystem paths inside `.knox/` artifacts
+  (JSON, JSONL, SQLite DBs, TOML). Paths in every persisted record —
+  provenance, references (`citing_source`), assets (`source`), dedup,
+  memory, search index, organize reports, compile state, wiki cache — must
+  be **relative to the vault `base_dir`** and POSIX-normalized
+  (forward slashes). The vault must be relocatable: copying the folder to
+  another machine or path must not break a single stored reference.
+  In-memory `Path` objects may be absolute (convenient for I/O); the
+  relativization happens at the **persistence boundary** via
+  `WikiPipeline._rel_path()` (or its standalone equivalent). Absolute
+  paths leaking into a persisted field is an antipattern and a bug.
 - Use `./tmp` (gitignored) or `tempfile.TemporaryDirectory()` for temp files.
 
 ### Implementation Plans

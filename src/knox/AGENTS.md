@@ -360,6 +360,48 @@ Notes for working with the checker:
   `ENFORCED_ENUMS` in the script (with the right consumer scope) so it is
   policed going forward.
 
+### Antipattern 6 — Absolute paths persisted in `.knox/`
+
+**Never** write an absolute filesystem path into any artifact stored under
+the vault's `.knox/` folder — JSON, JSONL, SQLite DBs, or TOML. Every
+persisted path (provenance records, `references.json` `citing_source`,
+`assets.json` `source`, dedup fingerprints, `memory.db`, `search.db`,
+organize reports, compile state, wiki cache) must be **relative to the
+vault `base_dir`** and POSIX-normalized (forward slashes, even on Windows).
+
+The vault must be **relocatable**: copying the folder to another machine,
+user account, or path must not break a single stored reference. An absolute
+path in a persisted field couples the vault to one machine and silently
+breaks portability.
+
+## ❌ FORBIDDEN — persisting absolute paths
+
+    # In-memory source_file is absolute (from the ingest walker):
+    # Path("D:/svn/AI/knox/demo-wiki/sources/paper.pdf")
+    ref.citing_source = str(rc.chunk.source_file)   # ❌ absolute leak
+    asset.source = str(tree.source_file)            # ❌ absolute leak
+    meta["source_file"] = str(path)                 # ❌ absolute leak
+
+## ✅ CORRECT — relativize at the persistence boundary
+
+    from knox.core.paths import rel_to_vault
+
+    ref.citing_source = rel_to_vault(rc.chunk.source_file, base_dir)
+    # → "sources/paper.pdf"  (POSIX, relative, relocatable)
+
+**Rule:** In-memory `Path` objects may be absolute (convenient for I/O); the
+relativization happens at the **persistence boundary**. Any code that writes
+a path-bearing field to disk must pass it through `rel_to_vault()` (or
+`WikiPipeline._rel_path()`). `Path.as_posix()` alone is not enough — it only
+swaps separators; it does not strip the vault prefix.
+
+### Enforcement — `scripts/check_persisted_paths.py`
+
+An AST + runtime scan flags absolute paths in any `.knox/` artifact after a
+compile. Run with `mise run check-persisted-paths` (or
+`uv run python scripts/check_persisted_paths.py`). The scan must report
+**0 violations**.
+
 ### Summary
 
 | Pattern                                                    | Forbidden | Correct approach                                               |
@@ -369,6 +411,7 @@ Notes for working with the checker:
 | `x \| None = None` → `x = x or SECRET`                     | ❌        | Default in config dataclass, or document fallback in docstring |
 | `content[:200]` / `text[:4096]`                            | ❌        | Full content, or batch with a config/model-derived limit       |
 | Bare schema/field-name literals (`hit.get("source_file")`) | ❌        | `StrEnum` / `Final[str]` symbol imported at every site         |
+| Absolute path in a `.knox/` artifact (`citing_source = str(path)`) | ❌ | `rel_to_vault(path, base_dir)` at the persistence boundary     |
 
 #### Jinja2 conventions
 
