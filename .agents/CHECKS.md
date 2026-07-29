@@ -71,7 +71,8 @@ Tick these BEFORE writing a function:
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/check_field_consistency.py` | Bare-string contract keys | scripts/ |
 | `scripts/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/ |
+| `scripts/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/ |
 | `scripts/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/ |
 
-All three run in CI. Run locally: `mise run check-all`.
+All four run in CI. Run locally: `mise run check-all`.
 Run the codebase analyzer: `uv run python scripts/analyze_codebase.py`.

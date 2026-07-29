@@ -51,12 +51,55 @@ Universal defaults. Project-specific standards live in child AGENTS.md.
 - No unintended side effects introduced
 - No secrets added or exposed
 
-## Content rules (keep AGENTS.md lean)
+## DOX authoring (keep AGENTS.md lean)
+
+AGENTS.md and `.agents/` files share limited context. Bloat and duplication
+are the failure mode — they waste context on every entry to a subtree and
+drift apart as rules change.
+
+### Where a rule lives
+
+Answer one question: **what is the highest (most general) tier that fully
+applies?** Put the rule there and nowhere else.
+
+- Applies to **all code in the project**, not one subtree →
+  `.agents/POLICIES.md`. This is the default. When unsure, it goes here.
+- Meaningful **only inside one subtree** (e.g. framework-specific template
+  rules) → that subtree's `AGENTS.md`.
+- Just helps navigation → the parent's Child DOX Index, nothing else.
+
+`.agents/POLICIES.md` is the gravity well for universal rules. A subtree
+AGENTS.md only contains rules that are meaningless outside that subtree.
+
+### Reference, don't restate
+
+A rule appears in **exactly one file**. Every other file that touches it
+uses a **pointer line**: `<topic> — see <file>`. Never copy the rule, the
+rationale, or the code example into the second file. If the canonical home
+needs a code example, it lives there once — linked to, never duplicated.
+
+### Rule first, rationale second, never third
+
+A DOX line is the rule. If a rationale is costly to rediscover, add one
+short clause. Never multi-paragraph explanations or more than one
+❌/✅ code pair per rule — those belong in a skill or a `docs/` page, linked
+once.
+
+### Content rules
 
 - **No tree views.** Generate on demand with `rg --files | tree-cli --fromfile`.
-- **No history.** Git log has it. Only record decisions costly to rediscover
+- **No history.** Git log has it. Record only decisions costly to rediscover
   (in `.agents/HISTORY.md` with commit refs).
 - **No TODO lists.** Use issue trackers or beads.
+
+### Size budget
+
+- `.agents/` files: ≤ **120 lines**. They are always-injected context.
+- Subtree `AGENTS.md`: ≤ **250 lines**. Loaded cumulatively with every
+  parent on entry — the deep-path cost adds up fast.
+
+Exceeding the budget signals the doc is restating instead of pointing, or
+hoarding rationale. Cut first; split the subtree only as a last resort.
 
 ## Verification
 
@@ -122,6 +165,42 @@ approach. Mention caveats.
   `WikiPipeline._rel_path()` (or its standalone equivalent). Absolute
   paths leaking into a persisted field is an antipattern and a bug.
 - Use `./tmp` (gitignored) or `tempfile.TemporaryDirectory()` for temp files.
+
+### Error handling — prefer "let it burn"
+
+The default is to **propagate exceptions**. Surface real failures instead of
+hiding them. The codebase historically over-used `except: pass` and
+`except: return None`, converting real errors (bad API keys, corrupt state,
+missing deps, disk failures) into silent `None` values — forcing every caller
+into `if x is None` chains and producing misleading messages.
+
+`None` may only mean a thing was **absent** (lookup miss, optional value
+unset), never that an operation **failed**. Returning `None` for a corrupt
+file is the antipattern.
+
+The only valid `try/except` sites:
+
+1. **Trust boundary** — translate a low-level error to a user-facing message
+   at the CLI/MCP top level. Catch narrowly, report the real cause.
+2. **Optional-feature probe** — narrow to the _specific_ exception
+   (`ImportError`, `FileNotFoundError`), never bare `Exception`.
+3. **Best-effort enrichment** — per-item catch that _records_ the failure
+   (SKIP result, warning log) and continues a batch.
+4. **Cache miss** — corrupt/unreadable cache entry treated as a miss is
+   correct, BUT narrow to `(json.JSONDecodeError, OSError)` and log at
+   `WARNING` so corruption stays visible.
+
+Forbidden:
+
+- `except Exception: pass` / `except Exception: return None`
+- `# noqa: BLE001` / `# noqa: S110` to silence a bare-except lint
+- Muting an exception then returning `None` to mean failure
+- Catching a corrupt internal-state file (wiki cache, tier state, compile
+  state) and silently resetting — corruption is a bug; **raise**.
+
+Rule of thumb: if removing the `try/except` surfaces a real error to someone
+who needs to see it, remove it. If the catch genuinely serves one of the four
+valid sites, narrow the exception and make the failure visible.
 
 ### Implementation Plans
 

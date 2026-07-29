@@ -20,17 +20,16 @@ entry to the relevant subtree, or fetched from `.agents/` when the task needs it
 
 ## Style
 
-All AGENTS.md and `.agents/` files share limited context. Every redundant word
-wastes it.
+Authoring rules live in **DOX authoring** (`.agents/POLICIES.md`) — tier
+assignment, reference-don't-restate, rule-first rationale, size budget.
+Apply them on every DOX change.
+
+Root-level meta-rules:
 
 - **No redundancy.** A rule lives in exactly one file. Cross-reference with a
   one-liner, never copy.
 - **Precise and brief.** Favor bullets over prose, tables over bullets.
 - **Delete over explain.** Remove stale text immediately. No deprecation notes.
-- **No tree figures.** ASCII directory trees are forbidden. Regenerate:
-  `rg --files | tree-cli --fromfile`.
-- **No cross-level duplication.** Child AGENTS.md must not repeat parent or
-  `.agents/` content. All DOX files are loaded together — reference, never copy.
 
 ## DOX hierarchy
 
