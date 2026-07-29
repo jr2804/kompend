@@ -51,6 +51,7 @@ from knox.compilation.flows.references import run_reference_extraction
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
+from knox.core.paths import rel_to_vault
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.references import ReferenceStore
@@ -191,9 +192,10 @@ class TwoPhaseCompiler(BaseCompiler):
         if trees:
             for t in trees:
                 if t.source_file is not None:
-                    id_map = assign_asset_ids(t, self._asset_store, source=str(t.source_file))
+                    src_key = rel_to_vault(t.source_file, self._config.paths.base_dir)
+                    id_map = assign_asset_ids(t, self._asset_store, source=src_key)
                     if len(id_map) > 0:
-                        self._asset_id_maps[str(t.source_file)] = id_map
+                        self._asset_id_maps[src_key] = id_map
             self._asset_store.save()
             if self._asset_store.total_count() > 0:
                 logger.info(

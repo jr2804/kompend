@@ -12,7 +12,8 @@ import os
 from pathlib import Path
 
 from knox.core.cache.store import decode_json, encode_json, make_cache_key
-from knox.core.models import WikiNode
+from knox.core.models import MetadataField, WikiNode
+from knox.core.paths import rel_to_vault
 from knox.core.pipeline.config import PipelineConfig
 from knox.logging import get_logger
 
@@ -62,6 +63,30 @@ def load_gen_checkpoint(
     return nodes, slug_to_idx, completed
 
 
+def _relativize_node(node: WikiNode, base_dir: Path) -> WikiNode:
+    """Return a copy of *node* with ``SOURCE_FILE`` metadata relativized to *base_dir*.
+
+    Paths are absolute in memory but must be vault-relative on disk so the
+    checkpoint (under ``.knox/``) stays relocatable — see Antipattern 6 in
+    ``src/knox/AGENTS.md``.
+    """
+    meta = node.metadata or {}
+    if MetadataField.SOURCE_FILE not in meta:
+        return node
+    rel = rel_to_vault(meta[MetadataField.SOURCE_FILE], base_dir)
+    if rel == meta[MetadataField.SOURCE_FILE]:
+        return node
+    new_meta = {**meta, MetadataField.SOURCE_FILE: rel}
+    return WikiNode(
+        id=node.id,
+        title=node.title,
+        content=node.content,
+        node_type=node.node_type,
+        source_chunks=node.source_chunks,
+        metadata=new_meta,
+    )
+
+
 def save_gen_checkpoint(
     config: PipelineConfig,
     gen_deps: dict[str, str],
@@ -74,9 +99,10 @@ def save_gen_checkpoint(
         return
     path = _gen_checkpoint_path(config, gen_deps)
     path.parent.mkdir(parents=True, exist_ok=True)
+    base_dir = config.paths.base_dir
     data = {
         "deps": gen_deps,
-        "nodes": [encode_json(n) for n in nodes],  # nocheck: checkpoint format, not wiki metadata
+        "nodes": [encode_json(_relativize_node(n, base_dir)) for n in nodes],  # nocheck: checkpoint format, not wiki metadata
         "slug_to_idx": slug_to_idx,
         "completed_batches": list(completed_batches),
     }

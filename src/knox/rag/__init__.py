@@ -28,6 +28,6 @@ def build_vector_index(
 
     resolved_base = base_dir if base_dir is not None else output_dir.parent
     store = ZvecWikiStore(db_file=VaultPaths(resolved_base).vectors_dir)
-    count = store.build_index(wiki, embedding_model=embed_model, batch_size=batch_size)
+    count = store.build_index(wiki, embedding_model=embed_model, batch_size=batch_size, base_dir=resolved_base)
     store.close()
     return count

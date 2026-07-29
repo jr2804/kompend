@@ -354,3 +354,31 @@ def is_protected_source(path: Path, sources_dir: Path) -> bool:
     except ValueError:
         return False
     return any(part in PROTECTED_SOURCE_SUBDIRS for part in rel.parts[:-1])
+
+
+def rel_to_vault(path: Path | str, base_dir: Path) -> str:
+    """Convert an absolute path to a vault-relative POSIX string.
+
+    This is the canonical relativization helper for every persistence
+    boundary that writes a source path into a ``.knox/`` artifact
+    (references ``citing_source``, assets ``source``, generation
+    checkpoints, search index, wiki cache). Keeping paths relative to
+    the vault ``base_dir`` is what makes a vault relocatable — see
+    Antipattern 6 in ``src/knox/AGENTS.md``.
+
+    - Accepts a :class:`~pathlib.Path` or a string.
+    - Returns a POSIX-normalized relative path (forward slashes) when
+      *path* is under *base_dir*.
+    - Returns the path as-is (POSIX-normalized) when it is not under
+      *base_dir* — so out-of-vault sources degrade gracefully instead of
+      crashing. Callers that must guarantee a vault-relative result should
+      check the result with :meth:`Path.is_absolute`.
+    - Empty input returns ``""``.
+    """
+    if not path:
+        return ""
+    p = Path(path)
+    try:
+        return p.relative_to(base_dir).as_posix()
+    except ValueError:
+        return p.as_posix()

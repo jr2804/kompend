@@ -24,7 +24,7 @@ from knox.core.models import (
     MetadataField,
     WikiField,
 )
-from knox.core.paths import VaultPaths
+from knox.core.paths import VaultPaths, rel_to_vault
 from knox.core.pipeline.config import (
     ALL_TIERS,
     TIER_DESCRIPTIONS,
@@ -293,11 +293,12 @@ class WikiPipeline:
     # ── Internal helpers ────────────────────────────────────────
 
     def _rel_path(self, path: Path) -> str:
-        """Convert absolute path to relative POSIX string for serialization."""
-        try:
-            return path.relative_to(self._base_dir).as_posix()
-        except ValueError:
-            return path.as_posix()
+        """Convert absolute path to relative POSIX string for serialization.
+
+        Thin wrapper over :func:`knox.core.paths.rel_to_vault` — the
+        canonical relativization helper (single source of truth).
+        """
+        return rel_to_vault(path, self._base_dir)
 
     def _abs_path(self, path_str: str) -> Path:
         """Reconstruct absolute path from potentially relative string."""

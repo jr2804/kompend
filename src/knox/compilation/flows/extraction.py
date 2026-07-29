@@ -32,6 +32,7 @@ from knox.compilation.flows.assembly import build_tree_texts
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
 from knox.core.models.enums import CacheDeps
+from knox.core.paths import rel_to_vault
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
@@ -89,15 +90,16 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
                     e[field] = _rewrite_asset_mentions(e[field], id_map)
 
     by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
+    base_dir = compiler._config.paths.base_dir  # noqa: SLF001
     for rc in chunks:
-        label = str(rc.chunk.source_file or "unknown")
+        label = rel_to_vault(rc.chunk.source_file or "unknown", base_dir)
         by_source[label].append(rc)
 
     tree_by_source: dict[str, ChunkTree] = {}
     if trees:
         for t in trees:
             if t.source_file is not None:
-                tree_by_source[str(t.source_file)] = t
+                tree_by_source[rel_to_vault(t.source_file, base_dir)] = t
 
     extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
     num_sources = len(by_source)

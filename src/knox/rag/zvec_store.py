@@ -26,6 +26,7 @@ from pydantic_ai.embeddings import infer_embedding_model
 from pydantic_ai.providers.ollama import OllamaProvider
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.core.paths import rel_to_vault
 from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
 from knox.types import ZvecCollection
@@ -205,6 +206,7 @@ class ZvecWikiStore:
         embedding_model: str | None = None,
         *,
         batch_size: int = 10,
+        base_dir: Path | None = None,
     ) -> int:
         """Index compiled wiki nodes into the zvec store.
 
@@ -221,7 +223,7 @@ class ZvecWikiStore:
             self._embedding_dim = self._provider.dim
 
         self._collection = self._create_collection()
-        return self._index_nodes(self._collection, wiki.nodes, batch_size)
+        return self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity."""
@@ -302,6 +304,8 @@ class ZvecWikiStore:
         collection: Any,
         nodes: list[WikiNode],
         batch_size: int,
+        *,
+        base_dir: Path | None = None,
     ) -> int:
         provider = self._provider
         if provider is None:
@@ -311,6 +315,8 @@ class ZvecWikiStore:
         total_nodes = len(nodes)
 
         for node in nodes:
+            raw_source = str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else ""
+            source_file = rel_to_vault(raw_source, base_dir) if base_dir else raw_source
             doc = _zvec.Doc(
                 id=_safe_id(node.id),
                 vectors={ZvecField.EMBEDDING: provider.embed(f"{node.title}\n{node.content}")},
@@ -318,7 +324,7 @@ class ZvecWikiStore:
                     ZvecField.NODE_ID: node.id,
                     ZvecField.TITLE: node.title,
                     ZvecField.NODE_TYPE: node.node_type,
-                    ZvecField.SOURCE_FILE: str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else "",
+                    ZvecField.SOURCE_FILE: source_file,
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
                     ZvecField.TAGS: ",".join(node.metadata.get(MetadataField.TAGS, [])) if node.metadata.get(MetadataField.TAGS) else "",
                 },

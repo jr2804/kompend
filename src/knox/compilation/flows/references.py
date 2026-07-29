@@ -25,6 +25,7 @@ from knox.agents.reference_extraction import ReferenceExtractionAgent
 from knox.agents.reference_resolver import ReferenceResolverAgent
 from knox.compilation.reference_excision import excise_references
 from knox.core.models import ResolvedChunk
+from knox.core.paths import rel_to_vault
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_logger
 
@@ -47,11 +48,13 @@ def run_reference_extraction(
     """
     model_string = compiler._model  # noqa: SLF001
     timeout = compiler._timeout  # noqa: SLF001
+    base_dir = compiler._config.paths.base_dir  # noqa: SLF001
 
-    # Group chunks by source (same pattern as run_extraction)
+    # Group chunks by source (same pattern as run_extraction). Labels are
+    # vault-relative so they persist relocatable in references.json.
     by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
     for rc in chunks:
-        label = str(rc.chunk.source_file or "unknown")
+        label = rel_to_vault(rc.chunk.source_file or "unknown", base_dir)
         by_source[label].append(rc)
 
     num_sources = len(by_source)
