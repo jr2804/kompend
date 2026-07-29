@@ -6,6 +6,9 @@ import json
 import os
 import shutil
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -261,6 +264,40 @@ def _check_git_repo() -> CheckResult:
         return CheckResult(name, True, f"Git check failed ({exc}) — OK")
 
 
+def _check_custom_providers(cfg: dict[str, Any] | None) -> CheckResult:
+    """Validate custom providers from [providers.*] sections."""
+    name = "Custom providers"
+    if not cfg:
+        return CheckResult(name, True, "No config — skipping")
+    providers = cfg.get("providers", {})
+    if not providers:
+        return CheckResult(name, True, "No custom providers configured")
+    failures: list[str] = []
+    for prov_name, prov_cfg in providers.items():
+        base_url = prov_cfg.get("base_url", "") if isinstance(prov_cfg, dict) else ""
+        if not base_url:
+            failures.append(f"{prov_name}: missing base_url")
+            continue
+        # Quick connectivity check — try to reach the base URL
+        try:
+            parsed = urllib.parse.urlparse(base_url)
+            if parsed.scheme == "https":
+                conn = urllib.request.urlopen(base_url.rstrip("/") + "/models", timeout=5)  # noqa: S310 — doctor check, user-configured URL
+            else:
+                conn = urllib.request.urlopen(base_url.rstrip("/") + "/models", timeout=5)  # noqa: S310 — doctor check, user-configured URL
+            conn.close()
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 404):
+                pass  # reachable but needs auth or no /models endpoint
+            else:
+                failures.append(f"{prov_name}: HTTP {exc.code} at {base_url}")
+        except Exception as exc:
+            failures.append(f"{prov_name}: unreachable ({exc})")
+    if failures:
+        return CheckResult(name, False, "; ".join(failures))
+    return CheckResult(name, True, f"{len(providers)} provider(s) OK")
+
+
 def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
     """Check available disk space — warn if < 500 MB."""
     name = "disk-space"
@@ -328,6 +365,7 @@ def run_doctor(
     results.append(_ping_embed_model(embed_model))
     results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
     results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
+    results.append(_check_custom_providers(cfg))
 
     return results
 
