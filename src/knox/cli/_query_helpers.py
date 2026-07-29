@@ -17,6 +17,7 @@ from knox.core.config._configs import LlmDataFormat, Verbosity  # type: ignore[a
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_OUTPUT_RETRIES,
+    COMPILE_LLM_REASONING_EFFORT,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
     SEARCH_EXPANSION_ENABLED,
@@ -294,8 +295,9 @@ def synthesize_and_output(
     max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
 
     try:
+        reasoning_effort: str | None = cfg.get(COMPILE_LLM_REASONING_EFFORT)
         if has_enhanced and enhanced is not None:
-            synthesis = enhanced.synthesize(query, results, verbosity=verbosity, max_tokens=max_tokens)
+            synthesis = enhanced.synthesize(query, results, verbosity=verbosity, max_tokens=max_tokens, reasoning_effort=reasoning_effort)
         else:
             synthesis = synthesize_results(query, results, model=model, verbosity=verbosity, max_tokens=max_tokens)
     except Exception as exc:

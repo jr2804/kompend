@@ -56,6 +56,7 @@ def synthesize_results(
     verbosity: str = "standard",
     max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
+    reasoning_effort: str | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
@@ -92,6 +93,7 @@ def synthesize_results(
             model_string=model,
             timeout=120.0,
             skills=skills or {},
+            reasoning_effort=reasoning_effort,
         )
         deps = QueryDeps(
             question=query,
