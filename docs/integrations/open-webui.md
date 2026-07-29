@@ -29,7 +29,7 @@ Open-WebUI can ingest the compiled wiki as a knowledge source:
 
 ### 3. Use the MCP server
 
-KNOX ships with an MCP server that exposes `parse_document` and `compile_wiki` tools:
+KNOX ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
 
 ```bash
 knox compile ./sources --url https://example.com/doc.pdf

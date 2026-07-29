@@ -90,7 +90,7 @@ No custom GUI. Use **open-webui/open-webui** as the query/work interface. KNOX e
 | Server | Features | KNOX Relevance |
 |---|---|---|
 | **kObsidian** (bezata) | 66 tools, filesystem-first vault | Inspiration for Hermes integration |
-| **llmwiki serve** (atomicstrata) | `compile_wiki`, `get_context_pack`, `query_wiki` | Competitor + reference |
+| **llmwiki serve** (atomicstrata) | `wiki_compile`, `get_context_pack`, `wiki_query` | Competitor + reference |
 | **Tencent/WeKnora** | Enterprise RAG + reasoning + wiki | Competitor + reference |
 | **KnowledgeBaseMCP** | 9 tools, PDF/DOCX/PPTX/XLSX | Alternative parser integration point |
 | **Docling MCP** (IBM) | Document → markdown via MCP | Primary parser's native MCP |

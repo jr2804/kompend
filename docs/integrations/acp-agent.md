@@ -10,8 +10,8 @@ sharing API keys — the editor injects the LLM endpoint via ``providers/set``.
 ```text
 Editor ── ACP stdio ──→ knox agent
                           │
-                          ├── /knox compile  → compile_wiki tool
-                          ├── /knox query    → query_wiki tool
+                          ├── /knox compile  → wiki_compile tool
+                          ├── /knox query    → wiki_query tool
                           ├── /knox capture  → wiki_capture tool
                           └── free text      → conversational agent loop
 ```

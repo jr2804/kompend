@@ -94,6 +94,13 @@ def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bo
 @app.command(name="query")
 def query_cmd(
     ctx: typer.Context,
+    wiki_dir: str | None = typer.Option(
+        None,
+        "--wiki-dir",
+        "-w",
+        help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
+        envvar="KNOX_WIKI_DIR",
+    ),
     query: QueryText,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
@@ -107,7 +114,7 @@ def query_cmd(
     tags: SourceTags = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki."""
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,

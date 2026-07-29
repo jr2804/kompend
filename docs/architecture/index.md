@@ -191,7 +191,7 @@ Three interfaces, same core:
 
 - **CLI:** `knox compile sources/ --output wiki/`
 - **Python SDK:** `pipeline.compile(sources=[Path("paper.pdf")])`
-- **MCP Server:** `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` tools for Hermes/Claude Code/Codex
+- **MCP Server:** `wiki_parse`, `wiki_compile`, `wiki_capture`, `wiki_learn` tools for Hermes/Claude Code/Codex
 
 No GUI. No web server required. Headless cron-friendly.
 
@@ -226,7 +226,7 @@ zoom for retrieval.
 
 ### Hermes Agent
 
-KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `parse_document`, `compile_wiki`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
+KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
 
 ### Open-WebUI
 

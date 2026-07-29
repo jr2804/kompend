@@ -1,0 +1,2 @@
+src\knox\cli\cmds\knowledge\query.py:104:5: invalid-syntax: Parameter without a default cannot follow a parameter with a default
+Found 1 error.

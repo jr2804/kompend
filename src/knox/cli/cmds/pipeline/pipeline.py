@@ -146,6 +146,13 @@ def parse_cmd(
 @app.command(name="compile")
 def compile_cmd(  # noqa: PLR0915
     ctx: typer.Context,
+    wiki_dir: str | None = typer.Option(
+        None,
+        "--wiki-dir",
+        "-w",
+        help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
+        envvar="KNOX_WIKI_DIR",
+    ),
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -190,7 +197,7 @@ def compile_cmd(  # noqa: PLR0915
     if online_urls is None:
         online_urls = []
 
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
         start_at_tier=start_at_tier,
