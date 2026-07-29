@@ -316,7 +316,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
 
     # Build vector index unless explicitly disabled (--no-index).
     if opts.index_store is not False:
-        opts.wiki.metadata["embedding_model"] = opts.embed_model
+        opts.wiki.metadata["embedding_model"] = opts.embed_model or opts.pipeline_config.embedding.model
         try:
             cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
         except Exception as exc:
