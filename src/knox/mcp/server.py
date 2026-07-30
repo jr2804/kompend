@@ -5,8 +5,6 @@ Tool implementations live in :mod:`knox.mcp.tools`.
 
 from __future__ import annotations
 
-import os
-
 from mcp.server.fastmcp import FastMCP
 
 from knox.mcp.tools import (
@@ -24,25 +22,10 @@ from knox.mcp.tools import (
     wiki_learn,
     wiki_status,
 )
+from knox.mcp.tools._helpers import set_default_wiki_dir
 
 #: Module-level FastMCP instance for stdio transport.
 server = FastMCP("KNOX")
-
-#: Server-wide default wiki directory, set by :func:`main`.
-_DEFAULT_WIKI_DIR: str | None = None
-
-
-def resolve_wiki_dir(wiki_dir: str | None = None) -> str:
-    """Resolve the wiki directory from most-specific source.
-
-    Priority: explicit argument > server-wide default (set via
-    ``knox mcp --wiki-dir``) > ``KNOX_WIKI_DIR`` env var > current directory.
-    """
-    if wiki_dir is not None:
-        return wiki_dir
-    if _DEFAULT_WIKI_DIR is not None:
-        return _DEFAULT_WIKI_DIR
-    return os.environ.get("KNOX_WIKI_DIR", ".")
 
 
 def _register_all(srv: FastMCP) -> None:
@@ -77,9 +60,8 @@ def main(wiki_dir: str | None = None) -> None:
         explicit override is provided in the tool call. Also settable via
         the ``KNOX_WIKI_DIR`` environment variable.
     """
-    global _DEFAULT_WIKI_DIR
     if wiki_dir is not None:
-        _DEFAULT_WIKI_DIR = wiki_dir
+        set_default_wiki_dir(wiki_dir)
     server.run(transport="stdio")
 
 

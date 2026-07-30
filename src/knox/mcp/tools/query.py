@@ -11,6 +11,7 @@ from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
 from knox.logging import get_logger
+from knox.mcp.tools._helpers import resolve_wiki_dir
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import HybridRetriever
 
@@ -19,13 +20,14 @@ logger = get_logger(__name__)
 
 def query_wiki(
     query: str,
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
     top_k: int = 5,
     raw: bool = False,
     search_mode: SearchMode = SearchMode.HYBRID,
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki."""
-    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
+    resolved_dir = resolve_wiki_dir(wiki_dir)
+    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
 
     wiki = load_cached_wiki(state_dir.parent)
@@ -94,11 +96,12 @@ def query_wiki(
 
 
 def wiki_status(
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Show per-wiki statistics."""
     try:
-        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
+        resolved_dir = resolve_wiki_dir(wiki_dir)
+        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
         sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
         stats = collect_stats(
             sources_dir=sources_dir if sources_dir.exists() else None,

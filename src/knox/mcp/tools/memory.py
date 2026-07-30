@@ -7,7 +7,7 @@ from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_MEMORY_ENTRIES
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
-from knox.mcp.tools._helpers import make_memory_store
+from knox.mcp.tools._helpers import make_memory_store, resolve_wiki_dir
 
 logger = get_logger(__name__)
 
@@ -16,11 +16,12 @@ def memory_add(
     query: str,
     answer: str,
     feedback: str | None = None,
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Add a query/answer pair to the memory store for long-term context."""
     try:
-        store, actor = make_memory_store(wiki_dir)
+        resolved_dir = resolve_wiki_dir(wiki_dir)
+        store, actor = make_memory_store(resolved_dir)
         store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         store.close()
         return {"status": "ok", "message": "Memory entry added successfully."}
@@ -31,11 +32,12 @@ def memory_add(
 def memory_search(
     query: str,
     top_k: int = 5,
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Search past memory entries semantically by query."""
     try:
-        store, _actor = make_memory_store(wiki_dir)
+        resolved_dir = resolve_wiki_dir(wiki_dir)
+        store, _actor = make_memory_store(resolved_dir)
         results = store.search(query=query, top_k=top_k)
         store.close()
         return {"status": "ok", "results": results}
@@ -45,17 +47,18 @@ def memory_search(
 
 def memory_synthesize(
     limit: int = 20,
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Synthesize recent memory entries into a system context file."""
     try:
-        store, _actor = make_memory_store(wiki_dir)
+        resolved_dir = resolve_wiki_dir(wiki_dir)
+        store, _actor = make_memory_store(resolved_dir)
         entries = store.get_recent_entries(limit=limit)
         if not entries:
             store.close()
             return {"status": "ok", "message": "No memory entries found to synthesize."}
 
-        base_dir = Path(wiki_dir)
+        base_dir = Path(resolved_dir)
         context_file = base_dir / "sources" / "_memory" / "system_context.md"
         context_file.parent.mkdir(parents=True, exist_ok=True)
 

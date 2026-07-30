@@ -7,6 +7,7 @@ from typing import Any
 from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
 from knox.capture.capture import capture
+from knox.mcp.tools._helpers import resolve_wiki_dir
 from knox.capture.distill import distill
 from knox.capture.learn import learn
 from knox.cli._shared import resolve_project_paths
@@ -193,11 +194,12 @@ def wiki_learn(
 
 
 def wiki_distill(
-    wiki_dir: str = ".",
+    wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Synthesize captured notes into coherent wiki pages."""
     try:
-        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: wiki_dir})
+        resolved_dir = resolve_wiki_dir(wiki_dir)
+        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
         sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
         try:
