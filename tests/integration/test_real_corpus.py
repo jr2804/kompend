@@ -46,6 +46,12 @@ logger = logging.getLogger(__name__)
 _CORPUS_SAMPLE_SIZE = 3
 
 
+#: Pick the fastest available parser up-front so every test gets the same
+#: backend (no surprise fallback mid-run).
+_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
+_PARSER_OK = _TEST_PARSER_CLS is not None
+
+
 def _liteparse_available() -> bool:
     """LiteParse (Rust-core) is the fast default for tests."""
     try:
@@ -64,64 +70,10 @@ def _docling_available() -> bool:
         return False
 
 
-#: Pick the fastest available parser up-front so every test gets the same
-#: backend (no surprise fallback mid-run).
-_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
-_PARSER_OK = _TEST_PARSER_CLS is not None
-
 _skip_no_parser = pytest.mark.skipif(
     not _PARSER_OK,
     reason="No PDF parser backend (LiteParseParser or DoclingParser) installed",
 )
-
-
-def _make_parser() -> BaseParser:
-    """Construct a parser instance. All kwargs work for both backends."""
-    if _TEST_PARSER_CLS is LiteParseParser:
-        return LiteParseParser(ocr_enabled=False)
-    return DoclingParser(extract_images=False)
-
-
-@pytest.fixture(scope="session")
-def source_pdfs_sample(source_pdfs: list[Path]) -> list[Path]:
-    """The 3 smallest PDFs in the corpus — deterministic, sub-second parse."""
-    return sorted(source_pdfs, key=lambda p: p.stat().st_size)[:_CORPUS_SAMPLE_SIZE]
-
-
-@pytest.fixture(scope="session")
-def parsed_docs_sample(source_pdfs_sample: list[Path]) -> dict[Path, ParsedDocument]:
-    """Parse every PDF in the sample ONCE per pytest session.
-
-    The 7 tests in this file share this cache, so the parse phase runs
-    exactly ``len(sample)`` times regardless of how many tests read it.
-    """
-    if not source_pdfs_sample:
-        return {}
-    parser = _make_parser()
-    cache: dict[Path, ParsedDocument] = {}
-    for pdf in source_pdfs_sample:
-        try:
-            cache[pdf] = parser.parse(pdf)
-        except Exception:
-            logger.exception("Parse failed for %s", pdf.name)
-    return cache
-
-
-@pytest.fixture(scope="session")
-def resolved_chunks_sample(parsed_docs_sample: dict[Path, ParsedDocument]) -> list[ResolvedChunk]:
-    """Chunk every parsed document once and expose a flat list."""
-    chunker = HierarchicalChunker(max_tokens=512)
-    out: list[ResolvedChunk] = []
-    for doc in parsed_docs_sample.values():
-        tree = chunker.chunk(doc)
-        for node in tree.leaves():
-            if node.chunk:
-                out.append(ResolvedChunk(chunk=node.chunk) if isinstance(node.chunk, object) else node.chunk)
-    return out
-
-
-def _have_pdfs(source_pdfs: list[Path]) -> bool:
-    return len(source_pdfs) > 0
 
 
 @pytest.mark.skipif(not _PARSER_OK, reason="No PDF parser backend available")
@@ -194,3 +146,52 @@ class TestURLDownload:
             pytest.skip(f"Could not download {test_urls[0]} (network or access issue)")
         assert path.exists()
         assert path.stat().st_size > 0
+
+
+@pytest.fixture(scope="session")
+def resolved_chunks_sample(parsed_docs_sample: dict[Path, ParsedDocument]) -> list[ResolvedChunk]:
+    """Chunk every parsed document once and expose a flat list."""
+    chunker = HierarchicalChunker(max_tokens=512)
+    out: list[ResolvedChunk] = []
+    for doc in parsed_docs_sample.values():
+        tree = chunker.chunk(doc)
+        for node in tree.leaves():
+            if node.chunk:
+                out.append(ResolvedChunk(chunk=node.chunk) if isinstance(node.chunk, object) else node.chunk)
+    return out
+
+
+@pytest.fixture(scope="session")
+def parsed_docs_sample(source_pdfs_sample: list[Path]) -> dict[Path, ParsedDocument]:
+    """Parse every PDF in the sample ONCE per pytest session.
+
+    The 7 tests in this file share this cache, so the parse phase runs
+    exactly ``len(sample)`` times regardless of how many tests read it.
+    """
+    if not source_pdfs_sample:
+        return {}
+    parser = _make_parser()
+    cache: dict[Path, ParsedDocument] = {}
+    for pdf in source_pdfs_sample:
+        try:
+            cache[pdf] = parser.parse(pdf)
+        except Exception:
+            logger.exception("Parse failed for %s", pdf.name)
+    return cache
+
+
+def _make_parser() -> BaseParser:
+    """Construct a parser instance. All kwargs work for both backends."""
+    if _TEST_PARSER_CLS is LiteParseParser:
+        return LiteParseParser(ocr_enabled=False)
+    return DoclingParser(extract_images=False)
+
+
+@pytest.fixture(scope="session")
+def source_pdfs_sample(source_pdfs: list[Path]) -> list[Path]:
+    """The 3 smallest PDFs in the corpus — deterministic, sub-second parse."""
+    return sorted(source_pdfs, key=lambda p: p.stat().st_size)[:_CORPUS_SAMPLE_SIZE]
+
+
+def _have_pdfs(source_pdfs: list[Path]) -> bool:
+    return len(source_pdfs) > 0

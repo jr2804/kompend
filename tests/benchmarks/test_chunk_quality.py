@@ -21,12 +21,6 @@ from tests.fixtures.documents import make_test_doc
 pytestmark = pytest.mark.benchmark
 
 
-def _leaf_chunks(doc: ParsedDocument, max_tokens: int) -> list[Chunk]:
-    """Chunk a document and extract leaf-node Chunk objects."""
-    tree = HierarchicalChunker(max_tokens=max_tokens).chunk(doc)
-    return [n.chunk for n in tree.leaves() if n.chunk]
-
-
 class TestChunkQualityBenchmark:
     """Quality benchmarks for HierarchicalChunker."""
 
@@ -196,3 +190,9 @@ class TestChunkQualityBenchmark:
     def _approx_tokens(self, text: str) -> int:
         """Rough token count (4 chars per token approximation)."""
         return len(text) // 4
+
+
+def _leaf_chunks(doc: ParsedDocument, max_tokens: int) -> list[Chunk]:
+    """Chunk a document and extract leaf-node Chunk objects."""
+    tree = HierarchicalChunker(max_tokens=max_tokens).chunk(doc)
+    return [n.chunk for n in tree.leaves() if n.chunk]

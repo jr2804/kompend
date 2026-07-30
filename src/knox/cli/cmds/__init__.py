@@ -50,13 +50,6 @@ _MODULE_NAMES: frozenset[str] = frozenset(
 )
 
 
-def __getattr__(name: str) -> ModuleType:
-    if name in _MODULE_NAMES:
-        return importlib.import_module(f"knox.cli.cmds.{name}")
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)
-
-
 __all__ = [
     "capture",
     "config",
@@ -74,6 +67,13 @@ __all__ = [
     "serve",
     "status",
 ]
+
+
+def __getattr__(name: str) -> ModuleType:
+    if name in _MODULE_NAMES:
+        return importlib.import_module(f"knox.cli.cmds.{name}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 def __dir__() -> list[str]:

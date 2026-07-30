@@ -34,25 +34,6 @@ from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.context_window import ContextSource, ContextWindow
 
-
-def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
-    return PipelineConfig(
-        source_dir=Path("."),
-        output_dir=Path("."),
-        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
-        embedding=EmbeddingConfig(model="model"),
-    )
-
-
-def _make_cw() -> ContextWindow:
-    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
-
-
-def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
-    config = _make_config(strategy)
-    return TwoPhaseCompiler(config=config, context_window=_make_cw())
-
-
 # ── _batch_texts ─────────────────────────────────────────────────────────
 
 
@@ -281,3 +262,21 @@ class TestExtractIncrementalHistoryCompaction:
         assert results[0] is cached_ext
         synth_mock.assert_called_once_with(cached_ext)
         compact_mock.assert_called_once()
+
+
+def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
+    config = _make_config(strategy)
+    return TwoPhaseCompiler(config=config, context_window=_make_cw())
+
+
+def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
+    return PipelineConfig(
+        source_dir=Path("."),
+        output_dir=Path("."),
+        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
+        embedding=EmbeddingConfig(model="model"),
+    )
+
+
+def _make_cw() -> ContextWindow:
+    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)

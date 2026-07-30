@@ -9,21 +9,6 @@ from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import SearchResult, SynthesisResult
 
 
-def _make_wiki() -> CompiledWiki:
-    return CompiledWiki(
-        nodes=[
-            WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
-            WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
-        ],
-        edges=[],
-        toc=[],
-    )
-
-
-def _search_result(article_id: str, score: float = 1.0) -> SearchResult:
-    return SearchResult(article_id=article_id, title=article_id.title(), snippet="snip", score=score)
-
-
 class TestFuseMultiQuery:
     """_fuse_multi_query merges ranked lists via RRF."""
 
@@ -133,3 +118,18 @@ class TestSynthesize:
             synthesis = retriever.synthesize("q", results)
 
         assert synthesis.answer == "the answer"
+
+
+def _make_wiki() -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[
+            WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
+            WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
+        ],
+        edges=[],
+        toc=[],
+    )
+
+
+def _search_result(article_id: str, score: float = 1.0) -> SearchResult:
+    return SearchResult(article_id=article_id, title=article_id.title(), snippet="snip", score=score)

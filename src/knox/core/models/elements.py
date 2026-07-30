@@ -8,6 +8,8 @@ from typing import Any
 
 from knox.core.models.enums import ElementType
 
+__all__ = ["DocumentElement", "ParsedDocument"]
+
 
 @dataclass
 class DocumentElement:
@@ -33,6 +35,3 @@ class ParsedDocument:
     language: str = "en"
     page_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-__all__ = ["DocumentElement", "ParsedDocument"]

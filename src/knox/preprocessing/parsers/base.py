@@ -18,6 +18,14 @@ DPI_DEFAULT: float = 200.0
 IMAGE_SCALE_DEFAULT: float = DPI_DEFAULT / 72.0  # ≈ 200 DPI for image extraction
 
 
+# PDF text extraction (broken CMaps, mojibake) can emit lone UTF-16 surrogates
+# (U+D800–U+DFFF). They are invalid in UTF-8, so any strict encode downstream
+# (debug dumps, cache writes, hashing) raises ``UnicodeEncodeError: surrogates
+# not allowed``. Scrub them once at the router boundary — every parser output
+# passes through here.
+_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
 class FileExtension(StrEnum):
     """Canonical file extensions supported by KNOX parsers."""
 
@@ -108,19 +116,16 @@ class ParserRouter:
         return scrub_document(parser.parse(source_file))
 
 
-# PDF text extraction (broken CMaps, mojibake) can emit lone UTF-16 surrogates
-# (U+D800–U+DFFF). They are invalid in UTF-8, so any strict encode downstream
-# (debug dumps, cache writes, hashing) raises ``UnicodeEncodeError: surrogates
-# not allowed``. Scrub them once at the router boundary — every parser output
-# passes through here.
-_SURROGATE_RE = re.compile("[\ud800-\udfff]")
-
-
-def _scrub_text(value: str) -> str:
-    """Replace lone surrogate code points with U+FFFD."""
-    if _SURROGATE_RE.search(value):
-        return _SURROGATE_RE.sub("\ufffd", value)
-    return value
+def scrub_document(doc: ParsedDocument) -> ParsedDocument:
+    """Scrub surrogates from all text carried by a parsed document (in place)."""
+    doc.title = _scrub_text(doc.title)
+    doc.author = _scrub_text(doc.author)
+    doc.metadata = _scrub_value(doc.metadata)
+    for element in doc.elements:
+        if isinstance(element.content, str | list):
+            element.content = _scrub_value(element.content)
+        element.metadata = _scrub_value(element.metadata)
+    return doc
 
 
 def _scrub_value(value: ParsedResult) -> ParsedResult:
@@ -134,13 +139,8 @@ def _scrub_value(value: ParsedResult) -> ParsedResult:
     return value
 
 
-def scrub_document(doc: ParsedDocument) -> ParsedDocument:
-    """Scrub surrogates from all text carried by a parsed document (in place)."""
-    doc.title = _scrub_text(doc.title)
-    doc.author = _scrub_text(doc.author)
-    doc.metadata = _scrub_value(doc.metadata)
-    for element in doc.elements:
-        if isinstance(element.content, str | list):
-            element.content = _scrub_value(element.content)
-        element.metadata = _scrub_value(element.metadata)
-    return doc
+def _scrub_text(value: str) -> str:
+    """Replace lone surrogate code points with U+FFFD."""
+    if _SURROGATE_RE.search(value):
+        return _SURROGATE_RE.sub("\ufffd", value)
+    return value

@@ -40,51 +40,6 @@ FLAVOR_ALIASES: dict[str, str] = {
 }
 
 
-def detect_flavor(output_dir: Path | None = None, configured: str | None = None) -> str:
-    """Auto-detect the best Markdown flavor for the output directory.
-
-    Precedence:
-    1. Explicitly configured flavor (highest).
-    2. Auto-detection from files in the output directory.
-    3. ``"obsidian"`` (default).
-    """
-    if configured:
-        canonical = FLAVOR_ALIASES.get(configured.lower())
-        if canonical:
-            return canonical
-        logger.warning("Unknown flavor %r — falling back to obsidian", configured)
-        return "obsidian"
-
-    if output_dir and output_dir.exists():
-        # Obsidian vault
-        if (output_dir / ".obsidian").is_dir():
-            return "obsidian"
-        # MkDocs project
-        if (output_dir / "mkdocs.yml").is_file():
-            return "mkdocs"
-        # Quarto project
-        if (output_dir / "_quarto.yml").is_file():
-            return "quarto"
-        if list(output_dir.rglob("*.qmd")):
-            return "quarto"
-
-    return "obsidian"
-
-
-# ── Frontmatter helpers ─────────────────────────────────────────────────
-
-
-def render_frontmatter(frontmatter: dict[str, Any]) -> str:
-    """Render a dict as YAML frontmatter (``---`` delimited).
-
-    Returns an empty string if the dict is empty.
-    """
-    if not frontmatter:
-        return ""
-    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).strip()
-    return f"---\n{yaml_str}\n---\n\n"
-
-
 # ── DocumentRenderer ────────────────────────────────────────────────────
 
 
@@ -218,6 +173,51 @@ class DocumentRenderer:
                 parts.append("")
 
         return "\n".join(parts).strip() + "\n"
+
+
+def detect_flavor(output_dir: Path | None = None, configured: str | None = None) -> str:
+    """Auto-detect the best Markdown flavor for the output directory.
+
+    Precedence:
+    1. Explicitly configured flavor (highest).
+    2. Auto-detection from files in the output directory.
+    3. ``"obsidian"`` (default).
+    """
+    if configured:
+        canonical = FLAVOR_ALIASES.get(configured.lower())
+        if canonical:
+            return canonical
+        logger.warning("Unknown flavor %r — falling back to obsidian", configured)
+        return "obsidian"
+
+    if output_dir and output_dir.exists():
+        # Obsidian vault
+        if (output_dir / ".obsidian").is_dir():
+            return "obsidian"
+        # MkDocs project
+        if (output_dir / "mkdocs.yml").is_file():
+            return "mkdocs"
+        # Quarto project
+        if (output_dir / "_quarto.yml").is_file():
+            return "quarto"
+        if list(output_dir.rglob("*.qmd")):
+            return "quarto"
+
+    return "obsidian"
+
+
+# ── Frontmatter helpers ─────────────────────────────────────────────────
+
+
+def render_frontmatter(frontmatter: dict[str, Any]) -> str:
+    """Render a dict as YAML frontmatter (``---`` delimited).
+
+    Returns an empty string if the dict is empty.
+    """
+    if not frontmatter:
+        return ""
+    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).strip()
+    return f"---\n{yaml_str}\n---\n\n"
 
 
 # ── Helper ───────────────────────────────────────────────────────────────

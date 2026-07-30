@@ -9,183 +9,6 @@ from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.utils.time import iso_local
 
 
-def _fmt_tokens(n: int) -> str:
-    """Format token count with K/M suffix."""
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1_000:
-        return f"{n / 1_000:.1f}K"
-    return str(n)
-
-
-def _fmt_duration(seconds: float) -> str:
-    """Format duration as human-readable string."""
-    if seconds >= 3600:
-        h = seconds / 3600
-        return f"{h:.1f}h"
-    if seconds >= 60:
-        m = seconds / 60
-        return f"{m:.1f}m"
-    return f"{seconds:.1f}s"
-
-
-def _fmt_tokens_k(n: int) -> str:
-    """Format number with K/M suffix (integer-friendly)."""
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1_000:
-        return f"{n / 1_000:.0f}K"
-    return str(n)
-
-
-def _node_type_counts(wiki: CompiledWiki) -> dict[str, int]:
-    """Count nodes by ``node_type``."""
-    counts: dict[str, int] = {}
-    for node in wiki.nodes:
-        counts[node.node_type] = counts.get(node.node_type, 0) + 1
-    return counts
-
-
-def _edge_type_counts(wiki: CompiledWiki) -> dict[str, int]:
-    """Count edges by ``type`` field."""
-    counts: dict[str, int] = {}
-    for edge in wiki.edges:
-        etype = edge.get("type", "untyped") if isinstance(edge, dict) else "untyped"
-        counts[etype] = counts.get(etype, 0) + 1
-    return counts
-
-
-def _per_source_stats(wiki: CompiledWiki) -> list[dict[str, str | int]]:
-    """Group generated pages by source stem with per-source stats.
-
-    Returns a list of dicts sorted by descending page count, each with:
-    - ``stem`` (str)
-    - ``pages`` (int)
-    - ``chars`` (int)
-    - ``tokens_est`` (int, chars/4)
-    """
-    source_map: dict[str, list[int]] = {}
-    for node in wiki.nodes:
-        sc = node.source_chunks or []
-        if not sc:
-            continue
-        stem = sc[0].split("/")[0] if "/" in sc[0] else sc[0].rsplit("_", 1)[0] if "_" in sc[0] else sc[0]
-        source_map.setdefault(stem, [0, 0])
-        source_map[stem][0] += 1
-        source_map[stem][1] += len(node.content or "")
-
-    result: list[dict[str, str | int]] = []
-    for stem, (pages, chars) in sorted(source_map.items(), key=lambda x: -x[1][0]):
-        result.append({"stem": stem, "pages": pages, "chars": chars, "tokens_est": max(chars // 4, 1)})
-    return result
-
-
-def _short_source(path: str) -> str:
-    """Strip a source path to just the filename (drop ``sources/`` prefix)."""
-    return Path(path).name
-
-
-def _display_title(text: str, max_chars: int = 80) -> str:
-    """Format summary text for table display (no truncation)."""
-    return text.strip().replace("\n", " ").replace("|", "\\|")
-
-
-def _format_sources_table(sources: list[str], titles: dict[str, str] | None = None) -> list[str]:
-    """Format a source list as a markdown table.
-
-    No row cap: a comprehensive ingest list is more useful than a tidy log.
-    When *titles* is provided (a mapping of full source path → summary text),
-    a Title column is added showing the document's summary as a display title.
-    """
-    if len(sources) <= 5 and not titles:
-        return [", ".join(f"`{_short_source(s)}`" for s in sources)]
-    if len(sources) <= 5:
-        lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
-        for i, src in enumerate(sources, 1):
-            title = _display_title((titles or {}).get(src, ""))
-            lines.append(f"| {i} | {_short_source(src)} | {title} |")
-        return lines
-    lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
-    for i, src in enumerate(sources, 1):
-        title = _display_title((titles or {}).get(src, ""))
-        lines.append(f"| {i} | {_short_source(src)} | {title} |")
-    return lines
-
-
-def _format_per_source_stats(stats: list[dict[str, str | int]]) -> list[str]:
-    """Format per-source stats as a markdown table."""
-    if not stats:
-        return []
-    lines = ["", "| Source | Pages | Chars | ~Tokens |", "|--------|------:|------:|--------:|"]
-    for s in stats:
-        lines.append(f"| {s['stem']} | {s['pages']} | {_fmt_tokens_k(int(s['chars']))} | {_fmt_tokens_k(int(s['tokens_est']))} |")
-    return lines
-
-
-def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
-    """Format per-source extraction timing + summary stats as a markdown table.
-
-    One row per source: extraction time, summary length, and counts of
-    entities/concepts/tags extracted plus the number of LLM batches needed.
-    The Title column shows the first ~80 chars of the extraction summary.
-    """
-    if not stats:
-        return []
-    lines = [
-        "",
-        "**Extraction:**",
-        "",
-        "| Source | Title | Time | Summary | Entities | Concepts | Tags | Batches |",
-        "|--------|-------|-----:|--------:|---------:|---------:|-----:|--------:|",
-    ]
-    total_time = 0.0
-    total_words = 0
-    for s in stats:
-        dur = float(s.get("duration_s", 0.0))
-        total_time += dur
-        words = int(s.get("summary_words", 0))
-        total_words += words
-        summary_cell = f"{words}w" if words else "-"
-        title = _display_title(str(s.get("summary", "")))
-        lines.append(
-            f"| {_short_source(str(s.get('source', 'unknown')))} | {title} | {dur:.1f}s | {summary_cell} | "
-            f"{s.get('entity_count', 0)} | {s.get('concept_count', 0)} | "
-            f"{s.get('tag_count', 0)} | {s.get('batches', 0)} |"
-        )
-    if len(stats) > 1:
-        lines.append(f"| **total** | | **{total_time:.1f}s** | **{total_words}w** | | | | |")
-    return lines
-
-
-def _format_llm_usage_block(llm_usage: dict, llm_model: str | None) -> list[str]:
-    """Build the LLM usage lines for the log entry."""
-    if not llm_usage or llm_usage.get("call_count", 0) <= 0:
-        return []
-    calls = llm_usage["call_count"]
-    pt = llm_usage.get("prompt_tokens", 0)
-    ct = llm_usage.get("completion_tokens", 0)
-    ttft = llm_usage.get("avg_ttft", 0)
-    per_model = llm_usage.get("per_model", {})
-    model_names = ", ".join(per_model.keys()) if per_model else (llm_model or "unknown")
-    return [
-        "",
-        f"**LLM:** {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out | avg TTFT {ttft:.1f}s | {model_names}",
-    ]
-
-
-def _format_tier_timings_block(tier_timings: dict, duration: float | None) -> list[str]:
-    """Build the timing breakdown table lines for the log entry."""
-    if not tier_timings:
-        return []
-    lines = ["", "**Timing:**", "", "| Stage | Duration |", "|-------|----------|"]
-    for tier_name in ("index", "chunk", "resolve", "compile", "output"):
-        if tier_name in tier_timings:
-            lines.append(f"| {tier_name} | {_fmt_duration(tier_timings[tier_name])} |")
-    if duration is not None:
-        lines.append(f"| **total** | **{_fmt_duration(duration)}** |")
-    return lines
-
-
 def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  # noqa: PLR0915
     """Generate a rich log entry for ``log.md``.
 
@@ -282,6 +105,131 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  #
     return "\n".join(lines) + "\n"
 
 
+def _node_type_counts(wiki: CompiledWiki) -> dict[str, int]:
+    """Count nodes by ``node_type``."""
+    counts: dict[str, int] = {}
+    for node in wiki.nodes:
+        counts[node.node_type] = counts.get(node.node_type, 0) + 1
+    return counts
+
+
+def _edge_type_counts(wiki: CompiledWiki) -> dict[str, int]:
+    """Count edges by ``type`` field."""
+    counts: dict[str, int] = {}
+    for edge in wiki.edges:
+        etype = edge.get("type", "untyped") if isinstance(edge, dict) else "untyped"
+        counts[etype] = counts.get(etype, 0) + 1
+    return counts
+
+
+def _per_source_stats(wiki: CompiledWiki) -> list[dict[str, str | int]]:
+    """Group generated pages by source stem with per-source stats.
+
+    Returns a list of dicts sorted by descending page count, each with:
+    - ``stem`` (str)
+    - ``pages`` (int)
+    - ``chars`` (int)
+    - ``tokens_est`` (int, chars/4)
+    """
+    source_map: dict[str, list[int]] = {}
+    for node in wiki.nodes:
+        sc = node.source_chunks or []
+        if not sc:
+            continue
+        stem = sc[0].split("/")[0] if "/" in sc[0] else sc[0].rsplit("_", 1)[0] if "_" in sc[0] else sc[0]
+        source_map.setdefault(stem, [0, 0])
+        source_map[stem][0] += 1
+        source_map[stem][1] += len(node.content or "")
+
+    result: list[dict[str, str | int]] = []
+    for stem, (pages, chars) in sorted(source_map.items(), key=lambda x: -x[1][0]):
+        result.append({"stem": stem, "pages": pages, "chars": chars, "tokens_est": max(chars // 4, 1)})
+    return result
+
+
+def _format_per_source_stats(stats: list[dict[str, str | int]]) -> list[str]:
+    """Format per-source stats as a markdown table."""
+    if not stats:
+        return []
+    lines = ["", "| Source | Pages | Chars | ~Tokens |", "|--------|------:|------:|--------:|"]
+    for s in stats:
+        lines.append(f"| {s['stem']} | {s['pages']} | {_fmt_tokens_k(int(s['chars']))} | {_fmt_tokens_k(int(s['tokens_est']))} |")
+    return lines
+
+
+def _fmt_tokens_k(n: int) -> str:
+    """Format number with K/M suffix (integer-friendly)."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
+def _format_extraction_stats(stats: list[dict[str, Any]]) -> list[str]:
+    """Format per-source extraction timing + summary stats as a markdown table.
+
+    One row per source: extraction time, summary length, and counts of
+    entities/concepts/tags extracted plus the number of LLM batches needed.
+    The Title column shows the first ~80 chars of the extraction summary.
+    """
+    if not stats:
+        return []
+    lines = [
+        "",
+        "**Extraction:**",
+        "",
+        "| Source | Title | Time | Summary | Entities | Concepts | Tags | Batches |",
+        "|--------|-------|-----:|--------:|---------:|---------:|-----:|--------:|",
+    ]
+    total_time = 0.0
+    total_words = 0
+    for s in stats:
+        dur = float(s.get("duration_s", 0.0))
+        total_time += dur
+        words = int(s.get("summary_words", 0))
+        total_words += words
+        summary_cell = f"{words}w" if words else "-"
+        title = _display_title(str(s.get("summary", "")))
+        lines.append(
+            f"| {_short_source(str(s.get('source', 'unknown')))} | {title} | {dur:.1f}s | {summary_cell} | "
+            f"{s.get('entity_count', 0)} | {s.get('concept_count', 0)} | "
+            f"{s.get('tag_count', 0)} | {s.get('batches', 0)} |"
+        )
+    if len(stats) > 1:
+        lines.append(f"| **total** | | **{total_time:.1f}s** | **{total_words}w** | | | | |")
+    return lines
+
+
+def _format_llm_usage_block(llm_usage: dict, llm_model: str | None) -> list[str]:
+    """Build the LLM usage lines for the log entry."""
+    if not llm_usage or llm_usage.get("call_count", 0) <= 0:
+        return []
+    calls = llm_usage["call_count"]
+    pt = llm_usage.get("prompt_tokens", 0)
+    ct = llm_usage.get("completion_tokens", 0)
+    ttft = llm_usage.get("avg_ttft", 0)
+    per_model = llm_usage.get("per_model", {})
+    model_names = ", ".join(per_model.keys()) if per_model else (llm_model or "unknown")
+    return [
+        "",
+        f"**LLM:** {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out | avg TTFT {ttft:.1f}s | {model_names}",
+    ]
+
+
+def _format_tier_timings_block(tier_timings: dict, duration: float | None) -> list[str]:
+    """Build the timing breakdown table lines for the log entry."""
+    if not tier_timings:
+        return []
+    lines = ["", "**Timing:**", "", "| Stage | Duration |", "|-------|----------|"]
+    for tier_name in ("index", "chunk", "resolve", "compile", "output"):
+        if tier_name in tier_timings:
+            lines.append(f"| {tier_name} | {_fmt_duration(tier_timings[tier_name])} |")
+    if duration is not None:
+        lines.append(f"| **total** | **{_fmt_duration(duration)}** |")
+    return lines
+
+
 def generate_stage_log_entry(
     *,
     stage: str,
@@ -343,6 +291,58 @@ def generate_stage_log_entry(
         lines.append(f"**LLM:** {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out")
 
     return "\n".join(lines) + "\n"
+
+
+def _fmt_tokens(n: int) -> str:
+    """Format token count with K/M suffix."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Format duration as human-readable string."""
+    if seconds >= 3600:
+        h = seconds / 3600
+        return f"{h:.1f}h"
+    if seconds >= 60:
+        m = seconds / 60
+        return f"{m:.1f}m"
+    return f"{seconds:.1f}s"
+
+
+def _format_sources_table(sources: list[str], titles: dict[str, str] | None = None) -> list[str]:
+    """Format a source list as a markdown table.
+
+    No row cap: a comprehensive ingest list is more useful than a tidy log.
+    When *titles* is provided (a mapping of full source path → summary text),
+    a Title column is added showing the document's summary as a display title.
+    """
+    if len(sources) <= 5 and not titles:
+        return [", ".join(f"`{_short_source(s)}`" for s in sources)]
+    if len(sources) <= 5:
+        lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
+        for i, src in enumerate(sources, 1):
+            title = _display_title((titles or {}).get(src, ""))
+            lines.append(f"| {i} | {_short_source(src)} | {title} |")
+        return lines
+    lines = ["", "| # | Source | Title |", "|---|--------|-------|"]
+    for i, src in enumerate(sources, 1):
+        title = _display_title((titles or {}).get(src, ""))
+        lines.append(f"| {i} | {_short_source(src)} | {title} |")
+    return lines
+
+
+def _short_source(path: str) -> str:
+    """Strip a source path to just the filename (drop ``sources/`` prefix)."""
+    return Path(path).name
+
+
+def _display_title(text: str, max_chars: int = 80) -> str:
+    """Format summary text for table display (no truncation)."""
+    return text.strip().replace("\n", " ").replace("|", "\\|")
 
 
 def prepend_log(log_file: Path, entry: str) -> None:

@@ -52,73 +52,6 @@ _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
 }
 
 
-def matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
-    """Check if node satisfies at least one AND-group (OR of ANDs)."""
-    if not tag_groups:
-        return True
-    return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
-
-
-def is_captured_source(source_file: str | None) -> bool:
-    """Return True if *source_file* is a learn/capture note (``_captured/…``)."""
-    return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
-
-
-def node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
-    """Map every wiki node id → its ``node_type`` (the wiki sub-directory)."""
-    if wiki is None:
-        return {}
-    return {n.id: n.node_type for n in wiki.nodes}
-
-
-def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
-    """Build a relative path into the compiled wiki."""
-    if not article_id or article_id not in node_types:
-        return None
-    return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
-
-
-def structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
-    """Build the structured ``{answer, citations}`` payload for agent output."""
-    node_types = node_type_index(wiki)
-    return {
-        "answer": synthesis.answer,
-        "citations": [
-            {
-                "article": c["article"],
-                "wiki_link": wiki_link(c.get("article_id"), node_types),
-                "source": c.get("source"),
-                "snippet": c["snippet"],
-                "score": c["score"],
-            }
-            for c in synthesis.citations
-        ],
-    }
-
-
-def encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
-    """Encode a structured payload as json/toon/ison for agent consumers."""
-    if fmt == LlmDataFormat.JSON:
-        return json.dumps(payload, indent=2)
-    if fmt == LlmDataFormat.ISON:
-        payload = {"answer": [{"text": payload["answer"]}], "citations": payload["citations"]}
-    return encode_for_llm(payload, fmt)
-
-
-def encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
-    """Build the raw-results payload and encode it for agent consumers."""
-    payload = [
-        {
-            "article": r.title,
-            "source": r.source_file,
-            "snippet": r.snippet,
-            "score": round(r.score, 3),
-        }
-        for r in results
-    ]
-    return encode_structured(payload, fmt)
-
-
 def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists."""
     db_file = knox_dir / VECTORS_DIR
@@ -134,20 +67,6 @@ def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | Non
     except Exception as exc:
         logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=True)
         return None
-
-
-def print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
-    """Print raw search results to console."""
-    if format == LlmDataFormat.MARKDOWN:
-        for r in results:
-            get_console().print(f"  [{r.score:.3f}] {r.title}")
-            if r.source_file:
-                get_console().print(f"        Source: {r.source_file}")
-            get_console().print(f"        {r.snippet}")
-            get_console().print("")
-        return
-
-    get_console().print(encode_raw_results(results, format))
 
 
 def execute_query_search(
@@ -177,46 +96,6 @@ def execute_query_search(
     if tag_groups:
         results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
     return results, raw
-
-
-def save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
-    """Persist a query/answer pair to the memory store."""
-    try:
-        mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
-        mem_store.add_entry(query=query, answer=answer, memory_by=memory_by)
-        mem_store.close()
-        get_err_console().print("\n✓ Query and answer saved to memory.")
-    except Exception as exc:
-        get_err_console().print(f"\nWarning: Failed to save to memory: {exc}")
-
-
-def build_enhanced_retriever(
-    wiki: CompiledWiki,
-    vector_store: ZvecWikiStore | None,
-    state_dir: Path,
-    cfg: Any,
-    model: str,
-) -> EnhancedRetriever:
-    """Build an EnhancedRetriever from resolved config."""
-    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES)
-    expansion_agent = QueryExpansionAgent(model, timeout=120, retries=_retries) if model else None
-    crag_agent = CragGradeAgent(model, timeout=120, retries=_retries) if model else None
-    hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
-    return EnhancedRetriever(
-        wiki,
-        vector_store=vector_store,
-        expansion_agent=expansion_agent,
-        crag_agent=crag_agent,
-        hyde_agent=hyde_agent,
-        expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
-        expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
-        crag_enabled=cfg.get(SEARCH_CRAG_ENABLED, False),
-        crag_threshold=cfg.get(SEARCH_CRAG_THRESHOLD, 0.3),
-        reranker_enabled=cfg.get(SEARCH_RERANKER_ENABLED, False),
-        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, ""),
-        reranker_top_k=cfg.get(SEARCH_RERANKER_TOP_K, 20),
-        hyde_enabled=cfg.get(SEARCH_HYDE_ENABLED, False),
-    )
 
 
 def handle_adaptive_search(
@@ -270,6 +149,42 @@ def handle_enhanced_search(
     return None
 
 
+def matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
+    """Check if node satisfies at least one AND-group (OR of ANDs)."""
+    if not tag_groups:
+        return True
+    return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
+
+
+def build_enhanced_retriever(
+    wiki: CompiledWiki,
+    vector_store: ZvecWikiStore | None,
+    state_dir: Path,
+    cfg: Any,
+    model: str,
+) -> EnhancedRetriever:
+    """Build an EnhancedRetriever from resolved config."""
+    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES)
+    expansion_agent = QueryExpansionAgent(model, timeout=120, retries=_retries) if model else None
+    crag_agent = CragGradeAgent(model, timeout=120, retries=_retries) if model else None
+    hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
+    return EnhancedRetriever(
+        wiki,
+        vector_store=vector_store,
+        expansion_agent=expansion_agent,
+        crag_agent=crag_agent,
+        hyde_agent=hyde_agent,
+        expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
+        expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
+        crag_enabled=cfg.get(SEARCH_CRAG_ENABLED, False),
+        crag_threshold=cfg.get(SEARCH_CRAG_THRESHOLD, 0.3),
+        reranker_enabled=cfg.get(SEARCH_RERANKER_ENABLED, False),
+        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, ""),
+        reranker_top_k=cfg.get(SEARCH_RERANKER_TOP_K, 20),
+        hyde_enabled=cfg.get(SEARCH_HYDE_ENABLED, False),
+    )
+
+
 def synthesize_and_output(
     query: str,
     results: list[Any],
@@ -320,3 +235,88 @@ def synthesize_and_output(
 
     if remember:
         save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+
+
+def is_captured_source(source_file: str | None) -> bool:
+    """Return True if *source_file* is a learn/capture note (``_captured/…``)."""
+    return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
+
+
+def structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
+    """Build the structured ``{answer, citations}`` payload for agent output."""
+    node_types = node_type_index(wiki)
+    return {
+        "answer": synthesis.answer,
+        "citations": [
+            {
+                "article": c["article"],
+                "wiki_link": wiki_link(c.get("article_id"), node_types),
+                "source": c.get("source"),
+                "snippet": c["snippet"],
+                "score": c["score"],
+            }
+            for c in synthesis.citations
+        ],
+    }
+
+
+def node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
+    """Map every wiki node id → its ``node_type`` (the wiki sub-directory)."""
+    if wiki is None:
+        return {}
+    return {n.id: n.node_type for n in wiki.nodes}
+
+
+def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
+    """Build a relative path into the compiled wiki."""
+    if not article_id or article_id not in node_types:
+        return None
+    return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
+
+
+def print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
+    """Print raw search results to console."""
+    if format == LlmDataFormat.MARKDOWN:
+        for r in results:
+            get_console().print(f"  [{r.score:.3f}] {r.title}")
+            if r.source_file:
+                get_console().print(f"        Source: {r.source_file}")
+            get_console().print(f"        {r.snippet}")
+            get_console().print("")
+        return
+
+    get_console().print(encode_raw_results(results, format))
+
+
+def encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
+    """Build the raw-results payload and encode it for agent consumers."""
+    payload = [
+        {
+            "article": r.title,
+            "source": r.source_file,
+            "snippet": r.snippet,
+            "score": round(r.score, 3),
+        }
+        for r in results
+    ]
+    return encode_structured(payload, fmt)
+
+
+def encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
+    """Encode a structured payload as json/toon/ison for agent consumers."""
+    if fmt == LlmDataFormat.JSON:
+        return json.dumps(payload, indent=2)
+    if fmt == LlmDataFormat.ISON:
+        payload = {"answer": [{"text": payload["answer"]}], "citations": payload["citations"]}
+    return encode_for_llm(payload, fmt)
+
+
+def save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
+    """Persist a query/answer pair to the memory store."""
+    try:
+        mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
+        mem_store.add_entry(query=query, answer=answer, memory_by=memory_by)
+        mem_store.close()
+        get_err_console().print("\n✓ Query and answer saved to memory.")
+    except Exception as exc:
+        get_err_console().print(f"\nWarning: Failed to save to memory: {exc}")

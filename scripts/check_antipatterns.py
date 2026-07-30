@@ -73,18 +73,6 @@ _DATA_DRIVEN_ACCESSOR_RE = re.compile(
 _HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\]")
 
 
-# Line-length padding slices are NOT data truncation — they enforce a
-# physical output width (e.g. a Markdown hard line break at 117 chars).
-# The pattern: the slice is preceded on the previous non-blank line by
-# ``if len(x) > N``. We use a small window (3 lines back) to catch this.
-def _is_line_padding_context(lines: list[str], current_idx_0based: int) -> bool:
-    """True if a ``if len(...) > N`` guard appears just above this slice."""
-    for j in range(max(0, current_idx_0based - 3), current_idx_0based):
-        if _LINE_PADDING_RE.search(lines[j]):
-            return True
-    return False
-
-
 _LINE_PADDING_RE = re.compile(r"\bif\s+len\s*\(")
 
 # Files where module-level state is a documented design choice (singleton
@@ -127,22 +115,71 @@ class Violation:
         }
 
 
-def _is_noqa_line(line: str) -> re.Match[str] | None:
-    """Return a match object for ``# noqa: CODE[, CODE...]`` if present."""
-    return re.search(r"#\s*noqa\s*:\s*([A-Z0-9_, ]+)", line)
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument(
+        "--src",
+        action="append",
+        default=[],
+        help="Source root to scan (repeatable). Default: src/knox + tests/unit.",
+    )
+    args = parser.parse_args()
+
+    if args.src:
+        roots = [Path(p).resolve() for p in args.src]
+    else:
+        roots = [SRC_ROOT, TESTS_ROOT]
+
+    py_files = discover_py_files(roots)
+    all_violations: list[Violation] = []
+    for f in py_files:
+        all_violations.extend(scan_file(f))
+
+    by_rule: dict[str, int] = defaultdict(int)
+    for v in all_violations:
+        by_rule[v.rule] += 1
+
+    if args.json:
+        payload = {
+            "violations": [v.as_dict() for v in all_violations],
+            "summary": dict(by_rule),
+            "total": len(all_violations),
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"check-antipatterns: {len(all_violations)} violation(s) across {len({v.file for v in all_violations})} file(s)")
+        if by_rule:
+            print("  by rule:")
+            for rule, n in sorted(by_rule.items()):
+                print(f"    {rule}: {n}")
+        by_file: dict[Path, list[Violation]] = defaultdict(list)
+        for v in all_violations:
+            by_file[v.file].append(v)
+        for f in sorted(by_file):
+            print(f"\n{f.relative_to(REPO_ROOT)}:")
+            for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
+                print(v.format())
+
+    return 1 if all_violations else 0
 
 
-def _collect_noqa_codes(line: str) -> set[str]:
-    """Extract all rule codes named in a ``# noqa:`` comment."""
-    match = _is_noqa_line(line)
-    if not match:
-        return set()
-    raw = match.group(1)
-    return {code.strip() for code in raw.split(",") if code.strip()}
-
-
-def _is_test_file(path: Path) -> bool:
-    return TESTS_ROOT in path.parents or path.name.startswith("test_")
+def scan_file(path: Path) -> list[Violation]:
+    try:
+        source = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    lines = source.splitlines()
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:
+        return []
+    out: list[Violation] = []
+    out.extend(scan_noqa_bans(path, lines))
+    out.extend(scan_import_error_guards(path, tree))
+    out.extend(scan_global_usage(path, tree))
+    out.extend(scan_magic_crops(path, lines))
+    return out
 
 
 def scan_noqa_bans(path: Path, lines: list[str]) -> list[Violation]:
@@ -162,6 +199,15 @@ def scan_noqa_bans(path: Path, lines: list[str]) -> list[Violation]:
                     )
                 )
     return out
+
+
+def _collect_noqa_codes(line: str) -> set[str]:
+    """Extract all rule codes named in a ``# noqa:`` comment."""
+    match = _is_noqa_line(line)
+    if not match:
+        return set()
+    raw = match.group(1)
+    return {code.strip() for code in raw.split(",") if code.strip()}
 
 
 def scan_import_error_guards(path: Path, tree: ast.AST) -> list[Violation]:
@@ -288,22 +334,25 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
     return out
 
 
-def scan_file(path: Path) -> list[Violation]:
-    try:
-        source = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    lines = source.splitlines()
-    try:
-        tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
-    out: list[Violation] = []
-    out.extend(scan_noqa_bans(path, lines))
-    out.extend(scan_import_error_guards(path, tree))
-    out.extend(scan_global_usage(path, tree))
-    out.extend(scan_magic_crops(path, lines))
-    return out
+# Line-length padding slices are NOT data truncation — they enforce a
+# physical output width (e.g. a Markdown hard line break at 117 chars).
+# The pattern: the slice is preceded on the previous non-blank line by
+# ``if len(x) > N``. We use a small window (3 lines back) to catch this.
+def _is_line_padding_context(lines: list[str], current_idx_0based: int) -> bool:
+    """True if a ``if len(...) > N`` guard appears just above this slice."""
+    for j in range(max(0, current_idx_0based - 3), current_idx_0based):
+        if _LINE_PADDING_RE.search(lines[j]):
+            return True
+    return False
+
+
+def _is_noqa_line(line: str) -> re.Match[str] | None:
+    """Return a match object for ``# noqa: CODE[, CODE...]`` if present."""
+    return re.search(r"#\s*noqa\s*:\s*([A-Z0-9_, ]+)", line)
+
+
+def _is_test_file(path: Path) -> bool:
+    return TESTS_ROOT in path.parents or path.name.startswith("test_")
 
 
 def discover_py_files(roots: list[Path]) -> list[Path]:
@@ -313,55 +362,6 @@ def discover_py_files(roots: list[Path]) -> list[Path]:
             continue
         out.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
     return sorted(out)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
-    parser.add_argument(
-        "--src",
-        action="append",
-        default=[],
-        help="Source root to scan (repeatable). Default: src/knox + tests/unit.",
-    )
-    args = parser.parse_args()
-
-    if args.src:
-        roots = [Path(p).resolve() for p in args.src]
-    else:
-        roots = [SRC_ROOT, TESTS_ROOT]
-
-    py_files = discover_py_files(roots)
-    all_violations: list[Violation] = []
-    for f in py_files:
-        all_violations.extend(scan_file(f))
-
-    by_rule: dict[str, int] = defaultdict(int)
-    for v in all_violations:
-        by_rule[v.rule] += 1
-
-    if args.json:
-        payload = {
-            "violations": [v.as_dict() for v in all_violations],
-            "summary": dict(by_rule),
-            "total": len(all_violations),
-        }
-        print(json.dumps(payload, indent=2))
-    else:
-        print(f"check-antipatterns: {len(all_violations)} violation(s) across {len({v.file for v in all_violations})} file(s)")
-        if by_rule:
-            print("  by rule:")
-            for rule, n in sorted(by_rule.items()):
-                print(f"    {rule}: {n}")
-        by_file: dict[Path, list[Violation]] = defaultdict(list)
-        for v in all_violations:
-            by_file[v.file].append(v)
-        for f in sorted(by_file):
-            print(f"\n{f.relative_to(REPO_ROOT)}:")
-            for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
-                print(v.format())
-
-    return 1 if all_violations else 0
 
 
 if __name__ == "__main__":

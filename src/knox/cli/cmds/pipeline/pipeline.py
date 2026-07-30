@@ -85,31 +85,6 @@ from knox.preprocessing.parsers.base import ParserRouter
 logger = get_logger(__name__)
 
 
-def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
-    """Parse repeated ``--set key=value`` items into a coerced override dict.
-
-    Each value is validated against the known config schema and coerced to the
-    type declared in :data:`knox.core.config.DEFAULTS`. Unknown keys or bad
-    values abort the run with a clear error. The result is merged last by
-    :func:`build_cli_overrides` so it overrides every other CLI flag.
-    """
-    result: dict[str, Any] = {}
-    if not items:
-        return result
-    for item in items:
-        if "=" not in item:
-            raise typer.BadParameter(f"--set expects key=value, got: {item!r}")
-        key, _, val = item.partition("=")
-        key = key.strip()
-        if not validate_config_key(key):
-            raise typer.BadParameter(f"unknown config key: {key!r}")
-        try:
-            result[key] = coerce_config_value(val, key)
-        except ValueError as exc:
-            raise typer.BadParameter(f"--set {key}: {exc}") from exc
-    return result
-
-
 @app.command(name="parse")
 def parse_cmd(
     files: ParseFiles,
@@ -432,3 +407,28 @@ def ingest_cmd(
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
     get_console().print(summary)
+
+
+def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
+    """Parse repeated ``--set key=value`` items into a coerced override dict.
+
+    Each value is validated against the known config schema and coerced to the
+    type declared in :data:`knox.core.config.DEFAULTS`. Unknown keys or bad
+    values abort the run with a clear error. The result is merged last by
+    :func:`build_cli_overrides` so it overrides every other CLI flag.
+    """
+    result: dict[str, Any] = {}
+    if not items:
+        return result
+    for item in items:
+        if "=" not in item:
+            raise typer.BadParameter(f"--set expects key=value, got: {item!r}")
+        key, _, val = item.partition("=")
+        key = key.strip()
+        if not validate_config_key(key):
+            raise typer.BadParameter(f"unknown config key: {key!r}")
+        try:
+            result[key] = coerce_config_value(val, key)
+        except ValueError as exc:
+            raise typer.BadParameter(f"--set {key}: {exc}") from exc
+    return result

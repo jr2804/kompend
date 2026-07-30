@@ -9,27 +9,6 @@ from knox.core.paths import LINT_HISTORY_FILE, RUNS_FILE
 from knox.core.reporting.log import build_log_report
 
 
-def _write_runs(state_dir: Path, events: list[dict]) -> None:
-    state_dir.mkdir(parents=True, exist_ok=True)
-    with (state_dir / RUNS_FILE).open("w", encoding="utf-8") as fh:
-        for ev in events:
-            fh.write(json.dumps(ev) + "\n")
-
-
-def _write_lint(state_dir: Path, entries: list[dict]) -> None:
-    state_dir.mkdir(parents=True, exist_ok=True)
-    with (state_dir / LINT_HISTORY_FILE).open("w", encoding="utf-8") as fh:
-        for e in entries:
-            fh.write(json.dumps(e) + "\n")
-
-
-def _make_run(run_id: str, cmd: str, *, status: str | None = None, dur: float = 1.5) -> list[dict]:
-    events = [{"event": "start", "run_id": run_id, "cmd": cmd, "ts": "2026-07-05T10:00:00+02:00"}]
-    if status is not None:
-        events.append({"event": "end", "run_id": run_id, "cmd": cmd, "status": status, "duration_s": dur, "ts": "2026-07-05T10:00:01+02:00"})
-    return events
-
-
 class TestBuildLogReport:
     def test_empty_vault_returns_placeholder(self, tmp_path: Path) -> None:
         report = build_log_report(tmp_path, last_n=5)
@@ -63,3 +42,24 @@ class TestBuildLogReport:
         assert "Lint Trend" in report
         assert "score=70%" in report
         assert "Trend" in report  # sparkline + range
+
+
+def _write_runs(state_dir: Path, events: list[dict]) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / RUNS_FILE).open("w", encoding="utf-8") as fh:
+        for ev in events:
+            fh.write(json.dumps(ev) + "\n")
+
+
+def _write_lint(state_dir: Path, entries: list[dict]) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / LINT_HISTORY_FILE).open("w", encoding="utf-8") as fh:
+        for e in entries:
+            fh.write(json.dumps(e) + "\n")
+
+
+def _make_run(run_id: str, cmd: str, *, status: str | None = None, dur: float = 1.5) -> list[dict]:
+    events = [{"event": "start", "run_id": run_id, "cmd": cmd, "ts": "2026-07-05T10:00:00+02:00"}]
+    if status is not None:
+        events.append({"event": "end", "run_id": run_id, "cmd": cmd, "status": status, "duration_s": dur, "ts": "2026-07-05T10:00:01+02:00"})
+    return events

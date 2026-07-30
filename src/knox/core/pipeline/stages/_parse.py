@@ -30,15 +30,6 @@ from knox.types import ParsedResult
 logger = get_logger(__name__)
 
 
-def apply_privacy_filter(elements: list[Any]) -> None:
-    """Apply privacy filter in-place to document elements."""
-    for el in elements:
-        if isinstance(el.content, str):
-            el.content, _ = filter_sensitive(el.content)
-        elif isinstance(el.content, list):
-            el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
-
-
 def parse_and_chunk(pipeline: Any) -> list[Any]:
     """Parse documents and chunk them, with optional caching and parallelism.
 
@@ -157,6 +148,15 @@ def _process_single_source(
         }
         pipeline._cache_store.set("chunk", chunk_deps, tree.to_dict())
     return tree
+
+
+def apply_privacy_filter(elements: list[Any]) -> None:
+    """Apply privacy filter in-place to document elements."""
+    for el in elements:
+        if isinstance(el.content, str):
+            el.content, _ = filter_sensitive(el.content)
+        elif isinstance(el.content, list):
+            el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
 
 
 def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:

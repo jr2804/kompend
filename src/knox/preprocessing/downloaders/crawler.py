@@ -23,47 +23,6 @@ from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 logger = get_logger(__name__)
 
 
-def _chromium_available() -> bool:
-    """Return True if the Playwright Chromium binary exists on disk."""
-    try:
-        path = asyncio.run(get_chromium_path("chromium"))
-        return bool(path and Path(path).exists())
-    except Exception:
-        return False
-
-
-def _detect_real_browser_channel() -> str | None:
-    """Return a Playwright ``channel`` name (``"chrome"`` or ``"msedge"``)
-    for a real installed browser, else ``None``.
-
-    Patchright (undetected mode) bypasses bot detection best with a *real*
-    browser binary rather than bundled chromium.
-    """
-    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
-    pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
-    # Windows: Chrome preferred, then Edge.
-    for exe in (
-        rf"{pf}\Google\Chrome\Application\chrome.exe",
-        rf"{pf86}\Google\Chrome\Application\chrome.exe",
-        rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
-        rf"{pf}\Microsoft\Edge\Application\msedge.exe",
-    ):
-        if Path(exe).exists():
-            return "chrome" if "Chrome" in exe else "msedge"
-    # macOS
-    for channel, app in (
-        ("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-        ("msedge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-    ):
-        if Path(app).exists():
-            return channel
-    # Linux: on PATH
-    for channel, cmd in (("chrome", "google-chrome"), ("msedge", "microsoft-edge")):
-        if shutil.which(cmd):
-            return channel
-    return None
-
-
 class WebCrawler(BaseDownloader):
     """Crawl documentation sites and articles, save as markdown.
 
@@ -206,3 +165,44 @@ class WebCrawler(BaseDownloader):
                 self._detector.mark_downloaded(url, content_hash)
             logger.info("Saved crawler result to %s", target_file)
             return target_file
+
+
+def _chromium_available() -> bool:
+    """Return True if the Playwright Chromium binary exists on disk."""
+    try:
+        path = asyncio.run(get_chromium_path("chromium"))
+        return bool(path and Path(path).exists())
+    except Exception:
+        return False
+
+
+def _detect_real_browser_channel() -> str | None:
+    """Return a Playwright ``channel`` name (``"chrome"`` or ``"msedge"``)
+    for a real installed browser, else ``None``.
+
+    Patchright (undetected mode) bypasses bot detection best with a *real*
+    browser binary rather than bundled chromium.
+    """
+    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+    pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+    # Windows: Chrome preferred, then Edge.
+    for exe in (
+        rf"{pf}\Google\Chrome\Application\chrome.exe",
+        rf"{pf86}\Google\Chrome\Application\chrome.exe",
+        rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+        rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+    ):
+        if Path(exe).exists():
+            return "chrome" if "Chrome" in exe else "msedge"
+    # macOS
+    for channel, app in (
+        ("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ("msedge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+    ):
+        if Path(app).exists():
+            return channel
+    # Linux: on PATH
+    for channel, cmd in (("chrome", "google-chrome"), ("msedge", "microsoft-edge")):
+        if shutil.which(cmd):
+            return channel
+    return None

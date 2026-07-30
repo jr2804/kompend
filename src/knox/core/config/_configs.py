@@ -21,15 +21,25 @@ from pydantic import BaseModel, ConfigDict, Field
 from knox.core.paths import CACHE_DIR, KNOX_DIR
 
 
-class _KnoxBaseModel(BaseModel):
-    """Base for all config models.
+class ExtractionStrategy(StrEnum):
+    """How per-chunk extractions are combined into one document-level Extraction.
 
-    ``populate_by_name=True`` allows construction via field name (e.g.
-    ``LLMConfig(default_model="x")``) even when a ``validation_alias`` is set
-    (e.g. ``"KNOX_LLM_DEFAULT_MODEL"``).
+    - ``reduce``: map-reduce — extract each batch independently, then a
+      second agent pass merges partial results into a coherent
+      document-level Extraction.
+    - ``incremental``: rolling — feed chunks sequentially into one agent
+      conversation via ``message_history``, so each batch sees the
+      accumulated context from prior batches.
+    - ``agentic``: stateful — one agent per source walks sections in
+      order, accumulating a structured ``ExtractionMemory`` (concepts,
+      entities, tags) with compaction-managed digest injection between
+      sections. Best coherence for long/high-value sources; sequential
+      within a source, not cacheable per-batch.
     """
 
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    REDUCE = "reduce"
+    INCREMENTAL = "incremental"
+    AGENTIC = "agentic"
 
 
 # ── Enums ────────────────────────────────────────────────────────────────
@@ -44,21 +54,6 @@ class ImageMode(StrEnum):
 
     FILE = "file"
     BASE64 = "base64"
-
-
-class OutputFormat(StrEnum):
-    """Output format for the compiled wiki.
-
-    - ``OKF``: Open Knowledge Format v0.1 bundle (default)
-    - ``MARKDOWN``: Markdown files (Obsidian-flavored vault mode)
-    - ``JSON``: JSON file
-    - ``TYPST``: Typst file
-    """
-
-    OKF = "okf"
-    MARKDOWN = "markdown"
-    JSON = "json"
-    TYPST = "typst"
 
 
 class LlmDataFormat(StrEnum):
@@ -106,6 +101,21 @@ class LlmDataFormat(StrEnum):
     TEXT = "text"
 
 
+class OutputFormat(StrEnum):
+    """Output format for the compiled wiki.
+
+    - ``OKF``: Open Knowledge Format v0.1 bundle (default)
+    - ``MARKDOWN``: Markdown files (Obsidian-flavored vault mode)
+    - ``JSON``: JSON file
+    - ``TYPST``: Typst file
+    """
+
+    OKF = "okf"
+    MARKDOWN = "markdown"
+    JSON = "json"
+    TYPST = "typst"
+
+
 class Verbosity(StrEnum):
     """Synthesis verbosity for the ``query`` command.
 
@@ -119,25 +129,15 @@ class Verbosity(StrEnum):
     COMPREHENSIVE = "comprehensive"
 
 
-class ExtractionStrategy(StrEnum):
-    """How per-chunk extractions are combined into one document-level Extraction.
+class _KnoxBaseModel(BaseModel):
+    """Base for all config models.
 
-    - ``reduce``: map-reduce — extract each batch independently, then a
-      second agent pass merges partial results into a coherent
-      document-level Extraction.
-    - ``incremental``: rolling — feed chunks sequentially into one agent
-      conversation via ``message_history``, so each batch sees the
-      accumulated context from prior batches.
-    - ``agentic``: stateful — one agent per source walks sections in
-      order, accumulating a structured ``ExtractionMemory`` (concepts,
-      entities, tags) with compaction-managed digest injection between
-      sections. Best coherence for long/high-value sources; sequential
-      within a source, not cacheable per-batch.
+    ``populate_by_name=True`` allows construction via field name (e.g.
+    ``LLMConfig(default_model="x")``) even when a ``validation_alias`` is set
+    (e.g. ``"KNOX_LLM_DEFAULT_MODEL"``).
     """
 
-    REDUCE = "reduce"
-    INCREMENTAL = "incremental"
-    AGENTIC = "agentic"
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
 # ── Compile sub-configs ──────────────────────────────────────────────────

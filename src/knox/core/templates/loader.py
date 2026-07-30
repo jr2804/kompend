@@ -43,19 +43,6 @@ logger = get_logger(__name__)
 _loader_instance: list[TemplateLoader] = []  # mutable container avoids global statement
 
 
-def get_template_loader() -> TemplateLoader:
-    """Return the shared :class:`TemplateLoader` singleton.
-
-    Instantiates on first call, then reuses the same instance for every
-    subsequent call.  This avoids repeated filesystem walks in
-    :func:`find_project_config` when multiple modules create their own
-    ``TemplateLoader()`` at import time.
-    """
-    if not _loader_instance:
-        _loader_instance.append(TemplateLoader())
-    return _loader_instance[0]
-
-
 # ── Built-in template root ──────────────────────────────────────────────
 
 _BUILTIN_TEMPLATE_PACKAGE: str = "knox"
@@ -67,6 +54,11 @@ _USER_CONFIG_DIR: str = "knox"
 _USER_TEMPLATES_NAME: str = "templates"
 _PROJECT_TEMPLATES_DIR: str = "knox"
 _PROJECT_TEMPLATES_NAME: str = "templates"
+
+
+# ── Frontmatter parsing ─────────────────────────────────────────────────
+
+_FRONTMATTER_RE: Any = None
 
 
 # ── Dataclasses ─────────────────────────────────────────────────────────
@@ -137,28 +129,6 @@ class TemplateMeta:
             temperature=data.get("temperature"),
             raw=data,
         )
-
-
-# ── Frontmatter parsing ─────────────────────────────────────────────────
-
-_FRONTMATTER_RE: Any = None
-
-
-def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}, text
-
-    raw_yaml = match.group(1)
-    body = text[match.end() :]
-
-    try:
-        fm: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
-    except Exception as exc:
-        logger.debug("Failed to parse template frontmatter: %s", exc, exc_info=True)
-        fm = {}
-
-    return fm, body
 
 
 # ── TemplateLoader ──────────────────────────────────────────────────────
@@ -463,6 +433,36 @@ class TemplateLoader:
         return layers
 
 
+def get_template_loader() -> TemplateLoader:
+    """Return the shared :class:`TemplateLoader` singleton.
+
+    Instantiates on first call, then reuses the same instance for every
+    subsequent call.  This avoids repeated filesystem walks in
+    :func:`find_project_config` when multiple modules create their own
+    ``TemplateLoader()`` at import time.
+    """
+    if not _loader_instance:
+        _loader_instance.append(TemplateLoader())
+    return _loader_instance[0]
+
+
+def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return {}, text
+
+    raw_yaml = match.group(1)
+    body = text[match.end() :]
+
+    try:
+        fm: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
+    except Exception as exc:
+        logger.debug("Failed to parse template frontmatter: %s", exc, exc_info=True)
+        fm = {}
+
+    return fm, body
+
+
 # ── Path resolution ──────────────────────────────────────────────────
 
 
@@ -488,14 +488,6 @@ def _user_templates_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-# ── Built-in template access (importlib.resources) ─────────────────
-
-
-def _read_builtin(template_path: str) -> str:
-    ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_path
-    return ref.read_text(encoding="utf-8")
-
-
 def _builtin_exists(template_path: str) -> bool:
     """Check if a built-in template exists."""
     try:
@@ -503,6 +495,14 @@ def _builtin_exists(template_path: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ── Built-in template access (importlib.resources) ─────────────────
+
+
+def _read_builtin(template_path: str) -> str:
+    ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_path
+    return ref.read_text(encoding="utf-8")
 
 
 def _list_builtin_templates() -> list[str]:

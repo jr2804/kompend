@@ -8,20 +8,26 @@ from enum import StrEnum
 from typing import Any
 
 
-class Severity(StrEnum):
-    """Lint finding severity."""
-
-    ERROR = "error"
-    WARNING = "warning"
-    INFO = "info"
-
-
 class LintRuleOutcome(StrEnum):
     """Result of applying a single lint rule to a page."""
 
     PASS = "pass"  # noqa: S105
     FAIL = "fail"  # noqa: S105
     SKIP = "skip"  # noqa: S105
+
+
+class RemediationStatus(StrEnum):
+    APPLIED = "applied"
+    SKIPPED = "skipped"
+    RECOMMENDED = "recommended"
+
+
+class Severity(StrEnum):
+    """Lint finding severity."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
 
 
 @dataclass
@@ -81,6 +87,17 @@ class LintReport:
     results: list[LintReportResult]
 
 
+@dataclass
+class RemediationAction:
+    """A single remediation action applied, skipped, or recommended."""
+
+    tier: int  # 1, 2, or 3
+    category: str
+    description: str
+    status: RemediationStatus
+    details: dict[str, Any] = field(default_factory=dict)
+
+
 class BaseLintRule(ABC):
     """Abstract base class that every lint rule must implement.
 
@@ -107,20 +124,3 @@ class BaseLintRule(ABC):
         Default implementation returns results unchanged.
         """
         return list(results)
-
-
-class RemediationStatus(StrEnum):
-    APPLIED = "applied"
-    SKIPPED = "skipped"
-    RECOMMENDED = "recommended"
-
-
-@dataclass
-class RemediationAction:
-    """A single remediation action applied, skipped, or recommended."""
-
-    tier: int  # 1, 2, or 3
-    category: str
-    description: str
-    status: RemediationStatus
-    details: dict[str, Any] = field(default_factory=dict)

@@ -19,6 +19,17 @@ from knox.llm.context_window import ContextSource, ContextWindow
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
 
+class _OrderTrackingResolver:
+    """Mock resolver that records the element_types of each resolved chunk."""
+
+    def __init__(self) -> None:
+        self.resolved_types: list[ElementType] = []
+
+    def resolve(self, chunk: Chunk) -> ResolvedChunk:  # type: ignore[override]
+        self.resolved_types.append(chunk.element_types[0] if chunk.element_types else ElementType.TEXT)
+        return ResolvedChunk(chunk=chunk)
+
+
 def test_cli_overrides_include_vlm_model() -> None:
     overrides = _build_cli_overrides(vlm_model="openai/gpt-4o")
     assert overrides["compile.llm.vlm_model"] == "openai/gpt-4o"
@@ -50,18 +61,6 @@ def test_build_pipeline_unknown_parser_raises(tmp_path: Path) -> None:
         build_pipeline(config)
 
 
-def _make_config(tmp_path: Path, *, vlm_model: str) -> PipelineConfig:
-    return PipelineConfig(
-        source_dir=tmp_path,
-        output_dir=tmp_path / "wiki",
-        llm=LLMConfig(default_model="ollama/llama3.2", vlm_model=vlm_model),
-        embedding=EmbeddingConfig(model=""),
-        output=OutputConfig(),
-        image_mode=ImageMode.FILE,
-        compiler=Compiler.GRAPH,
-    )
-
-
 def test_build_pipeline_adds_vlm_enricher_when_configured(tmp_path: Path) -> None:
     """When vlm_model is set, the resolver chain contains a VLMEnricher."""
     config = _make_config(tmp_path, vlm_model="openai/gpt-4o")
@@ -78,12 +77,6 @@ def test_build_pipeline_skips_vlm_without_model(tmp_path: Path) -> None:
     assert pipeline.resolver is not None
     resolver_names = {r.__class__.__name__ for r in pipeline.resolver._resolvers}  # ty: ignore
     assert "VLMEnricher" not in resolver_names
-
-
-def _populate_source_dir(tmp_path: Path, *filenames: str) -> None:
-    """Create empty files in tmp_path to simulate a source directory."""
-    for name in filenames:
-        (tmp_path / name).touch()
 
 
 def test_iter_sources_scans_source_dir_when_input_files_is_none(tmp_path: Path) -> None:
@@ -123,15 +116,10 @@ def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     assert all(s.suffix.lower() in (".pdf", ".md", ".html", ".csv") for s in sources)
 
 
-class _OrderTrackingResolver:
-    """Mock resolver that records the element_types of each resolved chunk."""
-
-    def __init__(self) -> None:
-        self.resolved_types: list[ElementType] = []
-
-    def resolve(self, chunk: Chunk) -> ResolvedChunk:  # type: ignore[override]
-        self.resolved_types.append(chunk.element_types[0] if chunk.element_types else ElementType.TEXT)
-        return ResolvedChunk(chunk=chunk)
+def _populate_source_dir(tmp_path: Path, *filenames: str) -> None:
+    """Create empty files in tmp_path to simulate a source directory."""
+    for name in filenames:
+        (tmp_path / name).touch()
 
 
 def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
@@ -165,6 +153,18 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
     # Image chunks must all be at the end, contiguous
     types = pipeline.resolver.resolved_types  # ty: ignore
     assert types == [ElementType.TEXT, ElementType.TEXT, ElementType.TEXT, ElementType.IMAGE, ElementType.IMAGE]
+
+
+def _make_config(tmp_path: Path, *, vlm_model: str) -> PipelineConfig:
+    return PipelineConfig(
+        source_dir=tmp_path,
+        output_dir=tmp_path / "wiki",
+        llm=LLMConfig(default_model="ollama/llama3.2", vlm_model=vlm_model),
+        embedding=EmbeddingConfig(model=""),
+        output=OutputConfig(),
+        image_mode=ImageMode.FILE,
+        compiler=Compiler.GRAPH,
+    )
 
 
 def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -38,6 +38,87 @@ _VERIFIED_BY = f"knox/{_KNOX_VERSION or '0.0.0'}"
 logger = get_logger(__name__)
 
 
+@dataclasses.dataclass
+class PostCompileOptions:
+    """Options for post-compilation actions, grouped to reduce parameter count."""
+
+    wiki: CompiledWiki
+    pipeline_config: PipelineConfig
+    output_dir: Path
+    sources_dir: Path
+    review: bool | None = None
+    bypass_review: bool | None = None
+    provenance: bool | None = None
+    private: bool | None = None
+    verify: bool | None = None
+    synthesize: bool | None = None
+    index_store: bool | None = None
+    compile_lint: bool | None = None
+    embed_model: str | None = None
+    show_progress: bool | None = None
+    lint_config: LintConfig | None = None
+
+
+def post_compile_actions(opts: PostCompileOptions) -> None:
+    """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
+    base_dir = opts.pipeline_config.resolved_base_dir()
+    write_wiki_cache(opts.wiki, base_dir)
+    print_compile_summary(opts.wiki)
+
+    if opts.review and not opts.bypass_review:
+        send_to_review_queue(opts.wiki, base_dir)
+        get_console().print(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
+    elif opts.bypass_review and opts.review:
+        get_console().print("--bypass-review overrides --review; writing pages directly.")
+
+    if opts.provenance:
+        annotate_provenance(opts.wiki, opts.output_dir)
+
+    if opts.private:
+        mark_private(opts.wiki, opts.output_dir)
+
+    if opts.verify:
+        model = opts.pipeline_config.llm.default_model
+        if not model:
+            get_err_console().print("Warning: --verify requires an LLM model — skipping verification")
+        else:
+            verify_claims(
+                opts.wiki,
+                opts.output_dir,
+                agent=VerificationAgent(
+                    model,
+                    timeout=opts.pipeline_config.llm.timeout,
+                    retries=opts.pipeline_config.llm.output_retries,
+                    reasoning_effort=opts.pipeline_config.llm.reasoning_effort,
+                ),
+                verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
+            )
+
+    generated = write_index(opts.wiki, opts.output_dir, base_dir=base_dir)
+    get_console().print(f"Index: {generated['index']}")
+
+    if opts.synthesize:
+        run_overview_synthesis(
+            wiki=opts.wiki,
+            pipeline_config=opts.pipeline_config,
+            base_dir=base_dir,
+            show_progress=opts.show_progress,
+        )
+
+    # Build vector index unless explicitly disabled (--no-index).
+    if opts.index_store is not False:
+        opts.wiki.metadata["embedding_model"] = opts.embed_model or opts.pipeline_config.embedding.model
+        try:
+            cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
+        except Exception as exc:
+            logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
+
+    if opts.compile_lint:
+        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
+
+    write_wiki_cache(opts.wiki, base_dir)
+
+
 def write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``."""
     paths = VaultPaths(base_dir)
@@ -245,84 +326,3 @@ def run_overview_synthesis(
         get_console().print(f"Overview: {overview_path}")
     else:
         get_err_console().print("Overview generation skipped (no content to summarise).")
-
-
-@dataclasses.dataclass
-class PostCompileOptions:
-    """Options for post-compilation actions, grouped to reduce parameter count."""
-
-    wiki: CompiledWiki
-    pipeline_config: PipelineConfig
-    output_dir: Path
-    sources_dir: Path
-    review: bool | None = None
-    bypass_review: bool | None = None
-    provenance: bool | None = None
-    private: bool | None = None
-    verify: bool | None = None
-    synthesize: bool | None = None
-    index_store: bool | None = None
-    compile_lint: bool | None = None
-    embed_model: str | None = None
-    show_progress: bool | None = None
-    lint_config: LintConfig | None = None
-
-
-def post_compile_actions(opts: PostCompileOptions) -> None:
-    """Run all post-compilation steps (review, provenance, index, lint, etc.)."""
-    base_dir = opts.pipeline_config.resolved_base_dir()
-    write_wiki_cache(opts.wiki, base_dir)
-    print_compile_summary(opts.wiki)
-
-    if opts.review and not opts.bypass_review:
-        send_to_review_queue(opts.wiki, base_dir)
-        get_console().print(f"Pages pending review in {VaultPaths(base_dir).review_dir}")
-    elif opts.bypass_review and opts.review:
-        get_console().print("--bypass-review overrides --review; writing pages directly.")
-
-    if opts.provenance:
-        annotate_provenance(opts.wiki, opts.output_dir)
-
-    if opts.private:
-        mark_private(opts.wiki, opts.output_dir)
-
-    if opts.verify:
-        model = opts.pipeline_config.llm.default_model
-        if not model:
-            get_err_console().print("Warning: --verify requires an LLM model — skipping verification")
-        else:
-            verify_claims(
-                opts.wiki,
-                opts.output_dir,
-                agent=VerificationAgent(
-                    model,
-                    timeout=opts.pipeline_config.llm.timeout,
-                    retries=opts.pipeline_config.llm.output_retries,
-                    reasoning_effort=opts.pipeline_config.llm.reasoning_effort,
-                ),
-                verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
-            )
-
-    generated = write_index(opts.wiki, opts.output_dir, base_dir=base_dir)
-    get_console().print(f"Index: {generated['index']}")
-
-    if opts.synthesize:
-        run_overview_synthesis(
-            wiki=opts.wiki,
-            pipeline_config=opts.pipeline_config,
-            base_dir=base_dir,
-            show_progress=opts.show_progress,
-        )
-
-    # Build vector index unless explicitly disabled (--no-index).
-    if opts.index_store is not False:
-        opts.wiki.metadata["embedding_model"] = opts.embed_model or opts.pipeline_config.embedding.model
-        try:
-            cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
-        except Exception as exc:
-            logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
-
-    if opts.compile_lint:
-        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
-
-    write_wiki_cache(opts.wiki, base_dir)

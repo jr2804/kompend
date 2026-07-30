@@ -4,24 +4,6 @@ from knox.core.models import WikiNode
 from knox.search.budget import ContextBudgetManager, RetrievalMode
 
 
-def _make_node(
-    node_id: str,
-    content: str = "test content",
-    depth: int = 0,
-    parent_id: str | None = None,
-    children_ids: list[str] | None = None,
-) -> WikiNode:
-    return WikiNode(
-        id=node_id,
-        title=node_id,
-        content=content,
-        node_type="concept",
-        depth=depth,
-        parent_id=parent_id,
-        children_ids=children_ids or [],
-    )
-
-
 class TestContextBudgetManager:
     def test_available_tokens_default(self) -> None:
         mgr = ContextBudgetManager(128_000)
@@ -135,3 +117,21 @@ class TestContextBudgetManager:
         nodes = [_make_node("a")]
         found = ContextBudgetManager._find_node(nodes, "missing")
         assert found is None
+
+
+def _make_node(
+    node_id: str,
+    content: str = "test content",
+    depth: int = 0,
+    parent_id: str | None = None,
+    children_ids: list[str] | None = None,
+) -> WikiNode:
+    return WikiNode(
+        id=node_id,
+        title=node_id,
+        content=content,
+        node_type="concept",
+        depth=depth,
+        parent_id=parent_id,
+        children_ids=children_ids or [],
+    )

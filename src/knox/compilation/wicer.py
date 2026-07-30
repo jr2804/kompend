@@ -43,6 +43,9 @@ _WICER_CONTEXT_UTILIZATION: Final[float] = 0.50
 _WICER_PROMPT_RESERVE_TOKENS: Final[int] = 1024
 
 
+__all__ = ["WiCERCompiler"]
+
+
 class WiCERCompiler(BaseCompiler):
     """Compile-Evaluate-Refine loop for improved compilation quality.
 
@@ -470,6 +473,3 @@ class WiCERCompiler(BaseCompiler):
         except Exception as exc:
             logger.warning("WiCER: diagnosis failed: %s", exc, exc_info=True)
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
-
-
-__all__ = ["WiCERCompiler"]

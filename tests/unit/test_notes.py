@@ -12,16 +12,6 @@ from knox.core.pipeline.config import EmbeddingConfig, LLMConfig, PipelineConfig
 from knox.core.pipeline.orchestrator import WikiPipeline
 from knox.core.templates import TemplateLoader
 
-
-def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
-    """Create template files in the correct project structure."""
-    tpl_dir = tmp_path / "knox" / "templates"
-    tpl_dir.mkdir(parents=True, exist_ok=True)
-    for name, content in templates.items():
-        (tpl_dir / name).write_text(content, encoding="utf-8")
-    return tmp_path
-
-
 # ── Config key ──────────────────────────────────────────────────────────
 
 
@@ -178,3 +168,12 @@ class TestPipelineNotesInjection:
             start_at_tier=Tier.INDEX,
             stop_at_tier=Tier.INDEX,
         )
+
+
+def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
+    """Create template files in the correct project structure."""
+    tpl_dir = tmp_path / "knox" / "templates"
+    tpl_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in templates.items():
+        (tpl_dir / name).write_text(content, encoding="utf-8")
+    return tmp_path

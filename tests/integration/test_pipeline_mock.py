@@ -46,57 +46,6 @@ EMBED_MODEL = "mock/embedding"
 VLM_MODEL = "ollama/mock-vlm"
 
 
-# ── Fixtures ────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def mock_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace every ``build_model`` call with pydantic-ai's ``TestModel``.
-
-    TestModel is pydantic-ai's official mock: it inspects the agent's
-    ``result_type`` and generates valid output that satisfies the Pydantic
-    schema. No network, no model load, no API keys.
-    """
-    monkeypatch.setattr(_llm_models, "build_model", lambda *_args, **_kwargs: TestModel())
-
-
-@pytest.fixture
-def mock_embedding_provider() -> DeterministicTestEmbeddingProvider:
-    return DeterministicTestEmbeddingProvider(dim=384)
-
-
-@pytest.fixture
-def parsed_docs() -> list:
-    """3 synthetic ParsedDocuments — fast, deterministic, no parser dependency."""
-    return [make_test_doc(num_paragraphs=8) for _ in range(3)]
-
-
-@pytest.fixture
-def raw_chunks(parsed_docs: list) -> list[ResolvedChunk]:
-    chunker = HierarchicalChunker(max_tokens=512)
-    out: list[ResolvedChunk] = []
-    for doc in parsed_docs:
-        tree: ChunkTree = chunker.chunk(doc)
-        for node in tree.leaves():
-            if node.chunk:
-                out.append(ResolvedChunk(chunk=node.chunk) if isinstance(node.chunk, Chunk) else node.chunk)
-    return out
-
-
-def _make_config(wiki_dir: Path) -> PipelineConfig:
-    return PipelineConfig(
-        source_dir=wiki_dir,
-        output_dir=wiki_dir,
-        llm=LLMConfig(default_model=LLM_MODEL, vlm_model=VLM_MODEL),
-        embedding=EmbeddingConfig(model=EMBED_MODEL),
-    )
-
-
-def _vault_for(tmp_path: Path, name: str = "vault") -> MarkdownWriter:
-    """MarkdownWriter in vault mode (default)."""
-    return MarkdownWriter(flavor="obsidian", vault_mode=True)
-
-
 # ── Tests ────────────────────────────────────────────────────────────────────
 
 
@@ -190,6 +139,52 @@ def test_vault_files_have_v2_frontmatter(
         assert "at:" in fm, f"{f.name}: missing 'generated.at' in frontmatter"
 
 
+# ── Fixtures ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace every ``build_model`` call with pydantic-ai's ``TestModel``.
+
+    TestModel is pydantic-ai's official mock: it inspects the agent's
+    ``result_type`` and generates valid output that satisfies the Pydantic
+    schema. No network, no model load, no API keys.
+    """
+    monkeypatch.setattr(_llm_models, "build_model", lambda *_args, **_kwargs: TestModel())
+
+
+@pytest.fixture
+def raw_chunks(parsed_docs: list) -> list[ResolvedChunk]:
+    chunker = HierarchicalChunker(max_tokens=512)
+    out: list[ResolvedChunk] = []
+    for doc in parsed_docs:
+        tree: ChunkTree = chunker.chunk(doc)
+        for node in tree.leaves():
+            if node.chunk:
+                out.append(ResolvedChunk(chunk=node.chunk) if isinstance(node.chunk, Chunk) else node.chunk)
+    return out
+
+
+@pytest.fixture
+def parsed_docs() -> list:
+    """3 synthetic ParsedDocuments — fast, deterministic, no parser dependency."""
+    return [make_test_doc(num_paragraphs=8) for _ in range(3)]
+
+
+def _make_config(wiki_dir: Path) -> PipelineConfig:
+    return PipelineConfig(
+        source_dir=wiki_dir,
+        output_dir=wiki_dir,
+        llm=LLMConfig(default_model=LLM_MODEL, vlm_model=VLM_MODEL),
+        embedding=EmbeddingConfig(model=EMBED_MODEL),
+    )
+
+
+def _vault_for(tmp_path: Path, name: str = "vault") -> MarkdownWriter:
+    """MarkdownWriter in vault mode (default)."""
+    return MarkdownWriter(flavor="obsidian", vault_mode=True)
+
+
 def test_deterministic_embedding_provider_runs(
     mock_embedding_provider: DeterministicTestEmbeddingProvider,
 ) -> None:
@@ -201,6 +196,11 @@ def test_deterministic_embedding_provider_runs(
 
     c = mock_embedding_provider.embed("different")
     assert a != c
+
+
+@pytest.fixture
+def mock_embedding_provider() -> DeterministicTestEmbeddingProvider:
+    return DeterministicTestEmbeddingProvider(dim=384)
 
 
 def test_tier_state_round_trip(tmp_path: Path) -> None:

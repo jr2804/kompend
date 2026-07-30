@@ -37,11 +37,6 @@ _KIND_BY_PREFIX: dict[str, AssetKind] = {
 }
 
 
-def _kind_for(match_kind: str) -> AssetKind | None:
-    """Return the :class:`AssetKind` for a regex kind group, or ``None``."""
-    return _KIND_BY_PREFIX.get(match_kind.lower().rstrip("."))
-
-
 def rewrite_asset_mentions(text: str, id_map: AssetIdMap) -> str:
     """Replace ``Figure N`` / ``Table N`` mentions with ``¶ <asset-id>``.
 
@@ -71,3 +66,8 @@ def rewrite_asset_mentions(text: str, id_map: AssetIdMap) -> str:
         return f"¶ {asset_id}"
 
     return _MENTION_RE.sub(_replace, text)
+
+
+def _kind_for(match_kind: str) -> AssetKind | None:
+    """Return the :class:`AssetKind` for a regex kind group, or ``None``."""
+    return _KIND_BY_PREFIX.get(match_kind.lower().rstrip("."))

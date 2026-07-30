@@ -28,9 +28,6 @@ def _build_defaults() -> dict[str, Any]:
     return KnoxConfig().model_dump()
 
 
-DEFAULTS: dict[str, Any] = _build_defaults()
-
-
 def _build_env_map() -> dict[str, str]:
     """Auto-generate _ENV_MAP from :class:`KnoxConfig` validation aliases."""
     env_map: dict[str, str] = {}
@@ -59,12 +56,10 @@ def _build_env_map() -> dict[str, str]:
     return env_map
 
 
+DEFAULTS: dict[str, Any] = _build_defaults()
+
+
 ENV_MAP: dict[str, str] = _build_env_map()
-
-
-def _flat_schema() -> set[str]:
-    """Return all leaf dotted keys present in :data:`DEFAULTS`."""
-    return set(flat_keys(DEFAULTS))
 
 
 def validate_config_key(key: str) -> bool:
@@ -72,19 +67,9 @@ def validate_config_key(key: str) -> bool:
     return key in _flat_schema()
 
 
-def resolve_field_info(key: str) -> FieldInfo | None:
-    """Resolve a dotted config key to its pydantic FieldInfo in :class:`KnoxConfig`."""
-    parts = key.split(".")
-    cls: type[BaseModel] = KnoxConfig
-    for part in parts[:-1]:
-        info = cls.model_fields.get(part)
-        if info is None:
-            return None
-        ann = info.annotation
-        if not (isinstance(ann, type) and issubclass(ann, BaseModel)):
-            return None
-        cls = ann
-    return cls.model_fields.get(parts[-1])
+def _flat_schema() -> set[str]:
+    """Return all leaf dotted keys present in :data:`DEFAULTS`."""
+    return set(flat_keys(DEFAULTS))
 
 
 def coerce_config_value(value: str, key: str) -> ConfigValue:
@@ -110,3 +95,18 @@ def coerce_config_value(value: str, key: str) -> ConfigValue:
         return TypeAdapter(ann).validate_python(value)
     except Exception as e:
         raise ValueError(f"cannot coerce {value!r} to {ann} for {key}") from e
+
+
+def resolve_field_info(key: str) -> FieldInfo | None:
+    """Resolve a dotted config key to its pydantic FieldInfo in :class:`KnoxConfig`."""
+    parts = key.split(".")
+    cls: type[BaseModel] = KnoxConfig
+    for part in parts[:-1]:
+        info = cls.model_fields.get(part)
+        if info is None:
+            return None
+        ann = info.annotation
+        if not (isinstance(ann, type) and issubclass(ann, BaseModel)):
+            return None
+        cls = ann
+    return cls.model_fields.get(parts[-1])

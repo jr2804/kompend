@@ -46,6 +46,29 @@ def review_cmd(
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 
+def _dispatch_review_action(
+    queue: ReviewQueue,
+    action: str,
+    slug: str | None,
+    reason: str | None,
+    approve_all: bool,
+    json_output: bool,
+) -> None:
+    """Dispatch a review command action via a handler map."""
+    handlers: dict[str, Callable[[], None]] = {
+        "list": lambda: _review_list(queue, json_output),
+        "approve": lambda: _review_approve(queue, slug, approve_all),
+        "reject": lambda: _review_reject(queue, slug, reason),
+        "lock": lambda: _review_lock(queue, slug),
+        "unlock": lambda: _review_unlock(queue, slug),
+    }
+    handler = handlers.get(action)
+    if handler is None:
+        get_err_console().print(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.")
+        raise typer.Exit(1)
+    handler()
+
+
 def _review_list(queue: ReviewQueue, json_output: bool) -> None:
     entries = queue.list_entries()
     if json_output:
@@ -98,26 +121,3 @@ def _review_reject(queue: ReviewQueue, slug: str | None, reason: str | None) -> 
         raise typer.Exit(1)
     for e in rejected:
         get_console().print(f"Rejected: {e.slug}")
-
-
-def _dispatch_review_action(
-    queue: ReviewQueue,
-    action: str,
-    slug: str | None,
-    reason: str | None,
-    approve_all: bool,
-    json_output: bool,
-) -> None:
-    """Dispatch a review command action via a handler map."""
-    handlers: dict[str, Callable[[], None]] = {
-        "list": lambda: _review_list(queue, json_output),
-        "approve": lambda: _review_approve(queue, slug, approve_all),
-        "reject": lambda: _review_reject(queue, slug, reason),
-        "lock": lambda: _review_lock(queue, slug),
-        "unlock": lambda: _review_unlock(queue, slug),
-    }
-    handler = handlers.get(action)
-    if handler is None:
-        get_err_console().print(f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock.")
-        raise typer.Exit(1)
-    handler()

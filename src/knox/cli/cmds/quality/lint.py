@@ -67,66 +67,6 @@ lint_app = typer.Typer(
 app.add_typer(lint_app)
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _uses_llm_rule(rule: list[str] | None) -> bool:
-    """Return True if any requested rule name is LLM-powered."""
-    if not rule:
-        return False
-    return any(r in LLM_RULE_BY_NAME for r in rule)
-
-
-def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:
-    """Convert a raw ``report`` dict from ``lint_history.jsonl`` to :class:`LintReport`."""
-    results = [
-        LintReportResult(
-            rule=r.get("rule", ""),
-            outcome=r.get("outcome", ""),
-            details=r.get("details", {}),
-            message=r.get("message", ""),
-            page_id=r.get("page_id", ""),
-        )
-        for r in report_dict.get("results", [])
-    ]
-    return LintReport(results=results)
-
-
-def _persist_lint_fixes(
-    wiki: CompiledWiki,
-    output_dir: Path,
-    base_dir: Path,
-) -> int:
-    """Write lint-fixed frontmatter to markdown files and update the wiki cache.
-
-    Returns the number of files updated.
-    """
-    updated = 0
-    for node in wiki.nodes:
-        fm = node.metadata.get("frontmatter", {})
-        if not isinstance(fm, dict) or "title" not in fm:
-            continue
-        md_file = output_dir / f"node_{node.id}.md"
-        if not md_file.exists():
-            continue
-        text = md_file.read_text(encoding="utf-8")
-        normalized = text.replace("\r\n", "\n")
-        if normalized.startswith("---\n"):
-            end_idx = normalized.find("\n---\n", 4)
-            if end_idx < 0:
-                continue
-            old_fm_text = normalized[4:end_idx]
-            body = normalized[end_idx + 5 :]
-            old_fm = yaml.safe_load(old_fm_text) or {}
-            old_fm.update(fm)
-            new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
-            updated += 1
-
-    write_wiki_cache(wiki, base_dir)
-    return updated
-
-
 # ── Sub-command: run ─────────────────────────────────────────────────────
 
 
@@ -265,6 +205,51 @@ def lint_run(
         get_console().print(report_to_json(report))
     else:
         get_console().print(report_to_text(report))
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+
+def _uses_llm_rule(rule: list[str] | None) -> bool:
+    """Return True if any requested rule name is LLM-powered."""
+    if not rule:
+        return False
+    return any(r in LLM_RULE_BY_NAME for r in rule)
+
+
+def _persist_lint_fixes(
+    wiki: CompiledWiki,
+    output_dir: Path,
+    base_dir: Path,
+) -> int:
+    """Write lint-fixed frontmatter to markdown files and update the wiki cache.
+
+    Returns the number of files updated.
+    """
+    updated = 0
+    for node in wiki.nodes:
+        fm = node.metadata.get("frontmatter", {})
+        if not isinstance(fm, dict) or "title" not in fm:
+            continue
+        md_file = output_dir / f"node_{node.id}.md"
+        if not md_file.exists():
+            continue
+        text = md_file.read_text(encoding="utf-8")
+        normalized = text.replace("\r\n", "\n")
+        if normalized.startswith("---\n"):
+            end_idx = normalized.find("\n---\n", 4)
+            if end_idx < 0:
+                continue
+            old_fm_text = normalized[4:end_idx]
+            body = normalized[end_idx + 5 :]
+            old_fm = yaml.safe_load(old_fm_text) or {}
+            old_fm.update(fm)
+            new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
+            updated += 1
+
+    write_wiki_cache(wiki, base_dir)
+    return updated
 
 
 # ── Sub-command: history ─────────────────────────────────────────────────
@@ -475,3 +460,18 @@ def lint_remediate(
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(remediation_to_text(actions))
+
+
+def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:
+    """Convert a raw ``report`` dict from ``lint_history.jsonl`` to :class:`LintReport`."""
+    results = [
+        LintReportResult(
+            rule=r.get("rule", ""),
+            outcome=r.get("outcome", ""),
+            details=r.get("details", {}),
+            message=r.get("message", ""),
+            page_id=r.get("page_id", ""),
+        )
+        for r in report_dict.get("results", [])
+    ]
+    return LintReport(results=results)

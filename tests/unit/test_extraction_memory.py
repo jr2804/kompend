@@ -5,23 +5,6 @@ from __future__ import annotations
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.extraction_memory import ExtractionMemory
 
-
-def _extraction(
-    *,
-    summary: str = "",
-    entities: list[dict] | None = None,
-    concepts: list[dict] | None = None,
-    tags: list[str] | None = None,
-) -> Extraction:
-    return Extraction(
-        source="test",
-        summary=summary,
-        entities=entities or [],
-        concepts=concepts or [],
-        tags=tags or [],
-    )
-
-
 # ── ingest ────────────────────────────────────────────────────────────────
 
 
@@ -210,3 +193,19 @@ def test_token_estimate_grows_with_content() -> None:
         )
     )
     assert memory._estimate_tokens() > 0
+
+
+def _extraction(
+    *,
+    summary: str = "",
+    entities: list[dict] | None = None,
+    concepts: list[dict] | None = None,
+    tags: list[str] | None = None,
+) -> Extraction:
+    return Extraction(
+        source="test",
+        summary=summary,
+        entities=entities or [],
+        concepts=concepts or [],
+        tags=tags or [],
+    )

@@ -31,19 +31,16 @@ ProgressFn = Callable[[int, int, str], None]
 _CACHE_HASH_LEN = 8
 
 
-def _content_hash(source_file: Path) -> str:
-    """SHA-256 prefix of file contents, used to discriminate same-stem files."""
-    return hashlib.sha256(source_file.read_bytes()).hexdigest()[:_CACHE_HASH_LEN]
+@dataclass(frozen=True, slots=True)
+class IngestResult:
+    """Outcome of an ingestion pass."""
 
-
-def parse_cache_name(source_file: Path) -> str:
-    """Content-discriminated parse-cache filename for *source_file*.
-
-    Format: ``<stem>-<content-hash-prefix>.json``. Two files with the same
-    stem but different content get different cache entries; the same file
-    moved to a different subdirectory keeps its entry (content unchanged).
-    """
-    return f"{source_file.stem}-{_content_hash(source_file)}.json"
+    count: int
+    cached: int = 0
+    skipped: int = 0
+    failed: int = 0
+    dedup_skipped: int = 0
+    cache_dir: Path = Path()
 
 
 def parse_cache_glob(stem: str) -> str:
@@ -65,37 +62,6 @@ def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
             if element_text:
                 text += element_text + "\n\n"
     return text or source_file.read_text(errors="replace")
-
-
-def extract_text_from_cached(json_path: Path) -> str:
-    """Extract plain text from a cached parsed JSON document.
-
-    Concatenates string-type element content. Falls back to reading the
-    cached file's raw bytes when no elements are found.
-    """
-    try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
-    except Exception:
-        logger.debug("Failed to read cached %s", json_path.name, exc_info=True)
-        return json_path.read_text(errors="replace")
-    text = ""
-    for element in data.get("elements", []):
-        content = element.get("content")
-        if isinstance(content, str) and content.strip():
-            text += content + "\n\n"
-    return text or json_path.read_text(errors="replace")
-
-
-@dataclass(frozen=True, slots=True)
-class IngestResult:
-    """Outcome of an ingestion pass."""
-
-    count: int
-    cached: int = 0
-    skipped: int = 0
-    failed: int = 0
-    dedup_skipped: int = 0
-    cache_dir: Path = Path()
 
 
 def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest flow
@@ -274,3 +240,37 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         dedup_skipped=dedup_skipped,
         cache_dir=cache_dir,
     )
+
+
+def parse_cache_name(source_file: Path) -> str:
+    """Content-discriminated parse-cache filename for *source_file*.
+
+    Format: ``<stem>-<content-hash-prefix>.json``. Two files with the same
+    stem but different content get different cache entries; the same file
+    moved to a different subdirectory keeps its entry (content unchanged).
+    """
+    return f"{source_file.stem}-{_content_hash(source_file)}.json"
+
+
+def _content_hash(source_file: Path) -> str:
+    """SHA-256 prefix of file contents, used to discriminate same-stem files."""
+    return hashlib.sha256(source_file.read_bytes()).hexdigest()[:_CACHE_HASH_LEN]
+
+
+def extract_text_from_cached(json_path: Path) -> str:
+    """Extract plain text from a cached parsed JSON document.
+
+    Concatenates string-type element content. Falls back to reading the
+    cached file's raw bytes when no elements are found.
+    """
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.debug("Failed to read cached %s", json_path.name, exc_info=True)
+        return json_path.read_text(errors="replace")
+    text = ""
+    for element in data.get("elements", []):
+        content = element.get("content")
+        if isinstance(content, str) and content.strip():
+            text += content + "\n\n"
+    return text or json_path.read_text(errors="replace")

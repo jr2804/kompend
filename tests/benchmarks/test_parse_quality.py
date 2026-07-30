@@ -38,6 +38,9 @@ for _candidate_dir in _CORPUS_CANDIDATES:
             break
 
 
+_DOCLING_OK = _check_docling()
+
+
 def _check_docling() -> bool:
     """Return True if DoclingParser can be instantiated."""
     try:
@@ -45,9 +48,6 @@ def _check_docling() -> bool:
         return True
     except Exception:
         return False
-
-
-_DOCLING_OK = _check_docling()
 
 
 pytestmark = pytest.mark.benchmark

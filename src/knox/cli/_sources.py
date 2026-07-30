@@ -34,23 +34,6 @@ __all__ = [
 ]
 
 
-# ── Extension helpers ───────────────────────────────────────────────────
-
-
-def get_supported_extensions() -> set[str]:
-    """Return the set of supported file extensions.
-
-    Merges the canonical FileExtension enum with any extensions
-    registered by external parsers.
-    """
-    extensions: set[str] = set(FileExtension)
-    try:
-        extensions.update(get_all_extensions())
-    except Exception as exc:
-        logger.debug("Could not load external parser extensions: %s", exc, exc_info=True)
-    return extensions
-
-
 # ── File resolution ─────────────────────────────────────────────────────
 
 
@@ -215,13 +198,6 @@ def _is_supported(candidate_file: Path) -> bool:
     return candidate_file.suffix.lower() in get_supported_extensions()
 
 
-def _add(candidate_file: Path, seen: set[Path], results: list[Path]) -> None:
-    resolved = candidate_file.resolve()
-    if resolved not in seen:
-        seen.add(resolved)
-        results.append(candidate_file)
-
-
 def _scan_dir(
     scan_dir: Path,
     recursive: bool,
@@ -233,6 +209,30 @@ def _scan_dir(
         for match in sorted(glob_func(f"*{ext}")):
             if match.is_file():
                 _add(match, seen, results)
+
+
+# ── Extension helpers ───────────────────────────────────────────────────
+
+
+def get_supported_extensions() -> set[str]:
+    """Return the set of supported file extensions.
+
+    Merges the canonical FileExtension enum with any extensions
+    registered by external parsers.
+    """
+    extensions: set[str] = set(FileExtension)
+    try:
+        extensions.update(get_all_extensions())
+    except Exception as exc:
+        logger.debug("Could not load external parser extensions: %s", exc, exc_info=True)
+    return extensions
+
+
+def _add(candidate_file: Path, seen: set[Path], results: list[Path]) -> None:
+    resolved = candidate_file.resolve()
+    if resolved not in seen:
+        seen.add(resolved)
+        results.append(candidate_file)
 
 
 def _unique_path(target_file: Path) -> Path:

@@ -20,16 +20,6 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _gen_checkpoint_dir(config: PipelineConfig) -> Path:
-    """Directory for per-batch generation checkpoint files."""
-    return config.paths.cache_dir / "gen_checkpoint"
-
-
-def _gen_checkpoint_path(config: PipelineConfig, gen_deps: dict[str, str]) -> Path:
-    """On-disk path for the generation checkpoint."""
-    return _gen_checkpoint_dir(config) / f"{make_cache_key(gen_deps)}.json"
-
-
 def load_gen_checkpoint(
     config: PipelineConfig,
     gen_deps: dict[str, str],
@@ -63,30 +53,6 @@ def load_gen_checkpoint(
     return nodes, slug_to_idx, completed
 
 
-def _relativize_node(node: WikiNode, base_dir: Path) -> WikiNode:
-    """Return a copy of *node* with ``SOURCE_FILE`` metadata relativized to *base_dir*.
-
-    Paths are absolute in memory but must be vault-relative on disk so the
-    checkpoint (under ``.knox/``) stays relocatable — see Antipattern 6 in
-    ``src/knox/AGENTS.md``.
-    """
-    meta = node.metadata or {}
-    if MetadataField.SOURCE_FILE not in meta:
-        return node
-    rel = rel_to_vault(meta[MetadataField.SOURCE_FILE], base_dir)
-    if rel == meta[MetadataField.SOURCE_FILE]:
-        return node
-    new_meta = {**meta, MetadataField.SOURCE_FILE: rel}
-    return WikiNode(
-        id=node.id,
-        title=node.title,
-        content=node.content,
-        node_type=node.node_type,
-        source_chunks=node.source_chunks,
-        metadata=new_meta,
-    )
-
-
 def save_gen_checkpoint(
     config: PipelineConfig,
     gen_deps: dict[str, str],
@@ -115,6 +81,30 @@ def save_gen_checkpoint(
         logger.debug("Generation checkpoint write failed -- ignoring", exc_info=True)
 
 
+def _relativize_node(node: WikiNode, base_dir: Path) -> WikiNode:
+    """Return a copy of *node* with ``SOURCE_FILE`` metadata relativized to *base_dir*.
+
+    Paths are absolute in memory but must be vault-relative on disk so the
+    checkpoint (under ``.knox/``) stays relocatable — see Antipattern 6 in
+    ``src/knox/AGENTS.md``.
+    """
+    meta = node.metadata or {}
+    if MetadataField.SOURCE_FILE not in meta:
+        return node
+    rel = rel_to_vault(meta[MetadataField.SOURCE_FILE], base_dir)
+    if rel == meta[MetadataField.SOURCE_FILE]:
+        return node
+    new_meta = {**meta, MetadataField.SOURCE_FILE: rel}
+    return WikiNode(
+        id=node.id,
+        title=node.title,
+        content=node.content,
+        node_type=node.node_type,
+        source_chunks=node.source_chunks,
+        metadata=new_meta,
+    )
+
+
 def delete_gen_checkpoint(config: PipelineConfig, gen_deps: dict[str, str]) -> None:
     """Remove a generation checkpoint from disk."""
     if getattr(config, "no_cache", False):
@@ -125,3 +115,13 @@ def delete_gen_checkpoint(config: PipelineConfig, gen_deps: dict[str, str]) -> N
         logger.debug("Generation checkpoint deleted: %s", path)
     except OSError:
         logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
+
+
+def _gen_checkpoint_path(config: PipelineConfig, gen_deps: dict[str, str]) -> Path:
+    """On-disk path for the generation checkpoint."""
+    return _gen_checkpoint_dir(config) / f"{make_cache_key(gen_deps)}.json"
+
+
+def _gen_checkpoint_dir(config: PipelineConfig) -> Path:
+    """Directory for per-batch generation checkpoint files."""
+    return config.paths.cache_dir / "gen_checkpoint"

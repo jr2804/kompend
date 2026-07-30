@@ -47,17 +47,17 @@ def data_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
-def sources_dir() -> Path:
-    """Return the path to ``tests/data/sources/`` (local PDF/DOCX samples)."""
-    return _data_dir / "sources"
-
-
-@pytest.fixture(scope="session")
 def source_pdfs(sources_dir: Path) -> list[Path]:
     """Return sorted list of PDF files in the test corpus."""
     if not sources_dir.exists():
         return []
     return sorted(sources_dir.glob("*.pdf"))
+
+
+@pytest.fixture(scope="session")
+def sources_dir() -> Path:
+    """Return the path to ``tests/data/sources/`` (local PDF/DOCX samples)."""
+    return _data_dir / "sources"
 
 
 @pytest.fixture(scope="session")

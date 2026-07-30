@@ -21,6 +21,78 @@ from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
+
+def merge_similar_concepts(
+    concepts: list[dict[str, Any]],
+    embedding_model: str,
+    *,
+    threshold: float,
+    string_threshold: float,
+    jaccard_min_token_len: int,
+) -> list[dict[str, Any]]:
+    """Merge concept pages whose name+definition embeddings exceed *threshold*.
+
+    Uses the configured embedding provider. Groups concepts greedily:
+    for every pair with cosine similarity >= threshold, sources and
+    definitions are unioned and the longest name is kept as canonical.
+
+    When embeddings are unavailable (``embedding_model == "hash"`` or
+    provider creation/embedding fails), falls back to a pure-Python
+    token-overlap (Jaccard) merge at *string_threshold* so dedup still
+    works offline.
+    """
+    if len(concepts) < 2:
+        return concepts
+
+    embed_texts = [_concept_embed_text(c) for c in concepts]
+    vecs: list[list[float]] | None = None
+
+    if embedding_model and embedding_model != "hash":
+        try:
+            provider = make_provider(embedding_model, dim=None)
+            vecs = [provider.embed(t) for t in embed_texts]
+        except Exception as exc:
+            logger.warning(
+                "Embedding merge disabled (%s); falling back to string similarity: %s",
+                embedding_model,
+                exc,
+            )
+            vecs = None
+
+    if vecs is not None:
+        n = len(concepts)
+        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine_similarity(vecs[i], vecs[j]) >= threshold]
+        groups = _union_find_groups(n, similar)
+        result = _merge_groups(concepts, groups)
+        merged_count = n - len(result)
+        if merged_count:
+            logger.info(
+                "Embedding merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
+                merged_count,
+                n,
+                len(result),
+                threshold,
+            )
+        return result
+
+    # Fallback: string-similarity (token Jaccard) merge.
+    n = len(concepts)
+    names = [c["name"] for c in concepts]
+    similar = [(i, j) for i in range(n) for j in range(i + 1, n) if _token_jaccard(names[i], names[j], min_token_len=jaccard_min_token_len) >= string_threshold]
+    groups = _union_find_groups(n, similar)
+    result = _merge_groups(concepts, groups)
+    merged_count = n - len(result)
+    if merged_count:
+        logger.info(
+            "String merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
+            merged_count,
+            n,
+            len(result),
+            string_threshold,
+        )
+    return result
+
+
 # ── Concept name-embedding merge (Option C) ─────────────────────────────
 # All thresholds/limits live in BudgetConfig — the single source of truth.
 # Callers must pass them explicitly; no defaults are assumed here.
@@ -122,77 +194,6 @@ def _merge_groups(
                     merged["definitions"].append(d)
                     seen_defs.add(d)
         result.append(merged)
-    return result
-
-
-def merge_similar_concepts(
-    concepts: list[dict[str, Any]],
-    embedding_model: str,
-    *,
-    threshold: float,
-    string_threshold: float,
-    jaccard_min_token_len: int,
-) -> list[dict[str, Any]]:
-    """Merge concept pages whose name+definition embeddings exceed *threshold*.
-
-    Uses the configured embedding provider. Groups concepts greedily:
-    for every pair with cosine similarity >= threshold, sources and
-    definitions are unioned and the longest name is kept as canonical.
-
-    When embeddings are unavailable (``embedding_model == "hash"`` or
-    provider creation/embedding fails), falls back to a pure-Python
-    token-overlap (Jaccard) merge at *string_threshold* so dedup still
-    works offline.
-    """
-    if len(concepts) < 2:
-        return concepts
-
-    embed_texts = [_concept_embed_text(c) for c in concepts]
-    vecs: list[list[float]] | None = None
-
-    if embedding_model and embedding_model != "hash":
-        try:
-            provider = make_provider(embedding_model, dim=None)
-            vecs = [provider.embed(t) for t in embed_texts]
-        except Exception as exc:
-            logger.warning(
-                "Embedding merge disabled (%s); falling back to string similarity: %s",
-                embedding_model,
-                exc,
-            )
-            vecs = None
-
-    if vecs is not None:
-        n = len(concepts)
-        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine_similarity(vecs[i], vecs[j]) >= threshold]
-        groups = _union_find_groups(n, similar)
-        result = _merge_groups(concepts, groups)
-        merged_count = n - len(result)
-        if merged_count:
-            logger.info(
-                "Embedding merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
-                merged_count,
-                n,
-                len(result),
-                threshold,
-            )
-        return result
-
-    # Fallback: string-similarity (token Jaccard) merge.
-    n = len(concepts)
-    names = [c["name"] for c in concepts]
-    similar = [(i, j) for i in range(n) for j in range(i + 1, n) if _token_jaccard(names[i], names[j], min_token_len=jaccard_min_token_len) >= string_threshold]
-    groups = _union_find_groups(n, similar)
-    result = _merge_groups(concepts, groups)
-    merged_count = n - len(result)
-    if merged_count:
-        logger.info(
-            "String merge: %d groups combined (%d → %d concepts, threshold=%.2f)",
-            merged_count,
-            n,
-            len(result),
-            string_threshold,
-        )
     return result
 
 

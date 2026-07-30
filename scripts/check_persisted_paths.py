@@ -51,13 +51,6 @@ _WINDOWS_DRIVE = re.compile(r"^[a-zA-Z]:[\\/]")
 _WINDOWS_UNC = re.compile(r"^\\{2}")
 
 
-def _looks_absolute(value: str) -> bool:
-    """True if *value* has the shape of an absolute filesystem path."""
-    if len(value) < 3:
-        return False
-    return bool(_POSIX_ABSOLUTE.match(value) or _WINDOWS_DRIVE.match(value) or _WINDOWS_UNC.match(value))
-
-
 @dataclass
 class Violation:
     """One absolute-path leak detected in a persisted artifact."""
@@ -76,18 +69,46 @@ class _ScanAccumulator:
     violations: list[Violation] = field(default_factory=list)
 
 
-def _walk_json(node: Any, field_path: str, file_rel: str, acc: _ScanAccumulator) -> None:
-    """Recursively walk a decoded JSON value, flagging absolute-path strings."""
-    if isinstance(node, str):
-        if _looks_absolute(node):
-            acc.violations.append(Violation(file=file_rel, field_path=field_path, value=node))
-    elif isinstance(node, dict):
-        for key, value in node.items():
-            child_path = f"{field_path}.{key}" if field_path else key
-            _walk_json(value, child_path, file_rel, acc)
-    elif isinstance(node, list):
-        for idx, item in enumerate(node):
-            _walk_json(item, f"{field_path}[{idx}]", file_rel, acc)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--vault",
+        type=Path,
+        default=None,
+        help="Vault directory (parent of .knox/). Defaults to cwd.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit violations as JSON (for CI parsing).",
+    )
+    args = parser.parse_args(argv)
+
+    vault = args.vault if args.vault is not None else _default_vault()
+    violations = scan_vault(vault)
+
+    if args.json:
+        payload = [{"file": v.file, "field_path": v.field_path, "value": v.value} for v in violations]
+        print(json.dumps(payload, indent=2))
+    else:
+        for violation in violations:
+            print(violation.render())
+
+    if violations:
+        print(f"\n{len(violations)} absolute-path leak(s) found in {vault}/.knox", file=sys.stderr)
+        return 1
+    return 0
+
+
+def scan_vault(vault_dir: Path) -> list[Violation]:
+    """Scan *vault_dir*/.knox and return all absolute-path violations."""
+    knox_dir = vault_dir / ".knox"
+    if not knox_dir.is_dir():
+        return []
+    acc = _ScanAccumulator()
+    for artifact in _iter_artifacts(knox_dir):
+        _scan_file(artifact, vault_dir, acc)
+    return acc.violations
 
 
 def _iter_artifacts(knox_dir: Path) -> Iterator[Path]:
@@ -125,55 +146,31 @@ def _scan_file(path: Path, base_dir: Path, acc: _ScanAccumulator) -> None:
         _walk_json(decoded, "", rel, acc)
 
 
-def scan_vault(vault_dir: Path) -> list[Violation]:
-    """Scan *vault_dir*/.knox and return all absolute-path violations."""
-    knox_dir = vault_dir / ".knox"
-    if not knox_dir.is_dir():
-        return []
-    acc = _ScanAccumulator()
-    for artifact in _iter_artifacts(knox_dir):
-        _scan_file(artifact, vault_dir, acc)
-    return acc.violations
+def _walk_json(node: Any, field_path: str, file_rel: str, acc: _ScanAccumulator) -> None:
+    """Recursively walk a decoded JSON value, flagging absolute-path strings."""
+    if isinstance(node, str):
+        if _looks_absolute(node):
+            acc.violations.append(Violation(file=file_rel, field_path=field_path, value=node))
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            child_path = f"{field_path}.{key}" if field_path else key
+            _walk_json(value, child_path, file_rel, acc)
+    elif isinstance(node, list):
+        for idx, item in enumerate(node):
+            _walk_json(item, f"{field_path}[{idx}]", file_rel, acc)
+
+
+def _looks_absolute(value: str) -> bool:
+    """True if *value* has the shape of an absolute filesystem path."""
+    if len(value) < 3:
+        return False
+    return bool(_POSIX_ABSOLUTE.match(value) or _WINDOWS_DRIVE.match(value) or _WINDOWS_UNC.match(value))
 
 
 def _default_vault() -> Path:
     """Best-effort default vault: cwd if it contains a .knox folder."""
     cwd = Path.cwd()
     return cwd if (cwd / ".knox").is_dir() else cwd
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--vault",
-        type=Path,
-        default=None,
-        help="Vault directory (parent of .knox/). Defaults to cwd.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Emit violations as JSON (for CI parsing).",
-    )
-    args = parser.parse_args(argv)
-
-    vault = args.vault if args.vault is not None else _default_vault()
-    violations = scan_vault(vault)
-
-    if args.json:
-        payload = [
-            {"file": v.file, "field_path": v.field_path, "value": v.value}
-            for v in violations
-        ]
-        print(json.dumps(payload, indent=2))
-    else:
-        for violation in violations:
-            print(violation.render())
-
-    if violations:
-        print(f"\n{len(violations)} absolute-path leak(s) found in {vault}/.knox", file=sys.stderr)
-        return 1
-    return 0
 
 
 if __name__ == "__main__":

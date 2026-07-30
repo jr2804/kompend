@@ -36,6 +36,9 @@ logger = get_logger(__name__)
 _ZVEC_MAX_ID_LEN = 64
 
 
+_ZVEC_COLLECTION_NAME = "knox_wiki"
+
+
 class ZvecField(StrEnum):
     """zvec collection field and vector names — the single source of truth.
 
@@ -53,35 +56,6 @@ class ZvecField(StrEnum):
     CONTENT_PREVIEW = "content_preview"
     TAGS = "tags"
     EMBEDDING = "embedding"
-
-
-_ZVEC_COLLECTION_NAME = "knox_wiki"
-
-
-def _safe_id(node_id: str) -> str:
-    """Truncate *node_id* to zvec's 64-char PK limit with a hash suffix."""
-    if len(node_id) <= _ZVEC_MAX_ID_LEN:
-        return node_id
-    suffix = hashlib.md5(node_id.encode()).hexdigest()[:8]  # noqa: S324
-    return f"{node_id[: _ZVEC_MAX_ID_LEN - 9]}-{suffix}"
-
-
-# ── Embedding provider interface ────────────────────────────────────────
-
-
-def build_embedder(model_string: str) -> Embedder:
-    """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
-
-    Mirrors the pattern in :mod:`knox.llm.models`: when the provider is
-    Ollama, explicitly construct ``OllamaProvider`` with the local default
-    ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
-    """
-    if model_string.startswith("ollama:"):
-        base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
-        provider = OllamaProvider(base_url=base_url)
-        model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
-        return Embedder(model)
-    return Embedder(model_string)
 
 
 class EmbeddingProvider(ABC):
@@ -126,54 +100,6 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         if self._dim is None:
             self._dim = len(vector)
         return vector
-
-
-def make_provider(
-    embedding_model: str,
-    dim: int | None = None,
-) -> EmbeddingProvider:
-    """Select an embedding provider based on model name.
-
-    Uses the same ``provider/model`` or ``provider:model`` convention as
-    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
-    (no prefix) defaults to the ``sentence-transformers`` provider.
-    """
-    pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
-    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
-
-
-def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
-    """Translate a KNOX embedding-model config value to pydantic-ai format.
-
-    Uses the same ``provider/model`` or ``provider:model`` convention as
-    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
-    (e.g. ``BAAI/bge-small-en`` or ``all-MiniLM-L6-v2``) defaults to the
-    ``sentence-transformers`` provider.
-    """
-    # Known LLM/embedding providers — anything else is a HF model name.
-    _KNOWN_PROVIDERS = frozenset(
-        {
-            "ollama",
-            "openai",
-            "google",
-            "cohere",
-            "bedrock",
-            "groq",
-            "mistral",
-            "deepseek",
-            "sentence-transformers",
-        }
-    )
-
-    if ":" in embedding_model:
-        provider = embedding_model.split(":", 1)[0]
-        if provider in _KNOWN_PROVIDERS:
-            return embedding_model
-    if "/" in embedding_model:
-        provider = embedding_model.split("/", 1)[0]
-        if provider in _KNOWN_PROVIDERS:
-            return provider + ":" + embedding_model.split("/", 1)[1]
-    return f"sentence-transformers:{embedding_model}"
 
 
 class ZvecWikiStore:
@@ -343,3 +269,77 @@ class ZvecWikiStore:
 
         logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_file)
         return indexed_count
+
+
+def _safe_id(node_id: str) -> str:
+    """Truncate *node_id* to zvec's 64-char PK limit with a hash suffix."""
+    if len(node_id) <= _ZVEC_MAX_ID_LEN:
+        return node_id
+    suffix = hashlib.md5(node_id.encode()).hexdigest()[:8]  # noqa: S324
+    return f"{node_id[: _ZVEC_MAX_ID_LEN - 9]}-{suffix}"
+
+
+# ── Embedding provider interface ────────────────────────────────────────
+
+
+def build_embedder(model_string: str) -> Embedder:
+    """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
+
+    Mirrors the pattern in :mod:`knox.llm.models`: when the provider is
+    Ollama, explicitly construct ``OllamaProvider`` with the local default
+    ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
+    """
+    if model_string.startswith("ollama:"):
+        base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
+        provider = OllamaProvider(base_url=base_url)
+        model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
+        return Embedder(model)
+    return Embedder(model_string)
+
+
+def make_provider(
+    embedding_model: str,
+    dim: int | None = None,
+) -> EmbeddingProvider:
+    """Select an embedding provider based on model name.
+
+    Uses the same ``provider/model`` or ``provider:model`` convention as
+    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
+    (no prefix) defaults to the ``sentence-transformers`` provider.
+    """
+    pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
+    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
+
+
+def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
+    """Translate a KNOX embedding-model config value to pydantic-ai format.
+
+    Uses the same ``provider/model`` or ``provider:model`` convention as
+    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
+    (e.g. ``BAAI/bge-small-en`` or ``all-MiniLM-L6-v2``) defaults to the
+    ``sentence-transformers`` provider.
+    """
+    # Known LLM/embedding providers — anything else is a HF model name.
+    _KNOWN_PROVIDERS = frozenset(
+        {
+            "ollama",
+            "openai",
+            "google",
+            "cohere",
+            "bedrock",
+            "groq",
+            "mistral",
+            "deepseek",
+            "sentence-transformers",
+        }
+    )
+
+    if ":" in embedding_model:
+        provider = embedding_model.split(":", 1)[0]
+        if provider in _KNOWN_PROVIDERS:
+            return embedding_model
+    if "/" in embedding_model:
+        provider = embedding_model.split("/", 1)[0]
+        if provider in _KNOWN_PROVIDERS:
+            return provider + ":" + embedding_model.split("/", 1)[1]
+    return f"sentence-transformers:{embedding_model}"

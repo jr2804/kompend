@@ -37,6 +37,14 @@ def get_dot(
     return current if current is not None else default
 
 
+def nest_flat(flat: dict[str, Any]) -> dict[str, Any]:
+    """Convert a flat dotted-key dict to a nested dict."""
+    result: dict[str, Any] = {}
+    for key, value in flat.items():
+        set_dot(result, key, value)
+    return result
+
+
 def set_dot(data: dict[str, Any], key: str, value: Any) -> None:
     """Set a dotted *key* in a nested dict, creating intermediate dicts."""
     parts = key.split(".")
@@ -46,14 +54,6 @@ def set_dot(data: dict[str, Any], key: str, value: Any) -> None:
             current[part] = {}
         current = current[part]
     current[parts[-1]] = value
-
-
-def nest_flat(flat: dict[str, Any]) -> dict[str, Any]:
-    """Convert a flat dotted-key dict to a nested dict."""
-    result: dict[str, Any] = {}
-    for key, value in flat.items():
-        set_dot(result, key, value)
-    return result
 
 
 def flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:

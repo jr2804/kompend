@@ -37,36 +37,6 @@ from knox.agents.deps import GenerationDeps
 from knox.compilation.schema import GenerationOutput
 
 
-def _slugify_title(title: str) -> str:
-    """Convert a title to a filesystem-safe slug (lowercase, hyphenated)."""
-    slug = re.sub(r"[^\w\s-]", "", title.lower()).strip()
-    slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
-    return slug or "concept"
-
-
-def _fix_slugs_locally(pages: list[Any]) -> None:
-    """Auto-fix empty and duplicate slugs without triggering a model retry.
-
-    Small models (Qwen3.5-2B) interpret delta-only retry prompts literally —
-    when asked to "provide corrected slugs ONLY", they return only
-    slug/title and **drop all content**.  Since slugs are deterministic
-    (derived from the title), we fix them locally instead of asking the
-    model to fix them.
-    """
-    seen: set[str] = set()
-    for page in pages:
-        if not page.slug.strip():
-            page.slug = _slugify_title(page.title)
-        # De-duplicate: append numeric suffix if slug already seen.
-        if page.slug in seen:
-            base = page.slug
-            counter = 2
-            while page.slug in seen:
-                page.slug = f"{base}-{counter}"
-                counter += 1
-        seen.add(page.slug)
-
-
 def _validate_generation_output(
     ctx: RunContext[GenerationDeps],
     output: GenerationOutput,
@@ -103,3 +73,33 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     #: empty slugs, and duplicate slugs before they reach the pipeline.
     output_validator_func = _validate_generation_output
     use_delta_retry = True
+
+
+def _fix_slugs_locally(pages: list[Any]) -> None:
+    """Auto-fix empty and duplicate slugs without triggering a model retry.
+
+    Small models (Qwen3.5-2B) interpret delta-only retry prompts literally —
+    when asked to "provide corrected slugs ONLY", they return only
+    slug/title and **drop all content**.  Since slugs are deterministic
+    (derived from the title), we fix them locally instead of asking the
+    model to fix them.
+    """
+    seen: set[str] = set()
+    for page in pages:
+        if not page.slug.strip():
+            page.slug = _slugify_title(page.title)
+        # De-duplicate: append numeric suffix if slug already seen.
+        if page.slug in seen:
+            base = page.slug
+            counter = 2
+            while page.slug in seen:
+                page.slug = f"{base}-{counter}"
+                counter += 1
+        seen.add(page.slug)
+
+
+def _slugify_title(title: str) -> str:
+    """Convert a title to a filesystem-safe slug (lowercase, hyphenated)."""
+    slug = re.sub(r"[^\w\s-]", "", title.lower()).strip()
+    slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
+    return slug or "concept"

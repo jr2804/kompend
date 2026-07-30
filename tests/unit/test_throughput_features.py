@@ -58,37 +58,6 @@ from knox.verification import (
     verify_wiki,
 )
 
-# ── helpers ─────────────────────────────────────────────────────────────
-
-
-def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
-    return CompiledWiki(
-        nodes=nodes or [],
-        edges=[],
-        toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes or []],
-        metadata={},
-    )
-
-
-def _validated_side_effect(dicts: list) -> Callable:
-    """Mock agent helper that validates each dict via the agent's result_type.
-
-    Each call returns the validated model; a ``None`` entry yields ``None``
-    (a failed batch). Mirrors the agent helper contract so tests can supply
-    raw LLM-output dicts without constructing models by hand.
-    """
-    it = iter(dicts)
-
-    def _impl(*args: object, **_kwargs: object) -> object | None:
-        data = next(it)
-        if data is None:
-            return None
-        agent_obj = args[0]
-        rt = getattr(agent_obj, "result_type", None)
-        return rt.model_validate(data) if rt else None
-
-    return _impl
-
 
 class TestTierLevelRanges:
     """TIER_LEVEL and tier range sanity."""
@@ -716,8 +685,6 @@ class TestMergeSimilarConcepts:
 
         assert len(result) == 2
 
-    """Source segmentation — splits content without data loss."""
-
     def test_empty_sources_returns_empty(self) -> None:
         assert segment_sources([], 1000) == []
 
@@ -739,6 +706,8 @@ class TestMergeSimilarConcepts:
         # Both sources should be in one or two segments, no data lost
         total = sum(len(content) for seg in result for _, content in seg)
         assert total == 40  # no data loss
+
+    """Source segmentation — splits content without data loss."""
 
 
 class TestTwoPhaseCompiler:
@@ -1223,3 +1192,35 @@ class TestVerificationUnavailable:
         c.run.return_value = None
         c._timeout = 120
         return c
+
+
+# ── helpers ─────────────────────────────────────────────────────────────
+
+
+def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:
+    return CompiledWiki(
+        nodes=nodes or [],
+        edges=[],
+        toc=[{"title": n.title, "id": n.id, "level": 1} for n in nodes or []],
+        metadata={},
+    )
+
+
+def _validated_side_effect(dicts: list) -> Callable:
+    """Mock agent helper that validates each dict via the agent's result_type.
+
+    Each call returns the validated model; a ``None`` entry yields ``None``
+    (a failed batch). Mirrors the agent helper contract so tests can supply
+    raw LLM-output dicts without constructing models by hand.
+    """
+    it = iter(dicts)
+
+    def _impl(*args: object, **_kwargs: object) -> object | None:
+        data = next(it)
+        if data is None:
+            return None
+        agent_obj = args[0]
+        rt = getattr(agent_obj, "result_type", None)
+        return rt.model_validate(data) if rt else None
+
+    return _impl

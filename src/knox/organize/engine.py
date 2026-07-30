@@ -52,20 +52,6 @@ class OrganizeResult:
         return len(self.moves)
 
 
-def resolve_organize_config(overrides: dict[str, object] | None = None) -> OrganizeConfig:
-    """Build an :class:`OrganizeConfig` from the resolved knox config."""
-    cfg = resolve_config(cli_overrides=overrides)
-    min_files = int(cfg.get(ORGANIZE_MIN_FILES_PER_CATEGORY, 2))
-    if min_files < 1:
-        raise ValueError(f"organize.min_files_per_category must be >= 1, got {min_files}")
-    return OrganizeConfig(
-        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),
-        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),
-        min_files_per_category=min_files,
-        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),
-    )
-
-
 def organize_sources(
     base_dir: Path,
     sources_dir: Path,
@@ -144,6 +130,20 @@ def organize_sources(
         remap=remap,
         dry_run=False,
         files_without_summary=files_without_summary,
+    )
+
+
+def resolve_organize_config(overrides: dict[str, object] | None = None) -> OrganizeConfig:
+    """Build an :class:`OrganizeConfig` from the resolved knox config."""
+    cfg = resolve_config(cli_overrides=overrides)
+    min_files = int(cfg.get(ORGANIZE_MIN_FILES_PER_CATEGORY, 2))
+    if min_files < 1:
+        raise ValueError(f"organize.min_files_per_category must be >= 1, got {min_files}")
+    return OrganizeConfig(
+        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),
+        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),
+        min_files_per_category=min_files,
+        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),
     )
 
 

@@ -39,12 +39,6 @@ _TASK_CONFIG_KEY: dict[AgentTask, str] = {
 }
 
 
-def _resolve_base_dir() -> str:
-    """Resolve the vault base_dir from config."""
-    cfg = resolve_config()
-    return cfg.get(PATHS_WIKI_DIR, ".")
-
-
 @app.command(name="agents")
 def agents_cmd(
     action: str = typer.Argument(help="Action: list, use, validate, install, or remove"),
@@ -193,3 +187,9 @@ def _agents_remove(name: str) -> None:
 
     if vault_dir.exists() and not any(vault_dir.iterdir()):
         vault_dir.rmdir()
+
+
+def _resolve_base_dir() -> str:
+    """Resolve the vault base_dir from config."""
+    cfg = resolve_config()
+    return cfg.get(PATHS_WIKI_DIR, ".")

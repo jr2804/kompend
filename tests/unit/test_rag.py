@@ -14,35 +14,6 @@ from tests.conftest import DeterministicTestEmbeddingProvider
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 
 
-@pytest.fixture
-def sample_wiki() -> CompiledWiki:
-    return CompiledWiki(
-        nodes=[
-            WikiNode(
-                id="intro",
-                title="Introduction",
-                content="This is the introduction content.",
-                node_type="section",
-            ),
-            WikiNode(
-                id="methods",
-                title="Methods",
-                content="We used several analysis methods.",
-                node_type="section",
-            ),
-        ],
-        edges=[{"source": "intro", "target": "methods", "type": "next"}],
-        toc=[{"title": "Introduction", "id": "intro", "level": 1}],
-        metadata={"chunk_count": 2},
-    )
-
-
-@pytest.fixture
-def zvec_db(tmp_path: Path) -> Path:
-    """Provide a temp directory for zvec test databases."""
-    return tmp_path / "zvec_test_store"
-
-
 class TestZvecWikiStore:
     """Tests for ZvecWikiStore."""
 
@@ -221,3 +192,32 @@ class TestPydanticAIEmbeddingProvider:
         with patch.object(provider, "_embedder") as mock_embedder:
             mock_embedder.embed_documents_sync.return_value = mock_result
             assert provider.dim == 384
+
+
+@pytest.fixture
+def sample_wiki() -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[
+            WikiNode(
+                id="intro",
+                title="Introduction",
+                content="This is the introduction content.",
+                node_type="section",
+            ),
+            WikiNode(
+                id="methods",
+                title="Methods",
+                content="We used several analysis methods.",
+                node_type="section",
+            ),
+        ],
+        edges=[{"source": "intro", "target": "methods", "type": "next"}],
+        toc=[{"title": "Introduction", "id": "intro", "level": 1}],
+        metadata={"chunk_count": 2},
+    )
+
+
+@pytest.fixture
+def zvec_db(tmp_path: Path) -> Path:
+    """Provide a temp directory for zvec test databases."""
+    return tmp_path / "zvec_test_store"

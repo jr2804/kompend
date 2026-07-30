@@ -11,6 +11,30 @@ from knox.core.paths import INDEX_FILE
 from knox.core.utils.time import display_local
 
 
+def write_index(
+    wiki: CompiledWiki,
+    output_dir: Path,
+    *,
+    base_dir: Path | None = None,
+) -> dict[str, Path]:
+    """Write ``index.md`` for a compiled wiki.
+
+    The human-readable pipeline log is no longer auto-written; regenerate it
+    on demand with ``knox log`` (or ``knox log --write``).
+
+    Returns a dict of ``{name: path}`` for generated files.
+    """
+    resolved_base = base_dir if base_dir is not None else output_dir
+    resolved_base.mkdir(parents=True, exist_ok=True)
+
+    # index.md — entry point at base_dir level
+    index_file = resolved_base / INDEX_FILE
+    index_content = generate_index(wiki)
+    index_file.write_text(index_content, encoding="utf-8")
+
+    return {"index": index_file}
+
+
 def generate_index(wiki: CompiledWiki) -> str:
     """Generate ``index.md`` — TOC + stats for the compiled wiki."""
     lines: list[str] = ["# Wiki Index\n"]
@@ -48,27 +72,3 @@ def generate_index(wiki: CompiledWiki) -> str:
         lines.append(f"  {i}. [[{slug}|{node.title}]]")
 
     return "\n".join(lines)
-
-
-def write_index(
-    wiki: CompiledWiki,
-    output_dir: Path,
-    *,
-    base_dir: Path | None = None,
-) -> dict[str, Path]:
-    """Write ``index.md`` for a compiled wiki.
-
-    The human-readable pipeline log is no longer auto-written; regenerate it
-    on demand with ``knox log`` (or ``knox log --write``).
-
-    Returns a dict of ``{name: path}`` for generated files.
-    """
-    resolved_base = base_dir if base_dir is not None else output_dir
-    resolved_base.mkdir(parents=True, exist_ok=True)
-
-    # index.md — entry point at base_dir level
-    index_file = resolved_base / INDEX_FILE
-    index_content = generate_index(wiki)
-    index_file.write_text(index_content, encoding="utf-8")
-
-    return {"index": index_file}

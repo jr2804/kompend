@@ -14,45 +14,6 @@ from knox.core.models.references import Author, Reference
 from knox.output.bibtex import reference_to_bibtex_entry, references_to_bibtex
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _ref(  # noqa: PLR0913, PLR0917
-    *,
-    id: str = "smith2020",
-    type: str = "article-journal",
-    title: str = "Deep Learning for NLP",
-    family: str = "Smith",
-    given: str = "",
-    issued: str = "2020",
-    container_title: str = "Journal of AI",
-    volume: str = "",
-    number: str = "",
-    pages: str = "",
-    publisher: str = "",
-    doi: str = "",
-    url: str = "",
-    raw: str = "",
-) -> Reference:
-    return Reference(
-        id=id,
-        type=type,
-        title=title,
-        author=[Author(family=family, given=given)] if family else [],
-        issued=issued,
-        container_title=container_title,
-        volume=volume,
-        number=number,
-        pages=pages,
-        publisher=publisher,
-        doi=doi,
-        url=url,
-        raw=raw,
-    )
-
-
-# ---------------------------------------------------------------------------
 # reference_to_bibtex_entry
 # ---------------------------------------------------------------------------
 
@@ -265,3 +226,42 @@ class TestReferencesToBibtex:
         assert "10.1/xyz" in result
         assert "volume    = {1}" in result
         assert "pages     = {1--10}" in result
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _ref(  # noqa: PLR0913, PLR0917
+    *,
+    id: str = "smith2020",
+    type: str = "article-journal",
+    title: str = "Deep Learning for NLP",
+    family: str = "Smith",
+    given: str = "",
+    issued: str = "2020",
+    container_title: str = "Journal of AI",
+    volume: str = "",
+    number: str = "",
+    pages: str = "",
+    publisher: str = "",
+    doi: str = "",
+    url: str = "",
+    raw: str = "",
+) -> Reference:
+    return Reference(
+        id=id,
+        type=type,
+        title=title,
+        author=[Author(family=family, given=given)] if family else [],
+        issued=issued,
+        container_title=container_title,
+        volume=volume,
+        number=number,
+        pages=pages,
+        publisher=publisher,
+        doi=doi,
+        url=url,
+        raw=raw,
+    )

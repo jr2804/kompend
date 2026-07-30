@@ -4,71 +4,6 @@ import sys
 from pathlib import Path
 
 
-def count_lines(filepath: str) -> tuple[int, int, int, int, int]:
-    """Count lines: total, imports, blanks, comments, net code."""
-    with open(filepath, encoding="utf-8") as f:
-        content = f.read()
-
-    lines = content.splitlines()
-    total = len(lines)
-    blanks = 0
-    comments = 0
-    imports = 0
-    net = 0
-    in_multiline = False
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            blanks += 1
-            continue
-        if in_multiline:
-            if '"""' in stripped or "'''" in stripped:
-                in_multiline = False
-            continue
-        if stripped.startswith("#") or stripped.startswith("//"):
-            comments += 1
-            continue
-        if stripped.startswith("import ") or stripped.startswith("from "):
-            imports += 1
-            continue
-        if stripped.startswith('"""') or stripped.startswith("'''"):
-            in_multiline = not (stripped.count('"""') >= 2 or stripped.count("'''") >= 2)
-            continue
-        net += 1
-
-    return total, imports, blanks, comments, net
-
-
-def walk_src(base: str) -> dict:
-    """Walk Python files under src/knox, return results grouped by directory."""
-    src_dir = Path(base) / "src" / "knox"
-    results: dict[str, dict] = {}
-
-    for pyfile in sorted(src_dir.rglob("*.py")):
-        rel = pyfile.relative_to(src_dir)
-        parent = str(rel.parent)
-        if parent == ".":
-            parent = ""
-
-        try:
-            counts = count_lines(pyfile)
-        except Exception:
-            counts = (0, 0, 0, 0, 0)
-
-        results[str(rel)] = {
-            "path": str(rel),
-            "dir": parent,
-            "total": counts[0],
-            "imports": counts[1],
-            "blanks": counts[2],
-            "comments": counts[3],
-            "net": counts[4],
-        }
-
-    return results
-
-
 def main():
     base = sys.argv[1] if len(sys.argv) > 1 else "."
     results = walk_src(base)
@@ -140,6 +75,71 @@ def main():
             print(f"  {n:>3} files  {label}")
             for f in sorted(own_files, key=lambda x: -x["net"]):
                 print(f"         {f['net']:>6}  {f['path']}")
+
+
+def walk_src(base: str) -> dict:
+    """Walk Python files under src/knox, return results grouped by directory."""
+    src_dir = Path(base) / "src" / "knox"
+    results: dict[str, dict] = {}
+
+    for pyfile in sorted(src_dir.rglob("*.py")):
+        rel = pyfile.relative_to(src_dir)
+        parent = str(rel.parent)
+        if parent == ".":
+            parent = ""
+
+        try:
+            counts = count_lines(pyfile)
+        except Exception:
+            counts = (0, 0, 0, 0, 0)
+
+        results[str(rel)] = {
+            "path": str(rel),
+            "dir": parent,
+            "total": counts[0],
+            "imports": counts[1],
+            "blanks": counts[2],
+            "comments": counts[3],
+            "net": counts[4],
+        }
+
+    return results
+
+
+def count_lines(filepath: str) -> tuple[int, int, int, int, int]:
+    """Count lines: total, imports, blanks, comments, net code."""
+    with open(filepath, encoding="utf-8") as f:
+        content = f.read()
+
+    lines = content.splitlines()
+    total = len(lines)
+    blanks = 0
+    comments = 0
+    imports = 0
+    net = 0
+    in_multiline = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            blanks += 1
+            continue
+        if in_multiline:
+            if '"""' in stripped or "'''" in stripped:
+                in_multiline = False
+            continue
+        if stripped.startswith("#") or stripped.startswith("//"):
+            comments += 1
+            continue
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            imports += 1
+            continue
+        if stripped.startswith('"""') or stripped.startswith("'''"):
+            in_multiline = not (stripped.count('"""') >= 2 or stripped.count("'''") >= 2)
+            continue
+        net += 1
+
+    return total, imports, blanks, comments, net
 
 
 if __name__ == "__main__":

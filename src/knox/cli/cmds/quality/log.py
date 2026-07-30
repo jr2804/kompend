@@ -21,10 +21,6 @@ from knox.core.reporting.log import build_log_report
 from knox.logging import get_console
 
 
-def _last_n(last: int | None) -> int:
-    return last if (last is not None and last > 0) else 25
-
-
 @app.command(name="log")
 def log_cmd(
     ctx: typer.Context,
@@ -72,3 +68,7 @@ def log_cmd(
         get_console().print(f"Wrote log report to {log_file}")
     else:
         get_console().print(report, markup=False)
+
+
+def _last_n(last: int | None) -> int:
+    return last if (last is not None and last > 0) else 25

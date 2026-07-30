@@ -17,119 +17,6 @@ from knox.core.models import (
     StructuredTable,
 )
 
-
-def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
-    """Build a Chunk with required fields."""
-    return Chunk(
-        id=cid,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[],
-        source_file=Path(source),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-# ── fixtures ─────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def sample_tree() -> ChunkTree:
-    """Build a 5-node tree: root → section (leaf-a, leaf-b) + section-c."""
-    root = ChunkNode(id="doc_root", depth=0)
-    section1 = ChunkNode(
-        id="doc_h1",
-        parent_id="doc_root",
-        depth=1,
-        heading_path=("Introduction",),
-    )
-    leaf_a = ChunkNode(
-        id="doc_t1",
-        parent_id="doc_h1",
-        depth=2,
-        heading_path=("Introduction",),
-        chunk=_make_chunk("doc_t1", "The SNR threshold is 20 dB for intelligibility."),
-        token_count=10,
-    )
-    leaf_b = ChunkNode(
-        id="doc_t2",
-        parent_id="doc_h1",
-        depth=2,
-        heading_path=("Introduction",),
-        chunk=_make_chunk("doc_t2", "Results show improvement at higher levels."),
-        token_count=8,
-    )
-    section2 = ChunkNode(
-        id="doc_h2",
-        parent_id="doc_root",
-        depth=1,
-        heading_path=("Methodology",),
-    )
-    leaf_c = ChunkNode(
-        id="doc_t3",
-        parent_id="doc_h2",
-        depth=2,
-        heading_path=("Methodology",),
-        chunk=_make_chunk("doc_t3", "We used a standard test setup with calibration."),
-        token_count=10,
-    )
-
-    root.children_ids = ["doc_h1", "doc_h2"]
-    section1.children_ids = ["doc_t1", "doc_t2"]
-    section2.children_ids = ["doc_t3"]
-
-    nodes = {n.id: n for n in [root, section1, leaf_a, leaf_b, section2, leaf_c]}
-    return ChunkTree(
-        root_id="doc_root",
-        nodes=nodes,
-        source_file=Path("doc.md"),
-        strategy=ChunkStrategy.TWO_LEVEL,
-    )
-
-
-@pytest.fixture
-def single_pass_tree() -> ChunkTree:
-    """A SINGLE_PASS tree — should be skipped by summarizer."""
-    root = ChunkNode(id="root", depth=0)
-    leaf = ChunkNode(
-        id="leaf",
-        parent_id="root",
-        depth=1,
-        chunk=_make_chunk("leaf", "text"),
-        token_count=1,
-    )
-    root.children_ids = ["leaf"]
-    return ChunkTree(
-        root_id="root",
-        nodes={"root": root, "leaf": leaf},
-        source_file=Path("d.md"),
-        strategy=ChunkStrategy.SINGLE_PASS,
-    )
-
-
-@pytest.fixture
-def single_child_tree() -> ChunkTree:
-    """Tree with single-child internal nodes."""
-    root = ChunkNode(id="r", depth=0)
-    wrapper = ChunkNode(id="w", parent_id="r", depth=1, heading_path=("Wrapper",))
-    leaf = ChunkNode(
-        id="l",
-        parent_id="w",
-        depth=2,
-        heading_path=("Wrapper",),
-        chunk=_make_chunk("l", "content"),
-        token_count=2,
-    )
-    root.children_ids = ["w"]
-    wrapper.children_ids = ["l"]
-    return ChunkTree(
-        root_id="r",
-        nodes={"r": root, "w": wrapper, "l": leaf},
-        source_file=Path("d.md"),
-        strategy=ChunkStrategy.TWO_LEVEL,
-    )
-
-
 # ── tests ────────────────────────────────────────────────────────────────
 
 
@@ -289,3 +176,115 @@ class TestSummarizerStructuredLeaf:
 
         section_node = tree.nodes["s"]
         assert section_node.summary != ""
+
+
+# ── fixtures ─────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sample_tree() -> ChunkTree:
+    """Build a 5-node tree: root → section (leaf-a, leaf-b) + section-c."""
+    root = ChunkNode(id="doc_root", depth=0)
+    section1 = ChunkNode(
+        id="doc_h1",
+        parent_id="doc_root",
+        depth=1,
+        heading_path=("Introduction",),
+    )
+    leaf_a = ChunkNode(
+        id="doc_t1",
+        parent_id="doc_h1",
+        depth=2,
+        heading_path=("Introduction",),
+        chunk=_make_chunk("doc_t1", "The SNR threshold is 20 dB for intelligibility."),
+        token_count=10,
+    )
+    leaf_b = ChunkNode(
+        id="doc_t2",
+        parent_id="doc_h1",
+        depth=2,
+        heading_path=("Introduction",),
+        chunk=_make_chunk("doc_t2", "Results show improvement at higher levels."),
+        token_count=8,
+    )
+    section2 = ChunkNode(
+        id="doc_h2",
+        parent_id="doc_root",
+        depth=1,
+        heading_path=("Methodology",),
+    )
+    leaf_c = ChunkNode(
+        id="doc_t3",
+        parent_id="doc_h2",
+        depth=2,
+        heading_path=("Methodology",),
+        chunk=_make_chunk("doc_t3", "We used a standard test setup with calibration."),
+        token_count=10,
+    )
+
+    root.children_ids = ["doc_h1", "doc_h2"]
+    section1.children_ids = ["doc_t1", "doc_t2"]
+    section2.children_ids = ["doc_t3"]
+
+    nodes = {n.id: n for n in [root, section1, leaf_a, leaf_b, section2, leaf_c]}
+    return ChunkTree(
+        root_id="doc_root",
+        nodes=nodes,
+        source_file=Path("doc.md"),
+        strategy=ChunkStrategy.TWO_LEVEL,
+    )
+
+
+@pytest.fixture
+def single_pass_tree() -> ChunkTree:
+    """A SINGLE_PASS tree — should be skipped by summarizer."""
+    root = ChunkNode(id="root", depth=0)
+    leaf = ChunkNode(
+        id="leaf",
+        parent_id="root",
+        depth=1,
+        chunk=_make_chunk("leaf", "text"),
+        token_count=1,
+    )
+    root.children_ids = ["leaf"]
+    return ChunkTree(
+        root_id="root",
+        nodes={"root": root, "leaf": leaf},
+        source_file=Path("d.md"),
+        strategy=ChunkStrategy.SINGLE_PASS,
+    )
+
+
+@pytest.fixture
+def single_child_tree() -> ChunkTree:
+    """Tree with single-child internal nodes."""
+    root = ChunkNode(id="r", depth=0)
+    wrapper = ChunkNode(id="w", parent_id="r", depth=1, heading_path=("Wrapper",))
+    leaf = ChunkNode(
+        id="l",
+        parent_id="w",
+        depth=2,
+        heading_path=("Wrapper",),
+        chunk=_make_chunk("l", "content"),
+        token_count=2,
+    )
+    root.children_ids = ["w"]
+    wrapper.children_ids = ["l"]
+    return ChunkTree(
+        root_id="r",
+        nodes={"r": root, "w": wrapper, "l": leaf},
+        source_file=Path("d.md"),
+        strategy=ChunkStrategy.TWO_LEVEL,
+    )
+
+
+def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
+    """Build a Chunk with required fields."""
+    return Chunk(
+        id=cid,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[],
+        source_file=Path(source),
+        token_count=max(1, len(text) // 4),
+    )

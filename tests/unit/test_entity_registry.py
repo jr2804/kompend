@@ -21,56 +21,6 @@ from knox.core.resolution.entity_registry import (
 )
 
 
-def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
-    return Chunk(
-        id=cid,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[],
-        source_file=Path(source),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _make_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
-    nodes_by_id = {n.id: n for n in nodes}
-    return ChunkTree(
-        root_id=nodes[0].id,
-        nodes=nodes_by_id,
-        source_file=Path(source),
-    )
-
-
-def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) -> ChunkNode:
-    return ChunkNode(
-        id=nid,
-        parent_id=parent,
-        depth=len(heading) + 1,
-        heading_path=heading,
-        chunk=_make_chunk(nid, text),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _structured_node(
-    nid: str, parent: str, structured: StructuredTable | StructuredEquation | StructuredFigure | None, heading: tuple[str, ...] = ()
-) -> ChunkNode:
-    return ChunkNode(
-        id=nid,
-        parent_id=parent,
-        depth=len(heading) + 1,
-        heading_path=heading,
-        structured=structured,
-        token_count=1,
-    )
-
-
-def _leaf_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
-    root = ChunkNode(id="root", depth=0, children_ids=[n.id for n in nodes])
-    nodes.insert(0, root)
-    return _make_tree(nodes, source)
-
-
 class TestEntityRegistry:
     def test_register_new_entity(self) -> None:
         reg = EntityRegistry()
@@ -273,3 +223,53 @@ class TestEntityRegistry:
         )
         names = rec.all_names
         assert len(names) == 1  # case-insensitive dedup: SNR = snr
+
+
+def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) -> ChunkNode:
+    return ChunkNode(
+        id=nid,
+        parent_id=parent,
+        depth=len(heading) + 1,
+        heading_path=heading,
+        chunk=_make_chunk(nid, text),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
+    return Chunk(
+        id=cid,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[],
+        source_file=Path(source),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _structured_node(
+    nid: str, parent: str, structured: StructuredTable | StructuredEquation | StructuredFigure | None, heading: tuple[str, ...] = ()
+) -> ChunkNode:
+    return ChunkNode(
+        id=nid,
+        parent_id=parent,
+        depth=len(heading) + 1,
+        heading_path=heading,
+        structured=structured,
+        token_count=1,
+    )
+
+
+def _leaf_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
+    root = ChunkNode(id="root", depth=0, children_ids=[n.id for n in nodes])
+    nodes.insert(0, root)
+    return _make_tree(nodes, source)
+
+
+def _make_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
+    nodes_by_id = {n.id: n for n in nodes}
+    return ChunkTree(
+        root_id=nodes[0].id,
+        nodes=nodes_by_id,
+        source_file=Path(source),
+    )

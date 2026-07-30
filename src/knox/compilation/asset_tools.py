@@ -24,6 +24,27 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# Public factory
+# ---------------------------------------------------------------------------
+
+
+def build_asset_tools(store: AssetStore) -> list[Tool]:
+    """Build the list of on-demand asset-inspection tools.
+
+    Args:
+        store: The :class:`AssetStore` used to look up asset records.
+
+    Returns:
+        A list of PydanticAI ``Tool`` objects --- always includes
+        ``get_table`` and ``get_figure_description``.
+    """
+    return [
+        _make_get_table(store),
+        _make_get_figure(store),
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Tool implementations (closure-captured ``store`` --- no RunContext needed)
 # ---------------------------------------------------------------------------
 
@@ -81,24 +102,3 @@ def _make_get_figure(store: AssetStore) -> Tool:
         return "\n".join(parts) if parts else "[figure --- no caption or description available]"
 
     return Tool(get_figure_description)
-
-
-# ---------------------------------------------------------------------------
-# Public factory
-# ---------------------------------------------------------------------------
-
-
-def build_asset_tools(store: AssetStore) -> list[Tool]:
-    """Build the list of on-demand asset-inspection tools.
-
-    Args:
-        store: The :class:`AssetStore` used to look up asset records.
-
-    Returns:
-        A list of PydanticAI ``Tool`` objects --- always includes
-        ``get_table`` and ``get_figure_description``.
-    """
-    return [
-        _make_get_table(store),
-        _make_get_figure(store),
-    ]

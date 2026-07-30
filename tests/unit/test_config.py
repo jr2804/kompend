@@ -31,6 +31,11 @@ from knox.core.config.generate import extract_toml_keys, generate_scaffold_confi
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import KNOX_DIR
 
+# ── Config generation ───────────────────────────────────────────────────
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 # ── Deep merge ──────────────────────────────────────────────────────────
 
 
@@ -678,12 +683,6 @@ class TestSetConfigFileValue:
     def test_unknown_key_raises(self, tmp_path: Any) -> None:
         with pytest.raises(KeyError):
             set_config_file_value(tmp_path / "config.toml", "compile.unknown", "x")
-
-
-# ── Config generation ───────────────────────────────────────────────────
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestGenerateScaffoldConfig:

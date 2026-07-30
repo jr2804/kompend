@@ -13,11 +13,6 @@ from knox.core.models import ChunkTree, DocumentElement, ElementType
 from tests.fixtures.documents import make_test_doc
 
 
-def _leaf_chunks(tree: ChunkTree) -> list:
-    """Extract Chunk objects from leaf nodes."""
-    return [n.chunk for n in tree.leaves() if n.chunk is not None]
-
-
 class TestPipelineSmoke:
     """Integration test: ParsedDocument → HierarchicalChunker → ChunkTree."""
 
@@ -95,3 +90,8 @@ class TestPipelineSmoke:
             if n.chunk is None:
                 continue
             assert n.id.startswith("my_report_"), f"Unexpected id format: {n.id}"
+
+
+def _leaf_chunks(tree: ChunkTree) -> list:
+    """Extract Chunk objects from leaf nodes."""
+    return [n.chunk for n in tree.leaves() if n.chunk is not None]

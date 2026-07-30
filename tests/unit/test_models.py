@@ -213,64 +213,6 @@ def test_chunk_node_internal() -> None:
     assert node.summary == "Section summary"
 
 
-# ── ChunkTree ────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
-    nodes = {
-        "root": ChunkNode(id="root", children_ids=["section-a", "section-b"], depth=0, summary="Root"),
-        "section-a": ChunkNode(
-            id="section-a",
-            parent_id="root",
-            children_ids=["leaf-1", "leaf-2"],
-            depth=1,
-            heading_path=("Chapter 1", "Section A"),
-            summary="Section A summary",
-            token_count=10,
-        ),
-        "section-b": ChunkNode(
-            id="section-b",
-            parent_id="root",
-            children_ids=["leaf-3"],
-            depth=1,
-            heading_path=("Chapter 1", "Section B"),
-            summary="Section B summary",
-            token_count=5,
-        ),
-        "leaf-1": ChunkNode(
-            id="leaf-1",
-            parent_id="section-a",
-            depth=2,
-            heading_path=("Chapter 1", "Section A"),
-            chunk=Chunk(id="c1", text="text 1", element_types=[ElementType.TEXT], source_elements=[0], token_count=3),
-            token_count=3,
-        ),
-        "leaf-2": ChunkNode(
-            id="leaf-2",
-            parent_id="section-a",
-            depth=2,
-            heading_path=("Chapter 1", "Section A"),
-            structured=StructuredTable(columns=["X"], rows=[{"X": "1"}]),
-            token_count=7,
-        ),
-        "leaf-3": ChunkNode(
-            id="leaf-3",
-            parent_id="section-b",
-            depth=2,
-            heading_path=("Chapter 1", "Section B"),
-            chunk=Chunk(id="c3", text="text 3", element_types=[ElementType.TEXT], source_elements=[2], token_count=5),
-            token_count=5,
-        ),
-    }
-    tree = ChunkTree(
-        root_id="root",
-        nodes=nodes,
-        strategy=ChunkStrategy.MULTI_RESOLUTION,
-    )
-    return tree, nodes
-
-
 def test_tree_leaves(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     tree, _ = sample_tree
     leaf_ids = {n.id for n in tree.leaves()}
@@ -436,6 +378,64 @@ def test_tree_heading_path_roundtrip(sample_tree: tuple[ChunkTree, dict[str, Chu
     node = nodes["section-a"]
     restored = ChunkNode.from_dict(node.to_dict())
     assert restored.heading_path == ("Chapter 1", "Section A")
+
+
+# ── ChunkTree ────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
+    nodes = {
+        "root": ChunkNode(id="root", children_ids=["section-a", "section-b"], depth=0, summary="Root"),
+        "section-a": ChunkNode(
+            id="section-a",
+            parent_id="root",
+            children_ids=["leaf-1", "leaf-2"],
+            depth=1,
+            heading_path=("Chapter 1", "Section A"),
+            summary="Section A summary",
+            token_count=10,
+        ),
+        "section-b": ChunkNode(
+            id="section-b",
+            parent_id="root",
+            children_ids=["leaf-3"],
+            depth=1,
+            heading_path=("Chapter 1", "Section B"),
+            summary="Section B summary",
+            token_count=5,
+        ),
+        "leaf-1": ChunkNode(
+            id="leaf-1",
+            parent_id="section-a",
+            depth=2,
+            heading_path=("Chapter 1", "Section A"),
+            chunk=Chunk(id="c1", text="text 1", element_types=[ElementType.TEXT], source_elements=[0], token_count=3),
+            token_count=3,
+        ),
+        "leaf-2": ChunkNode(
+            id="leaf-2",
+            parent_id="section-a",
+            depth=2,
+            heading_path=("Chapter 1", "Section A"),
+            structured=StructuredTable(columns=["X"], rows=[{"X": "1"}]),
+            token_count=7,
+        ),
+        "leaf-3": ChunkNode(
+            id="leaf-3",
+            parent_id="section-b",
+            depth=2,
+            heading_path=("Chapter 1", "Section B"),
+            chunk=Chunk(id="c3", text="text 3", element_types=[ElementType.TEXT], source_elements=[2], token_count=5),
+            token_count=5,
+        ),
+    }
+    tree = ChunkTree(
+        root_id="root",
+        nodes=nodes,
+        strategy=ChunkStrategy.MULTI_RESOLUTION,
+    )
+    return tree, nodes
 
 
 # ── Cross-reference stubs ────────────────────────────────────────────────

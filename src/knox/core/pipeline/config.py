@@ -110,6 +110,19 @@ TIER_DESCRIPTIONS: dict[Tier, str] = {
 }
 
 
+__all__ = [
+    "ALL_TIERS",
+    "TIER_DESCRIPTIONS",
+    "TIER_LEVEL",
+    "Compiler",
+    "DisplayConfig",
+    "ImageMode",
+    "OutputFormat",
+    "PipelineConfig",
+    "Tier",
+]
+
+
 @dataclass
 class PipelineConfig:
     """Configuration for the KNOX pipeline.
@@ -178,12 +191,6 @@ class PipelineConfig:
             sources_dir_name=self.source_dir.name,
             output_dir_name=self.output_dir.name,
         )
-
-    # Sub-configs (additive for backward compatibility)
-    budget: BudgetConfig = field(default_factory=BudgetConfig)
-    output: OutputConfig = field(default_factory=OutputConfig)
-    pdf: PdfConfig = field(default_factory=PdfConfig)
-    display: DisplayConfig = field(default_factory=DisplayConfig)
 
     @classmethod
     def from_resolved(cls, cfg: ResolvedConfig, *, source_dir: Path, output_dir: Path, input_files: list[Path] | None = None) -> PipelineConfig:
@@ -270,15 +277,8 @@ class PipelineConfig:
             providers=cfg.get("providers", {}),
         )
 
-
-__all__ = [
-    "ALL_TIERS",
-    "TIER_DESCRIPTIONS",
-    "TIER_LEVEL",
-    "Compiler",
-    "DisplayConfig",
-    "ImageMode",
-    "OutputFormat",
-    "PipelineConfig",
-    "Tier",
-]
+    # Sub-configs (additive for backward compatibility)
+    budget: BudgetConfig = field(default_factory=BudgetConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+    pdf: PdfConfig = field(default_factory=PdfConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)

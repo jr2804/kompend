@@ -57,17 +57,6 @@ class AssetIdMap:
         return len(self.node_to_asset)
 
 
-def asset_id_for(kind: AssetKind, record_dict: dict) -> str:
-    """Compute the stable content-addressed asset id for a record dict.
-
-    Deterministic: same content → same id. Hash is over the canonical
-    serialized form (sorted keys) so field order does not affect the id.
-    """
-    raw = json.dumps(record_dict, sort_keys=True, ensure_ascii=False)
-    h = hashlib.sha256(raw.encode()).hexdigest()[:ASSET_ID_HASH_LEN]
-    return f"{kind.prefix}-{h}"
-
-
 def assign_asset_ids(tree: ChunkTree, store: AssetStore, *, source: str = "") -> AssetIdMap:
     """Register structured-asset leaves and return the node→asset id map.
 
@@ -114,6 +103,17 @@ def assign_asset_ids(tree: ChunkTree, store: AssetStore, *, source: str = "") ->
         counters[kind] = number
         id_map.label_to_asset[(kind, number)] = asset_id
     return id_map
+
+
+def asset_id_for(kind: AssetKind, record_dict: dict) -> str:
+    """Compute the stable content-addressed asset id for a record dict.
+
+    Deterministic: same content → same id. Hash is over the canonical
+    serialized form (sorted keys) so field order does not affect the id.
+    """
+    raw = json.dumps(record_dict, sort_keys=True, ensure_ascii=False)
+    h = hashlib.sha256(raw.encode()).hexdigest()[:ASSET_ID_HASH_LEN]
+    return f"{kind.prefix}-{h}"
 
 
 def _kind_of(structured: object) -> AssetKind | None:

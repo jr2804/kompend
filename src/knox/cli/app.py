@@ -40,6 +40,49 @@ app = typer.Typer(
 )
 
 
+# ── Lazy command registry ─────────────────────────────────────────────
+#
+# Maps subcommand name → module path.  Importing the module registers its
+# command(s) on ``app`` via the ``@app.command()`` decorator side effect.
+# Multiple subcommands can share one module (e.g. ``compile`` + ``ingest`` +
+# ``parse`` all live in ``pipeline.py``).
+#
+# Modules NOT listed here are never imported by the CLI — add new commands
+# here when they are created.
+
+_LAZY_MODULES: dict[str, str] = {
+    "agents": "knox.cli.cmds.agents",
+    "capture": "knox.cli.cmds.knowledge.capture",
+    "learn": "knox.cli.cmds.knowledge.capture",
+    "distill": "knox.cli.cmds.knowledge.capture",
+    "write": "knox.cli.cmds.knowledge.capture",
+    "config": "knox.cli.cmds.pipeline.config",
+    "doctor": "knox.cli.cmds.quality.doctor_cmd",
+    "status": "knox.cli.cmds.quality.status_cmd",
+    "list-parsers": "knox.cli.cmds.quality.list_parsers_cmd",
+    "trace": "knox.cli.cmds.quality.trace_cmd",
+    "init": "knox.cli.cmds.init",
+    "lint": "knox.cli.cmds.quality.lint",
+    "log": "knox.cli.cmds.quality.log",
+    "memory": "knox.cli.cmds.knowledge.memory",
+    "organize": "knox.cli.cmds.knowledge.organize",
+    "pack-list": "knox.cli.cmds.knowledge.pack",
+    "pack-install": "knox.cli.cmds.knowledge.pack",
+    "parse": "knox.cli.cmds.pipeline.pipeline",
+    "compile": "knox.cli.cmds.pipeline.pipeline",
+    "ingest": "knox.cli.cmds.pipeline.pipeline",
+    "query": "knox.cli.cmds.knowledge.query",
+    "references": "knox.cli.cmds.knowledge.references",
+    "review": "knox.cli.cmds.quality.review",
+    "sources": "knox.cli.cmds.pipeline.sources",
+    "sources-tag": "knox.cli.cmds.pipeline.sources",
+    "sources-untag": "knox.cli.cmds.pipeline.sources",
+    "mcp": "knox.cli.cmds.serve",
+    "serve": "knox.cli.cmds.serve",
+    "agent": "knox.cli.cmds.agent",
+}
+
+
 @app.callback(invoke_without_command=True)
 def _callback(
     ctx: typer.Context,
@@ -104,47 +147,20 @@ def _configure_streams_utf8() -> None:
                 reconfigure(encoding="utf-8", errors="replace")
 
 
-# ── Lazy command registry ─────────────────────────────────────────────
-#
-# Maps subcommand name → module path.  Importing the module registers its
-# command(s) on ``app`` via the ``@app.command()`` decorator side effect.
-# Multiple subcommands can share one module (e.g. ``compile`` + ``ingest`` +
-# ``parse`` all live in ``pipeline.py``).
-#
-# Modules NOT listed here are never imported by the CLI — add new commands
-# here when they are created.
+def _register_for_argv(argv: list[str]) -> None:
+    """Lazy-register commands based on the incoming argv.
 
-_LAZY_MODULES: dict[str, str] = {
-    "agents": "knox.cli.cmds.agents",
-    "capture": "knox.cli.cmds.knowledge.capture",
-    "learn": "knox.cli.cmds.knowledge.capture",
-    "distill": "knox.cli.cmds.knowledge.capture",
-    "write": "knox.cli.cmds.knowledge.capture",
-    "config": "knox.cli.cmds.pipeline.config",
-    "doctor": "knox.cli.cmds.quality.doctor_cmd",
-    "status": "knox.cli.cmds.quality.status_cmd",
-    "list-parsers": "knox.cli.cmds.quality.list_parsers_cmd",
-    "trace": "knox.cli.cmds.quality.trace_cmd",
-    "init": "knox.cli.cmds.init",
-    "lint": "knox.cli.cmds.quality.lint",
-    "log": "knox.cli.cmds.quality.log",
-    "memory": "knox.cli.cmds.knowledge.memory",
-    "organize": "knox.cli.cmds.knowledge.organize",
-    "pack-list": "knox.cli.cmds.knowledge.pack",
-    "pack-install": "knox.cli.cmds.knowledge.pack",
-    "parse": "knox.cli.cmds.pipeline.pipeline",
-    "compile": "knox.cli.cmds.pipeline.pipeline",
-    "ingest": "knox.cli.cmds.pipeline.pipeline",
-    "query": "knox.cli.cmds.knowledge.query",
-    "references": "knox.cli.cmds.knowledge.references",
-    "review": "knox.cli.cmds.quality.review",
-    "sources": "knox.cli.cmds.pipeline.sources",
-    "sources-tag": "knox.cli.cmds.pipeline.sources",
-    "sources-untag": "knox.cli.cmds.pipeline.sources",
-    "mcp": "knox.cli.cmds.serve",
-    "serve": "knox.cli.cmds.serve",
-    "agent": "knox.cli.cmds.agent",
-}
+    * ``--help`` / ``-h`` / empty argv → load all (help must list every command).
+    * Shell-completion env vars (``*_COMPLETE``) → load all.
+    * A known subcommand → load only its module.
+    * Otherwise (global flags only, e.g. ``--version``) → load nothing.
+    """
+    if not argv or argv[0] in ("--help", "-h") or any(k.endswith("_COMPLETE") for k in os.environ):
+        register_all_commands()
+        return
+    requested = _find_requested_command(argv)
+    if requested is not None:
+        register_command(requested)
 
 
 def register_command(name: str) -> None:
@@ -169,19 +185,3 @@ def _find_requested_command(argv: list[str]) -> str | None:
         if arg in _LAZY_MODULES:
             return arg
     return None
-
-
-def _register_for_argv(argv: list[str]) -> None:
-    """Lazy-register commands based on the incoming argv.
-
-    * ``--help`` / ``-h`` / empty argv → load all (help must list every command).
-    * Shell-completion env vars (``*_COMPLETE``) → load all.
-    * A known subcommand → load only its module.
-    * Otherwise (global flags only, e.g. ``--version``) → load nothing.
-    """
-    if not argv or argv[0] in ("--help", "-h") or any(k.endswith("_COMPLETE") for k in os.environ):
-        register_all_commands()
-        return
-    requested = _find_requested_command(argv)
-    if requested is not None:
-        register_command(requested)

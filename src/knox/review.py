@@ -30,12 +30,6 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def slugify(title: str) -> str:
-    """Convert a title into a filesystem-safe slug."""
-    result = _slugify_impl(title)
-    return result if result else "untitled"
-
-
 class ReviewStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -207,6 +201,12 @@ class ReviewQueue:
             shutil.move(str(src), str(self._approved_path(slug)))
         elif rejected:
             shutil.move(str(src), str(self._rejected_path(slug)))
+
+
+def slugify(title: str) -> str:
+    """Convert a title into a filesystem-safe slug."""
+    result = _slugify_impl(title)
+    return result if result else "untitled"
 
 
 def approved_pages(review_dir: Path) -> Iterable[Path]:

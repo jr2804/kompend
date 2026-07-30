@@ -30,19 +30,6 @@ logger = get_logger(__name__)
 _FILENAME_RE = re.compile(r"[^a-z0-9-]+")
 
 
-def _slugify_category(name: str) -> str:
-    """Normalise a category name to lowercase-hyphenated form.
-
-    Strips characters that are not safe for cross-platform directory names
-    and collapses runs of separators. Empty input maps to ``"misc"`` so the
-    result is never a hidden / empty directory.
-    """
-    cleaned = name.strip().lower()
-    cleaned = _FILENAME_RE.sub("-", cleaned)
-    cleaned = re.sub(r"-+", "-", cleaned).strip("-")
-    return cleaned or "misc"
-
-
 @dataclass
 class CategoryNode:
     """A single node in the proposed category tree.
@@ -181,25 +168,6 @@ def _is_within(subject_path: Path, root_dir: Path) -> bool:
     return True
 
 
-def _build_files_payload(extractions: dict[str, Extraction]) -> str:
-    """Serialise extractions to a compact JSON array for the prompt.
-
-    The output is a single-line JSON list so the LLM can echo it back
-    unchanged when it wants to reference specific files.
-    """
-    payload: list[dict[str, object]] = []
-    for source in sorted(extractions):
-        ext = extractions[source]
-        payload.append(
-            {
-                "filename": source,
-                "summary": ext.summary,
-                "tags": list(ext.tags),  # nocheck: categorize output, not wiki metadata
-            }
-        )
-    return json.dumps(payload, ensure_ascii=False)
-
-
 def propose_categories(
     extractions: dict[str, Extraction],
     config: OrganizeConfig,
@@ -229,6 +197,25 @@ def propose_categories(
         return CategoryTree(categories=[], unfiled=sorted(extractions))
 
     return _tree_from_json(result.model_dump(), sorted(extractions))
+
+
+def _build_files_payload(extractions: dict[str, Extraction]) -> str:
+    """Serialise extractions to a compact JSON array for the prompt.
+
+    The output is a single-line JSON list so the LLM can echo it back
+    unchanged when it wants to reference specific files.
+    """
+    payload: list[dict[str, object]] = []
+    for source in sorted(extractions):
+        ext = extractions[source]
+        payload.append(
+            {
+                "filename": source,
+                "summary": ext.summary,
+                "tags": list(ext.tags),  # nocheck: categorize output, not wiki metadata
+            }
+        )
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _tree_from_json(payload: dict[str, Any], known_files: list[str]) -> CategoryTree:
@@ -364,3 +351,16 @@ def _prune(
         files=list(node.files) + collapsed_files,
         subcategories=kept_subs,
     )
+
+
+def _slugify_category(name: str) -> str:
+    """Normalise a category name to lowercase-hyphenated form.
+
+    Strips characters that are not safe for cross-platform directory names
+    and collapses runs of separators. Empty input maps to ``"misc"`` so the
+    result is never a hidden / empty directory.
+    """
+    cleaned = name.strip().lower()
+    cleaned = _FILENAME_RE.sub("-", cleaned)
+    cleaned = re.sub(r"-+", "-", cleaned).strip("-")
+    return cleaned or "misc"

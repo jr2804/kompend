@@ -28,12 +28,6 @@ config_app = typer.Typer(
 app.add_typer(config_app)
 
 
-def _resolve_wiki_dir(ctx: typer.Context) -> Path | None:
-    """Resolve --wiki-dir from callback context, if set."""
-    raw = ctx.obj.get("wiki_dir") if ctx.obj else None
-    return Path(raw).resolve() if raw else None
-
-
 @config_app.command("get", help="Print a resolved config value.")
 def config_get(
     ctx: typer.Context,
@@ -116,6 +110,12 @@ def config_path(
     """Print the path to the project or global config file."""
     path = get_global_config_path(create=False) if global_ else get_project_config_path(start_dir=_resolve_wiki_dir(ctx))
     get_console().print(str(path), soft_wrap=True)
+
+
+def _resolve_wiki_dir(ctx: typer.Context) -> Path | None:
+    """Resolve --wiki-dir from callback context, if set."""
+    raw = ctx.obj.get("wiki_dir") if ctx.obj else None
+    return Path(raw).resolve() if raw else None
 
 
 def _format_value(value: Any) -> str:

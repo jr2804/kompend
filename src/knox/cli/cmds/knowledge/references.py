@@ -34,19 +34,6 @@ references_app = typer.Typer(
 app.add_typer(references_app)
 
 
-def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
-    """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    # state_dir is .knox/ — its parent is the project root
-    base_dir = state_dir.parent
-    ref_file = base_dir / ".knox" / "references.json"
-    if not ref_file.exists():
-        return None
-    return ReferenceStore(ref_file)
-
-
 @references_app.command("list", help="List all extracted references.")
 def references_list(
     ctx: typer.Context,
@@ -132,6 +119,19 @@ def references_export(
 
     output.write_text(content, encoding="utf-8")
     get_console().print(f"Exported {len(refs)} reference(s) to {output}")
+
+
+def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
+    """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
+    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    # state_dir is .knox/ — its parent is the project root
+    base_dir = state_dir.parent
+    ref_file = base_dir / ".knox" / "references.json"
+    if not ref_file.exists():
+        return None
+    return ReferenceStore(ref_file)
 
 
 @references_app.command(

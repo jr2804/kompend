@@ -71,17 +71,6 @@ def register_backend(
     )
 
 
-def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
-    """Return the factory for *name*. Raises ``ValueError`` when unknown."""
-    try:
-        return PARSER_BACKENDS[name]
-    except KeyError:
-        available = ", ".join(sorted(PARSER_BACKENDS)) or "(none)"
-        raise ValueError(
-            f"Unknown parser backend {name!r}. Available: {available}.",
-        ) from None
-
-
 def get_registered_parsers() -> list[dict[str, Any]]:
     """Return all registered parsers as a list of metadata dicts."""
     return list(_registry.values())
@@ -111,24 +100,6 @@ def _register(
             "figure_enrichment": figure_enrichment,
             "metadata": {},
         }
-
-
-def _normalize_backends(names: str | Sequence[str]) -> list[str]:
-    """Normalize a backend spec into a deduplicated, order-preserving list.
-
-    Accepts a comma-separated string (``"liteparse,docling"``) or a sequence.
-    Whitespace is trimmed, blanks dropped, duplicates removed. Falls back to
-    ``["docling"]`` when nothing remains.
-    """
-    raw: Sequence[str] = names.split(",") if isinstance(names, str) else names
-    seen: set[str] = set()
-    result: list[str] = []
-    for entry in raw:
-        cleaned = entry.strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            result.append(cleaned)
-    return result or ["docling"]
 
 
 def build_default_router(
@@ -168,3 +139,32 @@ def build_default_router(
     router.set_text_fallback(pandoc)
 
     return router
+
+
+def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
+    """Return the factory for *name*. Raises ``ValueError`` when unknown."""
+    try:
+        return PARSER_BACKENDS[name]
+    except KeyError:
+        available = ", ".join(sorted(PARSER_BACKENDS)) or "(none)"
+        raise ValueError(
+            f"Unknown parser backend {name!r}. Available: {available}.",
+        ) from None
+
+
+def _normalize_backends(names: str | Sequence[str]) -> list[str]:
+    """Normalize a backend spec into a deduplicated, order-preserving list.
+
+    Accepts a comma-separated string (``"liteparse,docling"``) or a sequence.
+    Whitespace is trimmed, blanks dropped, duplicates removed. Falls back to
+    ``["docling"]`` when nothing remains.
+    """
+    raw: Sequence[str] = names.split(",") if isinstance(names, str) else names
+    seen: set[str] = set()
+    result: list[str] = []
+    for entry in raw:
+        cleaned = entry.strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result or ["docling"]

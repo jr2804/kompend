@@ -215,10 +215,6 @@ class TestScaffoldProject:
         assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
 
 
-def _git_available() -> bool:
-    return shutil.which("git") is not None
-
-
 class TestPublicApi:
     def test_project_markers_constant(self) -> None:
         assert "knox.toml" in PROJECT_MARKERS
@@ -241,3 +237,7 @@ class TestPublicApi:
         marker.write_text("# existing", encoding="utf-8")
         assert find_existing_project(tmp_path) == marker
         assert "README.md" in AUTHORED_TEMPLATES
+
+
+def _git_available() -> bool:
+    return shutil.which("git") is not None

@@ -28,6 +28,19 @@ VALID_LIFECYCLE_STATES: tuple[str, ...] = (
 )
 
 
+__all__ = [
+    "LIFECYCLE_ARCHIVED",
+    "LIFECYCLE_DRAFT",
+    "LIFECYCLE_REVIEWED",
+    "LIFECYCLE_STALE",
+    "LIFECYCLE_VERIFIED",
+    "VALID_LIFECYCLE_STATES",
+    "Citation",
+    "extract_citations",
+    "merge_duplicate_citations",
+]
+
+
 @dataclass
 class Citation:
     """A single ``[source:start-end]`` citation."""
@@ -66,16 +79,3 @@ def merge_duplicate_citations(citations: Iterable[Citation]) -> list[Citation]:
         seen.add(key)
         out.append(c)
     return out
-
-
-__all__ = [
-    "LIFECYCLE_ARCHIVED",
-    "LIFECYCLE_DRAFT",
-    "LIFECYCLE_REVIEWED",
-    "LIFECYCLE_STALE",
-    "LIFECYCLE_VERIFIED",
-    "VALID_LIFECYCLE_STATES",
-    "Citation",
-    "extract_citations",
-    "merge_duplicate_citations",
-]

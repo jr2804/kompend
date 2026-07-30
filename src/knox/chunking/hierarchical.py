@@ -129,26 +129,6 @@ class HierarchicalChunker:
         )
 
 
-# ── helpers ─────────────────────────────────────────────────────────────
-
-
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate (~4 chars per token)."""
-    return max(1, len(text) // 4)
-
-
-def _boundary_rules() -> RecursiveRules:
-    """Paragraph → line → sentence → whitespace fallback."""
-    return RecursiveRules(
-        levels=[
-            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=["\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
-            RecursiveLevel(include_delim="prev"),
-        ],
-    )
-
-
 class _TreeBuilder:
     """Internal state machine that walks elements and assembles a ChunkTree."""
 
@@ -313,6 +293,26 @@ class _TreeBuilder:
 
     def _heading_path(self) -> tuple[str, ...]:
         return tuple(text for _, text, _ in self._stack[1:])
+
+
+# ── helpers ─────────────────────────────────────────────────────────────
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars per token)."""
+    return max(1, len(text) // 4)
+
+
+def _boundary_rules() -> RecursiveRules:
+    """Paragraph → line → sentence → whitespace fallback."""
+    return RecursiveRules(
+        levels=[
+            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
+            RecursiveLevel(delimiters=["\n"], include_delim="prev"),
+            RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
+            RecursiveLevel(include_delim="prev"),
+        ],
+    )
 
 
 # ── module-level conversion helpers ─────────────────────────────────────

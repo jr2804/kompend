@@ -10,6 +10,14 @@ from typing import Any
 from knox.core.models.enums import WikiField
 from knox.core.paths import VaultPaths
 
+__all__ = [
+    "CompiledWiki",
+    "CrossReferenceIssue",
+    "CrossReferenceResult",
+    "WikiNode",
+    "load_cached_wiki",
+]
+
 
 @dataclass
 class CrossReferenceIssue:
@@ -85,12 +93,3 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
         iteration=data.get(WikiField.ITERATION, 0),
         metadata=data.get(WikiField.METADATA, {}),
     )
-
-
-__all__ = [
-    "CompiledWiki",
-    "CrossReferenceIssue",
-    "CrossReferenceResult",
-    "WikiNode",
-    "load_cached_wiki",
-]

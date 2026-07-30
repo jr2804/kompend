@@ -45,16 +45,6 @@ _HTML_PATH_SUFFIXES: frozenset[str] = frozenset({"", ".html", ".htm", ".aspx", "
 _BINARY_PATH_SEGMENTS: frozenset[str] = frozenset({"/pdf/"})
 
 
-def looks_like_html_url(url: str) -> bool:
-    """Heuristic: does *url*'s path suggest server-rendered HTML?"""
-    path = urlparse(url).path.lower()
-    if not path or path.endswith("/"):
-        return True
-    if any(seg in path for seg in _BINARY_PATH_SEGMENTS):
-        return False
-    return Path(path).suffix in _HTML_PATH_SUFFIXES
-
-
 # ── Archive extraction ──────────────────────────────────────────────────
 
 
@@ -74,148 +64,6 @@ _ARCHIVE_EXTRACT_PRIORITY: tuple[FileExtension, ...] = (
 
 
 _EXT_PRIORITY: dict[str, int] = {ext.value: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
-
-
-def _find_best_archive_member(names: list[str]) -> str | None:
-    """Find the member with the highest-priority extension."""
-    best_name, best_p = None, len(_EXT_PRIORITY)
-    for nm in names:
-        p = _EXT_PRIORITY.get(Path(nm).suffix.lower(), len(_EXT_PRIORITY))
-        if p < best_p:
-            best_p, best_name = p, nm
-    return best_name
-
-
-def _extract_7z(path: Path, dest_dir: Path) -> Path | None:
-    with py7zr.SevenZipFile(path, mode="r") as szf:
-        best = _find_best_archive_member(szf.getnames())
-        if best is None:
-            return None
-        szf.extract(targets=[best], path=dest_dir)
-        dest = dest_dir / Path(best).name
-        if not dest.exists():
-            dest = next(dest_dir.rglob(Path(best).name), None)
-        return dest
-
-
-def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
-    with zipfile.ZipFile(path) as zf:
-        best = _find_best_archive_member(zf.namelist())
-        if best is None:
-            return None
-        dest = dest_dir / Path(best).name
-        dest.write_bytes(zf.read(best))
-        return dest
-
-
-def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
-    if not rarfile.is_rarfile(path):
-        return None
-    rf: Any = rarfile.RarFile(path)
-    try:
-        best = _find_best_archive_member(rf.namelist())
-        if best is None:
-            return None
-        dest = dest_dir / Path(best).name
-        dest.write_bytes(rf.read(best))
-        return dest
-    finally:
-        pass
-
-
-def _extract_tar(path: Path, dest_dir: Path) -> Path | None:
-    with tarfile.open(path, mode="r:*") as tf:
-        file_members = [m for m in tf.getmembers() if m.isfile()]
-        best = _find_best_archive_member([m.name for m in file_members])
-        if best is None:
-            return None
-        member = next(m for m in file_members if m.name == best)
-        fobj = tf.extractfile(member)
-        if fobj is None:
-            return None
-        dest = dest_dir / Path(best).name
-        dest.write_bytes(fobj.read())
-        return dest
-
-
-def _extract_single_file(path: Path, dest_dir: Path, decompress: Callable[[bytes], bytes]) -> Path | None:
-    """Decompress a single-file archive (gz, bz2, xz)."""
-    inner_name = Path(path.stem).name
-    dest = dest_dir / inner_name
-    dest.write_bytes(decompress(path.read_bytes()))
-    return dest
-
-
-def _clean_single_file_extract(dest: Path, is_single_file: bool) -> Path | None:
-    """Remove single-file extract result when it's not a parseable format."""
-    if is_single_file and _EXT_PRIORITY.get(dest.suffix.lower(), len(_EXT_PRIORITY)) >= len(_EXT_PRIORITY):
-        dest.unlink(missing_ok=True)
-        return None
-    return dest
-
-
-def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
-    """Expand a compressed archive and return the best inner file.
-
-    Supported formats (stdlib only, no extra dependencies):
-
-    - ``.tar``, ``.tar.gz`` / ``.tgz``, ``.tar.bz2``, ``.tar.xz`` / ``.tar.lzma``
-    - ``.gz`` (single-file gzip)
-    - ``.bz2`` (single-file bzip2)
-    - ``.xz`` / ``.lzma`` (single-file LZMA)
-    - ``.zip``
-
-    Supported with ``py7zr`` (optional but listed as a dependency):
-
-    - ``.7z``
-
-    Supported with ``unrar2-cffi`` (listed as a dependency):
-
-    - ``.rar``
-
-    Walks members in name order and returns the first file whose extension
-    matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
-    Returns None when the path is not a recognised archive.
-    """
-    name_lower = archive_path.name.lower()
-    suffix = archive_path.suffix.lower()
-    _TAR_ENDINGS = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar")
-    is_tar = suffix in {".tar", ".tgz"} or any(name_lower.endswith(e) for e in _TAR_ENDINGS)
-    is_gz = suffix == ".gz" and not is_tar
-    is_bz2 = suffix == ".bz2" and not is_tar
-    is_xz = suffix in (".xz", ".lzma") and not is_tar
-
-    try:
-        if is_tar:
-            dest = _extract_tar(archive_path, dest_dir)
-        elif suffix == ".zip":
-            dest = _extract_zip(archive_path, dest_dir)
-        elif suffix == ".7z":
-            dest = _extract_7z(archive_path, dest_dir)
-        elif suffix == ".rar":
-            dest = _extract_rar(archive_path, dest_dir)
-        elif is_gz:
-            dest = _extract_single_file(archive_path, dest_dir, gzip.decompress)
-        elif is_bz2:
-            dest = _extract_single_file(archive_path, dest_dir, bz2.decompress)
-        elif is_xz:
-            dest = _extract_single_file(archive_path, dest_dir, lzma.decompress)
-        else:
-            return None
-
-        if dest is None:
-            return None
-
-        dest = _clean_single_file_extract(dest, is_gz or is_bz2 or is_xz)
-        if dest is None:
-            return None
-
-        archive_path.unlink()
-        logger.info("Extracted %s from archive -> %s", dest.name, archive_path.name)
-        return dest
-    except Exception as exc:
-        logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
-        return None
 
 
 # ── URL downloading ─────────────────────────────────────────────────────
@@ -311,3 +159,155 @@ def _download_single_url(
             downloaded_file.name,
         )
     return downloaded_file
+
+
+def looks_like_html_url(url: str) -> bool:
+    """Heuristic: does *url*'s path suggest server-rendered HTML?"""
+    path = urlparse(url).path.lower()
+    if not path or path.endswith("/"):
+        return True
+    if any(seg in path for seg in _BINARY_PATH_SEGMENTS):
+        return False
+    return Path(path).suffix in _HTML_PATH_SUFFIXES
+
+
+def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
+    """Expand a compressed archive and return the best inner file.
+
+    Supported formats (stdlib only, no extra dependencies):
+
+    - ``.tar``, ``.tar.gz`` / ``.tgz``, ``.tar.bz2``, ``.tar.xz`` / ``.tar.lzma``
+    - ``.gz`` (single-file gzip)
+    - ``.bz2`` (single-file bzip2)
+    - ``.xz`` / ``.lzma`` (single-file LZMA)
+    - ``.zip``
+
+    Supported with ``py7zr`` (optional but listed as a dependency):
+
+    - ``.7z``
+
+    Supported with ``unrar2-cffi`` (listed as a dependency):
+
+    - ``.rar``
+
+    Walks members in name order and returns the first file whose extension
+    matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
+    Returns None when the path is not a recognised archive.
+    """
+    name_lower = archive_path.name.lower()
+    suffix = archive_path.suffix.lower()
+    _TAR_ENDINGS = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar")
+    is_tar = suffix in {".tar", ".tgz"} or any(name_lower.endswith(e) for e in _TAR_ENDINGS)
+    is_gz = suffix == ".gz" and not is_tar
+    is_bz2 = suffix == ".bz2" and not is_tar
+    is_xz = suffix in (".xz", ".lzma") and not is_tar
+
+    try:
+        if is_tar:
+            dest = _extract_tar(archive_path, dest_dir)
+        elif suffix == ".zip":
+            dest = _extract_zip(archive_path, dest_dir)
+        elif suffix == ".7z":
+            dest = _extract_7z(archive_path, dest_dir)
+        elif suffix == ".rar":
+            dest = _extract_rar(archive_path, dest_dir)
+        elif is_gz:
+            dest = _extract_single_file(archive_path, dest_dir, gzip.decompress)
+        elif is_bz2:
+            dest = _extract_single_file(archive_path, dest_dir, bz2.decompress)
+        elif is_xz:
+            dest = _extract_single_file(archive_path, dest_dir, lzma.decompress)
+        else:
+            return None
+
+        if dest is None:
+            return None
+
+        dest = _clean_single_file_extract(dest, is_gz or is_bz2 or is_xz)
+        if dest is None:
+            return None
+
+        archive_path.unlink()
+        logger.info("Extracted %s from archive -> %s", dest.name, archive_path.name)
+        return dest
+    except Exception as exc:
+        logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
+        return None
+
+
+def _extract_7z(path: Path, dest_dir: Path) -> Path | None:
+    with py7zr.SevenZipFile(path, mode="r") as szf:
+        best = _find_best_archive_member(szf.getnames())
+        if best is None:
+            return None
+        szf.extract(targets=[best], path=dest_dir)
+        dest = dest_dir / Path(best).name
+        if not dest.exists():
+            dest = next(dest_dir.rglob(Path(best).name), None)
+        return dest
+
+
+def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
+    with zipfile.ZipFile(path) as zf:
+        best = _find_best_archive_member(zf.namelist())
+        if best is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(zf.read(best))
+        return dest
+
+
+def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
+    if not rarfile.is_rarfile(path):
+        return None
+    rf: Any = rarfile.RarFile(path)
+    try:
+        best = _find_best_archive_member(rf.namelist())
+        if best is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(rf.read(best))
+        return dest
+    finally:
+        pass
+
+
+def _extract_tar(path: Path, dest_dir: Path) -> Path | None:
+    with tarfile.open(path, mode="r:*") as tf:
+        file_members = [m for m in tf.getmembers() if m.isfile()]
+        best = _find_best_archive_member([m.name for m in file_members])
+        if best is None:
+            return None
+        member = next(m for m in file_members if m.name == best)
+        fobj = tf.extractfile(member)
+        if fobj is None:
+            return None
+        dest = dest_dir / Path(best).name
+        dest.write_bytes(fobj.read())
+        return dest
+
+
+def _find_best_archive_member(names: list[str]) -> str | None:
+    """Find the member with the highest-priority extension."""
+    best_name, best_p = None, len(_EXT_PRIORITY)
+    for nm in names:
+        p = _EXT_PRIORITY.get(Path(nm).suffix.lower(), len(_EXT_PRIORITY))
+        if p < best_p:
+            best_p, best_name = p, nm
+    return best_name
+
+
+def _extract_single_file(path: Path, dest_dir: Path, decompress: Callable[[bytes], bytes]) -> Path | None:
+    """Decompress a single-file archive (gz, bz2, xz)."""
+    inner_name = Path(path.stem).name
+    dest = dest_dir / inner_name
+    dest.write_bytes(decompress(path.read_bytes()))
+    return dest
+
+
+def _clean_single_file_extract(dest: Path, is_single_file: bool) -> Path | None:
+    """Remove single-file extract result when it's not a parseable format."""
+    if is_single_file and _EXT_PRIORITY.get(dest.suffix.lower(), len(_EXT_PRIORITY)) >= len(_EXT_PRIORITY):
+        dest.unlink(missing_ok=True)
+        return None
+    return dest

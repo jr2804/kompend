@@ -11,24 +11,6 @@ import urllib.request
 from pathlib import Path
 
 
-def _get_token() -> str | None:
-    """Get FORGEJO_TOKEN from env or mise env --json."""
-    token = os.environ.get("FORGEJO_TOKEN")
-    if token:
-        return token
-    # mise run doesn't pass [env] vars on Windows, try mise env --json
-    import subprocess
-
-    try:
-        result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            env = json.loads(result.stdout)
-            return env.get("FORGEJO_TOKEN")
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        pass
-    return None
-
-
 def main() -> None:
     # Read keywords from pyproject.toml
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
@@ -63,6 +45,24 @@ def main() -> None:
     except urllib.error.HTTPError as e:
         print(f"error: API returned {e.code}: {e.read().decode('utf-8')}")
         sys.exit(1)
+
+
+def _get_token() -> str | None:
+    """Get FORGEJO_TOKEN from env or mise env --json."""
+    token = os.environ.get("FORGEJO_TOKEN")
+    if token:
+        return token
+    # mise run doesn't pass [env] vars on Windows, try mise env --json
+    import subprocess
+
+    try:
+        result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            env = json.loads(result.stdout)
+            return env.get("FORGEJO_TOKEN")
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        pass
+    return None
 
 
 if __name__ == "__main__":

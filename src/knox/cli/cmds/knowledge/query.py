@@ -56,41 +56,6 @@ from knox.search.retriever import HybridRetriever
 logger = get_logger(__name__)
 
 
-def _parse_tag_groups(tags: list[str] | None) -> list[list[str]]:
-    """Parse --tags values into AND-groups for OR-filtering.
-
-    Each --tags VALUE is split by comma (AND within a value).
-    Multiple --tags values are OR'd together.
-    Returns groups like [["a","b"],["c"]] meaning "(a AND b) OR c".
-    """
-    if not tags:
-        return []
-    groups: list[list[str]] = []
-    for value in tags:
-        group = [t.strip() for t in value.split(",") if t.strip()]
-        if group:
-            groups.append(group)
-    return groups
-
-
-def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bool:
-    """Run intent classification and respond directly if classified.
-
-    Returns True if the classifier produced a response (caller should return).
-    """
-    if no_classify:
-        return False
-
-    result = classify(query)
-    if result.response is None:
-        return False
-    if format == LlmDataFormat.MARKDOWN:
-        get_console().print(result.response)
-    else:
-        get_console().print(encode_structured({"intent": result.intent.value, "response": result.response}, format))
-    return True
-
-
 @app.command(name="query")
 def query_cmd(
     ctx: typer.Context,
@@ -175,3 +140,38 @@ def query_cmd(
 
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
     synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)
+
+
+def _parse_tag_groups(tags: list[str] | None) -> list[list[str]]:
+    """Parse --tags values into AND-groups for OR-filtering.
+
+    Each --tags VALUE is split by comma (AND within a value).
+    Multiple --tags values are OR'd together.
+    Returns groups like [["a","b"],["c"]] meaning "(a AND b) OR c".
+    """
+    if not tags:
+        return []
+    groups: list[list[str]] = []
+    for value in tags:
+        group = [t.strip() for t in value.split(",") if t.strip()]
+        if group:
+            groups.append(group)
+    return groups
+
+
+def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bool:
+    """Run intent classification and respond directly if classified.
+
+    Returns True if the classifier produced a response (caller should return).
+    """
+    if no_classify:
+        return False
+
+    result = classify(query)
+    if result.response is None:
+        return False
+    if format == LlmDataFormat.MARKDOWN:
+        get_console().print(result.response)
+    else:
+        get_console().print(encode_structured({"intent": result.intent.value, "response": result.response}, format))
+    return True

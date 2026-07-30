@@ -44,11 +44,6 @@ def run_output_tier(pipeline: Any) -> None:
     pipeline.output_writer.write(wiki, pipeline.config.output_dir)
 
 
-def compiled_wiki_path(pipeline: Any) -> Path:
-    """Resolve the compiled wiki JSON path."""
-    return pipeline.config.paths.compiled_wiki_path
-
-
 def save_compiled_wiki(pipeline: Any, wiki: CompiledWiki) -> None:
     """Serialize CompiledWiki to JSON on disk."""
     path = compiled_wiki_path(pipeline)
@@ -91,6 +86,11 @@ def load_compiled_wiki(pipeline: Any) -> CompiledWiki | None:
         iteration=data.get(WikiField.ITERATION, 0),
         metadata=data.get(WikiField.METADATA, {}),
     )
+
+
+def compiled_wiki_path(pipeline: Any) -> Path:
+    """Resolve the compiled wiki JSON path."""
+    return pipeline.config.paths.compiled_wiki_path
 
 
 def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[Any]) -> None:

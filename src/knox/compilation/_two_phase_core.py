@@ -51,233 +51,11 @@ MIN_SEGMENT_TOKENS: int = 512
 _DEFAULT_CHARS_PER_TOKEN: float = 3.85
 
 
-@functools.cache
-def _get_chars_per_token(*, default: float | None = None) -> float:
-    """Return the characters-per-token heuristic used for budget estimation.
+_CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 
-    Priority: ``KNOX_CHARS_PER_TOKEN`` env var > *default* argument >
-    ``_DEFAULT_CHARS_PER_TOKEN`` module constant > ``compile.llm.default_chars_per_token`` config.
-    """
-    env_raw = os.environ.get("KNOX_CHARS_PER_TOKEN")
-    if env_raw is not None:
-        try:
-            return float(env_raw)
-        except ValueError:
-            logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using fallback", env_raw)
-    return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
-
-
-def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
-    """Convert token count to approximate character count.
-
-    Args:
-        tokens: Token count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
-    """
-    return int(tokens * _get_chars_per_token(default=chars_per_token))
-
-
-def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
-    """Convert character count to approximate token count.
-
-    Args:
-        chars: Character count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
-    """
-    return max(1, int(chars / _get_chars_per_token(default=chars_per_token)))
-
-
-def slugify(text: str, max_length: int | None = None) -> str:
-    """Convert a title to a lowercase hyphenated slug (capped for filesystem safety).
-
-    When the slug exceeds *max_length* (defaults to ``compile.llm.slug_max_length``),
-    it is truncated at a word boundary and a short hash of the *full* slug is
-    appended so two distinct long titles don't collide (which would otherwise be
-    merged by :func:`_upsert_node`).
-
-    Args:
-        text: The title to slugify.
-        max_length: Maximum slug length. Defaults to ``_SLUG_MAX_LENGTH`` (80),
-            which is the fallback for ``compile.llm.slug_max_length``.
-    """
-    cap = max_length if max_length is not None else _SLUG_MAX_LENGTH
-    slug = _slugify_impl(text) or "concept"
-    if len(slug) <= cap:
-        return slug
-    truncated = slug[: cap - 5].rstrip("-")
-    return f"{truncated}-{hashlib.sha256(slug.encode()).hexdigest()[:4]}"
-
-
-def _dedup_id(node_id: str, seen: set[str]) -> str:
-    """Append a numeric suffix if node_id already exists in *seen*, then add."""
-    candidate = node_id
-    counter = 2
-    while candidate in seen:
-        candidate = f"{node_id}-{counter}"
-        counter += 1
-    seen.add(candidate)
-    return candidate
-
-
-def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
-    """Extract image metadata from IMAGE chunks.
-
-    Returns a list of dicts with keys: path, caption, element_type.
-    Images are collected from:
-    - chunk.metadata["image_path"] (file mode)
-    - chunk.metadata["image_base64"] (base64 mode)
-    - VLM captions from resolved.entities with type="image_description"
-    """
-    images: list[dict[str, Any]] = []
-
-    for rc in chunks:
-        if ElementType.IMAGE not in rc.chunk.element_types:
-            continue
-
-        img_ref = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
-        if not img_ref:
-            # Try resolved metadata
-            img_ref = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
-
-        if not img_ref:
-            continue
-
-        caption = ""
-        for entity in rc.entities:
-            if entity.get("type") == "image_description" and entity.get("context"):
-                caption = entity["context"]
-                break
-
-        images.append(
-            {
-                "path": img_ref,
-                "caption": caption,
-                "element_type": "image",
-            }
-        )
-
-    return images
-
-
-def _split_sections(text: str) -> dict[str, str]:
-    """Split markdown text into sections keyed by heading.
-
-    Content before the first heading is stored under the empty-string key.
-    """
-    sections: dict[str, str] = {}
-    current_heading = ""
-    current_lines: list[str] = []
-
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("## "):
-            if current_lines:
-                sections[current_heading] = "\n".join(current_lines).strip()
-            current_heading = stripped[3:].strip()
-            current_lines = []
-        else:
-            current_lines.append(line)
-
-    if current_lines:
-        sections[current_heading] = "\n".join(current_lines).strip()
-
-    return sections
-
-
-def _merge_sections(existing: dict[str, str], incoming: dict[str, str]) -> str:
-    """Merge two section dicts, keeping the richer version per heading."""
-    merged: dict[str, str] = {}
-    for heading in dict.fromkeys(list(existing) + list(incoming)):
-        ex = existing.get(heading, "")
-        inc = incoming.get(heading, "")
-        merged[heading] = ex if len(ex) >= len(inc) else inc
-
-    result = ""
-    for heading, body in merged.items():
-        if heading:
-            result += f"## {heading}\n{body}\n\n"
-        elif body:
-            result += f"{body}\n\n"
-    return result.strip()
-
-
-def compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
-    """Compute a 0–100 quality score for a compiled wiki.
-
-    Weighted average of three sub-scores:
-    - **Completeness** (40 %): fraction of nodes with non-trivial content (>50 chars)
-    - **Connectivity** (30 %): edge density relative to a target of ~3 edges/node
-    - **Richness** (30 %): average content length normalised against a 500-char target
-    """
-    n = len(nodes)
-    if n == 0:
-        return 0.0
-
-    non_empty = sum(1 for node in nodes if len((node.content or "").strip()) > 50)
-    completeness = non_empty / n
-
-    target_edges = n * 3
-    connectivity = min(len(edges) / target_edges, 1.0) if target_edges > 0 else 0.0
-
-    avg_len = sum(len(node.content or "") for node in nodes) / n
-    richness = min(avg_len / 500.0, 1.0)
-
-    return round((completeness * 0.4 + connectivity * 0.3 + richness * 0.3) * 100, 1)
-
-
-def _merge_node(
-    existing: WikiNode,
-    incoming: WikiNode,
-) -> WikiNode:
-    """Merge *incoming* node into *existing* using section-aware dedup.
-
-    Sections with the same heading are de-duplicated, keeping the longer
-    (richer) version.  Sections unique to either source are appended.
-    Provenance lists are unioned.
-    """
-    existing_text = existing.content or ""
-    incoming_text = incoming.content or ""
-
-    if not existing_text.strip():
-        merged_content = incoming_text
-    elif not incoming_text.strip():
-        merged_content = existing_text
-    else:
-        ex_sections = _split_sections(existing_text)
-        inc_sections = _split_sections(incoming_text)
-        merged_content = _merge_sections(ex_sections, inc_sections)
-
-    merged_title = existing.title or incoming.title
-
-    # Merge provenance
-    # ponytail: LLM output may return dicts/non-strings in provenance/related
-    # (e.g. {"chunk": ...} under timeout stress); coerce to str so the set
-    # dedup never hits "unhashable type: 'dict'".
-    existing_prov = {str(x) for x in (existing.metadata.get("provenance") or [])}
-    incoming_prov = {str(x) for x in (incoming.metadata.get("provenance") or [])}
-    merged_prov = sorted(existing_prov | incoming_prov)
-
-    # Merge related
-    existing_rel = {str(x) for x in (existing.metadata.get("related") or [])}
-    incoming_rel = {str(x) for x in (incoming.metadata.get("related") or [])}
-    merged_rel = sorted(existing_rel | incoming_rel)
-
-    return WikiNode(
-        id=existing.id,
-        title=merged_title,
-        content=merged_content,
-        node_type=existing.node_type,
-        source_chunks=list(
-            dict.fromkeys(
-                (existing.source_chunks or []) + (incoming.source_chunks or []),
-            ),
-        ),
-        metadata={
-            **existing.metadata,
-            "provenance": merged_prov,
-            "related": merged_rel,
-        },
-    )
+# Internal names injected by VLMEnricher for bookkeeping — must never
+# become concept pages.
+_RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
 
 @dataclass
@@ -308,32 +86,6 @@ class Extraction:
             concepts=list(data.get("concepts", [])),
             tags=list(data.get("tags", [])),
         )
-
-
-_CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
-
-# Internal names injected by VLMEnricher for bookkeeping — must never
-# become concept pages.
-_RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
-
-# Structural-concept filtering lives in :mod:`knox.compilation.concept_keys`
-# so the ``wicer`` (GraphCompiler) and TwoPhase backends share one
-# implementation. Re-exported here for callers that already import it
-# from this module.
-
-
-def _concept_name(concept: dict[str, Any]) -> str:
-    """Salvage a concept name, tolerating schema drift.
-
-    The extraction prompt asks for ``name``; LLMs sometimes return
-    ``concept``/``title``/``term`` instead. Without salvage, concept_pages()
-    returns empty and generation silently falls back.
-    """
-    for key in _CONCEPT_NAME_KEYS:
-        val = str(concept.get(key, "")).strip()
-        if val:
-            return val
-    return ""
 
 
 @dataclass
@@ -425,6 +177,158 @@ class BatchFailureTracker:
     def should_stop(self) -> bool:
         """True once the model's failure rate clears the stop threshold."""
         return self.total >= self._min_batches and self.failed / self.total > self._ratio
+
+
+def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
+    """Convert token count to approximate character count.
+
+    Args:
+        tokens: Token count to convert.
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
+    """
+    return int(tokens * _get_chars_per_token(default=chars_per_token))
+
+
+def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
+    """Convert character count to approximate token count.
+
+    Args:
+        chars: Character count to convert.
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
+    """
+    return max(1, int(chars / _get_chars_per_token(default=chars_per_token)))
+
+
+@functools.cache
+def _get_chars_per_token(*, default: float | None = None) -> float:
+    """Return the characters-per-token heuristic used for budget estimation.
+
+    Priority: ``KNOX_CHARS_PER_TOKEN`` env var > *default* argument >
+    ``_DEFAULT_CHARS_PER_TOKEN`` module constant > ``compile.llm.default_chars_per_token`` config.
+    """
+    env_raw = os.environ.get("KNOX_CHARS_PER_TOKEN")
+    if env_raw is not None:
+        try:
+            return float(env_raw)
+        except ValueError:
+            logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using fallback", env_raw)
+    return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
+
+
+def slugify(text: str, max_length: int | None = None) -> str:
+    """Convert a title to a lowercase hyphenated slug (capped for filesystem safety).
+
+    When the slug exceeds *max_length* (defaults to ``compile.llm.slug_max_length``),
+    it is truncated at a word boundary and a short hash of the *full* slug is
+    appended so two distinct long titles don't collide (which would otherwise be
+    merged by :func:`_upsert_node`).
+
+    Args:
+        text: The title to slugify.
+        max_length: Maximum slug length. Defaults to ``_SLUG_MAX_LENGTH`` (80),
+            which is the fallback for ``compile.llm.slug_max_length``.
+    """
+    cap = max_length if max_length is not None else _SLUG_MAX_LENGTH
+    slug = _slugify_impl(text) or "concept"
+    if len(slug) <= cap:
+        return slug
+    truncated = slug[: cap - 5].rstrip("-")
+    return f"{truncated}-{hashlib.sha256(slug.encode()).hexdigest()[:4]}"
+
+
+def _dedup_id(node_id: str, seen: set[str]) -> str:
+    """Append a numeric suffix if node_id already exists in *seen*, then add."""
+    candidate = node_id
+    counter = 2
+    while candidate in seen:
+        candidate = f"{node_id}-{counter}"
+        counter += 1
+    seen.add(candidate)
+    return candidate
+
+
+def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
+    """Extract image metadata from IMAGE chunks.
+
+    Returns a list of dicts with keys: path, caption, element_type.
+    Images are collected from:
+    - chunk.metadata["image_path"] (file mode)
+    - chunk.metadata["image_base64"] (base64 mode)
+    - VLM captions from resolved.entities with type="image_description"
+    """
+    images: list[dict[str, Any]] = []
+
+    for rc in chunks:
+        if ElementType.IMAGE not in rc.chunk.element_types:
+            continue
+
+        img_ref = rc.chunk.metadata.get("image_path") or rc.chunk.metadata.get("image_base64")
+        if not img_ref:
+            # Try resolved metadata
+            img_ref = rc.metadata.get("image_path") or rc.metadata.get("image_base64")
+
+        if not img_ref:
+            continue
+
+        caption = ""
+        for entity in rc.entities:
+            if entity.get("type") == "image_description" and entity.get("context"):
+                caption = entity["context"]
+                break
+
+        images.append(
+            {
+                "path": img_ref,
+                "caption": caption,
+                "element_type": "image",
+            }
+        )
+
+    return images
+
+
+def compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
+    """Compute a 0–100 quality score for a compiled wiki.
+
+    Weighted average of three sub-scores:
+    - **Completeness** (40 %): fraction of nodes with non-trivial content (>50 chars)
+    - **Connectivity** (30 %): edge density relative to a target of ~3 edges/node
+    - **Richness** (30 %): average content length normalised against a 500-char target
+    """
+    n = len(nodes)
+    if n == 0:
+        return 0.0
+
+    non_empty = sum(1 for node in nodes if len((node.content or "").strip()) > 50)
+    completeness = non_empty / n
+
+    target_edges = n * 3
+    connectivity = min(len(edges) / target_edges, 1.0) if target_edges > 0 else 0.0
+
+    avg_len = sum(len(node.content or "") for node in nodes) / n
+    richness = min(avg_len / 500.0, 1.0)
+
+    return round((completeness * 0.4 + connectivity * 0.3 + richness * 0.3) * 100, 1)
+
+
+# Structural-concept filtering lives in :mod:`knox.compilation.concept_keys`
+# so the ``wicer`` (GraphCompiler) and TwoPhase backends share one
+# implementation. Re-exported here for callers that already import it
+# from this module.
+
+
+def _concept_name(concept: dict[str, Any]) -> str:
+    """Salvage a concept name, tolerating schema drift.
+
+    The extraction prompt asks for ``name``; LLMs sometimes return
+    ``concept``/``title``/``term`` instead. Without salvage, concept_pages()
+    returns empty and generation silently falls back.
+    """
+    for key in _CONCEPT_NAME_KEYS:
+        val = str(concept.get(key, "")).strip()
+        if val:
+            return val
+    return ""
 
 
 def try_pydanticai_extraction(
@@ -598,3 +502,100 @@ def upsert_node(
     else:
         slug_to_idx[slug] = len(nodes)
         nodes.append(new_node)
+
+
+def _merge_node(
+    existing: WikiNode,
+    incoming: WikiNode,
+) -> WikiNode:
+    """Merge *incoming* node into *existing* using section-aware dedup.
+
+    Sections with the same heading are de-duplicated, keeping the longer
+    (richer) version.  Sections unique to either source are appended.
+    Provenance lists are unioned.
+    """
+    existing_text = existing.content or ""
+    incoming_text = incoming.content or ""
+
+    if not existing_text.strip():
+        merged_content = incoming_text
+    elif not incoming_text.strip():
+        merged_content = existing_text
+    else:
+        ex_sections = _split_sections(existing_text)
+        inc_sections = _split_sections(incoming_text)
+        merged_content = _merge_sections(ex_sections, inc_sections)
+
+    merged_title = existing.title or incoming.title
+
+    # Merge provenance
+    # ponytail: LLM output may return dicts/non-strings in provenance/related
+    # (e.g. {"chunk": ...} under timeout stress); coerce to str so the set
+    # dedup never hits "unhashable type: 'dict'".
+    existing_prov = {str(x) for x in (existing.metadata.get("provenance") or [])}
+    incoming_prov = {str(x) for x in (incoming.metadata.get("provenance") or [])}
+    merged_prov = sorted(existing_prov | incoming_prov)
+
+    # Merge related
+    existing_rel = {str(x) for x in (existing.metadata.get("related") or [])}
+    incoming_rel = {str(x) for x in (incoming.metadata.get("related") or [])}
+    merged_rel = sorted(existing_rel | incoming_rel)
+
+    return WikiNode(
+        id=existing.id,
+        title=merged_title,
+        content=merged_content,
+        node_type=existing.node_type,
+        source_chunks=list(
+            dict.fromkeys(
+                (existing.source_chunks or []) + (incoming.source_chunks or []),
+            ),
+        ),
+        metadata={
+            **existing.metadata,
+            "provenance": merged_prov,
+            "related": merged_rel,
+        },
+    )
+
+
+def _split_sections(text: str) -> dict[str, str]:
+    """Split markdown text into sections keyed by heading.
+
+    Content before the first heading is stored under the empty-string key.
+    """
+    sections: dict[str, str] = {}
+    current_heading = ""
+    current_lines: list[str] = []
+
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("## "):
+            if current_lines:
+                sections[current_heading] = "\n".join(current_lines).strip()
+            current_heading = stripped[3:].strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections[current_heading] = "\n".join(current_lines).strip()
+
+    return sections
+
+
+def _merge_sections(existing: dict[str, str], incoming: dict[str, str]) -> str:
+    """Merge two section dicts, keeping the richer version per heading."""
+    merged: dict[str, str] = {}
+    for heading in dict.fromkeys(list(existing) + list(incoming)):
+        ex = existing.get(heading, "")
+        inc = incoming.get(heading, "")
+        merged[heading] = ex if len(ex) >= len(inc) else inc
+
+    result = ""
+    for heading, body in merged.items():
+        if heading:
+            result += f"## {heading}\n{body}\n\n"
+        elif body:
+            result += f"{body}\n\n"
+    return result.strip()

@@ -16,12 +16,6 @@ from knox.scaffolding import TEMPLATE_NEXT_STEPS, ScaffoldError, find_existing_p
 logger = get_logger(__name__)
 
 
-def _load_next_steps(sources_dir: str) -> str:
-    """Load and render the next-steps template with the configured sources_dir."""
-    content = resources.files("knox.scaffolding.templates").joinpath(TEMPLATE_NEXT_STEPS).read_text(encoding="utf-8")
-    return jinja2.Template(content, keep_trailing_newline=True).render(sources_dir=sources_dir)
-
-
 @app.command(name="init", help="Scaffold a new KNOX wiki project.")
 def init(
     target: InitTarget = ".",
@@ -59,3 +53,9 @@ def init(
         get_console().print("  + git init: initial commit created")
     get_console().print("")
     get_console().print(_load_next_steps(result.sources_dir or "sources"), end="")
+
+
+def _load_next_steps(sources_dir: str) -> str:
+    """Load and render the next-steps template with the configured sources_dir."""
+    content = resources.files("knox.scaffolding.templates").joinpath(TEMPLATE_NEXT_STEPS).read_text(encoding="utf-8")
+    return jinja2.Template(content, keep_trailing_newline=True).render(sources_dir=sources_dir)

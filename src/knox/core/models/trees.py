@@ -20,6 +20,9 @@ CHUNK_TREE_CACHE_VERSION: int = 1
 """Increment when ``ChunkTree.to_dict`` / ``ChunkTree.from_dict`` format changes."""
 
 
+__all__ = ["CHUNK_TREE_CACHE_VERSION", "ChunkNode", "ChunkTree"]
+
+
 @dataclass
 class ChunkNode:
     """A node in the hierarchical chunk tree.
@@ -157,6 +160,3 @@ class ChunkTree:
         yield node
         for child_id in node.children_ids:
             yield from self._walk(child_id)
-
-
-__all__ = ["CHUNK_TREE_CACHE_VERSION", "ChunkNode", "ChunkTree"]

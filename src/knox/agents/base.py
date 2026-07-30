@@ -133,11 +133,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """
         return self.__class__.__name__.removesuffix("Agent").lower()
 
-    #: Enable delta-retry: when the model returns partially valid structured
-    #: output, extract the valid parts and ask the model to fix only the
-    #: broken ones, instead of regenerating everything from scratch.
-    use_delta_retry: bool = False
-
     def __init__(
         self,
         model_string: str,
@@ -515,6 +510,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if hasattr(deps, "__dict__"):
             return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
         return {}
+
+    #: Enable delta-retry: when the model returns partially valid structured
+    #: output, extract the valid parts and ask the model to fix only the
+    #: broken ones, instead of regenerating everything from scratch.
+    use_delta_retry: bool = False
 
 
 # ── Delta-retry helpers ────────────────────────────────────────────────

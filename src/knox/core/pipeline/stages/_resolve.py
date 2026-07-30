@@ -98,6 +98,17 @@ def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
     return resolved
 
 
+def apply_tags_to_tree(tree: Any, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:
+    """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
+    dir_tags = extract_source_tags(source_file, source_dir)
+    cli_tags = list(source_tags)  # copy
+    all_tags = dir_tags + cli_tags
+    if all_tags:
+        for node in tree.leaves():
+            if node.chunk:
+                node.chunk.metadata["tags"] = all_tags  # nocheck: chunk metadata, not wiki metadata
+
+
 def extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
     """Extract directory names as tags from a source file's path within *source_dir*.
 
@@ -114,14 +125,3 @@ def extract_source_tags(source_file: Path, source_dir: Path) -> list[str]:
     if len(parts) <= 1:
         return []
     return parts[:-1]
-
-
-def apply_tags_to_tree(tree: Any, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:
-    """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
-    dir_tags = extract_source_tags(source_file, source_dir)
-    cli_tags = list(source_tags)  # copy
-    all_tags = dir_tags + cli_tags
-    if all_tags:
-        for node in tree.leaves():
-            if node.chunk:
-                node.chunk.metadata["tags"] = all_tags  # nocheck: chunk metadata, not wiki metadata

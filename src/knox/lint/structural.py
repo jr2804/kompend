@@ -26,32 +26,7 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
-def _extract_wikilinks(content: str) -> list[str]:
-    """Return all ``[[target]]`` strings from *content*."""
-    return _WIKILINK_RE.findall(content)
-
-
-def _node_titles_index(wiki: Any) -> dict[str, str]:
-    """Map ``node.title.lower()`` → ``node.id``."""
-    return {n.title.lower(): n.id for n in wiki.nodes}
-
-
-def _node_ids_set(wiki: Any) -> set[str]:
-    return {n.id for n in wiki.nodes}
-
-
-def _incoming_link_counts(wiki: Any) -> dict[str, int]:
-    """Count incoming ``[[wikilinks]]`` per node id."""
-    counts: dict[str, int] = {}
-    title_to_id = _node_titles_index(wiki)
-    for node in wiki.nodes:
-        for target_title in _extract_wikilinks(node.content):
-            target_id = title_to_id.get(target_title.lower(), target_title)
-            counts[target_id] = counts.get(target_id, 0) + 1
-    return counts
-
-
-# ── Rule 1: broken-wikilinks ────────────────────────────────────────────
+# ── Rule 1: broken-wikilinks ──────────────────────────────────────────────
 
 
 class BrokenWikilinksRule:
@@ -585,6 +560,31 @@ class DuplicateReferencesRule(BaseLintRule):
         return duplicates
 
 
+def _node_ids_set(wiki: Any) -> set[str]:
+    return {n.id for n in wiki.nodes}
+
+
+def _incoming_link_counts(wiki: Any) -> dict[str, int]:
+    """Count incoming ``[[wikilinks]]`` per node id."""
+    counts: dict[str, int] = {}
+    title_to_id = _node_titles_index(wiki)
+    for node in wiki.nodes:
+        for target_title in _extract_wikilinks(node.content):
+            target_id = title_to_id.get(target_title.lower(), target_title)
+            counts[target_id] = counts.get(target_id, 0) + 1
+    return counts
+
+
+def _extract_wikilinks(content: str) -> list[str]:
+    """Return all ``[[target]]`` strings from *content*."""
+    return _WIKILINK_RE.findall(content)
+
+
+def _node_titles_index(wiki: Any) -> dict[str, str]:
+    """Map ``node.title.lower()`` → ``node.id``."""
+    return {n.title.lower(): n.id for n in wiki.nodes}
+
+
 # ── Registry ────────────────────────────────────────────────────────────
 
 STRUCTURAL_RULES: list[Any] = [
@@ -597,9 +597,6 @@ STRUCTURAL_RULES: list[Any] = [
     StalePageRule(),
     SourceNotFoundRule(),
 ]
-
-# DuplicateReferencesRule is NOT a singleton — it accepts config via __init__.
-# It is instantiated in LintRunner._resolve_rules when the rule is requested.
 
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}
 # DuplicateReferencesRule is not a singleton — register a factory reference

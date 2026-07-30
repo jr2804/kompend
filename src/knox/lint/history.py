@@ -33,9 +33,9 @@ _SNAPSHOT_KEYS = (
 )
 
 
-def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Extract the lint-relevant subset of a resolved config."""
-    return {key: getattr(cfg, "get", lambda k: None)(key) for key in _SNAPSHOT_KEYS}
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+_SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
 
 def entry_from_report(
@@ -60,36 +60,16 @@ def entry_from_report(
     }
 
 
+def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Extract the lint-relevant subset of a resolved config."""
+    return {key: getattr(cfg, "get", lambda k: None)(key) for key in _SNAPSHOT_KEYS}
+
+
 def save_lint_entry(entry: dict[str, Any], path: Path) -> None:
     """Append *entry* as a single JSONL line to *path*."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, default=str, ensure_ascii=False) + "\n")
-
-
-def load_lint_history(
-    path: Path,
-    *,
-    last_n: int | None = None,
-) -> list[dict[str, Any]]:
-    """Load lint history entries from *path* (oldest first).
-
-    A missing file returns an empty list.
-    """
-    if not path.exists():
-        return []
-
-    entries: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            entries.append(json.loads(stripped))
-
-    if last_n is not None and last_n >= 0:
-        entries = entries[-last_n:] if last_n > 0 else []
-    return entries
 
 
 def prune_lint_history(
@@ -127,6 +107,31 @@ def prune_lint_history(
     return removed
 
 
+def load_lint_history(
+    path: Path,
+    *,
+    last_n: int | None = None,
+) -> list[dict[str, Any]]:
+    """Load lint history entries from *path* (oldest first).
+
+    A missing file returns an empty list.
+    """
+    if not path.exists():
+        return []
+
+    entries: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            entries.append(json.loads(stripped))
+
+    if last_n is not None and last_n >= 0:
+        entries = entries[-last_n:] if last_n > 0 else []
+    return entries
+
+
 def history_to_json(entries: list[dict[str, Any]]) -> str:
     """Serialise a list of entries to a pretty JSON string."""
     return json.dumps(entries, indent=2, default=str, ensure_ascii=False)
@@ -162,11 +167,6 @@ def history_to_text(
         lines.append(f"  Range: {min(scores):.0f}% — {max(scores):.0f}%")
 
     return "\n".join(lines)
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-_SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
 
 def _sparkline(values: list[float]) -> str:

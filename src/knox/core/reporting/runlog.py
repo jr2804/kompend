@@ -45,6 +45,36 @@ class RunHandle:
     start_iso: str
 
 
+def log_run_start() -> RunHandle | None:
+    """Append a ``start`` line for the current command. No-op without a vault."""
+    state_dir = resolve_state_dir()
+    if state_dir is None:
+        return None
+    runs_path = state_dir / RUNS_FILE
+    run_id = uuid.uuid4().hex[:8]
+    start_iso = iso_local()
+    try:
+        runs_path.parent.mkdir(parents=True, exist_ok=True)
+        with runs_path.open("a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "event": "start",
+                        "run_id": run_id,
+                        "cmd": _command_label(),
+                        "ts": start_iso,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError as exc:  # never let logging crash the command
+        logger.debug("run-log start write failed: %s", exc)
+        return None
+    _maybe_prune(runs_path)
+    return RunHandle(run_id=run_id, cmd=_command_label(), runs_path=runs_path, start_iso=start_iso)
+
+
 def resolve_state_dir() -> Path | None:
     """Resolve the vault ``.knox`` dir for the current invocation.
 
@@ -87,36 +117,6 @@ def _command_label() -> str:
         cleaned.append(t)
     arg_preview_limit = DEFAULTS.get(DISPLAY_CLI_ARG_PREVIEW, 4)
     return " ".join(cleaned[:arg_preview_limit]) or "(none)"
-
-
-def log_run_start() -> RunHandle | None:
-    """Append a ``start`` line for the current command. No-op without a vault."""
-    state_dir = resolve_state_dir()
-    if state_dir is None:
-        return None
-    runs_path = state_dir / RUNS_FILE
-    run_id = uuid.uuid4().hex[:8]
-    start_iso = iso_local()
-    try:
-        runs_path.parent.mkdir(parents=True, exist_ok=True)
-        with runs_path.open("a", encoding="utf-8") as fh:
-            fh.write(
-                json.dumps(
-                    {
-                        "event": "start",
-                        "run_id": run_id,
-                        "cmd": _command_label(),
-                        "ts": start_iso,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-    except OSError as exc:  # never let logging crash the command
-        logger.debug("run-log start write failed: %s", exc)
-        return None
-    _maybe_prune(runs_path)
-    return RunHandle(run_id=run_id, cmd=_command_label(), runs_path=runs_path, start_iso=start_iso)
 
 
 def log_run_end(

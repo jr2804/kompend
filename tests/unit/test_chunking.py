@@ -17,33 +17,6 @@ from knox.core.models import (
 from knox.llm.context_window import ContextSource, ContextWindow
 
 
-def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
-    return ParsedDocument(
-        source_file=Path(f"{title}.pdf"),
-        elements=elements,
-        title=title,
-    )
-
-
-def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
-    return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
-
-
-def _text_leaves(tree: ChunkTree) -> list[ChunkNode]:
-    """Leaf nodes carrying a TEXT chunk."""
-    return [n for n in tree.leaves() if n.chunk is not None and ElementType.TEXT in n.chunk.element_types]
-
-
-def _structured_leaves(tree: ChunkTree) -> list[ChunkNode]:
-    """Leaf nodes carrying structured data."""
-    return [n for n in tree.leaves() if n.structured is not None]
-
-
-def _sentence_ends(text: str) -> bool:
-    stripped = text.rstrip()
-    return not stripped or stripped[-1] in ".!?\n"
-
-
 class TestHierarchicalChunker:
     """Test suite for HierarchicalChunker."""
 
@@ -378,3 +351,30 @@ class TestContextWindowClamp:
     def test_fallback_uses_max_tokens_unclamped(self) -> None:
         chunker = HierarchicalChunker(max_tokens=1024, reserve_tokens=205)
         assert chunker._effective_max == 819
+
+
+def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
+    return ParsedDocument(
+        source_file=Path(f"{title}.pdf"),
+        elements=elements,
+        title=title,
+    )
+
+
+def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
+    return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
+
+
+def _text_leaves(tree: ChunkTree) -> list[ChunkNode]:
+    """Leaf nodes carrying a TEXT chunk."""
+    return [n for n in tree.leaves() if n.chunk is not None and ElementType.TEXT in n.chunk.element_types]
+
+
+def _structured_leaves(tree: ChunkTree) -> list[ChunkNode]:
+    """Leaf nodes carrying structured data."""
+    return [n for n in tree.leaves() if n.structured is not None]
+
+
+def _sentence_ends(text: str) -> bool:
+    stripped = text.rstrip()
+    return not stripped or stripped[-1] in ".!?\n"

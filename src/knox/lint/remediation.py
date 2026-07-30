@@ -52,6 +52,22 @@ _TIER3_CATEGORIES: frozenset[str] = frozenset(
 )
 
 
+# ── Output formatting ──────────────────────────────────────────────────
+
+
+_TIER_LABELS: dict[int, str] = {
+    1: "Tier 1 - Auto-fixed",
+    2: "Tier 2 - LLM-generated",
+    3: "Tier 3 - Recommendations",
+}
+
+_STATUS_ICONS: dict[RemediationStatus, str] = {
+    RemediationStatus.APPLIED: "+",
+    RemediationStatus.SKIPPED: "~",
+    RemediationStatus.RECOMMENDED: "!",
+}
+
+
 def remediate(
     wiki: CompiledWiki,
     report: LintReport,
@@ -176,22 +192,6 @@ def _fix_image_wikilinks(
                 )
             )
     return actions
-
-
-# ── Output formatting ──────────────────────────────────────────────────
-
-
-_TIER_LABELS: dict[int, str] = {
-    1: "Tier 1 - Auto-fixed",
-    2: "Tier 2 - LLM-generated",
-    3: "Tier 3 - Recommendations",
-}
-
-_STATUS_ICONS: dict[RemediationStatus, str] = {
-    RemediationStatus.APPLIED: "+",
-    RemediationStatus.SKIPPED: "~",
-    RemediationStatus.RECOMMENDED: "!",
-}
 
 
 def remediation_to_text(actions: list[RemediationAction]) -> str:

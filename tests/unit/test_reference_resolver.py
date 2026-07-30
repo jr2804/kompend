@@ -24,45 +24,6 @@ from knox.core.models.references import (
 from knox.core.pipeline.references import ReferenceStore
 
 
-def _make_ref(
-    *,
-    id: str,
-    family: str,
-    issued: str,
-    title: str,
-    doi: str = "",
-    url: str = "",
-    raw: str = "",
-) -> Reference:
-    return Reference(
-        id=id,
-        type="article-journal",
-        title=title,
-        author=[Author(family=family)],
-        issued=issued,
-        doi=doi,
-        url=url,
-        raw=raw or f"{family} ({issued}). {title}.",
-    )
-
-
-@pytest.fixture
-def store_with_unresolved(tmp_path: Path) -> ReferenceStore:
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    store = ReferenceStore(knox_dir / "references.json")
-    store.add_source(
-        "sources/paper.pdf",
-        [
-            _make_ref(id="smith2020", family="Smith", issued="2020", title="Deep Learning", doi="10.1/xyz"),
-            _make_ref(id="jones2019", family="Jones", issued="2019", title="Graph Networks"),
-            _make_ref(id="doe2018", family="Doe", issued="2018", title="Transformers"),
-        ],
-    )
-    store.save()
-    return store
-
-
 class _StubResolver:
     """Stand-in for ReferenceResolverAgent that always resolves."""
 
@@ -218,3 +179,42 @@ class TestFetchCli:
         store = ReferenceStore(tmp_path / ".knox" / "references.json")
         refs = store.get_source("sources/paper.pdf")
         assert refs[0].doi == "10.1000/stub"
+
+
+@pytest.fixture
+def store_with_unresolved(tmp_path: Path) -> ReferenceStore:
+    knox_dir = tmp_path / ".knox"
+    knox_dir.mkdir(parents=True, exist_ok=True)
+    store = ReferenceStore(knox_dir / "references.json")
+    store.add_source(
+        "sources/paper.pdf",
+        [
+            _make_ref(id="smith2020", family="Smith", issued="2020", title="Deep Learning", doi="10.1/xyz"),
+            _make_ref(id="jones2019", family="Jones", issued="2019", title="Graph Networks"),
+            _make_ref(id="doe2018", family="Doe", issued="2018", title="Transformers"),
+        ],
+    )
+    store.save()
+    return store
+
+
+def _make_ref(
+    *,
+    id: str,
+    family: str,
+    issued: str,
+    title: str,
+    doi: str = "",
+    url: str = "",
+    raw: str = "",
+) -> Reference:
+    return Reference(
+        id=id,
+        type="article-journal",
+        title=title,
+        author=[Author(family=family)],
+        issued=issued,
+        doi=doi,
+        url=url,
+        raw=raw or f"{family} ({issued}). {title}.",
+    )

@@ -14,14 +14,6 @@ from knox.core.config import PdfConfig
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 
 
-def _create_pdf(path: Path, num_pages: int) -> None:
-    """Create a minimal PDF with the given number of blank pages."""
-    pdf = pdfium.PdfDocument.new()
-    for _ in range(num_pages):
-        pdf.new_page(500, 800)
-    pdf.save(str(path))
-
-
 class TestCountPdfPages:
     """Tests for DoclingParser._count_pdf_pages."""
 
@@ -193,3 +185,11 @@ class TestUnloadResult:
 
         with caplog.at_level(logging.DEBUG):
             DoclingParser._unload_result(result)
+
+
+def _create_pdf(path: Path, num_pages: int) -> None:
+    """Create a minimal PDF with the given number of blank pages."""
+    pdf = pdfium.PdfDocument.new()
+    for _ in range(num_pages):
+        pdf.new_page(500, 800)
+    pdf.save(str(path))

@@ -79,66 +79,20 @@ _BIBTEX_SPECIAL = str.maketrans(
 )
 
 
-def _make_citation_key(ref: Reference, index: int) -> str:
-    """Generate a BibTeX citation key.
+def references_to_bibtex(refs: list[Reference]) -> str:
+    """Convert a list of references to a complete ``.bib`` document.
 
-    Format: ``FirstAuthorYear`` or ``ref<N>`` as fallback.
+    Entries are separated by blank lines. An empty list returns ``""``.
     """
-    first_author = ""
-    if ref.author:
-        a0 = ref.author[0]
-        name = a0.literal or a0.family
-        if name:
-            # Keep only letters, collapse spaces
-            first_author = re.sub(r"[^A-Za-z]", "", name).lower()
-            first_author = first_author[:_AUTHOR_KEY_MAX]
-
-    year = ""
-    if ref.issued:
-        digits = "".join(c for c in ref.issued if c.isdigit())
-        year = digits[:YEAR_DIGITS]
-
-    if first_author and year:
-        key = f"{first_author}{year}"
-    elif ref.id:
-        key = re.sub(r"[^A-Za-z0-9]", "", ref.id).lower()
-    else:
-        key = f"ref{index}"
-
-    # Ensure non-empty and alphanumeric
-    return key or f"ref{index}"
-
-
-def _escape_value(value: str) -> str:
-    """Escape special characters in a BibTeX field value."""
-    if not value:
+    if not refs:
         return ""
-    return value.translate(_BIBTEX_SPECIAL)
-
-
-def _format_bibtex_authors(authors: list) -> str:
-    """Format author list as BibTeX ``" and "``-separated string.
-
-    Each author is rendered as ``Family, Given`` or ``literal`` form.
-    """
-    parts: list[str] = []
-    for a in authors:
-        if a.literal:
-            parts.append(a.literal)
-        elif a.family or a.given:
-            if a.family and a.given:
-                parts.append(f"{a.family}, {a.given}")
-            elif a.family:
-                parts.append(a.family)
-            else:
-                parts.append(a.given)
-    return " and ".join(parts)
-
-
-def _extract_year(issued: str) -> str:
-    """Extract the 4-digit year from the ``issued`` field."""
-    digits = "".join(c for c in issued if c.isdigit())
-    return digits[:YEAR_DIGITS] if len(digits) >= YEAR_DIGITS else issued
+    buf = StringIO()
+    for i, ref in enumerate(refs, 1):
+        if i > 1:
+            buf.write("\n\n")
+        buf.write(reference_to_bibtex_entry(ref, index=i))
+    buf.write("\n")
+    return buf.getvalue()
 
 
 def reference_to_bibtex_entry(ref: Reference, index: int = 0) -> str:
@@ -209,17 +163,63 @@ def reference_to_bibtex_entry(ref: Reference, index: int = 0) -> str:
     return "\n".join(lines)
 
 
-def references_to_bibtex(refs: list[Reference]) -> str:
-    """Convert a list of references to a complete ``.bib`` document.
+def _make_citation_key(ref: Reference, index: int) -> str:
+    """Generate a BibTeX citation key.
 
-    Entries are separated by blank lines. An empty list returns ``""``.
+    Format: ``FirstAuthorYear`` or ``ref<N>`` as fallback.
     """
-    if not refs:
+    first_author = ""
+    if ref.author:
+        a0 = ref.author[0]
+        name = a0.literal or a0.family
+        if name:
+            # Keep only letters, collapse spaces
+            first_author = re.sub(r"[^A-Za-z]", "", name).lower()
+            first_author = first_author[:_AUTHOR_KEY_MAX]
+
+    year = ""
+    if ref.issued:
+        digits = "".join(c for c in ref.issued if c.isdigit())
+        year = digits[:YEAR_DIGITS]
+
+    if first_author and year:
+        key = f"{first_author}{year}"
+    elif ref.id:
+        key = re.sub(r"[^A-Za-z0-9]", "", ref.id).lower()
+    else:
+        key = f"ref{index}"
+
+    # Ensure non-empty and alphanumeric
+    return key or f"ref{index}"
+
+
+def _escape_value(value: str) -> str:
+    """Escape special characters in a BibTeX field value."""
+    if not value:
         return ""
-    buf = StringIO()
-    for i, ref in enumerate(refs, 1):
-        if i > 1:
-            buf.write("\n\n")
-        buf.write(reference_to_bibtex_entry(ref, index=i))
-    buf.write("\n")
-    return buf.getvalue()
+    return value.translate(_BIBTEX_SPECIAL)
+
+
+def _format_bibtex_authors(authors: list) -> str:
+    """Format author list as BibTeX ``" and "``-separated string.
+
+    Each author is rendered as ``Family, Given`` or ``literal`` form.
+    """
+    parts: list[str] = []
+    for a in authors:
+        if a.literal:
+            parts.append(a.literal)
+        elif a.family or a.given:
+            if a.family and a.given:
+                parts.append(f"{a.family}, {a.given}")
+            elif a.family:
+                parts.append(a.family)
+            else:
+                parts.append(a.given)
+    return " and ".join(parts)
+
+
+def _extract_year(issued: str) -> str:
+    """Extract the 4-digit year from the ``issued`` field."""
+    digits = "".join(c for c in issued if c.isdigit())
+    return digits[:YEAR_DIGITS] if len(digits) >= YEAR_DIGITS else issued

@@ -21,14 +21,6 @@ from knox.cli._pipeline_helpers import emit_json_done, make_json_progress_callba
 from knox.cli.cmds.agents import _agents_install, _agents_remove
 
 
-@pytest.fixture(autouse=True)
-def _cleanup_env() -> Generator[None]:
-    """Clean up KNOX env vars set by tests."""
-    yield
-    for key in ("KNOX_LLM_DEFAULT_MODEL", "KNOX_LLM_API_BASE", "KNOX_LLM_API_KEY"):
-        os.environ.pop(key, None)
-
-
 class TestProviderConfig:
     """ProviderConfig dataclass."""
 
@@ -201,3 +193,11 @@ class TestAgentInstallRemove:
         """Removing a non-existent agent raises."""
         with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_remove("nonexistent")
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_env() -> Generator[None]:
+    """Clean up KNOX env vars set by tests."""
+    yield
+    for key in ("KNOX_LLM_DEFAULT_MODEL", "KNOX_LLM_API_BASE", "KNOX_LLM_API_KEY"):
+        os.environ.pop(key, None)

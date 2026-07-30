@@ -8,23 +8,6 @@ from pathlib import Path
 from knox.core.models.references import Author, Reference
 from knox.core.pipeline.references import ReferenceStore
 
-
-def _make_ref(
-    id: str = "smith2020",
-    title: str = "A Paper",
-    family: str = "Smith",
-    issued: str = "2020",
-) -> Reference:
-    return Reference(
-        id=id,
-        type="article-journal",
-        title=title,
-        author=[Author(family=family)],
-        issued=issued,
-        raw=f"{family}, J. ({issued}). {title}.",
-    )
-
-
 # ---------------------------------------------------------------------------
 # Load / save round-trip
 # ---------------------------------------------------------------------------
@@ -157,3 +140,19 @@ class TestMalformedEntries:
         # The malformed entry is silently skipped
         assert len(refs) == 1
         assert refs[0].id == "good"
+
+
+def _make_ref(
+    id: str = "smith2020",
+    title: str = "A Paper",
+    family: str = "Smith",
+    issued: str = "2020",
+) -> Reference:
+    return Reference(
+        id=id,
+        type="article-journal",
+        title=title,
+        author=[Author(family=family)],
+        issued=issued,
+        raw=f"{family}, J. ({issued}). {title}.",
+    )

@@ -96,30 +96,6 @@ class TestContentStore:
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
-    """Create an EmbeddingMatcher with a deterministic test provider."""
-    model_name: str = kwargs.get("model_name", "all-MiniLM-L6-v2")  # ty: ignore
-    dim: int = kwargs.get("dim", 384)  # ty: ignore
-    chunk_size: int = kwargs.get("chunk_size", 512)  # ty: ignore
-    provider = DeterministicTestEmbeddingProvider(dim=dim)
-    return EmbeddingMatcher(
-        model_name=model_name,
-        dim=dim,
-        provider=provider,
-        chunk_size=chunk_size,
-    )
-
-
-# ---------------------------------------------------------------------------
-# EmbeddingMatcher
-# ---------------------------------------------------------------------------
-
-
 class TestEmbeddingMatcher:
     """Tests for the embedding-based matcher."""
 
@@ -432,6 +408,30 @@ class TestDedupOrchestrator:
             pytest.raises(RuntimeError, match="BadRequestError"),
         ):
             orch.fingerprint("doc-1", "some text")
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingMatcher
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
+    """Create an EmbeddingMatcher with a deterministic test provider."""
+    model_name: str = kwargs.get("model_name", "all-MiniLM-L6-v2")  # ty: ignore
+    dim: int = kwargs.get("dim", 384)  # ty: ignore
+    chunk_size: int = kwargs.get("chunk_size", 512)  # ty: ignore
+    provider = DeterministicTestEmbeddingProvider(dim=dim)
+    return EmbeddingMatcher(
+        model_name=model_name,
+        dim=dim,
+        provider=provider,
+        chunk_size=chunk_size,
+    )
 
 
 # ---------------------------------------------------------------------------

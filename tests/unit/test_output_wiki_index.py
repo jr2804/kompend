@@ -15,21 +15,6 @@ from knox.output.wiki_index import (
 )
 
 
-def _make_wiki(**overrides: object) -> CompiledWiki:
-    """Create a minimal CompiledWiki for testing."""
-    defaults: dict = {
-        "nodes": [
-            WikiNode(id="attention", title="Attention", content="Attention is all you need.", node_type="concept"),
-            WikiNode(id="transformer", title="Transformer", content="Uses attention.", node_type="concept"),
-        ],
-        "edges": [],
-        "toc": [{"id": "attention", "title": "Attention"}, {"id": "transformer", "title": "Transformer"}],
-        "metadata": {"source_count": 5, "source_names": ["a.pdf", "b.pdf", "c.pdf"]},
-    }
-    defaults.update(overrides)
-    return CompiledWiki(**defaults)
-
-
 class TestGenerateIndex:
     def test_basic(self) -> None:
         wiki = _make_wiki()
@@ -252,3 +237,18 @@ class TestGenerateOverviewProgress:
         result = generate_overview(["short text"], agent=mock_agent, overview_budget=10000)
 
         assert result is not None
+
+
+def _make_wiki(**overrides: object) -> CompiledWiki:
+    """Create a minimal CompiledWiki for testing."""
+    defaults: dict = {
+        "nodes": [
+            WikiNode(id="attention", title="Attention", content="Attention is all you need.", node_type="concept"),
+            WikiNode(id="transformer", title="Transformer", content="Uses attention.", node_type="concept"),
+        ],
+        "edges": [],
+        "toc": [{"id": "attention", "title": "Attention"}, {"id": "transformer", "title": "Transformer"}],
+        "metadata": {"source_count": 5, "source_names": ["a.pdf", "b.pdf", "c.pdf"]},
+    }
+    defaults.update(overrides)
+    return CompiledWiki(**defaults)

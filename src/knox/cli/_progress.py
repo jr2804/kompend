@@ -29,89 +29,6 @@ from rich.text import Text
 
 from knox.logging import get_err_console
 
-# ── Helpers ─────────────────────────────────────────────────────────────
-
-
-def _should_show_progress(force: bool | None = None) -> bool:
-    """Determine if progress display should be enabled.
-
-    Returns True if:
-    - ``force`` is True
-    - ``force`` is None and stdout is a TTY
-    """
-    if force is True:
-        return True
-    if force is False:
-        return False
-    return sys.stdout.isatty()
-
-
-def _make_progress_console(force: bool) -> Console:
-    """Build the stderr console that owns the progress bar.
-
-    When *force* is set (``--progress`` passed explicitly) the console is
-    forced into terminal mode so Rich's live refresh thread runs. Without
-    this, environments where ``sys.stderr.isatty()`` is unreliable (some
-    Windows/PowerShell hosts) get a single static render that never updates.
-
-    When *force* is unset (auto/TTY mode) the shared cached err console is
-    reused so log output via RichHandler stays Live-aware (prints above the
-    bar) instead of clobbering it.
-    """
-    if not force:
-        return get_err_console()
-    return Console(
-        stderr=True,
-        force_terminal=True,
-        no_color=not sys.stderr.isatty(),
-    )
-
-
-# ── Rich progress tracker ───────────────────────────────────────────────
-
-
-class _EtaColumn(ProgressColumn):
-    """ETA column using direct elapsed/completed math instead of Rich's speed estimation.
-
-    Rich's built-in ``TimeRemainingColumn`` relies on an internal ``_progress``
-    deque that can fall back to ``-:--:--`` when speed samples are sparse or
-    the task is recreated between phases.  This column calculates remaining
-    time directly from ``completed / time_elapsed``, which is always
-    well-defined once at least one item is done.
-    """
-
-    def render(self, task: Task) -> Text:  # noqa: PLR6301  # mandatory Rich ProgressColumn API
-        if task.total is None or task.completed <= 0:
-            return Text("-:--:--", style="progress.remaining")
-        elapsed = task.elapsed
-        if not elapsed or elapsed <= 0:
-            return Text("-:--:--", style="progress.remaining")
-        speed = task.completed / elapsed
-        remaining = (task.total - task.completed) / speed
-        if remaining <= 0:
-            return Text("-:--:--", style="progress.remaining")
-        hours = int(remaining // 3600)
-        minutes = int((remaining % 3600) // 60)
-        seconds = int(remaining % 60)
-        if hours:
-            return Text(f"{hours}:{minutes:02d}:{seconds:02d}", style="progress.remaining")
-        return Text(f"{minutes}:{seconds:02d}", style="progress.remaining")
-
-
-class _PercentageColumn(ProgressColumn):
-    """Percentage column that hides for indeterminate (total=None) tasks.
-
-    Rich renders ``0%`` for indeterminate tasks, which reads as "stuck".
-    Return an empty cell instead — the spinner + elapsed time + sub-step
-    description convey activity for indeterminate phases (compile/output).
-    """
-
-    def render(self, task: Task) -> Text:  # noqa: PLR6301  # mandatory Rich ProgressColumn API
-        if task.total is None:
-            return Text("")
-        pct = task.percentage or 0.0
-        return Text(f"{pct:>3.0f}%", style="progress.percentage")
-
 
 @dataclass
 class FileProgressTracker:
@@ -256,3 +173,87 @@ class PipelineProgress:
         console = _make_progress_console(force=bool(force_progress))
         file_tracker = FileProgressTracker(total=total_files, console=console)
         return cls(enabled=True, _file_tracker=file_tracker)
+
+
+# ── Rich progress tracker ───────────────────────────────────────────────
+
+
+class _EtaColumn(ProgressColumn):
+    """ETA column using direct elapsed/completed math instead of Rich's speed estimation.
+
+    Rich's built-in ``TimeRemainingColumn`` relies on an internal ``_progress``
+    deque that can fall back to ``-:--:--`` when speed samples are sparse or
+    the task is recreated between phases.  This column calculates remaining
+    time directly from ``completed / time_elapsed``, which is always
+    well-defined once at least one item is done.
+    """
+
+    def render(self, task: Task) -> Text:  # noqa: PLR6301  # mandatory Rich ProgressColumn API
+        if task.total is None or task.completed <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        elapsed = task.elapsed
+        if not elapsed or elapsed <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        speed = task.completed / elapsed
+        remaining = (task.total - task.completed) / speed
+        if remaining <= 0:
+            return Text("-:--:--", style="progress.remaining")
+        hours = int(remaining // 3600)
+        minutes = int((remaining % 3600) // 60)
+        seconds = int(remaining % 60)
+        if hours:
+            return Text(f"{hours}:{minutes:02d}:{seconds:02d}", style="progress.remaining")
+        return Text(f"{minutes}:{seconds:02d}", style="progress.remaining")
+
+
+class _PercentageColumn(ProgressColumn):
+    """Percentage column that hides for indeterminate (total=None) tasks.
+
+    Rich renders ``0%`` for indeterminate tasks, which reads as "stuck".
+    Return an empty cell instead — the spinner + elapsed time + sub-step
+    description convey activity for indeterminate phases (compile/output).
+    """
+
+    def render(self, task: Task) -> Text:  # noqa: PLR6301  # mandatory Rich ProgressColumn API
+        if task.total is None:
+            return Text("")
+        pct = task.percentage or 0.0
+        return Text(f"{pct:>3.0f}%", style="progress.percentage")
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _should_show_progress(force: bool | None = None) -> bool:
+    """Determine if progress display should be enabled.
+
+    Returns True if:
+    - ``force`` is True
+    - ``force`` is None and stdout is a TTY
+    """
+    if force is True:
+        return True
+    if force is False:
+        return False
+    return sys.stdout.isatty()
+
+
+def _make_progress_console(force: bool) -> Console:
+    """Build the stderr console that owns the progress bar.
+
+    When *force* is set (``--progress`` passed explicitly) the console is
+    forced into terminal mode so Rich's live refresh thread runs. Without
+    this, environments where ``sys.stderr.isatty()`` is unreliable (some
+    Windows/PowerShell hosts) get a single static render that never updates.
+
+    When *force* is unset (auto/TTY mode) the shared cached err console is
+    reused so log output via RichHandler stays Live-aware (prints above the
+    bar) instead of clobbering it.
+    """
+    if not force:
+        return get_err_console()
+    return Console(
+        stderr=True,
+        force_terminal=True,
+        no_color=not sys.stderr.isatty(),
+    )

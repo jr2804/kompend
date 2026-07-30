@@ -8,6 +8,8 @@ from typing import Any
 
 from knox.core.models.enums import ChunkField, ElementType, MetadataField
 
+__all__ = ["Chunk", "ResolvedChunk"]
+
 
 @dataclass
 class Chunk:
@@ -63,6 +65,3 @@ class ResolvedChunk:
     relations: list[dict[str, Any]] = field(default_factory=list)
     resolved_references: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-__all__ = ["Chunk", "ResolvedChunk"]

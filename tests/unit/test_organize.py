@@ -40,44 +40,6 @@ from knox.organize.categorize import _slugify_category, _tree_from_json
 from knox.organize.engine import resolve_organize_config
 from knox.organize.moves import FileMove
 
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-
-def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
-    """Return a CategorizeAgent that yields the given CategoryTree once."""
-    agent = MagicMock(spec=CategorizeAgent)
-    agent._timeout = 120
-    if payload is None:
-        agent.run.side_effect = Exception("LLM failed")
-    else:
-        cats = []
-        for c in payload.get("categories", []):
-            subs = [PydanticNode(name=s["name"], files=s.get("files", [])) for s in c.get("subcategories", [])]
-            cats.append(PydanticNode(name=c["name"], files=c.get("files", []), subcategories=subs))
-        tree = PydanticTree(categories=cats, unfiled=payload.get("unfiled", []))
-        agent.run.return_value = tree
-    return agent
-
-
-def _fake_llm(payload: dict[str, Any] | None) -> CategorizeAgent:
-    """Legacy alias for _fake_agent."""
-    return _fake_agent(payload)
-
-
-def _write_extraction(base_dir: Path, source: str, summary: str = "test summary") -> None:
-    cache = base_dir / KNOX_DIR / "cache" / "extract"
-    cache.mkdir(parents=True, exist_ok=True)
-    entry = {
-        "key": "x",
-        "layer": "extract",
-        "deps": {},
-        "value": {"source": source, "summary": summary, "entities": [], "concepts": [], "tags": []},
-    }
-    out = cache / f"{source}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(entry), encoding="utf-8")
-
-
 # ── Slug helper ──────────────────────────────────────────────────────────
 
 
@@ -854,3 +816,41 @@ class TestOrganizeResult:
             moves=[FileMove(old="a.md", new="papers/a.md"), FileMove(old="b.md", new="papers/b.md")],
         )
         assert result.moved_count == 2
+
+
+def _fake_llm(payload: dict[str, Any] | None) -> CategorizeAgent:
+    """Legacy alias for _fake_agent."""
+    return _fake_agent(payload)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+
+def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
+    """Return a CategorizeAgent that yields the given CategoryTree once."""
+    agent = MagicMock(spec=CategorizeAgent)
+    agent._timeout = 120
+    if payload is None:
+        agent.run.side_effect = Exception("LLM failed")
+    else:
+        cats = []
+        for c in payload.get("categories", []):
+            subs = [PydanticNode(name=s["name"], files=s.get("files", [])) for s in c.get("subcategories", [])]
+            cats.append(PydanticNode(name=c["name"], files=c.get("files", []), subcategories=subs))
+        tree = PydanticTree(categories=cats, unfiled=payload.get("unfiled", []))
+        agent.run.return_value = tree
+    return agent
+
+
+def _write_extraction(base_dir: Path, source: str, summary: str = "test summary") -> None:
+    cache = base_dir / KNOX_DIR / "cache" / "extract"
+    cache.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "key": "x",
+        "layer": "extract",
+        "deps": {},
+        "value": {"source": source, "summary": summary, "entities": [], "concepts": [], "tags": []},
+    }
+    out = cache / f"{source}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(entry), encoding="utf-8")

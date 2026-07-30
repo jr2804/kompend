@@ -45,69 +45,6 @@ _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
 ]
 
 
-def _import_agent(module_path: str, class_name: str) -> type:
-    """Import an agent class lazily."""
-    mod = importlib.import_module(module_path)
-    return getattr(mod, class_name)
-
-
-def _benchmark_construction(agent_cls: type, model_string: str = "ollama/qwen3") -> tuple[Any, float]:
-    """Measure agent construction time (excludes lazy pydantic_ai.Agent build)."""
-    start = time.perf_counter()
-    agent = agent_cls(
-        model_string=model_string,
-        timeout=30.0,
-        max_tokens=2048,
-        retries=1,
-        reasoning_effort="none",
-    )
-    elapsed = time.perf_counter() - start
-    return agent, elapsed
-
-
-def _benchmark_template_render(agent: Any, deps: Any) -> float:
-    """Measure system-prompt template render time."""
-    start = time.perf_counter()
-    agent.render_system_prompt(deps)
-    elapsed = time.perf_counter() - start
-    return elapsed
-
-
-def _benchmark_full_run(agent_cls: type, result_obj: Any, deps: Any) -> float:
-    """Measure full run() with mocked run_sync — exercises the entire wiring path."""
-    agent = agent_cls(
-        model_string="ollama/qwen3",
-        timeout=30.0,
-        max_tokens=2048,
-        retries=1,
-        reasoning_effort="none",
-    )
-
-    # Mock the lazy pydantic_ai Agent's run_sync
-    mock_result = MagicMock()
-    mock_result.data = result_obj
-    mock_usage = MagicMock()
-    mock_result.usage.return_value = mock_usage
-    mock_result.all_messages.return_value = []
-
-    with patch.object(agent, "_build_agent") as mock_build:
-        mock_pa = MagicMock()
-        mock_pa.run_sync.return_value = mock_result
-        mock_build.return_value = mock_pa
-
-        start = time.perf_counter()
-        agent.run(deps)
-        elapsed = time.perf_counter() - start
-
-    return elapsed
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _check_deps() -> None:
-    """Skip all benchmarks if pydantic_ai is unavailable."""
-    pytest.importorskip("pydantic_ai")
-
-
 class TestAgentConstructionBenchmark:
     """Benchmark: agent construction latency (model string → KnoxAgentBase instance)."""
 
@@ -173,3 +110,66 @@ class TestFullRunBenchmark:
         print(f"\n  [{label}] full run (mocked): {elapsed * 1000:.1f} ms | throughput: {throughput:.0f} runs/sec")
         # Sanity: full run with mocked LLM should be under 1 s
         assert elapsed < 1.0
+
+
+def _import_agent(module_path: str, class_name: str) -> type:
+    """Import an agent class lazily."""
+    mod = importlib.import_module(module_path)
+    return getattr(mod, class_name)
+
+
+def _benchmark_construction(agent_cls: type, model_string: str = "ollama/qwen3") -> tuple[Any, float]:
+    """Measure agent construction time (excludes lazy pydantic_ai.Agent build)."""
+    start = time.perf_counter()
+    agent = agent_cls(
+        model_string=model_string,
+        timeout=30.0,
+        max_tokens=2048,
+        retries=1,
+        reasoning_effort="none",
+    )
+    elapsed = time.perf_counter() - start
+    return agent, elapsed
+
+
+def _benchmark_template_render(agent: Any, deps: Any) -> float:
+    """Measure system-prompt template render time."""
+    start = time.perf_counter()
+    agent.render_system_prompt(deps)
+    elapsed = time.perf_counter() - start
+    return elapsed
+
+
+def _benchmark_full_run(agent_cls: type, result_obj: Any, deps: Any) -> float:
+    """Measure full run() with mocked run_sync — exercises the entire wiring path."""
+    agent = agent_cls(
+        model_string="ollama/qwen3",
+        timeout=30.0,
+        max_tokens=2048,
+        retries=1,
+        reasoning_effort="none",
+    )
+
+    # Mock the lazy pydantic_ai Agent's run_sync
+    mock_result = MagicMock()
+    mock_result.data = result_obj
+    mock_usage = MagicMock()
+    mock_result.usage.return_value = mock_usage
+    mock_result.all_messages.return_value = []
+
+    with patch.object(agent, "_build_agent") as mock_build:
+        mock_pa = MagicMock()
+        mock_pa.run_sync.return_value = mock_result
+        mock_build.return_value = mock_pa
+
+        start = time.perf_counter()
+        agent.run(deps)
+        elapsed = time.perf_counter() - start
+
+    return elapsed
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _check_deps() -> None:
+    """Skip all benchmarks if pydantic_ai is unavailable."""
+    pytest.importorskip("pydantic_ai")

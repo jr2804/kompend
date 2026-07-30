@@ -129,6 +129,13 @@ def extract_figure(el: DocumentElement) -> StructuredFigure:
     )
 
 
+_EXTRACTORS: dict[ElementType, Callable[[DocumentElement], StructuredData]] = {
+    ElementType.TABLE: extract_table,
+    ElementType.FORMULA: extract_equation,
+    ElementType.IMAGE: extract_figure,
+}
+
+
 # ── internal helpers ─────────────────────────────────────────────────────
 
 
@@ -182,10 +189,3 @@ def _extract_where_clause_vars(text: str) -> list[EquationVariable]:
         if name and definition:
             result.append(EquationVariable(name=name, definition=definition, units=units))
     return result
-
-
-_EXTRACTORS: dict[ElementType, Callable[[DocumentElement], StructuredData]] = {
-    ElementType.TABLE: extract_table,
-    ElementType.FORMULA: extract_equation,
-    ElementType.IMAGE: extract_figure,
-}

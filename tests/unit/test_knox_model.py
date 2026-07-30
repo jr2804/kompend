@@ -21,18 +21,6 @@ from knox.agents.knox_model import KnoxModel
 from knox.llm.usage import UsageTracker
 
 
-def _make_response(text: str = "hello", *, input_tokens: int = 10, output_tokens: int = 5) -> ModelResponse:
-    """Build a ModelResponse with usage, matching native-model shape."""
-    usage = MagicMock()
-    usage.input_tokens = input_tokens
-    usage.output_tokens = output_tokens
-    return ModelResponse(
-        parts=[TextPart(content=text)],
-        usage=usage,
-        model_name="test-model",
-    )
-
-
 class TestUsageTracking:
     @pytest.mark.asyncio
     async def test_records_usage_when_tracker_set(self) -> None:
@@ -140,3 +128,15 @@ class TestDebugSaving:
         await wrapper.request(msgs, None, params)
         # No files written.
         assert list(tmp_path.iterdir()) == []
+
+
+def _make_response(text: str = "hello", *, input_tokens: int = 10, output_tokens: int = 5) -> ModelResponse:
+    """Build a ModelResponse with usage, matching native-model shape."""
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
+    return ModelResponse(
+        parts=[TextPart(content=text)],
+        usage=usage,
+        model_name="test-model",
+    )

@@ -13,30 +13,6 @@ from knox.core.models import CompiledWiki, WikiNode
 from knox.search.adaptive_retriever import AdaptiveRetriever
 
 
-def _make_wiki_node(
-    node_id: str,
-    content: str = "test content about signal processing",
-    depth: int = 0,
-    parent_id: str | None = None,
-    children_ids: list[str] | None = None,
-    node_type: str = "concept",
-) -> WikiNode:
-    return WikiNode(
-        id=node_id,
-        title=node_id,
-        content=content,
-        node_type=node_type,
-        depth=depth,
-        parent_id=parent_id,
-        children_ids=children_ids or [],
-        metadata={"source": "test.pdf"},
-    )
-
-
-def _make_wiki(nodes: list[WikiNode]) -> CompiledWiki:
-    return CompiledWiki(nodes=nodes, edges=[], toc=[])
-
-
 class _FakeVectorStore:
     """In-memory stand-in for ZvecWikiStore. Returns canned hits keyed by node id."""
 
@@ -190,3 +166,27 @@ class TestAdaptiveRetriever:
         results = retriever._wiki_vector_results("test", top_k=5)
         assert len(results) == 1
         assert results[0].article_id == "n1"
+
+
+def _make_wiki_node(
+    node_id: str,
+    content: str = "test content about signal processing",
+    depth: int = 0,
+    parent_id: str | None = None,
+    children_ids: list[str] | None = None,
+    node_type: str = "concept",
+) -> WikiNode:
+    return WikiNode(
+        id=node_id,
+        title=node_id,
+        content=content,
+        node_type=node_type,
+        depth=depth,
+        parent_id=parent_id,
+        children_ids=children_ids or [],
+        metadata={"source": "test.pdf"},
+    )
+
+
+def _make_wiki(nodes: list[WikiNode]) -> CompiledWiki:
+    return CompiledWiki(nodes=nodes, edges=[], toc=[])

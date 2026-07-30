@@ -36,40 +36,6 @@ from knox.lint.structural import (
     StalePageRule,
 )
 
-# ── Fixtures ─────────────────────────────────────────────────────────────
-
-
-def _make_node(
-    node_id: str = "node_0",
-    title: str = "Test Page",
-    content: str = "Some content",
-    *,
-    source_chunks: list[str] | None = None,
-    frontmatter: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> WikiNode:
-    meta = dict(metadata or {})
-    if frontmatter is not None:
-        meta["frontmatter"] = frontmatter
-    return WikiNode(
-        id=node_id,
-        title=title,
-        content=content,
-        node_type="section",
-        source_chunks=source_chunks,
-        metadata=meta,
-    )
-
-
-def _make_wiki(nodes: list[WikiNode] | None = None, **kwargs: Any) -> CompiledWiki:
-    return CompiledWiki(
-        nodes=nodes or [_make_node()],
-        edges=kwargs.get("edges", []),
-        toc=kwargs.get("toc", []),
-        metadata=kwargs.get("metadata", {}),
-    )
-
-
 # ── Rule 1: broken-wikilinks ────────────────────────────────────────────
 
 
@@ -559,20 +525,6 @@ class TestEdgeCases:
         assert set(RULE_BY_NAME.keys()) == expected
 
 
-# ── LLM rule: contradiction-detection ────────────────────────────────────
-
-
-def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
-    agent = MagicMock(spec=LintRuleAgent)
-    agent._timeout = 120
-    agent.usage = None
-    if json_data is not None:
-        agent.run.return_value = json_data
-    else:
-        agent.run.side_effect = Exception("LLM failed")
-    return agent
-
-
 class TestContradictionDetectionRule:
     def test_skips_without_client(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "x"), _make_node("n2", "B", "y")])
@@ -650,19 +602,6 @@ class TestContradictionDetectionRule:
         report = runner.run(wiki)
         failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
-
-
-# ── Coverage-gap remediation ────────────────────────────────────────────
-
-
-def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
-    client = MagicMock(spec=RemediationAgent)
-    client.run.return_value = content
-    return client
-
-
-def _gap_result(concept: str) -> LintReportResult:
-    return LintReportResult(rule="coverage-gap", outcome="fail", message=f"{concept} — missing", details={"concept": concept})
 
 
 class TestCoverageGapRemediation:
@@ -930,3 +869,64 @@ class TestCoverageGapSuppression:
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 1
         assert fails[0].details["concept"] == "Truly Missing"
+
+
+def _make_wiki(nodes: list[WikiNode] | None = None, **kwargs: Any) -> CompiledWiki:
+    return CompiledWiki(
+        nodes=nodes or [_make_node()],
+        edges=kwargs.get("edges", []),
+        toc=kwargs.get("toc", []),
+        metadata=kwargs.get("metadata", {}),
+    )
+
+
+# ── Fixtures ─────────────────────────────────────────────────────────────
+
+
+def _make_node(
+    node_id: str = "node_0",
+    title: str = "Test Page",
+    content: str = "Some content",
+    *,
+    source_chunks: list[str] | None = None,
+    frontmatter: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> WikiNode:
+    meta = dict(metadata or {})
+    if frontmatter is not None:
+        meta["frontmatter"] = frontmatter
+    return WikiNode(
+        id=node_id,
+        title=title,
+        content=content,
+        node_type="section",
+        source_chunks=source_chunks,
+        metadata=meta,
+    )
+
+
+# ── LLM rule: contradiction-detection ────────────────────────────────────
+
+
+def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
+    agent = MagicMock(spec=LintRuleAgent)
+    agent._timeout = 120
+    agent.usage = None
+    if json_data is not None:
+        agent.run.return_value = json_data
+    else:
+        agent.run.side_effect = Exception("LLM failed")
+    return agent
+
+
+# ── Coverage-gap remediation ────────────────────────────────────────────
+
+
+def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
+    client = MagicMock(spec=RemediationAgent)
+    client.run.return_value = content
+    return client
+
+
+def _gap_result(concept: str) -> LintReportResult:
+    return LintReportResult(rule="coverage-gap", outcome="fail", message=f"{concept} — missing", details={"concept": concept})

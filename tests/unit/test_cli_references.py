@@ -20,57 +20,6 @@ from knox.core.models.references import Author, Reference
 from knox.core.pipeline.references import ReferenceStore
 
 
-def _make_ref(
-    *,
-    id: str = "smith2020",
-    title: str = "Deep Learning",
-    family: str = "Smith",
-    issued: str = "2020",
-    doi: str = "",
-    type: str = "article-journal",
-) -> Reference:
-    return Reference(
-        id=id,
-        type=type,
-        title=title,
-        author=[Author(family=family)],
-        issued=issued,
-        container_title="Journal of AI",
-        doi=doi,
-        raw=f"Smith, J. ({issued}). {title}.",
-    )
-
-
-@pytest.fixture
-def project_with_refs(tmp_path: Path) -> Path:
-    """Create a minimal project directory with a references.json."""
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    (tmp_path / "sources").mkdir(exist_ok=True)
-    (tmp_path / "wiki").mkdir(exist_ok=True)
-
-    store = ReferenceStore(knox_dir / "references.json")
-    store.add_source(
-        "sources/paper.pdf",
-        [
-            _make_ref(id="smith2020", title="Deep Learning for NLP", family="Smith", issued="2020", doi="10.1/xyz"),
-            _make_ref(id="jones2019", title="Graph Networks", family="Jones", issued="2019"),
-        ],
-    )
-    store.save()
-    return tmp_path
-
-
-@pytest.fixture
-def empty_project(tmp_path: Path) -> Path:
-    """Create a project dir without references.json."""
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    (tmp_path / "sources").mkdir(exist_ok=True)
-    (tmp_path / "wiki").mkdir(exist_ok=True)
-    return tmp_path
-
-
 class TestReferencesList:
     """Tests for ``knox references list``."""
 
@@ -170,3 +119,54 @@ class TestReferencesHelp:
         runner = CliRunner()
         result = runner.invoke(app, ["references"])
         assert result.exit_code != 0  # no_args_is_help
+
+
+@pytest.fixture
+def project_with_refs(tmp_path: Path) -> Path:
+    """Create a minimal project directory with a references.json."""
+    knox_dir = tmp_path / ".knox"
+    knox_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sources").mkdir(exist_ok=True)
+    (tmp_path / "wiki").mkdir(exist_ok=True)
+
+    store = ReferenceStore(knox_dir / "references.json")
+    store.add_source(
+        "sources/paper.pdf",
+        [
+            _make_ref(id="smith2020", title="Deep Learning for NLP", family="Smith", issued="2020", doi="10.1/xyz"),
+            _make_ref(id="jones2019", title="Graph Networks", family="Jones", issued="2019"),
+        ],
+    )
+    store.save()
+    return tmp_path
+
+
+def _make_ref(
+    *,
+    id: str = "smith2020",
+    title: str = "Deep Learning",
+    family: str = "Smith",
+    issued: str = "2020",
+    doi: str = "",
+    type: str = "article-journal",
+) -> Reference:
+    return Reference(
+        id=id,
+        type=type,
+        title=title,
+        author=[Author(family=family)],
+        issued=issued,
+        container_title="Journal of AI",
+        doi=doi,
+        raw=f"Smith, J. ({issued}). {title}.",
+    )
+
+
+@pytest.fixture
+def empty_project(tmp_path: Path) -> Path:
+    """Create a project dir without references.json."""
+    knox_dir = tmp_path / ".knox"
+    knox_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sources").mkdir(exist_ok=True)
+    (tmp_path / "wiki").mkdir(exist_ok=True)
+    return tmp_path

@@ -68,75 +68,6 @@ class ResolvedConfig:
         return result
 
 
-# ── Layer application ────────────────────────────────────────────────────
-
-
-def _apply_layer(
-    result: dict[str, Any],
-    layer: dict[str, Any],
-    provenance: dict[str, ConfigSource],
-    source: ConfigSource,
-) -> dict[str, Any]:
-    """Merge *layer* into *result* and stamp provenance for its keys."""
-    merged = deep_merge(result, layer)
-    for key in flat_keys(layer):
-        if get_dot(layer, key) is not None:
-            provenance[key] = source
-    return merged
-
-
-def _merge_project_configs(
-    project_configs: list[Path],
-) -> tuple[dict[str, Any], dict[str, ConfigSource]]:
-    """Merge a project config hierarchy (farthest-to-closest) into one layer."""
-    merged: dict[str, Any] = {}
-    prov: dict[str, ConfigSource] = {}
-    for config_file in reversed(project_configs):  # closest wins
-        file_data = load_toml(config_file)
-        for key in flat_keys(file_data):
-            prov[key] = ConfigSource("project", str(config_file))
-        merged = deep_merge(merged, file_data)
-    return merged, prov
-
-
-def _resolve_paths(
-    result: dict[str, Any],
-    provenance: dict[str, ConfigSource],
-) -> None:
-    """Normalize path values under ``paths``."""
-    paths = result.setdefault("paths", {})
-
-    # Backwards compatibility: old [compile] path keys migrate to [paths]
-    for old_key, new_key in (
-        (COMPILE_SOURCES_DIR, PATHS_SOURCES_DIR),
-        (COMPILE_OUTPUT_DIR, PATHS_OUTPUT_DIR),
-    ):
-        old_val = get_dot(result, old_key)
-        new_val = get_dot(result, new_key)
-        old_default = get_dot(DEFAULTS, old_key)
-        new_default = get_dot(DEFAULTS, new_key)
-        if old_val is not None and old_val != old_default and new_val == new_default:
-            set_dot(result, new_key, old_val)
-            provenance[new_key] = ConfigSource(
-                provenance.get(old_key, ConfigSource("project")).path,
-                f"deprecated {old_key}",
-            )
-
-    wiki_dir_raw = paths.get("wiki_dir")
-    base_dir = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
-    paths["wiki_dir"] = base_dir
-
-    for key in ("sources_dir", "output_dir", "cache_dir", "state_dir"):
-        dotted = f"paths.{key}"
-        value = paths.get(key)
-        if value is None:
-            value = get_dot(DEFAULTS, dotted)
-        resolved_dir = Path(value).expanduser()
-        if not resolved_dir.is_absolute():
-            resolved_dir = base_dir / resolved_dir
-        paths[key] = resolved_dir.resolve()
-
-
 def resolve_config(
     *,
     cli_overrides: dict[str, Any] | None = None,
@@ -210,3 +141,72 @@ def resolve_config(
         project_config_paths=project_configs,
         global_config_file=global_path,
     )
+
+
+# ── Layer application ────────────────────────────────────────────────────
+
+
+def _apply_layer(
+    result: dict[str, Any],
+    layer: dict[str, Any],
+    provenance: dict[str, ConfigSource],
+    source: ConfigSource,
+) -> dict[str, Any]:
+    """Merge *layer* into *result* and stamp provenance for its keys."""
+    merged = deep_merge(result, layer)
+    for key in flat_keys(layer):
+        if get_dot(layer, key) is not None:
+            provenance[key] = source
+    return merged
+
+
+def _merge_project_configs(
+    project_configs: list[Path],
+) -> tuple[dict[str, Any], dict[str, ConfigSource]]:
+    """Merge a project config hierarchy (farthest-to-closest) into one layer."""
+    merged: dict[str, Any] = {}
+    prov: dict[str, ConfigSource] = {}
+    for config_file in reversed(project_configs):  # closest wins
+        file_data = load_toml(config_file)
+        for key in flat_keys(file_data):
+            prov[key] = ConfigSource("project", str(config_file))
+        merged = deep_merge(merged, file_data)
+    return merged, prov
+
+
+def _resolve_paths(
+    result: dict[str, Any],
+    provenance: dict[str, ConfigSource],
+) -> None:
+    """Normalize path values under ``paths``."""
+    paths = result.setdefault("paths", {})
+
+    # Backwards compatibility: old [compile] path keys migrate to [paths]
+    for old_key, new_key in (
+        (COMPILE_SOURCES_DIR, PATHS_SOURCES_DIR),
+        (COMPILE_OUTPUT_DIR, PATHS_OUTPUT_DIR),
+    ):
+        old_val = get_dot(result, old_key)
+        new_val = get_dot(result, new_key)
+        old_default = get_dot(DEFAULTS, old_key)
+        new_default = get_dot(DEFAULTS, new_key)
+        if old_val is not None and old_val != old_default and new_val == new_default:
+            set_dot(result, new_key, old_val)
+            provenance[new_key] = ConfigSource(
+                provenance.get(old_key, ConfigSource("project")).path,
+                f"deprecated {old_key}",
+            )
+
+    wiki_dir_raw = paths.get("wiki_dir")
+    base_dir = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
+    paths["wiki_dir"] = base_dir
+
+    for key in ("sources_dir", "output_dir", "cache_dir", "state_dir"):
+        dotted = f"paths.{key}"
+        value = paths.get(key)
+        if value is None:
+            value = get_dot(DEFAULTS, dotted)
+        resolved_dir = Path(value).expanduser()
+        if not resolved_dir.is_absolute():
+            resolved_dir = base_dir / resolved_dir
+        paths[key] = resolved_dir.resolve()

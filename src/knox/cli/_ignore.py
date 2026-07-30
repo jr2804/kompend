@@ -31,6 +31,37 @@ def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:
     return result
 
 
+def filter_files(
+    files: list[Path],
+    ignore_patterns: list[str] | None = None,
+    respect_gitignore: bool = True,
+    base_dir: Path | None = None,
+) -> list[Path]:
+    """Filter out files matching any ignore pattern."""
+    # CLI patterns override; config patterns are merged upstream in commands.py
+    all_patterns = list(ignore_patterns or [])
+
+    if respect_gitignore and base_dir:
+        gitignore_patterns = load_gitignore(base_dir)
+        all_patterns.extend(gitignore_patterns)
+
+    if not all_patterns:
+        return files
+
+    result: list[Path] = []
+    skipped = 0
+    for f in files:
+        if matches_any(f, all_patterns, base_dir=base_dir):
+            skipped += 1
+        else:
+            result.append(f)
+
+    if skipped:
+        logger.info("Skipped %d file(s) matching ignore patterns", skipped)
+
+    return result
+
+
 def matches_any(subject_path: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
     """Check if *subject_path* matches any of the given glob patterns.
 
@@ -74,18 +105,6 @@ def _glob_match(text: str, pattern: str) -> bool:
     return fnmatch.fnmatch(text, pattern)
 
 
-def _read_gitignore_patterns(gitignore_file: Path) -> list[str]:
-    """Parse one ``.gitignore`` file into a list of non-comment patterns."""
-    try:
-        text = gitignore_file.read_text(encoding="utf-8", errors="replace")
-    except Exception as exc:
-        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=True)
-        return []
-    patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
-    logger.debug("Loaded %d patterns from %s", len(patterns), gitignore_file)
-    return patterns
-
-
 def load_gitignore(source_dir: Path) -> list[str]:
     """Load patterns from ``.gitignore`` in *source_dir* (or its parents)."""
     # Walk up from source_dir to find the nearest .gitignore (first wins).
@@ -100,32 +119,13 @@ def load_gitignore(source_dir: Path) -> list[str]:
     return []
 
 
-def filter_files(
-    files: list[Path],
-    ignore_patterns: list[str] | None = None,
-    respect_gitignore: bool = True,
-    base_dir: Path | None = None,
-) -> list[Path]:
-    """Filter out files matching any ignore pattern."""
-    # CLI patterns override; config patterns are merged upstream in commands.py
-    all_patterns = list(ignore_patterns or [])
-
-    if respect_gitignore and base_dir:
-        gitignore_patterns = load_gitignore(base_dir)
-        all_patterns.extend(gitignore_patterns)
-
-    if not all_patterns:
-        return files
-
-    result: list[Path] = []
-    skipped = 0
-    for f in files:
-        if matches_any(f, all_patterns, base_dir=base_dir):
-            skipped += 1
-        else:
-            result.append(f)
-
-    if skipped:
-        logger.info("Skipped %d file(s) matching ignore patterns", skipped)
-
-    return result
+def _read_gitignore_patterns(gitignore_file: Path) -> list[str]:
+    """Parse one ``.gitignore`` file into a list of non-comment patterns."""
+    try:
+        text = gitignore_file.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=True)
+        return []
+    patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+    logger.debug("Loaded %d patterns from %s", len(patterns), gitignore_file)
+    return patterns

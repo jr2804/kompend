@@ -41,14 +41,17 @@ def get_console() -> Console:
     return Console(stderr=False, no_color=not sys.stdout.isatty())
 
 
-@functools.cache
-def get_err_console() -> Console:
-    """Cached stderr console used by log output and progress bars.
+def get_logger(name: str) -> logging.Logger:
+    """Return a logger routed to the shared Rich console.
 
-    Kept separate from the stdout console so progress and log lines do
-    not interleave with program output.
+    Drop-in replacement for ``logging.getLogger(name)``.  The first call
+    installs RichHandler on the root logger; all subsequent calls are free.
+
+    Args:
+        name: Logger name, typically ``__name__`` of the calling module.
     """
-    return Console(stderr=True, no_color=not sys.stderr.isatty())
+    configure_logging()
+    return logging.getLogger(name)
 
 
 @functools.cache
@@ -71,17 +74,14 @@ def configure_logging() -> None:
     logging.root.setLevel(DEFAULT_LEVEL)
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Return a logger routed to the shared Rich console.
+@functools.cache
+def get_err_console() -> Console:
+    """Cached stderr console used by log output and progress bars.
 
-    Drop-in replacement for ``logging.getLogger(name)``.  The first call
-    installs RichHandler on the root logger; all subsequent calls are free.
-
-    Args:
-        name: Logger name, typically ``__name__`` of the calling module.
+    Kept separate from the stdout console so progress and log lines do
+    not interleave with program output.
     """
-    configure_logging()
-    return logging.getLogger(name)
+    return Console(stderr=True, no_color=not sys.stderr.isatty())
 
 
 def set_verbosity(level: int | str) -> None:

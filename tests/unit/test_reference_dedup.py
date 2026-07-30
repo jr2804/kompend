@@ -22,28 +22,6 @@ from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import DuplicateReferencesRule
 
 
-def _ref(  # noqa: PLR0913, PLR0917
-    id: str = "smith2020",
-    title: str = "A Paper",
-    family: str = "Smith",
-    issued: str = "2020",
-    doi: str = "",
-    source: str = "paper.pdf",
-    container_title: str = "",
-) -> Reference:
-    return Reference(
-        id=id,
-        type="article-journal",
-        title=title,
-        author=[Author(family=family)],
-        issued=issued,
-        doi=doi,
-        container_title=container_title,
-        raw=f"{family}, J. ({issued}). {title}.",
-        citing_source=source,
-    )
-
-
 class _FakeProvider:
     """Deterministic fake embedding provider for testing.
 
@@ -372,3 +350,25 @@ class TestLintRuleFuzzy:
         near_dupes = results[0].details.get("near_duplicates", [])
         assert len(near_dupes) > 0
         assert near_dupes[0]["type"] == "fuzzy"
+
+
+def _ref(  # noqa: PLR0913, PLR0917
+    id: str = "smith2020",
+    title: str = "A Paper",
+    family: str = "Smith",
+    issued: str = "2020",
+    doi: str = "",
+    source: str = "paper.pdf",
+    container_title: str = "",
+) -> Reference:
+    return Reference(
+        id=id,
+        type="article-journal",
+        title=title,
+        author=[Author(family=family)],
+        issued=issued,
+        doi=doi,
+        container_title=container_title,
+        raw=f"{family}, J. ({issued}). {title}.",
+        citing_source=source,
+    )

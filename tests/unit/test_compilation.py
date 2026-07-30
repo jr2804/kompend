@@ -34,77 +34,6 @@ from knox.core.pipeline.config import PipelineConfig
 from knox.llm.context_window import ContextSource, ContextWindow
 
 # ===========================================================================
-#  Helpers
-# ===========================================================================
-
-
-def _make_test_cw() -> ContextWindow:
-    """Build a minimal ContextWindow for tests (no real LLM calls)."""
-    return ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK)
-
-
-def _chunk(
-    text: str = "Sample text.",
-    heading: str = "",
-    chunk_id: str = "chunk_001",
-    source_file: Path | None = None,
-) -> Chunk:
-    return Chunk(
-        id=chunk_id,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[0],
-        heading_context=heading,
-        source_file=source_file,
-    )
-
-
-def _make_chunks(
-    count: int = 3,
-    heading: str = "Section 1",
-) -> list[ResolvedChunk]:
-    """Create a list of ResolvedChunks with optional entities."""
-    chunks: list[ResolvedChunk] = []
-    for i in range(count):
-        c = _chunk(
-            text=f"Content for chunk {i}. Entity reference to KNOX.",
-            heading=heading,
-            chunk_id=f"chunk_{i:03d}",
-        )
-        rc = ResolvedChunk(
-            chunk=c,
-            entities=[
-                {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
-            ]
-            if i == 0
-            else [],
-        )
-        chunks.append(rc)
-    return chunks
-
-
-def _make_diverse_chunks() -> list[ResolvedChunk]:
-    """Chunks across multiple headings for cross-section edge testing."""
-    chunks: list[ResolvedChunk] = []
-    for section in ["Introduction", "Methods", "Results", "Conclusion"]:
-        for i in range(2):
-            c = _chunk(
-                text=f"{section} content paragraph {i}.",
-                heading=section,
-                chunk_id=f"chunk_{section.lower()}_{i}",
-            )
-            rc = ResolvedChunk(
-                chunk=c,
-                entities=[
-                    {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
-                    {"name": "WiCER", "type": "METHOD", "context": "compilation loop"},
-                ],
-            )
-            chunks.append(rc)
-    return chunks
-
-
-# ===========================================================================
 #  GraphCompiler
 # ===========================================================================
 
@@ -1285,3 +1214,74 @@ class TestSlugifyLengthCap:
         b = slugify(base + " beta ending")
         # Same prefix, different long titles → different hash suffixes
         assert a != b
+
+
+# ===========================================================================
+#  Helpers
+# ===========================================================================
+
+
+def _make_test_cw() -> ContextWindow:
+    """Build a minimal ContextWindow for tests (no real LLM calls)."""
+    return ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK)
+
+
+def _make_chunks(
+    count: int = 3,
+    heading: str = "Section 1",
+) -> list[ResolvedChunk]:
+    """Create a list of ResolvedChunks with optional entities."""
+    chunks: list[ResolvedChunk] = []
+    for i in range(count):
+        c = _chunk(
+            text=f"Content for chunk {i}. Entity reference to KNOX.",
+            heading=heading,
+            chunk_id=f"chunk_{i:03d}",
+        )
+        rc = ResolvedChunk(
+            chunk=c,
+            entities=[
+                {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
+            ]
+            if i == 0
+            else [],
+        )
+        chunks.append(rc)
+    return chunks
+
+
+def _make_diverse_chunks() -> list[ResolvedChunk]:
+    """Chunks across multiple headings for cross-section edge testing."""
+    chunks: list[ResolvedChunk] = []
+    for section in ["Introduction", "Methods", "Results", "Conclusion"]:
+        for i in range(2):
+            c = _chunk(
+                text=f"{section} content paragraph {i}.",
+                heading=section,
+                chunk_id=f"chunk_{section.lower()}_{i}",
+            )
+            rc = ResolvedChunk(
+                chunk=c,
+                entities=[
+                    {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
+                    {"name": "WiCER", "type": "METHOD", "context": "compilation loop"},
+                ],
+            )
+            chunks.append(rc)
+    return chunks
+
+
+def _chunk(
+    text: str = "Sample text.",
+    heading: str = "",
+    chunk_id: str = "chunk_001",
+    source_file: Path | None = None,
+) -> Chunk:
+    return Chunk(
+        id=chunk_id,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[0],
+        heading_context=heading,
+        source_file=source_file,
+    )

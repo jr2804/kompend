@@ -21,40 +21,6 @@ _PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE)
 _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
 
-# ── Env var expansion ───────────────────────────────────────────────────
-
-
-def _expand_env_vars(value: str) -> str:
-    """Expand ``$VAR`` and ``${VAR}`` patterns in a string."""
-
-    def _replace(match: re.Match) -> str:
-        var = match.group(2) or match.group(1) or ""
-        return os.environ.get(var, match.group(0))
-
-    return re.sub(r"\$(\w+)|\$\{(\w+)\}", _replace, value)
-
-
-def _expand_env_vars_recursive(data: ConfigValue) -> ConfigValue:
-    """Recursively expand env vars in all string values."""
-    if isinstance(data, str):
-        return _expand_env_vars(data)
-    if isinstance(data, dict):
-        return {k: _expand_env_vars_recursive(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [_expand_env_vars_recursive(v) for v in data]
-    return data
-
-
-def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
-    """Recursively strip leading/trailing whitespace from all string values."""
-    if isinstance(data, str):
-        return data.strip()
-    if isinstance(data, dict):
-        return {k: _strip_strings_recursive(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [_strip_strings_recursive(v) for v in data]
-    return data
-
 
 def load_toml(toml_file: Path) -> dict[str, Any]:
     """Load a TOML file, returning an empty dict on failure."""
@@ -70,18 +36,39 @@ def load_toml(toml_file: Path) -> dict[str, Any]:
         return {}
 
 
-# ── Config file discovery ───────────────────────────────────────────────
+def _expand_env_vars_recursive(data: ConfigValue) -> ConfigValue:
+    """Recursively expand env vars in all string values."""
+    if isinstance(data, str):
+        return _expand_env_vars(data)
+    if isinstance(data, dict):
+        return {k: _expand_env_vars_recursive(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_expand_env_vars_recursive(v) for v in data]
+    return data
 
 
-def find_project_config(start_dir: Path | None = None) -> Path | None:
-    """Walk up from *start_dir* looking for project config files."""
-    current = (start_dir or Path.cwd()).resolve()
-    for parent in [current] + list(current.parents):
-        for name in _PROJECT_CONFIG_NAMES:
-            candidate = parent / name
-            if candidate.is_file():
-                return candidate
-    return None
+# ── Env var expansion ───────────────────────────────────────────────────
+
+
+def _expand_env_vars(value: str) -> str:
+    """Expand ``$VAR`` and ``${VAR}`` patterns in a string."""
+
+    def _replace(match: re.Match) -> str:
+        var = match.group(2) or match.group(1) or ""
+        return os.environ.get(var, match.group(0))
+
+    return re.sub(r"\$(\w+)|\$\{(\w+)\}", _replace, value)
+
+
+def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
+    """Recursively strip leading/trailing whitespace from all string values."""
+    if isinstance(data, str):
+        return data.strip()
+    if isinstance(data, dict):
+        return {k: _strip_strings_recursive(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_strip_strings_recursive(v) for v in data]
+    return data
 
 
 def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:
@@ -134,6 +121,20 @@ def get_project_config_path(start_dir: Path | None = None) -> Path:
     if found is not None:
         return found
     return VaultPaths(current).config_path
+
+
+# ── Config file discovery ───────────────────────────────────────────────
+
+
+def find_project_config(start_dir: Path | None = None) -> Path | None:
+    """Walk up from *start_dir* looking for project config files."""
+    current = (start_dir or Path.cwd()).resolve()
+    for parent in [current] + list(current.parents):
+        for name in _PROJECT_CONFIG_NAMES:
+            candidate = parent / name
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 def get_global_config_path(*, create: bool = False) -> Path:

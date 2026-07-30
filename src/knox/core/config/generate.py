@@ -42,6 +42,18 @@ _SECTION_RE = re.compile(r"^\s*\[+([^\]]+)\]+")
 _KEY_RE = re.compile(r"^#?\s*([\w.\-]+)\s*=")
 
 
+def generate_scaffold_config() -> str:
+    """Generate TOML config text from :data:`DEFAULTS`.
+
+    ``None`` values, empty dicts, and hidden keys are omitted. Sections
+    are reordered for readability. The result is valid TOML suitable
+    for writing to ``.knox/config.toml`` during ``knox init``.
+    """
+    cleaned = cast("dict[str, Any]", _clean_defaults(DEFAULTS))
+    reordered = _reorder_sections(cleaned)
+    return _SCAFFOLD_HEADER + tomli_w.dumps(reordered)
+
+
 def _clean_defaults(data: ConfigValue, prefix: str = "") -> ConfigValue:
     """Deep-copy *data*, dropping ``None`` values and hidden keys.
 
@@ -74,18 +86,6 @@ def _reorder_sections(data: dict[str, Any]) -> dict[str, Any]:
         if key not in ordered:
             ordered[key] = value
     return ordered
-
-
-def generate_scaffold_config() -> str:
-    """Generate TOML config text from :data:`DEFAULTS`.
-
-    ``None`` values, empty dicts, and hidden keys are omitted. Sections
-    are reordered for readability. The result is valid TOML suitable
-    for writing to ``.knox/config.toml`` during ``knox init``.
-    """
-    cleaned = cast("dict[str, Any]", _clean_defaults(DEFAULTS))
-    reordered = _reorder_sections(cleaned)
-    return _SCAFFOLD_HEADER + tomli_w.dumps(reordered)
 
 
 def get_default_keys() -> set[str]:

@@ -16,34 +16,6 @@ from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 from knox.logging import get_console, get_err_console
 
 
-def _shorten(source: str, sources_dir: Path) -> str:
-    """Shorten an absolute source path to relative-POSIX or basename form."""
-    p = Path(source)
-    if not p.is_absolute():
-        return source
-    try:
-        return p.relative_to(sources_dir).as_posix()
-    except ValueError:
-        return p.name
-
-
-def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:
-    """Effective source list for a wiki node.
-
-    Prefers ``source_chunks`` (resolved chunk references, used by the
-    graph compiler). Falls back to ``metadata['provenance']`` (source-file
-    paths cited by the two-phase compiler, which does not track per-chunk
-    provenance). Absolute paths under ``sources_dir`` are shortened to
-    their relative form for readability.
-    """
-    chunks: list[str] = list(getattr(node, "source_chunks", None) or [])
-    if not chunks:
-        metadata = getattr(node, "metadata", None) or {}
-        prov = metadata.get(MetadataField.PROVENANCE) or []
-        chunks = [str(s) for s in prov if s]
-    return [_shorten(s, sources_dir) for s in chunks]
-
-
 @app.command(name="trace")
 def trace_cmd(
     ctx: typer.Context,
@@ -129,3 +101,31 @@ def trace_cmd(
         get_err_console().print(f"Page '{slug}' not found in compiled wiki.")
     if missing:
         raise typer.Exit(1)
+
+
+def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:
+    """Effective source list for a wiki node.
+
+    Prefers ``source_chunks`` (resolved chunk references, used by the
+    graph compiler). Falls back to ``metadata['provenance']`` (source-file
+    paths cited by the two-phase compiler, which does not track per-chunk
+    provenance). Absolute paths under ``sources_dir`` are shortened to
+    their relative form for readability.
+    """
+    chunks: list[str] = list(getattr(node, "source_chunks", None) or [])
+    if not chunks:
+        metadata = getattr(node, "metadata", None) or {}
+        prov = metadata.get(MetadataField.PROVENANCE) or []
+        chunks = [str(s) for s in prov if s]
+    return [_shorten(s, sources_dir) for s in chunks]
+
+
+def _shorten(source: str, sources_dir: Path) -> str:
+    """Shorten an absolute source path to relative-POSIX or basename form."""
+    p = Path(source)
+    if not p.is_absolute():
+        return source
+    try:
+        return p.relative_to(sources_dir).as_posix()
+    except ValueError:
+        return p.name

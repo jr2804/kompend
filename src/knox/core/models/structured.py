@@ -137,6 +137,15 @@ def structured_to_dict(s: StructuredData) -> dict[str, Any]:
 _structured_to_dict = structured_to_dict  # backward-compat alias
 
 
+__all__ = [
+    "EquationVariable",
+    "StructuredData",
+    "StructuredEquation",
+    "StructuredFigure",
+    "StructuredTable",
+]
+
+
 def structured_from_dict(d: dict[str, Any]) -> StructuredData:
     """Deserialize a StructuredData variant using the canonical discriminator."""
     kind = d.get(StructuredField._TYPE)
@@ -147,12 +156,3 @@ def structured_from_dict(d: dict[str, Any]) -> StructuredData:
     if kind == StructuredField.TYPE_FIGURE.value:
         return StructuredFigure.from_dict(d)
     raise ValueError(f"Unknown StructuredData _type: {kind!r}")
-
-
-__all__ = [
-    "EquationVariable",
-    "StructuredData",
-    "StructuredEquation",
-    "StructuredFigure",
-    "StructuredTable",
-]

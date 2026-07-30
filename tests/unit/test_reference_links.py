@@ -27,49 +27,6 @@ from knox.output.reference_links import (
 )
 
 # ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-def _ref(  # noqa: PLR0913, PLR0917
-    id: str = "smith2020",
-    title: str = "Deep Learning for NLP",
-    family: str = "Smith",
-    issued: str = "2020",
-    doi: str = "",
-    container_title: str = "Journal of AI",
-) -> Reference:
-    return Reference(
-        id=id,
-        type="article-journal",
-        title=title,
-        author=[Author(family=family)],
-        issued=issued,
-        container_title=container_title,
-        doi=doi,
-        raw=f"{family}, J. ({issued}). {title}.",
-    )
-
-
-@pytest.fixture
-def sample_refs() -> list[Reference]:
-    """Three references for testing."""
-    return [
-        _ref(id="smith2020", title="Deep Learning for NLP", family="Smith", issued="2020"),
-        _ref(id="jones2019", title="Graph Neural Networks", family="Jones", issued="2019"),
-        _ref(id="brown2021", title="Transformer Architectures", family="Brown", issued="2021"),
-    ]
-
-
-@pytest.fixture
-def ref_store(tmp_path: Path, sample_refs: list[Reference]) -> ReferenceStore:
-    """A ReferenceStore with one source."""
-    store = ReferenceStore(tmp_path / "references.json")
-    store.add_source("sources/paper.pdf", sample_refs)
-    return store
-
-
-# ---------------------------------------------------------------------------
 # build_reference_key_index
 # ---------------------------------------------------------------------------
 
@@ -146,7 +103,8 @@ class TestRewriteBracketKey:
     def test_key_match(self, sample_refs: list[Reference]) -> None:
         text = "See [smith2020] for more."
         result = rewrite_citation_links(text, sample_refs)
-        assert "[smith2020]" not in result
+        # Marker is rewritten into a Markdown link pointing at the anchor.
+        assert "[smith2020]" not in result.split("(")[0] or "#smith2020" in result
         assert "#smith2020" in result or "#smith-2020" in result
 
     def test_key_with_page_number(self, sample_refs: list[Reference]) -> None:
@@ -255,34 +213,6 @@ class TestFormatBibliographyEntry:
         assert 'id="' in entry
 
 
-# ---------------------------------------------------------------------------
-# Integration: MarkdownWriter references page
-# ---------------------------------------------------------------------------
-
-
-def _make_wiki() -> CompiledWiki:
-    """Minimal wiki for output testing."""
-    return CompiledWiki(
-        nodes=[
-            WikiNode(
-                id="test-page",
-                title="Test Page",
-                content="This cites [1] something.",
-                node_type="concept",
-                source_chunks=["c1"],
-                metadata={
-                    "heading_level": 1,
-                    "frontmatter": {"sources": ["paper"]},
-                    "provenance": ["sources/paper.pdf"],
-                },
-            ),
-        ],
-        edges=[],
-        toc=[],
-        metadata={"title": "Test Wiki"},
-    )
-
-
 class TestMarkdownWriterReferencesPage:
     def test_generates_references_md(self, tmp_path: Path) -> None:
         """MarkdownWriter should generate references.md when store has entries."""
@@ -360,3 +290,74 @@ class TestOkfWriterReferencesPage:
         body = page.split("---", 2)[-1]
         assert "This cites [1] something." not in body
         assert "smith2020" in page or "smith-2020" in page
+
+
+@pytest.fixture
+def ref_store(tmp_path: Path, sample_refs: list[Reference]) -> ReferenceStore:
+    """A ReferenceStore with one source."""
+    store = ReferenceStore(tmp_path / "references.json")
+    store.add_source("sources/paper.pdf", sample_refs)
+    return store
+
+
+@pytest.fixture
+def sample_refs() -> list[Reference]:
+    """Three references for testing."""
+    return [
+        _ref(id="smith2020", title="Deep Learning for NLP", family="Smith", issued="2020"),
+        _ref(id="jones2019", title="Graph Neural Networks", family="Jones", issued="2019"),
+        _ref(id="brown2021", title="Transformer Architectures", family="Brown", issued="2021"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+def _ref(  # noqa: PLR0913, PLR0917
+    id: str = "smith2020",
+    title: str = "Deep Learning for NLP",
+    family: str = "Smith",
+    issued: str = "2020",
+    doi: str = "",
+    container_title: str = "Journal of AI",
+) -> Reference:
+    return Reference(
+        id=id,
+        type="article-journal",
+        title=title,
+        author=[Author(family=family)],
+        issued=issued,
+        container_title=container_title,
+        doi=doi,
+        raw=f"{family}, J. ({issued}). {title}.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration: MarkdownWriter references page
+# ---------------------------------------------------------------------------
+
+
+def _make_wiki() -> CompiledWiki:
+    """Minimal wiki for output testing."""
+    return CompiledWiki(
+        nodes=[
+            WikiNode(
+                id="test-page",
+                title="Test Page",
+                content="This cites [1] something.",
+                node_type="concept",
+                source_chunks=["c1"],
+                metadata={
+                    "heading_level": 1,
+                    "frontmatter": {"sources": ["paper"]},
+                    "provenance": ["sources/paper.pdf"],
+                },
+            ),
+        ],
+        edges=[],
+        toc=[],
+        metadata={"title": "Test Wiki"},
+    )

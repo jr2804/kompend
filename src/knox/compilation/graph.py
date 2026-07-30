@@ -228,10 +228,6 @@ class GraphCompiler(BaseCompiler):
             groups[GraphCompiler._group_key(rc)].append(rc)
         return groups
 
-    # Internal names injected by VLMEnricher for bookkeeping. These must
-    # never become concept pages or cross-reference edges in the output.
-    _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
-
     @staticmethod
     def _build_entity_edges(
         chunks: list[ResolvedChunk],
@@ -482,3 +478,7 @@ class GraphCompiler(BaseCompiler):
 
             if structured_sections:
                 node.structured_sections["items"] = structured_sections
+
+    # Internal names injected by VLMEnricher for bookkeeping. These must
+    # never become concept pages or cross-reference edges in the output.
+    _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})

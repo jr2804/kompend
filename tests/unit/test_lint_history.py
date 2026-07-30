@@ -31,30 +31,6 @@ class _StubConfig:
         return self._data.get(key, default)
 
 
-def _make_report(*, health_score: float = 90.0, results: list[LintResult] | None = None) -> LintReport:
-    if results is None:
-        results = [
-            LintResult(rule="orphan-page", outcome=LintRuleOutcome.PASS, severity=Severity.INFO, message="ok"),
-            LintResult(rule="broken-wikilinks", outcome=LintRuleOutcome.FAIL, severity=Severity.ERROR, message="bad link"),
-        ]
-    report = _build_report(results)
-    report.health_score = health_score
-    return report
-
-
-def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> dict[str, Any]:
-    report = _make_report(health_score=score)
-    return {
-        "timestamp": timestamp,
-        "duration_seconds": 1.5,
-        "options": {"rules": None, "enable_llm": False, "fix": False, "threshold": None},
-        "llm": None,
-        "config_snapshot": {"compile.compiler": "graph", "compile.llm.default_model": "test-model"},
-        "wiki_meta": {"node_count": 10},
-        "report": report_to_dict(report),
-    }
-
-
 class TestSaveLoad:
     def test_save_and_load_single_entry(self, tmp_path: Path) -> None:
         path = tmp_path / "lint_history.jsonl"
@@ -256,3 +232,27 @@ class TestFormatting:
         entry["llm"] = {"model": "openai/gpt-4o", "usage": {}}
         text = history_to_text([entry])
         assert "openai/gpt-4o" in text
+
+
+def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> dict[str, Any]:
+    report = _make_report(health_score=score)
+    return {
+        "timestamp": timestamp,
+        "duration_seconds": 1.5,
+        "options": {"rules": None, "enable_llm": False, "fix": False, "threshold": None},
+        "llm": None,
+        "config_snapshot": {"compile.compiler": "graph", "compile.llm.default_model": "test-model"},
+        "wiki_meta": {"node_count": 10},
+        "report": report_to_dict(report),
+    }
+
+
+def _make_report(*, health_score: float = 90.0, results: list[LintResult] | None = None) -> LintReport:
+    if results is None:
+        results = [
+            LintResult(rule="orphan-page", outcome=LintRuleOutcome.PASS, severity=Severity.INFO, message="ok"),
+            LintResult(rule="broken-wikilinks", outcome=LintRuleOutcome.FAIL, severity=Severity.ERROR, message="bad link"),
+        ]
+    report = _build_report(results)
+    report.health_score = health_score
+    return report

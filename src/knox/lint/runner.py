@@ -225,6 +225,11 @@ def _build_report(results: list[LintResult]) -> LintReport:
     )
 
 
+def report_to_json(report: LintReport) -> str:
+    """Serialize a lint report to a JSON string."""
+    return json.dumps(report_to_dict(report), indent=2, default=str)
+
+
 def report_to_dict(report: LintReport) -> dict[str, Any]:
     """Serialize a lint report to a plain dict."""
     return {
@@ -246,11 +251,6 @@ def report_to_dict(report: LintReport) -> dict[str, Any]:
             for r in report.results
         ],
     }
-
-
-def report_to_json(report: LintReport) -> str:
-    """Serialize a lint report to a JSON string."""
-    return json.dumps(report_to_dict(report), indent=2, default=str)
 
 
 def report_to_summary(report: LintReport) -> str:

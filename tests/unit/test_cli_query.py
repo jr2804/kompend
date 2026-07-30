@@ -35,15 +35,6 @@ class _Hit:
     score: float
 
 
-def _synth() -> _Synth:
-    return _Synth(
-        answer="Neural nets approximate functions via layers.",
-        citations=[
-            {"article": "Neural Networks", "article_id": "neural-networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
-        ],
-    )
-
-
 class TestStructuredAnswer:
     def test_builds_answer_and_citations(self) -> None:
         payload = structured_answer(_synth())
@@ -98,3 +89,12 @@ class TestEncodeRawResults:
         results = [_Hit("Title", "f.pdf", "snip", 0.5)]
         out = encode_raw_results(results, LlmDataFormat.TOON)
         assert "Title" in out
+
+
+def _synth() -> _Synth:
+    return _Synth(
+        answer="Neural nets approximate functions via layers.",
+        citations=[
+            {"article": "Neural Networks", "article_id": "neural-networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
+        ],
+    )

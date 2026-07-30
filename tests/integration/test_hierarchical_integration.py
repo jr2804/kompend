@@ -40,23 +40,6 @@ from knox.search.budget import ContextBudgetManager, RetrievalMode
 from tests.fixtures.documents import make_test_doc
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _leaf_chunks(tree: ChunkTree) -> list:
-    return [n.chunk for n in tree.leaves() if n.chunk is not None]
-
-
-def _structured_leaves(tree: ChunkTree) -> list:
-    return [n for n in tree.leaves() if n.structured is not None]
-
-
-def _count_internal_nodes(tree: ChunkTree) -> int:
-    return sum(1 for n in tree.nodes.values() if n.children_ids)
-
-
-# ---------------------------------------------------------------------------
 # 1. Scaling matrix — strategy selection
 # ---------------------------------------------------------------------------
 
@@ -523,3 +506,20 @@ class TestEndToEndPipeline:
         tree = chunker.chunk(doc)
         assert _leaf_chunks(tree) == []
         assert tree.strategy == ChunkStrategy.SINGLE_PASS
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _leaf_chunks(tree: ChunkTree) -> list:
+    return [n.chunk for n in tree.leaves() if n.chunk is not None]
+
+
+def _structured_leaves(tree: ChunkTree) -> list:
+    return [n for n in tree.leaves() if n.structured is not None]
+
+
+def _count_internal_nodes(tree: ChunkTree) -> int:
+    return sum(1 for n in tree.nodes.values() if n.children_ids)

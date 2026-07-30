@@ -224,35 +224,46 @@ class ReferenceStore:
         return removed
 
 
-# ── Standalone functions ────────────────────────────────────────────────
+def consolidate_references(
+    references: list[Reference],
+    embedding_model: str = "",
+    *,
+    threshold: float = _REF_MERGE_THRESHOLD,
+) -> list[Reference]:
+    """Deduplicate and consolidate references into a flat list.
+
+    This is the public entry point for producing a global OKF
+    ``references.json`` from per-source reference stores. It runs
+    exact-key dedup first, then optional fuzzy merge.
+    """
+    return merge_similar_references(references, embedding_model, threshold=threshold)
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors (no numpy needed)."""
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(y * y for y in b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def merge_similar_references(
+    references: list[Reference],
+    embedding_model: str,
+    *,
+    threshold: float = _REF_MERGE_THRESHOLD,
+) -> list[Reference]:
+    """Merge references whose embeddings are above *threshold*.
 
+    Uses the configured embedding provider (same pattern as
+    :func:`knox.compilation.flows.assembly.merge_similar_concepts`).
+    Groups references greedily via Union-Find: for every pair with
+    cosine similarity >= threshold, metadata is merged (sources unioned,
+    in-text keys unioned, longest title kept as canonical).
 
-def _ref_embedding_text(ref: Reference) -> str:
-    """Build the text used to embed a reference for fuzzy matching."""
-    parts: list[str] = []
-    if ref.title:
-        parts.append(ref.title)
-    first_author = ""
-    if ref.author:
-        a0 = ref.author[0]
-        first_author = a0.literal or a0.family or ""
-    if first_author:
-        parts.append(first_author)
-    if ref.container_title:
-        parts.append(ref.container_title)
-    if ref.issued:
-        parts.append(ref.issued)
-    return " ".join(parts).strip().lower()
+    Exact-key dedup (same DOI or same short_label) always runs first,
+    even when embeddings are unavailable.
+
+    When the embedding provider fails (e.g. model not found), references
+    are returned with only exact-key dedup applied.
+    """
+    if not references:
+        return []
+
+    deduped = _exact_dedup_references(references)
+    return _fuzzy_dedup_references(deduped, embedding_model, threshold)
 
 
 def _exact_dedup_references(references: list[Reference]) -> list[Reference]:
@@ -361,31 +372,35 @@ def _fuzzy_dedup_references(
     return result
 
 
-def merge_similar_references(
-    references: list[Reference],
-    embedding_model: str,
-    *,
-    threshold: float = _REF_MERGE_THRESHOLD,
-) -> list[Reference]:
-    """Merge references whose embeddings are above *threshold*.
+# ── Standalone functions ────────────────────────────────────────────────
 
-    Uses the configured embedding provider (same pattern as
-    :func:`knox.compilation.flows.assembly.merge_similar_concepts`).
-    Groups references greedily via Union-Find: for every pair with
-    cosine similarity >= threshold, metadata is merged (sources unioned,
-    in-text keys unioned, longest title kept as canonical).
 
-    Exact-key dedup (same DOI or same short_label) always runs first,
-    even when embeddings are unavailable.
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two vectors (no numpy needed)."""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
-    When the embedding provider fails (e.g. model not found), references
-    are returned with only exact-key dedup applied.
-    """
-    if not references:
-        return []
 
-    deduped = _exact_dedup_references(references)
-    return _fuzzy_dedup_references(deduped, embedding_model, threshold)
+def _ref_embedding_text(ref: Reference) -> str:
+    """Build the text used to embed a reference for fuzzy matching."""
+    parts: list[str] = []
+    if ref.title:
+        parts.append(ref.title)
+    first_author = ""
+    if ref.author:
+        a0 = ref.author[0]
+        first_author = a0.literal or a0.family or ""
+    if first_author:
+        parts.append(first_author)
+    if ref.container_title:
+        parts.append(ref.container_title)
+    if ref.issued:
+        parts.append(ref.issued)
+    return " ".join(parts).strip().lower()
 
 
 def _merge_ref_group(group: list[Reference]) -> Reference:
@@ -424,18 +439,3 @@ def _merge_ref_group(group: list[Reference]) -> Reference:
             "in_text_keys": all_keys,
         }
     )
-
-
-def consolidate_references(
-    references: list[Reference],
-    embedding_model: str = "",
-    *,
-    threshold: float = _REF_MERGE_THRESHOLD,
-) -> list[Reference]:
-    """Deduplicate and consolidate references into a flat list.
-
-    This is the public entry point for producing a global OKF
-    ``references.json`` from per-source reference stores. It runs
-    exact-key dedup first, then optional fuzzy merge.
-    """
-    return merge_similar_references(references, embedding_model, threshold=threshold)

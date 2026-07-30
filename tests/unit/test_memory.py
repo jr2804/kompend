@@ -12,16 +12,6 @@ from tests.conftest import DeterministicTestEmbeddingProvider
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 
 
-@pytest.fixture
-def temp_wiki_dir(tmp_path: Path) -> Path:
-    """Provide a temporary wiki directory structure."""
-    wiki_dir = tmp_path / "test_wiki"
-    wiki_dir.mkdir()
-    (wiki_dir / "sources").mkdir()
-    (wiki_dir / "wiki").mkdir()
-    return wiki_dir
-
-
 class TestMemoryStore:
     """Tests for MemoryStore."""
 
@@ -145,3 +135,13 @@ class TestUserTracking:
             assert recent[0][MemoryField.MEMORY_BY] == "carol"
         finally:
             store.close()
+
+
+@pytest.fixture
+def temp_wiki_dir(tmp_path: Path) -> Path:
+    """Provide a temporary wiki directory structure."""
+    wiki_dir = tmp_path / "test_wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "sources").mkdir()
+    (wiki_dir / "wiki").mkdir()
+    return wiki_dir

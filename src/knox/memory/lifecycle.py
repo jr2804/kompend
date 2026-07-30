@@ -52,31 +52,6 @@ class MemoryTier(StrEnum):
     PROCEDURAL = "procedural"
 
 
-def _now_iso() -> str:
-    return iso_local(timespec="microseconds")
-
-
-def _parse_iso(ts: str) -> datetime:
-    if not ts:
-        return now_local()
-    try:
-        return datetime.fromisoformat(ts)
-    except ValueError:
-        return now_local()
-
-
-def promote_tier(current: str, review_count: int) -> str:
-    """Return the tier a node should have given its review count."""
-    tier = current
-    while tier in _TIER_PROMOTION_COUNT and review_count >= _TIER_PROMOTION_COUNT[tier]:
-        idx = _TIER_ORDER.index(tier)
-        if idx + 1 < len(_TIER_ORDER):
-            tier = _TIER_ORDER[idx + 1]
-        else:
-            break
-    return tier
-
-
 @dataclass
 class NodeState:
     """Lifecycle state attached to a single wiki node."""
@@ -281,6 +256,31 @@ class MemoryStore:
                 state = NodeState.from_dict(raw)
                 states[state.node_id] = state
         return cls(states=states)
+
+
+def _now_iso() -> str:
+    return iso_local(timespec="microseconds")
+
+
+def _parse_iso(ts: str) -> datetime:
+    if not ts:
+        return now_local()
+    try:
+        return datetime.fromisoformat(ts)
+    except ValueError:
+        return now_local()
+
+
+def promote_tier(current: str, review_count: int) -> str:
+    """Return the tier a node should have given its review count."""
+    tier = current
+    while tier in _TIER_PROMOTION_COUNT and review_count >= _TIER_PROMOTION_COUNT[tier]:
+        idx = _TIER_ORDER.index(tier)
+        if idx + 1 < len(_TIER_ORDER):
+            tier = _TIER_ORDER[idx + 1]
+        else:
+            break
+    return tier
 
 
 def update_memory_for_compile(

@@ -39,125 +39,11 @@ SIZE_EXEMPT: set[str] = set()
 _MIN_DUP_LEN = 40
 
 # Ignore sentences matching these patterns (headings, list markers, code).
-_IGNORE_RE = re.compile(
-    r"^(#+\s|[-*]\s|\d+\.\s|```|`[^`]+`$|\||\[rtk:|<!--|// )"
-)
-
-
-def _collect_dox_files(root: Path) -> list[Path]:
-    """Return AGENTS.md files and core .agents/ policy files under *root*."""
-    files: list[Path] = []
-    # All AGENTS.md files (root + subtree)
-    for p in root.rglob("AGENTS.md"):
-        if ".venv" in p.parts or "node_modules" in p.parts or ".git" in p.parts:
-            continue
-        files.append(p)
-    # Core .agents/ policy files only (not skills/, plans/, etc.)
-    agents_dir = root / ".agents"
-    if agents_dir.is_dir():
-        for name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md"):
-            p = agents_dir / name
-            if p.is_file():
-                files.append(p)
-    return sorted(files)
-
-
-def _is_subtree_agents(path: Path, root: Path) -> bool:
-    """True if *path* is a subtree AGENTS.md (not root, not .agents/)."""
-    try:
-        rel = path.relative_to(root)
-    except ValueError:
-        return False
-    if rel == Path("AGENTS.md"):
-        return False
-    if ".agents" in rel.parts:
-        return False
-    return rel.name == "AGENTS.md"
-
-
-def _is_agents_core(path: Path, root: Path) -> bool:
-    """True if *path* is a core .agents/ policy file."""
-    try:
-        rel = path.relative_to(root)
-    except ValueError:
-        return False
-    if rel.parts[:1] != (".agents",):
-        return False
-    return rel.name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md")
-
-
-def _check_size(path: Path, root: Path) -> list[str]:
-    """Check line count against budget. Return violations."""
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    count = len(lines)
-
-    if _is_subtree_agents(path, root):
-        budget = SUBTREE_BUDGET
-        label = "subtree AGENTS.md"
-    elif _is_agents_core(path, root):
-        budget = AGENTS_FILE_BUDGET
-        label = ".agents/ core file"
-    else:
-        return []  # root AGENTS.md — no budget
-
-    if count > budget:
-        return [
-            f"{path}: {count} lines exceeds {label} budget of {budget}"
-        ]
-    return []
-
-
-def _extract_sentences(text: str) -> list[str]:
-    """Split *text* into sentences, filtering out headings, code, and tables."""
-    # Split on sentence boundaries (. ! ? followed by space or end) AND newlines
-    raw = re.split(r"(?<=[.!?])\s+|\n", text)
-    result = []
-    for s in raw:
-        s = s.strip()
-        if len(s) < _MIN_DUP_LEN:
-            continue
-        if _IGNORE_RE.match(s):
-            continue
-        # Skip table rows
-        if s.startswith("|") or "|" in s and s.count("|") >= 3:
-            continue
-        # Normalize whitespace
-        s = re.sub(r"\s+", " ", s)
-        result.append(s)
-    return result
-
-
-def _check_duplication(files: list[Path]) -> list[str]:
-    """Check for near-verbatim sentence duplication across files."""
-    violations: list[str] = []
-    sentence_map: dict[str, list[Path]] = {}
-
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        for sentence in _extract_sentences(text):
-            # Use first 60 chars as a fingerprint
-            fingerprint = sentence[:60].lower()
-            sentence_map.setdefault(fingerprint, []).append(path)
-
-    for fingerprint, paths in sentence_map.items():
-        if len(paths) >= 2:
-            # Deduplicate to unique paths
-            unique = sorted(set(paths))
-            if len(unique) >= 2:
-                locations = ", ".join(str(p) for p in unique)
-                violations.append(
-                    f"Duplicate sentence (fingerprint {fingerprint!r}) "
-                    f"found in: {locations}"
-                )
-
-    return violations
+_IGNORE_RE = re.compile(r"^(#+\s|[-*]\s|\d+\.\s|```|`[^`]+`$|\||\[rtk:|<!--|// )")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="DOX file size-budget and duplication scanner"
-    )
+    parser = argparse.ArgumentParser(description="DOX file size-budget and duplication scanner")
     parser.add_argument(
         "--json",
         action="store_true",
@@ -186,6 +72,111 @@ def main() -> int:
             print(v)
 
     return 1 if violations else 0
+
+
+def _collect_dox_files(root: Path) -> list[Path]:
+    """Return AGENTS.md files and core .agents/ policy files under *root*."""
+    files: list[Path] = []
+    # All AGENTS.md files (root + subtree)
+    for p in root.rglob("AGENTS.md"):
+        if ".venv" in p.parts or "node_modules" in p.parts or ".git" in p.parts:
+            continue
+        files.append(p)
+    # Core .agents/ policy files only (not skills/, plans/, etc.)
+    agents_dir = root / ".agents"
+    if agents_dir.is_dir():
+        for name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md"):
+            p = agents_dir / name
+            if p.is_file():
+                files.append(p)
+    return sorted(files)
+
+
+def _check_size(path: Path, root: Path) -> list[str]:
+    """Check line count against budget. Return violations."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    count = len(lines)
+
+    if _is_subtree_agents(path, root):
+        budget = SUBTREE_BUDGET
+        label = "subtree AGENTS.md"
+    elif _is_agents_core(path, root):
+        budget = AGENTS_FILE_BUDGET
+        label = ".agents/ core file"
+    else:
+        return []  # root AGENTS.md — no budget
+
+    if count > budget:
+        return [f"{path}: {count} lines exceeds {label} budget of {budget}"]
+    return []
+
+
+def _is_subtree_agents(path: Path, root: Path) -> bool:
+    """True if *path* is a subtree AGENTS.md (not root, not .agents/)."""
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return False
+    if rel == Path("AGENTS.md"):
+        return False
+    if ".agents" in rel.parts:
+        return False
+    return rel.name == "AGENTS.md"
+
+
+def _is_agents_core(path: Path, root: Path) -> bool:
+    """True if *path* is a core .agents/ policy file."""
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return False
+    if rel.parts[:1] != (".agents",):
+        return False
+    return rel.name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md")
+
+
+def _check_duplication(files: list[Path]) -> list[str]:
+    """Check for near-verbatim sentence duplication across files."""
+    violations: list[str] = []
+    sentence_map: dict[str, list[Path]] = {}
+
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for sentence in _extract_sentences(text):
+            # Use first 60 chars as a fingerprint
+            fingerprint = sentence[:60].lower()
+            sentence_map.setdefault(fingerprint, []).append(path)
+
+    for fingerprint, paths in sentence_map.items():
+        if len(paths) >= 2:
+            # Deduplicate to unique paths
+            unique = sorted(set(paths))
+            if len(unique) >= 2:
+                locations = ", ".join(str(p) for p in unique)
+                violations.append(f"Duplicate sentence (fingerprint {fingerprint!r}) found in: {locations}")
+
+    return violations
+
+
+def _extract_sentences(text: str) -> list[str]:
+    """Split *text* into sentences, filtering out headings, code, and tables."""
+    # Split on sentence boundaries (. ! ? followed by space or end) AND newlines
+    raw = re.split(r"(?<=[.!?])\s+|\n", text)
+    result = []
+    for s in raw:
+        s = s.strip()
+        if len(s) < _MIN_DUP_LEN:
+            continue
+        if _IGNORE_RE.match(s):
+            continue
+        # Skip table rows
+        if s.startswith("|") or "|" in s and s.count("|") >= 3:
+            continue
+        # Normalize whitespace
+        s = re.sub(r"\s+", " ", s)
+        result.append(s)
+    return result
 
 
 if __name__ == "__main__":

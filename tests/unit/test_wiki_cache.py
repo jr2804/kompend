@@ -12,25 +12,6 @@ from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
 
 
-def _make_wiki() -> CompiledWiki:
-    return CompiledWiki(
-        nodes=[
-            WikiNode(
-                id="intro",
-                title="Introduction",
-                content="Hello world",
-                node_type="section",
-                source_chunks=["chunk-1"],
-            ),
-        ],
-        edges=[{"source": "intro", "target": "intro", "type": "self"}],
-        toc=[{"id": "intro", "title": "Introduction"}],
-        quality_score=0.85,
-        iteration=2,
-        metadata={"key": "value"},
-    )
-
-
 class TestWriteWikiCache:
     def test_writes_cache_file(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
@@ -91,3 +72,22 @@ class TestLoadCachedWiki:
         (cache_dir / WIKI_CACHE_FILE).write_text("{invalid json", encoding="utf-8")
         with pytest.raises(json.JSONDecodeError):
             load_cached_wiki(tmp_path)
+
+
+def _make_wiki() -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[
+            WikiNode(
+                id="intro",
+                title="Introduction",
+                content="Hello world",
+                node_type="section",
+                source_chunks=["chunk-1"],
+            ),
+        ],
+        edges=[{"source": "intro", "target": "intro", "type": "self"}],
+        toc=[{"id": "intro", "title": "Introduction"}],
+        quality_score=0.85,
+        iteration=2,
+        metadata={"key": "value"},
+    )

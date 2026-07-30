@@ -178,6 +178,68 @@ class EnumEntry:
         return self.values.get(value)
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--enum",
+        action="append",
+        default=[],
+        help="Restrict to a specific enum class name (repeatable).",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument("--src", default=str(SRC_ROOT), help="Source root to scan.")
+    args = parser.parse_args()
+
+    # Make knox importable for enum discovery.
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+
+    enums = ENFORCED_ENUMS
+    if args.enum:
+        wanted = set(args.enum)
+        enums = [e for e in ENFORCED_ENUMS if e[1] in wanted]
+        if not enums:
+            print(f"ERROR: no enforced enums match {wanted}", file=sys.stderr)
+            return 2
+
+    entries = load_enums(enums)
+    total_values = sum(len(e.values) for e in entries)
+    if not total_values:
+        print("ERROR: no enum members loaded", file=sys.stderr)
+        return 2
+
+    root = Path(args.src)
+    py_files = discover_py_files(root)
+
+    all_violations: list[Violation] = []
+    for f in py_files:
+        all_violations.extend(scan_file(f, entries))
+
+    if args.json:
+        payload = [
+            {
+                "file": str(v.file.relative_to(REPO_ROOT)),
+                "line": v.line,
+                "col": v.col,
+                "value": v.value,
+                "enum": v.enum,
+            }
+            for v in all_violations
+        ]
+        print(json.dumps(payload, indent=2))
+    else:
+        # Group by file for readability.
+        by_file: dict[Path, list[Violation]] = defaultdict(list)
+        for v in all_violations:
+            by_file[v.file].append(v)
+        print(f"check-field-consistency: {len(all_violations)} violation(s) across {len(by_file)} file(s)")
+        for f in sorted(by_file):
+            print(f"\n{f.relative_to(REPO_ROOT)}:")
+            for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
+                print(v.format())
+
+    return 1 if all_violations else 0
+
+
 def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
     """Import each StrEnum and register its member values."""
     out: list[EnumEntry] = []
@@ -196,18 +258,6 @@ def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
             entry.values[str(member.value)] = f"{class_name}.{member.name}"
         out.append(entry)
     return out
-
-
-def is_globally_allowlisted(path: Path) -> bool:
-    posix = path.as_posix()
-    return any(posix.endswith(suf) for suf in ALLOWLIST_SUFFIXES)
-
-
-def _string_node_value(node: ast.AST) -> str | None:
-    """Return the literal string value of *node*, or None if not a constant str."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    return None
 
 
 def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
@@ -284,6 +334,18 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
     return out
 
 
+def is_globally_allowlisted(path: Path) -> bool:
+    posix = path.as_posix()
+    return any(posix.endswith(suf) for suf in ALLOWLIST_SUFFIXES)
+
+
+def _string_node_value(node: ast.AST) -> str | None:
+    """Return the literal string value of *node*, or None if not a constant str."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
 def _line_has_nocheck(line_no: int, lines: list[str]) -> bool:
     """True if the source line carries a ``# nocheck`` comment.
 
@@ -310,68 +372,6 @@ def _make_violation(path: Path, node: ast.AST, value: str, qualified: str, lines
 
 def discover_py_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--enum",
-        action="append",
-        default=[],
-        help="Restrict to a specific enum class name (repeatable).",
-    )
-    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
-    parser.add_argument("--src", default=str(SRC_ROOT), help="Source root to scan.")
-    args = parser.parse_args()
-
-    # Make knox importable for enum discovery.
-    sys.path.insert(0, str(REPO_ROOT / "src"))
-
-    enums = ENFORCED_ENUMS
-    if args.enum:
-        wanted = set(args.enum)
-        enums = [e for e in ENFORCED_ENUMS if e[1] in wanted]
-        if not enums:
-            print(f"ERROR: no enforced enums match {wanted}", file=sys.stderr)
-            return 2
-
-    entries = load_enums(enums)
-    total_values = sum(len(e.values) for e in entries)
-    if not total_values:
-        print("ERROR: no enum members loaded", file=sys.stderr)
-        return 2
-
-    root = Path(args.src)
-    py_files = discover_py_files(root)
-
-    all_violations: list[Violation] = []
-    for f in py_files:
-        all_violations.extend(scan_file(f, entries))
-
-    if args.json:
-        payload = [
-            {
-                "file": str(v.file.relative_to(REPO_ROOT)),
-                "line": v.line,
-                "col": v.col,
-                "value": v.value,
-                "enum": v.enum,
-            }
-            for v in all_violations
-        ]
-        print(json.dumps(payload, indent=2))
-    else:
-        # Group by file for readability.
-        by_file: dict[Path, list[Violation]] = defaultdict(list)
-        for v in all_violations:
-            by_file[v.file].append(v)
-        print(f"check-field-consistency: {len(all_violations)} violation(s) across {len(by_file)} file(s)")
-        for f in sorted(by_file):
-            print(f"\n{f.relative_to(REPO_ROOT)}:")
-            for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
-                print(v.format())
-
-    return 1 if all_violations else 0
 
 
 if __name__ == "__main__":

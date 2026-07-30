@@ -35,66 +35,6 @@ _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
 _PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"
 
 
-def filter_sensitive(text: str) -> tuple[str, int]:
-    """Strip secrets/PII, return (sanitised, count)."""
-    if not text:
-        return text, 0
-    count = 0
-    for pattern in _PRIVACY_PATTERNS:
-        text, n = pattern.subn(_PRIVACY_REDACTION_TOKEN, text)
-        count += n
-    return text, count
-
-
-def has_sensitive_content(text: str) -> bool:
-    return any(pattern.search(text) for pattern in _PRIVACY_PATTERNS)
-
-
-def filter_wiki(wiki: CompiledWiki) -> tuple[CompiledWiki, int]:
-    """Apply filter_sensitive to every node. Returns (filtered, total_redactions)."""
-    total = 0
-    new_nodes: list[WikiNode] = []
-    for node in wiki.nodes:
-        sanitised, n = filter_sensitive(node.content)
-        total += n
-        if n:
-            new_nodes.append(
-                WikiNode(
-                    id=node.id,
-                    title=node.title,
-                    content=sanitised,
-                    node_type=node.node_type,
-                    source_chunks=node.source_chunks,
-                    metadata={**(node.metadata or {}), "privacy_redactions": n},
-                )
-            )
-        else:
-            new_nodes.append(node)
-    return (
-        CompiledWiki(
-            nodes=new_nodes,
-            edges=list(wiki.edges),
-            toc=list(wiki.toc),
-            quality_score=wiki.quality_score,
-            iteration=wiki.iteration,
-            metadata={**wiki.metadata, "privacy_filtered": total > 0},
-        ),
-        total,
-    )
-
-
-def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
-    """Write .knox/private.json index of private pages."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    private_index = VaultPaths(output_dir.parent).private_path
-    private_index.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "saved_at": iso_local(),
-        "pages": [{"id": n.id, "title": n.title} for n in wiki.nodes],
-    }
-    private_index.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-
-
 @dataclass
 class LifecycleEntry:
     node_id: str
@@ -174,6 +114,66 @@ class LifecycleStore:
         )
         state.entries[node_id] = entry
         return entry
+
+
+def has_sensitive_content(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _PRIVACY_PATTERNS)
+
+
+def filter_wiki(wiki: CompiledWiki) -> tuple[CompiledWiki, int]:
+    """Apply filter_sensitive to every node. Returns (filtered, total_redactions)."""
+    total = 0
+    new_nodes: list[WikiNode] = []
+    for node in wiki.nodes:
+        sanitised, n = filter_sensitive(node.content)
+        total += n
+        if n:
+            new_nodes.append(
+                WikiNode(
+                    id=node.id,
+                    title=node.title,
+                    content=sanitised,
+                    node_type=node.node_type,
+                    source_chunks=node.source_chunks,
+                    metadata={**(node.metadata or {}), "privacy_redactions": n},
+                )
+            )
+        else:
+            new_nodes.append(node)
+    return (
+        CompiledWiki(
+            nodes=new_nodes,
+            edges=list(wiki.edges),
+            toc=list(wiki.toc),
+            quality_score=wiki.quality_score,
+            iteration=wiki.iteration,
+            metadata={**wiki.metadata, "privacy_filtered": total > 0},
+        ),
+        total,
+    )
+
+
+def filter_sensitive(text: str) -> tuple[str, int]:
+    """Strip secrets/PII, return (sanitised, count)."""
+    if not text:
+        return text, 0
+    count = 0
+    for pattern in _PRIVACY_PATTERNS:
+        text, n = pattern.subn(_PRIVACY_REDACTION_TOKEN, text)
+        count += n
+    return text, count
+
+
+def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
+    """Write .knox/private.json index of private pages."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    private_index = VaultPaths(output_dir.parent).private_path
+    private_index.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "saved_at": iso_local(),
+        "pages": [{"id": n.id, "title": n.title} for n in wiki.nodes],
+    }
+    private_index.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
 def mark_stale(

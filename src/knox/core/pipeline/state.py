@@ -31,6 +31,18 @@ logger = get_logger(__name__)
 _OUTPUT_TIER_LEVEL = TIER_LEVEL[Tier.OUTPUT]
 
 
+class CompileStatus(StrEnum):
+    """High-level compile status for display in ``knox status``."""
+
+    NOT_INITIALIZED = "not-initialized"
+    NO_SOURCES = "no-sources"
+    NOT_INDEXED = "not-indexed"
+    IN_PROGRESS = "in-progress"
+    PARTIALLY_COMPILED = "partially-compiled"
+    COMPILED = "compiled"
+    BROKEN = "broken"
+
+
 @dataclass
 class SourceState:
     """Persistent state for a single source file."""
@@ -167,18 +179,6 @@ class TierStateStore:
         existing.search_hits += 1
         existing.last_hit = iso_local()
         state.entries[stem] = existing
-
-
-class CompileStatus(StrEnum):
-    """High-level compile status for display in ``knox status``."""
-
-    NOT_INITIALIZED = "not-initialized"
-    NO_SOURCES = "no-sources"
-    NOT_INDEXED = "not-indexed"
-    IN_PROGRESS = "in-progress"
-    PARTIALLY_COMPILED = "partially-compiled"
-    COMPILED = "compiled"
-    BROKEN = "broken"
 
 
 @dataclass(frozen=True)

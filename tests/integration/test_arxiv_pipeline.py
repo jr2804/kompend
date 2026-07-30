@@ -59,11 +59,6 @@ requires_network = pytest.mark.skipif(
 )
 
 
-def _all_text(doc: ParsedDocument) -> str:
-    """Concatenate all string-content elements."""
-    return " ".join(e.content for e in doc.elements if isinstance(e.content, str) and e.content.strip())
-
-
 # ── Scenario 1: PDF via ArxivPdfResolver ────────────────────────────────
 
 
@@ -205,3 +200,8 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     # Assert the parse succeeded and produced a document — content quality is pandoc-version-dependent.
     assert isinstance(doc, ParsedDocument)
     logger.info("TeX parse: %d elements, %d chars", len(doc.elements), len(text))
+
+
+def _all_text(doc: ParsedDocument) -> str:
+    """Concatenate all string-content elements."""
+    return " ".join(e.content for e in doc.elements if isinstance(e.content, str) and e.content.strip())

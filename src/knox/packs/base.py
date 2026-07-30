@@ -22,6 +22,10 @@ KNOWN_ROLES: tuple[str, ...] = (
 )
 
 
+# Module-level singleton
+_REGISTRY: PackRegistry | None = None
+
+
 @dataclass
 class Pack:
     """A contribution pack — a bundle of prompts, rules, and ontology.
@@ -54,33 +58,6 @@ class Pack:
     roles: dict[str, str] = field(default_factory=dict)
     dependencies: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-def load_pack_toml(package: str, filename: str = "pack.toml") -> Pack:
-    """Load a :class:`Pack` from a TOML manifest inside a package.
-
-    Parameters
-    ----------
-    package:
-        Dotted package path, e.g. ``"knox.packs.builtins.default"``.
-    filename:
-        Name of the TOML file inside the package directory.
-    """
-    ref = ir.files(package) / filename
-    data = tomllib.loads(ref.read_text(encoding="utf-8"))
-
-    pack_section = data.get("pack", {})
-    roles_section = data.get("roles", {})
-    roles = {role: cfg["prompt"] for role, cfg in roles_section.items() if isinstance(cfg, dict) and "prompt" in cfg}
-
-    return Pack(
-        name=pack_section.get("name", ""),
-        description=pack_section.get("description", ""),
-        version=pack_section.get("version", "1.0.0"),
-        roles=roles,
-        dependencies=list(pack_section.get("dependencies", [])),
-        metadata={},
-    )
 
 
 class PackRegistry:
@@ -162,8 +139,31 @@ class PackRegistry:
         self._packs["default"] = load_pack_toml("knox.packs.builtins.default")
 
 
-# Module-level singleton
-_REGISTRY: PackRegistry | None = None
+def load_pack_toml(package: str, filename: str = "pack.toml") -> Pack:
+    """Load a :class:`Pack` from a TOML manifest inside a package.
+
+    Parameters
+    ----------
+    package:
+        Dotted package path, e.g. ``"knox.packs.builtins.default"``.
+    filename:
+        Name of the TOML file inside the package directory.
+    """
+    ref = ir.files(package) / filename
+    data = tomllib.loads(ref.read_text(encoding="utf-8"))
+
+    pack_section = data.get("pack", {})
+    roles_section = data.get("roles", {})
+    roles = {role: cfg["prompt"] for role, cfg in roles_section.items() if isinstance(cfg, dict) and "prompt" in cfg}
+
+    return Pack(
+        name=pack_section.get("name", ""),
+        description=pack_section.get("description", ""),
+        version=pack_section.get("version", "1.0.0"),
+        roles=roles,
+        dependencies=list(pack_section.get("dependencies", [])),
+        metadata={},
+    )
 
 
 def get_registry() -> PackRegistry:

@@ -62,149 +62,6 @@ _PAREN_AUTHOR_YEAR_RE = re.compile(
 _ANCHOR_TITLE_MAX = 60
 
 
-def _slugify_ref(ref: Reference) -> str:
-    """Generate an HTML-safe anchor slug for a reference.
-
-    Prefers ``ref.id`` when present (e.g. ``itu-t-p48-1988``), falling back
-    to ``short_label()`` or title.
-    """
-    label = ref.id or ref.short_label() or ref.title[:_ANCHOR_TITLE_MAX]
-    return _slugify(label) or "ref"
-
-
-def build_reference_key_index(
-    refs: list[Reference],
-) -> dict[str, Reference]:
-    """Build a lookup index mapping citation keys to references.
-
-    The index includes:
-
-    - ``ref.id`` (lowercase) \u2014 the canonical slug/id
-    - ``ref.short_label()`` (lowercase, no spaces) \u2014 e.g. ``"smith2020"``
-    - ``"author+year"`` \u2014 e.g. ``"smith2020"``, ``"smith"`` (first author family + year)
-    - ``"doi:..."`` \u2014 for DOI-based lookups
-    """
-    index: dict[str, Reference] = {}
-    for ref in refs:
-        if ref.id:
-            index[ref.id.lower()] = ref
-        label = ref.short_label()
-        if label:
-            key = label.lower().replace(" ", "")
-            index.setdefault(key, ref)
-        # author+year from structured fields
-        if ref.author and ref.issued:
-            a0 = ref.author[0]
-            family = (a0.literal or a0.family or "").lower()
-            year_digits = "".join(c for c in ref.issued if c.isdigit())[:YEAR_DIGITS]
-            if family and year_digits:
-                index.setdefault(f"{family}{year_digits}", ref)
-        if ref.doi:
-            index[f"doi:{ref.doi.lower().strip()}"] = ref
-    return index
-
-
-def _format_ref_link(ref: Reference) -> str:
-    """Format a citation link to the references page."""
-    anchor = _slugify_ref(ref)
-    label = ref.id or ref.short_label()
-    return _REF_LINK_FORMAT.format(label=label, anchor=anchor)
-
-
-def _expand_numeric_range(spec: str) -> list[int]:
-    """Expand a numeric citation spec like ``"1, 3-5"`` to ``[1, 3, 4, 5]``."""
-    nums: list[int] = []
-    for raw_part in spec.split(","):
-        part = raw_part.strip()
-        range_match = re.match(r"^(\d+)\s*[-\u2013]\s*(\d+)$", part)
-        if range_match:
-            start, end = int(range_match.group(1)), int(range_match.group(2))
-            nums.extend(range(start, end + 1))
-        elif part.isdigit():
-            nums.append(int(part))
-    return nums
-
-
-def _find_numeric_ref(num: int, refs: list[Reference]) -> Reference | None:
-    """Find the Nth reference in reference-list order (1-indexed)."""
-    if 1 <= num <= len(refs):
-        return refs[num - 1]
-    return None
-
-
-def rewrite_citation_links(
-    text: str,
-    refs: list[Reference],
-) -> str:
-    r"""Rewrite in-text citation markers in *text* to reference links.
-
-    Parameters
-    ----------
-    text:
-        Wiki page body text (Markdown).
-    refs:
-        Ordered list of references for this source.
-
-    Returns:
-    -------
-    The text with citation markers replaced by ``[label](#anchor)`` links.
-    Unknown markers are left untouched.
-    """
-    if not refs or not text:
-        return text
-
-    key_index = build_reference_key_index(refs)
-
-    # -- Pass 1: bracketed numeric [1], [2, 3], [1-3] --
-    def _replace_bracket_numeric(m: re.Match[str]) -> str:
-        spec = m.group(1)
-        nums = _expand_numeric_range(spec)
-        if not nums:
-            return m.group(0)
-        links: list[str] = []
-        all_found = True
-        for num in nums:
-            ref = _find_numeric_ref(num, refs)
-            if ref is None:
-                all_found = False
-                break
-            links.append(_format_ref_link(ref))
-        if not all_found or not links:
-            return m.group(0)
-        return "[" + ", ".join(links) + "]"
-
-    text = _BRACKET_NUMERIC_RE.sub(_replace_bracket_numeric, text)
-
-    # -- Pass 2: bracketed key [Smith2020], [smith2020, p. 42] --
-    def _replace_bracket_key(m: re.Match[str]) -> str:
-        raw = m.group(1)
-        # Strip ", p. N" page suffix
-        key = re.sub(r"\s*,\s*p\.\s*\d+", "", raw).lower()
-        ref = key_index.get(key)
-        if ref is None:
-            return m.group(0)
-        return _format_ref_link(ref)
-
-    text = _BRACKET_KEY_RE.sub(_replace_bracket_key, text)
-
-    # -- Pass 3: parenthetical author-year (Smith, 2020) --
-    def _replace_paren_author_year(m: re.Match[str]) -> str:
-        author_part = m.group(1)
-        year = m.group(2)
-        # Build candidate keys: "smith2020", "smith" + year
-        first_word = author_part.split()[0].lower() if author_part.split() else ""
-        first_word = re.sub(r"[^a-z]", "", first_word)
-        for candidate in (f"{first_word}{year}", first_word):
-            ref = key_index.get(candidate)
-            if ref is not None:
-                return _format_ref_link(ref)
-        return m.group(0)
-
-    text = _PAREN_AUTHOR_YEAR_RE.sub(_replace_paren_author_year, text)
-
-    return text
-
-
 def format_bibliography_entry(ref: Reference, number: int = 0) -> str:
     r"""Format a single reference as a multi-line bibliography entry.
 
@@ -301,3 +158,146 @@ def rewrite_source_references(
     if not refs:
         return body
     return rewrite_citation_links(body, refs)
+
+
+def rewrite_citation_links(
+    text: str,
+    refs: list[Reference],
+) -> str:
+    r"""Rewrite in-text citation markers in *text* to reference links.
+
+    Parameters
+    ----------
+    text:
+        Wiki page body text (Markdown).
+    refs:
+        Ordered list of references for this source.
+
+    Returns:
+    -------
+    The text with citation markers replaced by ``[label](#anchor)`` links.
+    Unknown markers are left untouched.
+    """
+    if not refs or not text:
+        return text
+
+    key_index = build_reference_key_index(refs)
+
+    # -- Pass 1: bracketed numeric [1], [2, 3], [1-3] --
+    def _replace_bracket_numeric(m: re.Match[str]) -> str:
+        spec = m.group(1)
+        nums = _expand_numeric_range(spec)
+        if not nums:
+            return m.group(0)
+        links: list[str] = []
+        all_found = True
+        for num in nums:
+            ref = _find_numeric_ref(num, refs)
+            if ref is None:
+                all_found = False
+                break
+            links.append(_format_ref_link(ref))
+        if not all_found or not links:
+            return m.group(0)
+        return "[" + ", ".join(links) + "]"
+
+    text = _BRACKET_NUMERIC_RE.sub(_replace_bracket_numeric, text)
+
+    # -- Pass 2: bracketed key [Smith2020], [smith2020, p. 42] --
+    def _replace_bracket_key(m: re.Match[str]) -> str:
+        raw = m.group(1)
+        # Strip ", p. N" page suffix
+        key = re.sub(r"\s*,\s*p\.\s*\d+", "", raw).lower()
+        ref = key_index.get(key)
+        if ref is None:
+            return m.group(0)
+        return _format_ref_link(ref)
+
+    text = _BRACKET_KEY_RE.sub(_replace_bracket_key, text)
+
+    # -- Pass 3: parenthetical author-year (Smith, 2020) --
+    def _replace_paren_author_year(m: re.Match[str]) -> str:
+        author_part = m.group(1)
+        year = m.group(2)
+        # Build candidate keys: "smith2020", "smith" + year
+        first_word = author_part.split()[0].lower() if author_part.split() else ""
+        first_word = re.sub(r"[^a-z]", "", first_word)
+        for candidate in (f"{first_word}{year}", first_word):
+            ref = key_index.get(candidate)
+            if ref is not None:
+                return _format_ref_link(ref)
+        return m.group(0)
+
+    text = _PAREN_AUTHOR_YEAR_RE.sub(_replace_paren_author_year, text)
+
+    return text
+
+
+def build_reference_key_index(
+    refs: list[Reference],
+) -> dict[str, Reference]:
+    """Build a lookup index mapping citation keys to references.
+
+    The index includes:
+
+    - ``ref.id`` (lowercase) \u2014 the canonical slug/id
+    - ``ref.short_label()`` (lowercase, no spaces) \u2014 e.g. ``"smith2020"``
+    - ``"author+year"`` \u2014 e.g. ``"smith2020"``, ``"smith"`` (first author family + year)
+    - ``"doi:..."`` \u2014 for DOI-based lookups
+    """
+    index: dict[str, Reference] = {}
+    for ref in refs:
+        if ref.id:
+            index[ref.id.lower()] = ref
+        label = ref.short_label()
+        if label:
+            key = label.lower().replace(" ", "")
+            index.setdefault(key, ref)
+        # author+year from structured fields
+        if ref.author and ref.issued:
+            a0 = ref.author[0]
+            family = (a0.literal or a0.family or "").lower()
+            year_digits = "".join(c for c in ref.issued if c.isdigit())[:YEAR_DIGITS]
+            if family and year_digits:
+                index.setdefault(f"{family}{year_digits}", ref)
+        if ref.doi:
+            index[f"doi:{ref.doi.lower().strip()}"] = ref
+    return index
+
+
+def _format_ref_link(ref: Reference) -> str:
+    """Format a citation link to the references page."""
+    anchor = _slugify_ref(ref)
+    label = ref.id or ref.short_label()
+    return _REF_LINK_FORMAT.format(label=label, anchor=anchor)
+
+
+def _slugify_ref(ref: Reference) -> str:
+    """Generate an HTML-safe anchor slug for a reference.
+
+    Prefers ``ref.id`` when present (e.g. ``itu-t-p48-1988``), falling back
+    to ``short_label()`` or title.
+    """
+    label = ref.id or ref.short_label() or ref.title[:_ANCHOR_TITLE_MAX]
+    return _slugify(label) or "ref"
+
+
+def _expand_numeric_range(spec: str) -> list[int]:
+    """Expand a numeric citation spec like ``"1, 3-5"`` to ``[1, 3, 4, 5]``."""
+    nums: list[int] = []
+    for raw_part in spec.split(","):
+        part = raw_part.strip()
+        range_match = re.match(r"^(\d+)\s*[-\u2013]\s*(\d+)$", part)
+        if range_match:
+            start, end = int(range_match.group(1)), int(range_match.group(2))
+            nums.extend(range(start, end + 1))
+        elif part.isdigit():
+            nums.append(int(part))
+    return nums
+
+
+def _find_numeric_ref(num: int, refs: list[Reference]) -> Reference | None:
+    """Find the Nth reference in reference-list order (1-indexed)."""
+    if 1 <= num <= len(refs):
+        return refs[num - 1]
+    return None

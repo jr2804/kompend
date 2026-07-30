@@ -56,23 +56,6 @@ class TestSplit:
             _split(":qwen3")
 
 
-# ── build_model: native pydantic-ai providers ──────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    """API keys for hosted providers (read by pydantic-ai's own providers).
-
-    OLLAMA_BASE_URL is intentionally NOT set here -- litellm owns the ollama
-    transport (endpoint, auth) and defaults to localhost:11434.
-    """
-    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"):
-        monkeypatch.setenv(key, "test-key")
-    # Catalog API keys for the fallback path
-    for key in ("CLAUDINIO_API_KEY", "OPENCODE_API_KEY", "OLLAMA_API_KEY"):
-        monkeypatch.setenv(key, "test-key")
-
-
 class TestBuildModelNative:
     def test_ollama_returns_native_model_with_default_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Ollama returns a native OllamaModel with the local default base_url.
@@ -290,3 +273,20 @@ class TestResolveModelLimits:
         max_input, max_output = resolve_model_limits("openai:gpt-4o")
         assert max_input == 128000
         assert max_output == 16384
+
+
+# ── build_model: native pydantic-ai providers ──────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API keys for hosted providers (read by pydantic-ai's own providers).
+
+    OLLAMA_BASE_URL is intentionally NOT set here -- litellm owns the ollama
+    transport (endpoint, auth) and defaults to localhost:11434.
+    """
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.setenv(key, "test-key")
+    # Catalog API keys for the fallback path
+    for key in ("CLAUDINIO_API_KEY", "OPENCODE_API_KEY", "OLLAMA_API_KEY"):
+        monkeypatch.setenv(key, "test-key")

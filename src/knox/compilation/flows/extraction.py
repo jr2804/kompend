@@ -42,21 +42,9 @@ logger = get_logger(__name__)
 _loader = get_template_loader()
 
 
-def batch_texts(texts: list[str], char_budget: int) -> list[str]:
-    """Group texts into batches that fit within *char_budget* (chars)."""
-    batches: list[str] = []
-    parts: list[str] = []
-    length = 0
-    for text in texts:
-        if length + len(text) > char_budget and parts:
-            batches.append("\n\n".join(parts))
-            parts = []
-            length = 0
-        parts.append(text)
-        length += len(text)
-    if parts:
-        batches.append("\n\n".join(parts))
-    return batches
+# Roughly 4 characters per token — the standard quick estimate for mixed
+# English prose. Over-estimating slightly is safe (compacts sooner).
+_CHARS_PER_TOKEN = 4
 
 
 def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
@@ -216,6 +204,23 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             )
             break
     return extractions
+
+
+def batch_texts(texts: list[str], char_budget: int) -> list[str]:
+    """Group texts into batches that fit within *char_budget* (chars)."""
+    batches: list[str] = []
+    parts: list[str] = []
+    length = 0
+    for text in texts:
+        if length + len(text) > char_budget and parts:
+            batches.append("\n\n".join(parts))
+            parts = []
+            length = 0
+        parts.append(text)
+        length += len(text)
+    if parts:
+        batches.append("\n\n".join(parts))
+    return batches
 
 
 def extract_one(compiler: Any, source: str, combined: str, extraction_system: str) -> Extraction | None:
@@ -393,33 +398,6 @@ def extract_incremental(
     return results, False
 
 
-# Roughly 4 characters per token — the standard quick estimate for mixed
-# English prose. Over-estimating slightly is safe (compacts sooner).
-_CHARS_PER_TOKEN = 4
-
-
-def _estimate_tokens(text: str) -> int:
-    """Coarse char-based token estimate (~4 chars/token)."""
-    return max(1, len(text) // _CHARS_PER_TOKEN)
-
-
-def _estimate_history_tokens(history: list[Any]) -> int:
-    """Estimate total tokens across all messages in ``history``.
-
-    Walks every ``ModelRequest`` / ``ModelResponse`` and sums the string
-    length of each part's ``content`` field. Non-string parts (images,
-    tool calls) are ignored — they're rare in the extraction path.
-    """
-    total = 0
-    for msg in history:
-        parts = getattr(msg, "parts", [])
-        for part in parts:
-            content = getattr(part, "content", None)
-            if isinstance(content, str):
-                total += _estimate_tokens(content)
-    return total
-
-
 def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
     """Drop the oldest messages from ``history`` until under budget.
 
@@ -441,6 +419,28 @@ def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
             _estimate_history_tokens(history),
             len(history),
         )
+
+
+def _estimate_history_tokens(history: list[Any]) -> int:
+    """Estimate total tokens across all messages in ``history``.
+
+    Walks every ``ModelRequest`` / ``ModelResponse`` and sums the string
+    length of each part's ``content`` field. Non-string parts (images,
+    tool calls) are ignored — they're rare in the extraction path.
+    """
+    total = 0
+    for msg in history:
+        parts = getattr(msg, "parts", [])
+        for part in parts:
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                total += _estimate_tokens(content)
+    return total
+
+
+def _estimate_tokens(text: str) -> int:
+    """Coarse char-based token estimate (~4 chars/token)."""
+    return max(1, len(text) // _CHARS_PER_TOKEN)
 
 
 def _synthetic_history_response(extraction: Extraction) -> ModelResponse:

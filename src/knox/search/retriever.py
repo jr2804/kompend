@@ -45,109 +45,6 @@ class SynthesisResult:
     citations: list[dict[str, Any]] = field(default_factory=list)
 
 
-# ── Synthesis (context formatting + LLM call) ──────────────────────────
-
-
-def synthesize_results(
-    query: str,
-    results: list[SearchResult],
-    model: str = "",
-    *,
-    verbosity: str = "standard",
-    max_tokens: int | None = None,
-    skills: dict[str, str] | None = None,
-    reasoning_effort: str | None = None,
-) -> SynthesisResult:
-    """Format search results into context and call the LLM for an answer.
-
-    This is a standalone function (no retriever needed) — it takes already-
-    retrieved ``SearchResult`` objects, formats them as numbered context
-    lines, and passes them to :class:`QueryAgent`.
-    """
-    if not model:
-        citations: list[dict[str, Any]] = []
-        for r in results:
-            citations.append(
-                {
-                    "article": r.title,
-                    "article_id": r.article_id,
-                    "source": r.source_file,
-                    "snippet": r.snippet,
-                    "score": round(r.score, 3),
-                }
-            )
-        return SynthesisResult(answer="", citations=citations)
-
-    context_lines: list[str] = []
-    for i, r in enumerate(results, 1):
-        context_lines.append(f"[{i}] {r.title}")
-        if r.source_file:
-            context_lines.append(f"    Source: {r.source_file}")
-        context_lines.append(f"    {r.snippet}")
-        context_lines.append("")
-
-    context_text: str = "\n".join(context_lines)
-
-    try:
-        agent = QueryAgent(
-            model_string=model,
-            timeout=120.0,
-            skills=skills or {},
-            reasoning_effort=reasoning_effort,
-        )
-        deps = QueryDeps(
-            question=query,
-            context=context_text,
-            source_id="query",
-            verbosity=verbosity,
-        )
-        answer = agent.run(deps)
-    except Exception as exc:
-        logger.warning("Query synthesis failed: %s", exc, exc_info=True)
-        answer = ""
-
-    citations_out: list[dict[str, Any]] = []
-    for r in results:
-        citations_out.append(
-            {
-                "article": r.title,
-                "article_id": r.article_id,
-                "source": r.source_file,
-                "snippet": r.snippet,
-                "score": round(r.score, 3),
-            }
-        )
-
-    return SynthesisResult(answer=answer, citations=citations_out)
-
-
-# ── Query expansion ────────────────────────────────────────────────────
-
-
-def expand_query(
-    query: str,
-    template_loader: TemplateLoader,
-    expansion_agent: QueryExpansionAgent | None = None,
-) -> list[str]:
-    """Expand a query into variants using the expansion agent."""
-    if expansion_agent is None:
-        return [query]
-
-    try:
-        system_prompt = template_loader.render("search/expand_query.md.j2", query=query)
-        deps = PipelineAgentDeps(text=system_prompt, source_id="expand", timeout=120)
-        result = expansion_agent.run(deps)
-
-        expansions: list[str] = [query]
-        expansions.extend(result.keyword_rewrites)
-        expansions.extend(result.semantic_rewrites)
-        expansions_limit = DEFAULTS.get(DISPLAY_QUERY_EXPANSIONS, 7)
-        return expansions[:expansions_limit]
-    except Exception as exc:
-        logger.warning("Query expansion failed: %s", exc, exc_info=True)
-        return [query]
-
-
 # ── HybridRetriever (vector-only) ──────────────────────────────────────
 
 
@@ -280,6 +177,109 @@ class HybridRetriever:
 
         sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
         return sorted_results[:top_k]
+
+
+# ── Synthesis (context formatting + LLM call) ──────────────────────────
+
+
+def synthesize_results(
+    query: str,
+    results: list[SearchResult],
+    model: str = "",
+    *,
+    verbosity: str = "standard",
+    max_tokens: int | None = None,
+    skills: dict[str, str] | None = None,
+    reasoning_effort: str | None = None,
+) -> SynthesisResult:
+    """Format search results into context and call the LLM for an answer.
+
+    This is a standalone function (no retriever needed) — it takes already-
+    retrieved ``SearchResult`` objects, formats them as numbered context
+    lines, and passes them to :class:`QueryAgent`.
+    """
+    if not model:
+        citations: list[dict[str, Any]] = []
+        for r in results:
+            citations.append(
+                {
+                    "article": r.title,
+                    "article_id": r.article_id,
+                    "source": r.source_file,
+                    "snippet": r.snippet,
+                    "score": round(r.score, 3),
+                }
+            )
+        return SynthesisResult(answer="", citations=citations)
+
+    context_lines: list[str] = []
+    for i, r in enumerate(results, 1):
+        context_lines.append(f"[{i}] {r.title}")
+        if r.source_file:
+            context_lines.append(f"    Source: {r.source_file}")
+        context_lines.append(f"    {r.snippet}")
+        context_lines.append("")
+
+    context_text: str = "\n".join(context_lines)
+
+    try:
+        agent = QueryAgent(
+            model_string=model,
+            timeout=120.0,
+            skills=skills or {},
+            reasoning_effort=reasoning_effort,
+        )
+        deps = QueryDeps(
+            question=query,
+            context=context_text,
+            source_id="query",
+            verbosity=verbosity,
+        )
+        answer = agent.run(deps)
+    except Exception as exc:
+        logger.warning("Query synthesis failed: %s", exc, exc_info=True)
+        answer = ""
+
+    citations_out: list[dict[str, Any]] = []
+    for r in results:
+        citations_out.append(
+            {
+                "article": r.title,
+                "article_id": r.article_id,
+                "source": r.source_file,
+                "snippet": r.snippet,
+                "score": round(r.score, 3),
+            }
+        )
+
+    return SynthesisResult(answer=answer, citations=citations_out)
+
+
+# ── Query expansion ────────────────────────────────────────────────────
+
+
+def expand_query(
+    query: str,
+    template_loader: TemplateLoader,
+    expansion_agent: QueryExpansionAgent | None = None,
+) -> list[str]:
+    """Expand a query into variants using the expansion agent."""
+    if expansion_agent is None:
+        return [query]
+
+    try:
+        system_prompt = template_loader.render("search/expand_query.md.j2", query=query)
+        deps = PipelineAgentDeps(text=system_prompt, source_id="expand", timeout=120)
+        result = expansion_agent.run(deps)
+
+        expansions: list[str] = [query]
+        expansions.extend(result.keyword_rewrites)
+        expansions.extend(result.semantic_rewrites)
+        expansions_limit = DEFAULTS.get(DISPLAY_QUERY_EXPANSIONS, 7)
+        return expansions[:expansions_limit]
+    except Exception as exc:
+        logger.warning("Query expansion failed: %s", exc, exc_info=True)
+        return [query]
 
 
 # ── Utilities ──────────────────────────────────────────────────────────

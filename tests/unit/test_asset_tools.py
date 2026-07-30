@@ -19,51 +19,6 @@ from knox.core.models.structured import StructuredFigure, StructuredTable
 from knox.core.pipeline.assets import AssetStore
 
 # ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def store(tmp_path: Path) -> AssetStore:
-    """AssetStore pre-populated with one table and one figure."""
-    s = AssetStore(tmp_path / "assets.json")
-    table = AssetRecord(
-        id="tab-a1b2c3",
-        kind=AssetKind.TABLE,
-        source="test",
-        data=StructuredTable(
-            columns=["Name", "Value"],
-            rows=[{"Name": "x", "Value": "1"}, {"Name": "y", "Value": "2"}],
-            caption="Test Table",
-        ),
-        summary="2 rows x 2 cols",
-    )
-    figure = AssetRecord(
-        id="fig-d4e5f6",
-        kind=AssetKind.FIGURE,
-        source="test",
-        data=StructuredFigure(
-            caption="A bar chart showing results",
-            alt_text="Bar chart with positive trend",
-            description="",
-        ),
-        summary="Figure with bar chart",
-    )
-    figure_no_caption = AssetRecord(
-        id="fig-abc123",
-        kind=AssetKind.FIGURE,
-        source="test",
-        data=StructuredFigure(caption="", alt_text="", description=""),
-        summary="Figure without metadata",
-    )
-    s.put(table)
-    s.put(figure)
-    s.put(figure_no_caption)
-    s.save()
-    return s
-
-
-# ---------------------------------------------------------------------------
 # build_asset_tools
 # ---------------------------------------------------------------------------
 
@@ -177,3 +132,48 @@ class TestGetFigure:
         raw_func = get_fig.function
         text = raw_func("fig-abc123")
         assert "no caption" in text.lower() or "figure" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> AssetStore:
+    """AssetStore pre-populated with one table and one figure."""
+    s = AssetStore(tmp_path / "assets.json")
+    table = AssetRecord(
+        id="tab-a1b2c3",
+        kind=AssetKind.TABLE,
+        source="test",
+        data=StructuredTable(
+            columns=["Name", "Value"],
+            rows=[{"Name": "x", "Value": "1"}, {"Name": "y", "Value": "2"}],
+            caption="Test Table",
+        ),
+        summary="2 rows x 2 cols",
+    )
+    figure = AssetRecord(
+        id="fig-d4e5f6",
+        kind=AssetKind.FIGURE,
+        source="test",
+        data=StructuredFigure(
+            caption="A bar chart showing results",
+            alt_text="Bar chart with positive trend",
+            description="",
+        ),
+        summary="Figure with bar chart",
+    )
+    figure_no_caption = AssetRecord(
+        id="fig-abc123",
+        kind=AssetKind.FIGURE,
+        source="test",
+        data=StructuredFigure(caption="", alt_text="", description=""),
+        summary="Figure without metadata",
+    )
+    s.put(table)
+    s.put(figure)
+    s.put(figure_no_caption)
+    s.save()
+    return s

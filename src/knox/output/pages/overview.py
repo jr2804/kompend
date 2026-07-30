@@ -19,6 +19,42 @@ logger = get_logger(__name__)
 _loader = get_template_loader()
 
 
+def write_overview(
+    wiki: CompiledWiki,
+    base_dir: Path,
+    agent: WikiIndexAgent,
+    *,
+    overview_budget: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> Path | None:
+    """Write ``overview.md`` (LLM-generated). Returns the path or None."""
+    source_texts = [n.content for n in wiki.nodes if n.content]
+
+    # Overview cache (inside .knox)
+    cache_store = CacheStore(VaultPaths(base_dir).cache_dir)
+    text_block = "\n".join(sorted(source_texts))
+    overview_deps = {
+        "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
+        "model": agent._model_string,  # nocheck: overview cache deps, not wiki metadata
+        "overview_budget": str(overview_budget),
+    }
+    cached = cache_store.get("overview", overview_deps)
+    if cached is not None:
+        overview_path = base_dir / "overview.md"
+        overview_path.write_text(cached, encoding="utf-8")
+        return overview_path
+
+    content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
+    if not content:
+        return None
+
+    cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
+
+    overview_path = base_dir / "overview.md"
+    overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
+    return overview_path
+
+
 def generate_overview(
     source_texts: list[str],
     agent: WikiIndexAgent,
@@ -95,39 +131,3 @@ def generate_overview(
     except Exception as exc:
         logger.warning("Overview merge failed: %s", exc)
     return None
-
-
-def write_overview(
-    wiki: CompiledWiki,
-    base_dir: Path,
-    agent: WikiIndexAgent,
-    *,
-    overview_budget: int,
-    progress_callback: Callable[[int, int], None] | None = None,
-) -> Path | None:
-    """Write ``overview.md`` (LLM-generated). Returns the path or None."""
-    source_texts = [n.content for n in wiki.nodes if n.content]
-
-    # Overview cache (inside .knox)
-    cache_store = CacheStore(VaultPaths(base_dir).cache_dir)
-    text_block = "\n".join(sorted(source_texts))
-    overview_deps = {
-        "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
-        "model": agent._model_string,  # nocheck: overview cache deps, not wiki metadata
-        "overview_budget": str(overview_budget),
-    }
-    cached = cache_store.get("overview", overview_deps)
-    if cached is not None:
-        overview_path = base_dir / "overview.md"
-        overview_path.write_text(cached, encoding="utf-8")
-        return overview_path
-
-    content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
-    if not content:
-        return None
-
-    cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
-
-    overview_path = base_dir / "overview.md"
-    overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
-    return overview_path

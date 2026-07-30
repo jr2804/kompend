@@ -69,129 +69,6 @@ class ScaffoldError(Exception):
     """Raised when scaffolding cannot proceed (e.g. target_dir dir conflicts)."""
 
 
-def _render_template(template_name: str, **vars: Any) -> str:
-    """Read a Jinja2 scaffold template and render it with *vars*.
-
-    ``keep_trailing_newline=True`` preserves the trailing newline so
-    rendered files match their source layout exactly.
-    """
-    content = _template_path(template_name).read_text(encoding="utf-8")
-    return jinja2.Template(content, keep_trailing_newline=True).render(**vars)
-
-
-def _template_path(name: str) -> Path:
-    """Return the filesystem path of a template file shipped with the package."""
-    return Path(str(resources.files(TEMPLATES_PACKAGE).joinpath(name)))
-
-
-def find_existing_project(target_dir: Path) -> Path | None:
-    """Return the first existing project marker in *target_dir*, or ``None``.
-
-    A project marker is either ``knox.toml`` (project-level config) or
-    ``.knox/config.toml`` (vault-level config). The returned path is the
-    marker file that was found.
-    """
-    for marker in PROJECT_MARKERS:
-        candidate = target_dir / marker
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _read_path_dirs(config_path: Path) -> tuple[str, str]:
-    """Read ``paths.sources_dir`` and ``paths.output_dir`` from a config file.
-
-    Falls back to :data:`DEFAULTS` when the file is missing or omits the
-    keys. This is used by scaffold so created directories match the config
-    being installed, not hardcoded defaults.
-    """
-    sources = DEFAULTS["paths"]["sources_dir"]
-    output = DEFAULTS["paths"]["output_dir"]
-    if config_path.is_file():
-        try:
-            data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-        except (tomllib.TOMLDecodeError, OSError):
-            return sources, output
-        paths = data.get("paths", {})
-        if isinstance(paths.get("sources_dir"), str):
-            sources = paths["sources_dir"]
-        if isinstance(paths.get("output_dir"), str):
-            output = paths["output_dir"]
-    return sources, output
-
-
-def _create_directory(target_dir: Path, relative: str) -> Path:
-    """Create a directory under *target_dir* and record it in *result*."""
-    new_dir = target_dir / relative
-    new_dir.mkdir(parents=True, exist_ok=True)
-    return new_dir
-
-
-def _copy_template(template_name: str, target_dir: Path, relative: str) -> None:
-    """Copy a template file into *target_dir/relative*."""
-    source = _template_path(template_name)
-    destination = target_dir / relative
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
-
-
-def _clear_directory(target_dir: Path, *, skip: str | set[str] | None = None) -> None:
-    """Remove all contents of *target_dir*, optionally skipping named children."""
-    skip_set = {skip} if isinstance(skip, str) else (skip or set())
-    for item in target_dir.iterdir():
-        if item.name in skip_set:
-            continue
-        if item.is_dir():
-            shutil.rmtree(item)
-        else:
-            item.unlink()
-
-
-def _write_config(target_dir: Path, relative: str, config_file: Path | None = None) -> None:
-    """Write the project config at ``target_dir / relative``.
-
-    When *config_file* is given, it is copied verbatim — this is how
-    ``knox init --config <path>`` installs a chosen config into a new vault
-    (e.g. a cloud/local demo profile). Otherwise a config is generated from
-    :data:`DEFAULTS` so values stay derived from code.
-    """
-    destination = target_dir / relative
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if config_file is not None:
-        destination.write_text(Path(config_file).read_text(encoding="utf-8"), encoding="utf-8")
-        logger.info("Copied config from %s to %s", config_file, destination)
-    else:
-        destination.write_text(generate_scaffold_config(), encoding="utf-8")
-        logger.info("Generated config at %s", destination)
-
-
-def _initialise_git(target_dir: Path) -> None:
-    """Run ``git init`` in *target_dir* and stage an initial commit."""
-    git_path = shutil.which("git")
-    if not git_path:
-        raise FileNotFoundError("git executable not found in PATH")
-
-    # All arguments are hard-coded constants — no untrusted input reaches subprocess.
-    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "init", "--initial-branch=main"],
-        cwd=target_dir,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "add", "."],
-        cwd=target_dir,
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
-        cwd=target_dir,
-        check=True,
-        capture_output=True,
-    )
-
-
 def scaffold_project(
     target_dir: str | Path,
     *,
@@ -316,3 +193,126 @@ def scaffold_project(
 
     logger.info("Scaffolded knox wiki at %s", resolved_target_dir)
     return result
+
+
+def _render_template(template_name: str, **vars: Any) -> str:
+    """Read a Jinja2 scaffold template and render it with *vars*.
+
+    ``keep_trailing_newline=True`` preserves the trailing newline so
+    rendered files match their source layout exactly.
+    """
+    content = _template_path(template_name).read_text(encoding="utf-8")
+    return jinja2.Template(content, keep_trailing_newline=True).render(**vars)
+
+
+def find_existing_project(target_dir: Path) -> Path | None:
+    """Return the first existing project marker in *target_dir*, or ``None``.
+
+    A project marker is either ``knox.toml`` (project-level config) or
+    ``.knox/config.toml`` (vault-level config). The returned path is the
+    marker file that was found.
+    """
+    for marker in PROJECT_MARKERS:
+        candidate = target_dir / marker
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _read_path_dirs(config_path: Path) -> tuple[str, str]:
+    """Read ``paths.sources_dir`` and ``paths.output_dir`` from a config file.
+
+    Falls back to :data:`DEFAULTS` when the file is missing or omits the
+    keys. This is used by scaffold so created directories match the config
+    being installed, not hardcoded defaults.
+    """
+    sources = DEFAULTS["paths"]["sources_dir"]
+    output = DEFAULTS["paths"]["output_dir"]
+    if config_path.is_file():
+        try:
+            data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (tomllib.TOMLDecodeError, OSError):
+            return sources, output
+        paths = data.get("paths", {})
+        if isinstance(paths.get("sources_dir"), str):
+            sources = paths["sources_dir"]
+        if isinstance(paths.get("output_dir"), str):
+            output = paths["output_dir"]
+    return sources, output
+
+
+def _create_directory(target_dir: Path, relative: str) -> Path:
+    """Create a directory under *target_dir* and record it in *result*."""
+    new_dir = target_dir / relative
+    new_dir.mkdir(parents=True, exist_ok=True)
+    return new_dir
+
+
+def _copy_template(template_name: str, target_dir: Path, relative: str) -> None:
+    """Copy a template file into *target_dir/relative*."""
+    source = _template_path(template_name)
+    destination = target_dir / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+
+
+def _template_path(name: str) -> Path:
+    """Return the filesystem path of a template file shipped with the package."""
+    return Path(str(resources.files(TEMPLATES_PACKAGE).joinpath(name)))
+
+
+def _clear_directory(target_dir: Path, *, skip: str | set[str] | None = None) -> None:
+    """Remove all contents of *target_dir*, optionally skipping named children."""
+    skip_set = {skip} if isinstance(skip, str) else (skip or set())
+    for item in target_dir.iterdir():
+        if item.name in skip_set:
+            continue
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+
+
+def _write_config(target_dir: Path, relative: str, config_file: Path | None = None) -> None:
+    """Write the project config at ``target_dir / relative``.
+
+    When *config_file* is given, it is copied verbatim — this is how
+    ``knox init --config <path>`` installs a chosen config into a new vault
+    (e.g. a cloud/local demo profile). Otherwise a config is generated from
+    :data:`DEFAULTS` so values stay derived from code.
+    """
+    destination = target_dir / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if config_file is not None:
+        destination.write_text(Path(config_file).read_text(encoding="utf-8"), encoding="utf-8")
+        logger.info("Copied config from %s to %s", config_file, destination)
+    else:
+        destination.write_text(generate_scaffold_config(), encoding="utf-8")
+        logger.info("Generated config at %s", destination)
+
+
+def _initialise_git(target_dir: Path) -> None:
+    """Run ``git init`` in *target_dir* and stage an initial commit."""
+    git_path = shutil.which("git")
+    if not git_path:
+        raise FileNotFoundError("git executable not found in PATH")
+
+    # All arguments are hard-coded constants — no untrusted input reaches subprocess.
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
+        [git_path, "init", "--initial-branch=main"],
+        cwd=target_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
+        [git_path, "add", "."],
+        cwd=target_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(  # noqa: S603 -- trusted executable with fixed args
+        [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
+        cwd=target_dir,
+        check=True,
+        capture_output=True,
+    )

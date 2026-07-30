@@ -15,25 +15,6 @@ from knox.core.models import Chunk, ElementType, ResolvedChunk
 from knox.resolution import VLMEnricher
 
 
-def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> Chunk:
-    return Chunk(id="chunk_001", text=text, element_types=[ElementType.TEXT], source_elements=[0])
-
-
-def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
-    return Chunk(
-        id="chunk_img_001",
-        text="Figure showing architecture.",
-        element_types=[ElementType.IMAGE],
-        source_elements=[2],
-        metadata={"image_path": image_path} if image_path else {},
-    )
-
-
-def _make_agent() -> VlmAgent:
-    """Build a VlmAgent with a test model."""
-    return VlmAgent("ollama/test", timeout=120)
-
-
 class TestVLMEnricher:
     def test_non_image_chunk_skipped(self) -> None:
         """Text chunks bypass the VLM call entirely."""
@@ -159,3 +140,22 @@ class TestVLMEnricherIntegration:
         assert len(user_prompt) == 2  # instruction text + image part
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert descs[0]["context"] == "caption text"
+
+
+def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> Chunk:
+    return Chunk(id="chunk_001", text=text, element_types=[ElementType.TEXT], source_elements=[0])
+
+
+def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
+    return Chunk(
+        id="chunk_img_001",
+        text="Figure showing architecture.",
+        element_types=[ElementType.IMAGE],
+        source_elements=[2],
+        metadata={"image_path": image_path} if image_path else {},
+    )
+
+
+def _make_agent() -> VlmAgent:
+    """Build a VlmAgent with a test model."""
+    return VlmAgent("ollama/test", timeout=120)

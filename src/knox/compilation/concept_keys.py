@@ -19,35 +19,6 @@ import re
 _ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
 
 
-def normalize_concept_key(name: str) -> str:
-    """Normalize a concept name for merge-key deduplication.
-
-    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
-    and collapses English plurals on the last word (heuristic).
-
-    Examples::
-
-        "Deep Neural Networks (DNNs)"  → "deep neural network"
-        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
-        "Deep neural network"  → "deep neural network"
-        "Phoneme posteriorgrams" → "phoneme posteriorgram"
-    """
-    text = _ACRONYM_RE.sub("", name)
-    text = text.replace("-", " ").lower().strip()
-    if not text:
-        return ""
-    words = text.split()
-    last = words[-1]
-    if len(last) > 3:
-        if last.endswith("ies"):
-            words[-1] = last[:-3] + "y"
-        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
-            words[-1] = last[:-2]
-        elif last.endswith("s") and not last.endswith("ss"):
-            words[-1] = last[:-1]
-    return " ".join(words).strip()
-
-
 # Structural artifacts from spreadsheet/table-heavy sources that the LLM
 # frequently mis-extracts as concepts (e.g. "Table Data", "data_id value",
 # "Name", "Source Filename"). Matched against the normalized concept key
@@ -78,3 +49,32 @@ def is_structural_concept(name: str) -> bool:
     """
     key = normalize_concept_key(name)
     return bool(_STRUCTURAL_CONCEPT_RE.match(key))
+
+
+def normalize_concept_key(name: str) -> str:
+    """Normalize a concept name for merge-key deduplication.
+
+    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
+    and collapses English plurals on the last word (heuristic).
+
+    Examples::
+
+        "Deep Neural Networks (DNNs)"  → "deep neural network"
+        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
+        "Deep neural network"  → "deep neural network"
+        "Phoneme posteriorgrams" → "phoneme posteriorgram"
+    """
+    text = _ACRONYM_RE.sub("", name)
+    text = text.replace("-", " ").lower().strip()
+    if not text:
+        return ""
+    words = text.split()
+    last = words[-1]
+    if len(last) > 3:
+        if last.endswith("ies"):
+            words[-1] = last[:-3] + "y"
+        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
+            words[-1] = last[:-2]
+        elif last.endswith("s") and not last.endswith("ss"):
+            words[-1] = last[:-1]
+    return " ".join(words).strip()

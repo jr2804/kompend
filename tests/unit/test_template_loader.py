@@ -15,28 +15,6 @@ from knox.core.templates import (
     parse_frontmatter,
 )
 
-# ── Fixtures ─────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def project_dir(tmp_path: Any) -> Path:
-    """Create a project with knox.toml and a templates dir."""
-    root = tmp_path / "project"
-    root.mkdir(parents=True)
-    (root / "knox.toml").write_text("")
-    return root
-
-
-@pytest.fixture
-def user_templates(tmp_path: Any, monkeypatch: Any) -> Path:
-    """Set up a user global templates directory."""
-    config_dir = tmp_path / "config"
-    tpl_dir = config_dir / "knox" / "templates"
-    tpl_dir.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
-    return tpl_dir
-
-
 # ── Frontmatter parsing ─────────────────────────────────────────────────
 
 
@@ -330,3 +308,25 @@ class TestEdgeCases:
         loader = TemplateLoader(project_dir=project_dir)
         result = loader.render("multi.md.j2", items=["a", "b", "c"])
         assert result == "- a\n- b\n- c\n"
+
+
+# ── Fixtures ─────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def project_dir(tmp_path: Any) -> Path:
+    """Create a project with knox.toml and a templates dir."""
+    root = tmp_path / "project"
+    root.mkdir(parents=True)
+    (root / "knox.toml").write_text("")
+    return root
+
+
+@pytest.fixture
+def user_templates(tmp_path: Any, monkeypatch: Any) -> Path:
+    """Set up a user global templates directory."""
+    config_dir = tmp_path / "config"
+    tpl_dir = config_dir / "knox" / "templates"
+    tpl_dir.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
+    return tpl_dir

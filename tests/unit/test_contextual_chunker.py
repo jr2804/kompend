@@ -9,37 +9,6 @@ from knox.chunking.contextual import ContextualEnricher
 from knox.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 
 
-def _make_doc(title: str = "Test Doc") -> ParsedDocument:
-
-    return ParsedDocument(
-        source_file=Path("test.md"),
-        elements=[],
-        title=title,
-    )
-
-
-def _make_leaf(node_id: str, text: str = "some text", heading: tuple[str, ...] = ("Section A",)) -> ChunkNode:
-    chunk = Chunk(
-        id=node_id,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[0],
-    )
-    return ChunkNode(
-        id=node_id,
-        heading_path=heading,
-        chunk=chunk,
-    )
-
-
-def _make_tree(*leaves: ChunkNode) -> ChunkTree:
-    root = ChunkNode(id="root", children_ids=[leaf.id for leaf in leaves])
-    nodes: dict[str, ChunkNode] = {"root": root}
-    for leaf in leaves:
-        nodes[leaf.id] = leaf
-    return ChunkTree(root_id="root", nodes=nodes)
-
-
 class TestCollectLeaves:
     """_collect_leaves finds all leaf nodes in the tree."""
 
@@ -158,3 +127,34 @@ class TestEnrichTreeWithClient:
         mock = MagicMock()
         mock.run.return_value = response
         return ContextualEnricher(agent=mock)
+
+
+def _make_doc(title: str = "Test Doc") -> ParsedDocument:
+
+    return ParsedDocument(
+        source_file=Path("test.md"),
+        elements=[],
+        title=title,
+    )
+
+
+def _make_leaf(node_id: str, text: str = "some text", heading: tuple[str, ...] = ("Section A",)) -> ChunkNode:
+    chunk = Chunk(
+        id=node_id,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[0],
+    )
+    return ChunkNode(
+        id=node_id,
+        heading_path=heading,
+        chunk=chunk,
+    )
+
+
+def _make_tree(*leaves: ChunkNode) -> ChunkTree:
+    root = ChunkNode(id="root", children_ids=[leaf.id for leaf in leaves])
+    nodes: dict[str, ChunkNode] = {"root": root}
+    for leaf in leaves:
+        nodes[leaf.id] = leaf
+    return ChunkTree(root_id="root", nodes=nodes)

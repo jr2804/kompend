@@ -21,6 +21,9 @@ from knox.rag.zvec_store import EmbeddingProvider, make_provider
 logger = get_logger(__name__)
 
 
+_MEMORY_COLLECTION_NAME = "knox_memory"
+
+
 class MemoryField(StrEnum):
     """Single source of truth for memory store field and vector names.
 
@@ -35,9 +38,6 @@ class MemoryField(StrEnum):
     MEMORY_BY = "memory_by"
     SCORE = "score"
     QUERY_EMBEDDING = "query_embedding"
-
-
-_MEMORY_COLLECTION_NAME = "knox_memory"
 
 
 class MemoryStore:

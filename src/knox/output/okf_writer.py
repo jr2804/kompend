@@ -62,139 +62,6 @@ class _NoAliasDumper(yaml.Dumper):
         return True
 
 
-def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
-    """Render frontmatter as YAML without anchors/aliases."""
-    yaml_str = yaml.dump(
-        frontmatter,
-        Dumper=_NoAliasDumper,
-        default_flow_style=False,
-        allow_unicode=True,
-        sort_keys=True,
-    ).strip()
-    return f"---\n{yaml_str}\n---\n\n"
-
-
-def convert_wikilinks(body: str, slug_to_path: dict[str, str]) -> str:
-    """Convert ``[[wikilinks]]`` to OKF absolute markdown links.
-
-    ``slug_to_path`` maps page slugs/titles to bundle-relative paths
-    (e.g. ``"my-page" -> "/concepts/my-page.md"``).
-    Unknown targets are left as plain text (OKF §6.1: broken links are valid).
-    """
-
-    def _replace(match: re.Match[str]) -> str:
-        target = match.group(1)
-        alias = match.group(2) or target
-        path = slug_to_path.get(target)
-        if path is not None:
-            return f"[{alias}]({path})"
-        return alias
-
-    return _WIKILINK_RE.sub(_replace, body)
-
-
-def _reference_to_okf_source(ref: Any) -> dict[str, Any]:
-    """Build an OKF v0.2 ``sources`` entry (§5.1) from a CSL-aligned Reference.
-
-    The ``id`` is the join key for per-claim footnote attribution (§5.1);
-    ``resource`` is REQUIRED within an entry and prefers a URL/DOI when present.
-    """
-    resource = ref.url or (f"https://doi.org/{ref.doi}" if ref.doi else "")
-    if not resource:
-        # Fall back to the citing source path so the entry always has a resource.
-        resource = ref.citing_source or ref.id
-    entry: dict[str, Any] = {"id": ref.id or ref.citing_source or ref.short_label()}
-    if resource:
-        entry["resource"] = resource
-    if ref.title:
-        entry["title"] = ref.title
-    author = ref.display_authors()
-    if author:
-        entry["author"] = author
-    return entry
-
-
-def _provenance_sources(
-    node: WikiNode,
-    ref_store: ReferenceStore | None,
-) -> list[dict[str, Any]]:
-    """Build the OKF v0.2 ``sources`` list for a node from its provenance.
-
-    Provenance is a list of source identifiers (filenames/URLs). When a
-    :class:`ReferenceStore` is available, each provenance source is expanded
-    into one structured ``sources`` entry per extracted reference (§5.1). When
-    no structured references exist, the raw provenance identifiers are wrapped
-    as minimal ``{id, resource}`` entries so the field stays spec-shaped.
-    """
-    provenance = node.metadata.get(MetadataField.PROVENANCE) or []
-    if not provenance:
-        return []
-
-    # Deduplicate provenance identifiers, preserving order.
-    seen: set[str] = set()
-    prov_ids: list[str] = []
-    for p in provenance:
-        ps = str(p)
-        if ps and ps not in seen:
-            seen.add(ps)
-            prov_ids.append(ps)
-
-    sources: list[dict[str, Any]] = []
-    if ref_store is not None:
-        for prov in prov_ids:
-            refs = ref_store.get_source(prov) or ref_store.get_source(Path(prov).stem)
-            for ref in refs:
-                sources.append(_reference_to_okf_source(ref))
-
-    # If no structured references resolved, emit minimal spec-shaped entries.
-    if not sources:
-        for prov in prov_ids:
-            sources.append({"id": Path(prov).stem, "resource": prov})
-    return sources
-
-
-def _format_source_footnotes(sources: list[dict[str, Any]]) -> str:
-    """Render footnote definitions for OKF §5.1 per-claim attribution.
-
-    Each ``sources[].id`` becomes a ``[^id]: <title or resource>`` line. The
-    body cites a claim with ``[^id]``; the definitions live at the page foot.
-    """
-    if not sources:
-        return ""
-    lines: list[str] = []
-    for src in sources:
-        sid = str(src.get("id") or "")
-        if not sid:
-            continue
-        label = src.get("title") or src.get("resource") or sid
-        lines.append(f"[^{sid}]: {label}")
-    return "\n".join(lines) + "\n"
-
-
-def _format_asset_footnotes(body: str, store: AssetStore) -> str:
-    """Render asset footnote definitions for ``¶ <id>`` references in *body*.
-
-    Scans *body* for asset references like ``¶ tab-a1f3`` and ``¶ fig-9c2e``,
-    collects the unique asset ids, looks up their summaries from *store*,
-    and emits ``[^<id>]: <summary>`` lines OKF-style.
-    """
-    if not body:
-        return ""
-    ids_found: set[str] = set()
-    for m in _ASSET_FOOTNOTE_RE.finditer(body):
-        ids_found.add(m.group(1))
-    if not ids_found:
-        return ""
-    lines: list[str] = []
-    for aid in sorted(ids_found):
-        record = store.get(aid)
-        if record is None:
-            continue
-        label = record.summary or record.kind.value or aid
-        lines.append(f"[^{aid}]: {label}")
-    return "\n".join(lines) + "\n"
-
-
 class OkfWriter(MarkdownWriter):
     """Write compiled wiki as an OKF v0.2 knowledge bundle.
 
@@ -385,3 +252,136 @@ class OkfWriter(MarkdownWriter):
                 log_path.write_text(new_section + stripped, encoding="utf-8")
             else:
                 log_path.write_text(new_section, encoding="utf-8")
+
+
+def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
+    """Render frontmatter as YAML without anchors/aliases."""
+    yaml_str = yaml.dump(
+        frontmatter,
+        Dumper=_NoAliasDumper,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=True,
+    ).strip()
+    return f"---\n{yaml_str}\n---\n\n"
+
+
+def convert_wikilinks(body: str, slug_to_path: dict[str, str]) -> str:
+    """Convert ``[[wikilinks]]`` to OKF absolute markdown links.
+
+    ``slug_to_path`` maps page slugs/titles to bundle-relative paths
+    (e.g. ``"my-page" -> "/concepts/my-page.md"``).
+    Unknown targets are left as plain text (OKF §6.1: broken links are valid).
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        target = match.group(1)
+        alias = match.group(2) or target
+        path = slug_to_path.get(target)
+        if path is not None:
+            return f"[{alias}]({path})"
+        return alias
+
+    return _WIKILINK_RE.sub(_replace, body)
+
+
+def _provenance_sources(
+    node: WikiNode,
+    ref_store: ReferenceStore | None,
+) -> list[dict[str, Any]]:
+    """Build the OKF v0.2 ``sources`` list for a node from its provenance.
+
+    Provenance is a list of source identifiers (filenames/URLs). When a
+    :class:`ReferenceStore` is available, each provenance source is expanded
+    into one structured ``sources`` entry per extracted reference (§5.1). When
+    no structured references exist, the raw provenance identifiers are wrapped
+    as minimal ``{id, resource}`` entries so the field stays spec-shaped.
+    """
+    provenance = node.metadata.get(MetadataField.PROVENANCE) or []
+    if not provenance:
+        return []
+
+    # Deduplicate provenance identifiers, preserving order.
+    seen: set[str] = set()
+    prov_ids: list[str] = []
+    for p in provenance:
+        ps = str(p)
+        if ps and ps not in seen:
+            seen.add(ps)
+            prov_ids.append(ps)
+
+    sources: list[dict[str, Any]] = []
+    if ref_store is not None:
+        for prov in prov_ids:
+            refs = ref_store.get_source(prov) or ref_store.get_source(Path(prov).stem)
+            for ref in refs:
+                sources.append(_reference_to_okf_source(ref))
+
+    # If no structured references resolved, emit minimal spec-shaped entries.
+    if not sources:
+        for prov in prov_ids:
+            sources.append({"id": Path(prov).stem, "resource": prov})
+    return sources
+
+
+def _reference_to_okf_source(ref: Any) -> dict[str, Any]:
+    """Build an OKF v0.2 ``sources`` entry (§5.1) from a CSL-aligned Reference.
+
+    The ``id`` is the join key for per-claim footnote attribution (§5.1);
+    ``resource`` is REQUIRED within an entry and prefers a URL/DOI when present.
+    """
+    resource = ref.url or (f"https://doi.org/{ref.doi}" if ref.doi else "")
+    if not resource:
+        # Fall back to the citing source path so the entry always has a resource.
+        resource = ref.citing_source or ref.id
+    entry: dict[str, Any] = {"id": ref.id or ref.citing_source or ref.short_label()}
+    if resource:
+        entry["resource"] = resource
+    if ref.title:
+        entry["title"] = ref.title
+    author = ref.display_authors()
+    if author:
+        entry["author"] = author
+    return entry
+
+
+def _format_source_footnotes(sources: list[dict[str, Any]]) -> str:
+    """Render footnote definitions for OKF §5.1 per-claim attribution.
+
+    Each ``sources[].id`` becomes a ``[^id]: <title or resource>`` line. The
+    body cites a claim with ``[^id]``; the definitions live at the page foot.
+    """
+    if not sources:
+        return ""
+    lines: list[str] = []
+    for src in sources:
+        sid = str(src.get("id") or "")
+        if not sid:
+            continue
+        label = src.get("title") or src.get("resource") or sid
+        lines.append(f"[^{sid}]: {label}")
+    return "\n".join(lines) + "\n"
+
+
+def _format_asset_footnotes(body: str, store: AssetStore) -> str:
+    """Render asset footnote definitions for ``¶ <id>`` references in *body*.
+
+    Scans *body* for asset references like ``¶ tab-a1f3`` and ``¶ fig-9c2e``,
+    collects the unique asset ids, looks up their summaries from *store*,
+    and emits ``[^<id>]: <summary>`` lines OKF-style.
+    """
+    if not body:
+        return ""
+    ids_found: set[str] = set()
+    for m in _ASSET_FOOTNOTE_RE.finditer(body):
+        ids_found.add(m.group(1))
+    if not ids_found:
+        return ""
+    lines: list[str] = []
+    for aid in sorted(ids_found):
+        record = store.get(aid)
+        if record is None:
+            continue
+        label = record.summary or record.kind.value or aid
+        lines.append(f"[^{aid}]: {label}")
+    return "\n".join(lines) + "\n"

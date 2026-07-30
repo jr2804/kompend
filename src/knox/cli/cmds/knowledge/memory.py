@@ -24,22 +24,6 @@ memory_app = typer.Typer(
 app.add_typer(memory_app)
 
 
-def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
-    """Resolve the memory store, project base directory, and acting user."""
-    overrides: dict[str, Any] = {}
-    if ctx and ctx.obj:
-        if ctx.obj.get("wiki_dir"):
-            overrides[PATHS_WIKI_DIR] = ctx.obj["wiki_dir"]
-        if ctx.obj.get("no_user_tracking"):
-            overrides[TRUST_USER_TRACKING] = False
-    cfg = resolve_config(cli_overrides=overrides)
-    paths = cfg.get("paths")
-    output_dir = Path(paths["output_dir"])
-    base_dir = output_dir.parent
-    embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
-    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)
-
-
 @memory_app.command("add", help="Add a query/answer pair to the memory log.")
 def memory_add(
     ctx: typer.Context,
@@ -119,3 +103,19 @@ def memory_synthesize(
         raise typer.Exit(1)
     finally:
         store.close()
+
+
+def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
+    """Resolve the memory store, project base directory, and acting user."""
+    overrides: dict[str, Any] = {}
+    if ctx and ctx.obj:
+        if ctx.obj.get("wiki_dir"):
+            overrides[PATHS_WIKI_DIR] = ctx.obj["wiki_dir"]
+        if ctx.obj.get("no_user_tracking"):
+            overrides[TRUST_USER_TRACKING] = False
+    cfg = resolve_config(cli_overrides=overrides)
+    paths = cfg.get("paths")
+    output_dir = Path(paths["output_dir"])
+    base_dir = output_dir.parent
+    embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
+    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)

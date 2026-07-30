@@ -16,6 +16,17 @@ from knox.core.config.keys import TRUST_USER_TRACKING
 _UNKNOWN = "unknown"
 
 
+def resolve_actor(cfg: ResolvedConfig) -> str:
+    """Return the acting user when tracking is enabled, else ``""``.
+
+    Respects ``trust.user_tracking`` (CLI/env/config precedence). An empty
+    return value means "do not record identity".
+    """
+    if not cfg.get(TRUST_USER_TRACKING, True):
+        return ""
+    return get_current_user()
+
+
 def get_current_user() -> str:
     """Return the current OS user, or ``"unknown"`` if undeterminable.
 
@@ -27,14 +38,3 @@ def get_current_user() -> str:
     except (ImportError, KeyError, OSError):
         # Cannot identify the OS user (no pwd module, user not in db, etc.).
         return _UNKNOWN
-
-
-def resolve_actor(cfg: ResolvedConfig) -> str:
-    """Return the acting user when tracking is enabled, else ``""``.
-
-    Respects ``trust.user_tracking`` (CLI/env/config precedence). An empty
-    return value means "do not record identity".
-    """
-    if not cfg.get(TRUST_USER_TRACKING, True):
-        return ""
-    return get_current_user()

@@ -48,25 +48,32 @@ class VerificationResult:
     claims: list[ClaimVerification] = field(default_factory=list)
 
 
-def _split_claims(text: str) -> list[str]:
-    return [s.strip() for s in _SENTENCE_RE.findall(text) if len(s.strip()) >= 12]
+def verify_wiki(
+    wiki: CompiledWiki,
+    output_dir: Path,
+    *,
+    agent: VerificationAgent,
+    verify_budget: int = 3000,
+    min_ngram: int = 3,
+) -> VerificationResult:
+    sources_dir = output_dir.parent / DEFAULTS["paths"]["sources_dir"]
+    if not sources_dir.exists():
+        sources_dir = output_dir
 
+    result = VerificationResult()
+    for node in wiki.nodes:
+        result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
 
-def _load_excerpt(source: str, sources_dir: Path) -> str:
-    target = Path(source)
-    if not target.is_absolute():
-        for root in (sources_dir.parent, sources_dir):
-            if (root / target).exists():
-                target = root / target
-                break
-        else:
-            target = sources_dir.parent / target
-    if target.exists():
-        try:
-            return target.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            logger.debug("Failed to read source for verification: %s", target, exc_info=True)
-    return ""
+    result.total = len(result.claims)
+    result.verified = sum(1 for c in result.claims if c.verdict == "supported")
+    result.unsupported = sum(1 for c in result.claims if c.is_unsupported())
+    if result.claims:
+        result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
+
+    report_path = VaultPaths(output_dir.parent).verification_path
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
+    return result
 
 
 def verify_node(
@@ -123,29 +130,22 @@ def verify_node(
     return results
 
 
-def verify_wiki(
-    wiki: CompiledWiki,
-    output_dir: Path,
-    *,
-    agent: VerificationAgent,
-    verify_budget: int = 3000,
-    min_ngram: int = 3,
-) -> VerificationResult:
-    sources_dir = output_dir.parent / DEFAULTS["paths"]["sources_dir"]
-    if not sources_dir.exists():
-        sources_dir = output_dir
+def _split_claims(text: str) -> list[str]:
+    return [s.strip() for s in _SENTENCE_RE.findall(text) if len(s.strip()) >= 12]
 
-    result = VerificationResult()
-    for node in wiki.nodes:
-        result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
 
-    result.total = len(result.claims)
-    result.verified = sum(1 for c in result.claims if c.verdict == "supported")
-    result.unsupported = sum(1 for c in result.claims if c.is_unsupported())
-    if result.claims:
-        result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
-
-    report_path = VaultPaths(output_dir.parent).verification_path
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
-    return result
+def _load_excerpt(source: str, sources_dir: Path) -> str:
+    target = Path(source)
+    if not target.is_absolute():
+        for root in (sources_dir.parent, sources_dir):
+            if (root / target).exists():
+                target = root / target
+                break
+        else:
+            target = sources_dir.parent / target
+    if target.exists():
+        try:
+            return target.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            logger.debug("Failed to read source for verification: %s", target, exc_info=True)
+    return ""

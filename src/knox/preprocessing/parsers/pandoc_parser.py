@@ -19,6 +19,16 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Format overrides
+# ---------------------------------------------------------------------------
+
+# Only formats pandoc cannot infer from the file extension alone.
+_EXTENSION_OVERRIDES: dict[FileExtension, str] = {
+    FileExtension.DOC: "docx",
+    FileExtension.TXT: "markdown",
+}
+
+# ---------------------------------------------------------------------------
 # Pandoc JSON AST types
 # ---------------------------------------------------------------------------
 
@@ -36,16 +46,6 @@ class _PandocBlockTag(StrEnum):
     PLAIN = "Plain"
     TABLE = "Table"
 
-
-# ---------------------------------------------------------------------------
-# Format overrides
-# ---------------------------------------------------------------------------
-
-# Only formats pandoc cannot infer from the file extension alone.
-_EXTENSION_OVERRIDES: dict[FileExtension, str] = {
-    FileExtension.DOC: "docx",
-    FileExtension.TXT: "markdown",
-}
 
 # ---------------------------------------------------------------------------
 # Block type mapping (pandoc JSON tag → KNOX element type)
@@ -191,6 +191,16 @@ def _parse_header_level(block: Any) -> int | None:
     return None
 
 
+def _extract_title(blocks: list[dict[str, object]]) -> str:
+    """Return the text of the first level-1 Header block, or empty string."""
+    for block in blocks:
+        if isinstance(block, dict) and block.get("t") == _PandocBlockTag.HEADER.value:
+            content = block.get("c")
+            if isinstance(content, list) and content and content[0] == 1:
+                return _render_block(block).lstrip("#").strip()
+    return ""
+
+
 def _render_block(block: Any) -> str:
     """Render a single JSON AST block to markdown via a JSON round-trip."""
     single = json.dumps(
@@ -202,16 +212,6 @@ def _render_block(block: Any) -> str:
     )
     text = pypandoc.convert_text(single, "markdown", format="json")
     return text.strip()
-
-
-def _extract_title(blocks: list[dict[str, object]]) -> str:
-    """Return the text of the first level-1 Header block, or empty string."""
-    for block in blocks:
-        if isinstance(block, dict) and block.get("t") == _PandocBlockTag.HEADER.value:
-            content = block.get("c")
-            if isinstance(content, list) and content and content[0] == 1:
-                return _render_block(block).lstrip("#").strip()
-    return ""
 
 
 def _factory(_options: ParserBuildOptions) -> PandocParser:

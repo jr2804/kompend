@@ -68,6 +68,23 @@ _NO_KEY_PLACEHOLDER = "api-key-not-set"
 _user_providers: dict[str, dict] = {}
 
 
+__all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
+
+
+# ── path 1: native pydantic-ai provider ────────────────────────────────
+
+
+class _NotNativeProvider(Exception):
+    """Provider is not natively known to pydantic-ai."""
+
+
+# ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────
+
+
+class _NotInCatalog(Exception):
+    """Provider is not in the models-dev catalog or has no API endpoint."""
+
+
 def set_user_providers(providers: dict[str, dict]) -> None:
     """Register user-defined providers for ``build_model()`` resolution.
 
@@ -158,13 +175,6 @@ def _split(model_string: str) -> tuple[str, str]:
     return model_string[:pos], model_string[pos + 1 :]
 
 
-# ── path 1: native pydantic-ai provider ────────────────────────────────
-
-
-class _NotNativeProvider(Exception):
-    """Provider is not natively known to pydantic-ai."""
-
-
 def _build_native(provider_id: str, model_name: str) -> Model:
     """Build via pydantic-ai's native provider/model dispatch.
 
@@ -199,13 +209,6 @@ def _build_ollama(model_name: str) -> OllamaModel:
     base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
     provider = OllamaProvider(base_url=base_url)
     return OllamaModel(model_name, provider=provider)
-
-
-# ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────
-
-
-class _NotInCatalog(Exception):
-    """Provider is not in the models-dev catalog or has no API endpoint."""
 
 
 def _build_catalog(provider_id: str, model_name: str) -> Model:
@@ -248,23 +251,6 @@ def _catalog_api_key(catalog: Provider) -> str:
     return _NO_KEY_PLACEHOLDER
 
 
-# ── path 3: user-defined provider (from [providers] in knox.toml) ──────
-
-
-def _resolve_env_ref(value: str) -> str:
-    """Resolve ``${VAR_NAME}`` references in a string to their env var value.
-
-    Returns the original string if the env var is unset or the pattern
-    doesn't match.
-    """
-
-    def _replace(m: re.Match) -> str:
-        var = m.group(1) or ""
-        return os.environ.get(var, m.group(0))
-
-    return re.sub(r"\$\{(\w+)\}", _replace, value)
-
-
 def _build_user_provider(provider_id: str, model_name: str) -> Model:
     """Build an OpenAI-compatible model from a user-defined provider config.
 
@@ -284,4 +270,18 @@ def _build_user_provider(provider_id: str, model_name: str) -> Model:
     return OpenAIChatModel(model_name, provider=provider)
 
 
-__all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
+# ── path 3: user-defined provider (from [providers] in knox.toml) ──────
+
+
+def _resolve_env_ref(value: str) -> str:
+    """Resolve ``${VAR_NAME}`` references in a string to their env var value.
+
+    Returns the original string if the env var is unset or the pattern
+    doesn't match.
+    """
+
+    def _replace(m: re.Match) -> str:
+        var = m.group(1) or ""
+        return os.environ.get(var, m.group(0))
+
+    return re.sub(r"\$\{(\w+)\}", _replace, value)

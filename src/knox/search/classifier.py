@@ -56,7 +56,6 @@ _OFFTOPIC_RESPONSE: str = (
 
 _STOP: frozenset[str] = frozenset(
     {
-        "the",
         "and",
         "for",
         "are",
@@ -108,12 +107,6 @@ _STOP: frozenset[str] = frozenset(
 )
 
 
-def _has_substance(query: str) -> bool:
-    tokens: list[str] = TOKEN_SPLIT_RE.split(query.strip().lower())
-    content_tokens: list[str] = [t for t in tokens if len(t) > 2 and t not in _STOP]
-    return len(content_tokens) >= 2
-
-
 _CLASSIFIERS: list[tuple[QueryIntent, list[re.Pattern[str]], str, bool]] = [
     (QueryIntent.OFFTOPIC, _OFFTOPIC_PATTERNS, _OFFTOPIC_RESPONSE, False),
     (QueryIntent.GREETING, _GREETING_PATTERNS, _GREETING_RESPONSE, True),
@@ -142,3 +135,9 @@ def classify(query: str, min_length: int = 2) -> ClassificationResult:
                     return ClassificationResult(intent, response=response)
 
     return ClassificationResult(QueryIntent.KNOWLEDGE, response=None)
+
+
+def _has_substance(query: str) -> bool:
+    tokens: list[str] = TOKEN_SPLIT_RE.split(query.strip().lower())
+    content_tokens: list[str] = [t for t in tokens if len(t) > 2 and t not in _STOP]
+    return len(content_tokens) >= 2

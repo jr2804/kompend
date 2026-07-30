@@ -13,65 +13,6 @@ from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
 
 # ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def sample_wiki() -> CompiledWiki:
-    """A CompiledWiki with a few nodes, edges, and TOC entries."""
-    nodes = [
-        WikiNode(
-            id="intro",
-            title="Introduction",
-            content="This is the introduction section.",
-            node_type="section",
-            source_chunks=["chunk-1", "chunk-2"],
-            metadata={"heading_level": 1},
-        ),
-        WikiNode(
-            id="concept-1",
-            title="Core Concepts",
-            content="Understanding the fundamental ideas.",
-            node_type="concept",
-            source_chunks=["chunk-3"],
-            metadata={"heading_level": 2},
-        ),
-        WikiNode(
-            id="procedure-1",
-            title="How to Use",
-            content="Step-by-step instructions.",
-            node_type="procedure",
-            source_chunks=None,
-            metadata={},
-        ),
-    ]
-    edges = [
-        {"source": "intro", "target": "concept-1", "relation": "contains"},
-        {"source": "concept-1", "target": "procedure-1", "relation": "prerequisite"},
-    ]
-    toc = [
-        {"id": "intro", "title": "Introduction"},
-        {"id": "concept-1", "title": "Core Concepts"},
-        {"id": "procedure-1", "title": "How to Use"},
-    ]
-    metadata = {"title": "Test Wiki", "description": "A wiki for testing"}
-    return CompiledWiki(nodes=nodes, edges=edges, toc=toc, metadata=metadata)
-
-
-@pytest.fixture
-def empty_wiki() -> CompiledWiki:
-    """A CompiledWiki with no nodes, edges, or TOC."""
-    return CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
-
-
-@pytest.fixture
-def temp_output(tmp_path: Path) -> Path:
-    """Temporary output directory."""
-    return tmp_path / "output"
-
-
-# ---------------------------------------------------------------------------
 # MarkdownWriter Tests
 # ---------------------------------------------------------------------------
 
@@ -488,3 +429,62 @@ class TestTypstWriter:
         writer = TypstWriter()
         result_path = writer.write(sample_wiki, tmp_path / "nested" / "path")
         assert result_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_wiki() -> CompiledWiki:
+    """A CompiledWiki with a few nodes, edges, and TOC entries."""
+    nodes = [
+        WikiNode(
+            id="intro",
+            title="Introduction",
+            content="This is the introduction section.",
+            node_type="section",
+            source_chunks=["chunk-1", "chunk-2"],
+            metadata={"heading_level": 1},
+        ),
+        WikiNode(
+            id="concept-1",
+            title="Core Concepts",
+            content="Understanding the fundamental ideas.",
+            node_type="concept",
+            source_chunks=["chunk-3"],
+            metadata={"heading_level": 2},
+        ),
+        WikiNode(
+            id="procedure-1",
+            title="How to Use",
+            content="Step-by-step instructions.",
+            node_type="procedure",
+            source_chunks=None,
+            metadata={},
+        ),
+    ]
+    edges = [
+        {"source": "intro", "target": "concept-1", "relation": "contains"},
+        {"source": "concept-1", "target": "procedure-1", "relation": "prerequisite"},
+    ]
+    toc = [
+        {"id": "intro", "title": "Introduction"},
+        {"id": "concept-1", "title": "Core Concepts"},
+        {"id": "procedure-1", "title": "How to Use"},
+    ]
+    metadata = {"title": "Test Wiki", "description": "A wiki for testing"}
+    return CompiledWiki(nodes=nodes, edges=edges, toc=toc, metadata=metadata)
+
+
+@pytest.fixture
+def empty_wiki() -> CompiledWiki:
+    """A CompiledWiki with no nodes, edges, or TOC."""
+    return CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
+
+
+@pytest.fixture
+def temp_output(tmp_path: Path) -> Path:
+    """Temporary output directory."""
+    return tmp_path / "output"

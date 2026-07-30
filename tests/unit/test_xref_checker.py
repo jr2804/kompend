@@ -19,50 +19,6 @@ from knox.core.resolution.xref_checker import (
 )
 
 
-def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
-    return Chunk(
-        id=cid,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[],
-        source_file=Path(source),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) -> ChunkNode:
-    return ChunkNode(
-        id=nid,
-        parent_id=parent,
-        depth=len(heading) + 1,
-        heading_path=heading,
-        chunk=_make_chunk(nid, text),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _table_node(nid: str, parent: str, table: StructuredTable, heading: tuple[str, ...] = ()) -> ChunkNode:
-    return ChunkNode(
-        id=nid,
-        parent_id=parent,
-        depth=len(heading) + 1,
-        heading_path=heading,
-        structured=table,
-        token_count=1,
-    )
-
-
-def _leaf_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
-    root = ChunkNode(id="root", depth=0, children_ids=[n.id for n in nodes])
-    nodes.insert(0, root)
-    nodes_by_id = {n.id: n for n in nodes}
-    return ChunkTree(
-        root_id="root",
-        nodes=nodes_by_id,
-        source_file=Path(source),
-    )
-
-
 class TestHelpers:
     def test_extract_heading_number(self) -> None:
         assert _extract_heading_number("3.2 Methodology") == "3.2"
@@ -241,3 +197,47 @@ class TestCrossReferenceChecker:
         assert result.entity_count >= 1
         assert result.resolved_count >= 0
         assert len(result.issues) >= 2
+
+
+def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) -> ChunkNode:
+    return ChunkNode(
+        id=nid,
+        parent_id=parent,
+        depth=len(heading) + 1,
+        heading_path=heading,
+        chunk=_make_chunk(nid, text),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
+    return Chunk(
+        id=cid,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[],
+        source_file=Path(source),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _table_node(nid: str, parent: str, table: StructuredTable, heading: tuple[str, ...] = ()) -> ChunkNode:
+    return ChunkNode(
+        id=nid,
+        parent_id=parent,
+        depth=len(heading) + 1,
+        heading_path=heading,
+        structured=table,
+        token_count=1,
+    )
+
+
+def _leaf_tree(nodes: list[ChunkNode], source: str = "doc.md") -> ChunkTree:
+    root = ChunkNode(id="root", depth=0, children_ids=[n.id for n in nodes])
+    nodes.insert(0, root)
+    nodes_by_id = {n.id: n for n in nodes}
+    return ChunkTree(
+        root_id="root",
+        nodes=nodes_by_id,
+        source_file=Path(source),
+    )

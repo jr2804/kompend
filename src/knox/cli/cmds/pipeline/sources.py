@@ -22,50 +22,6 @@ from knox.logging import get_console, get_logger
 logger = get_logger(__name__)
 
 
-def _load_all_cache_entries(cache_dir: Path) -> dict[str, dict[str, Any]]:
-    """Load all per-file parse cache entries into a dict keyed by source_file."""
-    entries: dict[str, dict[str, Any]] = {}
-    for cache_path in sorted(cache_dir.glob("*.json")):
-        try:
-            data = json.loads(cache_path.read_text(encoding="utf-8"))
-            source_file = data.get("source_file") or data.get("source_path", "")
-            if source_file:
-                entries[source_file] = data
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not load cache entry %s: %s", cache_path.name, exc)
-    return entries
-
-
-def _get_source_tags(file_path: str, cache_data: dict[str, Any]) -> list[str]:
-    """Extract tags for a source file from the parse cache."""
-    entry = cache_data.get(file_path, {})
-    meta = entry.get("metadata", {})
-    return meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
-
-
-def _find_cache_path(cache_dir: Path, file_path: str) -> Path | None:
-    """Find the cache file for a given source file path.
-
-    Uses the stem of the filename to glob for matching cache entries.
-    Returns the first match, or None if not found.
-    """
-    stem = Path(file_path).stem
-    matches = sorted(cache_dir.glob(parse_cache_glob(stem)))
-    if not matches:
-        return None
-    # If multiple matches (same stem, different content), verify by source_file field.
-    if len(matches) == 1:
-        return matches[0]
-    for m in matches:
-        try:
-            data = json.loads(m.read_text(encoding="utf-8"))
-            if data.get("source_file") == file_path or data.get("source_path") == file_path:
-                return m
-        except (json.JSONDecodeError, OSError):
-            continue
-    return matches[0]  # fallback: first match
-
-
 @app.command(name="sources")
 def sources_list(
     ctx: typer.Context,
@@ -115,6 +71,61 @@ def sources_list(
         get_console().print(f"  {file_path}  [{tag_str}]")
 
 
+def _load_all_cache_entries(cache_dir: Path) -> dict[str, dict[str, Any]]:
+    """Load all per-file parse cache entries into a dict keyed by source_file."""
+    entries: dict[str, dict[str, Any]] = {}
+    for cache_path in sorted(cache_dir.glob("*.json")):
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            source_file = data.get("source_file") or data.get("source_path", "")
+            if source_file:
+                entries[source_file] = data
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not load cache entry %s: %s", cache_path.name, exc)
+    return entries
+
+
+def _get_source_tags(file_path: str, cache_data: dict[str, Any]) -> list[str]:
+    """Extract tags for a source file from the parse cache."""
+    entry = cache_data.get(file_path, {})
+    meta = entry.get("metadata", {})
+    return meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
+
+
+@app.command(name="sources-tag")
+def sources_tag(
+    ctx: typer.Context,
+    file_path: str,
+    tag: str,
+    config: str | None = None,
+) -> None:
+    """Add a tag to an ingested source file.
+
+    The tag is persisted in the parse cache and will propagate to
+    wiki nodes on the next compile.
+    """
+    cfg = resolve_config(config_path=config)
+    _, _, cache_dir, _ = resolve_project_paths(cfg)
+    _mutate_tags(cache_dir, file_path, tag, add=True)
+
+
+@app.command(name="sources-untag")
+def sources_untag(
+    ctx: typer.Context,
+    file_path: str,
+    tag: str,
+    config: str | None = None,
+) -> None:
+    """Remove a tag from an ingested source file.
+
+    The tag is removed from the parse cache. Wiki nodes will need
+    to be recompiled to reflect the change.
+    """
+    cfg = resolve_config(config_path=config)
+    _, _, cache_dir, _ = resolve_project_paths(cfg)
+    _mutate_tags(cache_dir, file_path, tag, add=False)
+
+
 def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
     """Add or remove a tag on a source file's cache entry."""
     cache_path = _find_cache_path(cache_dir, file_path)
@@ -155,35 +166,24 @@ def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
     get_console().print(f"[green]{action} tag '{tag}' on {file_path}[/]")
 
 
-@app.command(name="sources-tag")
-def sources_tag(
-    ctx: typer.Context,
-    file_path: str,
-    tag: str,
-    config: str | None = None,
-) -> None:
-    """Add a tag to an ingested source file.
+def _find_cache_path(cache_dir: Path, file_path: str) -> Path | None:
+    """Find the cache file for a given source file path.
 
-    The tag is persisted in the parse cache and will propagate to
-    wiki nodes on the next compile.
+    Uses the stem of the filename to glob for matching cache entries.
+    Returns the first match, or None if not found.
     """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=True)
-
-
-@app.command(name="sources-untag")
-def sources_untag(
-    ctx: typer.Context,
-    file_path: str,
-    tag: str,
-    config: str | None = None,
-) -> None:
-    """Remove a tag from an ingested source file.
-
-    The tag is removed from the parse cache. Wiki nodes will need
-    to be recompiled to reflect the change.
-    """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=False)
+    stem = Path(file_path).stem
+    matches = sorted(cache_dir.glob(parse_cache_glob(stem)))
+    if not matches:
+        return None
+    # If multiple matches (same stem, different content), verify by source_file field.
+    if len(matches) == 1:
+        return matches[0]
+    for m in matches:
+        try:
+            data = json.loads(m.read_text(encoding="utf-8"))
+            if data.get("source_file") == file_path or data.get("source_path") == file_path:
+                return m
+        except (json.JSONDecodeError, OSError):
+            continue
+    return matches[0]  # fallback: first match

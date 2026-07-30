@@ -37,39 +37,6 @@ class ResponsePostprocessor(Protocol):
         ...
 
 
-# ── Helper functions ────────────────────────────────────────────────────
-
-
-def _scrub_dict_strings(data: dict[str, Any], scrub_fn: Callable[[str], str]) -> dict[str, Any]:
-    """Recursively apply scrub_fn to all string values in a dict.
-
-    Non-string values (int, bool, None, list, nested dict) are passed through
-    unchanged. Lists are walked recursively to scrub strings inside them.
-    """
-    result: dict[str, Any] = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            result[key] = scrub_fn(value)
-        elif isinstance(value, dict):
-            result[key] = _scrub_dict_strings(value, scrub_fn)
-        elif isinstance(value, list):
-            result[key] = [_scrub_value(item, scrub_fn) for item in value]
-        else:
-            result[key] = value
-    return result
-
-
-def _scrub_value(value: Any, scrub_fn: Callable[[str], str]) -> Any:
-    """Apply scrub_fn to strings; pass through other types."""
-    if isinstance(value, str):
-        return scrub_fn(value)
-    if isinstance(value, dict):
-        return _scrub_dict_strings(value, scrub_fn)
-    if isinstance(value, list):
-        return [_scrub_value(item, scrub_fn) for item in value]
-    return value
-
-
 # ── Post-processor implementations ──────────────────────────────────────
 
 
@@ -323,6 +290,39 @@ class ResponsePipeline:
         self._processors.insert(index, processor)
 
 
+# ── Helper functions ────────────────────────────────────────────────────
+
+
+def _scrub_dict_strings(data: dict[str, Any], scrub_fn: Callable[[str], str]) -> dict[str, Any]:
+    """Recursively apply scrub_fn to all string values in a dict.
+
+    Non-string values (int, bool, None, list, nested dict) are passed through
+    unchanged. Lists are walked recursively to scrub strings inside them.
+    """
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            result[key] = scrub_fn(value)
+        elif isinstance(value, dict):
+            result[key] = _scrub_dict_strings(value, scrub_fn)
+        elif isinstance(value, list):
+            result[key] = [_scrub_value(item, scrub_fn) for item in value]
+        else:
+            result[key] = value
+    return result
+
+
+def _scrub_value(value: Any, scrub_fn: Callable[[str], str]) -> Any:
+    """Apply scrub_fn to strings; pass through other types."""
+    if isinstance(value, str):
+        return scrub_fn(value)
+    if isinstance(value, dict):
+        return _scrub_dict_strings(value, scrub_fn)
+    if isinstance(value, list):
+        return [_scrub_value(item, scrub_fn) for item in value]
+    return value
+
+
 # ── Plugin system ────────────────────────────────────────────────────────
 
 
@@ -345,11 +345,6 @@ def register_postprocessor(name: str) -> Callable[[type[ResponsePostprocessor]],
         return processor_class
 
     return decorator
-
-
-def get_registered_processor(name: str) -> type[ResponsePostprocessor] | None:
-    """Retrieve a registered post-processor by name."""
-    return _registry.get(name)
 
 
 def list_registered_processors() -> list[str]:
@@ -376,6 +371,11 @@ def pipeline_from_registry(names: Sequence[str], **kwargs: Any) -> ResponsePipel
                 instance_kwargs[key[len(prefix) :]] = val
         processors.append(processor_class(**instance_kwargs))
     return ResponsePipeline(processors)
+
+
+def get_registered_processor(name: str) -> type[ResponsePostprocessor] | None:
+    """Retrieve a registered post-processor by name."""
+    return _registry.get(name)
 
 
 # Register built-in processors

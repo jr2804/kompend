@@ -33,6 +33,42 @@ from knox.preprocessing.parsers.pandoc_parser import PandocParser
 from knox.preprocessing.parsers.web_parser import WebPageParser
 
 
+class TestWebPageParser:
+    """knox-4sq5: WebPageParser registered as 'web' backend, handles .html."""
+
+    def test_web_backend_registered(self) -> None:
+        assert "web" in get_registered_parsers()[0]["name"] or any(p["name"] == "web" for p in get_registered_parsers())
+
+    def test_web_routes_html_before_docling(self) -> None:
+        router = build_default_router(names="web,liteparse,docling")
+        assert isinstance(router.route(Path("page.html")), WebPageParser)
+        # PDF still goes to liteparse.
+        assert isinstance(router.route(Path("paper.pdf")), LiteParseParser)
+
+    def test_web_parser_clean_text_from_html(self, tmp_path: Path) -> None:
+        """WebPageParser extracts clean text, not raw HTML tags."""
+        html_file = tmp_path / "test.html"
+        html_file.write_text(
+            "<html><body><h1>Attention Mechanisms</h1><p>Self-attention allows models to relate positions.</p></body></html>",
+            encoding="utf-8",
+        )
+
+        parser = WebPageParser()
+        doc = parser.parse(html_file)
+        assert isinstance(doc, ParsedDocument)
+        assert doc.source_file == html_file
+        all_text = " ".join(e.content for e in doc.elements if isinstance(e.content, str))
+        assert "Attention Mechanisms" in all_text or "attention" in all_text.lower()
+        assert "<html>" not in all_text
+        assert "<p>" not in all_text
+
+    def test_web_parser_can_parse_html_only(self, tmp_path: Path) -> None:
+        parser = WebPageParser()
+        assert parser.can_parse(Path("page.html"))
+        assert parser.can_parse(Path("page.HTML"))
+        assert not parser.can_parse(Path("paper.pdf"))
+
+
 def test_builtin_backends_registered() -> None:
     assert {"docling", "liteparse", "pandoc"}.issubset(PARSER_BACKENDS)
 
@@ -155,62 +191,6 @@ def test_build_default_router_always_appends_pandoc() -> None:
     assert any(isinstance(p, PandocParser) for p in router._parsers)
 
 
-class TestWebPageParser:
-    """knox-4sq5: WebPageParser registered as 'web' backend, handles .html."""
-
-    def test_web_backend_registered(self) -> None:
-        assert "web" in get_registered_parsers()[0]["name"] or any(p["name"] == "web" for p in get_registered_parsers())
-
-    def test_web_routes_html_before_docling(self) -> None:
-        router = build_default_router(names="web,liteparse,docling")
-        assert isinstance(router.route(Path("page.html")), WebPageParser)
-        # PDF still goes to liteparse.
-        assert isinstance(router.route(Path("paper.pdf")), LiteParseParser)
-
-    def test_web_parser_clean_text_from_html(self, tmp_path: Path) -> None:
-        """WebPageParser extracts clean text, not raw HTML tags."""
-        html_file = tmp_path / "test.html"
-        html_file.write_text(
-            "<html><body><h1>Attention Mechanisms</h1><p>Self-attention allows models to relate positions.</p></body></html>",
-            encoding="utf-8",
-        )
-
-        parser = WebPageParser()
-        doc = parser.parse(html_file)
-        assert isinstance(doc, ParsedDocument)
-        assert doc.source_file == html_file
-        all_text = " ".join(e.content for e in doc.elements if isinstance(e.content, str))
-        assert "Attention Mechanisms" in all_text or "attention" in all_text.lower()
-        assert "<html>" not in all_text
-        assert "<p>" not in all_text
-
-    def test_web_parser_can_parse_html_only(self, tmp_path: Path) -> None:
-        parser = WebPageParser()
-        assert parser.can_parse(Path("page.html"))
-        assert parser.can_parse(Path("page.HTML"))
-        assert not parser.can_parse(Path("paper.pdf"))
-
-
-# ── Surrogate scrubbing (ParserRouter.parse boundary) ─────────────────────
-
-
-def _make_doc_with_surrogates() -> ParsedDocument:
-    return ParsedDocument(
-        source_file=Path("broken.pdf"),
-        elements=[
-            DocumentElement(
-                type=ElementType.TEXT,
-                content="ok \ud800 mid \udfff end",
-                metadata={"caption": ["fig \udc80"]},
-            ),
-            DocumentElement(type=ElementType.TABLE, content=[["a\ud900", "b"]]),
-        ],
-        title="t\ud83d",
-        author="a\udead",
-        metadata={"nested": {"v": "x\udabc"}},
-    )
-
-
 def test_scrub_document_replaces_lone_surrogates() -> None:
     doc = scrub_document(_make_doc_with_surrogates())
     assert doc.elements[0].content == "ok \ufffd mid \ufffd end"
@@ -235,3 +215,23 @@ def test_router_parse_scrubs_parser_output(tmp_path: Path) -> None:
     router.register(FakeParser())
     doc = router.parse(tmp_path / "broken.pdf")
     assert doc.elements[0].content == "ok \ufffd mid \ufffd end"
+
+
+# ── Surrogate scrubbing (ParserRouter.parse boundary) ─────────────────────
+
+
+def _make_doc_with_surrogates() -> ParsedDocument:
+    return ParsedDocument(
+        source_file=Path("broken.pdf"),
+        elements=[
+            DocumentElement(
+                type=ElementType.TEXT,
+                content="ok \ud800 mid \udfff end",
+                metadata={"caption": ["fig \udc80"]},
+            ),
+            DocumentElement(type=ElementType.TABLE, content=[["a\ud900", "b"]]),
+        ],
+        title="t\ud83d",
+        author="a\udead",
+        metadata={"nested": {"v": "x\udabc"}},
+    )
