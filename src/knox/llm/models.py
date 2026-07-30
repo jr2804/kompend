@@ -257,6 +257,7 @@ def _resolve_env_ref(value: str) -> str:
     Returns the original string if the env var is unset or the pattern
     doesn't match.
     """
+
     def _replace(m: re.Match) -> str:
         var = m.group(1) or ""
         return os.environ.get(var, m.group(0))

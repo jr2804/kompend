@@ -119,11 +119,6 @@ class TestLooksAbsolute:
 class TestScanVault:
     """End-to-end scan of a fake ``.knox/`` tree."""
 
-    def _make_vault(self, tmp_path: Path) -> Path:
-        knox = tmp_path / ".knox"
-        knox.mkdir()
-        return tmp_path
-
     def test_clean_vault_no_violations(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
         (vault / ".knox" / "references.json").write_text(
@@ -204,3 +199,8 @@ class TestScanVault:
             encoding="utf-8",
         )
         assert _SCANNER.main(["--vault", str(vault)]) == 0
+
+    def _make_vault(self, tmp_path: Path) -> Path:
+        knox = tmp_path / ".knox"
+        knox.mkdir()
+        return tmp_path

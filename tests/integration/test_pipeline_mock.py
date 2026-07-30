@@ -174,10 +174,7 @@ def test_vault_files_have_v2_frontmatter(
     out_dir = tmp_path / "vault"
     writer.write(wiki, out_dir)
 
-    md_files = [
-        f for f in out_dir.rglob("*.md")
-        if f.name not in {"index.md", "log.md"}
-    ]
+    md_files = [f for f in out_dir.rglob("*.md") if f.name not in {"index.md", "log.md"}]
     assert md_files, "No page markdown files written to vault"
 
     for f in md_files:

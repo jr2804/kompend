@@ -66,9 +66,7 @@ def _docling_available() -> bool:
 
 #: Pick the fastest available parser up-front so every test gets the same
 #: backend (no surprise fallback mid-run).
-_TEST_PARSER_CLS: type[BaseParser] | None = (
-    LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
-)
+_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
 _PARSER_OK = _TEST_PARSER_CLS is not None
 
 _skip_no_parser = pytest.mark.skipif(

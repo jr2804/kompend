@@ -187,7 +187,6 @@ class TestHistoryCompaction:
 
     def test_estimate_history_tokens_sums_part_contents(self) -> None:
 
-
         history = [
             ModelRequest(parts=[UserPromptPart(content="hello world!")]),  # 12 chars → 3 tokens
             ModelResponse(parts=[TextPart(content="reply here")]),  # 10 chars → 2 tokens
@@ -196,7 +195,6 @@ class TestHistoryCompaction:
         assert _estimate_history_tokens(history) == 5
 
     def test_compact_drops_oldest_pair_until_under_budget(self) -> None:
-
 
         # Two pairs of (request, response). Budget set so the oldest pair
         # must be dropped but the most-recent pair survives.
@@ -215,7 +213,6 @@ class TestHistoryCompaction:
         assert first_content.startswith("a")
 
     def test_compact_keeps_at_least_last_pair_when_still_over_budget(self) -> None:
-
 
         # One pair that alone exceeds the budget. Compaction must not
         # delete everything — the agent needs at least one pair to continue.
@@ -271,8 +268,7 @@ class TestExtractIncrementalHistoryCompaction:
         compiler._cache_store.get = MagicMock(return_value=cached_ext)
 
         # Patch _synthetic_history_response so we can assert it was called.
-        with patch.object(ext_module, "_synthetic_history_response") as synth_mock, \
-             patch.object(ext_module, "_compact_history_inplace") as compact_mock:
+        with patch.object(ext_module, "_synthetic_history_response") as synth_mock, patch.object(ext_module, "_compact_history_inplace") as compact_mock:
             results, stopped = ext_module.extract_incremental(
                 compiler,
                 source="doc.md",

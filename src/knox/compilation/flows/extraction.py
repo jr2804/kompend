@@ -437,8 +437,7 @@ def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
         del history[:drop_n]
     if _estimate_history_tokens(history) > max_tokens and len(history) >= 2:
         logger.debug(
-            "TwoPhase: history still over budget after compaction "
-            "(%d tokens, %d messages) — keeping tail",
+            "TwoPhase: history still over budget after compaction (%d tokens, %d messages) — keeping tail",
             _estimate_history_tokens(history),
             len(history),
         )
