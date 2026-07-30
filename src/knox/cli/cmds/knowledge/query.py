@@ -94,6 +94,7 @@ def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bo
 @app.command(name="query")
 def query_cmd(
     ctx: typer.Context,
+    query: QueryText,
     wiki_dir: str | None = typer.Option(
         None,
         "--wiki-dir",
@@ -101,7 +102,6 @@ def query_cmd(
         help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
         envvar="KNOX_WIKI_DIR",
     ),
-    query: QueryText,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
     format: QueryFormatOption = None,

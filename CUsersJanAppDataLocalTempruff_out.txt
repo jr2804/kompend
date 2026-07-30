@@ -1,4 +1,0 @@
-src\knox\cli\cmds\pipeline\pipeline.py:147:5: too-many-positional-arguments: Too many positional arguments (31 > 5)
-src\knox\cli\cmds\pipeline\pipeline.py:324:5: too-many-positional-arguments: Too many positional arguments (14 > 5)
-src\knox\cli\cmds\pipeline\pipeline.py:355:25: undefined-name: Undefined name `wiki_dir`
-Found 3 errors.
