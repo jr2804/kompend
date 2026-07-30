@@ -1,4 +1,3 @@
-# csort: off
 """Thread-safe LLM provider credential store for ACP providers/set.
 
 Stores the LLM endpoint configuration received via ACP ``providers/set``
@@ -14,8 +13,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from aenum import MultiValueEnum
 
-class LlmApiType(StrEnum):
+
+class LlmApiType(StrEnum, MultiValueEnum):
     """Well-known ACP ``apiType`` identifiers.
 
     The set of provider identifiers accepted by ``providers/set`` and
@@ -23,10 +24,13 @@ class LlmApiType(StrEnum):
     on the wire; we never re-type them at the call site.
     """
 
+    def __init__(self, value: str, *aliases: str) -> None:
+        self.prefix = aliases[0] if aliases else value
+
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     AZURE = "azure"
-    VERTEX = "vertex"
+    VERTEX = "vertex", "vertex_ai"
     BEDROCK = "bedrock"
 
 
@@ -40,29 +44,6 @@ class ProviderConfig:
     model: str | None = None
 
 
-# ACP apiType → provider prefix. Only entries whose prefix
-# differs from the ACP apiType need to be listed explicitly; lookups of any
-# other apiType — including unknown custom protocols — fall through to the
-# identity mapping (the apiType is its own prefix).
-_LITELLM_PREFIX_OVERRIDES: dict[LlmApiType, str] = {
-    LlmApiType.VERTEX: "vertex_ai",
-}
-
-
-def _provider_prefix(api_type: str) -> str:
-    """Return the provider prefix for an ACP ``api_type``.
-
-    Unknown ``api_type`` values pass through unchanged, so custom protocols
-    Just Work without registering an entry here. Used as the identity
-    default for ``LLM_PROVIDER_MAP`` lookups.
-    """
-    try:
-        key = LlmApiType(api_type)
-    except ValueError:
-        return api_type
-    return _LITELLM_PREFIX_OVERRIDES.get(key, key)
-
-
 class _IdentityDefaultDict(dict[str, str]):
     """``dict`` subclass that returns the requested key as the default value.
 
@@ -74,6 +55,19 @@ class _IdentityDefaultDict(dict[str, str]):
 
     def __missing__(self, key: str) -> str:  # type: ignore[override]
         return key
+
+
+def _provider_prefix(api_type: str) -> str:
+    """Return the provider prefix for an ACP ``api_type``.
+
+    Unknown ``api_type`` values pass through unchanged, so custom protocols
+    Just Work without registering an entry here. Used as the identity
+    default for ``LLM_PROVIDER_MAP`` lookups.
+    """
+    try:
+        return LlmApiType(api_type).prefix
+    except ValueError:
+        return api_type
 
 
 # Map of well-known apiTypes to their provider prefixes. Used by

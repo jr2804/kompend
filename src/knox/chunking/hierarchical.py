@@ -20,7 +20,6 @@ from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules
 
 from knox.chunking.extractors import extract_structured
 from knox.core.models import (
-    ATOMIC_TYPES,
     Chunk,
     ChunkNode,
     ChunkStrategy,
@@ -151,7 +150,7 @@ class _TreeBuilder:
         for idx, el in enumerate(self._doc.elements):
             if el.type == ElementType.HEADING:
                 self._handle_heading(idx, el)
-            elif el.type in ATOMIC_TYPES:
+            elif el.type.is_atomic:
                 self._handle_atomic(idx, el)
             elif el.type == ElementType.METADATA:
                 continue

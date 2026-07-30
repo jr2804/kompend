@@ -21,7 +21,6 @@ from knox.core.models.citations import (
 )
 from knox.core.models.elements import DocumentElement, ParsedDocument
 from knox.core.models.enums import (
-    ATOMIC_TYPES,
     ChunkField,
     ChunkNodeField,
     ChunkStrategy,
@@ -54,7 +53,6 @@ from knox.core.models.wiki import (
 )
 
 __all__ = [
-    "ATOMIC_TYPES",
     "CHUNK_TREE_CACHE_VERSION",
     "LIFECYCLE_ARCHIVED",
     "LIFECYCLE_DRAFT",

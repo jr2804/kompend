@@ -1,4 +1,3 @@
-# csort: off — module-level constants reference enums/classes defined later
 """StrEnum contracts and element-type definitions for KNOX data models.
 
 Every dict key, discriminator, or schema column name that crosses a file
@@ -10,6 +9,20 @@ from __future__ import annotations
 from enum import StrEnum
 
 from aenum import MultiValueEnum
+
+__all__ = [
+    "CacheDeps",
+    "ChunkField",
+    "ChunkNodeField",
+    "ChunkStrategy",
+    "ChunkTreeField",
+    "EdgeField",
+    "ElementType",
+    "ExtractionField",
+    "MetadataField",
+    "StructuredField",
+    "WikiField",
+]
 
 
 class AssetField(StrEnum):
@@ -94,6 +107,22 @@ class ChunkNodeField(StrEnum):
     TOKEN_COUNT = "token_count"  # noqa: S105
 
 
+class ChunkStrategy(StrEnum):
+    """How a document was chunked — determines downstream processing depth.
+
+    - ``SINGLE_PASS``: document fits in context window; trivial tree (root +
+      leaves). No summaries needed.
+    - ``TWO_LEVEL``: document is <= 8× context window; root + section nodes +
+      leaves. Root-level summary generated for navigation.
+    - ``MULTI_RESOLUTION``: document is >> 8× context window; full-depth tree
+      with summaries at every internal node for multi-resolution navigation.
+    """
+
+    SINGLE_PASS = "single_pass"  # noqa: S105
+    TWO_LEVEL = "two_level"
+    MULTI_RESOLUTION = "multi_resolution"
+
+
 class ChunkTreeField(StrEnum):
     """Dict key contract for ``ChunkTree`` JSON serialization."""
 
@@ -132,8 +161,10 @@ class ElementType(StrEnum):
     CODE = "code"
     METADATA = "metadata"
 
-
-ATOMIC_TYPES: frozenset[ElementType] = frozenset({ElementType.TABLE, ElementType.IMAGE, ElementType.FORMULA, ElementType.CODE})
+    @property
+    def is_atomic(self) -> bool:
+        """Whether this element type must never be split during chunking."""
+        return self.value in {"table", "image", "formula", "code"}
 
 
 class ExtractionField(StrEnum):
@@ -235,38 +266,3 @@ class WikiField(StrEnum):
     LLM_DEGRADATION = "llm_degradation"
     TIER_TIMINGS = "tier_timings"
     METADATA = "metadata"
-
-
-"""Element types that must never be split during chunking."""
-
-
-__all__ = [
-    "ATOMIC_TYPES",
-    "CacheDeps",
-    "ChunkField",
-    "ChunkNodeField",
-    "ChunkStrategy",
-    "ChunkTreeField",
-    "EdgeField",
-    "ElementType",
-    "ExtractionField",
-    "MetadataField",
-    "StructuredField",
-    "WikiField",
-]
-
-
-class ChunkStrategy(StrEnum):
-    """How a document was chunked — determines downstream processing depth.
-
-    - ``SINGLE_PASS``: document fits in context window; trivial tree (root +
-      leaves). No summaries needed.
-    - ``TWO_LEVEL``: document is <= 8× context window; root + section nodes +
-      leaves. Root-level summary generated for navigation.
-    - ``MULTI_RESOLUTION``: document is >> 8× context window; full-depth tree
-      with summaries at every internal node for multi-resolution navigation.
-    """
-
-    SINGLE_PASS = "single_pass"  # noqa: S105
-    TWO_LEVEL = "two_level"
-    MULTI_RESOLUTION = "multi_resolution"

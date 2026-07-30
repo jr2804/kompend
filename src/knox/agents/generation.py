@@ -1,4 +1,3 @@
-# csort: off
 r"""GenerationAgent — PydanticAI wrapper for the two-phase generation stage.
 
 Replaces the raw direct LLM call in ``knox/compilation/two_phase.py``
