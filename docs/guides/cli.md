@@ -16,6 +16,9 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox lint history` | Show past lint runs and score trends |
 | `knox lint prune` | Remove old lint history entries |
 | `knox review` | Manage the review queue |
+| `knox sources list` | List ingested source files with their tags (`--tags` filter) |
+| `knox sources tag` | Add a tag to an ingested source file |
+| `knox sources untag` | Remove a tag from an ingested source file |
 | `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox capture` | LLM-extract knowledge items from free text (`--tag`) |
 | `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`) |
@@ -369,6 +372,28 @@ reference the old paths. Updated locations:
 
 A report is written to `.knox/last_organize.json`. Files without an
 extraction summary are left in place at the top level.
+
+## `knox sources`
+
+Manage ingested source files and the tags attached to them. Tags are the same
+`metadata.tags` field written by `--tag` at ingestion time; changes here are
+persisted in the per-file parse cache under `.knox/cache/` and propagate to
+wiki nodes on the next `knox compile`.
+
+```bash
+# List every ingested source with its tags
+knox sources list
+
+# List only sources carrying a tag (same AND/OR group semantics as query --tags)
+knox sources list --tags paper,attention --tags transformer
+
+# Add / remove a tag on an already-ingested source (no re-ingest needed)
+knox sources tag sources/paper.pdf attention
+knox sources untag sources/paper.pdf attention
+```
+
+The `file_path` argument matches the `source_file` recorded at ingestion —
+`knox sources list` shows the exact value to use.
 
 ## Environment Variables
 

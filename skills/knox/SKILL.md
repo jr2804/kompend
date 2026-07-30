@@ -80,6 +80,18 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
 
+### Source Management
+
+| Command | Purpose | Key Flags |
+|---------|---------|------------|
+| `knox sources list` | List ingested source files with their tags | `--tags <group>` (repeatable; comma-separated AND within a group, multiple values OR across groups) |
+| `knox sources tag <file> <tag>` | Add a tag to an already-ingested source | `--config <toml>` |
+| `knox sources untag <file> <tag>` | Remove a tag from an ingested source | `--config <toml>` |
+
+Tags are the same `metadata.tags` field written by `ingest`/`compile --tag`;
+they persist in the per-source parse cache and propagate to wiki nodes on the
+next `knox compile`. No re-ingest required.
+
 ### Query & Retrieval
 
 | Command | Purpose | Key Flags |
