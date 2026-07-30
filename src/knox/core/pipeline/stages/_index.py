@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from knox.core.pipeline.config import TIER_LEVEL
+from knox.core.pipeline.config import Tier
 from knox.preprocessing.parsers._registry import get_all_extensions
 
 
@@ -47,7 +47,7 @@ def detect_resume_tier(pipeline: Any) -> str | None:
     if min_tier < 1:
         return None
     resume_level = min_tier + 1
-    for tier, level in TIER_LEVEL.items():
-        if level == resume_level:
-            return tier
+    for ti in Tier.all_tiers():
+        if ti.level == resume_level:
+            return ti.tier
     return None

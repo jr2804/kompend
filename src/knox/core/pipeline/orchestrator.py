@@ -10,7 +10,7 @@ compatibility with downstream callers that still import them from
 
 from __future__ import annotations
 
-from knox.core.pipeline.config import ALL_TIERS, TIER_DESCRIPTIONS, PipelineConfig, Tier  # noqa: F401 — re-export
+from knox.core.pipeline.config import PipelineConfig, Tier, TierInfo  # noqa: F401 — re-export
 from knox.core.pipeline.stages._factory import build_pipeline  # noqa: F401 — re-export
 from knox.core.pipeline.stages._pipeline import WikiPipeline  # noqa: F401 — re-export
 
@@ -23,5 +23,8 @@ TIER_RESOLVE: Tier = Tier.RESOLVE
 TIER_COMPILE: Tier = Tier.COMPILE
 TIER_OUTPUT: Tier = Tier.OUTPUT
 
+# Backward-compat: ordered tuple of all tiers.
+ALL_TIERS: tuple[Tier, ...] = tuple(ti.tier for ti in Tier.all_tiers())
+
 # Backward-compat alias for the previously-private description map.
-_TIER_DESCRIPTIONS = TIER_DESCRIPTIONS
+_TIER_DESCRIPTIONS: dict[Tier, str] = {ti.tier: ti.description for ti in Tier.all_tiers()}

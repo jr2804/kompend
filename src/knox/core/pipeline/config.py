@@ -1,12 +1,10 @@
-# csort: off
 """Pipeline constants, tier definitions, and configuration.
 
 This module is the single source of truth for:
 
 - :class:`Tier` — the 5 pipeline tier identifiers
-- :data:`ALL_TIERS` — ordered tuple of every tier
-- :data:`TIER_LEVEL` — tier name → numeric level (used for skip/ordering decisions)
-- :data:`TIER_DESCRIPTIONS` — human-readable description per tier (with inputs/outputs)
+- :class:`TierInfo` — metadata per tier (level, description)
+- :meth:`Tier.all_tiers` — ordered tuple of every tier's metadata
 - :data:`PipelineConfig` — dataclass holding the full pipeline configuration
 
 Both the CLI (``knox.cli.commands``) and the orchestrator (``knox.core.pipeline``)
@@ -17,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +56,15 @@ from knox.core.config.keys import (
 from knox.core.paths import VaultPaths
 
 
+@dataclass(frozen=True)
+class TierInfo:
+    """Metadata for a single pipeline tier."""
+
+    tier: Tier
+    level: int
+    description: str
+
+
 class Tier(StrEnum):
     """Identifiers for the KNOX 5-tier compilation pipeline.
 
@@ -70,6 +78,54 @@ class Tier(StrEnum):
     COMPILE = "compile"
     OUTPUT = "output"
 
+    @classmethod
+    @cache
+    def all_tiers(cls) -> tuple[TierInfo, ...]:
+        """Return metadata for every tier in execution order."""
+        return (
+            TierInfo(
+                Tier.INDEX,
+                0,
+                "Tier 0: index sources — record local files and download online URLs. Inputs: source_dir, online_sources. Outputs: tier_state entries.",
+            ),
+            TierInfo(
+                Tier.CHUNK,
+                1,
+                "Tier 1: parse documents and split them into chunks. Inputs: indexed source files. Outputs: list of chunks (cached on disk).",
+            ),
+            TierInfo(
+                Tier.RESOLVE,
+                2,
+                "Tier 2: resolve chunks — extract entities/links (LLM-dependent). Inputs: chunks. Outputs: resolved chunks with entities/relations.",
+            ),
+            TierInfo(
+                Tier.COMPILE,
+                3,
+                "Tier 3: compile resolved chunks into a knowledge graph (CompiledWiki). Inputs: resolved chunks. Outputs: CompiledWiki snapshot.",
+            ),
+            TierInfo(
+                Tier.OUTPUT,
+                4,
+                "Tier 4: render the compiled wiki to the output directory. Inputs: CompiledWiki snapshot. Outputs: rendered files (markdown/json/typst).",
+            ),
+        )
+
+    @classmethod
+    @cache
+    def _info_by_tier(cls) -> dict[Tier, TierInfo]:
+        """Return a mapping from tier to its metadata for O(1) lookup."""
+        return {ti.tier: ti for ti in cls.all_tiers()}
+
+    @classmethod
+    def level_of(cls, tier: Tier) -> int:
+        """Return the numeric level of a tier."""
+        return cls._info_by_tier()[tier].level
+
+    @classmethod
+    def description_of(cls, tier: Tier) -> str:
+        """Return the human-readable description of a tier."""
+        return cls._info_by_tier()[tier].description
+
 
 class Compiler(StrEnum):
     """Compiler backend selection.
@@ -82,45 +138,14 @@ class Compiler(StrEnum):
     WICER = "wicer"
 
 
-# Ordered tuple used for `--list-tiers` and tier-name validation.
-ALL_TIERS: tuple[Tier, ...] = (
-    Tier.INDEX,
-    Tier.CHUNK,
-    Tier.RESOLVE,
-    Tier.COMPILE,
-    Tier.OUTPUT,
-)
-
-# Tier name → level number used for skip decisions (higher = runs more).
-TIER_LEVEL: dict[Tier, int] = {
-    Tier.INDEX: 0,
-    Tier.CHUNK: 1,
-    Tier.RESOLVE: 2,
-    Tier.COMPILE: 3,
-    Tier.OUTPUT: 4,
-}
-
-# Tier name → human-readable description (with inputs and outputs).
-# Kept short enough to fit in a CLI table; full prose lives in docs/.
-TIER_DESCRIPTIONS: dict[Tier, str] = {
-    Tier.INDEX: ("Tier 0: index sources — record local files and download online URLs. Inputs: source_dir, online_sources. Outputs: tier_state entries."),
-    Tier.CHUNK: ("Tier 1: parse documents and split them into chunks. Inputs: indexed source files. Outputs: list of chunks (cached on disk)."),
-    Tier.RESOLVE: ("Tier 2: resolve chunks — extract entities/links (LLM-dependent). Inputs: chunks. Outputs: resolved chunks with entities/relations."),
-    Tier.COMPILE: ("Tier 3: compile resolved chunks into a knowledge graph (CompiledWiki). Inputs: resolved chunks. Outputs: CompiledWiki snapshot."),
-    Tier.OUTPUT: ("Tier 4: render the compiled wiki to the output directory. Inputs: CompiledWiki snapshot. Outputs: rendered files (markdown/json/typst)."),
-}
-
-
 __all__ = [
-    "ALL_TIERS",
-    "TIER_DESCRIPTIONS",
-    "TIER_LEVEL",
     "Compiler",
     "DisplayConfig",
     "ImageMode",
     "OutputFormat",
     "PipelineConfig",
     "Tier",
+    "TierInfo",
 ]
 
 

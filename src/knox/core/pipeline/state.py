@@ -21,14 +21,14 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models import MetadataField
-from knox.core.pipeline.config import TIER_LEVEL, Tier
+from knox.core.pipeline.config import Tier
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
 # Tier level at which a source is considered fully compiled (OUTPUT = 4).
-_OUTPUT_TIER_LEVEL = TIER_LEVEL[Tier.OUTPUT]
+_OUTPUT_TIER_LEVEL = Tier.level_of(Tier.OUTPUT)
 
 
 class CompileStatus(StrEnum):

@@ -1,9 +1,6 @@
-# csort: off
-from __future__ import annotations
-
-import re
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 from knox.search.retriever import TOKEN_SPLIT_RE
 
@@ -14,6 +11,16 @@ class QueryIntent(StrEnum):
     HELP = "help"
     OFFTOPIC = "offtopic"
     KNOWLEDGE = "knowledge"
+
+
+@dataclass(frozen=True)
+class ClassifierRule:
+    """A single classification rule with intent, patterns, response, and match mode."""
+
+    intent: QueryIntent
+    patterns: object  # list[re.Pattern[str]]
+    response: str
+    match_start: bool
 
 
 @dataclass(frozen=True)
@@ -108,32 +115,24 @@ _STOP: frozenset[str] = frozenset(
 )
 
 
-_CLASSIFIERS: list[tuple[QueryIntent, list[re.Pattern[str]], str, bool]] = [
-    (QueryIntent.OFFTOPIC, _OFFTOPIC_PATTERNS, _OFFTOPIC_RESPONSE, False),
-    (QueryIntent.GREETING, _GREETING_PATTERNS, _GREETING_RESPONSE, True),
-    (QueryIntent.GRATITUDE, _GRATITUDE_PATTERNS, _GRATITUDE_RESPONSE, False),
-    (QueryIntent.HELP, _HELP_PATTERNS, _HELP_RESPONSE, True),
-]
-
-
 def classify(query: str, min_length: int = 2) -> ClassificationResult:
     lower: str = query.strip().lower()
 
     if len(lower) < min_length:
         return ClassificationResult(QueryIntent.KNOWLEDGE, response=None)
 
-    for intent, patterns, response, match_start in _CLASSIFIERS:
-        if intent == QueryIntent.OFFTOPIC:
-            for p in patterns:
+    for rule in QueryIntent.get_classifiers():
+        if rule.intent == QueryIntent.OFFTOPIC:
+            for p in rule.patterns:
                 if p.search(lower):
-                    return ClassificationResult(intent, response=response)
+                    return ClassificationResult(rule.intent, response=rule.response)
         elif _has_substance(lower):
             break
         else:
-            for p in patterns:
-                matched = p.match if match_start else p.search
+            for p in rule.patterns:
+                matched = p.match if rule.match_start else p.search
                 if matched(lower):
-                    return ClassificationResult(intent, response=response)
+                    return ClassificationResult(rule.intent, response=rule.response)
 
     return ClassificationResult(QueryIntent.KNOWLEDGE, response=None)
 

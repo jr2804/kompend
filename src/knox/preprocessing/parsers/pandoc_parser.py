@@ -1,15 +1,15 @@
-# csort: off
 """Pandoc-based parser using pypandoc."""
 
 from __future__ import annotations
 
 import json
-from enum import StrEnum
 from functools import cache
 from pathlib import Path
 from typing import Any, override
 
 import pypandoc
+
+from enum import StrEnum
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
@@ -18,16 +18,6 @@ from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
 logger = get_logger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Format overrides
-# ---------------------------------------------------------------------------
-
-# Only formats pandoc cannot infer from the file extension alone.
-_EXTENSION_OVERRIDES: dict[FileExtension, str] = {
-    FileExtension.DOC: "docx",
-    FileExtension.TXT: "markdown",
-}
 
 # ---------------------------------------------------------------------------
 # Pandoc JSON AST types
@@ -47,22 +37,20 @@ class _PandocBlockTag(StrEnum):
     PLAIN = "Plain"
     TABLE = "Table"
 
-
-# ---------------------------------------------------------------------------
-# Block type mapping (pandoc JSON tag → KNOX element type)
-# ---------------------------------------------------------------------------
-
-_BLOCK_TYPE_MAP: dict[_PandocBlockTag, ElementType] = {
-    _PandocBlockTag.HEADER: ElementType.HEADING,
-    _PandocBlockTag.CODE_BLOCK: ElementType.CODE,
-    _PandocBlockTag.TABLE: ElementType.TABLE,
-    _PandocBlockTag.MATH: ElementType.FORMULA,
-    _PandocBlockTag.BULLET_LIST: ElementType.LIST_ITEM,
-    _PandocBlockTag.ORDERED_LIST: ElementType.LIST_ITEM,
-    _PandocBlockTag.PARA: ElementType.TEXT,
-    _PandocBlockTag.PLAIN: ElementType.TEXT,
-    _PandocBlockTag.LINE_BLOCK: ElementType.TEXT,
-}
+    @property
+    def element_type(self) -> ElementType:
+        """Return the KNOX element type for this pandoc block tag."""
+        return {
+            "BulletList": ElementType.LIST_ITEM,
+            "CodeBlock": ElementType.CODE,
+            "Header": ElementType.HEADING,
+            "LineBlock": ElementType.TEXT,
+            "Math": ElementType.FORMULA,
+            "OrderedList": ElementType.LIST_ITEM,
+            "Para": ElementType.TEXT,
+            "Plain": ElementType.TEXT,
+            "Table": ElementType.TABLE,
+        }[self.value]
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +126,7 @@ def _resolve_format(source_file: Path) -> str:
         ext = FileExtension(source_file.suffix.lower())
     except ValueError:
         return ""
-    return _EXTENSION_OVERRIDES.get(ext, "")
+    return ext.pandoc_format
 
 
 def _block_to_element(
@@ -156,9 +144,7 @@ def _block_to_element(
     except ValueError:
         return None
 
-    el_type = _BLOCK_TYPE_MAP.get(pandoc_tag)
-    if el_type is None:
-        return None
+    el_type = pandoc_tag.element_type
 
     content = _render_block(block)
     if not content:

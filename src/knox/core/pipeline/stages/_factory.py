@@ -9,7 +9,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache.store import CacheStore
-from knox.core.pipeline.config import TIER_LEVEL, Compiler, PipelineConfig, Tier
+from knox.core.pipeline.config import Compiler, PipelineConfig, Tier
 from knox.core.pipeline.stages._parse import build_resolver_chain
 from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.llm.context_window import discover_context_window
@@ -60,7 +60,7 @@ def build_pipeline(
     # T0 (index) and T1 (parse) run without an LLM — ``knox ingest``
     # stops here. T2 (chunk) and beyond need the LLM for context-window
     # discovery and adaptive chunk sizing.
-    needs_llm = TIER_LEVEL[config.stop_at_tier] >= TIER_LEVEL[Tier.CHUNK]
+    needs_llm = Tier.level_of(config.stop_at_tier) >= Tier.level_of(Tier.CHUNK)
 
     resolver: BaseResolver | None = None
     base_compiler: BaseCompiler | None = None

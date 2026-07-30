@@ -25,13 +25,7 @@ from knox.core.models import (
     WikiField,
 )
 from knox.core.paths import VaultPaths, rel_to_vault
-from knox.core.pipeline.config import (
-    ALL_TIERS,
-    TIER_DESCRIPTIONS,
-    TIER_LEVEL,
-    PipelineConfig,
-    Tier,
-)
+from knox.core.pipeline.config import PipelineConfig, Tier
 from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
 from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
 from knox.core.pipeline.stages._parse import parse_and_chunk
@@ -63,7 +57,7 @@ TIER_RESOLVE: Tier = Tier.RESOLVE
 TIER_COMPILE: Tier = Tier.COMPILE
 TIER_OUTPUT: Tier = Tier.OUTPUT
 
-_TIER_DESCRIPTIONS = TIER_DESCRIPTIONS
+_TIER_DESCRIPTIONS: dict[Tier, str] = {ti.tier: ti.description for ti in Tier.all_tiers()}
 
 
 class WikiPipeline:
@@ -112,11 +106,11 @@ class WikiPipeline:
 
     def start_level(self) -> int:
         """Numeric level of the first tier to run."""
-        return TIER_LEVEL[self.config.start_at_tier]
+        return Tier.level_of(self.config.start_at_tier)
 
     def stop_level(self) -> int:
         """Numeric level of the last tier to run."""
-        return TIER_LEVEL[self.config.stop_at_tier]
+        return Tier.level_of(self.config.stop_at_tier)
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -240,19 +234,19 @@ class WikiPipeline:
 
         Valid names: ``index``, ``chunk``, ``resolve``, ``compile``, ``output``.
         """
-        if tier not in TIER_LEVEL:
-            msg = f"Unknown tier {tier!r}. Valid: {ALL_TIERS}"
+        if tier not in _TIER_DESCRIPTIONS:
+            msg = f"Unknown tier {tier!r}. Valid: {_ALL_TIERS}"
             raise ValueError(msg)
 
-        target_level = TIER_LEVEL[Tier(tier)]
+        target_level = Tier.level_of(Tier(tier))
 
-        if target_level >= TIER_LEVEL[TIER_INDEX]:
+        if target_level >= Tier.level_of(Tier.INDEX):
             run_index_tier(self)
-        if target_level >= TIER_LEVEL[TIER_CHUNK]:
+        if target_level >= Tier.level_of(Tier.CHUNK):
             parse_and_chunk(self)
-        if target_level >= TIER_LEVEL[TIER_COMPILE]:
+        if target_level >= Tier.level_of(Tier.COMPILE):
             run_compile_tier(self)
-        if target_level >= TIER_LEVEL[TIER_OUTPUT]:
+        if target_level >= Tier.level_of(Tier.OUTPUT):
             run_output_tier(self)
 
         self.save_state()
@@ -270,11 +264,11 @@ class WikiPipeline:
         return [
             {
                 "tier": name,
-                "level": TIER_LEVEL[name],
-                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= TIER_LEVEL[name]),
+                "level": Tier.level_of(name),
+                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(name)),
                 "description": _TIER_DESCRIPTIONS[name],
             }
-            for name in ALL_TIERS
+            for name in _ALL_TIERS
         ] + [
             {
                 "tier": "_distribution",
@@ -317,7 +311,7 @@ class WikiPipeline:
 
     def _should_run(self, tier: Tier) -> bool:
         """Check whether *tier* falls within [start, stop]."""
-        level = TIER_LEVEL[tier]
+        level = Tier.level_of(tier)
         return self.start_level() <= level <= self.stop_level()
 
     def _validate_prerequisites(self) -> None:
