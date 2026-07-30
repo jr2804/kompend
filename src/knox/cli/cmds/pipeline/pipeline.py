@@ -22,7 +22,7 @@ from knox.cli._pipeline_helpers import (
     resolve_compile_inputs,
 )
 from knox.cli._progress import PipelineProgress
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -172,7 +172,7 @@ def compile_cmd(  # noqa: PLR0915
     if online_urls is None:
         online_urls = []
 
-    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
+    wiki_dir_override = wiki_dir or str(vault_paths_from_ctx(ctx).base_dir)
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,
         start_at_tier=start_at_tier,
@@ -327,7 +327,7 @@ def ingest_cmd(
     if online_urls is None:
         online_urls = []
 
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    wiki_dir_override = str(vault_paths_from_ctx(ctx).base_dir)
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
         wiki_dir=wiki_dir_override,

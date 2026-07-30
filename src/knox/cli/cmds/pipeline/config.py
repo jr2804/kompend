@@ -7,6 +7,7 @@ from typing import Any
 
 import typer
 
+from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 from knox.core.config import (
@@ -40,7 +41,7 @@ def config_get(
         raise typer.Exit(code=1)
 
     overrides = {}
-    wiki_dir = _resolve_wiki_dir(ctx)
+    wiki_dir = vault_paths_from_ctx(ctx).base_dir
     if wiki_dir:
         overrides[PATHS_WIKI_DIR] = str(wiki_dir)
 
@@ -70,7 +71,7 @@ def config_set(
     if global_:
         path = get_global_config_path(create=True)
     else:
-        wiki_dir = _resolve_wiki_dir(ctx)
+        wiki_dir = vault_paths_from_ctx(ctx).base_dir
         path = get_project_config_path(start_dir=wiki_dir)
         if not path.exists():
             get_err_console().print("error: not in a KNOX vault — run `knox init` first or use `--global`")
@@ -92,7 +93,7 @@ def config_list(
 ) -> None:
     """Print every resolved config key, value, and source."""
     overrides = {}
-    wiki_dir = _resolve_wiki_dir(ctx)
+    wiki_dir = vault_paths_from_ctx(ctx).base_dir
     if wiki_dir:
         overrides[PATHS_WIKI_DIR] = str(wiki_dir)
 
@@ -108,14 +109,8 @@ def config_path(
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_path(create=False) if global_ else get_project_config_path(start_dir=_resolve_wiki_dir(ctx))
+    path = get_global_config_path(create=False) if global_ else get_project_config_path(start_dir=vault_paths_from_ctx(ctx).base_dir)
     get_console().print(str(path), soft_wrap=True)
-
-
-def _resolve_wiki_dir(ctx: typer.Context) -> Path | None:
-    """Resolve --wiki-dir from callback context, if set."""
-    raw = ctx.obj.get("wiki_dir") if ctx.obj else None
-    return Path(raw).resolve() if raw else None
 
 
 def _format_value(value: Any) -> str:

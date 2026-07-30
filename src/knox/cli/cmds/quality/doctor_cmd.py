@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import ConfigPath, JsonOutput, Verbose
 from knox.cli.cmds.quality.doctor import print_doctor_results, run_doctor
@@ -33,11 +33,11 @@ def doctor_cmd(
     or the current directory must contain a compiled wiki (i.e. the
     resolved output directory must exist).
     """
-    wiki_dir_override = wiki_dir or (ctx.obj.get("wiki_dir") if ctx.obj else None)
+    wiki_dir_override = wiki_dir or str(vault_paths_from_ctx(ctx).base_dir)
     cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
-    if not wiki_dir_override and not output_dir.exists():
+    if not wiki_dir and not ctx.obj.get("wiki_dir") and not output_dir.exists():
         get_err_console().print(
             f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
         )

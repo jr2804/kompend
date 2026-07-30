@@ -15,7 +15,7 @@ from knox.agents.write import WriteAgent
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceTags
@@ -51,8 +51,8 @@ def capture_cmd(
         knox capture "We decided to use QKV projections with RoPE"
         knox capture "Discussion about layer norm placement" --tags architecture --tags training
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
@@ -87,8 +87,8 @@ def learn_cmd(
         knox learn "The transformer uses d_model=512 and h=8"
         knox learn "QKV with RoPE" --tags attention --tags architecture
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     path = learn(text, sources_dir=sources_dir, tags=tag)
@@ -109,8 +109,8 @@ def distill_cmd(
     Examples:
         knox distill
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
 
     try:
@@ -151,8 +151,8 @@ def write_cmd(
 
         knox write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     _sources_dir, output_dir, cache_dir, _state_dir = resolve_project_paths(cfg)
     base_dir = output_dir.parent
 

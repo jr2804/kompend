@@ -14,7 +14,7 @@ from typing import Annotated
 import typer
 
 from knox.agents.reference_resolver import ReferenceResolverAgent
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.compilation.flows.references import resolve_unresolved_references
 from knox.core.config import resolve_config
@@ -123,8 +123,8 @@ def references_export(
 
 def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
     """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     # state_dir is .knox/ — its parent is the project root
     base_dir = state_dir.parent
@@ -159,8 +159,8 @@ def references_fetch(
 
     Requires an LLM model to be configured (``KNOX_LLM_DEFAULT_MODEL``).
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override))
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
     _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
     # state_dir is .knox/ — its parent is the project root
     base_dir = state_dir.parent

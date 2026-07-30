@@ -25,7 +25,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
 from knox.cli._pipeline_helpers import write_wiki_cache
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
@@ -96,9 +96,9 @@ def lint_run(
         knox lint run --fix                 # auto-fix what's possible
         knox lint run --rule broken-wikilinks --rule orphan-page
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
@@ -271,9 +271,9 @@ def lint_history(
         knox lint history --trend      # with score sparkline
         knox lint history --json       # machine-readable
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
@@ -308,9 +308,9 @@ def lint_prune(
         get_err_console().print("At least one of --keep-last or --max-age-days must be provided.")
         raise typer.Exit(1)
 
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
@@ -342,9 +342,9 @@ def lint_gaps(
         knox lint gaps              # analyze latest lint run
         knox lint gaps --json       # machine-readable output
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
@@ -399,9 +399,9 @@ def lint_remediate(
         knox lint remediate                          # tier 1 (+ tier 2 if model configured)
         knox lint remediate --dry-run                # preview all tiers
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)

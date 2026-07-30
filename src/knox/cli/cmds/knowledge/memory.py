@@ -7,6 +7,7 @@ from typing import Any
 
 import typer
 
+from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import DEFAULTS, resolve_config
@@ -108,11 +109,11 @@ def memory_synthesize(
 def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
     """Resolve the memory store, project base directory, and acting user."""
     overrides: dict[str, Any] = {}
-    if ctx and ctx.obj:
-        if ctx.obj.get("wiki_dir"):
-            overrides[PATHS_WIKI_DIR] = ctx.obj["wiki_dir"]
-        if ctx.obj.get("no_user_tracking"):
-            overrides[TRUST_USER_TRACKING] = False
+    wiki_dir_override = vault_paths_from_ctx(ctx).base_dir
+    if wiki_dir_override:
+        overrides[PATHS_WIKI_DIR] = str(wiki_dir_override)
+    if ctx and ctx.obj and ctx.obj.get("no_user_tracking"):
+        overrides[TRUST_USER_TRACKING] = False
     cfg = resolve_config(cli_overrides=overrides)
     paths = cfg.get("paths")
     output_dir = Path(paths["output_dir"])

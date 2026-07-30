@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths
+from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.core.config import resolve_config
 from knox.core.paths import VaultPaths
@@ -48,9 +48,9 @@ def log_cmd(
     lint trend (lint_history.jsonl) into a single report. Print it (default)
     or persist it to ``.knox/log.md`` with ``--write``.
     """
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override),
+        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
         config_path=config,
     )
     _sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)

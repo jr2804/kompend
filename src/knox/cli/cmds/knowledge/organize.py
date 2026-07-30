@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from knox.agents.categorize import CategorizeAgent
-from knox.cli._shared import resolve_project_paths
+from knox.cli._shared import resolve_project_paths, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     OrganizeCollapseSingle,
@@ -38,10 +38,9 @@ def organize_cmd(
     dry_run: OrganizeDryRun = False,
 ) -> None:
     """Categorise files in ``sources/`` into a hierarchical directory tree."""
-    wiki_dir_override = ctx.obj.get("wiki_dir") if ctx.obj else None
+    vp = vault_paths_from_ctx(ctx)
     overrides: dict[str, object] = {}
-    if wiki_dir_override is not None:
-        overrides[PATHS_WIKI_DIR] = wiki_dir_override
+    overrides[PATHS_WIKI_DIR] = str(vp.base_dir)
     if max_depth is not None:
         overrides[ORGANIZE_MAX_DEPTH] = max_depth
     if min_subcategories is not None:
@@ -51,7 +50,7 @@ def organize_cmd(
 
     cfg = resolve_config(cli_overrides=overrides or None)
     sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
-    base_dir = Path(cfg.get(PATHS_WIKI_DIR) or sources_dir.parent).resolve()
+    base_dir = vp.base_dir
 
     config = resolve_organize_config(overrides or None)
 
