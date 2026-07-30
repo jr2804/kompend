@@ -78,3 +78,6 @@ mcporter.json
 *.msi
 
 .beads/.auto-import-issues.jsonl
+
+# repowise API keys (local)
+.repowise/.env

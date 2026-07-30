@@ -3,24 +3,27 @@
 from __future__ import annotations
 
 from knox.cli.app import app
-from knox.cli.args import ServeHost, ServeOpen, ServePort
+from knox.cli.args import ServeHost, ServeOpen, ServePort, WikiDir
 from knox.logging import get_console, get_err_console
 from knox.mcp.server import main as mcp_main
 from knox.web.server import serve
 
 
 @app.command(name="mcp")
-def mcp_cmd() -> None:
+def mcp_cmd(
+    wiki_dir: WikiDir = None,
+) -> None:
     """Start the KNOX MCP server over stdio transport.
 
     Connects to Claude Code, Cursor, and other MCP-compatible clients.
     Uses the official FastMCP SDK with JSON-RPC 2.0 protocol.
 
     Examples:
-        knox mcp                        # start stdio server
-        knox mcp --help                 # this help
+        knox mcp                        # start stdio server (wiki = cwd)
+        knox mcp --wiki-dir ./my-wiki   # point at a specific wiki
+        knox mcp -w /path/to/wiki       # short form
     """
-    mcp_main()
+    mcp_main(wiki_dir=wiki_dir)
 
 
 @app.command(name="serve")

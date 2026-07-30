@@ -25,7 +25,7 @@ from typing import Any
 
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS
-from knox.core.paths import KNOX_DIR, RUNS_FILE
+from knox.core.paths import CONFIG_FILE, KNOX_DIR, RUNS_FILE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
@@ -95,7 +95,12 @@ def resolve_state_dir() -> Path | None:
         wiki_dir = os.environ.get("KNOX_WIKI_DIR")
     base = Path(wiki_dir) if wiki_dir else Path.cwd()
     state_dir = base / KNOX_DIR
-    return state_dir if state_dir.is_dir() else None
+    # Only return state_dir when it's a real vault (has config.toml).
+    # Checking just .knox/ existence creates false positives — stray .knox/
+    # dirs from prior commands act as magnets for all subsequent run logs.
+    if state_dir.is_dir() and (state_dir / CONFIG_FILE).is_file():
+        return state_dir
+    return None
 
 
 def _command_label() -> str:
