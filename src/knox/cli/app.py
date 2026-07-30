@@ -75,8 +75,6 @@ _LAZY_MODULES: dict[str, str] = {
     "references": "knox.cli.cmds.knowledge.references",
     "review": "knox.cli.cmds.quality.review",
     "sources": "knox.cli.cmds.pipeline.sources",
-    "sources-tag": "knox.cli.cmds.pipeline.sources",
-    "sources-untag": "knox.cli.cmds.pipeline.sources",
     "mcp": "knox.cli.cmds.serve",
     "serve": "knox.cli.cmds.serve",
     "agent": "knox.cli.cmds.agent",

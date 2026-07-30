@@ -1,7 +1,15 @@
-"""Source management subcommands: list, tag, untag.
+"""The ``knox sources`` command group.
 
-Displays ingested source files with their tags and allows
-managing tags on individual sources.
+Sub-commands
+------------
+
+* ``knox sources list``  — list ingested source files (optionally filter by tag).
+* ``knox sources tag``   — add a tag to an ingested source file.
+* ``knox sources untag`` — remove a tag from an ingested source file.
+
+Tags are persisted in the per-file parse cache (``metadata.tags``), the same
+store written by ``--tag`` at ingestion time. Wiki nodes pick up tag changes on
+the next ``knox compile``.
 """
 
 from __future__ import annotations
@@ -11,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from rich.markup import escape
 
 from knox.cli._shared import resolve_project_paths
 from knox.cli.app import app
@@ -21,8 +30,18 @@ from knox.logging import get_console, get_logger
 
 logger = get_logger(__name__)
 
+sources_app = typer.Typer(
+    name="sources",
+    help="Manage ingested source files and their tags.",
+    no_args_is_help=True,
+)
+app.add_typer(sources_app)
 
-@app.command(name="sources")
+
+# ── Sub-command: list ───────────────────────────────────────────────────
+
+
+@sources_app.command("list", help="List ingested source files with their tags.")
 def sources_list(
     ctx: typer.Context,
     tags: SourceTags = None,
@@ -33,7 +52,7 @@ def sources_list(
     Optionally filter by tag using --tags (same semantics as query --tags).
     """
     cfg = resolve_config(config_path=config)
-    _, _, cache_dir, state_dir = resolve_project_paths(cfg)
+    _, _, cache_dir, _ = resolve_project_paths(cfg)
 
     cache_data = _load_all_cache_entries(cache_dir)
     if not cache_data:
@@ -65,10 +84,57 @@ def sources_list(
         get_console().print("[yellow]No sources match the given tag filter.[/]")
         raise typer.Exit(0)
 
-    # Display results
+    # Display results.
+    # Escape user-controlled text (file paths, tag names) so values containing
+    # Rich markup metacharacters render verbatim. The literal brackets around
+    # the tag list are themselves escaped (``\[``) so a tag named e.g.
+    # "original" is not parsed as a ``[original]`` style and swallowed.
     for file_path, source_tags in results:
-        tag_str = ", ".join(source_tags) if source_tags else "[dim]no tags[/]"
-        get_console().print(f"  {file_path}  [{tag_str}]")
+        if source_tags:
+            tag_str = escape(", ".join(source_tags))
+            get_console().print(rf"  {escape(file_path)}  \[{tag_str}]")
+        else:
+            get_console().print(f"  {escape(file_path)}  [dim]no tags[/]")
+
+
+# ── Sub-command: tag / untag ────────────────────────────────────────────
+
+
+@sources_app.command("tag", help="Add a tag to an ingested source file.")
+def sources_tag(
+    ctx: typer.Context,
+    file_path: str,
+    tag: str,
+    config: str | None = None,
+) -> None:
+    """Add a tag to an ingested source file.
+
+    The tag is persisted in the parse cache and will propagate to
+    wiki nodes on the next compile.
+    """
+    cfg = resolve_config(config_path=config)
+    _, _, cache_dir, _ = resolve_project_paths(cfg)
+    _mutate_tags(cache_dir, file_path, tag, add=True)
+
+
+@sources_app.command("untag", help="Remove a tag from an ingested source file.")
+def sources_untag(
+    ctx: typer.Context,
+    file_path: str,
+    tag: str,
+    config: str | None = None,
+) -> None:
+    """Remove a tag from an ingested source file.
+
+    The tag is removed from the parse cache. Wiki nodes will need
+    to be recompiled to reflect the change.
+    """
+    cfg = resolve_config(config_path=config)
+    _, _, cache_dir, _ = resolve_project_paths(cfg)
+    _mutate_tags(cache_dir, file_path, tag, add=False)
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
 
 
 def _load_all_cache_entries(cache_dir: Path) -> dict[str, dict[str, Any]]:
@@ -92,45 +158,11 @@ def _get_source_tags(file_path: str, cache_data: dict[str, Any]) -> list[str]:
     return meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
 
 
-@app.command(name="sources-tag")
-def sources_tag(
-    ctx: typer.Context,
-    file_path: str,
-    tag: str,
-    config: str | None = None,
-) -> None:
-    """Add a tag to an ingested source file.
-
-    The tag is persisted in the parse cache and will propagate to
-    wiki nodes on the next compile.
-    """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=True)
-
-
-@app.command(name="sources-untag")
-def sources_untag(
-    ctx: typer.Context,
-    file_path: str,
-    tag: str,
-    config: str | None = None,
-) -> None:
-    """Remove a tag from an ingested source file.
-
-    The tag is removed from the parse cache. Wiki nodes will need
-    to be recompiled to reflect the change.
-    """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=False)
-
-
 def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
     """Add or remove a tag on a source file's cache entry."""
     cache_path = _find_cache_path(cache_dir, file_path)
     if cache_path is None:
-        get_console().print(f"[red]No cache entry found for '{file_path}'. Run 'knox ingest' first.[/]")
+        get_console().print(f"[red]No cache entry found for '{escape(file_path)}'. Run 'knox ingest' first.[/]")
         raise typer.Exit(1)
 
     try:
@@ -144,13 +176,13 @@ def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
 
     if add:
         if tag in existing_tags:
-            get_console().print(f"[yellow]Tag '{tag}' already present on {file_path}[/]")
+            get_console().print(f"[yellow]Tag '{escape(tag)}' already present on {escape(file_path)}[/]")
             return
         existing_tags.append(tag)
         action = "Added"
     else:
         if tag not in existing_tags:
-            get_console().print(f"[yellow]Tag '{tag}' not found on {file_path}[/]")
+            get_console().print(f"[yellow]Tag '{escape(tag)}' not found on {escape(file_path)}[/]")
             return
         existing_tags.remove(tag)
         action = "Removed"
@@ -163,7 +195,7 @@ def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
         get_console().print(f"[red]Could not write cache entry: {exc}[/]")
         raise typer.Exit(1)
 
-    get_console().print(f"[green]{action} tag '{tag}' on {file_path}[/]")
+    get_console().print(f"[green]{action} tag '{escape(tag)}' on {escape(file_path)}[/]")
 
 
 def _find_cache_path(cache_dir: Path, file_path: str) -> Path | None:
