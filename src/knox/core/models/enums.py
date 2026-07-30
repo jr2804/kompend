@@ -39,16 +39,8 @@ class AssetKind(StrEnum, MultiValueEnum):
     Equations are deferred (Phase 1 leaves them inlined).
     """
 
-    def __new__(cls, value: str, *_aliases: str) -> AssetKind:
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        return obj
-
     def __init__(self, value: str, *aliases: str) -> None:
         self.prefix = aliases[0] if aliases else value[:3]
-
-    def __str__(self) -> str:
-        return str(self.value)
 
     TABLE = "table", "tab"
     FIGURE = "figure", "fig"
