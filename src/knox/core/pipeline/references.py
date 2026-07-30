@@ -146,13 +146,26 @@ class ReferenceStore:
         return changed
 
     def all_references(self) -> list[Reference]:
-        """Return all references across all sources (deduped by label)."""
+        """Return all references across all sources (deduped by label).
+
+        When the same reference appears in multiple sources, the first
+        occurrence is kept and its ``citing_source`` is updated to include
+        all sources that cite it.
+        """
         seen: dict[str, Reference] = {}
         for source in sorted(self._data):
             for ref in self.get_source(source):
                 label = ref.short_label()
-                if label and label not in seen:
-                    seen[label] = ref
+                if label:
+                    if label in seen:
+                        # Merge citing sources from duplicate
+                        existing = seen[label]
+                        existing_sources = [s.strip() for s in existing.citing_source.split(";") if s.strip()]
+                        new_sources = [s.strip() for s in ref.citing_source.split(";") if s.strip()]
+                        merged = list(dict.fromkeys(existing_sources + new_sources))
+                        existing.citing_source = "; ".join(merged)
+                    else:
+                        seen[label] = ref
         return list(seen.values())
 
     def total_count(self) -> int:

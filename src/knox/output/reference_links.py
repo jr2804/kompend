@@ -9,7 +9,7 @@ Supported citation marker patterns:
 - **Bracketed numeric**: ``[1]``, ``[2, 3]``, ``[1-3]``
 - **Bracketed author-year**: ``[Smith2020]``, ``[Smith2020, p. 42]``
 - **Parenthetical author-year**: ``(Smith et al., 2020)``, ``(Smith & Doe, 2019)``
-- **Superscript-numeric** (as plain digits): ``¹``, ``²³`` (best-effort)
+- **Superscript-numeric** (as plain digits): ``\u00b9``, ``\u00b2\u00b3`` (best-effort)
 
 The rewriter is conservative: it only rewrites markers that match a known
 reference in the store. Unknown markers are left untouched.
@@ -18,6 +18,8 @@ reference in the store. Unknown markers are left untouched.
 from __future__ import annotations
 
 import re
+
+from slugify import slugify as _slugify
 
 from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.core.pipeline.references import ReferenceStore
@@ -44,7 +46,7 @@ _REF_LINK_FORMAT = "[{label}](#{anchor})"
 #: Regex patterns for in-text citation markers.
 # Bracketed numeric: [1], [2, 3], [1-3], [1, 3-5]
 _BRACKET_NUMERIC_RE = re.compile(
-    r"\[((?:\d+(?:\s*[-–,]\s*\d+)*))\]",
+    r"\[((?:\d+(?:\s*[-\u2013,]\s*\d+)*))\]",
 )
 # Bracketed key: [Smith2020], [smith2020, p. 42]
 _BRACKET_KEY_RE = re.compile(
@@ -61,12 +63,13 @@ _ANCHOR_TITLE_MAX = 60
 
 
 def _slugify_ref(ref: Reference) -> str:
-    """Generate an HTML-safe anchor slug for a reference."""
-    label = ref.short_label() or ref.id or ref.title[:_ANCHOR_TITLE_MAX]
-    slug = label.lower()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
-    return slug or "ref"
+    """Generate an HTML-safe anchor slug for a reference.
+
+    Prefers ``ref.id`` when present (e.g. ``itu-t-p48-1988``), falling back
+    to ``short_label()`` or title.
+    """
+    label = ref.id or ref.short_label() or ref.title[:_ANCHOR_TITLE_MAX]
+    return _slugify(label) or "ref"
 
 
 def build_reference_key_index(
@@ -76,10 +79,10 @@ def build_reference_key_index(
 
     The index includes:
 
-    - ``ref.id`` (lowercase) — the canonical slug/id
-    - ``ref.short_label()`` (lowercase, no spaces) — e.g. ``"smith2020"``
-    - ``"author+year"`` — e.g. ``"smith2020"``, ``"smith"`` (first author family + year)
-    - ``"doi:..."`` — for DOI-based lookups
+    - ``ref.id`` (lowercase) \u2014 the canonical slug/id
+    - ``ref.short_label()`` (lowercase, no spaces) \u2014 e.g. ``"smith2020"``
+    - ``"author+year"`` \u2014 e.g. ``"smith2020"``, ``"smith"`` (first author family + year)
+    - ``"doi:..."`` \u2014 for DOI-based lookups
     """
     index: dict[str, Reference] = {}
     for ref in refs:
@@ -104,7 +107,7 @@ def build_reference_key_index(
 def _format_ref_link(ref: Reference) -> str:
     """Format a citation link to the references page."""
     anchor = _slugify_ref(ref)
-    label = ref.short_label()
+    label = ref.id or ref.short_label()
     return _REF_LINK_FORMAT.format(label=label, anchor=anchor)
 
 
@@ -113,7 +116,7 @@ def _expand_numeric_range(spec: str) -> list[int]:
     nums: list[int] = []
     for raw_part in spec.split(","):
         part = raw_part.strip()
-        range_match = re.match(r"^(\d+)\s*[-–]\s*(\d+)$", part)
+        range_match = re.match(r"^(\d+)\s*[-\u2013]\s*(\d+)$", part)
         if range_match:
             start, end = int(range_match.group(1)), int(range_match.group(2))
             nums.extend(range(start, end + 1))
@@ -152,7 +155,7 @@ def rewrite_citation_links(
 
     key_index = build_reference_key_index(refs)
 
-    # ── Pass 1: bracketed numeric [1], [2, 3], [1-3] ──────────────────
+    # -- Pass 1: bracketed numeric [1], [2, 3], [1-3] --
     def _replace_bracket_numeric(m: re.Match[str]) -> str:
         spec = m.group(1)
         nums = _expand_numeric_range(spec)
@@ -172,7 +175,7 @@ def rewrite_citation_links(
 
     text = _BRACKET_NUMERIC_RE.sub(_replace_bracket_numeric, text)
 
-    # ── Pass 2: bracketed key [Smith2020], [smith2020, p. 42] ─────────
+    # -- Pass 2: bracketed key [Smith2020], [smith2020, p. 42] --
     def _replace_bracket_key(m: re.Match[str]) -> str:
         raw = m.group(1)
         # Strip ", p. N" page suffix
@@ -184,7 +187,7 @@ def rewrite_citation_links(
 
     text = _BRACKET_KEY_RE.sub(_replace_bracket_key, text)
 
-    # ── Pass 3: parenthetical author-year (Smith, 2020) ───────────────
+    # -- Pass 3: parenthetical author-year (Smith, 2020) --
     def _replace_paren_author_year(m: re.Match[str]) -> str:
         author_part = m.group(1)
         year = m.group(2)
@@ -203,13 +206,14 @@ def rewrite_citation_links(
 
 
 def format_bibliography_entry(ref: Reference, number: int = 0) -> str:
-    r"""Format a single reference as a bibliography entry.
+    r"""Format a single reference as a multi-line bibliography entry.
 
-    Produces a Markdown list item with an anchor for link targets::
+    Produces a multi-line Markdown entry with an anchor for link targets::
 
-        ### smith2020
-
-        Smith, J. (2020). Deep Learning for NLP. *Journal of AI*, 12(3), 45–67. doi:10.1/xyz
+        <a id="itu-t-p48-1988"></a>9. **ITU-T P.48** (1988)
+           *Specification for an intermediate reference system.*
+           International Telecommunication Union.
+           Cited by: source1.md
 
     Parameters
     ----------
@@ -224,31 +228,61 @@ def format_bibliography_entry(ref: Reference, number: int = 0) -> str:
     """
     anchor = _slugify_ref(ref)
     prefix = f"{number}. " if number else ""
-    parts: list[str] = []
 
+    # -- Identifier line: bold ref.id when present --
+    id_part = f"**{ref.id}** " if ref.id else ""
+
+    # -- Author + year --\u2500\u2500\u2500
+    author_year = ""
     authors = ref.display_authors()
-    if authors:
-        parts.append(authors + ".")
-    if ref.issued:
-        parts.append(f"({ref.issued}).")
-    if ref.title:
-        parts.append(f"*{ref.title}.*")
-    if ref.container_title:
-        parts.append(f"*{ref.container_title}*,")
-    if ref.volume and ref.number:
-        parts.append(f"{ref.volume}({ref.number}),")
-    elif ref.volume:
-        parts.append(f"{ref.volume},")
-    if ref.pages:
-        parts.append(f"{ref.pages}.")
-    if ref.publisher:
-        parts.append(ref.publisher + ".")
-    if ref.doi:
-        parts.append(f"doi:[{ref.doi}](https://doi.org/{ref.doi})")
-    if ref.url and not ref.doi:
-        parts.append(f"[{ref.url}]({ref.url})")
+    if authors and ref.issued:
+        author_year = f"{authors}. ({ref.issued})."
+    elif authors:
+        author_year = f"{authors}."
+    elif ref.issued:
+        author_year = f"({ref.issued})."
 
-    body = " ".join(parts) if parts else ref.raw or ref.id
+    # -- Title --\u2500\u2500\u2500\u2500\u2500\u2500
+    title_line = f"*{ref.title}.*" if ref.title else ""
+
+    # -- Venue (container, volume, pages) --\u2500\u2500
+    venue_parts: list[str] = []
+    if ref.container_title:
+        venue_parts.append(f"*{ref.container_title}*")
+    if ref.volume and ref.number:
+        venue_parts.append(f"{ref.volume}({ref.number})")
+    elif ref.volume:
+        venue_parts.append(ref.volume)
+    if ref.pages:
+        venue_parts.append(ref.pages)
+    venue = ", ".join(venue_parts) + "." if venue_parts else ""
+
+    # -- Publisher (suppress when it matches author literal) --
+    publisher = ""
+    if ref.publisher:
+        author_literal = ref.author[0].literal if ref.author and ref.author[0].literal else ""
+        if ref.publisher != author_literal:
+            publisher = ref.publisher + "."
+
+    # -- DOI / URL --\u2500\u2500\u2500
+    link = ""
+    if ref.doi:
+        link = f"doi:[{ref.doi}](https://doi.org/{ref.doi})"
+    elif ref.url:
+        link = f"[{ref.url}]({ref.url})"
+
+    # -- Citing sources --\u2500\u2500\u2500\u2500\u2500\u2500
+    sources_line = ""
+    if ref.citing_source:
+        sources = [s.strip() for s in ref.citing_source.split(";") if s.strip()]
+        if len(sources) == 1:
+            sources_line = f"Cited by: `{sources[0]}`"
+        elif len(sources) > 1:
+            sources_line = "Cited by: " + ", ".join(f"`{s}`" for s in sources)
+
+    # -- Assemble --\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    body_parts = [p for p in [id_part + author_year, title_line, venue, publisher, link, sources_line] if p]
+    body = "\n   ".join(body_parts) if body_parts else ref.raw or ref.id
 
     return f'<a id="{anchor}"></a>{prefix}{body}\n'
 
