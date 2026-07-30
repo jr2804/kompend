@@ -15,7 +15,6 @@ cap so ``.knox`` stays bounded.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import uuid
 from dataclasses import dataclass
@@ -23,9 +22,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from knox.core.config import DEFAULTS
-from knox.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS
-from knox.core.paths import CONFIG_FILE, KNOX_DIR, RUNS_FILE
+from knox.core.config import DEFAULTS, resolve_config
+from knox.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS, PATHS_STATE_DIR, PATHS_WIKI_DIR
+from knox.core.paths import CONFIG_FILE, RUNS_FILE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
@@ -45,9 +44,9 @@ class RunHandle:
     start_iso: str
 
 
-def log_run_start() -> RunHandle | None:
+def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
     """Append a ``start`` line for the current command. No-op without a vault."""
-    state_dir = resolve_state_dir()
+    state_dir = resolve_state_dir(wiki_dir=wiki_dir)
     if state_dir is None:
         return None
     runs_path = state_dir / RUNS_FILE
@@ -75,29 +74,19 @@ def log_run_start() -> RunHandle | None:
     return RunHandle(run_id=run_id, cmd=_command_label(), runs_path=runs_path, start_iso=start_iso)
 
 
-def resolve_state_dir() -> Path | None:
+def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
     """Resolve the vault ``.knox`` dir for the current invocation.
 
-    Honours ``--wiki-dir`` / ``-w`` (CLI), then ``KNOX_WIKI_DIR`` (env),
-    then the current working directory. Returns ``None`` when no initialised
-    vault is found, so callers can no-op run logging (e.g. before ``knox init``).
+    Parameters
+    ----------
+    wiki_dir:
+        Explicit wiki directory from ``--wiki-dir`` / ``-w``. The
+        ``KNOX_WIKI_DIR`` env var is **not** checked here — that is
+        handled by Typer's ``WikiDir`` type in the CLI layer.
     """
-    wiki_dir: str | None = None
-    argv = sys.argv[1:]
-    for i, token in enumerate(argv):
-        if token in ("--wiki-dir", "-w") and i + 1 < len(argv):
-            wiki_dir = argv[i + 1]
-            break
-        if token.startswith("--wiki-dir="):
-            wiki_dir = token.split("=", 1)[1]
-            break
-    if wiki_dir is None:
-        wiki_dir = os.environ.get("KNOX_WIKI_DIR")
-    base = Path(wiki_dir) if wiki_dir else Path.cwd()
-    state_dir = base / KNOX_DIR
-    # Only return state_dir when it's a real vault (has config.toml).
-    # Checking just .knox/ existence creates false positives — stray .knox/
-    # dirs from prior commands act as magnets for all subsequent run logs.
+    cli_overrides = {PATHS_WIKI_DIR: wiki_dir} if wiki_dir else {}
+    cfg = resolve_config(cli_overrides=cli_overrides)
+    state_dir = Path(cfg.get(PATHS_STATE_DIR))
     if state_dir.is_dir() and (state_dir / CONFIG_FILE).is_file():
         return state_dir
     return None

@@ -25,7 +25,9 @@ quantities or refer to different concepts.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Final
 
@@ -342,6 +344,19 @@ class VaultPaths:
             directory.mkdir(parents=True, exist_ok=True)
 
 
+class _DefaultWikiDir:
+    """Holds the server-wide default wiki directory (set by MCP server)."""
+
+    def __init__(self) -> None:
+        self._path: str | None = None
+
+    def set(self, path: str) -> None:
+        self._path = path
+
+    def get(self) -> str | None:
+        return self._path
+
+
 def is_protected_source(path: Path, sources_dir: Path) -> bool:
     """True if *path* lives under a protected tool-managed subdir of *sources_dir*.
 
@@ -382,3 +397,32 @@ def rel_to_vault(path: Path | str, base_dir: Path) -> str:
         return p.relative_to(base_dir).as_posix()
     except ValueError:
         return p.as_posix()
+
+
+def set_default_wiki_dir(path: str) -> None:
+    """Set the server-wide default wiki directory (used by MCP server)."""
+    _default_wiki_dir().set(path)
+
+
+def vault_paths(wiki_dir: str | Path | None = None) -> VaultPaths:
+    """Resolve VaultPaths from the most specific source.
+
+    Priority: explicit arg > server default (set by MCP) >
+    ``KNOX_WIKI_DIR`` env var > current working directory.
+
+    This is the single source of truth for resolving vault paths across
+    all code paths (CLI, MCP, API).
+    """
+    if wiki_dir is None:
+        default = _default_wiki_dir().get()
+        if default is not None:
+            wiki_dir = default
+        else:
+            wiki_dir = os.environ.get("KNOX_WIKI_DIR", ".")
+    return VaultPaths(Path(wiki_dir).resolve())
+
+
+@cache
+def _default_wiki_dir() -> _DefaultWikiDir:
+    """Return the singleton default-wiki-dir holder."""
+    return _DefaultWikiDir()

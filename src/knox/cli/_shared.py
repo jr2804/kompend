@@ -42,6 +42,7 @@ from knox.core.config.keys import (
     TRUST_PRIVACY_FILTER,
     TRUST_USER_TRACKING,
 )
+from knox.core.paths import VaultPaths, vault_paths
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -60,6 +61,16 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+
+
+def vault_paths_from_ctx(ctx: typer.Context | None) -> VaultPaths:
+    """Resolve VaultPaths from a Typer CLI context.
+
+    Extracts ``--wiki-dir`` from the callback context and delegates to
+    :func:`knox.core.paths.vault_paths`.
+    """
+    wiki_dir = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
+    return vault_paths(wiki_dir)
 
 
 def resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:  # noqa: ANN401
