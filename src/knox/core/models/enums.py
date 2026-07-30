@@ -1,3 +1,4 @@
+# csort: off — module-level constants reference enums/classes defined later
 """StrEnum contracts and element-type definitions for KNOX data models.
 
 Every dict key, discriminator, or schema column name that crosses a file
@@ -7,7 +8,8 @@ boundary lives here as a ``StrEnum`` member — never as a bare literal.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Final
+
+from aenum import MultiValueEnum
 
 
 class AssetField(StrEnum):
@@ -26,28 +28,31 @@ class AssetField(StrEnum):
     REF_COUNT = "ref_count"
 
 
-class AssetKind(StrEnum):
+class AssetKind(StrEnum, MultiValueEnum):
     """Kinds of separated structured assets.
 
-    The prefix is used in asset ids (``tab-<hash>``, ``fig-<hash>``).
+    Each member takes ``(canonical, prefix)`` where ``canonical`` is the
+    serialization value (``table``/``figure``/``equation``) and ``prefix``
+    is the short id prefix used in asset ids (``tab-<hash>``, ``fig-<hash>``).
+    The canonical value is also accepted as an alias for lookups, so
+    ``AssetKind("table") == AssetKind.TABLE`` works.
     Equations are deferred (Phase 1 leaves them inlined).
     """
 
-    TABLE = "table"
-    FIGURE = "figure"
-    EQUATION = "equation"
+    def __new__(cls, value: str, *_aliases: str) -> AssetKind:
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        return obj
 
-    @property
-    def prefix(self) -> str:
-        """Id prefix for this asset kind (``tab``/``fig``/``eq``)."""
-        return _ASSET_PREFIX[self]
+    def __init__(self, value: str, *aliases: str) -> None:
+        self.prefix = aliases[0] if aliases else value[:3]
 
+    def __str__(self) -> str:
+        return str(self.value)
 
-_ASSET_PREFIX: Final[dict[AssetKind, str]] = {
-    AssetKind.TABLE: "tab",
-    AssetKind.FIGURE: "fig",
-    AssetKind.EQUATION: "eq",
-}
+    TABLE = "table", "tab"
+    FIGURE = "figure", "fig"
+    EQUATION = "equation", "eq"
 
 
 class CacheDeps(StrEnum):

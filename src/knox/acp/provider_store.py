@@ -1,3 +1,4 @@
+# csort: off
 """Thread-safe LLM provider credential store for ACP providers/set.
 
 Stores the LLM endpoint configuration received via ACP ``providers/set``

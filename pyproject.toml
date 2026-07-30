@@ -70,6 +70,7 @@ dependencies = [
     "models-dev>=1.0.398",
     "ollama>=0.6.2",
     "summarization-pydantic-ai>=0.1.10",
+    "aenum>=3.1.17",
 ]
 
 [project.scripts]

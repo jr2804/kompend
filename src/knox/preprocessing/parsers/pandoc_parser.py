@@ -1,3 +1,4 @@
+# csort: off
 """Pandoc-based parser using pypandoc."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# csort: off
 """Pipeline constants, tier definitions, and configuration.
 
 This module is the single source of truth for:

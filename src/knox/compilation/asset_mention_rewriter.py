@@ -29,14 +29,6 @@ _MENTION_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
-_KIND_BY_PREFIX: dict[str, AssetKind] = {
-    "figure": AssetKind.FIGURE,
-    "fig": AssetKind.FIGURE,
-    "table": AssetKind.TABLE,
-    "tab": AssetKind.TABLE,
-}
-
-
 def rewrite_asset_mentions(text: str, id_map: AssetIdMap) -> str:
     """Replace ``Figure N`` / ``Table N`` mentions with ``¶ <asset-id>``.
 
@@ -69,5 +61,12 @@ def rewrite_asset_mentions(text: str, id_map: AssetIdMap) -> str:
 
 
 def _kind_for(match_kind: str) -> AssetKind | None:
-    """Return the :class:`AssetKind` for a regex kind group, or ``None``."""
-    return _KIND_BY_PREFIX.get(match_kind.lower().rstrip("."))
+    """Return the :class:`AssetKind` for a regex kind group, or ``None``.
+
+    The enum accepts both canonical names (``figure``/``table``) and aliases
+    (``fig``/``tab``) via :class:`aenum.MultiValueEnum`.
+    """
+    try:
+        return AssetKind(match_kind.lower().rstrip("."))
+    except ValueError:
+        return None
