@@ -4,13 +4,13 @@ import sys
 from pathlib import Path
 
 
-def main():
+def main() -> None:
     base = sys.argv[1] if len(sys.argv) > 1 else "."
     results = walk_src(base)
 
     # Group by directory
     dirs: dict[str, dict] = {}
-    for name, info in results.items():
+    for _name, info in results.items():
         d = info["dir"]
         if d not in dirs:
             dirs[d] = {"files": [], "total": 0, "net": 0, "comments": 0, "blanks": 0}

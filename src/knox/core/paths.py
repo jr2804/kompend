@@ -159,6 +159,20 @@ class VaultPaths:
     sources_dir_name: str = DEFAULT_SOURCES_DIR_NAME
     output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME
 
+    def __post_init__(self) -> None:
+        """Normalize base_dir to an absolute, resolved path.
+
+        Accepts ``None``, ``"."``, a relative str, or a ``Path`` — making
+        :class:`VaultPaths` the single constructor that turns any input into
+        a canonical vault root. No other code should call ``Path.cwd()`` or
+        ``Path(x).resolve()`` on a wiki root.
+        """
+        if self.base_dir is None or self.base_dir == Path(""):
+            resolved = Path.cwd().resolve()
+        else:
+            resolved = Path(self.base_dir).expanduser().resolve()
+        object.__setattr__(self, "base_dir", resolved)
+
     # ── Top-level directories ───────────────────────────────────────────
 
     @property
@@ -415,10 +429,7 @@ def vault_paths(wiki_dir: str | Path | None = None) -> VaultPaths:
     """
     if wiki_dir is None:
         default = _default_wiki_dir().get()
-        if default is not None:
-            wiki_dir = default
-        else:
-            wiki_dir = os.environ.get("KNOX_WIKI_DIR", ".")
+        wiki_dir = default if default is not None else os.environ.get("KNOX_WIKI_DIR", ".")
     return VaultPaths(Path(wiki_dir).resolve())
 
 

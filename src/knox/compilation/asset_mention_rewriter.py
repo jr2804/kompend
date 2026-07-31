@@ -29,6 +29,7 @@ _MENTION_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+
 def rewrite_asset_mentions(text: str, id_map: AssetIdMap) -> str:
     """Replace ``Figure N`` / ``Table N`` mentions with ``¶ <asset-id>``.
 

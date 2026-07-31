@@ -14,12 +14,11 @@ from typing import Annotated
 import typer
 
 from knox.agents.reference_resolver import ReferenceResolverAgent
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.compilation.flows.references import resolve_unresolved_references
 from knox.core.config import resolve_config
 from knox.core.models.references import SHORT_LABEL_TITLE_MAX
-from knox.core.paths import VaultPaths
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.bibtex import references_to_bibtex
@@ -124,11 +123,7 @@ def references_export(
 def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
     """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    # state_dir is .knox/ — its parent is the project root
-    base_dir = state_dir.parent
-    ref_file = base_dir / ".knox" / "references.json"
+    ref_file = vp.references_path
     if not ref_file.exists():
         return None
     return ReferenceStore(ref_file)
@@ -160,11 +155,8 @@ def references_fetch(
     Requires an LLM model to be configured (``KNOX_LLM_DEFAULT_MODEL``).
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    # state_dir is .knox/ — its parent is the project root
-    base_dir = state_dir.parent
-    ref_file = VaultPaths(base_dir).references_path
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    ref_file = vp.references_path
     if not ref_file.exists():
         get_console().print("No references found. Run a compile first to extract references.")
         raise typer.Exit(0)

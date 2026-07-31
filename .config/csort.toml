@@ -18,3 +18,7 @@ enums = "alpha"
 enabled = true
 order = ["public", "protected", "private"]
 method_type_order = ["instance", "class", "static"]
+
+[transforms]
+hoist_inline_imports = true 
+remove_type_checking = true

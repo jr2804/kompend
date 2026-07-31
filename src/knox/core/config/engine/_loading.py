@@ -73,7 +73,7 @@ def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
 
 def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:
     """Walk up from *start_dir* collecting all project config files."""
-    current = (start_dir or Path.cwd()).resolve()
+    current = VaultPaths(start_dir).base_dir
     found: list[Path] = []
     seen_dirs: set[Path] = set()
     for parent in [current] + list(current.parents):
@@ -116,7 +116,7 @@ def wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
 
 def get_project_config_path(start_dir: Path | None = None) -> Path:
     """Return the project config file path used by ``knox config set``."""
-    current = (start_dir or Path.cwd()).resolve()
+    current = VaultPaths(start_dir).base_dir
     found = find_project_config(current)
     if found is not None:
         return found
@@ -128,7 +128,7 @@ def get_project_config_path(start_dir: Path | None = None) -> Path:
 
 def find_project_config(start_dir: Path | None = None) -> Path | None:
     """Walk up from *start_dir* looking for project config files."""
-    current = (start_dir or Path.cwd()).resolve()
+    current = VaultPaths(start_dir).base_dir
     for parent in [current] + list(current.parents):
         for name in _PROJECT_CONFIG_NAMES:
             candidate = parent / name

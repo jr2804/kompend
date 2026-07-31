@@ -32,7 +32,7 @@ _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
 )
-_PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"
+_PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"  # noqa: S105 - redaction placeholder, not a secret
 
 
 @dataclass
@@ -164,10 +164,9 @@ def filter_sensitive(text: str) -> tuple[str, int]:
     return text, count
 
 
-def mark_wiki_private(wiki: CompiledWiki, output_dir: Path) -> None:
+def mark_wiki_private(wiki: CompiledWiki, base_dir: Path) -> None:
     """Write .knox/private.json index of private pages."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    private_index = VaultPaths(output_dir.parent).private_path
+    private_index = VaultPaths(base_dir).private_path
     private_index.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "saved_at": iso_local(),

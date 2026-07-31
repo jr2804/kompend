@@ -3,13 +3,12 @@
 import dataclasses
 from typing import Any
 
-from knox.cli._shared import resolve_project_paths
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.pipeline.status import collect_stats
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL
 from knox.core.models import load_cached_wiki
-from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR
+from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR, vault_paths
 from knox.logging import get_logger
 from knox.mcp.tools._helpers import resolve_wiki_dir
 from knox.rag.zvec_store import ZvecWikiStore
@@ -26,11 +25,14 @@ def query_wiki(
     search_mode: SearchMode = SearchMode.HYBRID,
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki."""
-    resolved_dir = resolve_wiki_dir(wiki_dir)
-    cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    vp = vault_paths(wiki_dir)
+    cfg = resolve_config(base_dir=vp.base_dir)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
+    state_dir = vp.knox_dir
+    base_dir = vp.base_dir
 
-    wiki = load_cached_wiki(state_dir.parent)
+    wiki = load_cached_wiki(base_dir)
     if wiki is None:
         return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'wiki_compile' first."}
 
@@ -100,9 +102,11 @@ def wiki_status(
 ) -> dict[str, Any]:
     """Show per-wiki statistics."""
     try:
-        resolved_dir = resolve_wiki_dir(wiki_dir)
-        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
-        sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+        vp = vault_paths(wiki_dir)
+        cfg = resolve_config(base_dir=vp.base_dir)
+        sources_dir = vp.sources_dir
+        output_dir = vp.output_dir
+        state_dir = vp.knox_dir
         stats = collect_stats(
             sources_dir=sources_dir if sources_dir.exists() else None,
             output_dir=output_dir if output_dir.exists() else None,

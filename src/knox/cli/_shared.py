@@ -11,6 +11,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import typer
+
+from knox.core.config import resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
@@ -33,10 +36,6 @@ from knox.core.config.keys import (
     COMPILE_VERIFY,
     COMPILE_WORKERS,
     INGEST_PARSER,
-    PATHS_CACHE_DIR,
-    PATHS_OUTPUT_DIR,
-    PATHS_SOURCES_DIR,
-    PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
     SEARCH_SYNTHESIS_VERBOSITY,
     TRUST_PRIVACY_FILTER,
@@ -71,18 +70,6 @@ def vault_paths_from_ctx(ctx: typer.Context | None) -> VaultPaths:
     """
     wiki_dir = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
     return vault_paths(wiki_dir)
-
-
-def resolve_project_paths(cfg: Any) -> tuple[Path, Path, Path, Path]:  # noqa: ANN401
-    """Return resolved source, output, cache, and state directories.
-
-    Values come from the resolved config ``paths`` section.
-    """
-    sources_dir = Path(cfg.get(PATHS_SOURCES_DIR))
-    output_dir = Path(cfg.get(PATHS_OUTPUT_DIR))
-    cache_dir = Path(cfg.get(PATHS_CACHE_DIR))
-    state_dir = Path(cfg.get(PATHS_STATE_DIR))
-    return sources_dir, output_dir, cache_dir, state_dir
 
 
 def build_cli_overrides(

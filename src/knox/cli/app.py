@@ -17,7 +17,7 @@ from importlib.metadata import version
 
 import typer
 
-from knox.core.reporting.runlog import log_run_end, log_run_start
+from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
 
 
@@ -109,6 +109,13 @@ def _callback(
         get_console().print(_get_version())
         raise typer.Exit()
     ctx.obj = {"wiki_dir": wiki_dir, "no_user_tracking": no_user_tracking}
+    handle = log_run_start(wiki_dir=wiki_dir)
+    _run_handle_holder["handle"] = handle
+
+
+#: Module-level holder for the run handle, written by :func:`_callback`
+#: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
+_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
 
 
 def main() -> None:
@@ -116,17 +123,28 @@ def main() -> None:
     configure_logging()
     _configure_streams_utf8()
     _register_for_argv(sys.argv[1:])
-    handle = log_run_start()
+    handle: RunHandle | None = None
     try:
         app()
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        handle = _extract_handle()
         log_run_end(handle, status="ok" if code == 0 else "error", exit_code=code)
         raise
     except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
+        handle = _extract_handle()
         log_run_end(handle, status="error", error=repr(exc))
         raise
+    handle = _extract_handle()
     log_run_end(handle, status="ok", exit_code=0)
+
+
+_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
+
+
+def _extract_handle() -> RunHandle | None:
+    """Retrieve the run handle stashed by the callback."""
+    return _run_handle_holder["handle"]
 
 
 def _configure_streams_utf8() -> None:

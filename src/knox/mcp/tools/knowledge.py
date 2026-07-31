@@ -7,18 +7,17 @@ from typing import Any
 from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
 from knox.capture.capture import capture
-from knox.mcp.tools._helpers import resolve_wiki_dir
 from knox.capture.distill import distill
 from knox.capture.learn import learn
-from knox.cli._shared import resolve_project_paths
 from knox.core.config import (
     DEFAULTS,
     EmbeddingConfig,
     LLMConfig,
     resolve_config,
 )
-from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_MCP_ELEMENT_CHARS, PATHS_WIKI_DIR
+from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_MCP_ELEMENT_CHARS
 from knox.core.models import MetadataField, WikiField
+from knox.core.paths import vault_paths
 from knox.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.logging import get_logger
@@ -198,9 +197,9 @@ def wiki_distill(
 ) -> dict[str, Any]:
     """Synthesize captured notes into coherent wiki pages."""
     try:
-        resolved_dir = resolve_wiki_dir(wiki_dir)
-        cfg = resolve_config(cli_overrides={PATHS_WIKI_DIR: resolved_dir})
-        sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+        vp = vault_paths(wiki_dir)
+        cfg = resolve_config(base_dir=vp.base_dir)
+        sources_dir = vp.sources_dir
 
         try:
             model = cfg.get("compile.llm.default_model", "")

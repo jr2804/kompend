@@ -22,7 +22,7 @@ from knox.cli._pipeline_helpers import (
     resolve_compile_inputs,
 )
 from knox.cli._progress import PipelineProgress
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -72,7 +72,7 @@ from knox.core.config.keys import (
     PATHS_WIKI_DIR,
 )
 from knox.core.models import MetadataField, WikiField
-from knox.core.paths import VaultPaths
+from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import ingest_documents
 from knox.core.pipeline.orchestrator import build_pipeline
@@ -172,9 +172,10 @@ def compile_cmd(  # noqa: PLR0915
     if online_urls is None:
         online_urls = []
 
-    wiki_dir_override = wiki_dir or str(vault_paths_from_ctx(ctx).base_dir)
+    vp = vault_paths_from_ctx(ctx)
+    if wiki_dir:
+        vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides(
-        wiki_dir=wiki_dir_override,
         start_at_tier=start_at_tier,
         no_cache=no_cache or False,
         workers=workers,
@@ -198,8 +199,9 @@ def compile_cmd(  # noqa: PLR0915
         in_place_sources=in_place,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
 
     source_extensions = get_all_extensions()
     source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions]
@@ -327,10 +329,9 @@ def ingest_cmd(
     if online_urls is None:
         online_urls = []
 
-    wiki_dir_override = str(vault_paths_from_ctx(ctx).base_dir)
+    vp = vault_paths_from_ctx(ctx)
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
-        wiki_dir=wiki_dir_override,
         no_cache=no_cache or False,
         workers=workers,
         in_place_sources=in_place,
@@ -338,9 +339,9 @@ def ingest_cmd(
         parser=parser,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
-    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
-    base_dir = Path(cfg.get(PATHS_WIKI_DIR))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    sources_dir = vp.sources_dir
+    base_dir = vp.base_dir
 
     all_input_files = resolve_compile_inputs(
         files or [],

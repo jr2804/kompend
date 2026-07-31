@@ -25,7 +25,7 @@ from knox.cli._query_helpers import (  # noqa: F401  # re-exported for backward 
     synthesize_and_output,
     wiki_link,
 )
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
@@ -48,6 +48,7 @@ from knox.core.config.keys import (
     QUERY_FORMAT,
 )
 from knox.core.models import load_cached_wiki
+from knox.core.paths import vault_paths
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_err_console, get_logger
 from knox.search.classifier import classify
@@ -79,24 +80,29 @@ def query_cmd(
     tags: SourceTags = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki."""
-    wiki_dir_override = wiki_dir or str(vault_paths_from_ctx(ctx).base_dir)
+    vp = vault_paths_from_ctx(ctx)
+    # If explicit --wiki-dir was passed to the command (not via global callback),
+    # re-resolve vp from it.
+    if wiki_dir:
+        vp = vault_paths(wiki_dir)
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
-        wiki_dir=wiki_dir_override,
         no_user_tracking=no_user_tracking,
         synthesis_verbosity=verbosity.value if verbosity is not None else None,
     )
-    cfg = resolve_config(cli_overrides=cli_overrides, config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
     if format is None:
         format = LlmDataFormat(cfg.get(QUERY_FORMAT, LlmDataFormat.MARKDOWN.value))
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
+    state_dir = vp.knox_dir
 
     if _classify_intent(query, no_classify, format):
         return
 
     tag_groups = _parse_tag_groups(tags)
 
-    wiki = load_cached_wiki(state_dir.parent)
+    wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
         get_err_console().print(
             f"No compiled wiki found in {output_dir}. Run 'knox compile' first.",

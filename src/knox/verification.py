@@ -50,15 +50,15 @@ class VerificationResult:
 
 def verify_wiki(
     wiki: CompiledWiki,
-    output_dir: Path,
+    base_dir: Path,
     *,
     agent: VerificationAgent,
     verify_budget: int = 3000,
     min_ngram: int = 3,
 ) -> VerificationResult:
-    sources_dir = output_dir.parent / DEFAULTS["paths"]["sources_dir"]
+    sources_dir = base_dir / DEFAULTS["paths"]["sources_dir"]
     if not sources_dir.exists():
-        sources_dir = output_dir
+        sources_dir = base_dir
 
     result = VerificationResult()
     for node in wiki.nodes:
@@ -70,7 +70,7 @@ def verify_wiki(
     if result.claims:
         result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
 
-    report_path = VaultPaths(output_dir.parent).verification_path
+    report_path = VaultPaths(base_dir).verification_path
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
     return result

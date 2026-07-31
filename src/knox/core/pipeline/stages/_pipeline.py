@@ -234,8 +234,9 @@ class WikiPipeline:
 
         Valid names: ``index``, ``chunk``, ``resolve``, ``compile``, ``output``.
         """
-        if tier not in _TIER_DESCRIPTIONS:
-            msg = f"Unknown tier {tier!r}. Valid: {_ALL_TIERS}"
+        valid_tiers = {ti.tier.value for ti in Tier.all_tiers()}
+        if tier not in valid_tiers:
+            msg = f"Unknown tier {tier!r}. Valid: {sorted(valid_tiers)}"
             raise ValueError(msg)
 
         target_level = Tier.level_of(Tier(tier))
@@ -268,7 +269,7 @@ class WikiPipeline:
                 "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(name)),
                 "description": _TIER_DESCRIPTIONS[name],
             }
-            for name in _ALL_TIERS
+            for name in [ti.tier.value for ti in Tier.all_tiers()]
         ] + [
             {
                 "tier": "_distribution",

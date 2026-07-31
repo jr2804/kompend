@@ -1,33 +1,8 @@
+import re
 from dataclasses import dataclass
 from enum import StrEnum
-import re
 
 from knox.search.retriever import TOKEN_SPLIT_RE
-
-
-class QueryIntent(StrEnum):
-    GREETING = "greeting"
-    GRATITUDE = "gratitude"
-    HELP = "help"
-    OFFTOPIC = "offtopic"
-    KNOWLEDGE = "knowledge"
-
-
-@dataclass(frozen=True)
-class ClassifierRule:
-    """A single classification rule with intent, patterns, response, and match mode."""
-
-    intent: QueryIntent
-    patterns: object  # list[re.Pattern[str]]
-    response: str
-    match_start: bool
-
-
-@dataclass(frozen=True)
-class ClassificationResult:
-    intent: QueryIntent
-    response: str | None
-
 
 _GREETING_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"^(hi|hello|hey|heya|howdy|yo)\b", re.IGNORECASE),
@@ -113,6 +88,30 @@ _STOP: frozenset[str] = frozenset(
         "howdy",
     }
 )
+
+
+class QueryIntent(StrEnum):
+    GREETING = "greeting"
+    GRATITUDE = "gratitude"
+    HELP = "help"
+    OFFTOPIC = "offtopic"
+    KNOWLEDGE = "knowledge"
+
+
+@dataclass(frozen=True)
+class ClassifierRule:
+    """A single classification rule with intent, patterns, response, and match mode."""
+
+    intent: QueryIntent
+    patterns: object  # list[re.Pattern[str]]
+    response: str
+    match_start: bool
+
+
+@dataclass(frozen=True)
+class ClassificationResult:
+    intent: QueryIntent
+    response: str | None
 
 
 def classify(query: str, min_length: int = 2) -> ClassificationResult:

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import ConfigPath, JsonOutput, Verbose
 from knox.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from knox.core.config import resolve_config
 from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, COMPILE_LLM_VLM_MODEL
+from knox.core.paths import vault_paths
 from knox.logging import get_err_console
 
 
@@ -33,9 +34,12 @@ def doctor_cmd(
     or the current directory must contain a compiled wiki (i.e. the
     resolved output directory must exist).
     """
-    wiki_dir_override = wiki_dir or str(vault_paths_from_ctx(ctx).base_dir)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=wiki_dir_override), config_path=config)
-    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    vp = vault_paths_from_ctx(ctx)
+    if wiki_dir:
+        vp = vault_paths(wiki_dir)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_path=config)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
 
     if not wiki_dir and not ctx.obj.get("wiki_dir") and not output_dir.exists():
         get_err_console().print(

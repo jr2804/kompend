@@ -55,14 +55,26 @@ from knox.core.config.keys import (
 )
 from knox.core.paths import VaultPaths
 
+__all__ = [
+    "Compiler",
+    "DisplayConfig",
+    "ImageMode",
+    "OutputFormat",
+    "PipelineConfig",
+    "Tier",
+    "TierInfo",
+]
 
-@dataclass(frozen=True)
-class TierInfo:
-    """Metadata for a single pipeline tier."""
 
-    tier: Tier
-    level: int
-    description: str
+class Compiler(StrEnum):
+    """Compiler backend selection.
+
+    - ``GRAPH``: GraphCompiler (heading-based grouping, default)
+    - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
+    """
+
+    GRAPH = "graph"
+    WICER = "wicer"
 
 
 class Tier(StrEnum):
@@ -111,12 +123,6 @@ class Tier(StrEnum):
         )
 
     @classmethod
-    @cache
-    def _info_by_tier(cls) -> dict[Tier, TierInfo]:
-        """Return a mapping from tier to its metadata for O(1) lookup."""
-        return {ti.tier: ti for ti in cls.all_tiers()}
-
-    @classmethod
     def level_of(cls, tier: Tier) -> int:
         """Return the numeric level of a tier."""
         return cls._info_by_tier()[tier].level
@@ -126,27 +132,11 @@ class Tier(StrEnum):
         """Return the human-readable description of a tier."""
         return cls._info_by_tier()[tier].description
 
-
-class Compiler(StrEnum):
-    """Compiler backend selection.
-
-    - ``GRAPH``: GraphCompiler (heading-based grouping, default)
-    - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
-    """
-
-    GRAPH = "graph"
-    WICER = "wicer"
-
-
-__all__ = [
-    "Compiler",
-    "DisplayConfig",
-    "ImageMode",
-    "OutputFormat",
-    "PipelineConfig",
-    "Tier",
-    "TierInfo",
-]
+    @classmethod
+    @cache
+    def _info_by_tier(cls) -> dict[Tier, TierInfo]:
+        """Return a mapping from tier to its metadata for O(1) lookup."""
+        return {ti.tier: ti for ti in cls.all_tiers()}
 
 
 @dataclass
@@ -308,3 +298,12 @@ class PipelineConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     pdf: PdfConfig = field(default_factory=PdfConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
+
+
+@dataclass(frozen=True)
+class TierInfo:
+    """Metadata for a single pipeline tier."""
+
+    tier: Tier
+    level: int
+    description: str

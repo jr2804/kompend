@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 
 from knox.agents.categorize import CategorizeAgent
-from knox.cli._shared import resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     OrganizeCollapseSingle,
@@ -40,7 +38,6 @@ def organize_cmd(
     """Categorise files in ``sources/`` into a hierarchical directory tree."""
     vp = vault_paths_from_ctx(ctx)
     overrides: dict[str, object] = {}
-    overrides[PATHS_WIKI_DIR] = str(vp.base_dir)
     if max_depth is not None:
         overrides[ORGANIZE_MAX_DEPTH] = max_depth
     if min_subcategories is not None:
@@ -48,8 +45,9 @@ def organize_cmd(
     if collapse_single_file is not None:
         overrides[ORGANIZE_COLLAPSE_SINGLE_FILE] = collapse_single_file
 
-    cfg = resolve_config(cli_overrides=overrides or None)
-    sources_dir, output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=overrides or None)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
     base_dir = vp.base_dir
 
     config = resolve_organize_config(overrides or None)

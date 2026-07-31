@@ -13,10 +13,9 @@ from __future__ import annotations
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.core.config import resolve_config
-from knox.core.paths import VaultPaths
 from knox.core.reporting.log import build_log_report
 from knox.logging import get_console
 
@@ -50,16 +49,16 @@ def log_cmd(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    _sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    base_dir = state_dir.parent
+    base_dir = vp.base_dir
 
     report = build_log_report(base_dir, last_n=_last_n(last))
 
     if write:
-        log_file = VaultPaths(base_dir).log_file
+        log_file = vp.log_file
         log_file.parent.mkdir(parents=True, exist_ok=True)
         # ponytail: overwrite rather than prepend — the report is always
         # rebuilt fresh from the structured stores, so the file mirrors the

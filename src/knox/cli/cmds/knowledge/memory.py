@@ -11,7 +11,7 @@ from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from knox.core.config import DEFAULTS, resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MEMORY_ENTRIES, PATHS_WIKI_DIR, TRUST_USER_TRACKING
+from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MEMORY_ENTRIES, TRUST_USER_TRACKING
 from knox.core.templates import get_template_loader
 from knox.core.trust.actor import resolve_actor
 from knox.logging import get_console, get_err_console
@@ -109,14 +109,10 @@ def memory_synthesize(
 def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
     """Resolve the memory store, project base directory, and acting user."""
     overrides: dict[str, Any] = {}
-    wiki_dir_override = vault_paths_from_ctx(ctx).base_dir
-    if wiki_dir_override:
-        overrides[PATHS_WIKI_DIR] = str(wiki_dir_override)
+    vp = vault_paths_from_ctx(ctx)
     if ctx and ctx.obj and ctx.obj.get("no_user_tracking"):
         overrides[TRUST_USER_TRACKING] = False
-    cfg = resolve_config(cli_overrides=overrides)
-    paths = cfg.get("paths")
-    output_dir = Path(paths["output_dir"])
-    base_dir = output_dir.parent
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=overrides)
     embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
+    base_dir = vp.base_dir
     return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from knox.compilation._two_phase_core import Extraction
-
+from knox.compilation._two_phase_core import Extraction
 
 # ── Memory digests ─────────────────────────────────────────────────────
 
@@ -194,7 +190,7 @@ class ExtractionMemory:
         referenced first). Tags are the full tag set. Summary is the
         first section summary (if any), or empty.
         """
-        from knox.compilation._two_phase_core import Extraction  # noqa: PLC0415
+        
 
         return Extraction(
             source=source,

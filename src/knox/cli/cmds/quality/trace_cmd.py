@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import JsonOutput
 from knox.core.config import resolve_config
@@ -36,9 +36,11 @@ def trace_cmd(
         knox trace self-attention --with-content
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    base_dir = output_dir.parent
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
+    state_dir = vp.knox_dir
+    base_dir = vp.base_dir
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:

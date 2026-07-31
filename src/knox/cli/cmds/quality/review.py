@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import JsonOutput
 from knox.core.config import resolve_config
@@ -40,9 +40,8 @@ def review_cmd(
 ) -> None:
     """Manage the review queue for compiled pages."""
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    queue = ReviewQueue(review_dir=state_dir / REVIEW_DIR)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    queue = ReviewQueue(review_dir=vp.knox_dir / REVIEW_DIR)
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 
 

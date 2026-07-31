@@ -35,7 +35,6 @@ import argparse
 import ast
 import json
 import re
-import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,10 +125,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.src:
-        roots = [Path(p).resolve() for p in args.src]
-    else:
-        roots = [SRC_ROOT, TESTS_ROOT]
+    roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
 
     py_files = discover_py_files(roots)
     all_violations: list[Violation] = []
@@ -340,10 +336,7 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
 # ``if len(x) > N``. We use a small window (3 lines back) to catch this.
 def _is_line_padding_context(lines: list[str], current_idx_0based: int) -> bool:
     """True if a ``if len(...) > N`` guard appears just above this slice."""
-    for j in range(max(0, current_idx_0based - 3), current_idx_0based):
-        if _LINE_PADDING_RE.search(lines[j]):
-            return True
-    return False
+    return any(_LINE_PADDING_RE.search(lines[j]) for j in range(max(0, current_idx_0based - 3), current_idx_0based))
 
 
 def _is_noqa_line(line: str) -> re.Match[str] | None:

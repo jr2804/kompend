@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
+from enum import StrEnum
 from functools import cache
 from pathlib import Path
 from typing import Any, override
 
 import pypandoc
-
-from enum import StrEnum
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger

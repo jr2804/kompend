@@ -30,15 +30,14 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def annotate_wiki_with_provenance(wiki: CompiledWiki, output_dir: Path) -> CompiledWiki:
+def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> CompiledWiki:
     """Persist provenance citations for each node and return a new wiki.
 
     Writes a per-node ``.knox/provenance/<id>.json`` file containing the
     list of citations parsed from the node's content. The wiki itself
     is returned with updated metadata so callers can chain output steps.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    prov_dir = VaultPaths(output_dir.parent).provenance_dir
+    prov_dir = VaultPaths(base_dir).provenance_dir
     prov_dir.mkdir(parents=True, exist_ok=True)
 
     new_nodes: list[WikiNode] = []

@@ -55,26 +55,6 @@ def _validate_generation_output(
     return output
 
 
-class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
-    """PydanticAI agent for the compilation generation stage.
-
-    The agent's system + user prompts come from the existing Jinja2
-    templates (``generation_system.md.j2``, ``generation_prompt.md.j2``)
-    so the LLM-facing surface is identical to the current direct LLM
-    path. Only the dispatch and validation are upgraded.
-    """
-
-    template_name: str = "generation_prompt.md.j2"
-    system_template_name: str = "generation_system.md.j2"
-    result_type: type[GenerationOutput] = GenerationOutput
-    deps_type: type[GenerationDeps] = GenerationDeps
-
-    #: Semantic output validator: catches empty pages, empty content,
-    #: empty slugs, and duplicate slugs before they reach the pipeline.
-    output_validator_func = _validate_generation_output
-    use_delta_retry = True
-
-
 def _fix_slugs_locally(pages: list[Any]) -> None:
     """Auto-fix empty and duplicate slugs without triggering a model retry.
 
@@ -103,3 +83,23 @@ def _slugify_title(title: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title.lower()).strip()
     slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
     return slug or "concept"
+
+
+class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
+    """PydanticAI agent for the compilation generation stage.
+
+    The agent's system + user prompts come from the existing Jinja2
+    templates (``generation_system.md.j2``, ``generation_prompt.md.j2``)
+    so the LLM-facing surface is identical to the current direct LLM
+    path. Only the dispatch and validation are upgraded.
+    """
+
+    template_name: str = "generation_prompt.md.j2"
+    system_template_name: str = "generation_system.md.j2"
+    result_type: type[GenerationOutput] = GenerationOutput
+    deps_type: type[GenerationDeps] = GenerationDeps
+
+    #: Semantic output validator: catches empty pages, empty content,
+    #: empty slugs, and duplicate slugs before they reach the pipeline.
+    output_validator_func = _validate_generation_output
+    use_delta_retry = True

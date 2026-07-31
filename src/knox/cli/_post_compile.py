@@ -72,10 +72,10 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
         get_console().print("--bypass-review overrides --review; writing pages directly.")
 
     if opts.provenance:
-        annotate_provenance(opts.wiki, opts.output_dir)
+        annotate_provenance(opts.wiki, base_dir)
 
     if opts.private:
-        mark_private(opts.wiki, opts.output_dir)
+        mark_private(opts.wiki, base_dir)
 
     if opts.verify:
         model = opts.pipeline_config.llm.default_model
@@ -84,7 +84,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
         else:
             verify_claims(
                 opts.wiki,
-                opts.output_dir,
+                base_dir,
                 agent=VerificationAgent(
                     model,
                     timeout=opts.pipeline_config.llm.timeout,
@@ -159,20 +159,20 @@ def send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
         queue.enqueue(node)
 
 
-def annotate_provenance(wiki: CompiledWiki, output_dir: Path) -> None:
+def annotate_provenance(wiki: CompiledWiki, base_dir: Path) -> None:
     """Annotate compiled wiki with claim-level provenance citations."""
-    annotated = annotate_wiki_with_provenance(wiki, output_dir)
+    annotated = annotate_wiki_with_provenance(wiki, base_dir)
     get_console().print(f"Annotated {len(annotated.nodes)} nodes with provenance")
 
 
-def mark_private(wiki: CompiledWiki, output_dir: Path) -> None:
+def mark_private(wiki: CompiledWiki, base_dir: Path) -> None:
     """Mark all wiki pages as private via frontmatter."""
-    mark_wiki_private(wiki, output_dir)
+    mark_wiki_private(wiki, base_dir)
 
 
 def verify_claims(
     wiki: CompiledWiki,
-    output_dir: Path,
+    base_dir: Path,
     *,
     agent: VerificationAgent,
     verify_budget: int = 3000,
@@ -183,7 +183,7 @@ def verify_claims(
     (§5.2) on ``wiki.metadata`` so output writers can surface it. The actor
     follows the §7 convention (``<producer>/<version>``).
     """
-    result = verify_wiki(wiki, output_dir, agent=agent, verify_budget=verify_budget)
+    result = verify_wiki(wiki, base_dir, agent=agent, verify_budget=verify_budget)
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
     # Stamp the OKF v0.2 ``verified`` trust event (§5.2).

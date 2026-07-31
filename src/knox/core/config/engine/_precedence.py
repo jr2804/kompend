@@ -16,11 +16,13 @@ from knox.core.config.engine._loading import (
     find_global_config,
 )
 from knox.core.config.engine._schema import DEFAULTS, flat_keys
+from knox.core.paths import VaultPaths
 from knox.core.config.keys import (
     COMPILE_OUTPUT_DIR,
     COMPILE_SOURCES_DIR,
     PATHS_OUTPUT_DIR,
     PATHS_SOURCES_DIR,
+    PATHS_WIKI_DIR,
 )
 from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
@@ -72,6 +74,7 @@ def resolve_config(
     *,
     cli_overrides: dict[str, Any] | None = None,
     config_path: str | Path | None = None,
+    base_dir: Path | str | None = None,
 ) -> ResolvedConfig:
     """Build a fully resolved config by merging all 5 layers.
 
@@ -81,6 +84,10 @@ def resolve_config(
         Flat dotted-key dict of CLI-provided values.
     config_path:
         Explicit config file path (``--config`` flag).
+    base_dir:
+        Explicit vault root directory. Takes precedence over the
+        ``paths.wiki_dir`` key in any other layer. Prefer passing this
+        from a :class:`~knox.core.paths.VaultPaths` instance.
 
     Returns:
     -------
@@ -128,6 +135,8 @@ def resolve_config(
 
     # Layer 1: CLI overrides
     cli = cli_overrides or {}
+    if base_dir is not None:
+        cli = {**cli, PATHS_WIKI_DIR: str(VaultPaths(base_dir).base_dir)}
     if cli:
         cli_nested = nest_flat(cli)
         result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
@@ -198,15 +207,10 @@ def _resolve_paths(
             )
 
     wiki_dir_raw = paths.get("wiki_dir")
-    base_dir = Path(wiki_dir_raw).expanduser().resolve() if wiki_dir_raw else Path.cwd()
+    vp = VaultPaths(wiki_dir_raw)
+    base_dir = vp.base_dir
     paths["wiki_dir"] = base_dir
-
-    for key in ("sources_dir", "output_dir", "cache_dir", "state_dir"):
-        dotted = f"paths.{key}"
-        value = paths.get(key)
-        if value is None:
-            value = get_dot(DEFAULTS, dotted)
-        resolved_dir = Path(value).expanduser()
-        if not resolved_dir.is_absolute():
-            resolved_dir = base_dir / resolved_dir
-        paths[key] = resolved_dir.resolve()
+    paths["sources_dir"] = vp.sources_dir
+    paths["output_dir"] = vp.output_dir
+    paths["cache_dir"] = vp.cache_dir
+    paths["state_dir"] = vp.knox_dir

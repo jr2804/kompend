@@ -25,7 +25,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
 from knox.cli._pipeline_helpers import write_wiki_cache
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args import (
     ConfigPath,
@@ -97,14 +97,13 @@ def lint_run(
         knox lint run --rule broken-wikilinks --rule orphan-page
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
-        config_path=config,
-    )
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_path=config)
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
+    state_dir = vp.knox_dir
     sources_dir_str = str(sources_dir) if sources_dir.exists() else None
 
-    wiki = load_cached_wiki(state_dir.parent)
+    wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
@@ -171,7 +170,7 @@ def lint_run(
 
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
-        fixes_applied = _persist_lint_fixes(wiki, output_dir, state_dir.parent)
+        fixes_applied = _persist_lint_fixes(wiki, output_dir, vp.base_dir)
         get_console().print(f"Persisted fixes to {fixes_applied} file(s).")
 
     # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
@@ -273,10 +272,11 @@ def lint_history(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    state_dir = vp.knox_dir
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=last)
 
@@ -310,10 +310,11 @@ def lint_prune(
 
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    state_dir = vp.knox_dir
 
     removed = prune_lint_history(
         state_dir / LINT_HISTORY_FILE,
@@ -344,10 +345,11 @@ def lint_gaps(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    _sources_dir, _output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
+    state_dir = vp.knox_dir
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
@@ -401,11 +403,14 @@ def lint_remediate(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
-        cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)),
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    sources_dir, output_dir, _cache_dir, state_dir = resolve_project_paths(cfg)
-    base_dir = state_dir.parent
+    sources_dir = vp.sources_dir
+    output_dir = vp.output_dir
+    state_dir = vp.knox_dir
+    base_dir = vp.base_dir
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:

@@ -15,7 +15,7 @@ from knox.agents.write import WriteAgent
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
-from knox.cli._shared import build_cli_overrides, resolve_project_paths, vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceTags
@@ -52,8 +52,8 @@ def capture_cmd(
         knox capture "Discussion about layer norm placement" --tags architecture --tags training
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    sources_dir = vp.sources_dir
 
     try:
         capture_agent = CaptureAgent(
@@ -88,10 +88,9 @@ def learn_cmd(
         knox learn "QKV with RoPE" --tags attention --tags architecture
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
-    path = learn(text, sources_dir=sources_dir, tags=tag)
+    path = learn(text, sources_dir=vp.sources_dir, tags=tag)
     get_console().print(f"Learned fact -> {path.name}")
 
 
@@ -110,8 +109,7 @@ def distill_cmd(
         knox distill
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    sources_dir, _output_dir, _cache_dir, _state_dir = resolve_project_paths(cfg)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
     try:
         distill_agent = DistillAgent(
@@ -122,11 +120,11 @@ def distill_cmd(
     except Exception:
         distill_agent = None
 
-    paths = distill(sources_dir, distill_agent=distill_agent)
+    paths = distill(vp.sources_dir, distill_agent=distill_agent)
     if not paths:
         get_console().print("No captured notes found to distill.")
         return
-    get_console().print(f"Distilled {len(paths)} page(s) to {sources_dir / DISTILLED_SUBDIR}")
+    get_console().print(f"Distilled {len(paths)} page(s) to {vp.sources_dir / DISTILLED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
 
@@ -152,18 +150,17 @@ def write_cmd(
         knox write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(cli_overrides=build_cli_overrides(wiki_dir=str(vp.base_dir)))
-    _sources_dir, output_dir, cache_dir, _state_dir = resolve_project_paths(cfg)
-    base_dir = output_dir.parent
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    base_dir = vp.base_dir
 
     # ── Resolve sources through the parse cache ──────────────────────────
     source_texts: list[tuple[str, str]] = []  # (stem, clean_text)
     if source:
-        source_files = resolve_files(*source, sources_dir=_sources_dir)
+        source_files = resolve_files(*source, sources_dir=vp.sources_dir)
         for sf in source_files:
             stem = sf.stem
             # Parse cache is now content-discriminated: glob for any entry.
-            matches = sorted(VaultPaths(base_dir).cache_dir.glob(parse_cache_glob(stem)))
+            matches = sorted(vp.cache_dir.glob(parse_cache_glob(stem)))
             cached = matches[0] if matches else None
             try:
                 text = extract_text_from_cached(cached) if cached and cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
@@ -206,7 +203,7 @@ def write_cmd(
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────
     slug = page_title.lower().replace(" ", "-")
-    write_dir = output_dir / "write"
+    write_dir = vp.output_dir / "write"
     write_dir.mkdir(parents=True, exist_ok=True)
     output_file = write_dir / f"{slug}.md"
 

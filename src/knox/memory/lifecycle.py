@@ -285,7 +285,7 @@ def promote_tier(current: str, review_count: int) -> str:
 
 def update_memory_for_compile(
     wiki: Any,
-    output_dir: Path,
+    base_dir: Path,
     *,
     half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
     decay_threshold: float = DEFAULT_DECAY_THRESHOLD,
@@ -294,7 +294,7 @@ def update_memory_for_compile(
 
     The store is saved alongside other KNOX metadata (``.knox/`` directory).
     """
-    store_path = VaultPaths(output_dir.parent).memory_store_path
+    store_path = VaultPaths(base_dir).memory_store_path
     store = MemoryStore.load(store_path)
     report = store.update_for_compile(
         wiki.nodes,

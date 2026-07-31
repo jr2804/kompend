@@ -21,7 +21,7 @@ from typing import Any
 import typer
 from rich.markup import escape
 
-from knox.cli._shared import resolve_project_paths
+from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.other import SourceTags
 from knox.core.config import resolve_config
@@ -51,8 +51,9 @@ def sources_list(
 
     Optionally filter by tag using --tags (same semantics as query --tags).
     """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
+    vp = vault_paths_from_ctx(ctx)
+    resolve_config(base_dir=vp.base_dir, config_path=config)
+    cache_dir = vp.cache_dir
 
     cache_data = _load_all_cache_entries(cache_dir)
     if not cache_data:
@@ -112,9 +113,9 @@ def sources_tag(
     The tag is persisted in the parse cache and will propagate to
     wiki nodes on the next compile.
     """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=True)
+    vp = vault_paths_from_ctx(ctx)
+    resolve_config(base_dir=vp.base_dir, config_path=config)
+    _mutate_tags(vp.cache_dir, file_path, tag, add=True)
 
 
 @sources_app.command("untag", help="Remove a tag from an ingested source file.")
@@ -129,9 +130,9 @@ def sources_untag(
     The tag is removed from the parse cache. Wiki nodes will need
     to be recompiled to reflect the change.
     """
-    cfg = resolve_config(config_path=config)
-    _, _, cache_dir, _ = resolve_project_paths(cfg)
-    _mutate_tags(cache_dir, file_path, tag, add=False)
+    vp = vault_paths_from_ctx(ctx)
+    resolve_config(base_dir=vp.base_dir, config_path=config)
+    _mutate_tags(vp.cache_dir, file_path, tag, add=False)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
