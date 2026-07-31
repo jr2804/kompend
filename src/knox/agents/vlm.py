@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import ClassVar, Any
 
 from pydantic_ai.messages import BinaryContent
 
@@ -57,8 +57,8 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
     prompt cannot carry image bytes.
     """
 
-    template_name: str = ""
-    system_template_name: str = ""
+    template_name: ClassVar[str] = ""
+    system_template_name: ClassVar[str] = ""
 
     def __post_init__(self) -> None:
         # Image captioning never benefits from reasoning — force it off so

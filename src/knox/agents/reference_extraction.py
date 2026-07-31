@@ -17,6 +17,7 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
@@ -31,5 +32,5 @@ class ReferenceExtractionAgent(KnoxAgentBase[ReferenceExtractionOutput, Pipeline
     ``reference_extraction_prompt.md.j2``) under ``compilation/``.
     """
 
-    template_name: str = "reference_extraction_prompt.md.j2"
-    system_template_name: str = "reference_extraction_system.md.j2"
+    template_name: ClassVar[str] = "reference_extraction_prompt.md.j2"
+    system_template_name: ClassVar[str] = "reference_extraction_system.md.j2"

@@ -13,6 +13,7 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from dataclasses import dataclass
 
@@ -40,8 +41,8 @@ class DoctorAgent(KnoxAgentBase[str, DoctorDeps]):
     Returns free text (the model's response to a ping prompt).
     """
 
-    template_name: str = ""  # not used; render_user_prompt is overridden
-    system_template_name: str = ""  # not used; render_system_prompt is overridden
+    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
+    system_template_name: ClassVar[str] = ""  # not used; render_system_prompt is overridden
 
     def render_user_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
         """The user prompt is the ping string — no template needed."""

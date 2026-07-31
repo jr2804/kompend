@@ -192,7 +192,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
 
-    def validate_output(self, ctx: RunContext[DepsT], output: ResultT) -> ResultT:
+    def validate_output(self, ctx: RunContext[DepsT], output: ResultT) -> ResultT:  # noqa: PLR6301
         """Semantic output validator. Override in subclasses to add validation.
 
         Default: pass-through (no validation). Subclasses that override this

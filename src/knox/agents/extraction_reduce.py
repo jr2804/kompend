@@ -6,6 +6,7 @@ a coherent document-level summary and deduplicates entities/concepts/tags.
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
@@ -19,5 +20,5 @@ class ExtractionReduceAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
     and returns a single merged ``ExtractionOutput``.
     """
 
-    template_name: str = "extraction_reduce_prompt.md.j2"
-    system_template_name: str = "extraction_reduce_system.md.j2"
+    template_name: ClassVar[str] = "extraction_reduce_prompt.md.j2"
+    system_template_name: ClassVar[str] = "extraction_reduce_system.md.j2"

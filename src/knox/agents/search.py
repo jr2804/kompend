@@ -1,6 +1,7 @@
 """Search agents — query expansion, CRAG grading, HyDE."""
 
 from __future__ import annotations
+from typing import ClassVar
 
 from pydantic import BaseModel
 
@@ -24,25 +25,25 @@ class CragGradeOutput(BaseModel):
 class QueryExpansionAgent(KnoxAgentBase[QueryExpansionOutput, PipelineAgentDeps]):
     """PydanticAI agent for multi-query expansion (RAG-Fusion)."""
 
-    template_name: str = "expand_query.md.j2"
-    system_template_name: str = "expand_query.md.j2"
-    template_prefix: str = "search/"
+    template_name: ClassVar[str] = "expand_query.md.j2"
+    system_template_name: ClassVar[str] = "expand_query.md.j2"
+    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.0
 
 
 class CragGradeAgent(KnoxAgentBase[CragGradeOutput, PipelineAgentDeps]):
     """PydanticAI agent for CRAG relevance grading."""
 
-    template_name: str = "crag_grade.md.j2"
-    system_template_name: str = "crag_grade.md.j2"
-    template_prefix: str = "search/"
+    template_name: ClassVar[str] = "crag_grade.md.j2"
+    system_template_name: ClassVar[str] = "crag_grade.md.j2"
+    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.0
 
 
 class HydeAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     """PydanticAI agent for HyDE hypothetical answer generation."""
 
-    template_name: str = "hyde_generate.md.j2"
-    system_template_name: str = "hyde_generate.md.j2"
-    template_prefix: str = "search/"
+    template_name: ClassVar[str] = "hyde_generate.md.j2"
+    system_template_name: ClassVar[str] = "hyde_generate.md.j2"
+    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.7

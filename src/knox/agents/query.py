@@ -22,6 +22,7 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import QueryDeps
@@ -39,8 +40,8 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
 
     # QueryAgent has no user-prompt template — the user prompt is the
     # raw question. We override render_user_prompt to return it directly.
-    template_name: str = ""  # not used; render_user_prompt is overridden
-    system_template_name: str = "synthesize_system.md.j2"
+    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
+    system_template_name: ClassVar[str] = "synthesize_system.md.j2"
 
     def render_user_prompt(self, deps: QueryDeps) -> str:  # noqa: PLR6301
         """The user prompt is the raw question — no template needed."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import field
-from typing import Any
+from typing import ClassVar, Any
 
 from pydantic_ai.agent import Agent
 
@@ -23,8 +23,8 @@ class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     changes, the underlying PydanticAI Agent is rebuilt (cached per type).
     """
 
-    template_name: str = ""  # not used; render_user_prompt is overridden
-    system_template_name: str = ""  # not used; system prompt is empty
+    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
+    system_template_name: ClassVar[str] = ""  # not used; system prompt is empty
     _agents_by_type: dict[type, Agent[Any, Any]] = field(default_factory=dict, init=False, repr=False)
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301

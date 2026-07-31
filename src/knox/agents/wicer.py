@@ -1,6 +1,7 @@
 r"""WicerAgents — PydanticAI wrappers for the WiCER compile-evaluate-refine loop."""
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
@@ -10,8 +11,8 @@ from knox.compilation.schema import WicerDiagnoseOutput, WicerEvaluateOutput, Wi
 class WicerProbeAgent(KnoxAgentBase[WicerProbeOutput, WicerProbeDeps]):
     """PydanticAI agent for WiCER probe generation (Stage 1)."""
 
-    template_name: str = "wicer_probe.md.j2"
-    system_template_name: str = "wicer_probe.md.j2"
+    template_name: ClassVar[str] = "wicer_probe.md.j2"
+    system_template_name: ClassVar[str] = "wicer_probe.md.j2"
 
     def render_system_prompt(self, deps: WicerProbeDeps) -> str:
         """WiCER probe uses a simple system message, not a template."""
@@ -25,8 +26,8 @@ class WicerProbeAgent(KnoxAgentBase[WicerProbeOutput, WicerProbeDeps]):
 class WicerEvaluateAgent(KnoxAgentBase[WicerEvaluateOutput, WicerEvaluateDeps]):
     """PydanticAI agent for WiCER evaluation (Stage 2 — LLM-as-judge)."""
 
-    template_name: str = "wicer_evaluate.md.j2"
-    system_template_name: str = "wicer_evaluate.md.j2"
+    template_name: ClassVar[str] = "wicer_evaluate.md.j2"
+    system_template_name: ClassVar[str] = "wicer_evaluate.md.j2"
 
     def render_system_prompt(self, deps: WicerEvaluateDeps) -> str:
         """WiCER evaluate uses a simple system message."""
@@ -40,8 +41,8 @@ class WicerEvaluateAgent(KnoxAgentBase[WicerEvaluateOutput, WicerEvaluateDeps]):
 class WicerDiagnoseAgent(KnoxAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps]):
     """PydanticAI agent for WiCER diagnosis (Stage 3 — extract critical facts)."""
 
-    template_name: str = "wicer_diagnose.md.j2"
-    system_template_name: str = "wicer_diagnose.md.j2"
+    template_name: ClassVar[str] = "wicer_diagnose.md.j2"
+    system_template_name: ClassVar[str] = "wicer_diagnose.md.j2"
 
     def render_system_prompt(self, deps: WicerDiagnoseDeps) -> str:
         """WiCER diagnose uses a simple system message."""

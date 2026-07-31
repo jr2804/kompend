@@ -16,6 +16,7 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
@@ -31,6 +32,6 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
     path. Only the dispatch and validation are upgraded.
     """
 
-    template_name: str = "extraction_prompt.md.j2"
-    system_template_name: str = "extraction_system.md.j2"
+    template_name: ClassVar[str] = "extraction_prompt.md.j2"
+    system_template_name: ClassVar[str] = "extraction_system.md.j2"
     use_delta_retry: bool = True

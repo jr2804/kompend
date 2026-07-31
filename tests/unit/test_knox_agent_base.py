@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import ClassVar, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -62,8 +62,8 @@ class TestSkillInjection:
         """Skills are rendered as '## Skill: <name>' sections."""
 
         class _TestAgent(KnoxAgentBase[Any, Any]):
-            template_name: str = "extraction_prompt.md.j2"
-            system_template_name: str = "extraction_system.md.j2"
+            template_name: ClassVar[str] = "extraction_prompt.md.j2"
+            system_template_name: ClassVar[str] = "extraction_system.md.j2"
             result_type: type[Any] = Any
 
             def _build_agent(self) -> Agent[Any, Any]:
@@ -95,8 +95,8 @@ class TestSkillInjection:
         """Without skills, the system prompt is unchanged."""
 
         class _TestAgent(KnoxAgentBase[Any, Any]):
-            template_name: str = "extraction_prompt.md.j2"
-            system_template_name: str = "extraction_system.md.j2"
+            template_name: ClassVar[str] = "extraction_prompt.md.j2"
+            system_template_name: ClassVar[str] = "extraction_system.md.j2"
             result_type: type[Any] = Any
 
             def _build_agent(self) -> Agent[Any, Any]:

@@ -28,7 +28,7 @@ Usage::
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import ClassVar, Any
 
 from pydantic_ai import ModelRetry, RunContext
 
@@ -46,11 +46,11 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     path. Only the dispatch and validation are upgraded.
     """
 
-    template_name: str = "generation_prompt.md.j2"
-    system_template_name: str = "generation_system.md.j2"
+    template_name: ClassVar[str] = "generation_prompt.md.j2"
+    system_template_name: ClassVar[str] = "generation_system.md.j2"
     use_delta_retry: bool = True
 
-    def validate_output(self, ctx: RunContext[GenerationDeps], output: GenerationOutput) -> GenerationOutput:
+    def validate_output(self, ctx: RunContext[GenerationDeps], output: GenerationOutput) -> GenerationOutput:  # noqa: PLR6301
         """Semantic output validator for generation results.
 
         Checks for empty pages list (the only issue that warrants a model retry).

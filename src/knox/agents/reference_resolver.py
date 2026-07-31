@@ -20,6 +20,7 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
@@ -34,6 +35,6 @@ class ReferenceResolverAgent(KnoxAgentBase[ReferenceResolutionOutput, PipelineAg
     ``reference_resolver_prompt.md.j2``) under ``compilation/``.
     """
 
-    template_name: str = "reference_resolver_prompt.md.j2"
-    system_template_name: str = "reference_resolver_system.md.j2"
+    template_name: ClassVar[str] = "reference_resolver_prompt.md.j2"
+    system_template_name: ClassVar[str] = "reference_resolver_system.md.j2"
     temperature: float | None = 0.0
