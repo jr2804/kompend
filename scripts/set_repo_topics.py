@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tomllib
 import urllib.error
@@ -52,8 +53,6 @@ def _get_token() -> str | None:
     token = os.environ.get("FORGEJO_TOKEN")
     if token:
         return token
-    # mise run doesn't pass [env] vars on Windows, try mise env --json
-    import subprocess
 
     try:
         result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5)
