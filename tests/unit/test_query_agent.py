@@ -17,8 +17,10 @@ from knox.agents.query import QueryAgent
 
 class TestQueryAgentConstruction:
     def test_class_metadata(self) -> None:
+        agent = QueryAgent(model_string="test")
         assert QueryAgent.system_template_name == "synthesize_system.md.j2"
-        assert QueryAgent.result_type is str
+        assert agent.result_type is str
+        assert agent.deps_type is QueryDeps
 
     def test_constructs_with_model_string(self) -> None:
         agent = QueryAgent(model_string="ollama/gpt-oss:20b")

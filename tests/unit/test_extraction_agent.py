@@ -21,9 +21,10 @@ from knox.compilation.schema import Concept, Entity, ExtractionOutput, Finding, 
 class TestExtractionAgentConstruction:
     def test_class_metadata(self) -> None:
         """Template names and result type are class-level so the registry can introspect."""
+        agent = ExtractionAgent(model_string="test")
         assert ExtractionAgent.template_name == "extraction_prompt.md.j2"
         assert ExtractionAgent.system_template_name == "extraction_system.md.j2"
-        assert ExtractionAgent.result_type is ExtractionOutput
+        assert agent.result_type is ExtractionOutput
 
     def test_constructs_with_model_string(self) -> None:
         # Use a real model string; the underlying pydantic_ai.Agent only

@@ -43,7 +43,7 @@ class TestKnoxAgentBaseContract:
             model_string="test/noop",
             reasoning_effort="low",
         )
-        assert agent._reasoning_effort == "low"  # noqa: SLF001
+        assert agent.reasoning_effort == "low"
 
     def test_knox_agent_base_reasoning_effort_none_by_default(self) -> None:
         """reasoning_effort defaults to None (use provider default)."""
@@ -52,7 +52,7 @@ class TestKnoxAgentBaseContract:
             pass
 
         agent = DefaultBuilder(model_string="test/noop")
-        assert agent._reasoning_effort is None  # noqa: SLF001
+        assert agent.reasoning_effort is None
 
 
 class TestSkillInjection:

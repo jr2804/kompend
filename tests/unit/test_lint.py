@@ -910,7 +910,7 @@ def _make_node(
 
 def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
     agent = MagicMock(spec=LintRuleAgent)
-    agent._timeout = 120
+    agent.timeout = 120
     agent.usage = None
     if json_data is not None:
         agent.run.return_value = json_data

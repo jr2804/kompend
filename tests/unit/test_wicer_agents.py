@@ -27,8 +27,10 @@ from knox.compilation.schema import (
 
 class TestWicerProbeAgent:
     def test_class_metadata(self) -> None:
+        agent = WicerProbeAgent(model_string="test")
         assert WicerProbeAgent.template_name == "wicer_probe.md.j2"
-        assert WicerProbeAgent.result_type is WicerProbeOutput
+        assert agent.result_type is WicerProbeOutput
+        assert agent.deps_type is WicerProbeDeps
 
     def test_run_returns_probe_output(self) -> None:
         agent, _ = self._make_agent_and_mock()
@@ -69,8 +71,10 @@ class TestWicerProbeAgent:
 
 class TestWicerEvaluateAgent:
     def test_class_metadata(self) -> None:
+        agent = WicerEvaluateAgent(model_string="test")
         assert WicerEvaluateAgent.template_name == "wicer_evaluate.md.j2"
-        assert WicerEvaluateAgent.result_type is WicerEvaluateOutput
+        assert agent.result_type is WicerEvaluateOutput
+        assert agent.deps_type is WicerEvaluateDeps
 
     def test_run_returns_evaluate_output(self) -> None:
         agent, _ = self._make_agent_and_mock()
@@ -108,8 +112,10 @@ class TestWicerEvaluateAgent:
 
 class TestWicerDiagnoseAgent:
     def test_class_metadata(self) -> None:
+        agent = WicerDiagnoseAgent(model_string="test")
         assert WicerDiagnoseAgent.template_name == "wicer_diagnose.md.j2"
-        assert WicerDiagnoseAgent.result_type is WicerDiagnoseOutput
+        assert agent.result_type is WicerDiagnoseOutput
+        assert agent.deps_type is WicerDiagnoseDeps
 
     def test_run_returns_diagnose_output(self) -> None:
         agent, _ = self._make_agent_and_mock()

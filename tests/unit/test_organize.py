@@ -829,7 +829,7 @@ def _fake_llm(payload: dict[str, Any] | None) -> CategorizeAgent:
 def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
     """Return a CategorizeAgent that yields the given CategoryTree once."""
     agent = MagicMock(spec=CategorizeAgent)
-    agent._timeout = 120
+    agent.timeout = 120
     if payload is None:
         agent.run.side_effect = Exception("LLM failed")
     else:

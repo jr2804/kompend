@@ -112,7 +112,7 @@ class TestDistill:
             content="## Overview\n\nIntegrated content.",
             tags=["ml", "synthesized"],
         )
-        mock_agent._timeout = 120
+        mock_agent.timeout = 120
 
         paths = distill(sources_dir, distill_agent=mock_agent)
         assert len(paths) == 1
@@ -135,7 +135,7 @@ class TestDistill:
         mock_result.json_data = None
         mock_agent = MagicMock()
         mock_agent.run.side_effect = Exception("LLM failed")
-        mock_agent._timeout = 120
+        mock_agent.timeout = 120
 
         paths = distill(sources_dir, distill_agent=mock_agent)
         assert len(paths) == 1

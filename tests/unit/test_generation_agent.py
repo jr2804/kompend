@@ -21,9 +21,11 @@ from knox.compilation.schema import GenerationOutput, GenerationPage
 class TestGenerationAgentConstruction:
     def test_class_metadata(self) -> None:
         """Template names and result type are class-level so the registry can introspect."""
+        agent = GenerationAgent(model_string="test")
         assert GenerationAgent.template_name == "generation_prompt.md.j2"
         assert GenerationAgent.system_template_name == "generation_system.md.j2"
-        assert GenerationAgent.result_type is GenerationOutput
+        assert agent.result_type is GenerationOutput
+        assert agent.deps_type is GenerationDeps
 
     def test_constructs_with_model_string(self) -> None:
         agent = GenerationAgent(model_string="ollama/gpt-oss:20b")

@@ -13,8 +13,9 @@ from knox.core.utils.exceptions import LLMOutputError
 class TestDoctorAgentConstruction:
     def test_class_metadata(self) -> None:
         """Template names and result type are class-level."""
-        assert DoctorAgent.result_type is str
-        assert DoctorAgent.deps_type is DoctorDeps
+        agent = DoctorAgent(model_string="ollama/test-model")
+        assert agent.result_type is str
+        assert agent.deps_type is DoctorDeps
 
     def test_constructs_with_model_string(self) -> None:
         agent = DoctorAgent(model_string="ollama/test-model")
@@ -22,7 +23,7 @@ class TestDoctorAgentConstruction:
 
     def test_constructs_with_max_tokens(self) -> None:
         agent = DoctorAgent(model_string="ollama/test-model", max_tokens=128)
-        assert agent._max_tokens == 128
+        assert agent.max_tokens == 128
 
 
 class TestDoctorAgentRun:
