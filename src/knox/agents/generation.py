@@ -37,24 +37,6 @@ from knox.agents.deps import GenerationDeps
 from knox.compilation.schema import GenerationOutput
 
 
-def _validate_generation_output(
-    ctx: RunContext[GenerationDeps],
-    output: GenerationOutput,
-) -> GenerationOutput:
-    """Semantic output validator for generation results.
-
-    Checks for empty pages list (the only issue that warrants a model retry).
-    Empty and duplicate slugs are auto-fixed locally — asking the model to
-    fix them triggers content loss on small models (Qwen3.5-2B interprets
-    "provide slugs ONLY" literally and drops all content).
-    """
-    if not output.pages:
-        raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
-
-    _fix_slugs_locally(output.pages)
-    return output
-
-
 class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
     """PydanticAI agent for the compilation generation stage.
 
@@ -66,11 +48,21 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
 
     template_name: str = "generation_prompt.md.j2"
     system_template_name: str = "generation_system.md.j2"
+    use_delta_retry: bool = True
 
-    #: Semantic output validator: catches empty pages, empty content,
-    #: empty slugs, and duplicate slugs before they reach the pipeline.
-    output_validator_func = _validate_generation_output
-    use_delta_retry = True
+    def validate_output(self, ctx: RunContext[GenerationDeps], output: GenerationOutput) -> GenerationOutput:
+        """Semantic output validator for generation results.
+
+        Checks for empty pages list (the only issue that warrants a model retry).
+        Empty and duplicate slugs are auto-fixed locally — asking the model to
+        fix them triggers content loss on small models (Qwen3.5-2B interprets
+        "provide slugs ONLY" literally and drops all content).
+        """
+        if not output.pages:
+            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
+
+        _fix_slugs_locally(output.pages)
+        return output
 
 
 def _fix_slugs_locally(pages: list[Any]) -> None:

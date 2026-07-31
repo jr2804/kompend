@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 
-from pydantic_ai import Agent, NativeOutput, Tool
+from pydantic_ai import Agent, NativeOutput, RunContext, Tool
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -126,7 +126,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     tools: list[Tool] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
-    output_validator_func: OutputValidator[ResultT, DepsT] | None = None
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
     template_name: ClassVar[str] = ""
@@ -192,6 +191,15 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
+
+    def validate_output(self, ctx: RunContext[DepsT], output: ResultT) -> ResultT:
+        """Semantic output validator. Override in subclasses to add validation.
+
+        Default: pass-through (no validation). Subclasses that override this
+        method can raise ``ModelRetry`` to trigger a retry, or modify and
+        return the output.
+        """
+        return output
 
     def run(
         self,
@@ -338,8 +346,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             retries=self.retries,
             capabilities=capabilities or None,
         )
-        if self.output_validator_func is not None:
-            agent.output_validator(self.output_validator_func)
+        if type(self).validate_output is not KnoxAgentBase.validate_output:
+            agent.output_validator(self.validate_output)
         return cast("Agent[DepsT, ResultT]", agent)
 
     def _build_top_level_model(self) -> Model:
@@ -524,31 +532,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return {}
 
 
-class OutputValidator(Protocol[ResultT, DepsT]):
-    """Semantic output validator callable signature.
-
-    Matches ``@agent.output_validator`` — receives the run context and
-    the LLM output, returns the (possibly modified) output, or raises
-    ``ModelRetry`` to trigger a retry.
-    """
-
-    def __call__(self, ctx: Any, output: ResultT) -> ResultT: ...
-
-
-@runtime_checkable
 class TemplateRendered(Protocol):
     """Agent that renders prompts from Jinja2 templates."""
 
     template_prefix: str
     template_name: str
     system_template_name: str
-
-
-@runtime_checkable
-class OutputValidated(Protocol[ResultT, DepsT]):
-    """Agent with a semantic output validator."""
-
-    output_validator_func: OutputValidator[ResultT, DepsT]
 
 
 @runtime_checkable

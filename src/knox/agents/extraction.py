@@ -33,4 +33,4 @@ class ExtractionAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
 
     template_name: str = "extraction_prompt.md.j2"
     system_template_name: str = "extraction_system.md.j2"
-    use_delta_retry = True
+    use_delta_retry: bool = True
