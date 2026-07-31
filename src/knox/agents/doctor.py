@@ -42,8 +42,6 @@ class DoctorAgent(KnoxAgentBase[str, DoctorDeps]):
 
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = ""  # not used; render_system_prompt is overridden
-    result_type: type = str
-    deps_type: type[DoctorDeps] = DoctorDeps
 
     def render_user_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
         """The user prompt is the ping string — no template needed."""

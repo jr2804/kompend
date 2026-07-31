@@ -20,8 +20,6 @@ class CategorizeAgent(KnoxAgentBase[CategoryTree, CategorizeDeps]):
     template_name: str = "categorize_prompt.md.j2"
     system_template_name: str = "categorize_system.md.j2"
     template_prefix: str = "organize/"
-    result_type: type = CategoryTree
-    deps_type: type[CategorizeDeps] = CategorizeDeps
     temperature: float | None = 0.0
 
     def render_system_prompt(self, deps: CategorizeDeps) -> str:

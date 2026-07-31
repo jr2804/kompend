@@ -36,6 +36,4 @@ class ReferenceResolverAgent(KnoxAgentBase[ReferenceResolutionOutput, PipelineAg
 
     template_name: str = "reference_resolver_prompt.md.j2"
     system_template_name: str = "reference_resolver_system.md.j2"
-    result_type: type[ReferenceResolutionOutput] = ReferenceResolutionOutput
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0

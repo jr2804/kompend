@@ -41,8 +41,6 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
     # raw question. We override render_user_prompt to return it directly.
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = "synthesize_system.md.j2"
-    result_type: type = str
-    deps_type: type[QueryDeps] = QueryDeps
 
     def render_user_prompt(self, deps: QueryDeps) -> str:  # noqa: PLR6301
         """The user prompt is the raw question — no template needed."""
@@ -55,9 +53,9 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
             context=deps.context,
             verbosity=deps.verbosity,
         )
-        if self._skills:
+        if self.skills:
             skill_blocks = []
-            for name, instructions in self._skills.items():
+            for name, instructions in self.skills.items():
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt

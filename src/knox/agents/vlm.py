@@ -21,7 +21,6 @@ from knox.agents.base import KnoxAgentBase
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.debug import save_debug_prompt
 from knox.llm.format import strip_reasoning
-from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -60,25 +59,13 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
 
     template_name: str = ""
     system_template_name: str = ""
-    result_type: type = str
-    deps_type: type[VlmDeps] = VlmDeps
 
-    def __init__(
-        self,
-        model_string: str,
-        *,
-        timeout: float = 120.0,
-        usage_tracker: UsageTracker | None = None,
-    ) -> None:
+    def __post_init__(self) -> None:
         # Image captioning never benefits from reasoning — force it off so
         # the model doesn't burn time on thinking traces that pollute
         # captions and cause timeouts on slow local vision models.
-        super().__init__(
-            model_string,
-            timeout=timeout,
-            reasoning_effort="none",
-            usage_tracker=usage_tracker,
-        )
+        self.reasoning_effort = "none"
+        super().__post_init__()
 
     def run(self, deps: VlmDeps, *, message_history: list[Any] | None = None) -> str:  # noqa: PLR6301
         """Run VLM captioning with image input via the unified model path."""
@@ -105,15 +92,15 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
             result = self._agent.run_sync(user_prompt, deps=deps)
         except Exception as exc:
             logger.warning("VLM call failed for '%s': %s", deps.image_path, exc)
-            raise LLMOutputError(f"VLM failed for model '{self._model_string}': {exc}") from exc
+            raise LLMOutputError(f"VLM failed for model '{self.model_string}': {exc}") from exc
 
         caption = strip_reasoning(result.output).strip()
 
         save_debug_prompt(
             self,
-            self._model_string,
+            self.model_string,
             [{"role": "user", "parts": [{"type": "text", "content": deps.prompt}]}],
-            {"model": self._model_string, "image_bytes": len(image_bytes)},  # nocheck: debug log dict, not wiki metadata
+            {"model": self.model_string, "image_bytes": len(image_bytes)},  # nocheck: debug log dict, not wiki metadata
             caption,
             "stop",
         )

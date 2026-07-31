@@ -12,6 +12,4 @@ class ContextChunkAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     template_name: str = "contextual_context.md.j2"
     system_template_name: str = "contextual_context.md.j2"
     template_prefix: str = "chunking/"
-    result_type: type = str
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0

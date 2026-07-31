@@ -13,5 +13,3 @@ class WikiIndexAgent(KnoxAgentBase[dict[str, Any], PipelineAgentDeps]):
 
     template_name: str = "output/synthesize.md.j2"
     system_template_name: str = "output/synthesize.md.j2"
-    result_type: type = dict  # type: ignore[arg-type]
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps

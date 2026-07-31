@@ -21,5 +21,3 @@ class ExtractionReduceAgent(KnoxAgentBase[ExtractionOutput, PipelineAgentDeps]):
 
     template_name: str = "extraction_reduce_prompt.md.j2"
     system_template_name: str = "extraction_reduce_system.md.j2"
-    result_type: type[ExtractionOutput] = ExtractionOutput
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import field
 from typing import Any
 
 from pydantic_ai.agent import Agent
@@ -24,12 +25,7 @@ class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
 
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = ""  # not used; system prompt is empty
-    result_type: type = str
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
-
-    def __init__(self, model_string: str, **kwargs: Any) -> None:
-        super().__init__(model_string, **kwargs)
-        self._agents_by_type: dict[type, Agent[Any, Any]] = {}
+    _agents_by_type: dict[type, Agent[Any, Any]] = field(default_factory=dict, init=False, repr=False)
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
         """Return the pre-rendered prompt from deps.text.

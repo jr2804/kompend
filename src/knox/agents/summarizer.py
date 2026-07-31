@@ -12,5 +12,3 @@ class SummarizerAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     template_name: str = "node_summary.md.j2"
     system_template_name: str = "node_summary.md.j2"
     template_prefix: str = "chunking/"
-    result_type: type = str
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps

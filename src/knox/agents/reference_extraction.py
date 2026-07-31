@@ -33,5 +33,3 @@ class ReferenceExtractionAgent(KnoxAgentBase[ReferenceExtractionOutput, Pipeline
 
     template_name: str = "reference_extraction_prompt.md.j2"
     system_template_name: str = "reference_extraction_system.md.j2"
-    result_type: type[ReferenceExtractionOutput] = ReferenceExtractionOutput
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps

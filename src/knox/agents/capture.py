@@ -13,6 +13,4 @@ class CaptureAgent(KnoxAgentBase[CaptureOutput, PipelineAgentDeps]):
     template_name: str = "capture_system.md.j2"
     system_template_name: str = "capture_system.md.j2"
     template_prefix: str = "capture/"
-    result_type: type = CaptureOutput
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
     temperature: float | None = 0.0

@@ -17,8 +17,6 @@ class WriteAgent(KnoxAgentBase[str, PipelineAgentDeps]):
 
     template_name: str = ""  # not used; render_user_prompt is overridden
     system_template_name: str = ""  # no system prompt needed
-    result_type: type = str
-    deps_type: type[PipelineAgentDeps] = PipelineAgentDeps
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
         """Return the pre-rendered prompt from deps.text."""
