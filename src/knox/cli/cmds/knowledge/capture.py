@@ -88,7 +88,7 @@ def learn_cmd(
         knox learn "QKV with RoPE" --tags attention --tags architecture
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
     path = learn(text, sources_dir=vp.sources_dir, tags=tag)
     get_console().print(f"Learned fact -> {path.name}")

@@ -10,7 +10,6 @@ from knox.core.config.keys import COMPILE_EMBEDDING_MODEL
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR, vault_paths
 from knox.logging import get_logger
-from knox.mcp.tools._helpers import resolve_wiki_dir
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import HybridRetriever
 
@@ -103,10 +102,9 @@ def wiki_status(
     """Show per-wiki statistics."""
     try:
         vp = vault_paths(wiki_dir)
-        cfg = resolve_config(base_dir=vp.base_dir)
+        resolve_config(base_dir=vp.base_dir)
         sources_dir = vp.sources_dir
         output_dir = vp.output_dir
-        state_dir = vp.knox_dir
         stats = collect_stats(
             sources_dir=sources_dir if sources_dir.exists() else None,
             output_dir=output_dir if output_dir.exists() else None,

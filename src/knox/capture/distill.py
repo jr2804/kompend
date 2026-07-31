@@ -159,7 +159,7 @@ def _synthesize_with_agent(
     deps = PipelineAgentDeps(
         text=user_prompt,
         source_id=f"distill-{tag}",
-        timeout=distill_agent._timeout,
+        timeout=distill_agent.timeout,
     )
 
     try:

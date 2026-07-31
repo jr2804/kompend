@@ -167,10 +167,7 @@ class VaultPaths:
         a canonical vault root. No other code should call ``Path.cwd()`` or
         ``Path(x).resolve()`` on a wiki root.
         """
-        if self.base_dir is None or self.base_dir == Path(""):
-            resolved = Path.cwd().resolve()
-        else:
-            resolved = Path(self.base_dir).expanduser().resolve()
+        resolved = Path.cwd().resolve() if self.base_dir is None or self.base_dir == Path("") else Path(self.base_dir).expanduser().resolve()
         object.__setattr__(self, "base_dir", resolved)
 
     # ── Top-level directories ───────────────────────────────────────────

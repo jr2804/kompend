@@ -8,12 +8,10 @@ be imported and unit-tested without a running CLI context.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import typer
 
-from knox.core.config import resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,

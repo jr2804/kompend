@@ -188,7 +188,7 @@ def propose_categories(
         max_depth=config.max_depth,
         min_subcategories=config.min_subcategories,
         min_files_per_category=config.min_files_per_category,
-        timeout=categorize_agent._timeout,
+        timeout=categorize_agent.timeout,
     )
     try:
         result = categorize_agent.run(deps)

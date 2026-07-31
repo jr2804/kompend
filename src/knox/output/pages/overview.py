@@ -35,7 +35,7 @@ def write_overview(
     text_block = "\n".join(sorted(source_texts))
     overview_deps = {
         "source_texts": hashlib.sha256(text_block.encode()).hexdigest(),
-        "model": agent._model_string,  # nocheck: overview cache deps, not wiki metadata
+        "model": agent.model_string,  # nocheck: overview cache deps, not wiki metadata
         "overview_budget": str(overview_budget),
     }
     cached = cache_store.get("overview", overview_deps)
@@ -96,7 +96,7 @@ def generate_overview(
     partials: list[str] = []
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
-        deps = PipelineAgentDeps(text=prompt, source_id="overview", timeout=agent._timeout)
+        deps = PipelineAgentDeps(text=prompt, source_id="overview", timeout=agent.timeout)
         try:
             result = agent.run(deps)
             if result and isinstance(result, dict):
@@ -119,7 +119,7 @@ def generate_overview(
     # hide a real LLM failure behind a degraded overview.
     combined = "\n\n".join(partials)
     prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
-    deps = PipelineAgentDeps(text=prompt, source_id="overview-merge", timeout=agent._timeout)
+    deps = PipelineAgentDeps(text=prompt, source_id="overview-merge", timeout=agent.timeout)
     try:
         result = agent.run(deps)
         if result and isinstance(result, dict):

@@ -10,18 +10,13 @@ Phase 3a --- deterministic lookups only (no VLM generation).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from pydantic_ai import Tool
 
 from knox.chunking.summarizer import structured_to_text
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
 from knox.core.models.structured import StructuredFigure
-
-if TYPE_CHECKING:
-    from knox.core.pipeline.assets import AssetStore
-
+from knox.core.pipeline.assets import AssetStore
 
 # ---------------------------------------------------------------------------
 # Public factory

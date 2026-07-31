@@ -19,7 +19,6 @@ from knox.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,
-    PATHS_WIKI_DIR,
 )
 from knox.logging import get_console, get_err_console, get_logger
 from knox.organize.engine import OrganizeResult, organize_sources, resolve_organize_config

@@ -36,10 +36,8 @@ def trace_cmd(
         knox trace self-attention --with-content
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     sources_dir = vp.sources_dir
-    output_dir = vp.output_dir
-    state_dir = vp.knox_dir
     base_dir = vp.base_dir
 
     wiki = load_cached_wiki(base_dir)

@@ -48,7 +48,7 @@ def log_cmd(
     or persist it to ``.knox/log.md`` with ``--write``.
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(
+    resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
         config_path=config,

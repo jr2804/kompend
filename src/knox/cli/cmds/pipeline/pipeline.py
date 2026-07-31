@@ -6,7 +6,6 @@ import json
 import sys
 import time
 import traceback
-from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -69,7 +68,6 @@ from knox.core.config.keys import (
     DOWNLOADER_UNDETECTED,
     INGEST_PARSER,
     LINT_FUZZY_THRESHOLD,
-    PATHS_WIKI_DIR,
 )
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths, vault_paths

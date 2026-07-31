@@ -114,7 +114,7 @@ def verify_node(
         if verify_system:
             messages.append({"role": "system", "content": verify_system})
         messages.append({"role": "user", "content": prompt})
-        deps = PipelineAgentDeps(text=prompt, source_id=node.id, timeout=agent._timeout)
+        deps = PipelineAgentDeps(text=prompt, source_id=node.id, timeout=agent.timeout)
         try:
             data = agent.run(deps)
         except Exception:

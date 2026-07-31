@@ -22,7 +22,7 @@ def status_cmd(
     and config path.
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     stats = collect_stats(
         sources_dir=vp.sources_dir if vp.sources_dir.exists() else None,
         output_dir=vp.output_dir if vp.output_dir.exists() else None,

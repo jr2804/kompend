@@ -40,7 +40,7 @@ def review_cmd(
 ) -> None:
     """Manage the review queue for compiled pages."""
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     queue = ReviewQueue(review_dir=vp.knox_dir / REVIEW_DIR)
     _dispatch_review_action(queue, action, slug, reason, approve_all, json_output)
 

@@ -1190,7 +1190,7 @@ class TestVerificationUnavailable:
         """Agent whose run returns None (forces fallback)."""
         c = Mock()
         c.run.return_value = None
-        c._timeout = 120
+        c.timeout = 120
         return c
 
 

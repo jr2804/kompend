@@ -271,7 +271,7 @@ def lint_history(
         knox lint history --json       # machine-readable
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(
+    resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
         config_path=config,
@@ -309,7 +309,7 @@ def lint_prune(
         raise typer.Exit(1)
 
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(
+    resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
         config_path=config,
@@ -344,7 +344,7 @@ def lint_gaps(
         knox lint gaps --json       # machine-readable output
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(
+    resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
         config_path=config,
@@ -407,7 +407,6 @@ def lint_remediate(
         cli_overrides=build_cli_overrides(),
         config_path=config,
     )
-    sources_dir = vp.sources_dir
     output_dir = vp.output_dir
     state_dir = vp.knox_dir
     base_dir = vp.base_dir

@@ -72,7 +72,7 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
     """Use the CaptureAgent to extract structured items from text."""
     tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
     user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
-    deps = PipelineAgentDeps(text=user_prompt, source_id="capture", timeout=capture_agent._timeout)
+    deps = PipelineAgentDeps(text=user_prompt, source_id="capture", timeout=capture_agent.timeout)
 
     try:
         result = capture_agent.run(deps)

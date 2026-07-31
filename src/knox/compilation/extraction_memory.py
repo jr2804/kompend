@@ -190,8 +190,6 @@ class ExtractionMemory:
         referenced first). Tags are the full tag set. Summary is the
         first section summary (if any), or empty.
         """
-        
-
         return Extraction(
             source=source,
             summary=self.section_summaries[0] if self.section_summaries else "",
