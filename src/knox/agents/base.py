@@ -6,8 +6,11 @@ from this base and supplies:
 - ``template_name`` — the Jinja2 template under
   ``templates/<dir>/<name>.md.j2``
 - ``system_template_name`` — the system prompt template name
-- ``result_type`` — the Pydantic model (or ``str``) the LLM must return
-- ``deps_type`` — the typed context dataclass
+- Generic type params ``[ResultT, DepsT]`` — the Pydantic model (or ``str``)
+  the LLM must return, and the typed context dataclass.
+
+``result_type`` and ``deps_type`` are derived automatically from the
+generic type parameters — subclasses do NOT set them as class attributes.
 
 The base class handles:
 
@@ -27,8 +30,9 @@ from __future__ import annotations
 import json
 import typing
 from abc import ABC
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic_ai import Agent, NativeOutput, Tool
 from pydantic_ai.capabilities import AbstractCapability, Hooks
@@ -45,7 +49,7 @@ from pydantic_ai_summarization import (
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.knox_model import KnoxModel
-from knox.core.templates import get_template_loader
+from knox.core.templates import TemplateLoader, get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import salvage_json
 from knox.llm.models import build_model
@@ -92,6 +96,7 @@ class AgentDeps(Protocol):
 DepsT = TypeVar("DepsT", bound=AgentDeps)
 
 
+@dataclass
 class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     """KNOX-side wrapper around a PydanticAI agent.
 
@@ -100,29 +105,52 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     - ``template_name`` — the filename under ``templates/<prefix>/``
       where ``prefix`` is set by ``template_prefix`` (default ``compilation/``).
     - ``system_template_name`` — the filename of the system prompt.
-    - ``result_type`` — a Pydantic model class (or ``str`` for free-text
-      output) that the LLM output will be validated against.
+    - Generic type params ``[ResultT, DepsT]`` — ``result_type`` and
+      ``deps_type`` are derived automatically from these.
 
     Subclasses MUST implement :meth:`_build_agent`.
     """
 
-    template_name: str
-    system_template_name: str
+    model_string: str
+    timeout: float = _DEFAULT_TIMEOUT_SECONDS
+    retries: int = _DEFAULT_RETRIES
+    max_tokens: int | None = None
+    skills: dict[str, str] = field(default_factory=dict)
+    usage_tracker: UsageTracker | None = None
+    fallback_models: list[str] | None = None
+    reasoning_effort: str | None = None
+    use_native_output: bool = False
+    context_manager: str | bool = False
+    context_window: int | None = None
+    delta_retry_enabled: bool = True
+    tools: list[Tool] = field(default_factory=list)
+    temperature: float | None = None
+    use_delta_retry: bool = False
+    output_validator_func: OutputValidator[ResultT, DepsT] | None = None
+
+    # Class-level template config (overridden by subclasses, NOT dataclass fields)
+    template_name: ClassVar[str] = ""
+    system_template_name: ClassVar[str] = ""
     #: Subdirectory under ``templates/`` where this agent's templates live.
     #: Override in subclasses whose templates are not under ``compilation/``
     #: (e.g. ``"search/"``, ``"capture/"``, ``"organize/"``).
-    template_prefix: str = "compilation/"
-    result_type: type
-    deps_type: type[AgentDeps] = PipelineAgentDeps
-    temperature: float | None = None
+    template_prefix: ClassVar[str] = "compilation/"
 
-    #: Optional output validator function. Subclasses can set this to a
-    #: callable that receives ``(ctx, output)`` and returns the (possibly
-    #: modified) output, raising ``ModelRetry`` to trigger a retry with
-    #: actionable feedback.  The callable signature matches
-    #: ``@agent.output_validator`` — it can be sync or async, with or
-    #: without ``RunContext``.
-    output_validator_func: Any | None = None
+    # Runtime-resolved type params (set in __post_init__, not constructor params)
+    result_type: type = field(default=str, init=False, repr=False)
+    deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)  # type: ignore[assignment]
+
+    # Lazy-init internal state (not constructor params)
+    _agent: Agent[Any, Any] | None = field(default=None, init=False, repr=False)
+    _template_loader: TemplateLoader = field(init=False, repr=False)
+    _current_source_id: str = field(default="", init=False, repr=False)
+    _delta_retry_state: dict[int, Any] = field(default_factory=dict, init=False, repr=False)
+    _last_debug_path: Path | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # Resolve result_type / deps_type from the generic type params.
+        self._resolve_type_params()
+        self._template_loader = get_template_loader()
 
     @property
     def stage(self) -> str:
@@ -132,50 +160,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         ``extraction``), so no per-subclass attribute is needed.
         """
         return self.__class__.__name__.removesuffix("Agent").lower()
-
-    def __init__(
-        self,
-        model_string: str,
-        *,
-        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
-        retries: int = _DEFAULT_RETRIES,
-        max_tokens: int | None = None,
-        skills: dict[str, str] | None = None,
-        usage_tracker: UsageTracker | None = None,
-        fallback_models: list[str] | None = None,
-        reasoning_effort: str | None = None,
-        use_native_output: bool = False,
-        context_manager: str | bool = False,
-        context_window: int | None = None,
-        delta_retry_enabled: bool = True,
-        tools: list[Tool] | None = None,
-    ) -> None:
-        self._model_string = model_string
-        self._timeout = timeout
-        self._retries = retries
-        self._max_tokens = max_tokens
-        self._reasoning_effort = reasoning_effort
-        self._usage_tracker = usage_tracker
-        self._fallback_models = fallback_models
-        self._use_native_output = use_native_output
-        self._context_manager = context_manager
-        self._context_window = context_window
-        self._delta_retry_enabled = delta_retry_enabled
-        self._tools = tools or []
-        # User-defined skills (skill_name -> instructions, injected into system prompt)
-        self._skills: dict[str, str] = skills or {}
-        # The PydanticAI Agent is constructed lazily (on first run() call)
-        # so tests can construct agents without a live provider.
-        self._agent: Agent[DepsT, ResultT] | None = None
-        # The template loader is available for render_system_prompt
-        # and render_user_prompt, which are called at run() time.
-        self._template_loader = get_template_loader()
-        # Current source_id for debug logging (set per run() call)
-        self._current_source_id: str = ""
-        #: Accumulated valid data across delta-retry attempts, keyed by run_step.
-        self._delta_retry_state: dict[int, Any] = {}
-        #: Path to the last debug file written by KnoxModel (for error messages).
-        self._last_debug_path: Path | None = None
 
     def render_user_prompt(self, deps: DepsT) -> str:
         """Render the user-prompt template with the agent's deps.
@@ -202,9 +186,9 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         prompt = self._template_loader.render(
             f"{self.template_prefix}{self.system_template_name}",
         )
-        if self._skills:
+        if self.skills:
             skill_blocks = []
-            for name, instructions in self._skills.items():
+            for name, instructions in self.skills.items():
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
@@ -248,7 +232,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 exc,
                 debug_hint,
             )
-            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}{debug_hint}") from exc
+            raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output
 
     def run_with_messages(
@@ -284,23 +268,35 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 exc,
                 debug_hint,
             )
-            raise LLMOutputError(f"Agent failed for model '{self._model_string}': {exc}{debug_hint}") from exc
+            raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output, result.new_messages()
-
-    @property
-    def model_string(self) -> str:
-        """The KNOX-format model string (``provider/model``)."""
-        return self._model_string
 
     @property
     def usage(self) -> UsageTracker | None:
         """The usage tracker, if one was provided."""
-        return self._usage_tracker
+        return self.usage_tracker
 
     @property
     def current_source_id(self) -> str:
         """The source_id from the most recent ``run()`` call."""
         return self._current_source_id
+
+    def _resolve_type_params(self) -> None:
+        """Resolve ``result_type`` and ``deps_type`` from generic type params.
+
+        Walks the MRO to find ``KnoxAgentBase[X, Y]`` and extracts X and Y.
+        Falls back to ``str`` / ``PipelineAgentDeps`` if resolution fails
+        (e.g. the subclass uses ``Any`` or doesn't parameterize).
+        """
+        for base in getattr(type(self), "__orig_bases__", ()):
+            args = typing.get_args(base)
+            if len(args) >= 2:
+                result_arg, deps_arg = args[0], args[1]
+                self.result_type = self._coerce_type(result_arg, str)
+                self.deps_type = self._coerce_type(deps_arg, PipelineAgentDeps)
+                return
+        self.result_type = str
+        self.deps_type = PipelineAgentDeps
 
     def _build_agent(self) -> Agent[DepsT, ResultT]:
         """Construct the wrapped PydanticAI agent. Called lazily on first run().
@@ -311,14 +307,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         debug saving, and in :class:`~pydantic_ai.models.fallback.FallbackModel`
         when fallback models are configured.
         """
-        model_settings: ModelSettings = {"timeout": self._timeout}
+        model_settings: ModelSettings = {"timeout": self.timeout}
         if self.temperature is not None:
             model_settings["temperature"] = self.temperature
-        if self._max_tokens is not None:
-            model_settings["max_tokens"] = self._max_tokens
+        if self.max_tokens is not None:
+            model_settings["max_tokens"] = self.max_tokens
 
         output_type: type | NativeOutput = self.result_type
-        if self._use_native_output:
+        if self.use_native_output:
             output_type = NativeOutput(
                 self.result_type,
                 name=self.stage,
@@ -332,14 +328,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         capabilities: list[AbstractCapability[Any]] = []
         if capability is not None:
             capabilities.append(capability)
-        if self._delta_retry_enabled and self.use_delta_retry:
+        if self.delta_retry_enabled and self.use_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         agent = Agent(
             top_model,
             deps_type=self.deps_type,
             output_type=output_type,
             model_settings=model_settings,
-            retries=self._retries,
+            retries=self.retries,
             capabilities=capabilities or None,
         )
         if self.output_validator_func is not None:
@@ -349,12 +345,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + KNOX wrapper) for the Agent."""
         primary = KnoxModel(
-            build_model(self._model_string),
-            usage_tracker=self._usage_tracker,
+            build_model(self.model_string),
+            usage_tracker=self.usage_tracker,
             agent=self,
-            reasoning_effort=self._reasoning_effort,
+            reasoning_effort=self.reasoning_effort,
         )
-        if not self._fallback_models:
+        if not self.fallback_models:
             return primary
 
         return FallbackModel(
@@ -362,11 +358,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             *(
                 KnoxModel(
                     build_model(m),
-                    usage_tracker=self._usage_tracker,
+                    usage_tracker=self.usage_tracker,
                     agent=self,
-                    reasoning_effort=self._reasoning_effort,
+                    reasoning_effort=self.reasoning_effort,
                 )
-                for m in self._fallback_models
+                for m in self.fallback_models
             ),
         )
 
@@ -446,7 +442,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             model: The top-level (failover) model — reused as the
                 summarization model so compressions run on the same chain.
         """
-        setting = self._context_manager
+        setting = self.context_manager
         if setting is False or setting is None:
             return None
         if isinstance(setting, str):
@@ -471,7 +467,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             )
             threshold, keep = _CONTEXT_PRESETS["default"]
         return ContextManagerCapability(
-            max_tokens=self._context_window,
+            max_tokens=self.context_window,
             compress_threshold=threshold,
             keep=keep,
             summarization_model=model,
@@ -484,8 +480,24 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     def _on_usage_update(self, pct: float, current: int, max_tokens: int) -> None:
         """Token-usage snapshot from the capability → UsageTracker."""
-        if self._usage_tracker is not None:
-            self._usage_tracker.record_context_usage(current, max_tokens)
+        if self.usage_tracker is not None:
+            self.usage_tracker.record_context_usage(current, max_tokens)
+
+    @staticmethod
+    def _coerce_type(arg: Any, fallback: type) -> type:
+        """Resolve a TypeVar arg to a usable runtime type.
+
+        Handles plain types (``str``), generic aliases (``dict[str, Any]``),
+        and TypeVars (falls back to *fallback*).
+        """
+        # Plain class — use directly
+        if isinstance(arg, type):
+            return arg
+        # Generic alias like dict[str, Any] — get_origin returns dict
+        origin = typing.get_origin(arg)
+        if origin is not None and isinstance(origin, type):
+            return origin
+        return fallback
 
     @staticmethod
     def _on_before_compress(messages: list[Any], cutoff_index: int) -> None:
@@ -511,10 +523,39 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
         return {}
 
-    #: Enable delta-retry: when the model returns partially valid structured
-    #: output, extract the valid parts and ask the model to fix only the
-    #: broken ones, instead of regenerating everything from scratch.
-    use_delta_retry: bool = False
+
+class OutputValidator(Protocol[ResultT, DepsT]):
+    """Semantic output validator callable signature.
+
+    Matches ``@agent.output_validator`` — receives the run context and
+    the LLM output, returns the (possibly modified) output, or raises
+    ``ModelRetry`` to trigger a retry.
+    """
+
+    def __call__(self, ctx: Any, output: ResultT) -> ResultT: ...
+
+
+@runtime_checkable
+class TemplateRendered(Protocol):
+    """Agent that renders prompts from Jinja2 templates."""
+
+    template_prefix: str
+    template_name: str
+    system_template_name: str
+
+
+@runtime_checkable
+class OutputValidated(Protocol[ResultT, DepsT]):
+    """Agent with a semantic output validator."""
+
+    output_validator_func: OutputValidator[ResultT, DepsT]
+
+
+@runtime_checkable
+class RuntimeResultType(Protocol):
+    """Agent whose result type can change per-call (e.g. lint rules)."""
+
+    def run(self, deps: AgentDeps, *, result_type: type | None = None) -> Any: ...
 
 
 # ── Delta-retry helpers ────────────────────────────────────────────────
