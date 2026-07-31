@@ -19,7 +19,6 @@ import json
 from pathlib import Path
 
 from knox.core.models import (
-    Citation,
     CompiledWiki,
     WikiNode,
     extract_citations,
@@ -69,7 +68,3 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> Compile
         metadata={**wiki.metadata, "provenance_annotated": True},
     )
 
-
-def citations_for_slug(slug_to_node: dict[str, WikiNode]) -> dict[str, list[Citation]]:
-    """Convenience helper for the ``knox provenance <slug>`` command."""
-    return {slug: extract_citations(node.content) for slug, node in slug_to_node.items()}

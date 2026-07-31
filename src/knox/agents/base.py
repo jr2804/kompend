@@ -532,21 +532,6 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return {}
 
 
-class TemplateRendered(Protocol):
-    """Agent that renders prompts from Jinja2 templates."""
-
-    template_prefix: str
-    template_name: str
-    system_template_name: str
-
-
-@runtime_checkable
-class RuntimeResultType(Protocol):
-    """Agent whose result type can change per-call (e.g. lint rules)."""
-
-    def run(self, deps: AgentDeps, *, result_type: type | None = None) -> Any: ...
-
-
 # ── Delta-retry helpers ────────────────────────────────────────────────
 
 

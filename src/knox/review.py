@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -208,9 +207,3 @@ def slugify(title: str) -> str:
     result = _slugify_impl(title)
     return result if result else "untitled"
 
-
-def approved_pages(review_dir: Path) -> Iterable[Path]:
-    """Yield paths of all approved pages in a review directory."""
-    if not review_dir.exists():
-        return
-    yield from sorted(review_dir.glob("*.approved.md"))

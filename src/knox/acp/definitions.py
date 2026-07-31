@@ -38,7 +38,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class AgentTask(StrEnum):
     """User-facing task categories for agent selection.
 
-    Distinct from :class:`~knox.llm.roles.LLMRole` (pipeline-internal roles).
     Tasks map to the kind of operation the user wants to perform, not to
     individual LLM calls within the pipeline.
     """

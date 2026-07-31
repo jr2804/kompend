@@ -16,7 +16,6 @@ __all__ = [
     "ChunkNodeField",
     "ChunkStrategy",
     "ChunkTreeField",
-    "EdgeField",
     "ElementType",
     "ExtractionField",
     "MetadataField",
@@ -131,19 +130,6 @@ class ChunkTreeField(StrEnum):
     NODES = "nodes"
     SOURCE_FILE = "source_file"
     STRATEGY = "strategy"
-
-
-class EdgeField(StrEnum):
-    """Dict key contract for wiki edge dictionaries.
-
-    Produced in ``assembly.py`` (``build_edges``) and consumed by
-    wiki writers and the web server.
-    """
-
-    SOURCE = "source"
-    TARGET = "target"
-    TYPE = "type"
-    ENTITY = "entity"
 
 
 class ElementType(StrEnum):

@@ -183,29 +183,6 @@ class ArxivSourceResolver(BaseUrlResolver):
         )
 
 
-class HackerNewsResolver(BaseUrlResolver):
-    """Resolve ``news.ycombinator.com/item?id=NNNNN`` → text-based API.
-
-    HN's item pages are dominated by chrome (header, footer, voting arrows).
-    The official Firebase API returns clean JSON with story/comment text.
-    """
-
-    _HN_RE = re.compile(
-        r"^https?://(?:news\.)?ycombinator\.com/item\?id=(\d+)$",
-        re.IGNORECASE,
-    )
-
-    def resolve(self, url: str) -> ResolvedUrl | None:
-        m = self._HN_RE.match(url)
-        if not m:
-            return None
-        # We return the URL unchanged here — the Firebase API is async
-        # and requires a separate fetch.  For now we let it pass through
-        # to the standard downloader.  A future resolver could use the
-        # Firebase REST API to pull structured data.
-        return None
-
-
 # ── Chain ───────────────────────────────────────────────────────────────
 
 

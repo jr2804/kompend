@@ -98,14 +98,6 @@ class QueryIntent(StrEnum):
     KNOWLEDGE = "knowledge"
 
 
-@dataclass(frozen=True)
-class ClassifierRule:
-    """A single classification rule with intent, patterns, response, and match mode."""
-
-    intent: QueryIntent
-    patterns: object  # list[re.Pattern[str]]
-    response: str
-    match_start: bool
 
 
 @dataclass(frozen=True)
