@@ -67,4 +67,3 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> Compile
         iteration=wiki.iteration,
         metadata={**wiki.metadata, "provenance_annotated": True},
     )
-

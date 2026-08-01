@@ -206,4 +206,3 @@ def slugify(title: str) -> str:
     """Convert a title into a filesystem-safe slug."""
     result = _slugify_impl(title)
     return result if result else "untitled"
-

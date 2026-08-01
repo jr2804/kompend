@@ -98,8 +98,6 @@ class QueryIntent(StrEnum):
     KNOWLEDGE = "knowledge"
 
 
-
-
 @dataclass(frozen=True)
 class ClassificationResult:
     intent: QueryIntent
