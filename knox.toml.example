@@ -29,6 +29,7 @@ file = "NOTES.md"
 # Backends:
 #   web       — trafilatura HTML parser (clean Markdown from web pages; requires trafilatura)
 #   liteparse — fast PDF/office parser (recommended for PDF)
+#   mineru    — layout-aware PDF/Office parser with OCR+layout model (high accuracy, heavy deps)
 #   docling   — high-accuracy PDF/EPUB/HTML fallback
 #   pandoc    — legacy text formats (RST, LaTeX, ODT, …)
 # Run `knox doctor` to list available backends.
