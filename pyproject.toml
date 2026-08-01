@@ -37,7 +37,6 @@ dependencies = [
     "jinja2>=3.0.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
-    "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
     "chonkie>=1.0.0",
     "crawl4ai[all]>=0.5.0",
     "zvec>=0.4.0",
@@ -46,25 +45,17 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-ai[sentence-transformers]>=2.8.0",
     "python-slugify[unidecode]>=8.0.4",
-    "onnxruntime>=1.26.0",
     "tomli-w>=1.2.0",
     "binaryornot>=0.6.0",
-    "pypdfium2>=5.10.1",
     "datasketch>=1.10.0",
     "mail-parser>=4.4.0",
-    "pylatexenc>=2.10",
-    "docling-ibm-models>=3.13.3",
-    "opencv-python-headless>=4.13.0.92",
     "toon-format>=0.9.0b1",
     "ison-py>=1.0.2",
     "pydantic-settings>=2.14.2",
-    "liteparse>=2.4.0",
-    "trafilatura>=2.0.0",
     "py7zr>=1.1.3",
     "unrar2-cffi>=0.5.0",
     "json-repair[schema]>=0.61.2",
     "tenacity>=9.0.0",
-    "pypandoc>=1.17",
     "logfire>=4.37.0",
     "pydantic-ai-harness[acp]>=0.7.0",
     "models-dev>=1.0.398",
@@ -73,10 +64,38 @@ dependencies = [
     "aenum>=3.1.17",
 ]
 
+[project.optional-dependencies]
+default = ["liteparse>=2.4.0", "trafilatura>=2.0.0"]
+docling = ["docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0", "docling-ibm-models>=3.13.3", "pypdfium2>=5.10.1", "opencv-python-headless>=4.13.0.92", "onnxruntime>=1.26.0"]
+mineru = ["mineru>=3.4.0", "pypdfium2>=5.10.1"]
+pandoc = ["pypandoc>=1.17"]
+web = ["trafilatura>=2.0.0"]
+
 [project.scripts]
 knox = "knox.cli.app:main"
 
 [dependency-groups]
+default = [
+    "liteparse>=2.4.0",
+    "trafilatura>=2.0.0",
+]
+docling = [
+    "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
+    "docling-ibm-models>=3.13.3",
+    "pypdfium2>=5.10.1",
+    "opencv-python-headless>=4.13.0.92",
+    "onnxruntime>=1.26.0",
+]
+mineru = [
+    "mineru>=3.4.0",
+    "pypdfium2>=5.10.1",
+]
+pandoc = [
+    "pypandoc>=1.17",
+]
+web = [
+    "trafilatura>=2.0.0",
+]
 dev = [
     "mkdocs-material>=9.7.6",
     "pytest>=8.0.0",

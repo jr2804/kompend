@@ -31,6 +31,17 @@ _registry: dict[str, dict[str, Any]] = {}
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
 PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 
+# Known backend names — always populated so unknown-name detection works even
+# when the backend's optional dependency is not installed. Each entry maps to
+# a human-readable description shown in error messages.
+KNOWN_BACKENDS: dict[str, str] = {
+    "docling": "high-accuracy PDF/EPUB/HTML parser (install: uv sync --group docling)",
+    "liteparse": "fast PDF/office parser (install: uv sync --group default)",
+    "mineru": "layout-aware PDF/Office parser with OCR (install: uv sync --group mineru)",
+    "pandoc": "legacy text formats — RST, LaTeX, ODT (install: uv sync --group pandoc)",
+    "web": "trafilatura HTML parser for web pages (install: uv sync --group web)",
+}
+
 
 @dataclass(frozen=True)
 class ParserBuildOptions:
@@ -105,7 +116,7 @@ def _register(
 def build_default_router(
     options: ParserBuildOptions | None = None,
     *,
-    names: str | Sequence[str] = "docling",
+    names: str | Sequence[str] = "liteparse",
 ) -> ParserRouter:
     """Construct a :class:`ParserRouter` wired with an ordered backend chain.
 
@@ -128,15 +139,35 @@ def build_default_router(
         options = ParserBuildOptions()
 
     ordered = _normalize_backends(names)
+    # Distinguish unknown backend names (typos) from known-but-uninstalled
+    # optional backends. Unknown names raise immediately; uninstalled backends
+    # are skipped with a warning so a partial install still works.
+    available = set(PARSER_BACKENDS)
+    for n in ordered:
+        if n not in KNOWN_BACKENDS and n not in available:
+            raise ValueError(
+                f"Unknown parser backend {n!r}. "
+                f"Known: {', '.join(sorted(KNOWN_BACKENDS))}.",
+            )
+    skipped = [n for n in ordered if n not in available]
+    for n in skipped:
+        hint = KNOWN_BACKENDS.get(n, "unknown backend")
+        logger.warning(
+            "Parser backend %r is not installed; skipping. (%s)", n, hint,
+        )
+    installed_order = [n for n in ordered if n in available]
+
     router = ParserRouter()
-    for backend_name in ordered:
-        router.register(get_backend(backend_name)(options))
+    if installed_order:
+        for backend_name in installed_order:
+            router.register(get_backend(backend_name)(options))
 
     # Pandoc is always present: legacy-format parser + universal text fallback.
-    pandoc = get_backend("pandoc")(options)
-    if "pandoc" not in ordered:
-        router.register(pandoc)
-    router.set_text_fallback(pandoc)
+    if "pandoc" in available:
+        pandoc = get_backend("pandoc")(options)
+        if "pandoc" not in installed_order:
+            router.register(pandoc)
+        router.set_text_fallback(pandoc)
 
     return router
 
@@ -167,4 +198,4 @@ def _normalize_backends(names: str | Sequence[str]) -> list[str]:
         if cleaned and cleaned not in seen:
             seen.add(cleaned)
             result.append(cleaned)
-    return result or ["docling"]
+    return result or ["liteparse"]

@@ -24,7 +24,7 @@ file = "NOTES.md"
 
 # ── Ingestion settings ──────────────────────────────────────────────────
 # Backend(s) used to parse source documents into structured elements.
-# A single name ("docling") or a comma-separated priority list
+# A single name ("liteparse") or a comma-separated priority list
 # ("web,liteparse,docling") — the first backend supporting a file's format wins.
 # Backends:
 #   web       — trafilatura HTML parser (clean Markdown from web pages; requires trafilatura)

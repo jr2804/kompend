@@ -11,6 +11,27 @@ See also:
 - [Pipeline Tiers](../concepts/pipeline-tiers.md) — Per-tier component reference
 - [LLM Configuration](llm-config.md) — Provider setup and model selection
 
+## Optional Parser Backends
+
+Each parser backend is an **optional dependency**. Only `liteparse` (the
+default) is installed out of the box. Install additional backends as needed:
+
+```bash
+uv sync --group docling    # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
+uv sync --group mineru     # layout-aware PDF/Office with OCR (heavy deps: torch, ONNX)
+uv sync --group pandoc     # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
+uv sync --group web        # trafilatura HTML parser for web pages
+```
+
+Or install multiple at once:
+
+```bash
+uv sync --group docling --group pandoc
+```
+
+List currently available backends with `knox list-parsers`. Uninstalled
+backends configured in `parser` are silently skipped (with a warning).
+
 ## Supported Formats
 
 | Format | Parser | Notes |
@@ -101,7 +122,7 @@ MinerU requires heavy dependencies (torch, transformers, ONNX models). It is
 **not** installed by default — install it explicitly:
 
 ```bash
-uv pip install mineru
+uv sync --group mineru
 ```
 
 Then enable it in the priority list: `parser = "web,mineru,docling"`.
