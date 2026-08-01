@@ -27,6 +27,7 @@ from knox.core.config.keys import (
 from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
 from knox.types import ConfigValue
+from knox.llm.models import set_user_providers
 
 logger = get_logger(__name__)
 
@@ -142,6 +143,8 @@ def resolve_config(
         result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
 
     _resolve_paths(result, provenance)
+
+    set_user_providers(result.get("providers", {}))
 
     return ResolvedConfig(
         raw=result,
