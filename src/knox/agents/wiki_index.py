@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps

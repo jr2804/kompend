@@ -1,6 +1,7 @@
 """Search agents — query expansion, CRAG grading, HyDE."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from pydantic import BaseModel

@@ -1,6 +1,7 @@
 """WriteAgent — PydanticAI agent for wiki page synthesis (knox write)."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

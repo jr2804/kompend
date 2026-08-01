@@ -22,6 +22,7 @@ Usage::
 """
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

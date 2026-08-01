@@ -1,6 +1,7 @@
 r"""WicerAgents — PydanticAI wrappers for the WiCER compile-evaluate-refine loop."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

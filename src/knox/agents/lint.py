@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import field
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
 from pydantic_ai.agent import Agent
 

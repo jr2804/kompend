@@ -1,6 +1,7 @@
 """RemediationAgent — PydanticAI agent for lint-driven concept-page generation."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

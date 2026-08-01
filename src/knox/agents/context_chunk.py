@@ -1,6 +1,7 @@
 """ContextChunkAgent — PydanticAI agent for contextual chunk enrichment."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

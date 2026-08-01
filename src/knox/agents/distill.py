@@ -1,6 +1,7 @@
 """DistillAgent — PydanticAI agent for synthesizing captured notes into wiki pages."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase

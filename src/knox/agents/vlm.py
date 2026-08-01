@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
 from pydantic_ai.messages import BinaryContent
 

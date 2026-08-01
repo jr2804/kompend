@@ -1,6 +1,7 @@
 """CaptureAgent — PydanticAI agent for knowledge extraction from text."""
 
 from __future__ import annotations
+
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
