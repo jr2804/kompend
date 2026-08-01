@@ -56,7 +56,7 @@ def main() -> None:
 
     print("\n=== FILES over 200 net lines ===")
     printed = set()
-    for net, path, tag in all_over:
+    for net, path, _ in all_over:
         if path not in printed:
             print(f"  {net:>6}  {path}")
             printed.add(path)

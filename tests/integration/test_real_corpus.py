@@ -46,12 +46,6 @@ logger = logging.getLogger(__name__)
 _CORPUS_SAMPLE_SIZE = 3
 
 
-#: Pick the fastest available parser up-front so every test gets the same
-#: backend (no surprise fallback mid-run).
-_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
-_PARSER_OK = _TEST_PARSER_CLS is not None
-
-
 def _liteparse_available() -> bool:
     """LiteParse (Rust-core) is the fast default for tests."""
     try:
@@ -68,6 +62,12 @@ def _docling_available() -> bool:
         return True
     except Exception:
         return False
+
+
+#: Pick the fastest available parser up-front so every test gets the same
+#: backend (no surprise fallback mid-run).
+_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
+_PARSER_OK = _TEST_PARSER_CLS is not None
 
 
 _skip_no_parser = pytest.mark.skipif(

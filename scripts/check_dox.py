@@ -163,8 +163,8 @@ def _extract_sentences(text: str) -> list[str]:
     # Split on sentence boundaries (. ! ? followed by space or end) AND newlines
     raw = re.split(r"(?<=[.!?])\s+|\n", text)
     result = []
-    for s in raw:
-        s = s.strip()
+    for line in raw:
+        s = line.strip()
         if len(s) < _MIN_DUP_LEN:
             continue
         if _IGNORE_RE.match(s):

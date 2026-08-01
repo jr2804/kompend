@@ -34,7 +34,7 @@ def main() -> None:
     req.add_header("Content-Type", "application/json")
 
     try:
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req)  # noqa: S310
         body = resp.read()
         if body:
             result = json.loads(body.decode("utf-8"))
@@ -55,7 +55,7 @@ def _get_token() -> str | None:
         return token
 
     try:
-        result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(["mise", "env", "--json"], capture_output=True, text=True, timeout=5, check=False)  # noqa: S607
         if result.returncode == 0:
             env = json.loads(result.stdout)
             return env.get("FORGEJO_TOKEN")
