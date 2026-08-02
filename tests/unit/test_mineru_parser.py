@@ -24,6 +24,25 @@ from knox.preprocessing.parsers._registry import (
 from knox.preprocessing.parsers.base import FileExtension
 from knox.preprocessing.parsers.mineru_parser import MinerUParser
 
+SIMPLE_MARKDOWN = """\
+# Document Title
+
+## Introduction
+
+This is the first paragraph about transformers.
+
+It continues on a second line.
+
+| Col A | Col B |
+| ----- | ----- |
+| 1     | 2     |
+| 3     | 4     |
+
+![Figure 1 caption](images/fig1.jpg)
+
+Final paragraph after the figure.
+"""
+
 # ── Registration ────────────────────────────────────────────────────────────
 
 
@@ -38,6 +57,99 @@ class TestMinerURegistration:
     def test_factory_builds_mineru_class(self) -> None:
         parser = get_backend("mineru")(ParserBuildOptions())
         assert isinstance(parser, MinerUParser)
+
+
+class TestMarkdownWalking:
+    def test_parse_returns_parsed_document(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
+            parser = MinerUParser()
+            doc = parser.parse(pdf)
+
+        assert doc.source_file == pdf
+        assert doc.title == "Document Title"
+        assert doc.metadata["parser"] == "mineru"
+
+    def test_heading_and_text_extraction(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
+            doc = MinerUParser().parse(pdf)
+
+        headings = [e for e in doc.elements if e.type == ElementType.HEADING]
+        assert len(headings) == 2
+        assert headings[0].content == "Document Title"
+        assert headings[0].heading_level == 1
+        assert headings[1].content == "Introduction"
+        assert headings[1].heading_level == 2
+
+    def test_table_extraction(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
+            doc = MinerUParser().parse(pdf)
+
+        tables = [e for e in doc.elements if e.type == ElementType.TABLE]
+        assert len(tables) == 1
+        grid = tables[0].content
+        assert grid == [["Col A", "Col B"], ["1", "2"], ["3", "4"]]
+
+    def test_image_extraction_file_mode(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        image = b"\xff\xd8\xff\xe0fake-jpeg-data"
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN, image)):
+            doc = MinerUParser(image_mode="file").parse(pdf)
+
+        images = [e for e in doc.elements if e.type == ElementType.IMAGE]
+        assert len(images) == 1
+        img = images[0]
+        assert MetadataField.IMAGE_PATH in img.metadata
+        out_path = Path(img.metadata[MetadataField.IMAGE_PATH])
+        assert out_path.exists()
+        assert out_path.read_bytes() == image
+        assert img.metadata["alt_text"] == "Figure 1 caption"
+
+    def test_image_extraction_base64_mode(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        image = b"\xff\xd8\xff\xe0fake-jpeg-data"
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN, image)):
+            doc = MinerUParser(image_mode="base64").parse(pdf)
+
+        images = [e for e in doc.elements if e.type == ElementType.IMAGE]
+        assert len(images) == 1
+        img = images[0]
+        assert MetadataField.IMAGE_BASE64 in img.metadata
+        data_uri = img.metadata[MetadataField.IMAGE_BASE64]
+        assert data_uri.startswith("data:image/jpeg;base64,")
+        decoded = base64.b64decode(data_uri.split(",", 1)[1])
+        assert decoded == image
+
+    def test_reading_order_is_sequential(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
+            doc = MinerUParser().parse(pdf)
+
+        orders = [e.reading_order for e in doc.elements if e.reading_order is not None]
+        assert orders == sorted(orders)
+        assert orders[0] == 0
+
+    def test_paragraph_merges_consecutive_lines(self, tmp_path: Path) -> None:
+        """Two text lines with no blank line between them merge into one paragraph."""
+        md = "# Title\n\nLine one of paragraph.\nLine two continues directly.\n"
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(md)):
+            doc = MinerUParser().parse(pdf)
+
+        texts = [e for e in doc.elements if e.type == ElementType.TEXT]
+        para_contents = [t.content for t in texts if "Line one" in t.content]
+        assert len(para_contents) == 1
+        assert "Line one of paragraph." in para_contents[0]
+        assert "Line two continues directly." in para_contents[0]
 
 
 # ── Supported extensions ────────────────────────────────────────────────────
@@ -97,6 +209,39 @@ def test_backend_case_insensitive() -> None:
     assert parser.backend == "pipeline"
 
 
+# ── Metadata propagation ────────────────────────────────────────────────────
+
+
+def test_metadata_records_backend_and_method(tmp_path: Path) -> None:
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
+        doc = MinerUParser(backend="vlm").parse(pdf)
+
+    assert doc.metadata["backend"] == "vlm"
+    assert doc.metadata["parse_method"] == "auto"
+
+
+def test_title_falls_back_to_stem(tmp_path: Path) -> None:
+    md_no_title = "Just plain text without any heading."
+    pdf = tmp_path / "report.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory(md_no_title)):
+        doc = MinerUParser().parse(pdf)
+
+    assert doc.title == "report"
+
+
+def test_empty_markdown_produces_no_elements(tmp_path: Path) -> None:
+    pdf = tmp_path / "blank.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    with patch("knox.preprocessing.parsers.mineru_parser.do_parse", side_effect=_fake_do_parse_factory("")):
+        doc = MinerUParser().parse(pdf)
+
+    assert doc.elements == []
+    assert doc.title == "blank"
+
+
 # ── Markdown walking (mocked do_parse) ──────────────────────────────────────
 
 
@@ -127,152 +272,6 @@ def _fake_do_parse_factory(markdown: str, image_bytes: bytes | None = None) -> o
             (images_dir / "fig1.jpg").write_bytes(image_bytes)
 
     return _fake_do_parse
-
-
-SIMPLE_MARKDOWN = """\
-# Document Title
-
-## Introduction
-
-This is the first paragraph about transformers.
-
-It continues on a second line.
-
-| Col A | Col B |
-| ----- | ----- |
-| 1     | 2     |
-| 3     | 4     |
-
-![Figure 1 caption](images/fig1.jpg)
-
-Final paragraph after the figure.
-"""
-
-
-class TestMarkdownWalking:
-    def test_parse_returns_parsed_document(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
-            parser = MinerUParser()
-            doc = parser.parse(pdf)
-
-        assert doc.source_file == pdf
-        assert doc.title == "Document Title"
-        assert doc.metadata["parser"] == "mineru"
-
-    def test_heading_and_text_extraction(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
-            doc = MinerUParser().parse(pdf)
-
-        headings = [e for e in doc.elements if e.type == ElementType.HEADING]
-        assert len(headings) == 2
-        assert headings[0].content == "Document Title"
-        assert headings[0].heading_level == 1
-        assert headings[1].content == "Introduction"
-        assert headings[1].heading_level == 2
-
-    def test_table_extraction(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
-            doc = MinerUParser().parse(pdf)
-
-        tables = [e for e in doc.elements if e.type == ElementType.TABLE]
-        assert len(tables) == 1
-        grid = tables[0].content
-        assert grid == [["Col A", "Col B"], ["1", "2"], ["3", "4"]]
-
-    def test_image_extraction_file_mode(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        image = b"\xff\xd8\xff\xe0fake-jpeg-data"
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN, image)):
-            doc = MinerUParser(image_mode="file").parse(pdf)
-
-        images = [e for e in doc.elements if e.type == ElementType.IMAGE]
-        assert len(images) == 1
-        img = images[0]
-        assert MetadataField.IMAGE_PATH in img.metadata
-        out_path = Path(img.metadata[MetadataField.IMAGE_PATH])
-        assert out_path.exists()
-        assert out_path.read_bytes() == image
-        assert img.metadata["alt_text"] == "Figure 1 caption"
-
-    def test_image_extraction_base64_mode(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        image = b"\xff\xd8\xff\xe0fake-jpeg-data"
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN, image)):
-            doc = MinerUParser(image_mode="base64").parse(pdf)
-
-        images = [e for e in doc.elements if e.type == ElementType.IMAGE]
-        assert len(images) == 1
-        img = images[0]
-        assert MetadataField.IMAGE_BASE64 in img.metadata
-        data_uri = img.metadata[MetadataField.IMAGE_BASE64]
-        assert data_uri.startswith("data:image/jpeg;base64,")
-        decoded = base64.b64decode(data_uri.split(",", 1)[1])
-        assert decoded == image
-
-    def test_reading_order_is_sequential(self, tmp_path: Path) -> None:
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
-            doc = MinerUParser().parse(pdf)
-
-        orders = [e.reading_order for e in doc.elements if e.reading_order is not None]
-        assert orders == sorted(orders)
-        assert orders[0] == 0
-
-    def test_paragraph_merges_consecutive_lines(self, tmp_path: Path) -> None:
-        """Two text lines with no blank line between them merge into one paragraph."""
-        md = "# Title\n\nLine one of paragraph.\nLine two continues directly.\n"
-        pdf = tmp_path / "paper.pdf"
-        pdf.write_bytes(b"%PDF-1.4 fake")
-        with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(md)):
-            doc = MinerUParser().parse(pdf)
-
-        texts = [e for e in doc.elements if e.type == ElementType.TEXT]
-        para_contents = [t.content for t in texts if "Line one" in t.content]
-        assert len(para_contents) == 1
-        assert "Line one of paragraph." in para_contents[0]
-        assert "Line two continues directly." in para_contents[0]
-
-
-# ── Metadata propagation ────────────────────────────────────────────────────
-
-
-def test_metadata_records_backend_and_method(tmp_path: Path) -> None:
-    pdf = tmp_path / "paper.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
-    with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(SIMPLE_MARKDOWN)):
-        doc = MinerUParser(backend="vlm").parse(pdf)
-
-    assert doc.metadata["backend"] == "vlm"
-    assert doc.metadata["parse_method"] == "auto"
-
-
-def test_title_falls_back_to_stem(tmp_path: Path) -> None:
-    md_no_title = "Just plain text without any heading."
-    pdf = tmp_path / "report.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
-    with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory(md_no_title)):
-        doc = MinerUParser().parse(pdf)
-
-    assert doc.title == "report"
-
-
-def test_empty_markdown_produces_no_elements(tmp_path: Path) -> None:
-    pdf = tmp_path / "blank.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
-    with patch("mineru.cli.common.do_parse", side_effect=_fake_do_parse_factory("")):
-        doc = MinerUParser().parse(pdf)
-
-    assert doc.elements == []
-    assert doc.title == "blank"
 
 
 # ── Factory options forwarding ──────────────────────────────────────────────
