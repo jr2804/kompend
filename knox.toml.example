@@ -24,11 +24,8 @@ file = "NOTES.md"
 
 # ── Ingestion settings ──────────────────────────────────────────────────
 # Backend(s) used to parse source documents into structured elements.
-<<<<<<< HEAD
 # A single name ("liteparse") or a comma-separated priority list
 # ("liteparse,marker,docling") — the first backend supporting a file's format wins.
-# A single name ("docling") or a comma-separated priority list
-# ("web,liteparse,docling") — the first backend supporting a file's format wins.
 # Backends (all optional except liteparse; install with: uv sync --group <name>):
 #   liteparse — fast PDF/office parser (default, always installed)
 #   docling   — high-accuracy PDF/EPUB/HTML fallback (uv sync --group docling)

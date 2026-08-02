@@ -18,7 +18,10 @@ __all__ = [
     "get_registered_parsers",
 ]
 
-# Optional frontends — guarded so a missing dependency never breaks the package.
+# ── Optional parser backends ────────────────────────────────────────────
+# Each block is guarded so a missing third-party package does not break the
+# package import. The parser module's ``register_backend`` call runs only when
+# its dependency is available.
 try:
     from knox.preprocessing.parsers.docling_parser import DoclingParser  # noqa: F401 — triggers register_backend
 
@@ -44,6 +47,13 @@ try:
     from knox.preprocessing.parsers.marker_parser import MarkerParser  # noqa: F401 — triggers register_backend
 
     __all__.append("MarkerParser")
+except ImportError:  # pragma: no cover - optional dep
+    pass
+
+try:
+    from knox.preprocessing.parsers.mineru_parser import MinerUParser  # noqa: F401 — triggers register_backend
+
+    __all__.append("MinerUParser")
 except ImportError:  # pragma: no cover - optional dep
     pass
 

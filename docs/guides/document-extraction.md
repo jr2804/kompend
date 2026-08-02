@@ -11,6 +11,27 @@ See also:
 - [Pipeline Tiers](../concepts/pipeline-tiers.md) — Per-tier component reference
 - [LLM Configuration](llm-config.md) — Provider setup and model selection
 
+## Optional Parser Backends
+
+Each parser backend is an **optional dependency**. Only `liteparse` (the
+default) is installed out of the box. Install additional backends as needed:
+
+```bash
+uv sync --group docling    # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
+uv sync --group mineru     # layout-aware PDF/Office with OCR (heavy deps: torch, ONNX)
+uv sync --group pandoc     # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
+uv sync --group web        # trafilatura HTML parser for web pages
+```
+
+Or install multiple at once:
+
+```bash
+uv sync --group docling --group pandoc
+```
+
+List currently available backends with `knox list-parsers`. Uninstalled
+backends configured in `parser` are silently skipped (with a warning).
+
 ## Supported Formats
 
 | Format | Parser | Notes |
@@ -71,6 +92,40 @@ plain text files (`.txt`) and serves as the binaryornot text fallback.
 PandocParser is registered **after** DoclingParser in the parser router, so
 docling always wins for formats both support (e.g. `.docx` is handled by
 docling, not pandoc).
+
+## LiteParseParser: Fast PDF/Office Parsing
+
+[LiteParse](https://github.com/run-llama/liteparse) (Rust-core, Apache 2.0) is
+the recommended backend for PDF and Office formats when speed matters more than
+layout-structure accuracy. It reconstructs documents to Markdown with embedded
+image bytes but has no LLM captioning of its own, so every extracted figure
+flows through `VLMEnricher`.
+
+Configure via the priority list: `parser = "web,liteparse,docling"`.
+
+## MinerUParser: Layout-Aware PDF/Office Parsing
+
+[MinerU](https://github.com/opendatalab/MinerU) (Apache 2.0) is a
+high-accuracy document parser with three selectable backends:
+
+- **pipeline** (default) — traditional OCR + layout-detection model.
+- **vlm** — vision-language model backend (needs `mineru-vl-utils` + GPU server).
+- **hybrid** — pipeline for text-heavy pages, VLM for complex layouts.
+
+MinerU handles PDF, DOCX, PPTX, and XLSX. It has no internal figure
+captioning, so `figure_enrichment` is `False` and every figure flows through
+`VLMEnricher`. The parser drives MinerU's `do_parse` API, which converts a
+source file to Markdown (with extracted images), then walks the Markdown into
+KNOX `DocumentElement` values.
+
+MinerU requires heavy dependencies (torch, transformers, ONNX models). It is
+**not** installed by default — install it explicitly:
+
+```bash
+uv sync --group mineru
+```
+
+Then enable it in the priority list: `parser = "web,mineru,docling"`.
 
 ## Investigated and Rejected: opendataloader-pdf[hybrid]
 
