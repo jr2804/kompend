@@ -31,6 +31,7 @@ file = "NOTES.md"
 #   liteparse — fast PDF/office parser (recommended for PDF)
 #   docling   — high-accuracy PDF/EPUB/HTML fallback
 #   pandoc    — legacy text formats (RST, LaTeX, ODT, …)
+#   glm-ocr   — multimodal OCR for images and PDFs (requires glmocr)
 # Run `knox doctor` to list available backends.
 # CLI: --parser | Env: KNOX_INGEST_PARSER
 

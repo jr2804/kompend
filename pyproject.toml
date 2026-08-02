@@ -73,10 +73,14 @@ dependencies = [
     "aenum>=3.1.17",
 ]
 
+[project.optional-dependencies]
+glm-ocr = ["glmocr>=0.5.0"]
+
 [project.scripts]
 knox = "knox.cli.app:main"
 
 [dependency-groups]
+glm-ocr = ["glmocr>=0.5.0"]
 dev = [
     "mkdocs-material>=9.7.6",
     "pytest>=8.0.0",

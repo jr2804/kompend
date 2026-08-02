@@ -394,7 +394,7 @@ class NotesConfig(_KnoxBaseModel):
 
 
 class IngestConfig(_KnoxBaseModel):
-    parser: str = Field(default="docling", validation_alias="KNOX_INGEST_PARSER")
+    parser: str = Field(default="liteparse", validation_alias="KNOX_INGEST_PARSER")
 
 
 class DownloaderConfig(_KnoxBaseModel):

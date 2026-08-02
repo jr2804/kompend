@@ -108,11 +108,11 @@ def test_iter_sources_scans_source_dir_even_with_input_files_set(tmp_path: Path)
 
 def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     """iter_sources only yields files with supported extensions."""
-    _populate_source_dir(tmp_path, "doc1.pdf", "doc2.md", "notes.html", "image.png", "data.csv", "script.py")
+    _populate_source_dir(tmp_path, "doc1.pdf", "doc2.md", "notes.html", "data.csv", "script.py")
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
     sources = list(pipeline.iter_sources())
-    assert len(sources) == 4  # pdf, md, html, csv — not png, py
+    assert len(sources) == 4  # pdf, md, html, csv — not py
     assert all(s.suffix.lower() in (".pdf", ".md", ".html", ".csv") for s in sources)
 
 
