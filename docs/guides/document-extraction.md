@@ -144,6 +144,54 @@ the file contains binary data. If it is text, the file is routed to
 extensionless files or files with unusual extensions that happen to be
 plain text.
 
+## Optional Parser Frontends
+
+KNOX ships with **LiteParse** as the default parser (always installed).
+Additional parser backends are available as optional dependency groups.
+Install the ones you need:
+
+```bash
+uv sync --group docling    # high-accuracy PDF/office (Docling)
+uv sync --group marker     # deep-learning PDF/office/HTML (Marker, highest benchmark accuracy)
+uv sync --group pandoc     # legacy formats (.doc, .odt, .tex, .epub)
+uv sync --group web        # HTML/web-page extraction (trafilatura)
+```
+
+Configure the parser order in `knox.toml` under `[ingest]`:
+
+```toml
+[ingest]
+# Comma-separated list; first matching backend per file wins.
+parser = "liteparse,marker,docling,pandoc"
+```
+
+Backends that are known but not installed are silently skipped (with a
+warning); unknown names raise `ValueError`.
+
+## Marker Parser
+
+[Marker](https://github.com/datalab-to/marker) (Apache-2.0) is a deep-learning
+document converter that renders PDF, DOCX, PPTX, XLSX, EPUB, and HTML into
+Markdown with structured tables, equations, and extracted figures. It reports
+the highest benchmark accuracy among KNOX-supported parsers (95.67 heuristic
+accuracy vs docling 86.7).
+
+Two conversion modes (configured via `mode`):
+
+| Mode | Use case |
+|------|----------|
+| `fast` | CPU/MPS — lightweight detectors, block-OCRs garbled content only |
+| `balanced` | CUDA GPU — full VLM layout model + full-page OCR |
+
+Install:
+
+```bash
+uv sync --group marker
+```
+
+Marker has no internal figure captioning, so `figure_enrichment` is `False`
+and every extracted figure still flows through `VLMEnricher`.
+
 ## Previously Removed Parsers
 
 - **PdfPlumberParser** (pdfplumber) — docling covers `.pdf` first in the
