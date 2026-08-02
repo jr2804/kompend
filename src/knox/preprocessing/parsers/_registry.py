@@ -29,7 +29,21 @@ logger = get_logger(__name__)
 _registry: dict[str, dict[str, Any]] = {}
 
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
+# Only populated for backends whose optional dependency is installed.
 PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
+
+# Every known backend name → its ``uv sync --group <name>`` install group.
+# Lets ``build_default_router`` distinguish a typo (unknown name) from an
+# uninstalled optional dependency (known name, not in ``PARSER_BACKENDS``).
+KNOWN_BACKENDS: dict[str, str] = {
+    "liteparse": "default",
+    "docling": "docling",
+    "pandoc": "pandoc",
+    "web": "web",
+    "marker": "marker",
+    "mineru": "mineru",
+    "glm-ocr": "glm-ocr",
+}
 
 
 @dataclass(frozen=True)
@@ -105,7 +119,7 @@ def _register(
 def build_default_router(
     options: ParserBuildOptions | None = None,
     *,
-    names: str | Sequence[str] = "docling",
+    names: str | Sequence[str] = "liteparse",
 ) -> ParserRouter:
     """Construct a :class:`ParserRouter` wired with an ordered backend chain.
 
@@ -117,12 +131,16 @@ def build_default_router(
     ``"liteparse,docling"`` prefers the fast liteparse for PDF/DOCX yet keeps
     docling for HTML/EPUB/TEX/MD/CSV that liteparse cannot parse.
 
+    Uninstalled backends (known name but optional dependency missing) are
+    skipped with a warning rather than raising. Genuinely unknown names raise
+    ``ValueError``.
+
     Args:
         options: Build context (image mode/dir/scale, PDF config). Defaults to
             :class:`ParserBuildOptions` when ``None``.
         names: Ordered backend names — a comma-separated string
             (``"liteparse,docling"``) or a sequence. A single name
-            (``"docling"``) is accepted for backward compatibility.
+            (``"liteparse"``) is accepted for backward compatibility.
     """
     if options is None:
         options = ParserBuildOptions()
@@ -130,13 +148,29 @@ def build_default_router(
     ordered = _normalize_backends(names)
     router = ParserRouter()
     for backend_name in ordered:
+        if backend_name not in KNOWN_BACKENDS:
+            available = ", ".join(sorted(KNOWN_BACKENDS)) or "(none)"
+            msg = (
+                f"Unknown parser backend {backend_name!r}. "
+                f"Available: {available}."
+            )
+            raise ValueError(msg)
+        if backend_name not in PARSER_BACKENDS:
+            logger.warning(
+                "Parser backend %r is not installed (optional dependency missing) — skipped. "
+                "Install with: uv sync --group %s",
+                backend_name,
+                KNOWN_BACKENDS[backend_name],
+            )
+            continue
         router.register(get_backend(backend_name)(options))
 
     # Pandoc is always present: legacy-format parser + universal text fallback.
-    pandoc = get_backend("pandoc")(options)
-    if "pandoc" not in ordered:
-        router.register(pandoc)
-    router.set_text_fallback(pandoc)
+    if "pandoc" in PARSER_BACKENDS:
+        pandoc = get_backend("pandoc")(options)
+        if "pandoc" not in ordered:
+            router.register(pandoc)
+        router.set_text_fallback(pandoc)
 
     return router
 
@@ -167,4 +201,4 @@ def _normalize_backends(names: str | Sequence[str]) -> list[str]:
         if cleaned and cleaned not in seen:
             seen.add(cleaned)
             result.append(cleaned)
-    return result or ["docling"]
+    return result or ["liteparse"]
