@@ -77,9 +77,15 @@ web = ["trafilatura>=2.0.0"]
 knox = "knox.cli.app:main"
 
 [dependency-groups]
-default = [
+liteparse = [
     "liteparse>=2.4.0",
+]
+trafilatura = [
     "trafilatura>=2.0.0",
+]
+default = [
+    {include-group = "liteparse"},
+    {include-group = "trafilatura"},
 ]
 docling = [
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
