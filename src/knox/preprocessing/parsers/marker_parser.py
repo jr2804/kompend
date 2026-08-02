@@ -246,11 +246,7 @@ def _markdown_to_elements(
             i += 1
             continue
 
-        if (
-            stripped.startswith("|")
-            and i + 1 < n
-            and _TABLE_SEP_RE.match(lines[i + 1].strip())
-        ):
+        if stripped.startswith("|") and i + 1 < n and _TABLE_SEP_RE.match(lines[i + 1].strip()):
             grid, consumed = _parse_table(lines, i)
             if grid:
                 elements.append(
@@ -271,12 +267,7 @@ def _markdown_to_elements(
         j = i + 1
         while j < n:
             nxt = lines[j].strip()
-            if (
-                not nxt
-                or _HEADING_RE.match(nxt)
-                or _IMAGE_REF_RE.match(nxt)
-                or nxt.startswith("|")
-            ):
+            if not nxt or _HEADING_RE.match(nxt) or _IMAGE_REF_RE.match(nxt) or nxt.startswith("|"):
                 break
             paragraph.append(nxt)
             j += 1

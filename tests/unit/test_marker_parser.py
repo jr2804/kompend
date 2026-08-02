@@ -36,7 +36,7 @@ PAGE_SEP_MARKDOWN = f"""# Page 1 Heading
 
 Content on page 1.
 
-{'-' * 48}
+{"-" * 48}
 
 # Page 2 Heading
 
@@ -53,19 +53,6 @@ class _FakeMarkdownOutput:
         self.markdown = markdown
         self.images = images or {}
         self.metadata = {"pages": 1}
-
-
-def _make_parser(tmp_path: Path, **kwargs: object) -> MarkerParser:
-    return MarkerParser(
-        image_mode="reference",
-        images_dir=tmp_path / "images",
-        **kwargs,
-    )
-
-
-@pytest.fixture
-def parser(tmp_path: Path) -> MarkerParser:
-    return _make_parser(tmp_path)
 
 
 class TestMarkerParserRegistration:
@@ -182,9 +169,7 @@ class TestMarkerParserParse:
 
         figure_elems = [e for e in result.elements if e.type == ElementType.IMAGE]
         assert len(figure_elems) >= 1
-        saved = list((tmp_path / "images").glob("*.png")) + list(
-            (tmp_path / "images").glob("*.jpg")
-        )
+        saved = list((tmp_path / "images").glob("*.png")) + list((tmp_path / "images").glob("*.jpg"))
         assert len(saved) >= 1
 
     def test_parse_assigns_page_numbers(self, parser: MarkerParser, tmp_path: Path) -> None:
@@ -219,3 +204,16 @@ class TestMarkerParserConfig:
             images_dir=tmp_path / "images",
         )
         assert p.mode is None  # let marker pick its own default
+
+
+@pytest.fixture
+def parser(tmp_path: Path) -> MarkerParser:
+    return _make_parser(tmp_path)
+
+
+def _make_parser(tmp_path: Path, **kwargs: object) -> MarkerParser:
+    return MarkerParser(
+        image_mode="reference",
+        images_dir=tmp_path / "images",
+        **kwargs,
+    )

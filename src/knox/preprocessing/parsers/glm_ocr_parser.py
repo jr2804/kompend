@@ -243,32 +243,14 @@ def _result_to_elements(
         md = getattr(result, "markdown_result", None) or ""
         if md:
             elements, reading_order, first_title = _markdown_to_elements(
-                md, source_file, image_mode, images_dir, reading_order,
+                md,
+                source_file,
+                image_mode,
+                images_dir,
+                reading_order,
             )
 
     return elements, first_title
-
-
-def _coerce_pages(json_result: Any) -> list[list[dict]]:
-    """Normalise json_result into a list-of-pages (each a list of element dicts).
-
-    GLM-OCR emits ``[[{…}, {…}], [{…}]]`` (pages → elements) but some modes
-    return a flat ``[{…}]`` or a single dict.
-    """
-    if isinstance(json_result, str):
-        json_result = json.loads(json_result)
-    if isinstance(json_result, dict):
-        # Single element, not paginated.
-        return [[json_result]]
-    if isinstance(json_result, list):
-        if not json_result:
-            return []
-        if isinstance(json_result[0], dict):
-            # Flat list of elements — treat as one page.
-            return [json_result]
-        if isinstance(json_result[0], list):
-            return json_result  # Already pages → elements.
-    return []
 
 
 def _coerce_content(etype: ElementType, content: Any) -> str | list[list[str]]:
@@ -402,6 +384,28 @@ def _count_pages(result: Any) -> int:
             pass
     original_images = getattr(result, "original_images", None) or []
     return len(original_images) or 1
+
+
+def _coerce_pages(json_result: Any) -> list[list[dict]]:
+    """Normalise json_result into a list-of-pages (each a list of element dicts).
+
+    GLM-OCR emits ``[[{…}, {…}], [{…}]]`` (pages → elements) but some modes
+    return a flat ``[{…}]`` or a single dict.
+    """
+    if isinstance(json_result, str):
+        json_result = json.loads(json_result)
+    if isinstance(json_result, dict):
+        # Single element, not paginated.
+        return [[json_result]]
+    if isinstance(json_result, list):
+        if not json_result:
+            return []
+        if isinstance(json_result[0], dict):
+            # Flat list of elements — treat as one page.
+            return [json_result]
+        if isinstance(json_result[0], list):
+            return json_result  # Already pages → elements.
+    return []
 
 
 def _empty_document(source_file: Path) -> ParsedDocument:

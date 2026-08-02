@@ -55,24 +55,6 @@ class TestGlmOcrRegistration:
         assert FileExtension.BMP in exts
 
 
-# ── Parsing (mocked) ──────────────────────────────────────────────────────
-
-
-def _fake_result(
-    json_result: list | None = None,
-    markdown_result: str = "",
-    image_files: dict | None = None,
-    original_images: list[str] | None = None,
-) -> SimpleNamespace:
-    """Build a SimpleNamespace mimicking PipelineResult."""
-    return SimpleNamespace(
-        json_result=json_result or [],
-        markdown_result=markdown_result,
-        image_files=image_files or {},
-        original_images=original_images or [],
-    )
-
-
 class TestGlmOcrParse:
     def test_parse_empty_result_returns_empty_document(self, tmp_path: Path) -> None:
         src = tmp_path / "scan.png"
@@ -88,10 +70,12 @@ class TestGlmOcrParse:
         src = tmp_path / "page.png"
         src.write_bytes(b"\x89PNG fake")
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "title", "content": "Document Title", "bbox_2d": None},
-                {"index": 1, "label": "text", "content": "Hello world.", "bbox_2d": None},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "title", "content": "Document Title", "bbox_2d": None},
+                    {"index": 1, "label": "text", "content": "Hello world.", "bbox_2d": None},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -108,9 +92,11 @@ class TestGlmOcrParse:
         src.write_bytes(b"\x89PNG fake")
         table_md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "table", "content": table_md, "bbox_2d": [0, 0, 100, 50]},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "table", "content": table_md, "bbox_2d": [0, 0, 100, 50]},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -126,9 +112,11 @@ class TestGlmOcrParse:
         src = tmp_path / "formula.png"
         src.write_bytes(b"\x89PNG fake")
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "formula", "content": "E = mc^2", "bbox_2d": None},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "formula", "content": "E = mc^2", "bbox_2d": None},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -157,9 +145,11 @@ class TestGlmOcrParse:
         src = tmp_path / "weird.png"
         src.write_bytes(b"\x89PNG fake")
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "mystery_label", "content": "???"},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "mystery_label", "content": "???"},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -171,10 +161,12 @@ class TestGlmOcrParse:
         src = tmp_path / "skip.png"
         src.write_bytes(b"\x89PNG fake")
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "text", "content": None},
-                {"index": 1, "label": "text", "content": "kept"},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "text", "content": None},
+                    {"index": 1, "label": "text", "content": "kept"},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -186,11 +178,13 @@ class TestGlmOcrParse:
         src = tmp_path / "order.png"
         src.write_bytes(b"\x89PNG fake")
         fake = _fake_result(
-            json_result=[[
-                {"index": 0, "label": "text", "content": "a"},
-                {"index": 1, "label": "text", "content": "b"},
-                {"index": 2, "label": "text", "content": "c"},
-            ]],
+            json_result=[
+                [
+                    {"index": 0, "label": "text", "content": "a"},
+                    {"index": 1, "label": "text", "content": "b"},
+                    {"index": 2, "label": "text", "content": "c"},
+                ]
+            ],
         )
         parser = GlmOcrParser()
         with patch("knox.preprocessing.parsers.glm_ocr_parser.glm_parse", return_value=fake):
@@ -259,6 +253,24 @@ class TestMarkdownFallback:
         assert len(doc.elements) == 3
         assert doc.elements[0].type == ElementType.HEADING
         assert doc.title == "Title"
+
+
+# ── Parsing (mocked) ──────────────────────────────────────────────────────
+
+
+def _fake_result(
+    json_result: list | None = None,
+    markdown_result: str = "",
+    image_files: dict | None = None,
+    original_images: list[str] | None = None,
+) -> SimpleNamespace:
+    """Build a SimpleNamespace mimicking PipelineResult."""
+    return SimpleNamespace(
+        json_result=json_result or [],
+        markdown_result=markdown_result,
+        image_files=image_files or {},
+        original_images=original_images or [],
+    )
 
 
 if __name__ == "__main__":

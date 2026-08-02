@@ -148,14 +148,15 @@ def build_default_router(
     for n in ordered:
         if n not in KNOWN_BACKENDS and n not in available:
             raise ValueError(
-                f"Unknown parser backend {n!r}. "
-                f"Known: {', '.join(sorted(KNOWN_BACKENDS))}.",
+                f"Unknown parser backend {n!r}. Known: {', '.join(sorted(KNOWN_BACKENDS))}.",
             )
     skipped = [n for n in ordered if n not in available]
     for n in skipped:
         hint = KNOWN_BACKENDS.get(n, "unknown backend")
         logger.warning(
-            "Parser backend %r is not installed; skipping. (%s)", n, hint,
+            "Parser backend %r is not installed; skipping. (%s)",
+            n,
+            hint,
         )
     installed_order = [n for n in ordered if n in available]
 

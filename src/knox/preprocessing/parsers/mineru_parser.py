@@ -24,6 +24,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from mineru.cli.common import do_parse
+from mineru.utils.enum_class import MakeMode
+
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
@@ -110,14 +113,9 @@ class MinerUParser(BaseParser):
         backend = backend.lower()
         parse_method = parse_method.lower()
         if backend not in _VALID_BACKENDS:
-            raise ValueError(
-                f"Unknown MinerU backend {backend!r}. Valid: {sorted(_VALID_BACKENDS)}."
-            )
+            raise ValueError(f"Unknown MinerU backend {backend!r}. Valid: {sorted(_VALID_BACKENDS)}.")
         if parse_method not in _VALID_PARSE_METHODS:
-            raise ValueError(
-                f"Unknown MinerU parse_method {parse_method!r}. "
-                f"Valid: {sorted(_VALID_PARSE_METHODS)}."
-            )
+            raise ValueError(f"Unknown MinerU parse_method {parse_method!r}. Valid: {sorted(_VALID_PARSE_METHODS)}.")
         self.backend = backend
         self.parse_method = parse_method
         self.formula_enable = formula_enable
@@ -132,11 +130,6 @@ class MinerUParser(BaseParser):
         MinerU writes ``{stem}.md`` + ``images/`` under a temp directory. The
         Markdown is read back and walked into :class:`DocumentElement` values.
         """
-        # Lazy import — MinerU pulls in torch/ONNX/OCR deps at import time and
-        # those should only load when the backend is actually selected.
-        from mineru.cli.common import do_parse  # noqa: PLC0415
-        from mineru.utils.enum_class import MakeMode  # noqa: PLC0415
-
         source_bytes = source_file.read_bytes()
         stem = source_file.stem
 
