@@ -54,6 +54,9 @@ class FileExtension(StrEnum):
     JPEG = ".jpeg"
     GIF = ".gif"
     WEBP = ".webp"
+    TIFF = ".tiff"
+    TIF = ".tif"
+    BMP = ".bmp"
 
     @property
     def pandoc_format(self) -> str:

@@ -24,12 +24,17 @@ file = "NOTES.md"
 
 # ── Ingestion settings ──────────────────────────────────────────────────
 # Backend(s) used to parse source documents into structured elements.
+<<<<<<< HEAD
 # A single name ("liteparse") or a comma-separated priority list
 # ("liteparse,marker,docling") — the first backend supporting a file's format wins.
+# A single name ("docling") or a comma-separated priority list
+# ("web,liteparse,docling") — the first backend supporting a file's format wins.
 # Backends (all optional except liteparse; install with: uv sync --group <name>):
 #   liteparse — fast PDF/office parser (default, always installed)
 #   docling   — high-accuracy PDF/EPUB/HTML fallback (uv sync --group docling)
 #   marker    — deep-learning PDF/office/HTML, highest accuracy (uv sync --group marker)
+#   glm-ocr   — multimodal OCR for images and PDFs (uv sync --group glm-ocr)
+#   mineru    — layout-aware PDF/Office parser with OCR (uv sync --group mineru)
 #   pandoc    — legacy text formats (RST, LaTeX, ODT, …; uv sync --group pandoc)
 #   web       — trafilatura HTML parser (uv sync --group web)
 # Uninstalled backends are skipped with a warning; unknown names raise ValueError.

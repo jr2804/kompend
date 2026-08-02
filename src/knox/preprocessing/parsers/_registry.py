@@ -25,12 +25,8 @@ from knox.preprocessing.parsers.base import (
 
 logger = get_logger(__name__)
 
-# Metadata powering ``knox list-parsers`` (name/type/extensions/figure_enrichment).
-_registry: dict[str, dict[str, Any]] = {}
-
-# Selectable ingestion backends: name → factory(options) -> BaseParser.
-# Only populated for backends whose optional dependency is installed.
-PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
+# ── Backend registry ───────────────────────────────────────────────────
+PARSER_BACKENDS: dict[str, Callable[..., BaseParser]] = {}
 
 # Every known backend name → its ``uv sync --group <name>`` install group.
 # Lets ``build_default_router`` distinguish a typo (unknown name) from an
@@ -48,88 +44,86 @@ KNOWN_BACKENDS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class ParserBuildOptions:
-    """Inputs needed to construct a parser instance.
-
-    Passed to every backend factory so each parser gets the same build context.
-    """
+    """Inputs needed to construct a parser instance."""
 
     images_dir: Path | None = None
-    image_mode: str = "file"
-    images_scale: float = IMAGE_SCALE_DEFAULT
+    image_mode: str = "ref"
+    image_scale: float = IMAGE_SCALE_DEFAULT
     pdf_config: PdfConfig | None = None
+    extra: dict[str, Any] | None = None
 
 
 def register_backend(
     name: str,
-    factory: Callable[[ParserBuildOptions], BaseParser],
+    factory: Callable[..., BaseParser],
+    extensions: Sequence[str] | None = None,
     *,
-    parser_cls: type[BaseParser],
-    parser_type: str = "built-in",
+    is_text_fallback: bool = False,
 ) -> None:
-    """Register an ingestion backend.
+    """Register a parser backend.
 
-    Args:
-        name: Backend identifier (e.g. ``"docling"``, ``"liteparse"``).
-        factory: Builds a parser instance from :class:`ParserBuildOptions`.
-        parser_cls: The parser class — ``supported_extensions`` and
-            ``figure_enrichment`` are read off it as the single source of truth
-            for the registry metadata.
-        parser_type: Display category for ``list-parsers``.
+    Parameters
+    ----------
+    name:
+        Canonical name used in config (e.g. ``"docling"``).
+    factory:
+        Callable returning a configured parser instance.
+    extensions:
+        File extensions this backend handles natively (with leading dot).
+    is_text_fallback:
+        If ``True``, this backend is used as the universal text fallback.
     """
     PARSER_BACKENDS[name] = factory
-    _register(
-        name,
-        parser_type,
-        [str(ext) for ext in parser_cls.supported_extensions],
-        parser_cls.figure_enrichment,
-    )
+    if extensions is not None:
+        for ext in extensions:
+            ext = ext.lower()
+            if not ext.startswith("."):
+                ext = f".{ext}"
+            _backend_extensions[name].add(ext)
+    if is_text_fallback:
+        _text_fallbacks.append(name)
+    logger.debug("Registered parser backend: %s", name)
 
 
-def get_registered_parsers() -> list[dict[str, Any]]:
-    """Return all registered parsers as a list of metadata dicts."""
-    return list(_registry.values())
+# ── Extension mapping ──────────────────────────────────────────────────
+_backend_extensions: dict[str, set[str]] = {}
+_text_fallbacks: list[str] = []
+
+
+def get_extensions_for_backend(name: str) -> set[str]:
+    """Return the set of file extensions registered for *name*."""
+    return _backend_extensions.get(name, set())
 
 
 def get_all_extensions() -> set[str]:
-    """Return the union of all registered parsers' supported extensions."""
+    """Return the union of all registered file extensions."""
     extensions: set[str] = set()
-    for entry in _registry.values():
-        for ext in entry.get("extensions", []):
-            extensions.add(ext.lower())
+    for ext_set in _backend_extensions.values():
+        extensions.update(ext_set)
     return extensions
 
 
-def _register(
-    name: str,
-    parser_type: str,
-    extensions: list[str],
-    figure_enrichment: bool = False,
-) -> None:
-    """Populate the list-parsers metadata registry. Idempotent."""
-    if name not in _registry:
-        _registry[name] = {
+def get_registered_parsers() -> dict[str, dict[str, Any]]:
+    """Return metadata for all registered backends."""
+    result: dict[str, dict[str, Any]] = {}
+    for name, factory in PARSER_BACKENDS.items():
+        result[name] = {
             "name": name,
-            "type": parser_type,
-            "extensions": extensions,
-            "figure_enrichment": figure_enrichment,
-            "metadata": {},
+            "factory": factory,
+            "extensions": sorted(_backend_extensions.get(name, set())),
+            "is_text_fallback": name in _text_fallbacks,
         }
+    return result
+
+
+# ── Router construction ────────────────────────────────────────────────
 
 
 def build_default_router(
     options: ParserBuildOptions | None = None,
-    *,
-    names: str | Sequence[str] = "liteparse",
+    names: str | Sequence[str] | None = None,
 ) -> ParserRouter:
-    """Construct a :class:`ParserRouter` wired with an ordered backend chain.
-
-    Backends are registered in the given priority order; ``pandoc`` is always
-    appended last (when not already listed) and set as the universal
-    binaryornot text fallback. The first backend whose
-    :meth:`BaseParser.can_parse` matches a file wins, so list backends
-    fastest-first while including every backend whose formats you need — e.g.
-    ``"liteparse,docling"`` prefers the fast liteparse for PDF/DOCX yet keeps
-    docling for HTML/EPUB/TEX/MD/CSV that liteparse cannot parse.
+    """Build a :class:`ParserRouter` from backend names.
 
     Uninstalled backends (known name but optional dependency missing) are
     skipped with a warning rather than raising. Genuinely unknown names raise
@@ -139,14 +133,14 @@ def build_default_router(
         options: Build context (image mode/dir/scale, PDF config). Defaults to
             :class:`ParserBuildOptions` when ``None``.
         names: Ordered backend names — a comma-separated string
-            (``"liteparse,docling"``) or a sequence. A single name
-            (``"liteparse"``) is accepted for backward compatibility.
+            (``"liteparse,docling"``) or a sequence.
     """
     if options is None:
         options = ParserBuildOptions()
 
-    ordered = _normalize_backends(names)
-    router = ParserRouter()
+    ordered = _normalize_backends(names) if names is not None else ["liteparse"]
+
+    # Validate all names first — fail fast on typos.
     for backend_name in ordered:
         if backend_name not in KNOWN_BACKENDS:
             available = ", ".join(sorted(KNOWN_BACKENDS)) or "(none)"
@@ -155,20 +149,28 @@ def build_default_router(
                 f"Available: {available}."
             )
             raise ValueError(msg)
-        if backend_name not in PARSER_BACKENDS:
-            logger.warning(
-                "Parser backend %r is not installed (optional dependency missing) — skipped. "
-                "Install with: uv sync --group %s",
-                backend_name,
-                KNOWN_BACKENDS[backend_name],
-            )
-            continue
+
+    # Filter to installed backends, warn on missing.
+    available = set(PARSER_BACKENDS)
+    skipped = [n for n in ordered if n not in available]
+    for n in skipped:
+        hint = KNOWN_BACKENDS.get(n, "unknown backend")
+        logger.warning(
+            "Parser backend %r is not installed; skipping. Install with: uv sync --group %s",
+            n,
+            hint,
+        )
+    installed_order = [n for n in ordered if n in available]
+
+    router = ParserRouter()
+    for backend_name in installed_order:
         router.register(get_backend(backend_name)(options))
 
-    # Pandoc is always present: legacy-format parser + universal text fallback.
-    if "pandoc" in PARSER_BACKENDS:
+    # Pandoc is always present when installed: legacy-format parser + universal
+    # text fallback.
+    if "pandoc" in available:
         pandoc = get_backend("pandoc")(options)
-        if "pandoc" not in ordered:
+        if "pandoc" not in installed_order:
             router.register(pandoc)
         router.set_text_fallback(pandoc)
 
@@ -191,7 +193,7 @@ def _normalize_backends(names: str | Sequence[str]) -> list[str]:
 
     Accepts a comma-separated string (``"liteparse,docling"``) or a sequence.
     Whitespace is trimmed, blanks dropped, duplicates removed. Falls back to
-    ``["docling"]`` when nothing remains.
+    ``["liteparse"]`` when nothing remains.
     """
     raw: Sequence[str] = names.split(",") if isinstance(names, str) else names
     seen: set[str] = set()
