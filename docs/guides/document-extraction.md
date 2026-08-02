@@ -135,6 +135,43 @@ operational complexity (Java, sidecar server, JVM overhead) means this
 should only be done when there is clear evidence of content loss, not
 based on benchmarks alone.
 
+## GlmOcrParser: Multimodal OCR for Images and PDFs
+
+[GLM-OCR](https://github.com/zai-org/GLM-OCR) (Zhipu AI, 0.9B params) is a
+lightweight multimodal OCR model. It accepts raster images (PNG, JPG, TIFF,
+BMP, GIF, WEBP) and PDFs (rendered to images internally), returning
+structured elements labelled `text`, `title`, `table`, `formula`, and
+`figure` — which map directly onto KNOX `DocumentElement` types.
+
+Two execution modes:
+
+- **Cloud** (default): calls Zhipu MaaS. Requires `ZHIPU_API_KEY` env var.
+  No local GPU needed.
+- **Self-hosted**: set `mode="selfhosted"` and point `api_url` at a vLLM /
+  SGLang / Ollama endpoint.
+
+The `glmocr` package is an optional dependency:
+
+```bash
+uv pip install glmocr
+```
+
+GLM-OCR does no internal captioning (`figure_enrichment=False`); every
+extracted figure still flows through `VLMEnricher`.
+
+### Strengths
+
+- OmniDocBench V1.5: 94.62 — top accuracy at launch
+- Apache 2.0 (code) + MIT (weights) — very permissive
+- Cloud API mode needs no GPU at all
+- Rich structured output (label + bbox per element)
+
+### Limitations
+
+- Image-based only — no native DOCX/PPTX/XLSX support
+- PDF handling requires rasterising to images first
+- Newer project (Feb 2026, limited release history)
+
 ## Binaryornot Text Fallback
 
 When a file's extension is not recognised by any registered parser,
