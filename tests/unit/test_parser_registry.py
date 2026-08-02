@@ -167,9 +167,9 @@ def test_normalize_backends_accepts_string_and_sequence() -> None:
     assert _normalize_backends(["liteparse", "docling"]) == ["liteparse", "docling"]
     # duplicates removed, order preserved
     assert _normalize_backends("liteparse,liteparse,docling") == ["liteparse", "docling"]
-    # blanks/empty fall back to docling
-    assert _normalize_backends("") == ["docling"]
-    assert _normalize_backends(",,,") == ["docling"]
+    # blanks/empty fall back to liteparse
+    assert _normalize_backends("") == ["liteparse"]
+    assert _normalize_backends(",,,") == ["liteparse"]
 
 
 def test_build_default_router_priority_order_routes_by_format() -> None:

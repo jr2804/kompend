@@ -112,8 +112,8 @@ def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
     sources = list(pipeline.iter_sources())
-    assert len(sources) == 4  # pdf, md, html, csv — not png, py
-    assert all(s.suffix.lower() in (".pdf", ".md", ".html", ".csv") for s in sources)
+    assert len(sources) == 5  # pdf, md, html, csv, png — not py
+    assert all(s.suffix.lower() in (".pdf", ".md", ".html", ".csv", ".png") for s in sources)
 
 
 def _populate_source_dir(tmp_path: Path, *filenames: str) -> None:

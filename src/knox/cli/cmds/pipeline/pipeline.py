@@ -102,7 +102,7 @@ def parse_cmd(
         recursive=recursive,
         ignore=None,
     )
-    router: ParserRouter = build_default_router(names=parser or "docling")
+    router: ParserRouter = build_default_router(names=parser or "liteparse")
     for path in resolved:
         instance = router.route(path)
         if instance is None:

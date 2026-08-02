@@ -187,7 +187,7 @@ class PipelineConfig:
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
     images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
-    parser: str = "docling"  # ingestion backend name (see PARSER_BACKENDS)
+    parser: str = "liteparse"  # ingestion backend name (see PARSER_BACKENDS)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
@@ -277,7 +277,7 @@ class PipelineConfig:
             respect_gitignore=cfg.get(COMPILE_RESPECT_GITIGNORE, True),
             compiler=cfg.get(COMPILE_COMPILER, Compiler.GRAPH),
             privacy_filter=cfg.get(TRUST_PRIVACY_FILTER, True),
-            parser=cfg.get(INGEST_PARSER, "docling"),
+            parser=cfg.get(INGEST_PARSER, "liteparse"),
             memory_enabled=cfg.get(COMPILE_MEMORY_ENABLED, True),
             memory_half_life_days=cfg.get(COMPILE_MEMORY_HALF_LIFE_DAYS, 90.0),
             memory_decay_threshold=cfg.get(COMPILE_MEMORY_DECAY_THRESHOLD, 0.3),

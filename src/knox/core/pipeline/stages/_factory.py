@@ -28,7 +28,7 @@ def build_pipeline(
 
     Constructs a WikiPipeline with default components:
     - Parser chain selected by ``config.parser`` (comma-separated backend names;
-      default ``"docling"``; first matching backend per file wins)
+      default ``"liteparse"``; first matching backend per file wins)
     - HierarchicalChunker
     - Compiler selected by ``config.compiler``:
       - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
