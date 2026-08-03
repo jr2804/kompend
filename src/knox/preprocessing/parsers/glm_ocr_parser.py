@@ -45,8 +45,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-logger = get_logger(__name__)
-
 # GLM-OCR element labels → KNOX ElementType.
 _LABEL_TO_TYPE: dict[str, ElementType] = {
     "text": ElementType.TEXT,
@@ -69,6 +67,8 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+logger = get_logger(__name__)
 
 
 class GlmOcrParser(BaseParser):

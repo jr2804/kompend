@@ -34,8 +34,6 @@ import pytest
 from knox.agents.deps import GenerationDeps, PipelineAgentDeps, QueryDeps
 from knox.compilation.schema import ExtractionOutput
 
-pytestmark = pytest.mark.benchmark
-
 # Agents to benchmark — each is a KnoxAgentBase subclass
 _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
     # (label, module_path, class_name, template_dir, is_query_agent)
@@ -43,6 +41,8 @@ _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
     ("generation", "knox.agents.generation", "GenerationAgent", "compilation", False),
     ("query", "knox.agents.query", "QueryAgent", "query", True),
 ]
+
+pytestmark = pytest.mark.benchmark
 
 
 class TestAgentConstructionBenchmark:

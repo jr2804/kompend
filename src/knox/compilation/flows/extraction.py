@@ -37,14 +37,13 @@ from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
-_loader = get_template_loader()
-
-
 # Roughly 4 characters per token — the standard quick estimate for mixed
 # English prose. Over-estimating slightly is safe (compacts sooner).
 _CHARS_PER_TOKEN = 4
+
+logger = get_logger(__name__)
+
+_loader = get_template_loader()
 
 
 def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915

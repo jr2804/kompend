@@ -21,6 +21,8 @@ from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
 
+logger = get_logger(__name__)
+
 
 class TrafilaturaFormat(StrEnum):
     """Valid trafilatura output format strings.
@@ -34,9 +36,6 @@ class TrafilaturaFormat(StrEnum):
     HTML = "html"
     XML = "xml"
     JSON = "json"
-
-
-logger = get_logger(__name__)
 
 
 class WebPageParser(BaseParser):

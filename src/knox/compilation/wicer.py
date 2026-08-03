@@ -27,8 +27,6 @@ from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 # Fraction of the available context window (after reserves) allocated to
 # WiCER probe input text.  The chars-per-token heuristic (3.85) is too
 # optimistic for models like Gemma (actual ~2.0), causing the batch to
@@ -44,6 +42,8 @@ _WICER_PROMPT_RESERVE_TOKENS: Final[int] = 1024
 
 
 __all__ = ["WiCERCompiler"]
+
+logger = get_logger(__name__)
 
 
 class WiCERCompiler(BaseCompiler):

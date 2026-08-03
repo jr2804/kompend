@@ -9,8 +9,6 @@ from typing import Any
 
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 KNOWN_ROLES: tuple[str, ...] = (
     "compile",
     "resolve",
@@ -24,6 +22,8 @@ KNOWN_ROLES: tuple[str, ...] = (
 
 # Module-level singleton
 _REGISTRY: PackRegistry | None = None
+
+logger = get_logger(__name__)
 
 
 @dataclass

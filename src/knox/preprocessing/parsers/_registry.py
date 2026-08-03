@@ -24,11 +24,6 @@ from knox.preprocessing.parsers.base import (
     ParserRouter,
 )
 
-logger = get_logger(__name__)
-
-# Metadata powering ``knox list-parsers`` (name/type/extensions/figure_enrichment).
-_registry: dict[str, dict[str, Any]] = {}
-
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
 PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 
@@ -59,6 +54,11 @@ _BACKEND_MODULES: dict[str, str] = {
     "pandoc": "knox.preprocessing.parsers.pandoc_parser",
     "web": "knox.preprocessing.parsers.web_parser",
 }
+
+logger = get_logger(__name__)
+
+# Metadata powering ``knox list-parsers`` (name/type/extensions/figure_enrichment).
+_registry: dict[str, dict[str, Any]] = {}
 
 
 @dataclass(frozen=True)

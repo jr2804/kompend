@@ -14,9 +14,9 @@ from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
-logger = get_logger(__name__)
-
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
+
+logger = get_logger(__name__)
 
 
 class BaseCompiler(ABC):

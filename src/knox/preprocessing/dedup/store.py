@@ -11,10 +11,10 @@ from knox.core.config.keys import COMPILE_EMBEDDING_DIM
 from knox.logging import get_logger
 from knox.types import CacheValue
 
-logger = get_logger(__name__)
-
 # Current store schema version — bump when fingerprint format changes.
 _STORE_VERSION = "1"
+
+logger = get_logger(__name__)
 
 
 class DedupStore:

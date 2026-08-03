@@ -20,9 +20,9 @@ from typing import Any
 from knox.core.models.assets import AssetRecord
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 __all__ = ["AssetStore"]
+
+logger = get_logger(__name__)
 
 
 class AssetStore:

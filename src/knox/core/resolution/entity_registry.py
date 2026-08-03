@@ -19,8 +19,6 @@ from typing import Any
 from knox.core.models import ChunkTree, CrossReferenceIssue, StructuredEquation, StructuredTable
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 # ── Regex patterns ──────────────────────────────────────────────────────
 
 # "Signal-to-Noise Ratio (SNR)" or "signal to noise ratio (SNR)"
@@ -47,6 +45,8 @@ _ALSO_KNOWN_AS = re.compile(
     r"([A-Z][A-Za-z\s\-]{2,50}?)\s*\(?(?:also\s+known\s+as|aka|a\.k\.a\.)\s+"
     r"([A-Z][A-Za-z\s\-]+?)(?:\)|[.;!?\n]|$)",
 )
+
+logger = get_logger(__name__)
 
 
 # ── Data structures ─────────────────────────────────────────────────────

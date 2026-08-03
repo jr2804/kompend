@@ -36,13 +36,6 @@ from knox.core.config._core import find_project_config
 from knox.logging import get_logger
 from knox.types import Jinja2Env, Jinja2Loader
 
-logger = get_logger(__name__)
-
-# ── Module-level singleton ───────────────────────────────────────────
-
-_loader_instance: list[TemplateLoader] = []  # mutable container avoids global statement
-
-
 # ── Built-in template root ──────────────────────────────────────────────
 
 _BUILTIN_TEMPLATE_PACKAGE: str = "knox"
@@ -59,6 +52,12 @@ _PROJECT_TEMPLATES_NAME: str = "templates"
 # ── Frontmatter parsing ─────────────────────────────────────────────────
 
 _FRONTMATTER_RE: Any = None
+
+logger = get_logger(__name__)
+
+# ── Module-level singleton ───────────────────────────────────────────
+
+_loader_instance: list[TemplateLoader] = []  # mutable container avoids global statement
 
 
 # ── Dataclasses ─────────────────────────────────────────────────────────

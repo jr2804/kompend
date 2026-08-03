@@ -13,8 +13,6 @@ from knox.logging import get_logger
 from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 
-logger = get_logger(__name__)
-
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 # Content-Type → extension mapping for downloaded files whose URL
@@ -68,6 +66,8 @@ _KNOWN_EXTENSIONS: frozenset[str] = frozenset(
         ".rar",
     }
 )
+
+logger = get_logger(__name__)
 
 
 class HTTPDownloader(BaseDownloader):

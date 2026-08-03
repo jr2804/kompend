@@ -36,8 +36,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-logger = get_logger(__name__)
-
 # Markdown line classifiers (shared shape with the LiteParse walker).
 _IMAGE_REF_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|?\s*$")
@@ -59,6 +57,8 @@ _VALID_BACKENDS = {"pipeline", "vlm", "hybrid"}
 #: Parse methods for the pipeline backend: ``auto`` (OCR auto-detect),
 #: ``ocr`` (force OCR), ``txt`` (text-layer only).
 _VALID_PARSE_METHODS = {"auto", "ocr", "txt"}
+
+logger = get_logger(__name__)
 
 
 class MinerUParser(BaseParser):

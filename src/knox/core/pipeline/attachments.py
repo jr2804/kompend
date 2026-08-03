@@ -21,12 +21,12 @@ from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.parsers.base import ParserRouter
 
-logger = get_logger(__name__)
-
 __all__ = [
     "ingest_attachment",
     "iter_ingestible_attachments",
 ]
+
+logger = get_logger(__name__)
 
 
 def iter_ingestible_attachments(vp: VaultPaths) -> list[Attachment]:

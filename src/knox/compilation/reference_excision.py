@@ -25,8 +25,6 @@ import re
 
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 __all__ = ["excise_references", "is_likely_reference_heading"]
 
 # Common reference-section heading titles (case-insensitive).
@@ -49,6 +47,8 @@ _HEADING_RE = re.compile(
     r"^(?:\s{0,3}#{1,6}\s+.+|.+[ \t]*\n=+|.+[ \t]*\n-+)$",
     re.MULTILINE,
 )
+
+logger = get_logger(__name__)
 
 
 def is_likely_reference_heading(line: str) -> bool:

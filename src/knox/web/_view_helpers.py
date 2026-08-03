@@ -11,9 +11,9 @@ from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.search.retriever import SearchResult
 
-logger = get_logger(__name__)
-
 _PROJECT_DIR: Path = Path.cwd()
+
+logger = get_logger(__name__)
 
 
 def project_dir() -> Path:

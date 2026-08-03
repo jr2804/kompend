@@ -28,10 +28,10 @@ from knox.core.paths import CONFIG_FILE, RUNS_FILE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _SOFT_CAP_LINES = 1000
 _KEEP_LINES = 500
+
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -41,15 +41,6 @@ from knox.preprocessing.parsers.base import ParserRouter
 from knox.resolution.base import BaseResolver
 from knox.trust import filter_wiki
 
-logger = get_logger(__name__)
-
-# Type for progress event callbacks. Parameters:
-#   phase   — pipeline phase ("index", "parse", "resolve", "compile", "output")
-#   current — current item (0 = phase starting, >0 = progress)
-#   total   — total items in this phase
-#   detail  — human detail (filename, status, etc.)
-ProgressCallback = Callable[[str, int, int, str], None]
-
 # Legacy string-constant re-exports (kept for backward compatibility).
 TIER_INDEX: Tier = Tier.INDEX
 TIER_CHUNK: Tier = Tier.CHUNK
@@ -58,6 +49,15 @@ TIER_COMPILE: Tier = Tier.COMPILE
 TIER_OUTPUT: Tier = Tier.OUTPUT
 
 _TIER_DESCRIPTIONS: dict[Tier, str] = {ti.tier: ti.description for ti in Tier.all_tiers()}
+
+logger = get_logger(__name__)
+
+# Type for progress event callbacks. Parameters:
+#   phase   — pipeline phase ("index", "parse", "resolve", "compile", "output")
+#   current — current item (0 = phase starting, >0 = progress)
+#   total   — total items in this phase
+#   detail  — human detail (filename, status, etc.)
+ProgressCallback = Callable[[str, int, int, str], None]
 
 
 class WikiPipeline:

@@ -21,8 +21,6 @@ import yaml
 from knox.logging import get_logger
 from knox.output.models import Document
 
-logger = get_logger(__name__)
-
 # ── Flavour auto-detection ──────────────────────────────────────────────
 
 FLAVOR_ALIASES: dict[str, str] = {
@@ -38,6 +36,8 @@ FLAVOR_ALIASES: dict[str, str] = {
     "kramdown": "kramdown",
     "azure_devops": "azure_devops",
 }
+
+logger = get_logger(__name__)
 
 
 # ── DocumentRenderer ────────────────────────────────────────────────────

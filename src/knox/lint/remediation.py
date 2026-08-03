@@ -25,8 +25,6 @@ from knox.lint.base import LintReport, LintReportResult, RemediationAction, Reme
 from knox.lint.gap_analysis import analyze_gaps
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".png",
@@ -66,6 +64,8 @@ _STATUS_ICONS: dict[RemediationStatus, str] = {
     RemediationStatus.SKIPPED: "~",
     RemediationStatus.RECOMMENDED: "!",
 }
+
+logger = get_logger(__name__)
 
 
 def remediate(

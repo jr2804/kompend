@@ -51,10 +51,10 @@ _EFFORT_TO_THINKING: dict[str, ThinkingLevel] = {
     "xhigh": "xhigh",
 }
 
-logger = get_logger(__name__)
-
 
 __all__ = ["KnoxModel"]
+
+logger = get_logger(__name__)
 
 
 class KnoxModel(Model):

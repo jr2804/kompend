@@ -13,9 +13,9 @@ from knox.core.paths import VaultPaths, is_protected_source
 from knox.logging import get_logger
 from knox.organize.categorize import CategoryNode, CategoryTree
 
-logger = get_logger(__name__)
-
 _CITATION_RE = re.compile(r"\[([^\]\n:]+?):(\d+)-(\d+)\]")
+
+logger = get_logger(__name__)
 
 
 # ── Data ────────────────────────────────────────────────────────────

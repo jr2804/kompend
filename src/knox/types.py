@@ -4,11 +4,11 @@ from typing import Any, TypeVar
 
 from jinja2 import ChoiceLoader, Environment
 
-TypeT = TypeVar("TypeT")
-TypeType = type[TypeT] | None  # Type object or None
-
 # JSON-related types
 JSON = Any  # Unparsed JSON string or parsed JSON structure (dict/list/primitives)
+
+TypeT = TypeVar("TypeT")
+TypeType = type[TypeT] | None  # Type object or None
 JSONDict = dict[str, JSON]  # JSON object (dictionary)
 JSONList = list[JSON]  # JSON array (list)
 JSONValue = JSON  # Any JSON value (string, number, boolean, null, object, array)

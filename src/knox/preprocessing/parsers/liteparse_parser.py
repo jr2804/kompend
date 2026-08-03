@@ -27,8 +27,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-logger = get_logger(__name__)
-
 # ``![alt](image_<id>.png)`` — liteparse emits refs in this shape.
 _IMAGE_REF_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 # GFM table separator row, e.g. ``| --- | :---: |``.
@@ -44,6 +42,8 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+logger = get_logger(__name__)
 
 
 class LiteParseParser(BaseParser):

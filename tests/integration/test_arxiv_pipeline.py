@@ -36,12 +36,12 @@ from knox.preprocessing.parsers._registry import ParserBuildOptions, build_defau
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
 from knox.preprocessing.parsers.web_parser import WebPageParser
 
-logger = logging.getLogger(__name__)
-
 ARXIV_PAPER_ID = "2405.17364"
 ARXIV_PDF_URL = f"https://arxiv.org/abs/{ARXIV_PAPER_ID}"
 ARXIV_HTML_URL = f"https://arxiv.org/html/{ARXIV_PAPER_ID}v1"
 ARXIV_SRC_URL = f"https://arxiv.org/src/{ARXIV_PAPER_ID}"
+
+logger = logging.getLogger(__name__)
 
 
 def _arxiv_reachable() -> bool:

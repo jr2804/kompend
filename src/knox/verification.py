@@ -20,10 +20,11 @@ from knox.core.paths import VaultPaths
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
+_SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
-_SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
 
 @dataclass

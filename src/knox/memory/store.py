@@ -18,10 +18,9 @@ from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, make_provider
 
-logger = get_logger(__name__)
-
-
 _MEMORY_COLLECTION_NAME = "knox_memory"
+
+logger = get_logger(__name__)
 
 
 class MemoryField(StrEnum):

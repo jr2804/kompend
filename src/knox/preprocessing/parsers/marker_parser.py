@@ -41,8 +41,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-logger = get_logger(__name__)
-
 # Marker emits a page separator of ``"-" * 48`` by default between pages.
 _PAGE_SEP_RE = re.compile(r"\n-{48,}\n")
 # ``![alt](image_id.png)`` — Marker image refs.
@@ -60,6 +58,8 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+logger = get_logger(__name__)
 
 
 class MarkerParser(BaseParser):

@@ -20,12 +20,12 @@ from knox.core.models.references import Reference
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
-logger = get_logger(__name__)
-
 __all__ = ["ReferenceStore", "consolidate_references", "merge_similar_references"]
 
 #: Cosine similarity threshold for fuzzy reference dedup.
 _REF_MERGE_THRESHOLD = 0.85
+
+logger = get_logger(__name__)
 
 
 class ReferenceStore:

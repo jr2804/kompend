@@ -39,11 +39,11 @@ from knox.preprocessing.parsers.base import BaseParser
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
-logger = logging.getLogger(__name__)
-
 #: Number of smallest PDFs to use as the corpus sample. Kept low so the
 #: suite stays under 30 seconds even with Docling as a fallback.
 _CORPUS_SAMPLE_SIZE = 3
+
+logger = logging.getLogger(__name__)
 
 
 def _liteparse_available() -> bool:

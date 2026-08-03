@@ -9,14 +9,6 @@ import typer
 
 from knox.core.config._configs import LlmDataFormat, Verbosity
 
-
-class SearchMode(StrEnum):
-    WIKI = "wiki"
-    RAW = "raw"
-    HYBRID = "hybrid"
-    GRAPH = "graph"
-
-
 # ── Q17 query command ──────────────────────────────────────────────────
 
 QueryText = Annotated[
@@ -59,6 +51,14 @@ QueryNoClassify = Annotated[
         help="Skip intent classification (always retrieve).",
     ),
 ]
+
+
+class SearchMode(StrEnum):
+    WIKI = "wiki"
+    RAW = "raw"
+    HYBRID = "hybrid"
+    GRAPH = "graph"
+
 
 QuerySearchMode = Annotated[
     SearchMode,

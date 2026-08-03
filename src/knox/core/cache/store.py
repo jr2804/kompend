@@ -42,9 +42,6 @@ from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.types import CacheValue
 
-logger = get_logger(__name__)
-
-
 _CACHE_DATACLASSES: dict[str, type] = {
     "DocumentElement": DocumentElement,
     "ParsedDocument": ParsedDocument,
@@ -57,6 +54,8 @@ _CACHE_DATACLASSES: dict[str, type] = {
 _CACHE_ENUMS: dict[str, type[StrEnum]] = {
     "ElementType": ElementType,
 }
+
+logger = get_logger(__name__)
 
 
 class CacheStore:

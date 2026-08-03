@@ -22,9 +22,6 @@ from knox.core.config.generate import generate_scaffold_config
 from knox.core.paths import CACHE_DIR, CACHE_SUBDIR, DEDUP_DIR, KNOX_CONFIG_FILE, KNOX_DIR, PROJECT_CONFIG_FILE
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
-
 TEMPLATES_PACKAGE: Final[str] = "knox.scaffolding.templates"
 
 TEMPLATE_NOTES: Final[str] = "NOTES.md"  # copied verbatim (contains user-facing {{ user_notes }})
@@ -36,6 +33,8 @@ TEMPLATE_AGENTS: Final[str] = "AGENTS.md.j2"  # rendered with config paths (agen
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
 
 PROJECT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KNOX_CONFIG_FILE)
+
+logger = get_logger(__name__)
 
 
 @dataclass

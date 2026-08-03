@@ -20,8 +20,6 @@ from knox.core.paths import VaultPaths
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
     re.compile(r"ghp_[A-Za-z0-9]{20,}"),
@@ -33,6 +31,8 @@ _PRIVACY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
 )
 _PRIVACY_REDACTION_TOKEN: str = "[REDACTED]"  # noqa: S105 - redaction placeholder, not a secret
+
+logger = get_logger(__name__)
 
 
 @dataclass

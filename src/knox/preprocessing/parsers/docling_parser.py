@@ -25,8 +25,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-logger = get_logger(__name__)
-
 _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "TextItem": ElementType.TEXT,
     "SectionHeaderItem": ElementType.HEADING,
@@ -37,6 +35,8 @@ _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "CodeItem": ElementType.CODE,
     "ListItem": ElementType.LIST_ITEM,
 }
+
+logger = get_logger(__name__)
 
 
 class DoclingParser(BaseParser):

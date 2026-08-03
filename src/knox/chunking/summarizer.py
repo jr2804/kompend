@@ -39,12 +39,12 @@ from knox.core.models import (
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _TEMPLATE = "chunking/node_summary.md.j2"
 _CACHE_LAYER = "summary"
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+logger = get_logger(__name__)
 
 
 class NodeSummarizer:

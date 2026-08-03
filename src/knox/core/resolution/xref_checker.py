@@ -24,8 +24,6 @@ from knox.core.models import (
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 # ── Reference patterns ──────────────────────────────────────────────────
 
 # ponytail: numbered references only ("see Section 3.2"). Unnumbered refs
@@ -38,6 +36,8 @@ _REF_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("equation", re.compile(r"\b(?:see\s+)?(?:Equation|Eq\.?)\s*(\d+[a-zA-Z]?)", re.IGNORECASE)),
     ("chapter", re.compile(r"\b(?:see\s+)?Chapter\s+(\d+[a-zA-Z]?)", re.IGNORECASE)),
 ]
+
+logger = get_logger(__name__)
 
 
 class CrossReferenceChecker:

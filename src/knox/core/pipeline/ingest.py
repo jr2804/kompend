@@ -21,14 +21,14 @@ from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import ParserRouter
 
-logger = get_logger(__name__)
-
-ProgressFn = Callable[[int, int, str], None]
-
 # Length of the content-hash suffix appended to parse-cache filenames.
 # 8 hex chars (32 bits) plus the stem prefix makes collisions astronomically
 # unlikely within a single corpus while keeping filenames human-readable.
 _CACHE_HASH_LEN = 8
+
+logger = get_logger(__name__)
+
+ProgressFn = Callable[[int, int, str], None]
 
 
 @dataclass(frozen=True, slots=True)

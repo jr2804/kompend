@@ -31,12 +31,12 @@ from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
 from knox.types import ZvecCollection
 
-logger = get_logger(__name__)
-
 _ZVEC_MAX_ID_LEN = 64
 
 
 _ZVEC_COLLECTION_NAME = "knox_wiki"
+
+logger = get_logger(__name__)
 
 
 class ZvecField(StrEnum):

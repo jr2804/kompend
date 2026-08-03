@@ -28,9 +28,6 @@ from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
 from knox.preprocessing.downloaders.url_resolver import UrlResolverChain
 from knox.preprocessing.parsers.base import FileExtension
 
-logger = get_logger(__name__)
-
-
 # ── URL routing ─────────────────────────────────────────────────────────
 
 
@@ -64,6 +61,8 @@ _ARCHIVE_EXTRACT_PRIORITY: tuple[FileExtension, ...] = (
 
 
 _EXT_PRIORITY: dict[str, int] = {ext.value: i for i, ext in enumerate(_ARCHIVE_EXTRACT_PRIORITY)}
+
+logger = get_logger(__name__)
 
 
 # ── URL downloading ─────────────────────────────────────────────────────

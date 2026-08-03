@@ -25,8 +25,6 @@ from knox.core.config.keys import (
 )
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _BUILTIN_DIR = Path(__file__).resolve().parent / "builtin"
 
 _TASK_CONFIG_KEY: dict[AgentTask, str] = {
@@ -36,6 +34,8 @@ _TASK_CONFIG_KEY: dict[AgentTask, str] = {
     AgentTask.ORGANIZE: AGENTS_ORGANIZE,
     AgentTask.GENERIC: AGENTS_GENERIC,
 }
+
+logger = get_logger(__name__)
 
 
 class AgentRegistry:

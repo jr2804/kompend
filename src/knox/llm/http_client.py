@@ -18,11 +18,11 @@ from tenacity import (
     wait_exponential,
 )
 
-logger = logging.getLogger(__name__)
-
 # -- retryable status codes ----------------------------------------------------
 
 RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
+
+logger = logging.getLogger(__name__)
 """HTTP status codes on which we retry the request."""
 
 DEFAULT_MAX_ATTEMPTS = 3

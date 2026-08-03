@@ -20,26 +20,6 @@ import typer
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
 
-
-# Version management
-def _get_version() -> str:
-    """Get application version from package metadata."""
-    try:
-        return version("knox")
-    except Exception:
-        return "0.0.0"  # Fallback for development mode
-
-
-app = typer.Typer(
-    name="knox",
-    help="Knowledge Organizer for eXtended documents",
-    add_completion=True,
-    no_args_is_help=True,
-    pretty_exceptions_enable=False,
-    pretty_exceptions_show_locals=False,
-)
-
-
 # ── Lazy command registry ─────────────────────────────────────────────
 #
 # Maps subcommand name → module path.  Importing the module registers its
@@ -82,6 +62,24 @@ _LAZY_MODULES: dict[str, str] = {
 }
 
 
+app = typer.Typer(
+    name="knox",
+    help="Knowledge Organizer for eXtended documents",
+    add_completion=True,
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+    pretty_exceptions_show_locals=False,
+)
+
+
+#: Module-level holder for the run handle, written by :func:`_callback`
+#: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
+_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
+
+
+_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
+
+
 @app.callback(invoke_without_command=True)
 def _callback(
     ctx: typer.Context,
@@ -114,9 +112,13 @@ def _callback(
     _run_handle_holder["handle"] = handle
 
 
-#: Module-level holder for the run handle, written by :func:`_callback`
-#: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
-_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
+# Version management
+def _get_version() -> str:
+    """Get application version from package metadata."""
+    try:
+        return version("knox")
+    except Exception:
+        return "0.0.0"  # Fallback for development mode
 
 
 def main() -> None:
@@ -138,9 +140,6 @@ def main() -> None:
         raise
     handle = _extract_handle()
     log_run_end(handle, status="ok", exit_code=0)
-
-
-_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
 
 
 def _extract_handle() -> RunHandle | None:

@@ -22,8 +22,6 @@ from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
-logger = get_logger(__name__)
-
 __all__ = [
     "download_urls",
     "ensure_in_sources",
@@ -32,6 +30,8 @@ __all__ = [
     "looks_like_html_url",
     "resolve_files",
 ]
+
+logger = get_logger(__name__)
 
 
 # ── File resolution ─────────────────────────────────────────────────────

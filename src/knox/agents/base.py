@@ -57,8 +57,6 @@ from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 from knox.types import AgentResult
 
-logger = get_logger(__name__)
-
 #: Per-stage timeout floor. Agents in KNOX are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
@@ -77,6 +75,8 @@ _CONTEXT_PRESETS: dict[str, tuple[float, ContextSize]] = {
 #: SlidingWindowCapability default trigger/keep (zero-cost, no LLM call).
 _SLIDING_TRIGGER: ContextSize = ("messages", 100)
 _SLIDING_KEEP: ContextSize = ("messages", 50)
+
+logger = get_logger(__name__)
 
 ResultT = TypeVar("ResultT")
 

@@ -23,10 +23,10 @@ from knox.core.templates import TemplateLoader
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore
 
-logger = get_logger(__name__)
-
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
+
+logger = get_logger(__name__)
 
 
 @dataclass

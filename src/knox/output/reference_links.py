@@ -25,8 +25,6 @@ from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 __all__ = [
     "REFERENCE_PAGE_SLUG",
     "REFERENCE_PAGE_TITLE",
@@ -60,6 +58,8 @@ _PAREN_AUTHOR_YEAR_RE = re.compile(
 
 #: Maximum characters of a title used for anchor generation.
 _ANCHOR_TITLE_MAX = 60
+
+logger = get_logger(__name__)
 
 
 def format_bibliography_entry(ref: Reference, number: int = 0) -> str:

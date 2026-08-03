@@ -27,8 +27,6 @@ from knox.core.paths import VaultPaths
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 DEFAULT_HALF_LIFE_DAYS = 90.0
 DEFAULT_DECAY_THRESHOLD = 0.3
 
@@ -41,6 +39,8 @@ _TIER_PROMOTION_COUNT: dict[str, int] = {
 }
 
 _TIER_ORDER: list[str] = ["working", "episodic", "semantic", "procedural"]
+
+logger = get_logger(__name__)
 
 
 class MemoryTier(StrEnum):

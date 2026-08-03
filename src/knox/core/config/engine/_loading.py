@@ -13,13 +13,13 @@ from knox.core.paths import CONFIG_FILE, KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE, 
 from knox.logging import get_logger
 from knox.types import ConfigValue
 
-logger = get_logger(__name__)
-
 # ── File paths ───────────────────────────────────────────────────────────
 
 _PROJECT_CONFIG_NAMES: tuple[str, ...] = (KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE)
 _GLOBAL_CONFIG_DIR: str = "knox"
 _GLOBAL_CONFIG_NAME: str = CONFIG_FILE
+
+logger = get_logger(__name__)
 
 
 def load_toml(toml_file: Path) -> dict[str, Any]:

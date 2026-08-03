@@ -24,10 +24,9 @@ from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths, is_protected_source
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
-
 _FILENAME_RE = re.compile(r"[^a-z0-9-]+")
+
+logger = get_logger(__name__)
 
 
 @dataclass

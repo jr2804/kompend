@@ -15,8 +15,6 @@ from io import StringIO
 from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Maximum characters of an author family name used in a citation key.
 _AUTHOR_KEY_MAX = 20
 
@@ -77,6 +75,8 @@ _BIBTEX_SPECIAL = str.maketrans(
         "^": r"\textasciicircum{}",
     }
 )
+
+logger = get_logger(__name__)
 
 
 def references_to_bibtex(refs: list[Reference]) -> str:

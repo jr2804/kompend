@@ -59,10 +59,6 @@ from knox.core.templates import get_template_loader
 from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
-_loader = get_template_loader()
-
 # Re-export for backward compatibility.
 __all__ = [
     "Extraction",
@@ -74,6 +70,10 @@ __all__ = [
     "segment_sources",
     "tokens_to_chars",
 ]
+
+logger = get_logger(__name__)
+
+_loader = get_template_loader()
 
 
 class TwoPhaseCompiler(BaseCompiler):

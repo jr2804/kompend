@@ -29,14 +29,14 @@ from knox.core.config.keys import (
 from knox.core.paths import KNOX_CONFIG_FILE
 from knox.logging import get_console, get_logger
 
-logger = get_logger(__name__)
-
 _TASK_CONFIG_KEY: dict[AgentTask, str] = {
     AgentTask.COMPILE: AGENTS_COMPILE,
     AgentTask.QUERY: AGENTS_QUERY,
     AgentTask.CAPTURE: AGENTS_CAPTURE,
     AgentTask.ORGANIZE: AGENTS_ORGANIZE,
 }
+
+logger = get_logger(__name__)
 
 
 @app.command(name="agents")

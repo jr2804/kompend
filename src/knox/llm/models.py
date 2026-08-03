@@ -44,15 +44,9 @@ from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from knox.logging import get_logger
-
-logger = get_logger(__name__)
-
-
 # ── public API ─────────────────────────────────────────────────────────
-
-
 from knox.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
+from knox.logging import get_logger
 
 # Default base URL for local Ollama — ``ollama`` is not in the models-dev
 # catalog, and OllamaProvider has no built-in default (it raises UserError
@@ -66,6 +60,8 @@ OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 _NO_KEY_PLACEHOLDER = "api-key-not-set"
 
 __all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
+
+logger = get_logger(__name__)
 
 
 # ── path 1: native pydantic-ai provider ────────────────────────────────

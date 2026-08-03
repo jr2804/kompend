@@ -7,8 +7,6 @@ from typing import Final
 from knox.core.models import WikiNode
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 # Absolute token reserves for retrieval context budgeting.  Replaces an earlier
 # percentage-based safety margin that wasted ~150K tokens at 1M-context scale
 # while only covering ~500-token-prompt overhead at 8K scale.  Absolute reserves
@@ -16,6 +14,8 @@ logger = get_logger(__name__)
 # the model's window.
 _DEFAULT_SYSTEM_PROMPT_RESERVE: Final[int] = 4096
 _DEFAULT_RESPONSE_RESERVE: Final[int] = 4096
+
+logger = get_logger(__name__)
 
 
 class RetrievalMode(StrEnum):

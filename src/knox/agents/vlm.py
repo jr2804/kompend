@@ -23,8 +23,6 @@ from knox.llm.debug import save_debug_prompt
 from knox.llm.format import strip_reasoning
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 _MIME_BY_EXT: dict[str, str] = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -37,6 +35,8 @@ _MIME_BY_EXT: dict[str, str] = {
 # pydantic-ai requires a concrete ImageMediaType; this fallback covers the
 # rare case of an unrecognised extension.
 _DEFAULT_MEDIA_TYPE = "image/png"
+
+logger = get_logger(__name__)
 
 
 @dataclass

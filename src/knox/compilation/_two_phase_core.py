@@ -25,10 +25,6 @@ from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
-_loader = get_template_loader()
-
 # Maximum slug length. Windows limits a single path component to 255 chars;
 # the LLM sometimes emits a full sentence as a page title, which slugifies to
 # 300+ chars and crashes ``write_text`` with ``OSError: [Errno 22]``. Cap the
@@ -56,6 +52,10 @@ _CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
 # Internal names injected by VLMEnricher for bookkeeping — must never
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
+
+logger = get_logger(__name__)
+
+_loader = get_template_loader()
 
 
 @dataclass

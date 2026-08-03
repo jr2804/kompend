@@ -10,12 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
+__all__ = ["_user_providers", "set_user_providers"]
+
 #: Module-level store for user-defined providers. Maps provider_id -> dict with
 #: keys: base_url, api_key (optional), context_window_cap (optional).
 _user_providers: dict[str, dict[str, Any]] = {}
-
-
-__all__ = ["_user_providers", "set_user_providers"]
 
 
 def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:

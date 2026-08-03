@@ -43,13 +43,13 @@ from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, synthesize_results
 
-logger = get_logger(__name__)
-
 _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
     Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
     Verbosity.STANDARD.value: SEARCH_SYNTHESIS_TOKENS_STANDARD,
     Verbosity.COMPREHENSIVE.value: SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
 }
+
+logger = get_logger(__name__)
 
 
 def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
