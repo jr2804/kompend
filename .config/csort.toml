@@ -2,7 +2,7 @@
 
 [module]
 # Ordered list of section buckets; top-level statements are grouped into these.
-sections = ["imports", "typing_imports", "module_constants", "enums", "dataclasses", "classes", "functions", "main_block"]
+sections = ["imports", "typing_imports", "module_constants", "runtime_setup", "enums", "dataclasses", "classes", "functions", "main_block"]
 
 [strategy]
 # Per-section in-section strategy: keep | alpha | stepdown | abstraction.
