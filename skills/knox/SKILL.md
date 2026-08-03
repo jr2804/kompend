@@ -92,6 +92,23 @@ Tags are the same `metadata.tags` field written by `ingest`/`compile --tag`;
 they persist in the per-source parse cache and propagate to wiki nodes on the
 next `knox compile`. No re-ingest required.
 
+### Assets (Attachments)
+
+Supplementary files (photos, binaries, source code) that belong to a source
+but are **not** ingested by default. Stored under `assets/<source-slug>/`
+and tracked by an append-only manifest (`.knox/assets.jsonl`).
+
+| Command | Purpose | Key Flags |
+|---------|---------|-----------|
+| `knox assets add <source> <file>` | Register an attachment for a source | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `search.embed_assets`) |
+| `knox assets list` | List registered attachments | `--source <stem>` (filter), `--all` (include deleted) |
+| `knox assets remove <path>` | Remove an attachment (tombstone in manifest, deletes file) | — |
+
+Only attachments marked `--ingest` are processed during compile; PNG/JPG
+require a configured VLM (`compile.llm.vlm_model`). Set `search.embed_assets =
+true` to include attachment content in the vector index. Registered assets
+are copied to `wiki/assets/` for relative links in generated content.
+
 ### Query & Retrieval
 
 | Command | Purpose | Key Flags |
@@ -233,6 +250,9 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 | `config_get` | Get a resolved config value | `key: str`, `wiki_dir: str = "."` |
 | `config_set` | Set a config value | `key: str`, `value: str`, `wiki_dir: str = "."` |
 | `parse_document` | Parse a single document | `file_path: str` |
+| `wiki_list_assets` | List registered attachments (optionally by source) | `source: str \| None`, `wiki_dir: str \| None` |
+| `wiki_read_asset` | Read text content (up to 100KB) or metadata for binary files | `source: str`, `asset_name: str`, `wiki_dir: str \| None` |
+| `wiki_asset_info` | Return manifest entry + file metadata | `source: str`, `asset_name: str`, `wiki_dir: str \| None` |
 
 ## Agent Workflows
 
@@ -335,7 +355,7 @@ Key config keys:
 | `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
-| `ingest.parser` | `docling` | Ingestion backend, or comma-separated priority list (docling, liteparse, pandoc; first match wins) |
+| `ingest.parser` | `liteparse` | Ingestion backend, or comma-separated priority list (liteparse, docling, pandoc, …; first match wins). Backends are optional installs via `uv sync --group <name>` |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |
