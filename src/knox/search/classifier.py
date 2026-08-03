@@ -1,3 +1,4 @@
+import functools
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -90,12 +91,33 @@ _STOP: frozenset[str] = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class ClassifierRule:
+    """A single classification rule with intent, patterns, response, and match mode."""
+
+    intent: "QueryIntent"
+    patterns: tuple[re.Pattern[str], ...]
+    response: str
+    match_start: bool
+
+
 class QueryIntent(StrEnum):
     GREETING = "greeting"
     GRATITUDE = "gratitude"
     HELP = "help"
     OFFTOPIC = "offtopic"
     KNOWLEDGE = "knowledge"
+
+    @classmethod
+    @functools.cache
+    def get_classifiers(cls) -> tuple[ClassifierRule, ...]:
+        """Return classification rules in priority order."""
+        return (
+            ClassifierRule(cls.OFFTOPIC, tuple(_OFFTOPIC_PATTERNS), _OFFTOPIC_RESPONSE, False),
+            ClassifierRule(cls.GREETING, tuple(_GREETING_PATTERNS), _GREETING_RESPONSE, True),
+            ClassifierRule(cls.GRATITUDE, tuple(_GRATITUDE_PATTERNS), _GRATITUDE_RESPONSE, False),
+            ClassifierRule(cls.HELP, tuple(_HELP_PATTERNS), _HELP_RESPONSE, True),
+        )
 
 
 @dataclass(frozen=True)
