@@ -16,7 +16,6 @@ import sys
 from importlib.metadata import version
 
 import typer
-from rich.table import Table
 
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
@@ -82,41 +81,6 @@ _LAZY_MODULES: dict[str, str] = {
     "agent": "knox.cli.cmds.agent",
 }
 
-# Static one-line help per command, used ONLY by :func:`_print_fast_help` so
-# ``knox --help`` renders instantly without importing command modules (which
-# would pull pydantic-ai, the MCP SDK, and the parser backends). Keep this in
-# sync with the ``help=`` text in each command module.
-_COMMAND_HELP: dict[str, str] = {
-    "agents": "Manage TOML-defined conversational agents.",
-    "capture": "Extract knowledge items from text via LLM; save each as a source file.",
-    "learn": "Store a single fact verbatim as a source file — no LLM involved.",
-    "distill": "Merge captured notes into coherent wiki pages via LLM.",
-    "write": "Create a wiki page synthesising content from one or more sources.",
-    "doctor": "Validate configuration and connectivity for a wiki.",
-    "status": "Show per-wiki statistics.",
-    "list-parsers": "List all registered parsers (built-in + external + HTTP).",
-    "trace": "Trace compiled wiki page(s) back to their source chunks.",
-    "init": "Scaffold a new KNOX wiki project.",
-    "log": "Regenerate the pipeline log from structured stores (no LLM calls).",
-    "organize": "Categorise files in ``sources/`` into a hierarchical directory tree.",
-    "pack-list": "List installed contribution packs.",
-    "pack-install": "Install a built-in contribution pack.",
-    "parse": "Parse documents and show their structure.",
-    "compile": "Compile documents into a knowledge wiki.",
-    "ingest": "Ingest documents into the knowledge graph without compiling a wiki.",
-    "query": "Ask a natural language question against the compiled wiki.",
-    "review": "Manage the review queue for compiled pages.",
-    "mcp": "Start the KNOX MCP server over stdio transport.",
-    "serve": "Start the KNOX web UI server.",
-    "agent": "Run KNOX as an ACP agent on stdio.",
-    "assets": "Manage source attachments (supplementary files).",
-    "config": "Inspect and edit KNOX configuration.",
-    "lint": "Lint a compiled wiki for quality issues and query lint history.",
-    "memory": "Manage query memory and context synthesis.",
-    "references": "Manage extracted bibliographic references.",
-    "sources": "Manage ingested source files and their tags.",
-}
-
 
 @app.callback(invoke_without_command=True)
 def _callback(
@@ -159,11 +123,7 @@ def main() -> None:
     """Entry point for the CLI application."""
     configure_logging()
     _configure_streams_utf8()
-    argv = sys.argv[1:]
-    if _is_top_level_help(argv):
-        _print_fast_help()
-        return
-    _register_for_argv(argv)
+    _register_for_argv(sys.argv[1:])
     handle: RunHandle | None = None
     try:
         app()
@@ -207,13 +167,12 @@ def _configure_streams_utf8() -> None:
 def _register_for_argv(argv: list[str]) -> None:
     """Lazy-register commands based on the incoming argv.
 
-    * ``--help`` / ``-h`` / empty argv → handled by :func:`_print_fast_help`
-      before this is reached (no command modules are imported).
+    * ``--help`` / ``-h`` / empty argv → load all (help must list every command).
     * Shell-completion env vars (``*_COMPLETE``) → load all.
     * A known subcommand → load only its module.
     * Otherwise (global flags only, e.g. ``--version``) → load nothing.
     """
-    if any(k.endswith("_COMPLETE") for k in os.environ):
+    if not argv or argv[0] in ("--help", "-h") or any(k.endswith("_COMPLETE") for k in os.environ):
         register_all_commands()
         return
     requested = _find_requested_command(argv)
@@ -243,58 +202,3 @@ def _find_requested_command(argv: list[str]) -> str | None:
         if arg in _LAZY_MODULES:
             return arg
     return None
-
-
-def _is_top_level_help(argv: list[str]) -> bool:
-    """True when *argv* asks for the top-level help (bare, ``--help``/``-h``).
-
-    Returns ``False`` for a subcommand's own help (``knox compile --help``),
-    which must still import that module to show its options.
-    """
-    if not argv:
-        return True
-    return any(a in ("--help", "-h") for a in argv) and _find_requested_command(argv) is None
-
-
-def _print_fast_help() -> None:
-    """Print top-level help instantly without importing any command module.
-
-    Command names and one-line help come from the static ``_COMMAND_HELP``
-    table, so ``knox --help`` avoids the heavy optional deps (pydantic-ai, MCP
-    SDK, parser backends) that importing command modules would pull in.
-    """
-    console = get_console()
-    console.print("[bold]Usage:[/bold] knox [OPTIONS] [COMMAND] [ARGS]...")
-    console.print()
-    console.print("Knowledge Organizer for eXtended documents")
-    console.print()
-
-    opts = Table(show_header=False, box=None, padding=(0, 2))
-    opts.add_column(style="bold cyan")
-    opts.add_column(style="bold cyan")
-    opts.add_column()
-    opts.add_column()
-    for row in _GLOBAL_OPTIONS:
-        opts.add_row(*row)
-    console.print(opts)
-    console.print()
-
-    cmds = Table(show_header=False, box=None, padding=(0, 2))
-    cmds.add_column(style="bold green")
-    cmds.add_column()
-    for name in sorted(_COMMAND_HELP):
-        cmds.add_row(name, _COMMAND_HELP[name])
-    console.print(cmds)
-
-
-#: Static rows for the top-level options table in :func:`_print_fast_help`.
-_GLOBAL_OPTIONS: list[tuple[str, str, str, str]] = [
-    ("--version", "-v", "", "Show version and exit"),
-    ("--wiki-dir", "-w", "TEXT", "Project root directory. All other paths are resolved relative to it. "
-     "Default: current working directory. Env: KNOX_WIKI_DIR."),
-    ("--no-user-tracking", "", "", "Do not record the OS user (ingested_by / memory_by) in metadata for this "
-     "invocation. Env: KNOX_USER_TRACKING=false."),
-    ("--install-completion", "", "", "Install completion for the current shell."),
-    ("--show-completion", "", "", "Show completion for the current shell, to copy it or customize the installation."),
-    ("--help", "", "", "Show this message and exit."),
-]

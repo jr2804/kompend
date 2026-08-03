@@ -15,6 +15,9 @@ from typing import Any
 _user_providers: dict[str, dict[str, Any]] = {}
 
 
+__all__ = ["_user_providers", "set_user_providers"]
+
+
 def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:
     """Register user-defined providers for ``build_model()`` resolution.
 
@@ -24,6 +27,3 @@ def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:
     """
     _user_providers.clear()
     _user_providers.update(providers)
-
-
-__all__ = ["_user_providers", "set_user_providers"]

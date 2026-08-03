@@ -61,30 +61,6 @@ _BACKEND_MODULES: dict[str, str] = {
 }
 
 
-def _ensure_backend(name: str) -> None:
-    """Import *name*'s backend module if not yet registered.
-
-    Importing the module runs its ``register_backend`` call, populating
-    ``PARSER_BACKENDS``. If the optional dependency is missing, the import
-    fails and the backend simply stays unregistered.
-    """
-    if name in PARSER_BACKENDS:
-        return
-    module_path = _BACKEND_MODULES.get(name)
-    if module_path is None:
-        return
-    try:
-        importlib.import_module(module_path)
-    except ImportError:  # pragma: no cover - optional dependency not installed
-        return
-
-
-def _ensure_backends(names: Iterable[str]) -> None:
-    """Ensure every backend in *names* is loaded (installed ones only)."""
-    for n in names:
-        _ensure_backend(n)
-
-
 @dataclass(frozen=True)
 class ParserBuildOptions:
     """Inputs needed to construct a parser instance.
@@ -220,6 +196,12 @@ def build_default_router(
     return router
 
 
+def _ensure_backends(names: Iterable[str]) -> None:
+    """Ensure every backend in *names* is loaded (installed ones only)."""
+    for n in names:
+        _ensure_backend(n)
+
+
 def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
     """Return the factory for *name*. Raises ``ValueError`` when unknown."""
     _ensure_backend(name)
@@ -230,6 +212,24 @@ def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
         raise ValueError(
             f"Unknown parser backend {name!r}. Available: {available}.",
         ) from None
+
+
+def _ensure_backend(name: str) -> None:
+    """Import *name*'s backend module if not yet registered.
+
+    Importing the module runs its ``register_backend`` call, populating
+    ``PARSER_BACKENDS``. If the optional dependency is missing, the import
+    fails and the backend simply stays unregistered.
+    """
+    if name in PARSER_BACKENDS:
+        return
+    module_path = _BACKEND_MODULES.get(name)
+    if module_path is None:
+        return
+    try:
+        importlib.import_module(module_path)
+    except ImportError:  # pragma: no cover - optional dependency not installed
+        return
 
 
 def _normalize_backends(names: str | Sequence[str]) -> list[str]:

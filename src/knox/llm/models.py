@@ -48,6 +48,12 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
+
+# ── public API ─────────────────────────────────────────────────────────
+
+
+from knox.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
+
 # Default base URL for local Ollama — ``ollama`` is not in the models-dev
 # catalog, and OllamaProvider has no built-in default (it raises UserError
 # when neither ``base_url`` nor ``OLLAMA_BASE_URL`` is given). pydantic-ai's
@@ -58,12 +64,6 @@ OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 # Placeholder satisfies the OpenAI SDK's non-empty api_key requirement for
 # local / keyless OpenAI-compatible endpoints.
 _NO_KEY_PLACEHOLDER = "api-key-not-set"
-
-
-# ── public API ─────────────────────────────────────────────────────────
-
-
-from knox.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
 
 __all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
 
