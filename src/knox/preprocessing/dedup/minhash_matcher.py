@@ -16,8 +16,6 @@ from datasketch import MinHash, MinHashLSH
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher
 
-logger = get_logger(__name__)
-
 # Default number of permutation hash functions for MinHash.
 # 128 gives a good balance of accuracy vs. storage for corpus sizes
 # up to ~100k documents.
@@ -25,6 +23,8 @@ _DEFAULT_NUM_PERM = 128
 
 # Default shingle size (word-level n-grams).
 _DEFAULT_NGRAM = 5
+
+logger = get_logger(__name__)
 
 
 class MinhashMatcher(ContentMatcher):

@@ -30,13 +30,13 @@ from knox.core.models import (
 )
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 # Absolute token reserve carved out of the context window before computing the
 # effective chunk size.  Replaces an earlier `reserve_ratio` (20%) that wasted
 # ~25K tokens on a 128K-context model and ~200K on a 1M-context model — even
 # though real LLM-call overhead (system prompt + output budget) is bounded.
 _DEFAULT_RESERVE_TOKENS: Final[int] = 8192
+
+logger = get_logger(__name__)
 
 
 class HierarchicalChunker:
