@@ -137,6 +137,20 @@ uv run pytest tests/       # run tests
 mise test                  # run all quality checks
 ```
 
+## Installing KNOX as a dependency
+
+The name `knox` is taken on PyPI by an unrelated certificate-management tool,
+so KNOX is not published there. Add it as a git dependency with a
+`[tool.uv.sources]` override:
+
+```toml
+[tool.uv.sources]
+knox = { git = "https://codeberg.org/jr2804/knox.git", branch = "main" }
+```
+
+Then declare it normally (e.g. `"knox[all]"` for every parser backend), and
+`uv sync` / `uv add knox[all]` will pull the real KNOX from Codeberg.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).
