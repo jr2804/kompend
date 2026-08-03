@@ -153,6 +153,14 @@ approach. Mention caveats.
   or use `from __future__ import annotations` + forward references.
   `if TYPE_CHECKING:` guards are forbidden in new code and must be removed
   wherever encountered.
+- Heavy optional dependencies (docling, torch, transformers, datasketch,
+  scipy, crawl4ai, pydantic-ai, MCP SDK, zvec) MUST be lazy-loaded so that
+  CLI startup (`--help`, `--version`) stays fast. Use `lazy-loader`
+  (SPEC-0001) in `__init__.py` via `lazy.attach(__name__, submod_attrs={...})`
+  to expose heavy submodules as on-demand attributes. For heavy classes used
+  only inside a function body, use the parser registry's `get_backend()` or
+  equivalent factory pattern — never import the class at module scope.
+  See `src/knox/preprocessing/parsers/__init__.py` for the canonical pattern.
 - NEVER persist absolute filesystem paths inside `.knox/` artifacts
   (JSON, JSONL, SQLite DBs, TOML). Paths in every persisted record —
   provenance, references (`citing_source`), assets (`source`), dedup,

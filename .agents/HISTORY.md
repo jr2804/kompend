@@ -64,6 +64,29 @@ The T1–T10 violations above are the remaining legacy cases.
 ### Why litellm was removed
 
 Commit `c8055c0`. KNOX originally used litellm for multi-provider LLM dispatch.
+
+### Lazy-loader (SPEC-0001) for heavy imports
+
+`knox --help` took ~80s because command modules eagerly imported heavy deps
+(docling/torch/transformers ~16s, datasketch/scipy ~5s, pydantic-ai ~3s,
+crawl4ai ~1s, MCP SDK ~1.5s). Root cause: `register_all_commands()` imports
+all 28 CLI command modules at module scope, each pulling transitively heavy
+optional deps through `__init__.py` files.
+
+Fix: adopted `lazy-loader` (scientific-python SPEC-0001) — the standard
+solution battle-tested in scikit-image, scipy, librosa, napari.
+`lazy.attach(__name__, submod_attrs={...})` in `__init__.py` defers submodule
+loading until first attribute access. Applied to 5 packages: `knox.acp`,
+`knox.llm`, `knox.preprocessing.parsers`, `knox.preprocessing.dedup`,
+`knox.preprocessing.downloaders`. For heavy classes used only inside function
+bodies, the parser registry's `get_backend("name")(ParserBuildOptions())`
+factory pattern is used instead of module-scope imports.
+
+Result: `--help` 80s → 11s (−86%). Replaces hand-rolled `_LAZY` dicts +
+`__getattr__` in `acp/__init__.py` and `llm/__init__.py`. `.pyi` stubs via
+`lazy.attach_stub()` solve the static-checker type gap (deferred).
+
+Rule added to `.agents/POLICIES.md`.
 After migrating to PydanticAI's native `infer_model()` and the models.dev
 catalog, litellm became dead weight — it pulled 40+ transitive dependencies
 and added latency. Removed in favor of the unified `build_model()` path in
