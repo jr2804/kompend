@@ -27,7 +27,7 @@ from knox.core.config.keys import (
 from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
 from knox.types import ConfigValue
-from knox.llm.models import set_user_providers
+from knox.llm.user_providers import set_user_providers
 
 logger = get_logger(__name__)
 

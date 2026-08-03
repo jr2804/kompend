@@ -63,10 +63,7 @@ _NO_KEY_PLACEHOLDER = "api-key-not-set"
 # ── public API ─────────────────────────────────────────────────────────
 
 
-#: Module-level store for user-defined providers (set once during pipeline init).
-#: Maps provider_id -> dict with keys: base_url, api_key (optional), context_window_cap (optional).
-_user_providers: dict[str, dict] = {}
-
+from knox.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
 
 __all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
 
@@ -83,17 +80,6 @@ class _NotNativeProvider(Exception):
 
 class _NotInCatalog(Exception):
     """Provider is not in the models-dev catalog or has no API endpoint."""
-
-
-def set_user_providers(providers: dict[str, dict]) -> None:
-    """Register user-defined providers for ``build_model()`` resolution.
-
-    Called once during pipeline initialization from the resolved config.
-    Each entry is a ``{provider_id: {base_url: str, api_key: str | None, context_window_cap: int | None}}``
-    dict matching the ``[providers.<name>]`` TOML section.
-    """
-    _user_providers.clear()
-    _user_providers.update(providers)
 
 
 def build_model(model_string: str) -> Model:

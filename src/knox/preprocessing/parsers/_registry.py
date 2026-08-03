@@ -10,7 +10,8 @@ Used by ``knox list-parsers``, ``ParserRouter`` discovery, and
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import importlib
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,45 @@ KNOWN_BACKENDS: dict[str, str] = {
     "pandoc": "legacy text formats — RST, LaTeX, ODT (install: uv sync --group pandoc)",
     "web": "trafilatura HTML parser for web pages (install: uv sync --group web)",
 }
+
+# Backend name → module path. The backend module's ``register_backend`` call
+# runs only when the module is imported, so importing the ``parsers`` package
+# itself stays cheap. These are loaded on demand by :func:`_ensure_backend`
+# (from ``build_default_router`` / ``get_backend`` / ``get_all_extensions`` /
+# ``get_registered_parsers``) — never at CLI ``--help`` import time.
+_BACKEND_MODULES: dict[str, str] = {
+    "docling": "knox.preprocessing.parsers.docling_parser",
+    "glm-ocr": "knox.preprocessing.parsers.glm_ocr_parser",
+    "liteparse": "knox.preprocessing.parsers.liteparse_parser",
+    "marker": "knox.preprocessing.parsers.marker_parser",
+    "mineru": "knox.preprocessing.parsers.mineru_parser",
+    "pandoc": "knox.preprocessing.parsers.pandoc_parser",
+    "web": "knox.preprocessing.parsers.web_parser",
+}
+
+
+def _ensure_backend(name: str) -> None:
+    """Import *name*'s backend module if not yet registered.
+
+    Importing the module runs its ``register_backend`` call, populating
+    ``PARSER_BACKENDS``. If the optional dependency is missing, the import
+    fails and the backend simply stays unregistered.
+    """
+    if name in PARSER_BACKENDS:
+        return
+    module_path = _BACKEND_MODULES.get(name)
+    if module_path is None:
+        return
+    try:
+        importlib.import_module(module_path)
+    except ImportError:  # pragma: no cover - optional dependency not installed
+        return
+
+
+def _ensure_backends(names: Iterable[str]) -> None:
+    """Ensure every backend in *names* is loaded (installed ones only)."""
+    for n in names:
+        _ensure_backend(n)
 
 
 @dataclass(frozen=True)
@@ -86,11 +126,13 @@ def register_backend(
 
 def get_registered_parsers() -> list[dict[str, Any]]:
     """Return all registered parsers as a list of metadata dicts."""
+    _ensure_backends(KNOWN_BACKENDS)
     return list(_registry.values())
 
 
 def get_all_extensions() -> set[str]:
     """Return the union of all registered parsers' supported extensions."""
+    _ensure_backends(KNOWN_BACKENDS)
     extensions: set[str] = set()
     for entry in _registry.values():
         for ext in entry.get("extensions", []):
@@ -141,6 +183,9 @@ def build_default_router(
         options = ParserBuildOptions()
 
     ordered = _normalize_backends(names)
+    # Load the requested backends (and the always-on pandoc fallback) before
+    # checking availability, so installed backends self-register on demand.
+    _ensure_backends(set(ordered) | {"pandoc"})
     # Distinguish unknown backend names (typos) from known-but-uninstalled
     # optional backends. Unknown names raise immediately; uninstalled backends
     # are skipped with a warning so a partial install still works.
@@ -177,6 +222,7 @@ def build_default_router(
 
 def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
     """Return the factory for *name*. Raises ``ValueError`` when unknown."""
+    _ensure_backend(name)
     try:
         return PARSER_BACKENDS[name]
     except KeyError:
