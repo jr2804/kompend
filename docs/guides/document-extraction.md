@@ -296,3 +296,8 @@ and every extracted figure still flows through `VLMEnricher`.
 - **ExternalParser / HTTPParser** — framework for delegating parsing to
   CLI tools or HTTP endpoints. Never wired into any config path and
   lacked documentation.
+
+## See also
+
+- [Assets (Attachments)](assets.md) — Supplementary files per source
+  (photos, binaries, source code) with opt-in ingestion.

@@ -552,6 +552,11 @@ history_size = 20
 # Token budgets are clamped to the model's max_output so small models are
 # never asked for more than they can produce.
 # synthesis.verbosity = "standard"
+
+# Whether ingestible attachments (text/image captions) are included in
+# the vector index. When false, attachment content is parsed and compiled
+# but not embedded. Per-asset overrides via `knox add-asset --embed/--no-embed`.
+# embed_assets = false
 # synthesis.tokens.brief = 300
 # synthesis.tokens.standard = 800
 # synthesis.tokens.comprehensive = 2000

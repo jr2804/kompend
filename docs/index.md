@@ -81,6 +81,7 @@ knox query "what is the main result?"
 
 - [Compilation Guide](guides/compilation.md) — Compilers, VLM, relations, memory, hooks
 - [Output Configuration](guides/output.md) — Markdown flavors, frontmatter, formatting
+- [Assets (Attachments)](guides/assets.md) — Supplementary files per source, opt-in ingestion
 - [WiCER Loop](concepts/wicer-loop.md) — Iterative compile-evaluate-refine quality loop
 - [Review Queue](guides/review.md) — Human-in-the-loop approval for wiki pages
 - [Wiki Structure](guides/wiki-structure.md) — index.md, log.md, overview.md
@@ -96,6 +97,7 @@ knox query "what is the main result?"
 - [Linting Guide](guides/lint.md) — Structural + LLM-powered rules
 - [Tracing](guides/trace.md) — Trace wiki pages back to their source files
 - [Trust & Memory](guides/trust.md) — Provenance, memory lifecycle, decay
+- [Dedup](guides/dedup.md) — Content-level duplicate detection and suppression
 
 ### Memory & Knowledge
 
@@ -106,6 +108,7 @@ knox query "what is the main result?"
 ### Integrations
 
 - [MCP Server](architecture/index.md#4-agent-native) — Agent integration via MCP
+- [ACP Agent](integrations/acp-agent.md) — Editor integration via Agent Client Protocol
 - [Open-WebUI](integrations/open-webui.md) — Connecting KNOX with Open-WebUI
 - [Ecosystem](reference/ecosystem.md) — LLM-wiki tool survey
 
