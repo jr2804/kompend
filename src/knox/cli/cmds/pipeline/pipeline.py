@@ -68,6 +68,7 @@ from knox.core.config.keys import (
     DOWNLOADER_UNDETECTED,
     INGEST_PARSER,
     LINT_FUZZY_THRESHOLD,
+    SEARCH_EMBED_ASSETS,
 )
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths, vault_paths
@@ -274,6 +275,7 @@ def compile_cmd(  # noqa: PLR0915
                 embed_model=embed_model,
                 show_progress=show_progress,
                 lint_config=lint_config,
+                embed_assets=bool(cfg.get(SEARCH_EMBED_ASSETS, False)),
             )
         )
 

@@ -52,6 +52,7 @@ app = typer.Typer(
 
 _LAZY_MODULES: dict[str, str] = {
     "agents": "knox.cli.cmds.agents",
+    "assets": "knox.cli.cmds.knowledge.assets",
     "capture": "knox.cli.cmds.knowledge.capture",
     "learn": "knox.cli.cmds.knowledge.capture",
     "distill": "knox.cli.cmds.knowledge.capture",

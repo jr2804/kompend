@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
 from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
+from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
@@ -57,6 +59,7 @@ class PostCompileOptions:
     embed_model: str | None = None
     show_progress: bool | None = None
     lint_config: LintConfig | None = None
+    embed_assets: bool = False
 
 
 def post_compile_actions(opts: PostCompileOptions) -> None:
@@ -64,6 +67,9 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
     base_dir = opts.pipeline_config.resolved_base_dir()
     write_wiki_cache(opts.wiki, base_dir)
     print_compile_summary(opts.wiki)
+
+    # Copy registered attachments into the wiki output (wiki/assets/).
+    copy_attachments_to_wiki(base_dir, opts.output_dir)
 
     if opts.review and not opts.bypass_review:
         send_to_review_queue(opts.wiki, base_dir)
@@ -109,7 +115,13 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
     if opts.index_store is not False:
         opts.wiki.metadata["embedding_model"] = opts.embed_model or opts.pipeline_config.embedding.model
         try:
-            cli_build_vector_index(opts.wiki, opts.output_dir, opts.pipeline_config.embedding.model, base_dir=base_dir)
+            cli_build_vector_index(
+                opts.wiki,
+                opts.output_dir,
+                opts.pipeline_config.embedding.model,
+                base_dir=base_dir,
+                embed_assets=opts.embed_assets,
+            )
         except Exception as exc:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
@@ -233,13 +245,20 @@ def cli_build_vector_index(
     embed_model: str | None,
     *,
     base_dir: Path | None = None,
+    embed_assets: bool = False,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
     if not embed_model:
         get_err_console().print("Error: --embed-model must be provided when --index is used.")
         raise typer.Exit(1)
 
-    count = build_vector_index(wiki, output_dir, embed_model=embed_model, base_dir=base_dir)
+    count = build_vector_index(
+        wiki,
+        output_dir,
+        embed_model=embed_model,
+        base_dir=base_dir,
+        embed_assets=embed_assets,
+    )
     if count > 0:
         get_console().print(f"Indexed {count} nodes in zvec store for semantic search")
     else:
@@ -326,3 +345,40 @@ def run_overview_synthesis(
         get_console().print(f"Overview: {overview_path}")
     else:
         get_err_console().print("Overview generation skipped (no content to summarise).")
+
+
+def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
+    """Copy registered attachments into the wiki output directory.
+
+    Each source's attachments are copied to ``<output>/assets/<source-slug>/``
+    so generated content can link to them with relative paths
+    (``assets/<slug>/<filename>``).
+    """
+    vp = VaultPaths(base_dir)
+    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    if not manifest.exists():
+        return
+
+    entries = manifest.read_all()
+    if not entries:
+        return
+
+    dest_root = output_dir / "assets"
+    copied = 0
+    for att in entries.values():
+        src_file = vp.attachments_dir / att.path
+        if not src_file.exists():
+            logger.debug("Skipping missing attachment: %s", src_file)
+            continue
+        dest = dest_root / att.path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(src_file, dest)
+            copied += 1
+        except OSError as exc:
+            logger.warning("Failed to copy attachment %s: %s", src_file, exc)
+
+    if copied:
+        get_console().print(f"Assets: copied {copied} attachment(s) to {dest_root}")
+    else:
+        logger.debug("No attachments copied to wiki output")
