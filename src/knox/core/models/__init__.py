@@ -7,6 +7,7 @@ implementation detail.
 
 from __future__ import annotations
 
+from knox.core.models.attachments import Attachment, AttachmentManifest
 from knox.core.models.chunks import Chunk, ResolvedChunk
 from knox.core.models.citations import (
     LIFECYCLE_ARCHIVED,
@@ -60,6 +61,8 @@ __all__ = [
     "LIFECYCLE_STALE",
     "LIFECYCLE_VERIFIED",
     "VALID_LIFECYCLE_STATES",
+    "Attachment",
+    "AttachmentManifest",
     "Author",
     "Chunk",
     "ChunkField",

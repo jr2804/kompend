@@ -17,6 +17,12 @@ from knox.core.models import (
     ParsedDocument,
     WikiField,
 )
+from knox.core.models.attachments import AttachmentManifest
+from knox.core.paths import VaultPaths
+from knox.core.pipeline.attachments import (
+    ingest_attachment,
+    iter_ingestible_attachments,
+)
 from knox.core.pipeline.ingest import parse_cache_name
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
@@ -82,6 +88,11 @@ def parse_and_chunk(pipeline: Any) -> list[Any]:
             pipeline._emit("parse", idx + 1, len(source_files), sf.name)
 
     pipeline._emit("parse", len(source_files), len(source_files), "done")
+
+    # ── Process ingestible attachments ──────────────────────────────
+    att_trees = _process_attachments(pipeline)
+    if att_trees:
+        trees.extend(att_trees)
 
     if pipeline.summarizer is not None:
         for tree in trees:
@@ -318,6 +329,67 @@ def _load_dedup_state(pipeline: Any) -> tuple[set[str], dict[str, dict[str, Any]
 def cache_key(source_file: Path) -> str:
     """Content-discriminated cache key — collision-proof across same-stem files."""
     return parse_cache_name(source_file).removesuffix(".json")
+
+
+def _process_attachments(pipeline: Any) -> list[ChunkTree]:
+    """Process ingestible attachments and return their ChunkTrees.
+
+    Attachments are parsed via the same parser router as sources.
+    Image attachments (PNG/JPG) are captioned via VLM if configured.
+    Each resulting tree carries ``source_asset=True`` and ``parent_source``
+    metadata so the rest of the pipeline can distinguish them.
+    """
+    vp = VaultPaths(pipeline._base_dir)
+    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    if not manifest.exists():
+        return []
+
+    ingestible = iter_ingestible_attachments(vp)
+    if not ingestible:
+        return []
+
+    router = pipeline.router
+    vlm_captioner = None
+    if pipeline.config.llm.vlm_model:
+        try:
+            vlm_captioner = VlmAgent(
+                pipeline.config.llm.vlm_model,
+                timeout=pipeline.config.llm.timeout,
+            )
+        except Exception:
+            logger.debug("VLM captioner not available for attachments", exc_info=True)
+
+    trees: list[ChunkTree] = []
+    for idx, att in enumerate(ingestible):
+        pipeline._emit("parse", idx, len(ingestible), f"asset: {att.filename}")
+
+        try:
+            doc = ingest_attachment(vp, att, router, vlm_captioner=vlm_captioner)
+            if doc is None:
+                continue
+
+            if not pipeline.chunker:
+                continue
+
+            tree = pipeline.chunker.chunk(doc)
+
+            # Stamp source-asset metadata on all leaves so downstream
+            # resolve/index stages can distinguish attachment content.
+            for node in tree.leaves():
+                node.metadata["source_asset"] = True
+                node.metadata["parent_source"] = att.source
+                node.metadata["asset_path"] = att.path
+
+            trees.append(tree)
+            logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))
+
+        except Exception:
+            logger.debug("Failed to process attachment %s", att.filename, exc_info=True)
+
+    if trees:
+        logger.info("Processed %d ingestible attachment(s)", len(trees))
+
+    return trees
 
 
 def build_resolver_chain(config: Any) -> BaseResolver:

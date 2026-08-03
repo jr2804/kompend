@@ -105,12 +105,20 @@ REFERENCES_FILE: Final[str] = "references.json"
 # ── Assets (separated tables/figures) ────────────────────────────────────
 ASSETS_FILE: Final[str] = "assets.json"
 
+# ── Attachments (user-provided supplementary files per source) ───────────
+ATTACHMENTS_DIR_NAME: Final[str] = "assets"
+ATTACHMENTS_MANIFEST: Final[str] = "assets.jsonl"
+
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
 
 # ── Default configurable directory names ────────────────────────────────
 DEFAULT_SOURCES_DIR_NAME: Final[str] = "sources"
 DEFAULT_OUTPUT_DIR_NAME: Final[str] = "wiki"
+
+# ── Attachment slug generation ───────────────────────────────────────────
+_SLUG_INVALID_RE: Final = __import__("re").compile(r"[^a-z0-9_-]+")
+_SLUG_UNDERSCORE_RE: Final = __import__("re").compile(r"_+")
 
 
 @dataclass(frozen=True)
@@ -149,8 +157,10 @@ class VaultPaths:
     │   ├── last_organize.json  ← organize_report_path
     │   ├── lint_history.jsonl  ← lint_history_path
     │   ├── references.json     ← references_path
+    │   ├── assets.jsonl        ← attachments_manifest_path
     │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
+        ├── assets/                 ← attachments_dir (per-source)
         ├── wiki/                   ← output_dir
         │   └── index.md            ← index_file
     """
@@ -186,6 +196,15 @@ class VaultPaths:
     def knox_dir(self) -> Path:
         """Internal ``.knox`` state directory."""
         return self.base_dir / KNOX_DIR
+
+    @property
+    def attachments_dir(self) -> Path:
+        """Per-source attachment directories (assets)."""
+        return self.base_dir / ATTACHMENTS_DIR_NAME
+
+    def source_attachments_dir(self, source_stem: str) -> Path:
+        """Attachments directory for a specific source by slug."""
+        return self.attachments_dir / source_stem
 
     # ── Sub-directories of .knox/ ───────────────────────────────────────
 
@@ -295,7 +314,11 @@ class VaultPaths:
     def assets_path(self) -> Path:
         """Separated structured-asset store (tables/figures, JSON)."""
         return self.knox_dir / ASSETS_FILE
-        return self.knox_dir / REFERENCES_FILE
+
+    @property
+    def attachments_manifest_path(self) -> Path:
+        """Attachment manifest (JSONL)."""
+        return self.knox_dir / ATTACHMENTS_MANIFEST
 
     @property
     def state_file(self) -> Path:
@@ -366,6 +389,37 @@ class _DefaultWikiDir:
 
     def get(self) -> str | None:
         return self._path
+
+
+def attachment_slug(source_rel: Path | str) -> str:
+    """Derive a deterministic flat directory name from a source's relative path.
+
+    The slug is the relative path (without extension) with:
+    - slashes replaced by ``_``
+    - lowercased
+    - non-alphanumeric (except ``_`` and ``-``) collapsed to ``_``
+    - leading/trailing underscores stripped
+
+    Examples::
+
+        >>> attachment_slug("report.pdf")
+        'report'
+        >>> attachment_slug("papers/thesis.pdf")
+        'papers_thesis'
+        >>> attachment_slug("_captured/quick-note.md")
+        'captured_quick-note'
+        >>> attachment_slug("reports/Q1/report.pdf")
+        'reports_q1_report'
+    """
+    p = Path(source_rel)
+    # Use stem (no extension), join parts with underscore
+    parts = list(p.parent.parts) + ([p.stem] if p.stem else [])
+    raw = "_".join(parts).lower()
+    # Collapse non-alphanumeric to underscore
+    raw = _SLUG_INVALID_RE.sub("_", raw)
+    # Collapse multiple underscores
+    raw = _SLUG_UNDERSCORE_RE.sub("_", raw)
+    return raw.strip("_")
 
 
 def is_protected_source(path: Path, sources_dir: Path) -> bool:
