@@ -10,9 +10,12 @@ from knox.mcp.tools.config import config_get, config_set, init_wiki
 from knox.mcp.tools.knowledge import (
     compile_wiki,
     parse_document,
+    wiki_asset_info,
     wiki_capture,
     wiki_distill,
     wiki_learn,
+    wiki_list_assets,
+    wiki_read_asset,
 )
 from knox.mcp.tools.memory import memory_add, memory_search, memory_synthesize
 from knox.mcp.tools.query import query_wiki, wiki_status
@@ -27,8 +30,11 @@ __all__ = [
     "memory_synthesize",
     "parse_document",
     "query_wiki",
+    "wiki_asset_info",
     "wiki_capture",
     "wiki_distill",
     "wiki_learn",
+    "wiki_list_assets",
+    "wiki_read_asset",
     "wiki_status",
 ]

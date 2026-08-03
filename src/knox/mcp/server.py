@@ -17,9 +17,12 @@ from knox.mcp.tools import (
     memory_synthesize,
     parse_document,
     query_wiki,
+    wiki_asset_info,
     wiki_capture,
     wiki_distill,
     wiki_learn,
+    wiki_list_assets,
+    wiki_read_asset,
     wiki_status,
 )
 from knox.mcp.tools._helpers import set_default_wiki_dir
@@ -41,6 +44,9 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="wiki_query")(query_wiki)
     srv.tool(name="wiki_status")(wiki_status)
     srv.tool(name="wiki_distill")(wiki_distill)
+    srv.tool(name="wiki_list_assets")(wiki_list_assets)
+    srv.tool(name="wiki_read_asset")(wiki_read_asset)
+    srv.tool(name="wiki_asset_info")(wiki_asset_info)
     srv.tool(name="config_get")(config_get)
     srv.tool(name="config_set")(config_set)
 
