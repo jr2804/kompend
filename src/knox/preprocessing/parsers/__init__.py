@@ -12,15 +12,26 @@ heavy optional dependencies (docling, marker, mineru, torch, …).
 
 from __future__ import annotations
 
-from knox.preprocessing.parsers._registry import (
-    build_default_router,
-    get_registered_parsers,
-)
-from knox.preprocessing.parsers.base import BaseParser, ParserRouter
+import lazy_loader as lazy
 
-__all__ = [
-    "BaseParser",
-    "ParserRouter",
-    "build_default_router",
-    "get_registered_parsers",
-]
+from knox.preprocessing.parsers._registry import (
+    ParserBuildOptions as ParserBuildOptions,
+)
+from knox.preprocessing.parsers._registry import (
+    build_default_router as build_default_router,
+)
+from knox.preprocessing.parsers._registry import (
+    get_backend as get_backend,
+)
+from knox.preprocessing.parsers._registry import (
+    get_registered_parsers as get_registered_parsers,
+)
+from knox.preprocessing.parsers.base import BaseParser as BaseParser
+from knox.preprocessing.parsers.base import ParserRouter as ParserRouter
+
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "docling_parser": ["DoclingParser"],
+    },
+)

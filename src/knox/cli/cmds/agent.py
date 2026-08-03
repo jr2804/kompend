@@ -19,7 +19,7 @@ from typing import Any
 import typer
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
-from knox.acp.harness_adapter import build_knox_agent, knox_session_config
+from knox.acp import build_knox_agent, knox_session_config
 from knox.cli.app import app
 from knox.mcp.server import create_mcp_server
 

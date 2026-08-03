@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict
-from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
-from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
-from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
-from knox.preprocessing.dedup.store import DedupStore
+import lazy_loader as lazy
 
-__all__ = [
-    "ContentMatcher",
-    "DedupOrchestrator",
-    "DedupStore",
-    "DedupVerdict",
-    "EmbeddingMatcher",
-    "MinhashMatcher",
-]
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "base": ["ContentMatcher", "DedupVerdict"],
+        "embedding_matcher": ["EmbeddingMatcher"],
+        "minhash_matcher": ["MinhashMatcher"],
+        "orchestrator": ["DedupOrchestrator"],
+        "store": ["DedupStore"],
+    },
+)

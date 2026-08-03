@@ -24,8 +24,7 @@ from knox.core.paths import vault_paths
 from knox.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.logging import get_logger
-from knox.preprocessing.parsers.base import ParserRouter
-from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers import ParserBuildOptions, ParserRouter, get_backend
 
 logger = get_logger(__name__)
 
@@ -38,7 +37,8 @@ def parse_document(file_path: str) -> dict[str, Any]:
 
     router = ParserRouter()
     try:
-        router.register(DoclingParser())
+        docling_factory = get_backend("docling")
+        router.register(docling_factory(ParserBuildOptions()))
     except Exception as exc:
         logger.warning("DoclingParser not available: %s", exc, exc_info=True)
 

@@ -2,30 +2,23 @@
 
 from __future__ import annotations
 
-from knox.preprocessing.downloaders.base import BaseDownloader
-from knox.preprocessing.downloaders.crawler import WebCrawler
-from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
-from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
-from knox.preprocessing.downloaders.url_resolver import (
-    ArxivHtmlResolver,
-    ArxivPdfResolver,
-    ArxivSourceResolver,
-    BaseUrlResolver,
-    ResolvedUrl,
-    UrlResolverChain,
-    WikipediaPdfResolver,
-)
+import lazy_loader as lazy
 
-__all__ = [
-    "ArxivHtmlResolver",
-    "ArxivPdfResolver",
-    "ArxivSourceResolver",
-    "BaseDownloader",
-    "BaseUrlResolver",
-    "DuplicateDetector",
-    "HTTPDownloader",
-    "ResolvedUrl",
-    "UrlResolverChain",
-    "WebCrawler",
-    "WikipediaPdfResolver",
-]
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "base": ["BaseDownloader"],
+        "crawler": ["WebCrawler"],
+        "duplicate_detector": ["DuplicateDetector"],
+        "http_downloader": ["HTTPDownloader"],
+        "url_resolver": [
+            "ArxivHtmlResolver",
+            "ArxivPdfResolver",
+            "ArxivSourceResolver",
+            "BaseUrlResolver",
+            "ResolvedUrl",
+            "UrlResolverChain",
+            "WikipediaPdfResolver",
+        ],
+    },
+)
