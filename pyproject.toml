@@ -64,15 +64,6 @@ dependencies = [
     "aenum>=3.1.17",
 ]
 
-[project.optional-dependencies]
-default = ["liteparse>=2.4.0", "trafilatura>=2.0.0"]
-docling = ["docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0", "docling-ibm-models>=3.13.3", "pypdfium2>=5.10.1", "opencv-python-headless>=4.13.0.92", "onnxruntime>=1.26.0"]
-mineru = ["mineru>=3.4.0", "pypdfium2>=5.10.1"]
-marker = ["marker-pdf>=1.7.0"]
-glm-ocr = ["glmocr>=0.3.0"]
-pandoc = ["pypandoc>=1.17"]
-web = ["trafilatura>=2.0.0"]
-
 [project.scripts]
 knox = "knox.cli.app:main"
 
@@ -82,10 +73,6 @@ liteparse = [
 ]
 trafilatura = [
     "trafilatura>=2.0.0",
-]
-default = [
-    {include-group = "liteparse"},
-    {include-group = "trafilatura"},
 ]
 docling = [
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
@@ -109,6 +96,20 @@ pandoc = [
 ]
 web = [
     "trafilatura>=2.0.0",
+]
+# Meta-groups: single source of truth via include-group.
+default = [
+    {include-group = "liteparse"},
+    {include-group = "trafilatura"},
+]
+all = [
+    {include-group = "default"},
+    {include-group = "docling"},
+    {include-group = "mineru"},
+    {include-group = "marker"},
+    {include-group = "glm-ocr"},
+    {include-group = "pandoc"},
+    {include-group = "web"},
 ]
 dev = [
     "mkdocs-material>=9.7.6",
