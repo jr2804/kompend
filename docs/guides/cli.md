@@ -178,6 +178,33 @@ model don't compete for GPU memory.
 
 Use `--no-progress` to disable, or `--progress` to force enable.
 
+## `knox index`
+
+Rebuild the zvec vector index for semantic search from the cached wiki.
+
+```text
+knox index [OPTIONS]
+```
+
+This is a **recovery command**. A normal `knox compile` already builds the
+index automatically (unless `--no-index`); you only need `knox index` when
+the index is missing, stale, or you changed `compile.embedding.model` or
+`search.embed_assets` and want to re-embed without a full LLM recompile.
+
+It reads the cached wiki from `.knox/last_wiki.json` and rebuilds the zvec
+store in place. It does **not** re-ingest assets or recompile the wiki —
+for that use `knox compile --force --start-at-tier chunk`.
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|------------|
+| `--embed-model` | `compile.embedding.model` | Embedding model for zvec indexing (overrides config) |
+| `--set key=val` | — | Override any config key for this run |
+
+The `search.embed_assets` setting (and per-asset `--embed`/`--no-embed`
+flags at registration) controls whether asset-derived nodes are indexed.
+
 ## `knox doctor`
 
 Validate configuration and connectivity.
