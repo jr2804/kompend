@@ -20,6 +20,7 @@ from knox.cli._pipeline_helpers import (
     print_tier_listing,
     resolve_compile_inputs,
 )
+from knox.cli._post_compile import write_wiki_cache
 from knox.cli._progress import PipelineProgress
 from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
@@ -57,11 +58,13 @@ from knox.cli.args import (
     UrlFile,
     Verify,
     VlmModel,
+    WikiDir,
     Workers,
 )
 from knox.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
 from knox.core.config._configs import LintConfig
 from knox.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
     COMPILE_IN_PLACE_SOURCES,
     DISPLAY_CLI_ELEMENT_CHARS,
     DISPLAY_SOURCE_NAMES,
@@ -70,7 +73,7 @@ from knox.core.config.keys import (
     LINT_FUZZY_THRESHOLD,
     SEARCH_EMBED_ASSETS,
 )
-from knox.core.models import MetadataField, WikiField
+from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import ingest_documents
@@ -80,6 +83,7 @@ from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_console, get_err_console, get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions
 from knox.preprocessing.parsers.base import ParserRouter
+from knox.rag import build_vector_index
 
 logger = get_logger(__name__)
 
@@ -408,6 +412,73 @@ def ingest_cmd(
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
     get_console().print(summary)
+
+
+@app.command(name="index")
+def index_cmd(
+    ctx: typer.Context,
+    embed_model: EmbedModel = None,
+    config: ConfigPath = None,
+    wiki_dir: WikiDir = None,
+    cli_set: CliSet = None,
+) -> None:
+    """Rebuild the zvec vector index for semantic search.
+
+    Uses the cached :class:`CompiledWiki` from ``.knox/last_wiki.json``.
+    This is a recovery command — a normal ``knox compile`` already builds
+    the index automatically via post-compile actions.
+
+    Use it when the index is missing, stale, or you changed the embedding
+    model (``compile.embedding.model``) or the ``search.embed_assets``
+    setting and want to re-embed without a full LLM recompile.
+
+    It does **not** re-ingest assets or recompile the wiki. To ingest
+    newly-added assets, run ``knox compile --force --start-at-tier chunk``
+    first.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    if wiki_dir:
+        vp = vault_paths(wiki_dir)
+
+    cli_overrides = build_cli_overrides(cli_set=parse_cli_set(cli_set))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    output_dir = vp.output_dir
+
+    wiki = load_cached_wiki(vp.base_dir)
+    if wiki is None:
+        get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
+        raise typer.Exit(1)
+
+    # Resolve embed model (CLI flag > config > compile.embedding.model).
+    resolved_model = embed_model or cfg.get(COMPILE_EMBEDDING_MODEL, "")
+    if not resolved_model:
+        get_err_console().print(
+            "No embedding model configured. Set compile.embedding.model in config or pass --embed-model.",
+        )
+        raise typer.Exit(1)
+
+    embed_assets = bool(cfg.get(SEARCH_EMBED_ASSETS, False))
+
+    try:
+        count = build_vector_index(
+            wiki=wiki,
+            output_dir=output_dir,
+            embed_model=resolved_model,
+            base_dir=vp.base_dir,
+            embed_assets=embed_assets,
+        )
+    except Exception as exc:
+        get_err_console().print(f"Failed to build vector index: {exc}")
+        raise typer.Exit(1) from exc
+
+    # Persist embedding model metadata so ``knox query`` can open the store.
+    wiki.metadata["embedding_model"] = resolved_model
+    write_wiki_cache(wiki, vp.base_dir)
+
+    if count > 0:
+        get_console().print(f"Indexed {count} nodes in zvec store for semantic search.")
+    else:
+        get_err_console().print("Warning: no nodes indexed — vector index is empty.")
 
 
 def parse_cli_set(items: list[str] | None) -> dict[str, Any]:

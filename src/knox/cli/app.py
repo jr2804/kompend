@@ -52,6 +52,7 @@ _LAZY_MODULES: dict[str, str] = {
     "parse": "knox.cli.cmds.pipeline.pipeline",
     "compile": "knox.cli.cmds.pipeline.pipeline",
     "ingest": "knox.cli.cmds.pipeline.pipeline",
+    "index": "knox.cli.cmds.pipeline.pipeline",
     "query": "knox.cli.cmds.knowledge.query",
     "references": "knox.cli.cmds.knowledge.references",
     "review": "knox.cli.cmds.quality.review",
