@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import re
 from dataclasses import dataclass
@@ -91,16 +93,6 @@ _STOP: frozenset[str] = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class ClassifierRule:
-    """A single classification rule with intent, patterns, response, and match mode."""
-
-    intent: "QueryIntent"
-    patterns: tuple[re.Pattern[str], ...]
-    response: str
-    match_start: bool
-
-
 class QueryIntent(StrEnum):
     GREETING = "greeting"
     GRATITUDE = "gratitude"
@@ -118,6 +110,16 @@ class QueryIntent(StrEnum):
             ClassifierRule(cls.GRATITUDE, tuple(_GRATITUDE_PATTERNS), _GRATITUDE_RESPONSE, False),
             ClassifierRule(cls.HELP, tuple(_HELP_PATTERNS), _HELP_RESPONSE, True),
         )
+
+
+@dataclass(frozen=True)
+class ClassifierRule:
+    """A single classification rule with intent, patterns, response, and match mode."""
+
+    intent: QueryIntent
+    patterns: tuple[re.Pattern[str], ...]
+    response: str
+    match_start: bool
 
 
 @dataclass(frozen=True)
