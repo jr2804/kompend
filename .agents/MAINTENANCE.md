@@ -41,6 +41,8 @@ How to keep `.agents/` files current.
 | `CHECKS.md` | Adding/changing verification commands or checklist items |
 | `HISTORY.md` | Resolving a known violation or making a notable design decision |
 | `ONBOARDING.md` | Project structure or entry points change |
+| `plans/` | New feature implementation starts |
+| `history/` | HISTORY.md overflow or completed plans archived |
 
 ### Cross-reference map
 

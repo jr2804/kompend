@@ -221,6 +221,13 @@ valid sites, narrow the exception and make the failure visible.
 - Shipped docs (user-facing guides, API references) go in `docs/` and
   ARE committed.
 
+### Documentation
+
+- When `.agents/HISTORY.md` grows too large, archive older entries to
+  `.agents/history/` and reference them from `.agents/HISTORY.md`.
+- Completed plans may be archived to `.agents/history/` for long-term reference.
+- `.agents/history/` IS version-controlled (durable decision records).
+
 ### User Preferences
 
 - Concise, direct answers with no filler or intros
