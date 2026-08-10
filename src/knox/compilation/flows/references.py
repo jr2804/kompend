@@ -22,6 +22,7 @@ from pathlib import Path
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.reference_extraction import ReferenceExtractionAgent
 from knox.agents.reference_resolver import ReferenceResolverAgent
+from knox.compilation.base import BaseCompiler
 from knox.compilation.reference_excision import excise_references
 from knox.core.models import ResolvedChunk
 from knox.core.paths import rel_to_vault
@@ -32,7 +33,7 @@ logger = get_logger(__name__)
 
 
 def run_reference_extraction(
-    compiler: TwoPhaseCompiler,
+    compiler: BaseCompiler,
     chunks: list[ResolvedChunk],
     store: ReferenceStore,
 ) -> None:

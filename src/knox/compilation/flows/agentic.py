@@ -29,6 +29,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
 from knox.compilation._two_phase_core import Extraction
+from knox.compilation.schema import ExtractionOutput
 from knox.compilation.asset_tools import build_asset_tools
 from knox.compilation.extraction_memory import ExtractionMemory
 from knox.compilation.graph import GraphCompiler
