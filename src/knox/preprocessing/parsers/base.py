@@ -58,11 +58,6 @@ class FileExtension(StrEnum):
     TIF = ".tif"
     BMP = ".bmp"
 
-    @property
-    def pandoc_format(self) -> str:
-        """Return the pandoc format override for this extension, or ``""`` to infer from extension."""
-        return {"doc": "docx", "txt": "markdown"}.get(self.value.lstrip("."), "")
-
 
 class BaseParser(ABC):
     """Parser-agnostic interface for KNOX Tier 1."""

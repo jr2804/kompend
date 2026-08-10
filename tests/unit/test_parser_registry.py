@@ -26,7 +26,7 @@ from knox.preprocessing.parsers._registry import (
     get_registered_parsers,
     register_backend,
 )
-from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
+from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 from knox.preprocessing.parsers.pandoc_parser import PandocParser
@@ -201,6 +201,24 @@ def test_scrub_document_replaces_lone_surrogates() -> None:
     assert doc.metadata == {"nested": {"v": "x\ufffd"}}
     # The whole document must now be strictly UTF-8 encodable.
     json.dumps(asdict(doc), ensure_ascii=False, default=str).encode("utf-8")
+
+
+def test_resolve_format_unknown_text_falls_back_to_markdown() -> None:
+    """PandocParser._READER_FOR is the SSOT for extension→pandoc-reader mapping.
+
+    FileExtension is the SSOT for *which* extensions exist (enum members);
+    each parser owns the metadata that's specific to it. Unknown text
+    extensions fall back to FileExtension.TXT → ``"markdown"`` at parse
+    time, never ``""`` (pypandoc would infer the reader from the file
+    extension and crash on extensions it cannot read, e.g. ``.c``, ``.ltx``).
+    """
+    readers = PandocParser._READER_FOR
+    assert readers[FileExtension.TXT] == "markdown"
+    assert readers[FileExtension.MD] == "markdown"
+    assert readers[FileExtension.TEX] == "latex"
+    assert readers[FileExtension.LTX] == "latex"
+    assert readers[FileExtension.DOC] == "docx"
+    assert readers[FileExtension.ADOC] == "asciidoc"
 
 
 def test_router_parse_scrubs_parser_output(tmp_path: Path) -> None:

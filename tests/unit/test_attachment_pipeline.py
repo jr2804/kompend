@@ -102,7 +102,7 @@ def test_ingest_image_attachment_with_vlm(vault: VaultPaths) -> None:
 
 
 def test_ingest_unsupported_type(vault: VaultPaths) -> None:
-    """Unsupported extension returns None."""
+    """Binary files return None."""
     att = Attachment(path="r/binary.exe", source="r", ingestible=True)
     att_dir = vault.attachments_dir / "r"
     att_dir.mkdir(parents=True)
@@ -112,6 +112,30 @@ def test_ingest_unsupported_type(vault: VaultPaths) -> None:
 
     result = ingest_attachment(vault, att, mock_router)
     assert result is None
+
+
+def test_ingest_unknown_text_extension(vault: VaultPaths) -> None:
+    """Non-binary files with arbitrary extensions (.c/.h/unknown) are ingested.
+
+    Regression: previously a hardcoded allowlist in ingest_attachment() skipped
+    source-code assets (.c/.cpp/.h) even though the CLI gate accepted them.
+    """
+    att = Attachment(path="r/module.c", source="r", ingestible=True)
+    att_dir = vault.attachments_dir / "r"
+    att_dir.mkdir(parents=True)
+    (att_dir / "module.c").write_text("int main(void) { return 0; }\n")
+
+    expected_doc = ParsedDocument(
+        source_file=att_dir / "module.c",
+        title="module.c",
+        elements=[DocumentElement(type=ElementType.TEXT, content="int main(void) { return 0; }")],
+    )
+    mock_router = MagicMock()
+    mock_router.parse.return_value = expected_doc
+
+    result = ingest_attachment(vault, att, mock_router)
+    assert result is not None
+    mock_router.parse.assert_called_once()
 
 
 @pytest.fixture

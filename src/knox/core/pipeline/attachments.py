@@ -1,19 +1,22 @@
 """Attachment (supplementary file) ingestion for the KNOX pipeline.
 
 Attachments are user-registered files that belong to a source but are not
-ingested by default (photos, binaries, source code, etc.). They are tracked
+ingested by default (photos, binaries, etc.). They are tracked
 by the JSONL manifest (``.knox/assets.jsonl``) and live under
 ``assets/<source-slug>/``.
 
 Only attachments explicitly marked ``ingestible`` are processed at compile
-time. Text/markdown attachments are parsed through the standard parser
-router; PNG/JPG attachments are captioned via a VLM (if configured).
+time. Non-binary (text) attachments — markdown, plain text, source code, any
+unknown text suffix — are parsed through the standard parser router; PNG/JPG
+attachments are captioned via a VLM (if configured).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
+from binaryornot.check import is_binary
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
@@ -90,11 +93,13 @@ def ingest_attachment(
             return None
         return _caption_image(att_file, att, vlm_captioner)
 
-    if ext in {".md", ".markdown", ".txt", ".rst", ".csv", ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".htm", ".tex", ".ltx", ".adoc"}:
-        return _parse_text(att_file, att, router)
-
-    logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
-    return None
+    # Non-image attachments: any non-binary file is text. The parser router's
+    # binaryornot text fallback (pandoc) handles arbitrary text extensions —
+    # .c/.h/.cpp, source code, unknown suffixes — like .txt.
+    if is_binary(str(att_file)):
+        logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
+        return None
+    return _parse_text(att_file, att, router)
 
 
 def _parse_text(att_file: Path, att: Attachment, router: ParserRouter) -> ParsedDocument | None:

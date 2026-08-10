@@ -15,12 +15,12 @@ import shutil
 from pathlib import Path
 
 import typer
+from binaryornot.check import is_binary
 
 from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app as main_app
 from knox.core.models.attachments import (
     IMAGE_EXTENSIONS,
-    INGESTIBLE_EXTENSIONS,
     Attachment,
     AttachmentManifest,
 )
@@ -67,9 +67,12 @@ def add_asset(
 
     ext = asset_file.suffix.lower()
 
-    # ── If --ingest, validate extension is ingestible ──────────────────
-    if ingest and ext not in INGESTIBLE_EXTENSIONS:
-        console.print(f"[red]Error:[/red] Cannot ingest '{ext}' files. Ingestible types: {sorted(INGESTIBLE_EXTENSIONS)}")
+    # ── If --ingest, require a text file (or VLM-captionable image) ────
+    if ingest and ext not in IMAGE_EXTENSIONS and is_binary(str(asset_file)):
+        console.print(
+            f"[red]Error:[/red] Cannot ingest '{asset_file.name}': binary files are not ingestible. "
+            "Only text files (any extension) and images (via VLM) can be ingested."
+        )
         raise typer.Exit(1)
 
     # ── Warn about VLM requirement for images ──────────────────────────

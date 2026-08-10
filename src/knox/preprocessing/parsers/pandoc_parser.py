@@ -6,7 +6,7 @@ import json
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
-from typing import Any, override
+from typing import Any, ClassVar, override
 
 import pypandoc
 
@@ -70,10 +70,40 @@ class PandocParser(BaseParser):
         FileExtension.TXT,
     }
 
+    #: Maps each supported extension to its pandoc input reader name.
+    #: The canonical :class:`FileExtension` enum is the single source of truth
+    #: for *which* extensions exist; this class-level map declares which
+    #: *pandoc reader* each one needs — owned by the parser, not the enum.
+    _READER_FOR: ClassVar[dict[FileExtension, str]] = {
+        FileExtension.DOC: "docx",
+        FileExtension.DOCX: "docx",
+        FileExtension.EPUB: "epub",
+        FileExtension.HTML: "html",
+        FileExtension.HTM: "html",
+        FileExtension.PPTX: "pptx",
+        FileExtension.XLSX: "xlsx",
+        FileExtension.ODT: "odt",
+        FileExtension.RST: "rst",
+        FileExtension.RTF: "rtf",
+        FileExtension.TEX: "latex",
+        FileExtension.LTX: "latex",
+        FileExtension.MD: "markdown",
+        FileExtension.MARKDOWN: "markdown",
+        FileExtension.TXT: "markdown",
+        FileExtension.CSV: "csv",
+        FileExtension.ADOC: "asciidoc",
+    }
+
     @override
     def parse(self, source_file: Path) -> ParsedDocument:
         _ensure_pandoc_available()
-        fmt = _resolve_format(source_file)
+        try:
+            ext = FileExtension(source_file.suffix.lower())
+        except ValueError:
+            # Unknown text extension (source code, arbitrary suffix):
+            # parse like .txt via the markdown reader fallback.
+            ext = FileExtension.TXT
+        fmt = self._READER_FOR.get(ext, "markdown")
         ast_json = pypandoc.convert_file(str(source_file), "json", format=fmt)
         data = json.loads(ast_json)
         blocks: list[dict[str, object]] = data.get("blocks", [])
@@ -119,15 +149,7 @@ def _ensure_pandoc_available() -> None:
             logger.warning("could not download pandoc automatically: %s", exc)
 
 
-def _resolve_format(source_file: Path) -> str:
-    """Return a pandoc format override, or ``""`` to infer from extension."""
-    try:
-        ext = FileExtension(source_file.suffix.lower())
-    except ValueError:
-        return ""
-    return ext.pandoc_format
-
-
+# ── Helpers ──────────────────────────────────────────────────────────────
 def _block_to_element(
     block: Any,
     idx: int,
