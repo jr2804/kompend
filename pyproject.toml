@@ -123,6 +123,7 @@ default = [
 all = [
     {include-group = "default"},
     {include-group = "docling"},
+    {include-group = "marker"},
     {include-group = "mineru"},
     {include-group = "pandoc"},
     {include-group = "web"},
