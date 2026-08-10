@@ -118,8 +118,7 @@ default_model = "ollama/qwen3"
 "wicer.judge" = "anthropic/claude-sonnet-4-20250514"
 ```
 
-Role keys correspond to the [`LLMRole`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/roles.py)
-enum values. When a role is not listed, `default_model` is used.
+Role keys are the config identifiers under `[compile.llm.role_models]`. When a role is not listed, `default_model` is used.
 
 Common roles:
 
@@ -235,13 +234,14 @@ class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
    - `<name>_prompt.md.j2` — user prompt template (receives `deps`
      fields as Jinja2 variables)
 
-3. **Add the role** to `LLMRole` in
-   [`src/knox/llm/roles.py`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/roles.py).
+3. **Register the agent** — wire it into the compilation pipeline at the
+   call site (see the existing agents in `src/knox/agents/` for the
+   pattern).
 
-4. **Wire it into the pipeline** at the call site (e.g.
-   `compilation/two_phase.py`).
+4. **Export** the agent from `src/knox/agents/__init__.py`.
 
-5. **Export** the agent from `src/knox/agents/__init__.py`.
+5. **Route it to a model** in `src/knox/core/pipeline/config.py` if it
+   needs a role override (see `compile.llm.role_models`).
 
 See the [LLM Configuration guide](../guides/llm-config.md) for model
 strings, fallback chains, and reasoning-effort controls.

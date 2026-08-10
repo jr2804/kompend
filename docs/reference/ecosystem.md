@@ -172,11 +172,11 @@ No custom GUI. Use **open-webui/open-webui** as the query/work interface. KNOX e
 - llmwiki: <https://github.com/lucasastorian/llmwiki>
 - nashsu/llm_wiki: <https://github.com/nashsu/llm_wiki>
 - Tencent/WeKnora: <https://github.com/Tencent/WeKnora>
-- Docling: <https://github.com/DS4SD/docling>
+- Docling: <https://github.com/docling-project/docling>
 - opendataloader-pdf: <https://github.com/opendataloader-project/opendataloader-pdf>
-- Marker: <https://github.com/VikParuchuri/marker>
-- MinerU: <https://github.com/opendatalab-project/MinerU>
-- Chonkie: <https://github.com/chonkie-inc/chonkie>
+- Marker: <https://github.com/datalab-to/marker>
+- MinerU: <https://github.com/opendatalab/MinerU>
+- Chonkie: <https://github.com/feyninc/chonkie>
 - zvec: <https://github.com/alibaba/zvec>
 - qmd: <https://github.com/tobi/qmd>
 - open-webui: <https://github.com/open-webui/open-webui>

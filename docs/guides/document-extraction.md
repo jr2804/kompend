@@ -60,7 +60,7 @@ resort. Truly binary files with unknown extensions are skipped.
 
 ## Primary Parser: Docling
 
-[Docling](https://github.com/DS4SD/docling) (MIT license) is KNOX's primary
+[Docling](https://github.com/docling-project/docling) (MIT license) is KNOX's primary
 document parser. It is a pure-Python library (with C++ acceleration) that
 requires no external runtimes or sidecar processes.
 

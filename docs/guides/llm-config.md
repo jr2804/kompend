@@ -282,8 +282,8 @@ cheaper model for extraction, a stronger one for generation):
 "compile.generate" = "openai/gpt-4o"
 ```
 
-The role identifiers come from the `LLMRole` StrEnum in
-[`knox.llm.roles`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/roles.py).
+The role identifiers are config keys under `compile.llm.role_models`, resolved by
+[`LLMConfig`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/core/config/_configs.py).
 
 ## Token usage observability
 

@@ -270,8 +270,8 @@ source.pdf
 
 - Karpathy's compiled LLM-wiki: <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
 - WiCER paper (arXiv:2605.07068v1): <https://arxiv.org/pdf/2605.07068v1>
-- Docling: <https://github.com/DS4SD/docling>
-- Chonkie: <https://github.com/chonkie-inc/chonkie>
+- Docling: <https://github.com/docling-project/docling>
+- Chonkie: <https://github.com/feyninc/chonkie>
 - litellm: <https://github.com/BerriAI/litellm>
 
 ## See also

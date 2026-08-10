@@ -65,7 +65,7 @@ context_window_cap = 32768   # never exceed 32K even if model reports more
 ### The Sizing Formula
 
 Once the context window is known, the chunker
-([`knox.chunking.hybrid.HybridChunker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/chunking/hybrid.py))
+([`knox.chunking.hierarchical.HierarchicalChunker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/chunking/hierarchical.py))
 computes the target chunk size:
 
 ```text

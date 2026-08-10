@@ -123,9 +123,7 @@ See the [LLM configuration guide](./docs/guides/llm-config.md) for the full refe
 
 ## Documentation
 
-> **Full docs at [knox.anomalyco.dev](https://knox.anomalyco.dev)** — architecture deep-dives, tier references, WiCER loop, CLI guides, integrations.
->
-> See [`docs/index.md`](./docs/index.md) for the complete documentation index.
+> See [`docs/index.md`](./docs/index.md) for the complete documentation index — architecture deep-dives, tier references, WiCER loop, CLI guides, integrations.
 
 ## Development
 
@@ -160,7 +158,7 @@ MIT. See [LICENSE](./LICENSE).
 - [Karpathy's compiled LLM-wiki Gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the core concept
 - [Rohit G00's LLM Wiki v2 Gist](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) — memory lifecycle, knowledge graph, hybrid search
 - [WiCER paper](https://arxiv.org/pdf/2605.07068v1) (Huerta, Zinnia Tech) — iterative compilation loop
-- [Docling](https://github.com/DS4SD/docling) (IBM) — structure-preserving parsing
-- [Chonkie](https://github.com/chonkie-inc/chonkie) — multi-strategy chunking
+- [Docling](https://github.com/docling-project/docling) (IBM) — structure-preserving parsing
+- [Chonkie](https://github.com/feyninc/chonkie) — multi-strategy chunking
 - [pydantic-ai](https://ai.pydantic.dev) — typed agent framework
 - [models.dev](https://models.dev) — provider/model catalog

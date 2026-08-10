@@ -116,4 +116,4 @@ knox query "what is the main result?"
 
 - [Architecture Decisions](architecture/decisions.md) — Design choices and rationale
 - [Acknowledgements](about/acknowledgements.md) — Credits and investigated projects
-- **Active Work** — See [beads issue tracker](https://github.com/Hermes/knox) in `.beads/` for milestones, active tasks, and project status
+- **Active Work** — See the local [beads issue tracker](../.beads/) for milestones, active tasks, and project status
