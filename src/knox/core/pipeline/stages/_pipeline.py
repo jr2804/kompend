@@ -312,6 +312,35 @@ class WikiPipeline:
             return meta
         return metadata
 
+    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+        """Emit a progress event if a callback is registered.
+
+        A progress callback is arbitrary user code; it may raise anything. Per
+        src/knox/AGENTS.md this is a best-effort enrichment site: a buggy
+        callback must NOT abort the pipeline, so the broad catch is intentional.
+        The failure is logged at WARNING (not swallowed) so it stays visible.
+        """
+        if self._progress_callback is not None:
+            try:
+                self._progress_callback(phase, current, total, detail)
+            except Exception:  # best-effort: callback is user code, must not abort pipeline
+                logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
+
+    def dedup_store_file(self) -> Path:
+        """Resolve the dedup fingerprint store path."""
+        base_dir = self.config.resolved_base_dir()
+        return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
+
+    def cache_directory(self) -> Path:
+        """Resolve the cache directory."""
+        if self.config.cache_dir:
+            return self.config.cache_dir
+        return self.config.paths.cache_dir
+
+    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
+        """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
+        apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)
+
     def _should_run(self, tier: Tier) -> bool:
         """Check whether *tier* falls within [start, stop]."""
         level = Tier.level_of(tier)
@@ -338,30 +367,11 @@ class WikiPipeline:
             )
             raise ValueError(msg)
 
-    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
-        """Emit a progress event if a callback is registered.
-
-        A progress callback is arbitrary user code; it may raise anything. Per
-        src/knox/AGENTS.md this is a best-effort enrichment site: a buggy
-        callback must NOT abort the pipeline, so the broad catch is intentional.
-        The failure is logged at WARNING (not swallowed) so it stays visible.
-        """
-        if self._progress_callback is not None:
-            try:
-                self._progress_callback(phase, current, total, detail)
-            except Exception:  # best-effort: callback is user code, must not abort pipeline
-                logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
-
     def _default_state_file(self) -> Path:
         """Resolve the persistent state file path."""
         if self.config.tier_state_file is not None:
             return self.config.tier_state_file
         return self.config.paths.compile_state_path
-
-    def dedup_store_file(self) -> Path:
-        """Resolve the dedup fingerprint store path."""
-        base_dir = self.config.resolved_base_dir()
-        return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
 
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""
@@ -375,13 +385,3 @@ class WikiPipeline:
                 continue
             self.state_store.record(state, stem, Path(self.rel_file(source_file)), content_hash, tier=tier)
         self.state_store.save(state)
-
-    def cache_directory(self) -> Path:
-        """Resolve the cache directory."""
-        if self.config.cache_dir:
-            return self.config.cache_dir
-        return self.config.paths.cache_dir
-
-    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
-        """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
-        apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)

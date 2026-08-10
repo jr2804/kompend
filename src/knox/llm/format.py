@@ -231,9 +231,7 @@ def _inner_model_type(annotation: Any) -> TypeType:
     return None
 
 
-def _coerce_list_to_object(
-    items: list[JSON], schema: type[BaseModel] | dict[str, object]
-) -> JSONDict | None:
+def _coerce_list_to_object(items: list[JSON], schema: type[BaseModel] | dict[str, object]) -> JSONDict | None:
     """Merge a list of single-key dicts into one dict matching the schema.
 
     Small models sometimes split a single object across multiple items:

@@ -38,6 +38,7 @@ __all__ = ["PipelineRuntime", "ProgressCallback"]
 #: Parameters: (phase, current, total, detail).
 ProgressCallback = Callable[[str, int, int, str], None]
 
+
 class PipelineRuntime(Protocol):
     """Structural interface that stage functions depend on.
 
@@ -81,9 +82,7 @@ class PipelineRuntime(Protocol):
 
     def dedup_store_file(self) -> Path: ...
 
-    def normalize_metadata_paths(
-        self, metadata: dict[str, MetadataValue]
-    ) -> dict[str, MetadataValue]: ...
+    def normalize_metadata_paths(self, metadata: dict[str, MetadataValue]) -> dict[str, MetadataValue]: ...
 
     def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None: ...
 

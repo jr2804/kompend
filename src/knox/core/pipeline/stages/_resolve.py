@@ -13,7 +13,6 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-
 def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[ChunkTree]:
     """Resolve leaf chunks from trees and build entity registry + xref.
 
