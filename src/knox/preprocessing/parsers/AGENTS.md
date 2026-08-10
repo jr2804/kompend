@@ -13,20 +13,28 @@ importing the `knox.preprocessing.parsers` package triggers registration.
 ## Architecture
 
 ```text
-base.py            BaseParser, FileExtension, ParserRouter, DPI/IMAGE_SCALE constants
+base.py            BaseParser, FileExtension (extensions only), ParserRouter, DPI/IMAGE_SCALE constants
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
-docling_parser.py  DoclingParser  (default backend; structure-preserving via Docling)
-pandoc_parser.py   PandocParser   (legacy formats + LaTeX + binaryornot text fallback)
+docling_parser.py  DoclingParser  (default backend; supported_extensions owned by parser)
+pandoc_parser.py   PandocParser   (legacy formats + LaTeX + binaryornot text fallback;
+                                   _READER_FOR owned by parser, not the enum)
 liteparse_parser.py LiteParseParser (fast Rust-core parser; no figure enrichment)
 ```
 
 `build_pipeline` builds a `ParserRouter` from `config.parser`
 (`ingest.parser` config key; `--parser` CLI flag on `ingest`/`parse`).
 `config.parser` is a comma-separated priority list (e.g. `"liteparse,docling"`):
-backends are registered in that order and the first one whose `can_parse()`
-matches a file wins. `pandoc` is always appended last (legacy formats + LaTeX +
-universal text fallback), so formats no listed backend handles never regress.
+backends are registered in that order and the first one whose
+:meth:`BaseParser.can_parse` matches a file wins. `pandoc` is always
+appended last (legacy formats + LaTeX + universal text fallback), so formats
+no listed backend handles never regress.
+
+The canonical file-extension enum (`FileExtension`, in `base.py`) is the
+single source of truth for *which extensions exist*. Each parser declares its
+own `supported_extensions` set and owns any parser-specific metadata — e.g.
+`PandocParser._READER_FOR` maps extensions to pandoc reader names without
+coupling the enum to pandoc terminology.
 
 ## Rules
 
@@ -44,6 +52,14 @@ once per process: a fast no-op when pandoc is on PATH, or an on-demand
 download (`pypandoc.ensure_pandoc_installed()`) when it's missing. The JSON
 AST (`pypandoc.convert_file(path, 'json')`) replaces the legacy typed-AST —
 blocks are classified by their `"t"` tag string instead of `isinstance`.
+
+Input reader resolution never returns `""`: `FileExtension.pandoc_format`
+maps each known extension to an explicit pandoc reader
+(`_PANDOC_READERS` in `base.py`), and `_resolve_format` falls back to
+`"markdown"` for unknown text files (source code, arbitrary suffixes) so any
+non-binary file is parsed like `.txt`. Returning `""` made pypandoc infer
+the reader from the file extension and crash on extensions it cannot read
+(`.c`, `.log`, `.yaml`, `.ltx`, …).
 
 ### Registration — cycle avoidance
 
