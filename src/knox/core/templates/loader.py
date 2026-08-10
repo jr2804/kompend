@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined, meta
+from jinja2 import BaseLoader, ChoiceLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined, meta
 
 from knox.core.config._core import find_project_config
 from knox.logging import get_logger
@@ -51,7 +51,7 @@ _PROJECT_TEMPLATES_NAME: str = "templates"
 
 # ── Frontmatter parsing ─────────────────────────────────────────────────
 
-_FRONTMATTER_RE: Any = None
+_FRONTMATTER_RE: re.Pattern[str] | None = None
 
 logger = get_logger(__name__)
 
@@ -157,7 +157,7 @@ class TemplateLoader:
     project_dir: Path | None = None
 
     # Lazily built
-    _jinja_env: Any | None = None
+    _jinja_env: Environment | None = None
     _search_cache: dict[str, tuple[str, Path | str]] = field(default_factory=dict)
     _meta_cache: dict[str, TemplateMeta] = field(default_factory=dict)
     # Variables injected into every render call (only if the template uses them)
@@ -365,7 +365,7 @@ class TemplateLoader:
         if self._jinja_env is not None:
             return self._jinja_env
 
-        loaders: list[Any] = []
+        loaders: list[BaseLoader] = []
 
         project_dir = _project_templates_dir(self.project_dir)
         if project_dir is not None:
@@ -390,7 +390,7 @@ class TemplateLoader:
         return self._jinja_env
 
     def _make_template_source_loader(self) -> Jinja2Loader:
-        loaders: list[Any] = []
+        loaders: list[BaseLoader] = []
 
         project_dir = _project_templates_dir(self.project_dir)
         if project_dir is not None:

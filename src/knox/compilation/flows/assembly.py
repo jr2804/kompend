@@ -13,7 +13,7 @@ from knox.chunking.summarizer import structured_to_text
 from knox.compilation._two_phase_core import ExtractionSet
 from knox.compilation.asset_registry import AssetIdMap
 from knox.compilation.asset_summarizer import summarize_asset
-from knox.core.models import ChunkTree, WikiNode
+from knox.core.models import ChunkTree, ResolvedChunk, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.models.structured import StructuredEquation
 from knox.logging import get_logger
@@ -267,7 +267,7 @@ def build_tree_texts(
 # ── Tag attachment ──────────────────────────────────────────────────────
 
 
-def attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[Any]) -> None:
+def attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> None:
     """Attach tags from chunk metadata to wiki nodes."""
     all_tags: list[str] = []
     for rc in chunks:

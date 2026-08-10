@@ -14,10 +14,10 @@ attachments are captioned via a VLM (if configured).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from binaryornot.check import is_binary
 
+from knox.agents.vlm import VlmAgent
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
 from knox.core.paths import VaultPaths
@@ -61,7 +61,7 @@ def ingest_attachment(
     att: Attachment,
     router: ParserRouter,
     *,
-    vlm_captioner: Any | None = None,
+    vlm_captioner: VlmAgent | None = None,
 ) -> ParsedDocument | None:
     """Ingest a single attachment through the parser pipeline.
 
@@ -114,7 +114,7 @@ def _parse_text(att_file: Path, att: Attachment, router: ParserRouter) -> Parsed
         return None
 
 
-def _caption_image(att_file: Path, att: Attachment, vlm_captioner: Any) -> ParsedDocument | None:
+def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> ParsedDocument | None:
     """Caption an image attachment via the VLM.
 
     Produces a synthetic document whose single text element holds the

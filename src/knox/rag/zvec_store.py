@@ -29,7 +29,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.paths import rel_to_vault
 from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
-from knox.types import ZvecCollection
+from knox.types import ZvecCollection, ZvecDoc
 
 _ZVEC_MAX_ID_LEN = 64
 
@@ -120,7 +120,7 @@ class ZvecWikiStore:
         self.db_file = Path(db_file)
         self._provider = embedding_provider
         self._embedding_dim = embedding_dim
-        self._collection: Any | None = None
+        self._collection: ZvecCollection | None = None
 
     @property
     def available(self) -> bool:
@@ -227,7 +227,7 @@ class ZvecWikiStore:
 
     def _index_nodes(
         self,
-        collection: Any,
+        collection: ZvecCollection,
         nodes: list[WikiNode],
         batch_size: int,
         *,
@@ -236,7 +236,7 @@ class ZvecWikiStore:
         provider = self._provider
         if provider is None:
             raise RuntimeError("Embedding provider not configured. Call build_index() first.")
-        docs_batch: list[Any] = []
+        docs_batch: list[ZvecDoc] = []
         indexed_count = 0
         total_nodes = len(nodes)
 

@@ -57,6 +57,7 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
     def _parse(current: int, total: int, detail: str) -> None:
         if current == 0:
             tracker.start()
+            tracker.reset_for_phase(total, "Parsing…")
         elif detail == "done":
             tracker.update_progress(total, f"Parsed {total} file(s)")
         else:

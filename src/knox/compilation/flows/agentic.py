@@ -23,15 +23,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
 
-from pydantic_ai.messages import ModelRequest, SystemPromptPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.asset_tools import build_asset_tools
 from knox.compilation.extraction_memory import ExtractionMemory
+from knox.compilation.graph import GraphCompiler
 from knox.core.models.enums import CacheDeps
 from knox.core.utils.exceptions import LLMOutputError
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def extract_agentic(
-    compiler: Any,
+    compiler: GraphCompiler,
     source: str,
     texts: list[str],
     extraction_system: str,
@@ -118,7 +118,7 @@ def extract_agentic(
 
         # Build message history with memory digest injected as a system message
         memory_digest = memory.summarize(max_tokens=budget.extract_output_max)
-        message_history: list[Any] = []
+        message_history: list[ModelMessage] = []
         if tools:
             message_history.append(
                 ModelRequest(
@@ -143,7 +143,7 @@ def extract_agentic(
             timeout=compiler._timeout,
         )
 
-        validated: Any = None
+        validated: ExtractionOutput | None = None
         for attempt in range(1 + batch_retries):
             try:
                 validated, _new_messages = agent.run_with_messages(

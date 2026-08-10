@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any
 
 from knox.types import CacheValue
 
@@ -36,7 +35,7 @@ class ContentMatcher(ABC):
         ...
 
     @abstractmethod
-    def score(self, fp_a: Any, fp_b: Any) -> float:
+    def score(self, fp_a: CacheValue, fp_b: CacheValue) -> float:
         """Return a similarity score in [0, 1] between two fingerprints.
 
         1.0 = identical, 0.0 = completely different.
@@ -44,7 +43,7 @@ class ContentMatcher(ABC):
         ...
 
     @abstractmethod
-    def serialize(self, fingerprint: Any) -> list:
+    def serialize(self, fingerprint: CacheValue) -> list:
         """Convert a fingerprint to a JSON-serialisable list."""
         ...
 

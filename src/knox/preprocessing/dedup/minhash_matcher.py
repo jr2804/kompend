@@ -140,7 +140,7 @@ class MinhashMatcher(ContentMatcher):
         return [" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
 
     @staticmethod
-    def _to_uint64(value: Any) -> int:
+    def _to_uint64(value: int) -> int:
         """Ensure an integer fits in uint64 (datasketch uses uint64)."""
         v = int(value)
         # Mask to 64 bits if negative

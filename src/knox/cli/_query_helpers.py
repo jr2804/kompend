@@ -13,6 +13,7 @@ import typer
 
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli.args.query import SearchMode
+from knox.core.config import ResolvedConfig
 from knox.core.config._configs import LlmDataFormat, Verbosity  # type: ignore[attr-defined]
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
@@ -41,7 +42,7 @@ from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import HybridRetriever, synthesize_results
+from knox.search.retriever import HybridRetriever, SearchResult, synthesize_results
 
 _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
     Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
@@ -76,7 +77,7 @@ def execute_query_search(
     sources_dir: Path | None,
     top_k: int,
     tag_groups: list[list[str]] | None = None,
-) -> tuple[list[Any], bool]:
+) -> tuple[list[SearchResult], bool]:
     """Dispatch to the requested search mode and return results + raw flag."""
     raw = False
     expand_graph = search_mode == SearchMode.GRAPH
@@ -107,7 +108,7 @@ def handle_adaptive_search(
     wiki: CompiledWiki,
     state_dir: Path,
     tag_groups: list[list[str]] | None = None,
-) -> tuple[list[Any], bool]:
+) -> tuple[list[SearchResult], bool]:
     """Search using adaptive retriever."""
     retriever = AdaptiveRetriever(wiki, vector_store=vector_store)
     mode = search_mode if search_mode != SearchMode.HYBRID else None
@@ -125,10 +126,10 @@ def handle_enhanced_search(
     vector_store: ZvecWikiStore | None,
     state_dir: Path,
     wiki: CompiledWiki,
-    cfg: Any,
+    cfg: ResolvedConfig,
     model: str,
     tag_groups: list[list[str]] | None = None,
-) -> list[Any] | None:
+) -> list[SearchResult] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
 
@@ -160,7 +161,7 @@ def build_enhanced_retriever(
     wiki: CompiledWiki,
     vector_store: ZvecWikiStore | None,
     state_dir: Path,
-    cfg: Any,
+    cfg: ResolvedConfig,
     model: str,
 ) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
@@ -187,7 +188,7 @@ def build_enhanced_retriever(
 
 def synthesize_and_output(
     query: str,
-    results: list[Any],
+    results: list[SearchResult],
     format: LlmDataFormat,
     has_enhanced: bool,
     enhanced: EnhancedRetriever | None,
@@ -196,7 +197,7 @@ def synthesize_and_output(
     cw: ContextWindow | None,
     remember: bool,
     state_dir: Path,
-    cfg: Any,
+    cfg: ResolvedConfig,
 ) -> None:
     """Synthesize results and output the answer."""
     results = [r for r in results if not is_captured_source(r.source_file)]
@@ -274,7 +275,7 @@ def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
     return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
 
 
-def print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
+def print_raw_results(results: list[SearchResult], format: LlmDataFormat) -> None:
     """Print raw search results to console."""
     if format == LlmDataFormat.MARKDOWN:
         for r in results:
@@ -288,7 +289,7 @@ def print_raw_results(results: list[Any], format: LlmDataFormat) -> None:
     get_console().print(encode_raw_results(results, format))
 
 
-def encode_raw_results(results: list[Any], fmt: LlmDataFormat) -> str:
+def encode_raw_results(results: list[SearchResult], fmt: LlmDataFormat) -> str:
     """Build the raw-results payload and encode it for agent consumers."""
     payload = [
         {

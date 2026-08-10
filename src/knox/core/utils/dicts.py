@@ -28,7 +28,7 @@ def get_dot(
 ) -> ConfigValue:
     """Retrieve a dotted *key* from a nested dict, returning *default* if absent."""
     parts = key.split(".")
-    current: Any = data
+    current: ConfigValue = data
     for part in parts:
         if isinstance(current, dict):
             current = current.get(part)

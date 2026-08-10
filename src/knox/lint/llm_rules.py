@@ -15,6 +15,7 @@ from slugify import slugify
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.lint import LintRuleAgent
+from knox.core.models import CompiledWiki
 from knox.core.templates import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -129,7 +130,7 @@ class FactualConsistencyRule(LlmLintRule):
     name = "factual-consistency"
     description = "Claims in page contradict source material"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         skip = self._skip_if_no_agent()
         if skip is not None:
             return skip
@@ -192,7 +193,7 @@ class ClarityScoreRule(LlmLintRule):
     name = "clarity-score"
     description = "Readability, coherence, conciseness score (1-10)"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         skip = self._skip_if_no_agent()
         if skip is not None:
             return skip
@@ -265,7 +266,7 @@ class CoverageGapRule(LlmLintRule):
     name = "coverage-gap"
     description = "Important concepts mentioned in sources but missing from wiki"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         skip = self._skip_if_no_agent()
         if skip is not None:
             return skip
@@ -374,7 +375,7 @@ class CoverageGapRule(LlmLintRule):
         return [g.model_dump() for g in merged] if merged else gaps
 
     @staticmethod
-    def _suppress_existing_gaps(gaps: list[dict], wiki: Any) -> list[dict]:
+    def _suppress_existing_gaps(gaps: list[dict], wiki: CompiledWiki) -> list[dict]:
         """Drop gaps whose concept already has a wiki page.
 
         The detection LLM sees only one batch at a time, so it flags any
@@ -411,7 +412,7 @@ class ContradictionDetectionRule(LlmLintRule):
     name = "contradiction-detection"
     description = "Contradictory claims across wiki pages"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         skip = self._skip_if_no_agent()
         if skip is not None:
             return skip
@@ -499,11 +500,11 @@ class ContradictionDetectionRule(LlmLintRule):
 
 # ── Registry ────────────────────────────────────────────────────────────
 
-LLM_RULES: list[Any] = [
+LLM_RULES: list[type[BaseLintRule]] = [
     FactualConsistencyRule,
     ClarityScoreRule,
     CoverageGapRule,
     ContradictionDetectionRule,
 ]
 
-LLM_RULE_BY_NAME: dict[str, type] = {r.name: r for r in LLM_RULES}
+LLM_RULE_BY_NAME: dict[str, type[BaseLintRule]] = {r.name: r for r in LLM_RULES}

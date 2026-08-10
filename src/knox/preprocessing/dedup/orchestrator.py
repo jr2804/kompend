@@ -25,6 +25,7 @@ from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.store import DedupStore
 from knox.rag.zvec_store import make_provider
+from knox.types import CacheValue
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
@@ -290,7 +291,7 @@ class DedupOrchestrator:
         matcher_name: str,
         slug_to_fp: dict[str, dict[str, Any]],
         matcher: ContentMatcher,
-    ) -> Any:
+    ) -> CacheValue:
         """Get a fingerprint for *slug* — from batch cache or persistent store."""
         # First check the current batch (incoming docs)
         incoming = slug_to_fp.get(slug, {})

@@ -11,9 +11,8 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
@@ -29,6 +28,7 @@ from knox.compilation.asset_mention_rewriter import rewrite_asset_mentions as _r
 from knox.compilation.asset_registry import AssetIdMap
 from knox.compilation.flows.agentic import extract_agentic
 from knox.compilation.flows.assembly import build_tree_texts
+from knox.compilation.graph import GraphCompiler
 from knox.core.config._configs import ExtractionStrategy
 from knox.core.models import ChunkTree, ResolvedChunk
 from knox.core.models.enums import CacheDeps
@@ -47,7 +47,7 @@ _loader = get_template_loader()
 
 
 def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
-    compiler: Any,
+    compiler: GraphCompiler,
     chunks: list[ResolvedChunk],
     *,
     trees: list[ChunkTree] | None = None,
@@ -222,7 +222,7 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     return batches
 
 
-def extract_one(compiler: Any, source: str, combined: str, extraction_system: str) -> Extraction | None:
+def extract_one(compiler: GraphCompiler, source: str, combined: str, extraction_system: str) -> Extraction | None:
     """Run a single extraction LLM call with cache."""
     budget = compiler._budget
     extract_deps: dict[str, str] = {
@@ -261,7 +261,7 @@ def extract_one(compiler: Any, source: str, combined: str, extraction_system: st
     # exhausts internal retries). ``compile.llm.batch_retry_attempts`` is
     # configurable — set to 0 to disable.
     batch_retries = compiler._config.llm.batch_retry_attempts
-    validated: Any | None = None
+    validated: Extraction | None = None
     for attempt in range(1 + batch_retries):
         validated = try_pydanticai_extraction(
             agent,
@@ -300,7 +300,7 @@ def extract_one(compiler: Any, source: str, combined: str, extraction_system: st
 
 
 def extract_incremental(
-    compiler: Any,
+    compiler: GraphCompiler,
     source: str,
     batches_list: list[str],
     extraction_system: str,
@@ -322,7 +322,7 @@ def extract_incremental(
     budget = compiler._budget
     compaction_threshold = budget.extract_output_max * 2
     results: list[Extraction | None] = []
-    history: list[Any] = []
+    history: list[ModelMessage] = []
     agent: ExtractionAgent | None = None
     for batch_idx, combined in enumerate(batches_list):
         # Per-batch cache (same key as extract_one)
@@ -397,7 +397,7 @@ def extract_incremental(
     return results, False
 
 
-def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
+def _compact_history_inplace(history: list[ModelMessage], max_tokens: int) -> None:
     """Drop the oldest messages from ``history`` until under budget.
 
     Mutates the list in place. Messages come in (request, response) pairs
@@ -420,7 +420,7 @@ def _compact_history_inplace(history: list[Any], max_tokens: int) -> None:
         )
 
 
-def _estimate_history_tokens(history: list[Any]) -> int:
+def _estimate_history_tokens(history: list[ModelMessage]) -> int:
     """Estimate total tokens across all messages in ``history``.
 
     Walks every ``ModelRequest`` / ``ModelResponse`` and sums the string
@@ -460,7 +460,7 @@ def _synthetic_history_response(extraction: Extraction) -> ModelResponse:
     return ModelResponse(parts=[TextPart(content=" | ".join(summary_bits))])
 
 
-def combine_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
+def combine_extractions(compiler: GraphCompiler, source: str, parts: list[Extraction]) -> Extraction:
     """Combine per-batch extractions into one document-level Extraction."""
     if not parts:
         return Extraction(source=source)
@@ -472,7 +472,7 @@ def combine_extractions(compiler: Any, source: str, parts: list[Extraction]) -> 
     return merge_extractions(source, parts)
 
 
-def reduce_extractions(compiler: Any, source: str, parts: list[Extraction]) -> Extraction:
+def reduce_extractions(compiler: GraphCompiler, source: str, parts: list[Extraction]) -> Extraction:
     """LLM-powered reduce: merge partial extractions into a coherent whole."""
     partial_json = json.dumps([p.to_dict() for p in parts], ensure_ascii=False)
     reduce_deps_key: dict[str, str] = {

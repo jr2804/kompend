@@ -15,12 +15,14 @@ import logging
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, runtime_checkable
 
+from pydantic import BaseModel
 from pydantic_ai import ModelMessage, ModelResponse
 from pydantic_ai.messages import ModelRequest, TextPart, ThinkingPart, ToolCallPart
 
-from knox.llm.debug import messages_to_debug_dicts, save_debug_prompt
+from knox.llm.debug import _DebugSource, messages_to_debug_dicts, save_debug_prompt
 from knox.llm.format import salvage_json
 from knox.llm.usage import UsageTracker
+from knox.types import JSON, JSONDict
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class ToolCallRepair:
     them and repairs the JSON using ``salvage_json`` with schema guidance.
     """
 
-    def __init__(self, schema_resolver: Callable[[], Any | None]) -> None:
+    def __init__(self, schema_resolver: Callable[[], type[BaseModel] | None]) -> None:
         """Initialize with a callable that returns the result schema."""
         self._get_schema = schema_resolver
 
@@ -132,7 +134,7 @@ class ThinkingPartRepair:
     ``str``). Free-text agents keep the original ``TextPart``.
     """
 
-    def __init__(self, schema_resolver: Callable[[], Any | None]) -> None:
+    def __init__(self, schema_resolver: Callable[[], type[BaseModel] | None]) -> None:
         """Initialize with a callable that returns the result schema."""
         self._get_schema = schema_resolver
 
@@ -224,7 +226,7 @@ class DebugSaver:
 
     def __init__(
         self,
-        agent: Any,
+        agent: _DebugSource,
         model_name: str,
         messages: Sequence[ModelMessage],
     ) -> None:
@@ -348,7 +350,7 @@ def get_registered_processor(name: str) -> type[ResponsePostprocessor] | None:
 # ── Helper functions ────────────────────────────────────────────────────
 
 
-def _scrub_dict_strings(data: dict[str, Any], scrub_fn: Callable[[str], str]) -> dict[str, Any]:
+def _scrub_dict_strings(data: JSONDict, scrub_fn: Callable[[str], str]) -> JSONDict:
     """Recursively apply scrub_fn to all string values in a dict.
 
     Non-string values (int, bool, None, list, nested dict) are passed through
@@ -367,7 +369,7 @@ def _scrub_dict_strings(data: dict[str, Any], scrub_fn: Callable[[str], str]) ->
     return result
 
 
-def _scrub_value(value: Any, scrub_fn: Callable[[str], str]) -> Any:
+def _scrub_value(value: JSON, scrub_fn: Callable[[str], str]) -> JSON:
     """Apply scrub_fn to strings; pass through other types."""
     if isinstance(value, str):
         return scrub_fn(value)
@@ -391,8 +393,8 @@ register_postprocessor("debug_saver")(DebugSaver)
 
 def default_pipeline(
     *,
-    schema_resolver: Callable[[], Any | None],
-    agent: Any | None,
+    schema_resolver: Callable[[], type[BaseModel] | None],
+    agent: _DebugSource | None,
     model_name: str,
     usage_tracker: UsageTracker | None,
     messages: list[ModelMessage],

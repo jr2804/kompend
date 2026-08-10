@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.reference_extraction import ReferenceExtractionAgent
@@ -33,7 +32,7 @@ logger = get_logger(__name__)
 
 
 def run_reference_extraction(
-    compiler: Any,
+    compiler: TwoPhaseCompiler,
     chunks: list[ResolvedChunk],
     store: ReferenceStore,
 ) -> None:

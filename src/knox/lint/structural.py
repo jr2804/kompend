@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import MetadataField
+from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import REFERENCES_FILE, VaultPaths
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
@@ -29,13 +29,13 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # ── Rule 1: broken-wikilinks ──────────────────────────────────────────────
 
 
-class BrokenWikilinksRule:
+class BrokenWikilinksRule(BaseLintRule):
     """Detect ``[[wikilinks]]`` that point to non-existent pages."""
 
     name = "broken-wikilinks"
     description = "Wikilinks pointing to pages that do not exist"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         title_to_id = _node_titles_index(wiki)
         results: list[LintResult] = []
         for node in wiki.nodes:
@@ -55,7 +55,7 @@ class BrokenWikilinksRule:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All wikilinks resolve"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
         """Remove broken wikilinks from page content."""
         page_edits: dict[str, list[str]] = {}
         for r in results:
@@ -80,7 +80,7 @@ class BrokenWikilinksRule:
 # ── Rule 2: missing-frontmatter ─────────────────────────────────────────
 
 
-class MissingFrontmatterRule:
+class MissingFrontmatterRule(BaseLintRule):
     """Detect pages missing required frontmatter fields.
 
     Required fields: ``title`` and ``date``.
@@ -91,7 +91,7 @@ class MissingFrontmatterRule:
 
     REQUIRED_FIELDS: tuple[str, ...] = ("title",)
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         for node in wiki.nodes:
             fm = node.metadata.get("frontmatter", {})
@@ -113,7 +113,7 @@ class MissingFrontmatterRule:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages have frontmatter"))
         return results
 
-    def fix(self, wiki: Any, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
         """Add minimal frontmatter to pages that lack it."""
         fixed = list(results)
         for r in fixed:
@@ -150,7 +150,7 @@ class OrphanPageRule(BaseLintRule):
     name = "orphan-page"
     description = "Pages with no connections to other pages"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         incoming_content = _incoming_link_counts(wiki)
         # Relationship edges connect both endpoints — count either role.
         linked_nodes: set[str] = set()
@@ -190,7 +190,7 @@ class DuplicateTitleRule(BaseLintRule):
     name = "duplicate-title"
     description = "Two or more pages with the exact same title (case-insensitive)"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         seen: dict[str, list[str]] = {}  # lower(title) -> [node_id, ...]
         for node in wiki.nodes:
@@ -224,7 +224,7 @@ class EmptyPageRule(BaseLintRule):
     name = "empty-page"
     description = "Pages with no body content"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         for node in wiki.nodes:
             content = node.content.strip() if node.content else ""
@@ -252,7 +252,7 @@ class HeadingSkipRule(BaseLintRule):
     name = "heading-skip"
     description = "Heading level skips (h1 → h3 without h2)"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         for node in wiki.nodes:
             headings: list[int] = []
@@ -292,7 +292,7 @@ class StalePageRule(BaseLintRule):
     name = "stale-page"
     description = "Pages whose source files changed since last compile"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
 
         # ── Source file existence check ──
@@ -368,7 +368,7 @@ class SourceNotFoundRule(BaseLintRule):
     name = "source-not-found"
     description = "Pages referencing source files that don't exist"
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         if sources_dir is None:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
@@ -445,7 +445,7 @@ class DuplicateReferencesRule(BaseLintRule):
         self.embedding_model = embedding_model
         self.fuzzy_threshold = fuzzy_threshold
 
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: ARG002, PLR0915
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: ARG002, PLR0915
         results: list[LintResult] = []
         if sources_dir is None:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
@@ -560,11 +560,11 @@ class DuplicateReferencesRule(BaseLintRule):
         return duplicates
 
 
-def _node_ids_set(wiki: Any) -> set[str]:
+def _node_ids_set(wiki: CompiledWiki) -> set[str]:
     return {n.id for n in wiki.nodes}
 
 
-def _incoming_link_counts(wiki: Any) -> dict[str, int]:
+def _incoming_link_counts(wiki: CompiledWiki) -> dict[str, int]:
     """Count incoming ``[[wikilinks]]`` per node id."""
     counts: dict[str, int] = {}
     title_to_id = _node_titles_index(wiki)
@@ -580,14 +580,14 @@ def _extract_wikilinks(content: str) -> list[str]:
     return _WIKILINK_RE.findall(content)
 
 
-def _node_titles_index(wiki: Any) -> dict[str, str]:
+def _node_titles_index(wiki: CompiledWiki) -> dict[str, str]:
     """Map ``node.title.lower()`` → ``node.id``."""
     return {n.title.lower(): n.id for n in wiki.nodes}
 
 
 # ── Registry ────────────────────────────────────────────────────────────
 
-STRUCTURAL_RULES: list[Any] = [
+STRUCTURAL_RULES: list[BaseLintRule] = [
     BrokenWikilinksRule(),
     MissingFrontmatterRule(),
     OrphanPageRule(),

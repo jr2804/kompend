@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from knox.core.models import CompiledWiki
+
 
 class LintRuleOutcome(StrEnum):
     """Result of applying a single lint rule to a page."""
@@ -115,10 +117,10 @@ class BaseLintRule(ABC):
     def description(self) -> str: ...
 
     @abstractmethod
-    def check(self, wiki: Any, *, sources_dir: str | None = None) -> list[LintResult]: ...
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
     @staticmethod
-    def fix(wiki: Any, results: list[LintResult]) -> list[LintResult]:
+    def fix(wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
 
         Default implementation returns results unchanged.

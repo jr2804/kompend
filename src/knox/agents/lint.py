@@ -6,9 +6,11 @@ from dataclasses import field
 from typing import Any, ClassVar
 
 from pydantic_ai.agent import Agent
+from pydantic_ai.messages import ModelMessage
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
+from knox.types import AgentResult
 
 
 class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
@@ -41,8 +43,8 @@ class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
         deps: PipelineAgentDeps,
         *,
         result_type: type | None = None,
-        message_history: list[Any] | None = None,
-    ) -> Any:
+        message_history: list[ModelMessage] | None = None,
+    ) -> AgentResult:
         """Single-turn agent invocation with optional per-call result type.
 
         When *result_type* differs from the cached agent's type, a new

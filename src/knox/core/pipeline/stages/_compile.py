@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import (
+    ChunkNode,
+    ChunkTree,
     CompiledWiki,
     MetadataField,
     WikiField,
     WikiNode,
 )
+from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.logging import get_logger
@@ -20,7 +22,7 @@ from knox.trust import filter_wiki
 logger = get_logger(__name__)
 
 
-def run_compile_tier(pipeline: Any) -> CompiledWiki | None:
+def run_compile_tier(pipeline: PipelineRuntime) -> CompiledWiki | None:
     """Tier 2+3: resolve leaf chunks from ChunkTree and compile into CompiledWiki."""
     trees = parse_and_chunk(pipeline)
     resolved = resolve_chunks(pipeline, trees)
@@ -34,7 +36,7 @@ def run_compile_tier(pipeline: Any) -> CompiledWiki | None:
     return wiki
 
 
-def run_output_tier(pipeline: Any) -> None:
+def run_output_tier(pipeline: PipelineRuntime) -> None:
     """Tier 4: write the compiled wiki to the output directory."""
     wiki = load_compiled_wiki(pipeline)
     if wiki is None or not pipeline.output_writer:
@@ -44,7 +46,7 @@ def run_output_tier(pipeline: Any) -> None:
     pipeline.output_writer.write(wiki, pipeline.config.output_dir)
 
 
-def save_compiled_wiki(pipeline: Any, wiki: CompiledWiki) -> None:
+def save_compiled_wiki(pipeline: PipelineRuntime, wiki: CompiledWiki) -> None:
     """Serialize CompiledWiki to JSON on disk."""
     path = compiled_wiki_path(pipeline)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +58,7 @@ def save_compiled_wiki(pipeline: Any, wiki: CompiledWiki) -> None:
                 "content": n.content,
                 "node_type": n.node_type,
                 "source_chunks": n.source_chunks or [],
-                "metadata": pipeline._normalize_metadata_paths(n.metadata),
+                "metadata": pipeline.normalize_metadata_paths(n.metadata),
             }
             for n in wiki.nodes
         ],
@@ -69,7 +71,7 @@ def save_compiled_wiki(pipeline: Any, wiki: CompiledWiki) -> None:
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
-def load_compiled_wiki(pipeline: Any) -> CompiledWiki | None:
+def load_compiled_wiki(pipeline: PipelineRuntime) -> CompiledWiki | None:
     """Load CompiledWiki from JSON on disk. Returns *None* on cache miss."""
     path = compiled_wiki_path(pipeline)
     if not path.exists():
@@ -88,12 +90,12 @@ def load_compiled_wiki(pipeline: Any) -> CompiledWiki | None:
     )
 
 
-def compiled_wiki_path(pipeline: Any) -> Path:
+def compiled_wiki_path(pipeline: PipelineRuntime) -> Path:
     """Resolve the compiled wiki JSON path."""
     return pipeline.config.paths.compiled_wiki_path
 
 
-def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[Any]) -> None:
+def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
     """Populate WikiNode hierarchy fields from ChunkTree data.
 
     Maps ChunkTree internal node structure onto WikiNodes by matching
@@ -108,7 +110,7 @@ def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[Any]) -> None:
     if not wiki.nodes or not trees:
         return
 
-    tree_map: dict[str, Any] = {}
+    tree_map: dict[str, ChunkTree] = {}
     for t in trees:
         if t.source_file is not None:
             tree_map[str(t.source_file)] = t
@@ -119,7 +121,7 @@ def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[Any]) -> None:
         source = node.metadata.get(MetadataField.SOURCE_FILE)
         node_by_heading[(heading, source)] = node
 
-    def _link_parent(node: Any, chunk_node: Any, tree: Any, source: str | None, node_map: dict) -> None:
+    def _link_parent(node: WikiNode, chunk_node: ChunkNode, tree: ChunkTree, source: str | None, node_map: dict[tuple[str, str | None], WikiNode]) -> None:
         if not chunk_node.parent_id:
             return
         parent_chunk = tree.nodes.get(chunk_node.parent_id)

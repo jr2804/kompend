@@ -14,7 +14,6 @@ import tarfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 import py7zr
@@ -259,7 +258,7 @@ def _extract_zip(path: Path, dest_dir: Path) -> Path | None:
 def _extract_rar(path: Path, dest_dir: Path) -> Path | None:
     if not rarfile.is_rarfile(path):
         return None
-    rf: Any = rarfile.RarFile(path)
+    rf: rarfile.RarFile = rarfile.RarFile(path)
     try:
         best = _find_best_archive_member(rf.namelist())
         if best is None:

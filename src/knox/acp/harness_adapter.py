@@ -10,10 +10,8 @@ Used by :mod:`knox.cli.cmds.agent` to serve KNOX over ACP via
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic_ai import Agent
-from pydantic_ai_harness.experimental.acp import AcpSessionConfig
+from pydantic_ai_harness.experimental.acp import AcpSession, AcpSessionConfig
 
 from knox.acp.definitions import AgentTask
 from knox.acp.registry import AgentRegistry
@@ -37,7 +35,7 @@ def build_knox_agent() -> Agent[None, str]:
     )
 
 
-def knox_session_config(session: Any) -> AcpSessionConfig[None]:
+def knox_session_config(session: AcpSession) -> AcpSessionConfig[None]:
     """Per-session factory for ``run_acp_stdio_sync(session_config=...)``.
 
     Resolves the active agent definition for the session's workspace and

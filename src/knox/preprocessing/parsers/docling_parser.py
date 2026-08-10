@@ -12,8 +12,9 @@ from typing import Any
 
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
+from docling.datamodel.document import InputDocument
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.document_converter import ConversionResult, DocumentConverter, PdfFormatOption
 
 from knox.core.config import PdfConfig
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
@@ -176,7 +177,7 @@ class DoclingParser(BaseParser):
 
     def _extract_elements(
         self,
-        doc: Any,
+        doc: InputDocument,
         source_file: Path,
         reading_order_start: int = 0,
     ) -> tuple[list[DocumentElement], int]:
@@ -336,7 +337,7 @@ class DoclingParser(BaseParser):
         return count
 
     @staticmethod
-    def _unload_result(result: Any) -> None:
+    def _unload_result(result: ConversionResult) -> None:
         """Unload Docling conversion result to free ONNX/OCR caches.
 
         Best-effort cleanup: a failure here must not abort an otherwise-successful

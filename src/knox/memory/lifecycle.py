@@ -23,6 +23,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import VaultPaths
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
@@ -158,7 +159,7 @@ class MemoryStore:
 
     def update_for_compile(
         self,
-        wiki_nodes: list[Any],
+        wiki_nodes: list[WikiNode],
         *,
         half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
         decay_threshold: float = DEFAULT_DECAY_THRESHOLD,
@@ -284,7 +285,7 @@ def promote_tier(current: str, review_count: int) -> str:
 
 
 def update_memory_for_compile(
-    wiki: Any,
+    wiki: CompiledWiki,
     base_dir: Path,
     *,
     half_life_days: float = DEFAULT_HALF_LIFE_DAYS,

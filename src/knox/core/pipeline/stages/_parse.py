@@ -6,7 +6,6 @@ import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
 
 from knox.agents.vlm import VlmAgent
 from knox.core.models import (
@@ -23,7 +22,9 @@ from knox.core.pipeline.attachments import (
     ingest_attachment,
     iter_ingestible_attachments,
 )
+from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import parse_cache_name
+from knox.core.pipeline.runtime import PipelineRuntime
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.parsers.base import scrub_document
@@ -36,7 +37,7 @@ from knox.types import ParsedResult
 logger = get_logger(__name__)
 
 
-def parse_and_chunk(pipeline: Any) -> list[Any]:
+def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     """Parse documents and chunk them, with optional caching and parallelism.
 
     When tier state is available, sources that already match the
@@ -52,14 +53,14 @@ def parse_and_chunk(pipeline: Any) -> list[Any]:
     if not source_files:
         return []
 
-    pipeline._emit("parse", 0, len(source_files), "starting")
+    pipeline.emit("parse", 0, len(source_files), "starting")
 
     dedup_skip, dedup_similar = _load_dedup_state(pipeline)
     if dedup_skip:
         logger.info("Dedup: %d source(s) flagged as identical — will skip", len(dedup_skip))
         source_files = [f for f in source_files if f.stem not in dedup_skip]
         if not source_files:
-            pipeline._emit("parse", 0, 0, "all skipped by dedup")
+            pipeline.emit("parse", 0, 0, "all skipped by dedup")
             return []
 
     workers = max(1, pipeline.config.workers)
@@ -79,15 +80,15 @@ def parse_and_chunk(pipeline: Any) -> list[Any]:
                     logger.exception("Worker failed for %s", sf)
                 finally:
                     completed += 1
-                    pipeline._emit("parse", completed, len(source_files), sf.name)
+                    pipeline.emit("parse", completed, len(source_files), sf.name)
     else:
         for idx, sf in enumerate(source_files):
             tree = _process_single_source(pipeline, sf, dedup_similar)
             if tree is not None:
                 trees.append(tree)
-            pipeline._emit("parse", idx + 1, len(source_files), sf.name)
+            pipeline.emit("parse", idx + 1, len(source_files), sf.name)
 
-    pipeline._emit("parse", len(source_files), len(source_files), "done")
+    pipeline.emit("parse", len(source_files), len(source_files), "done")
 
     # ── Process ingestible attachments ──────────────────────────────
     att_trees = _process_attachments(pipeline)
@@ -102,9 +103,9 @@ def parse_and_chunk(pipeline: Any) -> list[Any]:
 
 
 def _process_single_source(
-    pipeline: Any,
+    pipeline: PipelineRuntime,
     source_file: Path,
-    dedup_similar: dict[str, dict[str, Any]],
+    dedup_similar: dict[str, dict[str, object]],
 ) -> ChunkTree | None:
     """Parse a single source file (cache-aware) and chunk it.
 
@@ -128,10 +129,10 @@ def _process_single_source(
             content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
     # Normalize source_file to relative POSIX on parsed doc.
-    parsed.source_file = Path(pipeline._rel_path(parsed.source_file))
+    parsed.source_file = Path(pipeline.rel_file(parsed.source_file))
     for el in parsed.elements:
         if el.source_file is not None:
-            el.source_file = Path(pipeline._rel_path(el.source_file))
+            el.source_file = Path(pipeline.rel_file(el.source_file))
 
     if pipeline.config.privacy_filter:
         apply_privacy_filter(parsed.elements)
@@ -149,19 +150,19 @@ def _process_single_source(
 
     # Chunk and cache.
     tree = pipeline.chunker.chunk(parsed)
-    pipeline._apply_tags_to_tree(tree, source_file)
+    pipeline.apply_tags_to_tree(tree, source_file)
 
     if content_hash:
-        pipeline.state_store.record(pipeline.state, stem, Path(pipeline._rel_path(source_file)), content_hash, tier=1)
+        pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
         chunk_deps = {
             "source": content_hash,
             "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
         }
-        pipeline._cache_store.set("chunk", chunk_deps, tree.to_dict())
+        pipeline.cache_store.set("chunk", chunk_deps, tree.to_dict())
     return tree
 
 
-def apply_privacy_filter(elements: list[Any]) -> None:
+def apply_privacy_filter(elements: list[DocumentElement]) -> None:
     """Apply privacy filter in-place to document elements."""
     for el in elements:
         if isinstance(el.content, str):
@@ -170,7 +171,7 @@ def apply_privacy_filter(elements: list[Any]) -> None:
             el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
 
 
-def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:
+def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:
     """Try to load a parsed document from cache. Returns *None* on miss."""
     if not use_cache:
         return None
@@ -185,7 +186,7 @@ def _try_load_parsed_cache(pipeline: Any, source_file: Path, stem: str, content_
     return None
 
 
-def _parse_source(pipeline: Any, source_file: Path, use_cache: bool, content_hash: str) -> ParsedResult | None:
+def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool, content_hash: str) -> ParsedResult | None:
     """Parse a source file via the router and optionally cache the result."""
     if pipeline.router is None:
         return None
@@ -204,7 +205,7 @@ def _parse_source(pipeline: Any, source_file: Path, use_cache: bool, content_has
     return parsed
 
 
-def _attach_dedup_warning(parsed: Any, stem: str, dedup_similar: dict[str, dict[str, Any]]) -> None:
+def _attach_dedup_warning(parsed: ParsedDocument, stem: str, dedup_similar: dict[str, dict[str, object]]) -> None:
     """Attach a dedup similarity warning to the parsed document's metadata."""
     similar_entry = dedup_similar.get(stem)
     if not similar_entry:
@@ -219,7 +220,7 @@ def _attach_dedup_warning(parsed: Any, stem: str, dedup_similar: dict[str, dict[
     parsed.metadata["_dedup_warning"] = warning
 
 
-def _try_load_chunk_cache(pipeline: Any, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
+def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
     """Try to load a chunked tree from cache. Returns *None* on miss."""
     if not (use_cache and content_hash):
         return None
@@ -227,19 +228,19 @@ def _try_load_chunk_cache(pipeline: Any, source_file: Path, content_hash: str, u
         "source": content_hash,
         "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
     }
-    cached = pipeline._cache_store.get("chunk", chunk_deps)
+    cached = pipeline.cache_store.get("chunk", chunk_deps)
     if cached is None:
         return None
     stem = source_file.stem
-    pipeline.state_store.record(pipeline.state, stem, Path(pipeline._rel_path(source_file)), content_hash, tier=1)
+    pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
     tree = ChunkTree.from_dict(cached)
-    pipeline._apply_tags_to_tree(tree, source_file)
+    pipeline.apply_tags_to_tree(tree, source_file)
     return tree
 
 
-def _load_cache(pipeline: Any, source_file: Path) -> ParsedDocument | None:
+def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument | None:
     """Load a cached ParsedDocument if available."""
-    cache_path = pipeline._cache_dir() / f"{cache_key(source_file)}.json"
+    cache_path = pipeline.cache_directory() / f"{cache_key(source_file)}.json"
     if not cache_path.exists():
         return None
     try:
@@ -259,7 +260,7 @@ def _load_cache(pipeline: Any, source_file: Path) -> ParsedDocument | None:
         # lone \\udXXX escapes that json.loads restores as surrogate chars.
         return scrub_document(
             ParsedDocument(
-                source_file=pipeline._abs_path(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
+                source_file=pipeline.abs_file(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
                 elements=elements,
                 title=data.get("title", ""),
                 author=data.get("author", ""),
@@ -274,14 +275,14 @@ def _load_cache(pipeline: Any, source_file: Path) -> ParsedDocument | None:
         return None
 
 
-def _save_cache(pipeline: Any, source_file: Path, doc: ParsedDocument) -> None:
+def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocument) -> None:
     """Write a ParsedDocument to cache."""
-    cache_dir = pipeline._cache_dir()
+    cache_dir = pipeline.cache_directory()
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / f"{cache_key(source_file)}.json"
     try:
         data = {
-            str(MetadataField.SOURCE_FILE): pipeline._rel_path(doc.source_file),
+            str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
             "title": doc.title,
             "author": doc.author,
             "language": doc.language,
@@ -304,15 +305,15 @@ def _save_cache(pipeline: Any, source_file: Path, doc: ParsedDocument) -> None:
         logger.debug("Cache write failed for %s — ignoring", cache_path, exc_info=True)
 
 
-def _load_dedup_state(pipeline: Any) -> tuple[set[str], dict[str, dict[str, Any]]]:
+def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, dict[str, object]]]:
     """Best-effort load of dedup store.
 
     Returns ``(dedup_skip, dedup_similar)``.
     """
     dedup_skip: set[str] = set()
-    dedup_similar: dict[str, dict[str, Any]] = {}
+    dedup_similar: dict[str, dict[str, object]] = {}
     try:
-        ds = DedupStore(pipeline._dedup_store_path())
+        ds = DedupStore(pipeline.dedup_store_file())
         ds.load()
         if ds.is_fresh():
             for slug in ds.slugs:
@@ -331,7 +332,7 @@ def cache_key(source_file: Path) -> str:
     return parse_cache_name(source_file).removesuffix(".json")
 
 
-def _process_attachments(pipeline: Any) -> list[ChunkTree]:
+def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
     """Process ingestible attachments and return their ChunkTrees.
 
     Attachments are parsed via the same parser router as sources.
@@ -339,7 +340,7 @@ def _process_attachments(pipeline: Any) -> list[ChunkTree]:
     Each resulting tree carries ``source_asset=True`` and ``parent_source``
     metadata so the rest of the pipeline can distinguish them.
     """
-    vp = VaultPaths(pipeline._base_dir)
+    vp = VaultPaths(pipeline.base_directory)
     manifest = AttachmentManifest(vp.attachments_manifest_path)
     if not manifest.exists():
         return []
@@ -360,8 +361,9 @@ def _process_attachments(pipeline: Any) -> list[ChunkTree]:
             logger.debug("VLM captioner not available for attachments", exc_info=True)
 
     trees: list[ChunkTree] = []
+    pipeline.emit("parse", 0, len(ingestible), "starting")
     for idx, att in enumerate(ingestible):
-        pipeline._emit("parse", idx, len(ingestible), f"asset: {att.filename}")
+        pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 
         try:
             doc = ingest_attachment(vp, att, router, vlm_captioner=vlm_captioner)
@@ -392,7 +394,7 @@ def _process_attachments(pipeline: Any) -> list[ChunkTree]:
     return trees
 
 
-def build_resolver_chain(config: Any) -> BaseResolver:
+def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
     """Construct the resolver chain.
 
     When a VLM model is configured, a :class:`VLMEnricher` enriches

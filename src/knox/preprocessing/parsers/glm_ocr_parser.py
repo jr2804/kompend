@@ -29,7 +29,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from glmocr import PipelineResult
 from glmocr import parse as glm_parse
+from PIL import Image
 
 from knox.core.models import (
     DocumentElement,
@@ -178,7 +180,7 @@ class GlmOcrParser(BaseParser):
 
 
 def _result_to_elements(
-    result: Any,
+    result: PipelineResult,
     source_file: Path,
     image_mode: str,
     images_dir: Path,
@@ -253,7 +255,7 @@ def _result_to_elements(
     return elements, first_title
 
 
-def _coerce_content(etype: ElementType, content: Any) -> str | list[list[str]]:
+def _coerce_content(etype: ElementType, content: str | list) -> str | list[list[str]]:
     """Coerce a raw GLM-OCR content value into the KNOX element content shape."""
     if etype == ElementType.TABLE:
         # Tables may arrive as markdown (str) or as a 2-D list.
@@ -293,7 +295,7 @@ def _element_metadata(label: str, raw: dict) -> dict[str, Any]:
 
 
 def _build_image_element_from_pil(
-    pil_img: Any,
+    pil_img: Image.Image,
     *,
     img_name: str,
     source_file: Path,
@@ -372,7 +374,7 @@ def _markdown_to_elements(
     return elements, reading_order, first_title
 
 
-def _count_pages(result: Any) -> int:
+def _count_pages(result: PipelineResult) -> int:
     """Best-effort page count from a PipelineResult."""
     json_result = getattr(result, "json_result", None)
     if json_result:
@@ -386,7 +388,7 @@ def _count_pages(result: Any) -> int:
     return len(original_images) or 1
 
 
-def _coerce_pages(json_result: Any) -> list[list[dict]]:
+def _coerce_pages(json_result: PipelineResult) -> list[list[dict]]:
     """Normalise json_result into a list-of-pages (each a list of element dicts).
 
     GLM-OCR emits ``[[{…}, {…}], [{…}]]`` (pages → elements) but some modes

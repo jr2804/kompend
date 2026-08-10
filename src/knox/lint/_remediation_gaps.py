@@ -14,7 +14,7 @@ from slugify import slugify
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.remediate import RemediationAgent
 from knox.compilation.two_phase import Extraction, ExtractionSet
-from knox.core.models import WikiNode
+from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
 from knox.lint.base import LintReportResult, RemediationAction, RemediationStatus
 from knox.logging import get_logger
@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 
 
 def remediate_coverage_gaps(
-    wiki: Any,
+    wiki: CompiledWiki,
     results: list[LintReportResult],
     *,
     base_dir: Path,

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from pydantic import BaseModel
+from pydantic_ai import Agent
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
@@ -65,7 +67,7 @@ class KnoxModel(Model):
         delegate: Model,
         *,
         usage_tracker: UsageTracker | None = None,
-        agent: Any | None = None,
+        agent: Agent[Any, Any] | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
         self._delegate = delegate
@@ -77,7 +79,7 @@ class KnoxModel(Model):
         # Lazily resolves the pydantic-ai agent's result type so ToolCallRepair
         # and ThinkingPartRepair can guide JSON repair with the schema.
 
-        def _schema_resolver() -> Any | None:
+        def _schema_resolver() -> type[BaseModel] | None:
             if not self._agent:
                 return None
             ot = getattr(self._agent, "output_type", None) or getattr(self._agent, "result_type", None)

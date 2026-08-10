@@ -29,7 +29,8 @@ from knox.compilation._two_phase_core import (
     upsert_node,
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
-from knox.core.models import CompiledWiki, ResolvedChunk, WikiField, WikiNode
+from knox.compilation.graph import GraphCompiler
+from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiField, WikiNode
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
@@ -42,11 +43,11 @@ _loader = get_template_loader()
 
 
 def run_generation(
-    compiler: Any,
+    compiler: GraphCompiler,
     extractions: ExtractionSet,
     chunks: list[ResolvedChunk],
     *,
-    trees: list[Any] | None = None,
+    trees: list[ChunkTree] | None = None,
     pinned_facts: list[str] | None = None,
 ) -> CompiledWiki:
     """Phase 2: merge extractions and generate per-concept pages."""
@@ -88,7 +89,7 @@ def run_generation(
     return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
 
 
-def prepare_concepts(compiler: Any, extractions: ExtractionSet) -> list[dict[str, Any]]:
+def prepare_concepts(compiler: GraphCompiler, extractions: ExtractionSet) -> list[dict[str, Any]]:
     """Merge and validate concepts from extractions. Returns empty list if none."""
     concepts = extractions.concept_pages()
     embed_model = compiler._config.embedding.model
@@ -119,7 +120,7 @@ def prepare_concepts(compiler: Any, extractions: ExtractionSet) -> list[dict[str
     return concepts
 
 
-def prepare_source_segments(compiler: Any, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
+def prepare_source_segments(compiler: GraphCompiler, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
     """Build source segments sized to the context window."""
     by_source: dict[str, str] = defaultdict(str)
     for rc in chunks:
@@ -152,7 +153,7 @@ def prepare_source_segments(compiler: Any, chunks: list[ResolvedChunk]) -> list[
 
 
 def run_generation_with_checkpoint(
-    compiler: Any,
+    compiler: GraphCompiler,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -187,7 +188,7 @@ def run_generation_with_checkpoint(
 
 
 def generate_all_pages(
-    compiler: Any,
+    compiler: GraphCompiler,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -357,7 +358,7 @@ def generate_all_pages(
 
 
 def assemble_wiki(
-    compiler: Any,
+    compiler: GraphCompiler,
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],
     chunks: list[ResolvedChunk],
@@ -424,7 +425,7 @@ def assemble_wiki(
 
 
 def gen_cache_deps(
-    compiler: Any,
+    compiler: GraphCompiler,
     extractions: ExtractionSet,
     *,
     pinned_facts: list[str] | None = None,

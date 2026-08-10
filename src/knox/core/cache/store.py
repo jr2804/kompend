@@ -40,7 +40,7 @@ from knox.core.models import (
 )
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
-from knox.types import CacheValue
+from knox.types import JSON, CacheValue
 
 _CACHE_DATACLASSES: dict[str, type] = {
     "DocumentElement": DocumentElement,
@@ -185,7 +185,7 @@ class CacheStore:
         return self._cache_dir / layer / f"{key}.json"
 
 
-def encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
+def encode_json(obj: object) -> CacheValue:  # noqa: PLR0911
     """Recursively encode cache values for JSON serialization.
 
     Dataclasses, ``Path``, ``StrEnum``, ``bytes`` and tuples are tagged so
@@ -210,7 +210,7 @@ def encode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
     return obj
 
 
-def decode_json(obj: Any) -> CacheValue:  # noqa: PLR0911
+def decode_json(obj: JSON) -> CacheValue:  # noqa: PLR0911
     """Recursively decode JSON values produced by ``_encode_json``."""
     if isinstance(obj, dict):
         if "__dataclass__" in obj:

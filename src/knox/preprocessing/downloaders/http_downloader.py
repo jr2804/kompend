@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import urllib.error
 import urllib.request
+from http.client import HTTPResponse
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from knox.logging import get_logger
@@ -199,7 +199,7 @@ class HTTPDownloader(BaseDownloader):
         return orig_suffix
 
     @staticmethod
-    def _normalize_content_type(response: Any) -> str | None:
+    def _normalize_content_type(response: HTTPResponse) -> str | None:
         """Extract Content-Type from an HTTP response, returning None on failure."""
         raw = response.headers.get("Content-Type")
         if raw:

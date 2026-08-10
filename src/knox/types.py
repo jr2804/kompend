@@ -17,6 +17,9 @@ JSONValue = JSON  # Any JSON value (string, number, boolean, null, object, array
 Page = JSONDict  # Wiki page structure
 Pages = list[Page]  # List of wiki pages
 
+# Metadata types
+MetadataValue = str | bool | int | float | list["MetadataValue"] | dict[str, "MetadataValue"]  # Value stored in WikiNode.metadata / provenance dicts
+
 # Configuration types
 ConfigDict = dict[str, JSON]  # Configuration dictionary
 ConfigValue = JSON  # Configuration value (can be any JSON type)
@@ -40,5 +43,7 @@ try:
     import zvec
 
     ZvecCollection = zvec.Collection
+    ZvecDoc = zvec.Doc
 except ImportError:
     ZvecCollection = Any  # Type alias for zvec.Collection object
+    ZvecDoc = Any  # Type alias for zvec.Doc object

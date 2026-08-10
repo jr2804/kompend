@@ -9,7 +9,8 @@ from typing import Any
 
 from knox.agents.lint import LintRuleAgent
 from knox.core.config._configs import LintConfig
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
+from knox.core.models import CompiledWiki
+from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule
 from knox.logging import get_logger
@@ -83,7 +84,7 @@ class LintRunner:
 
     def run(
         self,
-        wiki: Any,
+        wiki: CompiledWiki,
         *,
         on_rule: Callable[[str, int, int], None] | None = None,
     ) -> LintReport:
@@ -126,9 +127,9 @@ class LintRunner:
 
         return _build_report(all_results)
 
-    def _resolve_rules(self) -> list[Any]:
+    def _resolve_rules(self) -> list[BaseLintRule]:
         """Build the list of rule instances to run."""
-        rules: list[Any] = []
+        rules: list[BaseLintRule] = []
 
         llm_kwargs = {"agent": self._lint_agent, "lint_page_budget": self.lint_page_budget}
 
@@ -137,7 +138,7 @@ class LintRunner:
         if self._lint_config is not None:
             ref_kwargs["fuzzy_threshold"] = self._lint_config.fuzzy_threshold
 
-        def _resolve_entry(name: str) -> Any:
+        def _resolve_entry(name: str) -> BaseLintRule | None:
             """Resolve a rule name to an instance, handling class-vs-singleton."""
             if name == "duplicate-references":
                 return DuplicateReferencesRule(**ref_kwargs)

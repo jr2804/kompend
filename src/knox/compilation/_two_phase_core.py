@@ -15,12 +15,13 @@ from typing import Any
 
 from slugify import slugify as _slugify_impl
 
+from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import GenerationDeps, PipelineAgentDeps
 from knox.compilation.concept_keys import (
     is_structural_concept,
     normalize_concept_key,
 )
-from knox.compilation.schema import LLMOutputError
+from knox.compilation.schema import ExtractionOutput, GenerationOutput, LLMOutputError
 from knox.core.models import ElementType, ResolvedChunk, WikiNode
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
@@ -332,12 +333,12 @@ def _concept_name(concept: dict[str, Any]) -> str:
 
 
 def try_pydanticai_extraction(
-    agent: Any,
+    agent: KnoxAgentBase[ExtractionOutput, PipelineAgentDeps],
     *,
     text: str,
     source_id: str,
     timeout: float = 120.0,
-) -> Any | None:
+) -> ExtractionOutput | None:
     """Run a PydanticAI :class:`ExtractionAgent` on a chunk of source text.
 
     This is the agent-based extraction entry point. Callers invoke it
@@ -371,14 +372,14 @@ def try_pydanticai_extraction(
 
 
 def try_pydanticai_generation(
-    agent: Any,
+    agent: KnoxAgentBase[GenerationOutput, GenerationDeps],
     *,
     concepts_json: str,
     content: str,
     source_id: str,
     pinned_facts: list[str] | None = None,
     timeout: float = 120.0,
-) -> Any | None:
+) -> GenerationOutput | None:
     """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
 
     Agent-based generation entry point (the only path).

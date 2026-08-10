@@ -28,13 +28,13 @@ Usage::
 from __future__ import annotations
 
 import re
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import GenerationDeps
-from knox.compilation.schema import GenerationOutput
+from knox.compilation.schema import GenerationOutput, GenerationPage
 
 
 class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
@@ -65,7 +65,7 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
         return output
 
 
-def _fix_slugs_locally(pages: list[Any]) -> None:
+def _fix_slugs_locally(pages: list[GenerationPage]) -> None:
     """Auto-fix empty and duplicate slugs without triggering a model retry.
 
     Small models (Qwen3.5-2B) interpret delta-only retry prompts literally —

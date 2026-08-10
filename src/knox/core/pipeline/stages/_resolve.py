@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.core.models import Chunk, ChunkTree, ElementType, ResolvedChunk
+from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.logging import get_logger
@@ -13,7 +13,8 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
+
+def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[ChunkTree]:
     """Resolve leaf chunks from trees and build entity registry + xref.
 
     VLM enrichment (image captions) runs per-leaf when configured.
@@ -38,7 +39,7 @@ def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
         return [node.chunk for t in trees for node in t.leaves() if node.chunk]
 
     leaf_chunks = [node.chunk for t in trees for node in t.leaves() if node.chunk]
-    resolved: list[Any] = []
+    resolved: list[ChunkTree] = []
     total = len(leaf_chunks)
 
     # Two-pass resolution: non-image chunks first (no VLM), then all
@@ -58,7 +59,7 @@ def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
         deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}
-        cached = pipeline._cache_store.get("resolve", deps)
+        cached = pipeline.cache_store.get("resolve", deps)
         if cached is not None:
             return ResolvedChunk(
                 chunk=chunk,
@@ -70,7 +71,7 @@ def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
         if pipeline.resolver is None:
             raise RuntimeError("Resolver not initialized")
         result = pipeline.resolver.resolve(chunk)
-        pipeline._cache_store.set(
+        pipeline.cache_store.set(
             "resolve",
             deps,
             {
@@ -86,19 +87,19 @@ def resolve_chunks(pipeline: Any, trees: list[Any]) -> list[Any]:
     for i, chunk in enumerate(non_image):
         resolved.append(_resolve_one(chunk))
         done = i + 1
-        pipeline._emit("resolve", done, total, "")
+        pipeline.emit("resolve", done, total, "")
     if image_chunks:
         # Signal a distinct VLM sub-phase so the CLI bar switches to
         # "Captioning images" — makes the (slow) VLM run visible instead
         # of looking like a stalled resolve progress bar.
-        pipeline._emit("resolve", 0, len(image_chunks), "vlm")
+        pipeline.emit("resolve", 0, len(image_chunks), "vlm")
     for i, chunk in enumerate(image_chunks):
         resolved.append(_resolve_one(chunk))
-        pipeline._emit("resolve", i + 1, len(image_chunks), "captioning")
+        pipeline.emit("resolve", i + 1, len(image_chunks), "captioning")
     return resolved
 
 
-def apply_tags_to_tree(tree: Any, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:
+def apply_tags_to_tree(tree: ChunkTree, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:
     """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
     dir_tags = extract_source_tags(source_file, source_dir)
     cli_tags = list(source_tags)  # copy

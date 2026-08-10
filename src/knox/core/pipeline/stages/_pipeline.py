@@ -11,7 +11,6 @@ import hashlib
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
@@ -20,6 +19,7 @@ from knox.core.cache.store import CacheStore
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_TIER_SAMPLE_SIZE
 from knox.core.models import (
+    ChunkTree,
     CompiledWiki,
     MetadataField,
     WikiField,
@@ -31,6 +31,7 @@ from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, r
 from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
 from knox.core.pipeline.state import TierState, TierStateStore
+from knox.core.resolution.xref_checker import CrossReferenceResult
 from knox.core.templates import get_template_loader
 from knox.llm.user_providers import set_user_providers
 from knox.logging import get_logger
@@ -40,6 +41,7 @@ from knox.preprocessing.downloaders.base import BaseDownloader
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.resolution.base import BaseResolver
 from knox.trust import filter_wiki
+from knox.types import MetadataValue
 
 # Legacy string-constant re-exports (kept for backward compatibility).
 TIER_INDEX: Tier = Tier.INDEX
@@ -84,13 +86,13 @@ class WikiPipeline:
         self.compiler = compiler
         self.output_writer = output_writer
         self.summarizer = summarizer
-        self._base_dir = config.resolved_base_dir()
-        self.state_store = state_store or TierStateStore(self._default_state_path(), self._base_dir)
+        self.base_directory = config.resolved_base_dir()
+        self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
-        self._cache_store = CacheStore(self._cache_dir())
+        self.cache_store = CacheStore(self.cache_directory())
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
-        self.xref_result: Any = None
+        self.xref_result: CrossReferenceResult | None = None
 
     @property
     def state(self) -> TierState:
@@ -147,19 +149,19 @@ class WikiPipeline:
         # --force: invalidate all caches.
         if self.config.force:
             logger.info("Force mode enabled — invalidating all caches")
-            self._cache_store.invalidate()
+            self.cache_store.invalidate()
 
-        all_trees: list[Any] = []
-        resolved: list[Any] = []
+        all_trees: list[ChunkTree] = []
+        resolved: list[ChunkTree] = []
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
         self._tier_timings.clear()
 
         if self._should_run(Tier.INDEX):
-            self._emit("index", 0, 1, "starting")
+            self.emit("index", 0, 1, "starting")
             _t0 = time.monotonic()
             self.run_tier(Tier.INDEX)
             self._tier_timings["index"] = time.monotonic() - _t0
-            self._emit("index", 1, 1, "done")
+            self.emit("index", 1, 1, "done")
         if self._should_run(Tier.CHUNK):
             _t0 = time.monotonic()
             all_trees = parse_and_chunk(self)
@@ -170,20 +172,20 @@ class WikiPipeline:
             if not all_trees:
                 all_trees = parse_and_chunk(self)
             leaf_count = sum(1 for t in all_trees for _ in t.leaves())
-            self._emit("resolve", 0, leaf_count, "starting")
+            self.emit("resolve", 0, leaf_count, "starting")
             _t0 = time.monotonic()
             resolved = resolve_chunks(self, all_trees)
             self._tier_timings["resolve"] = time.monotonic() - _t0
             self._record_tier_state(2)
-            self._emit("resolve", len(resolved), len(resolved), "done")
+            self.emit("resolve", len(resolved), len(resolved), "done")
         if self._should_run(Tier.COMPILE):
             if not resolved:
                 all_trees = parse_and_chunk(self)
                 resolved = resolve_chunks(self, all_trees)
-            self._emit("compile", 0, 1, "starting")
+            self.emit("compile", 0, 1, "starting")
             _t0 = time.monotonic()
             if self.compiler:
-                self.compiler.on_progress = lambda c, t, d: self._emit("compile", c, t, d)
+                self.compiler.on_progress = lambda c, t, d: self.emit("compile", c, t, d)
                 try:
                     wiki = self.compiler.compile(resolved, trees=all_trees)
                 finally:
@@ -192,18 +194,18 @@ class WikiPipeline:
                 wiki, _ = filter_wiki(wiki)
             self._tier_timings["compile"] = time.monotonic() - _t0
             self._record_tier_state(3)
-            self._emit("compile", 1, 1, "done")
+            self.emit("compile", 1, 1, "done")
         else:
             wiki = load_compiled_wiki(self) or wiki
         if self._should_run(Tier.OUTPUT) and self.output_writer:
-            self._emit("output", 0, 1, "starting")
+            self.emit("output", 0, 1, "starting")
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             _t0 = time.monotonic()
             self.output_writer.write(wiki, self.config.output_dir)
             self._tier_timings["output"] = time.monotonic() - _t0
             self._record_tier_state(4)
-            self._emit("output", 1, 1, "done")
+            self.emit("output", 1, 1, "done")
 
         wiki.metadata[str(WikiField.TIER_TIMINGS)] = {k: round(v, 2) for k, v in self._tier_timings.items()}
         wiki.metadata[str(WikiField.LLM_MODEL)] = self.config.llm.default_model
@@ -256,7 +258,7 @@ class WikiPipeline:
         """Yield source files to process."""
         return iter_sources(self)
 
-    def list_tiers(self) -> list[dict[str, Any]]:
+    def list_tiers(self) -> list[dict[str, str | int]]:
         """Return the available tiers with their current persisted state."""
         state = self.state
         distribution = state.tier_distribution()
@@ -287,26 +289,26 @@ class WikiPipeline:
 
     # ── Internal helpers ────────────────────────────────────────
 
-    def _rel_path(self, path: Path) -> str:
+    def rel_file(self, file: Path) -> str:
         """Convert absolute path to relative POSIX string for serialization.
 
         Thin wrapper over :func:`knox.core.paths.rel_to_vault` — the
         canonical relativization helper (single source of truth).
         """
-        return rel_to_vault(path, self._base_dir)
+        return rel_to_vault(file, self.base_directory)
 
-    def _abs_path(self, path_str: str) -> Path:
+    def abs_file(self, file_str: str) -> Path:
         """Reconstruct absolute path from potentially relative string."""
-        p = Path(path_str) if path_str else Path()
+        p = Path(file_str) if file_str else Path()
         if p != Path() and not p.is_absolute():
-            return self._base_dir / p
+            return self.base_directory / p
         return p
 
-    def _normalize_metadata_paths(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def normalize_metadata_paths(self, metadata: dict[str, MetadataValue]) -> dict[str, MetadataValue]:
         """Convert known absolute path values in metadata to relative."""
         if MetadataField.SOURCE_FILE in metadata:
             meta = dict(metadata)
-            meta[MetadataField.SOURCE_FILE] = self._rel_path(Path(meta[MetadataField.SOURCE_FILE]))
+            meta[MetadataField.SOURCE_FILE] = self.rel_file(Path(meta[MetadataField.SOURCE_FILE]))
             return meta
         return metadata
 
@@ -336,7 +338,7 @@ class WikiPipeline:
             )
             raise ValueError(msg)
 
-    def _emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
         """Emit a progress event if a callback is registered.
 
         A progress callback is arbitrary user code; it may raise anything. Per
@@ -350,13 +352,13 @@ class WikiPipeline:
             except Exception:  # best-effort: callback is user code, must not abort pipeline
                 logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
 
-    def _default_state_path(self) -> Path:
+    def _default_state_file(self) -> Path:
         """Resolve the persistent state file path."""
         if self.config.tier_state_file is not None:
             return self.config.tier_state_file
         return self.config.paths.compile_state_path
 
-    def _dedup_store_path(self) -> Path:
+    def dedup_store_file(self) -> Path:
         """Resolve the dedup fingerprint store path."""
         base_dir = self.config.resolved_base_dir()
         return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
@@ -371,15 +373,15 @@ class WikiPipeline:
             except OSError:
                 logger.warning("Could not read %s for tier-state hashing — skipping", source_file, exc_info=True)
                 continue
-            self.state_store.record(state, stem, Path(self._rel_path(source_file)), content_hash, tier=tier)
+            self.state_store.record(state, stem, Path(self.rel_file(source_file)), content_hash, tier=tier)
         self.state_store.save(state)
 
-    def _cache_dir(self) -> Path:
+    def cache_directory(self) -> Path:
         """Resolve the cache directory."""
         if self.config.cache_dir:
             return self.config.cache_dir
         return self.config.paths.cache_dir
 
-    def _apply_tags_to_tree(self, tree: Any, source_file: Path) -> None:
+    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
         """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
         apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)

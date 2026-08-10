@@ -37,7 +37,7 @@ from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 from pydantic_ai import Agent, NativeOutput, RunContext, Tool
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
@@ -140,10 +140,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)  # type: ignore[assignment]
 
     # Lazy-init internal state (not constructor params)
-    _agent: Agent[Any, Any] | None = field(default=None, init=False, repr=False)
+    _agent: Agent[DepsT, ResultT] | None = field(default=None, init=False, repr=False)
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
-    _delta_retry_state: dict[int, Any] = field(default_factory=dict, init=False, repr=False)
+    _delta_retry_state: dict[int, AgentResult] = field(default_factory=dict, init=False, repr=False)
     _last_debug_path: Path | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -205,7 +205,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self,
         deps: DepsT,
         *,
-        message_history: list[Any] | None = None,
+        message_history: list[ModelMessage] | None = None,
     ) -> ResultT:
         """Single-turn agent invocation. Returns the typed result.
 
@@ -247,8 +247,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         self,
         deps: DepsT,
         *,
-        message_history: list[Any] | None = None,
-    ) -> tuple[ResultT, list[Any]]:
+        message_history: list[ModelMessage] | None = None,
+    ) -> tuple[ResultT, list[ModelMessage]]:
         """Single-turn agent invocation that also returns the new messages.
 
         Same as :meth:`run` but returns ``(output, new_messages)`` so callers
@@ -333,7 +333,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # the summarization capability (same failover chain).
         top_model = self._build_top_level_model()
         capability = self._resolve_context_capability(top_model)
-        capabilities: list[AbstractCapability[Any]] = []
+        capabilities: list[AbstractCapability[DepsT]] = []
         if capability is not None:
             capabilities.append(capability)
         if self.delta_retry_enabled and self.use_delta_retry:
@@ -393,9 +393,9 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
         @hooks.on.after_model_request
         async def _delta_retry_hook(
-            ctx: Any,
+            ctx: RunContext[DepsT],
             *,
-            request_context: Any,
+            request_context: RunContext[DepsT],
             response: ModelResponse,
         ) -> ModelResponse:
             # Only handle structured output (TextPart with JSON)
@@ -440,7 +440,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
         return hooks
 
-    def _resolve_context_capability(self, model: Model) -> AbstractCapability[Any] | None:
+    def _resolve_context_capability(self, model: Model) -> AbstractCapability[DepsT] | None:
         """Build the context-management capability from the configured preset.
 
         Returns ``None`` when context management is disabled, in which case the
@@ -492,7 +492,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             self.usage_tracker.record_context_usage(current, max_tokens)
 
     @staticmethod
-    def _coerce_type(arg: Any, fallback: type) -> type:
+    def _coerce_type(arg: type[Any], fallback: type) -> type:
         """Resolve a TypeVar arg to a usable runtime type.
 
         Handles plain types (``str``), generic aliases (``dict[str, Any]``),
@@ -508,7 +508,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return fallback
 
     @staticmethod
-    def _on_before_compress(messages: list[Any], cutoff_index: int) -> None:
+    def _on_before_compress(messages: list[ModelMessage], cutoff_index: int) -> None:
         """Fires between plan and execute — log the impending compression."""
         logger.info(
             "Context compression starting: %d messages, cutoff at index %d",
@@ -517,7 +517,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         )
 
     @staticmethod
-    def _on_after_compress(messages: list[Any], summarized: bool, summary: str | None) -> None:
+    def _on_after_compress(messages: list[ModelMessage], summarized: bool, summary: str | None) -> None:
         """Fires after the summary LLM — log the outcome. Returns no reinject."""
         if summarized:
             logger.info("Context compression produced %d-char summary", len(summary or ""))
@@ -543,7 +543,7 @@ def _get_response_text(response: ModelResponse) -> str | None:
     return None
 
 
-def _set_response_text(response: ModelResponse, data: Any) -> None:
+def _set_response_text(response: ModelResponse, data: ModelResponse) -> None:
     """Replace the text content of a ModelResponse with serialized data."""
     text = json.dumps(data, ensure_ascii=False, default=str)
     for part in response.parts:
@@ -553,7 +553,7 @@ def _set_response_text(response: ModelResponse, data: Any) -> None:
     response.parts.append(TextPart(content=text))  # ty: ignore[unresolved-attribute]
 
 
-def _build_delta_message(parsed: Any, schema: type[Any]) -> str | None:
+def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None:
     """Build a delta-retry message describing what needs fixing.
 
     Examines the parsed (but invalid) output against the schema and

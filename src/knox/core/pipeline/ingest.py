@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import MetadataField
+from knox.core.models import MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.state import TierStateStore
 from knox.logging import get_logger
@@ -48,7 +48,7 @@ def parse_cache_glob(stem: str) -> str:
     return f"{stem}-*.json"
 
 
-def _extract_text_for_dedup(doc: Any, source_file: Path) -> str:
+def _extract_text_for_dedup(doc: ParsedDocument, source_file: Path) -> str:
     """Extract plain text from a parsed document for dedup fingerprinting.
 
     Concatenates all element text. Falls back to raw file contents when the

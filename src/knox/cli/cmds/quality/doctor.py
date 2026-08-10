@@ -11,7 +11,6 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from time import monotonic
-from typing import Any
 
 from pydantic import BaseModel as _BM
 from pydantic_ai import Agent as _Agent
@@ -23,6 +22,7 @@ from knox.llm.models import build_model
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
+from knox.types import JSON
 
 logger = get_logger(__name__)
 
@@ -211,7 +211,7 @@ def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None, con
 def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
     """Read an int from a dotted config key."""
     parts = key.split(".")
-    val: Any = cfg
+    val: JSON = cfg
     for p in parts:
         if isinstance(val, dict):
             val = val.get(p, {})

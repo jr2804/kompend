@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Any
 
 import typer
+from pydantic_ai import Agent
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
 from knox.acp import build_knox_agent, knox_session_config
@@ -54,7 +54,7 @@ def agent_cmd(
         _run_sync(agent)
 
 
-def _run_sync(agent: Any) -> None:
+def _run_sync(agent: Agent[None, str]) -> None:
     """Run the ACP agent synchronously."""
     run_acp_stdio_sync(
         agent,  # type: ignore[arg-type]

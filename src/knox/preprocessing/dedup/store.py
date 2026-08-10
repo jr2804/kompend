@@ -82,7 +82,7 @@ class DedupStore:
         """Return fingerprint data for *slug*, or *default*."""
         return self._data.get(slug, default)
 
-    def __setitem__(self, slug: str, value: Any) -> None:
+    def __setitem__(self, slug: str, value: CacheValue) -> None:
         self._data[slug] = value
 
     def __contains__(self, slug: str) -> bool:

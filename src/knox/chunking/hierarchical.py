@@ -28,6 +28,7 @@ from knox.core.models import (
     ElementType,
     ParsedDocument,
 )
+from knox.llm.context_window import ContextWindow
 from knox.logging import get_logger
 
 # Absolute token reserve carved out of the context window before computing the
@@ -53,7 +54,7 @@ class HierarchicalChunker:
         max_tokens: int | None = None,
         reserve_tokens: int | None = None,
         tokenizer_name: str = "cl100k_base",
-        context_window: Any | None = None,
+        context_window: ContextWindow | None = None,
         chunk_size_min: int = 2048,
         chunk_size_max: int = 131072,
         summary_chunk_threshold: int = 10,

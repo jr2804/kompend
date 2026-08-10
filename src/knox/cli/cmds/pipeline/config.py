@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import typer
 
 from knox.cli._shared import vault_paths_from_ctx
@@ -19,6 +17,7 @@ from knox.core.config import (
 )
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.logging import get_console, get_err_console
+from knox.types import JSON
 
 config_app = typer.Typer(
     name="config",
@@ -112,7 +111,7 @@ def config_path(
     get_console().print(str(path), soft_wrap=True)
 
 
-def _format_value(value: Any) -> str:
+def _format_value(value: JSON) -> str:
     """Format a config value for terminal output."""
     if value is None:
         return ""
