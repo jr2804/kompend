@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from time import monotonic
+from typing import Any
 
 from pydantic import BaseModel as _BM
 from pydantic_ai import Agent as _Agent
@@ -22,8 +23,6 @@ from knox.llm.models import build_model
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
-from typing import Any
-
 from knox.types import JSON
 
 logger = get_logger(__name__)
