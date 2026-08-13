@@ -79,9 +79,7 @@ knox = "knox.cli.app:main"
 liteparse = [
     "liteparse>=2.4.0",
 ]
-trafilatura = [
-    "trafilatura>=2.0.0",
-]
+
 docling = [
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
     "docling-ibm-models>=3.13.3",
@@ -98,7 +96,7 @@ web = [
 # Meta-groups: single source of truth via include-group.
 default = [
     {include-group = "liteparse"},
-    {include-group = "trafilatura"},
+    {include-group = "web"},
 ]
 # NOTE: marker, glm-ocr, and mineru are extras (optional-dependencies), not
 # groups — they conflict with each other and with docling on transitive deps.
