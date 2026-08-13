@@ -2,11 +2,11 @@
 
 Attachments are supplementary files (photos, binaries, source code, etc.)
 that belong to a source but are not ingested by default. They live in
-``assets/<source-stem>/`` and are tracked by an append-only JSONL manifest
-at ``.knox/assets.jsonl``.
+``attachments/<source-stem>/`` and are tracked by an append-only JSONL
+manifest at ``.knox/attachments.jsonl``.
 
 Each attachment has an explicit ``ingestible`` flag and an optional
-``embed`` override for the global ``search.embed_assets`` config.
+``embed`` override for the global ``search.embed_attachments`` config.
 """
 
 from __future__ import annotations
@@ -81,13 +81,13 @@ INGESTIBLE_EXTENSIONS: Final[frozenset[str]] = TEXT_EXTENSIONS | IMAGE_EXTENSION
 class Attachment:
     """A registered attachment (supplementary file) for a source.
 
-    Stored as one JSON line in the manifest (``.knox/assets.jsonl``).
+    Stored as one JSON line in the manifest (``.knox/attachments.jsonl``).
     The manifest is append-only; to update an entry, append a new line
     with the same ``path``. When reading, the latest entry wins.
     """
 
     path: str
-    """Relative to ``assets_dir`` (i.e., ``<slug>/<filename>``)."""
+    """Relative to ``attachments_dir`` (i.e., ``<slug>/<filename>``)."""
 
     source: str
     """Source file stem (the canonical link to parent source)."""
@@ -97,7 +97,7 @@ class Attachment:
     Text/markdown via parser; PNG/JPG via VLM caption."""
 
     embed: bool | None = None
-    """Overrides global ``search.embed_assets`` for this attachment.
+    """Overrides global ``search.embed_attachments`` for this attachment.
     ``None`` = inherit global default."""
 
     registered_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -142,18 +142,18 @@ class Attachment:
         """Whether this attachment is a text/markdown type."""
         return self.extension in TEXT_EXTENSIONS
 
-    def effective_embed(self, global_embed_assets: bool) -> bool:
+    def effective_embed(self, global_embed_attachments: bool) -> bool:
         """Resolve the effective embed flag considering global config.
 
         Args:
-            global_embed_assets: The ``search.embed_assets`` config value.
+            global_embed_attachments: The ``search.embed_attachments`` config value.
 
         Returns:
             ``True`` if this attachment should be embedded.
         """
         if self.embed is not None:
             return self.embed
-        return global_embed_assets
+        return global_embed_attachments
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Attachment:

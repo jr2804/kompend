@@ -77,7 +77,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
 | `knox compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
 | `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--set key=val` |
-| `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `search.embed_assets`) |
+| `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `search.embed_attachments`) |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
 
@@ -93,22 +93,22 @@ Tags are the same `metadata.tags` field written by `ingest`/`compile --tag`;
 they persist in the per-source parse cache and propagate to wiki nodes on the
 next `knox compile`. No re-ingest required.
 
-### Assets (Attachments)
+### Attachments
 
 Supplementary files (photos, binaries, source code) that belong to a source
-but are **not** ingested by default. Stored under `assets/<source-slug>/`
-and tracked by an append-only manifest (`.knox/assets.jsonl`).
+but are **not** ingested by default. Stored under `attachments/<source-slug>/`
+and tracked by an append-only manifest (`.knox/attachments.jsonl`).
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox assets add <source> <file>` | Register an attachment for a source | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `search.embed_assets`) |
-| `knox assets list` | List registered attachments | `--source <stem>` (filter), `--all` (include deleted) |
-| `knox assets remove <path>` | Remove an attachment (tombstone in manifest, deletes file) | — |
+| `knox attachments add <source> <file>` | Register an attachment for a source (alias: `knox att add`) | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `search.embed_attachments`) |
+| `knox attachments list` | List registered attachments (alias: `knox att list`) | `--source <stem>` (filter), `--all` (include deleted) |
+| `knox attachments remove <path>` | Remove an attachment (tombstone in manifest, keeps file) | — |
 
 Only attachments marked `--ingest` are processed during compile; PNG/JPG
-require a configured VLM (`compile.llm.vlm_model`). Set `search.embed_assets =
-true` to include attachment content in the vector index. Registered assets
-are copied to `wiki/assets/` for relative links in generated content.
+require a configured VLM (`compile.llm.vlm_model`). Set `search.embed_attachments =
+true` to include attachment content in the vector index. Registered attachments
+are copied to `wiki/attachments/` for relative links in generated content.
 
 ### Query & Retrieval
 
@@ -251,9 +251,9 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 | `config_get` | Get a resolved config value | `key: str`, `wiki_dir: str = "."` |
 | `config_set` | Set a config value | `key: str`, `value: str`, `wiki_dir: str = "."` |
 | `parse_document` | Parse a single document | `file_path: str` |
-| `wiki_list_assets` | List registered attachments (optionally by source) | `source: str \| None`, `wiki_dir: str \| None` |
-| `wiki_read_asset` | Read text content (up to 100KB) or metadata for binary files | `source: str`, `asset_name: str`, `wiki_dir: str \| None` |
-| `wiki_asset_info` | Return manifest entry + file metadata | `source: str`, `asset_name: str`, `wiki_dir: str \| None` |
+| `wiki_list_attachments` | List registered attachments (optionally by source) | `source: str \| None`, `wiki_dir: str \| None` |
+| `wiki_read_attachment` | Read text content (up to 100KB) or metadata for binary files | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |
+| `wiki_attachment_info` | Return manifest entry + file metadata | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |
 
 ## Agent Workflows
 

@@ -106,8 +106,8 @@ REFERENCES_FILE: Final[str] = "references.json"
 ASSETS_FILE: Final[str] = "assets.json"
 
 # ── Attachments (user-provided supplementary files per source) ───────────
-ATTACHMENTS_DIR_NAME: Final[str] = "assets"
-ATTACHMENTS_MANIFEST: Final[str] = "assets.jsonl"
+ATTACHMENTS_DIR_NAME: Final[str] = "attachments"
+ATTACHMENTS_MANIFEST: Final[str] = "attachments.jsonl"
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
@@ -157,10 +157,10 @@ class VaultPaths:
     │   ├── last_organize.json  ← organize_report_path
     │   ├── lint_history.jsonl  ← lint_history_path
     │   ├── references.json     ← references_path
-    │   ├── assets.jsonl        ← attachments_manifest_path
+    │   ├── attachments.jsonl   ← attachments_manifest_path
     │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
-        ├── assets/                 ← attachments_dir (per-source)
+        ├── attachments/            ← attachments_dir (per-source)
         ├── wiki/                   ← output_dir
         │   └── index.md            ← index_file
     """
@@ -199,7 +199,7 @@ class VaultPaths:
 
     @property
     def attachments_dir(self) -> Path:
-        """Per-source attachment directories (assets)."""
+        """Per-source attachment directories (attachments)."""
         return self.base_dir / ATTACHMENTS_DIR_NAME
 
     def source_attachments_dir(self, source_stem: str) -> Path:

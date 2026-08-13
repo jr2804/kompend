@@ -71,7 +71,7 @@ from knox.core.config.keys import (
     DOWNLOADER_UNDETECTED,
     INGEST_PARSER,
     LINT_FUZZY_THRESHOLD,
-    SEARCH_EMBED_ASSETS,
+    SEARCH_EMBED_ATTACHMENTS,
 )
 from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths, vault_paths
@@ -279,7 +279,7 @@ def compile_cmd(  # noqa: PLR0915
                 embed_model=embed_model,
                 show_progress=show_progress,
                 lint_config=lint_config,
-                embed_assets=bool(cfg.get(SEARCH_EMBED_ASSETS, False)),
+                embed_attachments=bool(cfg.get(SEARCH_EMBED_ATTACHMENTS, False)),
             )
         )
 
@@ -429,11 +429,11 @@ def index_cmd(
     the index automatically via post-compile actions.
 
     Use it when the index is missing, stale, or you changed the embedding
-    model (``compile.embedding.model``) or the ``search.embed_assets``
+    model (``compile.embedding.model``) or the ``search.embed_attachments``
     setting and want to re-embed without a full LLM recompile.
 
-    It does **not** re-ingest assets or recompile the wiki. To ingest
-    newly-added assets, run ``knox compile --force --start-at-tier chunk``
+    It does **not** re-ingest attachments or recompile the wiki. To ingest
+    newly-added attachments, run ``knox compile --force --start-at-tier chunk``
     first.
     """
     vp = vault_paths_from_ctx(ctx)
@@ -457,7 +457,7 @@ def index_cmd(
         )
         raise typer.Exit(1)
 
-    embed_assets = bool(cfg.get(SEARCH_EMBED_ASSETS, False))
+    embed_attachments = bool(cfg.get(SEARCH_EMBED_ATTACHMENTS, False))
 
     try:
         count = build_vector_index(
@@ -465,7 +465,7 @@ def index_cmd(
             output_dir=output_dir,
             embed_model=resolved_model,
             base_dir=vp.base_dir,
-            embed_assets=embed_assets,
+            embed_attachments=embed_attachments,
         )
     except Exception as exc:
         get_err_console().print(f"Failed to build vector index: {exc}")

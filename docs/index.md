@@ -81,7 +81,7 @@ knox query "what is the main result?"
 
 - [Compilation Guide](guides/compilation.md) — Compilers, VLM, relations, memory, hooks
 - [Output Configuration](guides/output.md) — Markdown flavors, frontmatter, formatting
-- [Assets (Attachments)](guides/assets.md) — Supplementary files per source, opt-in ingestion
+- [Attachments](guides/attachments.md) — Supplementary files per source, opt-in ingestion
 - [WiCER Loop](concepts/wicer-loop.md) — Iterative compile-evaluate-refine quality loop
 - [Review Queue](guides/review.md) — Human-in-the-loop approval for wiki pages
 - [Wiki Structure](guides/wiki-structure.md) — index.md, log.md, overview.md

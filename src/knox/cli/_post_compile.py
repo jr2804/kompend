@@ -59,7 +59,7 @@ class PostCompileOptions:
     embed_model: str | None = None
     show_progress: bool | None = None
     lint_config: LintConfig | None = None
-    embed_assets: bool = False
+    embed_attachments: bool = False
 
 
 def post_compile_actions(opts: PostCompileOptions) -> None:
@@ -68,7 +68,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
     write_wiki_cache(opts.wiki, base_dir)
     print_compile_summary(opts.wiki)
 
-    # Copy registered attachments into the wiki output (wiki/assets/).
+    # Copy registered attachments into the wiki output (wiki/attachments/).
     copy_attachments_to_wiki(base_dir, opts.output_dir)
 
     if opts.review and not opts.bypass_review:
@@ -120,7 +120,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
                 opts.output_dir,
                 opts.pipeline_config.embedding.model,
                 base_dir=base_dir,
-                embed_assets=opts.embed_assets,
+                embed_attachments=opts.embed_attachments,
             )
         except Exception as exc:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
@@ -245,7 +245,7 @@ def cli_build_vector_index(
     embed_model: str | None,
     *,
     base_dir: Path | None = None,
-    embed_assets: bool = False,
+    embed_attachments: bool = False,
 ) -> None:
     """Thin CLI wrapper — delegates to knox.rag and prints status."""
     if not embed_model:
@@ -257,7 +257,7 @@ def cli_build_vector_index(
         output_dir,
         embed_model=embed_model,
         base_dir=base_dir,
-        embed_assets=embed_assets,
+        embed_attachments=embed_attachments,
     )
     if count > 0:
         get_console().print(f"Indexed {count} nodes in zvec store for semantic search")
@@ -350,9 +350,9 @@ def run_overview_synthesis(
 def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
     """Copy registered attachments into the wiki output directory.
 
-    Each source's attachments are copied to ``<output>/assets/<source-slug>/``
+    Each source's attachments are copied to ``<output>/attachments/<source-slug>/``
     so generated content can link to them with relative paths
-    (``assets/<slug>/<filename>``).
+    (``attachments/<slug>/<filename>``).
     """
     vp = VaultPaths(base_dir)
     manifest = AttachmentManifest(vp.attachments_manifest_path)
@@ -363,7 +363,7 @@ def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
     if not entries:
         return
 
-    dest_root = output_dir / "assets"
+    dest_root = output_dir / "attachments"
     copied = 0
     for att in entries.values():
         src_file = vp.attachments_dir / att.path
@@ -379,6 +379,6 @@ def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
             logger.warning("Failed to copy attachment %s: %s", src_file, exc)
 
     if copied:
-        get_console().print(f"Assets: copied {copied} attachment(s) to {dest_root}")
+        get_console().print(f"Attachments: copied {copied} attachment(s) to {dest_root}")
     else:
         logger.debug("No attachments copied to wiki output")

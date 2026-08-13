@@ -53,14 +53,14 @@ def test_attachment_to_dict_roundtrip() -> None:
 def test_attachment_embed_override() -> None:
     """embed=None means inherit, True/False overrides."""
     inherit = Attachment(path="a/b.txt", source="a")
-    assert inherit.effective_embed(global_embed_assets=True) is True
-    assert inherit.effective_embed(global_embed_assets=False) is False
+    assert inherit.effective_embed(global_embed_attachments=True) is True
+    assert inherit.effective_embed(global_embed_attachments=False) is False
 
     force = Attachment(path="a/b.txt", source="a", embed=True)
-    assert force.effective_embed(global_embed_assets=False) is True
+    assert force.effective_embed(global_embed_attachments=False) is True
 
     suppress = Attachment(path="a/b.txt", source="a", embed=False)
-    assert suppress.effective_embed(global_embed_assets=True) is False
+    assert suppress.effective_embed(global_embed_attachments=True) is False
 
 
 def test_attachment_is_image() -> None:
@@ -90,14 +90,14 @@ def test_ingestible_extensions_union() -> None:
 
 def test_manifest_read_empty(tmp_path: Path) -> None:
     """Missing manifest returns empty dict."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     assert not manifest.exists()
     assert manifest.read_all() == {}
 
 
 def test_manifest_append_and_read(tmp_path: Path) -> None:
     """Appended attachments are readable."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     att = Attachment(path="report/photo.jpg", source="report", ingestible=True)
     manifest.append(att)
 
@@ -108,7 +108,7 @@ def test_manifest_append_and_read(tmp_path: Path) -> None:
 
 def test_manifest_remove_tombstone(tmp_path: Path) -> None:
     """remove() appends a tombstone; read_all() excludes it."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     att = Attachment(path="report/photo.jpg", source="report", ingestible=True)
     manifest.append(att)
     assert len(manifest.read_all()) == 1
@@ -122,7 +122,7 @@ def test_manifest_remove_tombstone(tmp_path: Path) -> None:
 
 def test_manifest_latest_entry_wins(tmp_path: Path) -> None:
     """When the same path is appended twice, the latest wins."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=False))
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
 
@@ -132,7 +132,7 @@ def test_manifest_latest_entry_wins(tmp_path: Path) -> None:
 
 def test_manifest_read_for_source(tmp_path: Path) -> None:
     """read_for_source filters by source stem."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     manifest.append(Attachment(path="r1/a.txt", source="r1"))
     manifest.append(Attachment(path="r2/b.jpg", source="r2"))
 
@@ -143,7 +143,7 @@ def test_manifest_read_for_source(tmp_path: Path) -> None:
 
 def test_manifest_list_sources(tmp_path: Path) -> None:
     """list_sources returns sorted unique source stems."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     manifest.append(Attachment(path="b/x.txt", source="b"))
     manifest.append(Attachment(path="a/y.txt", source="a"))
     manifest.append(Attachment(path="a/z.txt", source="a"))
@@ -153,7 +153,7 @@ def test_manifest_list_sources(tmp_path: Path) -> None:
 
 def test_manifest_tombstone_then_readd(tmp_path: Path) -> None:
     """A deleted attachment can be re-added."""
-    manifest = AttachmentManifest(tmp_path / "assets.jsonl")
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     manifest.append(Attachment(path="r/a.txt", source="r"))
     manifest.remove("r/a.txt")
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
@@ -165,7 +165,7 @@ def test_manifest_tombstone_then_readd(tmp_path: Path) -> None:
 
 def test_manifest_jsonl_format(tmp_path: Path) -> None:
     """Manifest is valid JSONL (one JSON object per line)."""
-    f = tmp_path / "assets.jsonl"
+    f = tmp_path / "attachments.jsonl"
     manifest = AttachmentManifest(f)
     manifest.append(Attachment(path="r/a.txt", source="r"))
     manifest.append(Attachment(path="r/b.txt", source="r"))
@@ -183,7 +183,7 @@ def test_manifest_jsonl_format(tmp_path: Path) -> None:
 
 def test_manifest_corrupt_line_skipped(tmp_path: Path) -> None:
     """Corrupt JSON lines are silently skipped."""
-    f = tmp_path / "assets.jsonl"
+    f = tmp_path / "attachments.jsonl"
     f.write_text(
         json.dumps({"path": "r/a.txt", "source": "r", "ingestible": True}) + "\nTHIS IS NOT JSON\n" + json.dumps({"path": "r/b.txt", "source": "r"}) + "\n",
     )
@@ -196,7 +196,7 @@ def test_manifest_corrupt_line_skipped(tmp_path: Path) -> None:
 
 def test_manifest_blank_lines_skipped(tmp_path: Path) -> None:
     """Blank lines in the manifest are ignored."""
-    f = tmp_path / "assets.jsonl"
+    f = tmp_path / "attachments.jsonl"
     f.write_text(
         "\n" + json.dumps({"path": "r/a.txt", "source": "r"}) + "\n\n",
     )

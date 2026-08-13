@@ -154,7 +154,7 @@ SEARCH_SYNTHESIS_VERBOSITY: Final[str] = "search.synthesis.verbosity"
 SEARCH_SYNTHESIS_TOKENS_BRIEF: Final[str] = "search.synthesis.tokens.brief"
 SEARCH_SYNTHESIS_TOKENS_STANDARD: Final[str] = "search.synthesis.tokens.standard"
 SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.comprehensive"
-SEARCH_EMBED_ASSETS: Final[str] = "search.embed_assets"
+SEARCH_EMBED_ATTACHMENTS: Final[str] = "search.embed_attachments"
 
 # ── query section ──
 QUERY_FORMAT: Final[str] = "query.format"

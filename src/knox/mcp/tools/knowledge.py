@@ -220,7 +220,7 @@ def wiki_distill(
         return {"status": "error", "message": str(exc)}
 
 
-def wiki_list_assets(
+def wiki_list_attachments(
     source: str | None = None,
     *,
     wiki_dir: str | None = None,
@@ -232,12 +232,12 @@ def wiki_list_assets(
         wiki_dir: Wiki directory override.
 
     Returns:
-        Dict with ``assets`` list (each: source, path, ingestible, embed).
+        Dict with ``attachments`` list (each: source, path, ingestible, embed).
     """
     vp = vault_paths(wiki_dir)
     manifest = AttachmentManifest(vp.attachments_manifest_path)
     if not manifest.exists():
-        return {"status": "ok", "assets": [], "count": 0}
+        return {"status": "ok", "attachments": [], "count": 0}
 
     entries = manifest.read_all().values()
     if source:
@@ -246,7 +246,7 @@ def wiki_list_assets(
     return {
         "status": "ok",
         "count": len(entries),
-        "assets": [
+        "attachments": [
             {
                 "source": a.source,
                 "path": a.path,
@@ -260,9 +260,9 @@ def wiki_list_assets(
     }
 
 
-def wiki_read_asset(
+def wiki_read_attachment(
     source: str,
-    asset_name: str,
+    attachment_name: str,
     *,
     wiki_dir: str | None = None,
     max_bytes: int = 100_000,
@@ -273,8 +273,8 @@ def wiki_read_asset(
     up to ``max_bytes`` of content.
 
     Args:
-        source: Source stem the asset belongs to.
-        asset_name: Asset filename within the source's asset directory.
+        source: Source stem the attachment belongs to.
+        attachment_name: Attachment filename within the source's attachment directory.
         wiki_dir: Wiki directory override.
         max_bytes: Maximum bytes to read for text files.
 
@@ -282,11 +282,11 @@ def wiki_read_asset(
         Dict with ``content`` (text) or ``binary: true``.
     """
     vp = vault_paths(wiki_dir)
-    att_path = f"{source}/{asset_name}"
+    att_path = f"{source}/{attachment_name}"
     att_file = vp.attachments_dir / att_path
 
     if not att_file.exists():
-        return {"status": "error", "message": f"Asset not found: {att_path}"}
+        return {"status": "error", "message": f"Attachment not found: {att_path}"}
 
     info = {
         "status": "ok",
@@ -304,17 +304,17 @@ def wiki_read_asset(
     return info
 
 
-def wiki_asset_info(
+def wiki_attachment_info(
     source: str,
-    asset_name: str,
+    attachment_name: str,
     *,
     wiki_dir: str | None = None,
 ) -> dict[str, Any]:
     """Return metadata for a single attachment.
 
     Args:
-        source: Source stem the asset belongs to.
-        asset_name: Asset filename within the source's asset directory.
+        source: Source stem the attachment belongs to.
+        attachment_name: Attachment filename within the source's attachment directory.
         wiki_dir: Wiki directory override.
 
     Returns:
@@ -322,7 +322,7 @@ def wiki_asset_info(
     """
     vp = vault_paths(wiki_dir)
     manifest = AttachmentManifest(vp.attachments_manifest_path)
-    att_path = f"{source}/{asset_name}"
+    att_path = f"{source}/{attachment_name}"
 
     entry = None
     if manifest.exists():

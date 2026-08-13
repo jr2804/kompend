@@ -36,9 +36,9 @@ def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "Indexed 1 nodes" in result.output
     mock_load.assert_called_once()
     mock_build.assert_called_once()
-    # embed_assets defaults to False (no search.embed_assets in config)
+    # embed_attachments defaults to False (no search.embed_attachments in config)
     call_kwargs = mock_build.call_args.kwargs
-    assert call_kwargs["embed_assets"] is False
+    assert call_kwargs["embed_attachments"] is False
     assert call_kwargs["embed_model"] == "test-embed"
     # wiki metadata records the embedding model for query to open the store
     mock_write.assert_called_once()
@@ -58,13 +58,13 @@ def test_index_no_wiki_exits_error(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "No compiled wiki found" in result.output
 
 
-def test_index_respects_embed_assets_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox index reads search.embed_assets from config."""
+def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Knox index reads search.embed_attachments from config."""
     base = tmp_path / "wiki"
     (base / "sources").mkdir(parents=True)
     (base / ".knox").mkdir(parents=True)
     (base / ".knox" / "config.toml").write_text(
-        '[compile.embedding]\nmodel = "test-embed"\n[search]\nembed_assets = true\n',
+        '[compile.embedding]\nmodel = "test-embed"\n[search]\nembed_attachments = true\n',
         encoding="utf-8",
     )
     monkeypatch.chdir(base)
@@ -78,7 +78,7 @@ def test_index_respects_embed_assets_config(tmp_path: Path, monkeypatch: pytest.
         result = runner.invoke(app, ["index"])
 
     assert result.exit_code == 0, result.output
-    assert mock_build.call_args.kwargs["embed_assets"] is True
+    assert mock_build.call_args.kwargs["embed_attachments"] is True
 
 
 def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

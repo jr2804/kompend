@@ -299,5 +299,5 @@ and every extracted figure still flows through `VLMEnricher`.
 
 ## See also
 
-- [Assets (Attachments)](assets.md) — Supplementary files per source
+- [Attachments](attachments.md) — Supplementary files per source
   (photos, binaries, source code) with opt-in ingestion.

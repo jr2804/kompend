@@ -344,7 +344,7 @@ class SearchConfig(_KnoxBaseModel):
     hyde: SearchHydeConfig = Field(default_factory=SearchHydeConfig)
     contextual: SearchContextualConfig = Field(default_factory=SearchContextualConfig)
     synthesis: SearchSynthesisConfig = Field(default_factory=SearchSynthesisConfig)
-    embed_assets: bool = Field(
+    embed_attachments: bool = Field(
         default=False,
         description="Whether ingestible attachments (text/image captions) are included in the vector index.",
     )

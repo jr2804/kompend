@@ -32,7 +32,8 @@ from knox.logging import configure_logging, get_console
 
 _LAZY_MODULES: dict[str, str] = {
     "agents": "knox.cli.cmds.agents",
-    "assets": "knox.cli.cmds.knowledge.assets",
+    "attachments": "knox.cli.cmds.knowledge.attachments",
+    "att": "knox.cli.cmds.knowledge.attachments",
     "capture": "knox.cli.cmds.knowledge.capture",
     "learn": "knox.cli.cmds.knowledge.capture",
     "distill": "knox.cli.cmds.knowledge.capture",

@@ -1,11 +1,13 @@
-"""The ``knox assets`` command group.
+"""The ``knox attachments`` command group.
 
 Sub-commands
 ------------
 
-* ``knox assets add``    — register an attachment for a source.
-* ``knox assets remove`` — remove (tombstone) a registered attachment.
-* ``knox assets list``   — list registered attachments.
+* ``knox attachments add``    — register an attachment for a source.
+* ``knox attachments remove`` — remove (tombstone) a registered attachment.
+* ``knox attachments list``   — list registered attachments.
+
+``att`` is a registered alias for ``attachments`` (e.g. ``knox att add``).
 """
 
 from __future__ import annotations
@@ -27,26 +29,27 @@ from knox.core.models.attachments import (
 from knox.core.paths import attachment_slug
 from knox.logging import get_console
 
-assets_app = typer.Typer(
-    name="assets",
+attachments_app = typer.Typer(
+    name="attachments",
     help="Manage source attachments (supplementary files).",
     no_args_is_help=True,
 )
-main_app.add_typer(assets_app)
+main_app.add_typer(attachments_app)
+main_app.add_typer(attachments_app, name="att")
 
 
-@assets_app.command("add")
-def add_asset(
+@attachments_app.command("add")
+def add_attachment(
     ctx: typer.Context,
     source: str = typer.Argument(help="Source file name or relative path (e.g., 'report.pdf')."),  # noqa: B008
-    asset_file: Path = typer.Argument(help="Path to the asset file to register."),  # noqa: B008
-    ingest: bool = typer.Option(False, "--ingest", help="Mark asset as ingestible (processed during compile)."),  # noqa: B008
-    embed: bool | None = typer.Option(None, "--embed/--no-embed", help="Override global embed_assets setting for this asset."),  # noqa: B008
+    attachment_file: Path = typer.Argument(help="Path to the attachment file to register."),  # noqa: B008
+    ingest: bool = typer.Option(False, "--ingest", help="Mark attachment as ingestible (processed during compile)."),  # noqa: B008
+    embed: bool | None = typer.Option(None, "--embed/--no-embed", help="Override global embed_attachments setting for this attachment."),  # noqa: B008
 ) -> None:
     """Register an attachment for a source.
 
-    The asset file is copied to ``assets/<source-slug>/`` and recorded
-    in the attachment manifest (``.knox/assets.jsonl``).
+    The attachment file is copied to ``attachments/<source-slug>/`` and
+    recorded in the attachment manifest (``.knox/attachments.jsonl``).
     """
     vp = vault_paths_from_ctx(ctx)
     console = get_console()
@@ -56,21 +59,21 @@ def add_asset(
     source_stem = source_path.stem  # e.g., "report" from "papers/report.pdf"
     slug = attachment_slug(source)
 
-    # ── Validate asset file ────────────────────────────────────────────
-    if not asset_file.exists():
-        console.print(f"[red]Error:[/red] Asset file not found: {asset_file}")
+    # ── Validate attachment file ───────────────────────────────────────
+    if not attachment_file.exists():
+        console.print(f"[red]Error:[/red] Attachment file not found: {attachment_file}")
         raise typer.Exit(1)
 
-    if asset_file.is_dir():
-        console.print(f"[red]Error:[/red] Asset must be a file, not a directory: {asset_file}")
+    if attachment_file.is_dir():
+        console.print(f"[red]Error:[/red] Attachment must be a file, not a directory: {attachment_file}")
         raise typer.Exit(1)
 
-    ext = asset_file.suffix.lower()
+    ext = attachment_file.suffix.lower()
 
     # ── If --ingest, require a text file (or VLM-captionable image) ────
-    if ingest and ext not in IMAGE_EXTENSIONS and is_binary(str(asset_file)):
+    if ingest and ext not in IMAGE_EXTENSIONS and is_binary(str(attachment_file)):
         console.print(
-            f"[red]Error:[/red] Cannot ingest '{asset_file.name}': binary files are not ingestible. "
+            f"[red]Error:[/red] Cannot ingest '{attachment_file.name}': binary files are not ingestible. "
             "Only text files (any extension) and images (via VLM) can be ingested."
         )
         raise typer.Exit(1)
@@ -79,19 +82,19 @@ def add_asset(
     if ingest and ext in IMAGE_EXTENSIONS:
         console.print(f"[yellow]Note:[/yellow] '{ext}' files require VLM for captioning. Will be skipped at compile if VLM is not configured.")
 
-    # ── Create asset directory and copy file ───────────────────────────
-    asset_dir = vp.source_attachments_dir(slug)
-    asset_dir.mkdir(parents=True, exist_ok=True)
-    dest = asset_dir / asset_file.name
+    # ── Create attachment directory and copy file ──────────────────────
+    attachment_dir = vp.source_attachments_dir(slug)
+    attachment_dir.mkdir(parents=True, exist_ok=True)
+    dest = attachment_dir / attachment_file.name
 
     if dest.exists():
-        console.print(f"[yellow]Warning:[/yellow] Asset already exists at {dest}, overwriting.")
+        console.print(f"[yellow]Warning:[/yellow] Attachment already exists at {dest}, overwriting.")
 
-    shutil.copy2(asset_file, dest)
+    shutil.copy2(attachment_file, dest)
 
     # ── Record in manifest ─────────────────────────────────────────────
     manifest = AttachmentManifest(vp.attachments_manifest_path)
-    relative_path = f"{slug}/{asset_file.name}"
+    relative_path = f"{slug}/{attachment_file.name}"
     att = Attachment(
         path=relative_path,
         source=source_stem,
@@ -100,7 +103,7 @@ def add_asset(
     )
     manifest.append(att)
 
-    console.print(f"[green]Registered asset:[/green] {relative_path}")
+    console.print(f"[green]Registered attachment:[/green] {relative_path}")
     if ingest:
         console.print("  → ingestible (will be processed during compile)")
     if embed is not None:
@@ -108,10 +111,10 @@ def add_asset(
         console.print(f"  → {label} (overrides global config)")
 
 
-@assets_app.command("remove")
-def remove_asset(
+@attachments_app.command("remove")
+def remove_attachment(
     ctx: typer.Context,
-    asset_path: str = typer.Argument(help="Asset relative path (e.g., 'report/photo.jpg') or just filename."),
+    attachment_path: str = typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
 ) -> None:
     """Remove (tombstone) a registered attachment.
 
@@ -125,32 +128,32 @@ def remove_asset(
     existing = manifest.read_all()
 
     # ── Resolve path (support bare filename) ───────────────────────────
-    resolved_path = asset_path
-    if "/" not in asset_path and "\\" not in asset_path:
+    resolved_path = attachment_path
+    if "/" not in attachment_path and "\\" not in attachment_path:
         # Bare filename — find matching entry
-        matches = [p for p in existing if Path(p).name == asset_path]
+        matches = [p for p in existing if Path(p).name == attachment_path]
         if len(matches) == 1:
             resolved_path = matches[0]
         elif len(matches) > 1:
-            console.print(f"[yellow]Multiple matches for '{asset_path}':[/yellow]")
+            console.print(f"[yellow]Multiple matches for '{attachment_path}':[/yellow]")
             for m in matches:
                 console.print(f"  {m}")
             console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
             raise typer.Exit(1)
 
     if resolved_path not in existing:
-        console.print(f"[red]Error:[/red] Asset not found: {resolved_path}")
+        console.print(f"[red]Error:[/red] Attachment not found: {resolved_path}")
         raise typer.Exit(1)
 
     if manifest.remove(resolved_path):
-        console.print(f"[green]Removed asset:[/green] {resolved_path}")
+        console.print(f"[green]Removed attachment:[/green] {resolved_path}")
     else:
-        console.print(f"[red]Error:[/red] Failed to remove asset: {resolved_path}")
+        console.print(f"[red]Error:[/red] Failed to remove attachment: {resolved_path}")
         raise typer.Exit(1)
 
 
-@assets_app.command("list")
-def list_assets(
+@attachments_app.command("list")
+def list_attachments(
     ctx: typer.Context,
     source: str | None = typer.Option(None, "--source", "-s", help="Filter by source name."),
     show_all: bool = typer.Option(False, "--all", "-a", help="Include deleted entries."),

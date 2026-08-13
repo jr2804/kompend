@@ -19,7 +19,7 @@ def build_vector_index(
     *,
     base_dir: Path | None = None,
     batch_size: int = 10,
-    embed_assets: bool = False,
+    embed_attachments: bool = False,
 ) -> int:
     """Build a vector index for semantic search over *wiki*.
 
@@ -29,7 +29,7 @@ def build_vector_index(
         embed_model: Embedding model string.
         base_dir: Vault base directory.
         batch_size: Embedding batch size.
-        embed_assets: When ``False`` (default), nodes tagged
+        embed_attachments: When ``False`` (default), nodes tagged
             ``source_asset=True`` are excluded from the index.
 
     Returns:
@@ -39,7 +39,7 @@ def build_vector_index(
         raise ValueError("An explicit 'embed_model' must be provided to build the vector index.")
 
     nodes = wiki.nodes
-    if not embed_assets:
+    if not embed_attachments:
         nodes = [n for n in nodes if not (n.metadata or {}).get("source_asset", False)]
 
     if not nodes:

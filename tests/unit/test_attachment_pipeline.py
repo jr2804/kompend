@@ -140,8 +140,8 @@ def test_ingest_unknown_text_extension(vault: VaultPaths) -> None:
 
 @pytest.fixture
 def vault(tmp_path: Path) -> VaultPaths:
-    """VaultPaths with sources/ and assets/ directories."""
+    """VaultPaths with sources/ and attachments/ directories."""
     (tmp_path / "sources").mkdir()
-    (tmp_path / "assets").mkdir()
+    (tmp_path / "attachments").mkdir()
     (tmp_path / ".knox").mkdir()
     return VaultPaths(tmp_path)
