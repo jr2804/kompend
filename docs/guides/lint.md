@@ -5,14 +5,14 @@ KNOX lint checks compiled wikis for structural and semantic quality issues.
 ## Quick Start
 
 ```bash
-# Run all 8 structural rules (default, zero LLM cost)
+# Run all structural + LLM-powered rules (LLM on by default)
 knox lint run
+
+# Structural rules only (no LLM calls)
+knox lint run --no-llm
 
 # Auto-fix supported issues
 knox lint run --fix
-
-# Also run LLM-powered rules (slow, expensive)
-knox lint run --llm
 
 # Run only specific rules
 knox lint run --rule broken-wikilinks --rule orphan-page
@@ -21,14 +21,19 @@ knox lint run --rule broken-wikilinks --rule orphan-page
 knox lint run --json
 ```
 
+LLM-powered rules use `compile.llm.default_model`; with no model configured
+they are skipped with a note (structural rules still run).
+
 ## Commands
 
-`knox lint` is a command group with three sub-commands:
+`knox lint` is a command group with five sub-commands:
 
 | Sub-command | Description |
 |------------|-------------|
 | `knox lint run` | Run lint rules and save the result to history |
 | `knox lint history` | Query past lint runs (scores, trends, details) |
+| `knox lint gaps` | Analyze lint results for knowledge gaps and source recommendations |
+| `knox lint remediate` | LLM-generate missing pages for lint findings |
 | `knox lint prune` | Remove old history entries |
 
 ### `knox lint run`
@@ -41,7 +46,8 @@ Lint a compiled wiki for quality issues. Every run is appended to
 
 Options:
   --fix              Auto-fix structural issues where possible
-  --llm              Enable LLM-powered lint rules (slow, expensive)
+  --llm/--no-llm     LLM-powered lint rules (default). --no-llm runs
+                     structural rules only
   --rule TEXT        Run only specific rule(s) (repeatable)
   --json             Output in JSON format for machine readability
 ```
@@ -77,6 +83,33 @@ knox lint history --trend
 knox lint history --json
 ```
 
+### `knox lint gaps`
+
+Analyze the latest lint run for knowledge gaps and recommend source
+material:
+
+```bash
+knox lint gaps
+```
+
+Gap recommendations cover missing topics, empty pages, isolated topics,
+coverage gaps, and unresolved contradictions. `gaps` only recommends —
+it never modifies the wiki.
+
+### `knox lint remediate`
+
+Generate missing concept pages for coverage-gap findings:
+
+```bash
+knox lint remediate           # generate pages (needs an LLM configured)
+knox lint remediate --dry-run # preview without writing
+```
+
+Coverage-gap findings are matched against cached phase-1 extractions;
+matched concepts get concept pages generated from that source material and
+written to the wiki output directory. Unmatched concepts are skipped — run
+`knox lint gaps` for recommendations on those.
+
 ### `knox lint prune`
 
 ```text
@@ -111,13 +144,15 @@ Run lint automatically after compilation:
 knox compile ./sources --lint
 ```
 
-## Structural Rules (8)
+## Structural Rules (10)
 
-These rules are deterministic and require no LLM calls.
+These rules are deterministic. Nine run entirely in-process; `rumdl` shells
+out to the bundled rumdl binary.
 
 | Rule | Severity | Auto-fix | What it checks |
 |------|----------|----------|---------------|
-| `broken-wikilinks` | ERROR | ✅ | `[[wikilinks]]` pointing to non-existent pages |
+| `image-embed` | WARNING | ✅ | Image links written as `[[img.png]]` instead of `![[img.png]]` |
+| `broken-wikilinks` | ERROR | ✅ | `[[wikilinks]]` pointing to non-existent pages (image embeds excluded) |
 | `missing-frontmatter` | WARNING | ✅ | Pages missing required frontmatter fields (`title`) |
 | `orphan-page` | WARNING | ❌ | Pages with no incoming `[[wikilinks]]` from other pages |
 | `duplicate-title` | ERROR | ❌ | Two or more pages with the same or similar title (case-insensitive) |
@@ -125,18 +160,28 @@ These rules are deterministic and require no LLM calls.
 | `heading-skip` | WARNING | ❌ | Heading level jumps (e.g. h1 → h3 without h2) |
 | `stale-page` | WARNING | ❌ | Pages whose source files changed since last compile |
 | `source-not-found` | ERROR | ❌ | Pages referencing source files that don't exist on disk |
+| `rumdl` | WARNING | ✅ | Markdown style issues on all vault folders except `sources/` (MD024 duplicate headings, MD013 line length, …) |
 
 ### Auto-fix behavior
 
 When `--fix` is passed:
 
+- **image-embed**: Rewrites `[[img.png]]` → `![[img.png]]`
 - **broken-wikilinks**: Removes `[[...]]` brackets, keeping the link text
 - **missing-frontmatter**: Adds `title` from the node title
+- **rumdl**: Applies `rumdl check --fix` to the flagged files (self-written wiki notes get reformatted; `sources/` is never touched)
 - Other rules: Cannot be auto-fixed (require manual editing or re-compilation)
+
+The `rumdl` rule checks every `*.md` file under the vault root — wiki output,
+index pages, and self-written notes — excluding `sources/`, `.knox/`, and
+`attachments/`. Rule tuning comes from `compile.output.rumdl_config` in
+`knox.toml` (same key as render-time formatting); when unset, rumdl
+auto-discovers a `.rumdl.toml` in the vault. The rule reports `SKIP` when
+rumdl is not installed.
 
 ## LLM-Powered Rules (4)
 
-These rules call an LLM via LiteLLM and are opt-in with `--llm` or `--rule <name>`.
+These rules call an LLM and are on by default; use `--no-llm` to skip them.
 
 | Rule | What it checks |
 |------|---------------|

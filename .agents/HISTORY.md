@@ -29,6 +29,24 @@ contributors from re-litigating settled questions.
 
 ## Project-specific History — KNOX
 
+### Lint UX: `remediate` collapsed to LLM page generation (2026-08-14)
+
+`knox lint remediate` previously had three tiers: image-embed auto-fix
+(Tier 1), LLM coverage-gap generation (Tier 2), and recommendations
+(Tier 3). The tiers overlapped confusingly with `run --fix` and `gaps`.
+Remediation now does one thing: LLM-generate missing concept pages from
+cached extractions. Image-embed fixing moved into `run --fix` as the new
+`image-embed` structural rule (which also stopped `broken-wikilinks` from
+flagging/stripping correct `![[img.png]]` embeds). Recommendations live only
+in `knox lint gaps`. `RemediationAction.tier` field removed. Docs updated:
+`docs/guides/lint.md`, `docs/guides/cli.md`.
+
+Also added the `rumdl` structural rule: runs `rumdl check` (JSON output) on
+all `*.md` files under the vault root except `sources/`, `.knox/`, and
+`attachments/`; `--fix` applies `rumdl check --fix` (self-written notes get
+reformatted, sources never touched). Files are passed explicitly to rumdl
+to bypass its ignore-file filtering — dir scans get eaten by `.gitignore`.
+
 ### Plans completed and archived (2026-08-14)
 
 `MIGRATION_PLAN.md` (summarization-pydantic-ai integration) and

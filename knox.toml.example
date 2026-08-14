@@ -428,7 +428,9 @@ context_manager = "default"
 # language = "en"
 # domain = "ml"
 
-# Path to a custom RUMDL configuration file for markdown linting
+# Path to a custom RUMDL configuration file. Applies to render-time
+# formatting (rumdl fmt) AND the `rumdl` lint rule (check/fix). When unset,
+# rumdl auto-discovers a .rumdl.toml in the vault.
 # rumdl_config = ".knox/rumdl.toml"
 
 # ── PDF processing settings ─────────────────────────────────────────────

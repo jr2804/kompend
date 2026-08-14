@@ -14,6 +14,8 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox list-parsers` | List all registered parsers |
 | `knox lint run` | Run quality linters on the compiled wiki |
 | `knox lint history` | Show past lint runs and score trends |
+| `knox lint gaps` | Analyze lint results for knowledge gaps and source recommendations |
+| `knox lint remediate` | LLM-generate missing pages for lint findings |
 | `knox lint prune` | Remove old lint history entries |
 | `knox review` | Manage the review queue |
 | `knox sources list` | List ingested source files with their tags (`--tags` filter) |
