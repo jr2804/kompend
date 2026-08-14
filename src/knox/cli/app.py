@@ -17,6 +17,7 @@ from importlib.metadata import version
 
 import typer
 
+from knox.core.config.keys import EnvVar
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from knox.logging import configure_logging, get_console
 
@@ -97,7 +98,7 @@ def _callback(
         "--wiki-dir",
         "-w",
         help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
-        envvar="KNOX_WIKI_DIR",
+        envvar=EnvVar.WIKI_DIR,
     ),
     no_user_tracking: bool = typer.Option(
         False,

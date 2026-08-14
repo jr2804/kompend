@@ -15,6 +15,14 @@ from enum import StrEnum
 
 from aenum import MultiValueEnum
 
+from knox.core.config.keys import EnvVar
+
+
+class HttpHeader(StrEnum):
+    """Well-known HTTP header names used by the ACP provider config."""
+
+    AUTHORIZATION = "authorization"
+
 
 class LlmApiType(StrEnum, MultiValueEnum):
     """Well-known ACP ``apiType`` identifiers.
@@ -128,12 +136,16 @@ class ProviderCredentials:
         # KNOX_LLM_DEFAULT_MODEL is a config-map key; the API base/key are litellm
         # session credentials injected here, not knox config values.
         if self._provider.model:
-            self._set_env("KNOX_LLM_DEFAULT_MODEL", f"{prefix}/{self._provider.model}")
-        self._set_env("KNOX_LLM_API_BASE", self._provider.base_url)
+            self._set_env(EnvVar.LLM_DEFAULT_MODEL, f"{prefix}/{self._provider.model}")
+        self._set_env(EnvVar.LLM_API_BASE, self._provider.base_url)
 
+        # ponytail: headers stay a plain map — ACP sends arbitrary header names
+        # (tests use e.g. ``x-api-key``) and only Authorization is consumed; a
+        # dataclass with one known field plus an unknown-header bag would be more
+        # code, not less. Header names are case-insensitive, hence ``.lower()``.
         for key, val in self._provider.headers.items():
-            if key.lower() == "authorization":
-                self._set_env("KNOX_LLM_API_KEY", val.removeprefix("Bearer ").strip())
+            if key.lower() == HttpHeader.AUTHORIZATION:
+                self._set_env(EnvVar.LLM_API_KEY, val.removeprefix("Bearer ").strip())
 
     def _set_env(self, key: str, value: str) -> None:
         """Set an env var, saving the previous value for later restore."""

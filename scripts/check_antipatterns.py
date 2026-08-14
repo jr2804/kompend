@@ -19,6 +19,11 @@ LLM-coding mistakes observed in this codebase:
   unless the source line also references a ``config.get(...)`` /
   ``DEFAULTS.get(...)`` / ``cfg.get(...)`` call. This is the
   "Antipattern 4" enforcement from the project AGENTS.md.
+- Hard-coded ``"KNOX_..."`` env-var literals in env-access positions
+  (``os.environ``, ``envvar=``, ``validation_alias``, ``_set_env``) are
+  flagged. The single definition lives in ``knox/core/env.py`` (``EnvVar``);
+  every consumer must reference a member. Docstring/help-text mentions are
+  allowed (they document the real name, they don't read env vars).
 
 Each violation prints ``file:line:col  rule  message`` and the script
 exits non-zero on any violation. Exits 0 when clean.
@@ -73,6 +78,14 @@ _HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\
 
 
 _LINE_PADDING_RE = re.compile(r"\bif\s+len\s*\(")
+
+# Env-var access mechanisms. A ``"KNOX_..."`` literal on a line with one of
+# these reads/sets an env var and must reference an ``EnvVar`` member.
+_ENV_ACCESS_RE = re.compile(r"\b(?:os\.environ|envvar|validation_alias|_set_env|setenv\(|delenv\()\b")
+_KNOX_LITERAL_RE = re.compile(r'"KNOX_[A-Z_]+"')
+
+# The single allowed definition site for ``KNOX_*`` env-var names.
+_ENV_MODULE = SRC_ROOT / "core" / "env.py"
 
 # Files where module-level state is a documented design choice (singleton
 # registries, plugin tables, etc.). Adding a new path here requires a
@@ -175,6 +188,33 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_import_error_guards(path, tree))
     out.extend(scan_global_usage(path, tree))
     out.extend(scan_magic_crops(path, lines))
+    out.extend(scan_env_var_literals(path, lines))
+    return out
+
+
+def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
+    """Flag hard-coded ``KNOX_*`` literals in env-access positions.
+
+    ``knox/core/env.py`` is the only place a ``KNOX_*`` env-var name may be
+    defined. Docstrings and Typer help text (``"Env: KNOX_WIKI_DIR."``) are
+    documentation, not env access — allowed.
+    """
+    if path == _ENV_MODULE:
+        return []
+    out: list[Violation] = []
+    for i, line in enumerate(lines, start=1):
+        if not _ENV_ACCESS_RE.search(line):
+            continue
+        for m in _KNOX_LITERAL_RE.finditer(line):
+            out.append(
+                Violation(
+                    path,
+                    i,
+                    m.start() + 1,
+                    "ENV-VAR-LITERAL",
+                    f"hard-coded env var {m.group(0)} — use an EnvVar member from knox.core.env",
+                )
+            )
     return out
 
 

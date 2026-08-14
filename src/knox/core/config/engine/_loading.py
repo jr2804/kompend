@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from knox.core.config.keys import PATHS_WIKI_DIR
+from knox.core.config.keys import PATHS_WIKI_DIR, EnvVar
 from knox.core.paths import CONFIG_FILE, KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
 from knox.types import ConfigValue
@@ -114,7 +114,7 @@ def wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
     if raw is None:
         # KNOX_WIKI_DIR is the config-map env alias for PATHS_WIKI_DIR; read it
         # directly here because config discovery needs the dir to start from.
-        raw = os.environ.get("KNOX_WIKI_DIR")
+        raw = os.environ.get(EnvVar.WIKI_DIR)
     if not raw:
         return None
     return Path(raw).expanduser().resolve()

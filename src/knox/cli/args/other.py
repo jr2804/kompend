@@ -6,6 +6,8 @@ from typing import Annotated
 
 import typer
 
+from knox.core.config.keys import EnvVar
+
 from .common import APP_NAME_UPPERCASE
 
 # ── N1 lint command ────────────────────────────────────────────────────
@@ -243,7 +245,7 @@ LlmDefaultModel = Annotated[
             "Overrides the config-file model/provider when set. "
             f"Env: {APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL",
+        envvar=EnvVar.LLM_DEFAULT_MODEL,
     ),
 ]
 
@@ -257,7 +259,7 @@ VlmModel = Annotated[
             "the resolver chain. Example: 'openai/gpt-4o'. "
             f"Env: {APP_NAME_UPPERCASE}_VLM_MODEL."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_VLM_MODEL",
+        envvar=EnvVar.VLM_MODEL,
     ),
 ]
 
@@ -270,7 +272,7 @@ MemoryEnabled = Annotated[
             "across compiles. Disabled skips the memory update pass. "
             f"Env: {APP_NAME_UPPERCASE}_MEMORY_ENABLED."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_MEMORY_ENABLED",
+        envvar=EnvVar.MEMORY_ENABLED,
     ),
 ]
 
@@ -284,7 +286,7 @@ LlmFallbackChain = Annotated[
             "string, e.g. 'openai/gpt-4o'. Empty means single-model mode. "
             f"Env: {APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN (comma-separated)."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN",
+        envvar=EnvVar.LLM_FALLBACK_CHAIN,
     ),
 ]
 
@@ -294,7 +296,7 @@ LlmFallbackMaxRetries = Annotated[
         "--llm-fallback-max-retries",
         help=("Transient-error retries before advancing to the next model in the failover chain. 2 means up to three attempts per model."),
         min=0,
-        envvar=f"{APP_NAME_UPPERCASE}_LLM_FALLBACK_MAX_RETRIES",
+        envvar=EnvVar.LLM_FALLBACK_MAX_RETRIES,
     ),
 ]
 
@@ -309,6 +311,6 @@ LlmRoleModel = Annotated[
             "'compile=anthropic/claude-3.5-sonnet'. "
             "Roles: resolve, compile, enrich, query."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_LLM_ROLE_MODEL",
+        envvar=EnvVar.LLM_ROLE_MODEL,
     ),
 ]

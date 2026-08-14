@@ -6,6 +6,8 @@ from typing import Annotated
 
 import typer
 
+from knox.core.config.keys import EnvVar
+
 from .common import APP_NAME_UPPERCASE
 
 # ── Q20 tiered compilation ──────────────────────────────────────────────
@@ -20,7 +22,7 @@ StartAtTier = Annotated[
             "Previous tiers must have been completed in a prior run. "
             f"Env: {APP_NAME_UPPERCASE}_START_AT_TIER."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_START_AT_TIER",
+        envvar=EnvVar.START_AT_TIER,
     ),
 ]
 

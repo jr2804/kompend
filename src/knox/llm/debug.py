@@ -29,6 +29,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 
+from knox.core.config.keys import EnvVar
 from knox.llm.format import salvage_json
 from knox.logging import get_logger
 
@@ -91,7 +92,7 @@ def save_debug_prompt(
     text the divergence is preserved.
     """
     # Dev-only debug hook; deliberately read directly, not a runtime config key.
-    debug_dir = os.environ.get("KNOX_DEBUG_LLM_DIR")
+    debug_dir = os.environ.get(EnvVar.DEBUG_LLM_DIR)
     if not debug_dir:
         return
     debug_dir = Path(debug_dir)

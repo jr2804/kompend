@@ -9,7 +9,12 @@ from knox.cli.app import app
 from knox.cli.args import ConfigPath, JsonOutput, Verbose
 from knox.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, COMPILE_LLM_DEFAULT_MODEL, COMPILE_LLM_VLM_MODEL
+from knox.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_VLM_MODEL,
+    EnvVar,
+)
 from knox.core.paths import vault_paths
 from knox.logging import get_err_console
 
@@ -22,7 +27,7 @@ def doctor_cmd(
         "--wiki-dir",
         "-w",
         help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
-        envvar="KNOX_WIKI_DIR",
+        envvar=EnvVar.WIKI_DIR,
     ),
     verbose: Verbose = False,
     json_output: JsonOutput = False,

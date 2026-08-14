@@ -8,6 +8,8 @@ No ``"compile.xxx"`` or ``"paths.xxx"`` literal may appear outside this file.
 
 from typing import Final
 
+from knox.core.env import EnvVar  # noqa: F401  # re-exported: importers use knox.core.config.keys.EnvVar
+
 # ── paths section ──
 PATHS_WIKI_DIR: Final[str] = "paths.wiki_dir"
 PATHS_SOURCES_DIR: Final[str] = "paths.sources_dir"

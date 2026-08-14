@@ -6,6 +6,8 @@ from typing import Annotated
 
 import typer
 
+from knox.core.config.keys import EnvVar
+
 # Application name used for environment variable prefixes.
 APP_NAME_UPPERCASE = "KNOX"
 
@@ -23,7 +25,7 @@ WikiDir = Annotated[
         "--wiki-dir",
         "-w",
         help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
-        envvar=f"{APP_NAME_UPPERCASE}_WIKI_DIR",
+        envvar=EnvVar.WIKI_DIR,
     ),
 ]
 
@@ -33,7 +35,7 @@ Recursive = Annotated[
         "--recursive/--no-recursive",
         "-r/-R",
         help="Search source directories recursively.",
-        envvar=f"{APP_NAME_UPPERCASE}_RECURSIVE",
+        envvar=EnvVar.RECURSIVE,
     ),
 ]
 
@@ -45,7 +47,7 @@ ConfigPath = Annotated[
         help=(
             f"Path to configuration file. Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml. Env: {APP_NAME_UPPERCASE}_CONFIG."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_CONFIG",
+        envvar=EnvVar.CONFIG,
     ),
 ]
 
@@ -98,6 +100,6 @@ Parser = Annotated[
             "the primary lacks. See `knox doctor` for available backends. "
             f"Env: {APP_NAME_UPPERCASE}_INGEST_PARSER."
         ),
-        envvar=f"{APP_NAME_UPPERCASE}_INGEST_PARSER",
+        envvar=EnvVar.INGEST_PARSER,
     ),
 ]

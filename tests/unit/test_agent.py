@@ -19,6 +19,7 @@ from knox.acp.provider_store import (
 )
 from knox.cli._pipeline_helpers import emit_json_done, make_json_progress_callback
 from knox.cli.cmds.agents import _agents_install, _agents_remove
+from knox.core.env import EnvVar
 
 
 class TestProviderConfig:
@@ -82,9 +83,9 @@ class TestProviderCredentials:
         store.set(cfg)
         # These names mirror provider_store's litellm env injection (KNOX_LLM_DEFAULT_MODEL is a config-map key).
         # No model on the provider → the pipeline's own default stays untouched.
-        assert "KNOX_LLM_DEFAULT_MODEL" not in os.environ
-        assert os.environ.get("KNOX_LLM_API_BASE") == "https://api.openai.com/v1"
-        assert os.environ.get("KNOX_LLM_API_KEY") == "sk-test"
+        assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
+        assert os.environ.get(EnvVar.LLM_API_BASE) == "https://api.openai.com/v1"
+        assert os.environ.get(EnvVar.LLM_API_KEY) == "sk-test"
 
     def test_set_reconfigures_model_when_provided(self) -> None:
         store = ProviderCredentials()
@@ -94,16 +95,16 @@ class TestProviderCredentials:
             base_url="https://api.openai.com/v1",
         )
         store.set(cfg)
-        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/gpt-4o"
+        assert os.environ.get(EnvVar.LLM_DEFAULT_MODEL) == "openai/gpt-4o"
 
     def test_disable_restores_env(self) -> None:
         store = ProviderCredentials()
         cfg = ProviderConfig(api_type="openai", model="gpt-4o", base_url="https://api.openai.com/v1")
         store.set(cfg)
-        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/gpt-4o"
+        assert os.environ.get(EnvVar.LLM_DEFAULT_MODEL) == "openai/gpt-4o"
         store.disable()
-        assert "KNOX_LLM_DEFAULT_MODEL" not in os.environ
-        assert "KNOX_LLM_API_BASE" not in os.environ
+        assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
+        assert EnvVar.LLM_API_BASE not in os.environ
 
     def test_llm_provider_map(self) -> None:
         # Well-known apiTypes — four are identity, vertex is overridden.
@@ -211,5 +212,5 @@ class TestAgentInstallRemove:
 def _cleanup_env() -> Generator[None]:
     """Clean up KNOX env vars set by tests."""
     yield
-    for key in ("KNOX_LLM_DEFAULT_MODEL", "KNOX_LLM_API_BASE", "KNOX_LLM_API_KEY"):
+    for key in (EnvVar.LLM_DEFAULT_MODEL, EnvVar.LLM_API_BASE, EnvVar.LLM_API_KEY):
         os.environ.pop(key, None)

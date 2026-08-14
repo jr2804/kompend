@@ -46,6 +46,7 @@ from knox.core.config._configs import LlmDataFormat
 from knox.core.config.keys import (
     COMPILE_LLM_CONTEXT_WINDOW_CAP,
     QUERY_FORMAT,
+    EnvVar,
 )
 from knox.core.models import load_cached_wiki
 from knox.core.paths import vault_paths
@@ -66,7 +67,7 @@ def query_cmd(
         "--wiki-dir",
         "-w",
         help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
-        envvar="KNOX_WIKI_DIR",
+        envvar=EnvVar.WIKI_DIR,
     ),
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,

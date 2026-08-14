@@ -72,6 +72,7 @@ from knox.core.config.keys import (
     INGEST_PARSER,
     LINT_FUZZY_THRESHOLD,
     SEARCH_EMBED_ATTACHMENTS,
+    EnvVar,
 )
 from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths, vault_paths
@@ -129,7 +130,7 @@ def compile_cmd(  # noqa: PLR0915
         "--wiki-dir",
         "-w",
         help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
-        envvar="KNOX_WIKI_DIR",
+        envvar=EnvVar.WIKI_DIR,
     ),
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from knox.core.config._core import resolve_config
+from knox.core.env import EnvVar
 from knox.core.pipeline.config import EmbeddingConfig, LLMConfig, PipelineConfig, Tier
 from knox.core.pipeline.orchestrator import WikiPipeline
 from knox.core.templates import TemplateLoader
@@ -20,19 +21,19 @@ class TestNotesConfig:
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         cfg = resolve_config()
         assert cfg.get("notes.file") == "NOTES.md"
 
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_NOTES_FILE", "CUSTOM.md")
+        monkeypatch.setenv(EnvVar.NOTES_FILE, "CUSTOM.md")
         cfg = resolve_config()
         assert cfg.get("notes.file") == "CUSTOM.md"
 
     def test_project_config_override(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         (tmp_path / "knox.toml").write_text('[notes]\nfile = "MY_NOTES.md"\n', encoding="utf-8")
         cfg = resolve_config()
         assert cfg.get("notes.file") == "MY_NOTES.md"
@@ -46,7 +47,7 @@ class TestNotesFileResolution:
 
     def test_notes_file_resolved_from_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
         assert pc.notes_file is not None
@@ -54,14 +55,14 @@ class TestNotesFileResolution:
 
     def test_notes_file_custom_name(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_NOTES_FILE", "MY_NOTES.md")
+        monkeypatch.setenv(EnvVar.NOTES_FILE, "MY_NOTES.md")
         cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
         assert pc.notes_file == tmp_path / "MY_NOTES.md"
 
     def test_notes_file_none_when_disabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         (tmp_path / "knox.toml").write_text('[notes]\nfile = ""\n', encoding="utf-8")
         cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
@@ -69,7 +70,7 @@ class TestNotesFileResolution:
 
     def test_notes_file_name_from_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KNOX_NOTES_FILE", raising=False)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         cfg = resolve_config()
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
         assert pc.notes_file is not None

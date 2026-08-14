@@ -18,6 +18,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.settings import ModelSettings
 
 from knox.agents.knox_model import KnoxModel
+from knox.core.env import EnvVar
 from knox.llm.usage import UsageTracker
 
 
@@ -121,7 +122,7 @@ class TestDebugSaving:
     @pytest.mark.asyncio
     async def test_debug_not_saved_when_no_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without an agent reference, debug saving is a no-op even if dir set."""
-        monkeypatch.setenv("KNOX_DEBUG_LLM_DIR", str(tmp_path))
+        monkeypatch.setenv(EnvVar.DEBUG_LLM_DIR, str(tmp_path))
         wrapper = KnoxModel(TestModel(), agent=None)
         params = ModelRequestParameters()
         msgs: list[ModelRequest | ModelResponse] = [ModelRequest(parts=[UserPromptPart(content="ping")])]

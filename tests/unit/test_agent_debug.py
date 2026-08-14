@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from knox.core.env import EnvVar
 from knox.llm.debug import save_debug_prompt
 
 
@@ -37,7 +38,7 @@ def test_save_debug_prompt_survives_lone_surrogates(monkeypatch: pytest.MonkeyPa
 
 
 def _dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str) -> Path:
-    monkeypatch.setenv("KNOX_DEBUG_LLM_DIR", str(tmp_path))
+    monkeypatch.setenv(EnvVar.DEBUG_LLM_DIR, str(tmp_path))
     save_debug_prompt(
         _FakeAgent(),
         "ollama/qwen3",

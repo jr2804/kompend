@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from knox.core.config.keys import EnvVar
 from knox.core.paths import CACHE_DIR, KNOX_DIR
 
 
@@ -150,33 +151,33 @@ class _KnoxBaseModel(BaseModel):
 class LLMConfig(_KnoxBaseModel):
     """Configuration for LLM models, timeouts, and fallback behavior."""
 
-    default_model: str | None = Field(default=None, validation_alias="KNOX_LLM_DEFAULT_MODEL")
-    vlm_model: str | None = Field(default=None, validation_alias="KNOX_VLM_MODEL")
-    fallback_chain: list[str] = Field(default_factory=list, validation_alias="KNOX_LLM_FALLBACK_CHAIN")
-    fallback_max_retries: int = Field(default=2, validation_alias="KNOX_LLM_FALLBACK_MAX_RETRIES")
-    timeout: float = Field(default=120.0, validation_alias="KNOX_LLM_TIMEOUT")
-    fallback_max_input: int = Field(default=32768, validation_alias="KNOX_LLM_FALLBACK_MAX_INPUT")
-    fallback_max_output: int = Field(default=4096, validation_alias="KNOX_LLM_FALLBACK_MAX_OUTPUT")
-    num_ctx_min: int = Field(default=2048, validation_alias="KNOX_LLM_NUM_CTX_MIN")
-    num_ctx_max: int = Field(default=131072, validation_alias="KNOX_LLM_NUM_CTX_MAX")
-    context_window_cap: int | None = Field(default=None, validation_alias="KNOX_LLM_CONTEXT_WINDOW_CAP")
+    default_model: str | None = Field(default=None, validation_alias=EnvVar.LLM_DEFAULT_MODEL)
+    vlm_model: str | None = Field(default=None, validation_alias=EnvVar.VLM_MODEL)
+    fallback_chain: list[str] = Field(default_factory=list, validation_alias=EnvVar.LLM_FALLBACK_CHAIN)
+    fallback_max_retries: int = Field(default=2, validation_alias=EnvVar.LLM_FALLBACK_MAX_RETRIES)
+    timeout: float = Field(default=120.0, validation_alias=EnvVar.LLM_TIMEOUT)
+    fallback_max_input: int = Field(default=32768, validation_alias=EnvVar.LLM_FALLBACK_MAX_INPUT)
+    fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
+    num_ctx_min: int = Field(default=2048, validation_alias=EnvVar.LLM_NUM_CTX_MIN)
+    num_ctx_max: int = Field(default=131072, validation_alias=EnvVar.LLM_NUM_CTX_MAX)
+    context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP)
     role_models: dict[str, str] = Field(default_factory=dict)
-    data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias="KNOX_LLM_DATA_FORMAT")
-    output_retries: int = Field(default=2, validation_alias="KNOX_LLM_OUTPUT_RETRIES")
-    output_retries_enabled: bool = Field(default=True, validation_alias="KNOX_LLM_OUTPUT_RETRIES_ENABLED")
-    delta_retry_enabled: bool = Field(default=True, validation_alias="KNOX_LLM_DELTA_RETRY_ENABLED")
-    batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias="KNOX_LLM_BATCH_FAILURE_THRESHOLD_RATIO")
-    batch_failure_threshold_min: int = Field(default=5, validation_alias="KNOX_LLM_BATCH_FAILURE_THRESHOLD_MIN")
-    reasoning_effort: str | None = Field(default=None, validation_alias="KNOX_LLM_REASONING_EFFORT")
-    context_manager: str | bool = Field(default="default", validation_alias="KNOX_LLM_CONTEXT_MANAGER")
+    data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
+    output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
+    output_retries_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_OUTPUT_RETRIES_ENABLED)
+    delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)
+    batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_RATIO)
+    batch_failure_threshold_min: int = Field(default=5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_MIN)
+    reasoning_effort: str | None = Field(default=None, validation_alias=EnvVar.LLM_REASONING_EFFORT)
+    context_manager: str | bool = Field(default="default", validation_alias=EnvVar.LLM_CONTEXT_MANAGER)
     extraction_strategy: ExtractionStrategy = Field(
         default=ExtractionStrategy.INCREMENTAL,
-        validation_alias="KNOX_LLM_EXTRACTION_STRATEGY",
+        validation_alias=EnvVar.LLM_EXTRACTION_STRATEGY,
     )
-    slug_max_length: int = Field(default=80, validation_alias="KNOX_LLM_SLUG_MAX_LENGTH")
-    batch_retry_attempts: int = Field(default=3, validation_alias="KNOX_LLM_BATCH_RETRY_ATTEMPTS")
-    min_segment_tokens: int = Field(default=512, validation_alias="KNOX_LLM_MIN_SEGMENT_TOKENS")
-    default_chars_per_token: float = Field(default=3.85, validation_alias="KNOX_LLM_DEFAULT_CHARS_PER_TOKEN")
+    slug_max_length: int = Field(default=80, validation_alias=EnvVar.LLM_SLUG_MAX_LENGTH)
+    batch_retry_attempts: int = Field(default=3, validation_alias=EnvVar.LLM_BATCH_RETRY_ATTEMPTS)
+    min_segment_tokens: int = Field(default=512, validation_alias=EnvVar.LLM_MIN_SEGMENT_TOKENS)
+    default_chars_per_token: float = Field(default=3.85, validation_alias=EnvVar.LLM_DEFAULT_CHARS_PER_TOKEN)
 
 
 class BudgetConfig(_KnoxBaseModel):
@@ -190,17 +191,17 @@ class BudgetConfig(_KnoxBaseModel):
       implemented and has been removed.
     """
 
-    concepts_per_batch: int = Field(default=8, validation_alias="KNOX_BUDGET_CONCEPTS_PER_BATCH")
+    concepts_per_batch: int = Field(default=8, validation_alias=EnvVar.BUDGET_CONCEPTS_PER_BATCH)
     verify_min_ngram: int = 3
-    wicer_max_iterations: int = Field(default=3, validation_alias="KNOX_BUDGET_WICER_MAX_ITERATIONS")
-    min_content_length: int = Field(default=50, validation_alias="KNOX_BUDGET_MIN_CONTENT_LENGTH")
-    min_concept_sources: int = Field(default=2, validation_alias="KNOX_BUDGET_MIN_CONCEPT_SOURCES")
-    max_concept_pages: int = Field(default=50, validation_alias="KNOX_BUDGET_MAX_CONCEPT_PAGES")
-    chunk_size_min: int = Field(default=2048, validation_alias="KNOX_BUDGET_CHUNK_SIZE_MIN")
-    chunk_size_max: int = Field(default=131072, validation_alias="KNOX_BUDGET_CHUNK_SIZE_MAX")
-    extract_output_max: int = Field(default=8192, validation_alias="KNOX_BUDGET_EXTRACT_OUTPUT_MAX")
-    gen_output_max: int = Field(default=16384, validation_alias="KNOX_BUDGET_GEN_OUTPUT_MAX")
-    overview_output_max: int = Field(default=4096, validation_alias="KNOX_BUDGET_OVERVIEW_OUTPUT_MAX")
+    wicer_max_iterations: int = Field(default=3, validation_alias=EnvVar.BUDGET_WICER_MAX_ITERATIONS)
+    min_content_length: int = Field(default=50, validation_alias=EnvVar.BUDGET_MIN_CONTENT_LENGTH)
+    min_concept_sources: int = Field(default=2, validation_alias=EnvVar.BUDGET_MIN_CONCEPT_SOURCES)
+    max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)
+    chunk_size_min: int = Field(default=2048, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MIN)
+    chunk_size_max: int = Field(default=131072, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MAX)
+    extract_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_EXTRACT_OUTPUT_MAX)
+    gen_output_max: int = Field(default=16384, validation_alias=EnvVar.BUDGET_GEN_OUTPUT_MAX)
+    overview_output_max: int = Field(default=4096, validation_alias=EnvVar.BUDGET_OVERVIEW_OUTPUT_MAX)
     verify_output_max: int = 4096
     lint_output_max: int = 8192
     wicer_probe_output_max: int = 4096
@@ -209,11 +210,11 @@ class BudgetConfig(_KnoxBaseModel):
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
-    capture_source_char_max: int = Field(default=4000, validation_alias="KNOX_BUDGET_CAPTURE_SOURCE_CHAR_MAX")
-    concept_merge_threshold: float = Field(default=0.82, validation_alias="KNOX_BUDGET_CONCEPT_MERGE_THRESHOLD")
-    concept_string_merge_threshold: float = Field(default=0.70, validation_alias="KNOX_BUDGET_CONCEPT_STRING_MERGE_THRESHOLD")
-    jaccard_min_token_len: int = Field(default=1, validation_alias="KNOX_BUDGET_JACCARD_MIN_TOKEN_LEN")
-    edge_min_title_len: int = Field(default=4, validation_alias="KNOX_BUDGET_EDGE_MIN_TITLE_LEN")
+    capture_source_char_max: int = Field(default=4000, validation_alias=EnvVar.BUDGET_CAPTURE_SOURCE_CHAR_MAX)
+    concept_merge_threshold: float = Field(default=0.82, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_THRESHOLD)
+    concept_string_merge_threshold: float = Field(default=0.70, validation_alias=EnvVar.BUDGET_CONCEPT_STRING_MERGE_THRESHOLD)
+    jaccard_min_token_len: int = Field(default=1, validation_alias=EnvVar.BUDGET_JACCARD_MIN_TOKEN_LEN)
+    edge_min_title_len: int = Field(default=4, validation_alias=EnvVar.BUDGET_EDGE_MIN_TITLE_LEN)
 
 
 class OutputConfig(_KnoxBaseModel):
@@ -222,11 +223,11 @@ class OutputConfig(_KnoxBaseModel):
     ``format`` defaults to ``okf`` (Open Knowledge Format v0.1).
     """
 
-    format: OutputFormat = Field(default=OutputFormat.OKF, validation_alias="KNOX_FORMAT")
-    flavor: str | None = Field(default=None, validation_alias="KNOX_OUTPUT_FLAVOR")
+    format: OutputFormat = Field(default=OutputFormat.OKF, validation_alias=EnvVar.FORMAT)
+    flavor: str | None = Field(default=None, validation_alias=EnvVar.OUTPUT_FLAVOR)
     frontmatter: dict[str, Any] = Field(default_factory=dict)
-    rumdl_config: Path | None = Field(default=None, validation_alias="KNOX_RUMDL_CONFIG")
-    max_related_links: int = Field(default=15, validation_alias="KNOX_OUTPUT_MAX_RELATED_LINKS")
+    rumdl_config: Path | None = Field(default=None, validation_alias=EnvVar.RUMDL_CONFIG)
+    max_related_links: int = Field(default=15, validation_alias=EnvVar.OUTPUT_MAX_RELATED_LINKS)
 
 
 class EmbeddingConfig(_KnoxBaseModel):
@@ -237,7 +238,7 @@ class EmbeddingConfig(_KnoxBaseModel):
     """
 
     model: str = Field(default="")
-    batch_size: int = Field(default=10, validation_alias="KNOX_EMBEDDING_BATCH_SIZE")
+    batch_size: int = Field(default=10, validation_alias=EnvVar.EMBEDDING_BATCH_SIZE)
 
 
 class PdfConfig(_KnoxBaseModel):
@@ -247,9 +248,9 @@ class PdfConfig(_KnoxBaseModel):
     overlapping page-range segments to keep ONNX/OCR memory bounded.
     """
 
-    max_pages_before_chunking: int = Field(default=50, validation_alias="KNOX_PDF_MAX_PAGES_BEFORE_CHUNKING")
-    page_chunk_size: int = Field(default=30, validation_alias="KNOX_PDF_PAGE_CHUNK_SIZE")
-    page_chunk_overlap: int = Field(default=5, validation_alias="KNOX_PDF_PAGE_CHUNK_OVERLAP")
+    max_pages_before_chunking: int = Field(default=50, validation_alias=EnvVar.PDF_MAX_PAGES_BEFORE_CHUNKING)
+    page_chunk_size: int = Field(default=30, validation_alias=EnvVar.PDF_PAGE_CHUNK_SIZE)
+    page_chunk_overlap: int = Field(default=5, validation_alias=EnvVar.PDF_PAGE_CHUNK_OVERLAP)
 
 
 # ── Other section configs ────────────────────────────────────────────────
@@ -258,43 +259,43 @@ class PdfConfig(_KnoxBaseModel):
 class PathsConfig(_KnoxBaseModel):
     """Vault path overrides (all optional — resolved from base_dir at runtime)."""
 
-    wiki_dir: str | None = Field(default=None, validation_alias="KNOX_WIKI_DIR")
-    sources_dir: str = Field(default="sources", validation_alias="KNOX_SOURCES_DIR")
-    output_dir: str = Field(default="wiki", validation_alias="KNOX_OUTPUT_DIR")
-    cache_dir: str = Field(default=CACHE_DIR, validation_alias="KNOX_CACHE_DIR")
-    state_dir: str = Field(default=KNOX_DIR, validation_alias="KNOX_STATE_DIR")
+    wiki_dir: str | None = Field(default=None, validation_alias=EnvVar.WIKI_DIR)
+    sources_dir: str = Field(default="sources", validation_alias=EnvVar.SOURCES_DIR)
+    output_dir: str = Field(default="wiki", validation_alias=EnvVar.OUTPUT_DIR)
+    cache_dir: str = Field(default=CACHE_DIR, validation_alias=EnvVar.CACHE_DIR)
+    state_dir: str = Field(default=KNOX_DIR, validation_alias=EnvVar.STATE_DIR)
 
 
 class LintConfig(_KnoxBaseModel):
     """Lint configuration. ``enabled=None`` means all structural rules."""
 
     enabled: list[str] | None = None
-    fuzzy_threshold: float = Field(default=0.85, validation_alias="KNOX_LINT_FUZZY_THRESHOLD")
+    fuzzy_threshold: float = Field(default=0.85, validation_alias=EnvVar.LINT_FUZZY_THRESHOLD)
 
 
 class EvalConfig(_KnoxBaseModel):
     """Evaluation configuration."""
 
-    threshold: float | None = Field(default=None, validation_alias="KNOX_EVAL_THRESHOLD")
+    threshold: float | None = Field(default=None, validation_alias=EnvVar.EVAL_THRESHOLD)
     history_size: int = 20
 
 
 class DedupConfig(_KnoxBaseModel):
     """Deduplication configuration (opt-in by default)."""
 
-    enabled: bool = Field(default=False, validation_alias="KNOX_DEDUP_ENABLED")
-    matchers: str = Field(default="embedding,minhash", validation_alias="KNOX_DEDUP_MATCHERS")
-    threshold_identical: float = Field(default=0.95, validation_alias="KNOX_DEDUP_THRESHOLD_IDENTICAL")
-    threshold_similar: float = Field(default=0.80, validation_alias="KNOX_DEDUP_THRESHOLD_SIMILAR")
-    model: str = Field(default="", validation_alias="KNOX_DEDUP_MODEL")
-    minhash_lsh_threshold: float = Field(default=0.8, validation_alias="KNOX_DEDUP_MINHASH_LSH_THRESHOLD")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.DEDUP_ENABLED)
+    matchers: str = Field(default="embedding,minhash", validation_alias=EnvVar.DEDUP_MATCHERS)
+    threshold_identical: float = Field(default=0.95, validation_alias=EnvVar.DEDUP_THRESHOLD_IDENTICAL)
+    threshold_similar: float = Field(default=0.80, validation_alias=EnvVar.DEDUP_THRESHOLD_SIMILAR)
+    model: str = Field(default="", validation_alias=EnvVar.DEDUP_MODEL)
+    minhash_lsh_threshold: float = Field(default=0.8, validation_alias=EnvVar.DEDUP_MINHASH_LSH_THRESHOLD)
 
 
 class TrustConfig(_KnoxBaseModel):
     """Privacy and trust configuration."""
 
     privacy_filter: bool = Field(default=True)
-    user_tracking: bool = Field(default=True, validation_alias="KNOX_USER_TRACKING")
+    user_tracking: bool = Field(default=True, validation_alias=EnvVar.USER_TRACKING)
 
 
 class QueryConfig(_KnoxBaseModel):
@@ -304,38 +305,38 @@ class QueryConfig(_KnoxBaseModel):
 
 
 class SearchExpansionConfig(_KnoxBaseModel):
-    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_EXPANSION_ENABLED")
-    variants: int = Field(default=3, validation_alias="KNOX_SEARCH_EXPANSION_VARIANTS")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_EXPANSION_ENABLED)
+    variants: int = Field(default=3, validation_alias=EnvVar.SEARCH_EXPANSION_VARIANTS)
 
 
 class SearchCragConfig(_KnoxBaseModel):
-    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_CRAG_ENABLED")
-    threshold: float = Field(default=0.3, validation_alias="KNOX_SEARCH_CRAG_THRESHOLD")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_CRAG_ENABLED)
+    threshold: float = Field(default=0.3, validation_alias=EnvVar.SEARCH_CRAG_THRESHOLD)
 
 
 class SearchRerankerConfig(_KnoxBaseModel):
-    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_RERANKER_ENABLED")
-    model: str = Field(default="", validation_alias="KNOX_SEARCH_RERANKER_MODEL")
-    top_k: int = Field(default=20, validation_alias="KNOX_SEARCH_RERANKER_TOP_K")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_RERANKER_ENABLED)
+    model: str = Field(default="", validation_alias=EnvVar.SEARCH_RERANKER_MODEL)
+    top_k: int = Field(default=20, validation_alias=EnvVar.SEARCH_RERANKER_TOP_K)
 
 
 class SearchHydeConfig(_KnoxBaseModel):
-    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_HYDE_ENABLED")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_HYDE_ENABLED)
 
 
 class SearchContextualConfig(_KnoxBaseModel):
-    enabled: bool = Field(default=False, validation_alias="KNOX_SEARCH_CONTEXTUAL_ENABLED")
-    model: str = Field(default="", validation_alias="KNOX_SEARCH_CONTEXTUAL_MODEL")
+    enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_CONTEXTUAL_ENABLED)
+    model: str = Field(default="", validation_alias=EnvVar.SEARCH_CONTEXTUAL_MODEL)
 
 
 class SearchSynthesisTokensConfig(_KnoxBaseModel):
-    brief: int = Field(default=300, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_BRIEF")
-    standard: int = Field(default=800, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_STANDARD")
-    comprehensive: int = Field(default=2000, validation_alias="KNOX_SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE")
+    brief: int = Field(default=300, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_BRIEF)
+    standard: int = Field(default=800, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_STANDARD)
+    comprehensive: int = Field(default=2000, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE)
 
 
 class SearchSynthesisConfig(_KnoxBaseModel):
-    verbosity: Verbosity = Field(default=Verbosity.STANDARD, validation_alias="KNOX_SEARCH_SYNTHESIS_VERBOSITY")
+    verbosity: Verbosity = Field(default=Verbosity.STANDARD, validation_alias=EnvVar.SEARCH_SYNTHESIS_VERBOSITY)
     tokens: SearchSynthesisTokensConfig = Field(default_factory=SearchSynthesisTokensConfig)
 
 
@@ -355,10 +356,10 @@ class SearchConfig(_KnoxBaseModel):
 class OrganizeConfig(_KnoxBaseModel):
     """Configuration for ``knox organize`` LLM-based file categorization."""
 
-    max_depth: int = Field(default=3, validation_alias="KNOX_ORGANIZE_MAX_DEPTH")
-    min_subcategories: int = Field(default=2, validation_alias="KNOX_ORGANIZE_MIN_SUBCATEGORIES")
+    max_depth: int = Field(default=3, validation_alias=EnvVar.ORGANIZE_MAX_DEPTH)
+    min_subcategories: int = Field(default=2, validation_alias=EnvVar.ORGANIZE_MIN_SUBCATEGORIES)
     min_files_per_category: int = 2
-    collapse_single_file: bool = Field(default=True, validation_alias="KNOX_ORGANIZE_COLLAPSE_SINGLE_FILE")
+    collapse_single_file: bool = Field(default=True, validation_alias=EnvVar.ORGANIZE_COLLAPSE_SINGLE_FILE)
 
 
 class IgnoreConfig(_KnoxBaseModel):
@@ -374,37 +375,37 @@ class DisplayConfig(_KnoxBaseModel):
     or large captured notes can widen them without touching code.
     """
 
-    source_names: int = Field(default=20, validation_alias="KNOX_DISPLAY_SOURCE_NAMES")
-    related_titles: int = Field(default=15, validation_alias="KNOX_DISPLAY_RELATED_TITLES")
-    doc_headings: int = Field(default=5, validation_alias="KNOX_DISPLAY_DOC_HEADINGS")
-    concept_names: int = Field(default=3, validation_alias="KNOX_DISPLAY_CONCEPT_NAMES")
-    memory_entries: int = Field(default=10, validation_alias="KNOX_DISPLAY_MEMORY_ENTRIES")
-    excerpt_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_EXCERPT_CHARS")
-    error_chars: int = Field(default=200, validation_alias="KNOX_DISPLAY_ERROR_CHARS")
-    json_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_JSON_CHARS")
-    cli_element_chars: int = Field(default=80, validation_alias="KNOX_DISPLAY_CLI_ELEMENT_CHARS")
-    tier_sample_size: int = Field(default=5, validation_alias="KNOX_DISPLAY_TIER_SAMPLE_SIZE")
-    cli_arg_preview: int = Field(default=4, validation_alias="KNOX_DISPLAY_CLI_ARG_PREVIEW")
-    log_error_chars: int = Field(default=500, validation_alias="KNOX_DISPLAY_LOG_ERROR_CHARS")
-    lint_feedback_chars: int = Field(default=200, validation_alias="KNOX_DISPLAY_LINT_FEEDBACK_CHARS")
-    memory_query_chars: int = Field(default=50, validation_alias="KNOX_DISPLAY_MEMORY_QUERY_CHARS")
-    mcp_element_chars: int = Field(default=500, validation_alias="KNOX_DISPLAY_MCP_ELEMENT_CHARS")
-    wiki_topics: int = Field(default=30, validation_alias="KNOX_DISPLAY_WIKI_TOPICS")
-    query_expansions: int = Field(default=7, validation_alias="KNOX_DISPLAY_QUERY_EXPANSIONS")
-    web_nodes: int = Field(default=10, validation_alias="KNOX_DISPLAY_WEB_NODES")
-    search_snippet_chars: int = Field(default=300, validation_alias="KNOX_DISPLAY_SEARCH_SNIPPET_CHARS")
+    source_names: int = Field(default=20, validation_alias=EnvVar.DISPLAY_SOURCE_NAMES)
+    related_titles: int = Field(default=15, validation_alias=EnvVar.DISPLAY_RELATED_TITLES)
+    doc_headings: int = Field(default=5, validation_alias=EnvVar.DISPLAY_DOC_HEADINGS)
+    concept_names: int = Field(default=3, validation_alias=EnvVar.DISPLAY_CONCEPT_NAMES)
+    memory_entries: int = Field(default=10, validation_alias=EnvVar.DISPLAY_MEMORY_ENTRIES)
+    excerpt_chars: int = Field(default=300, validation_alias=EnvVar.DISPLAY_EXCERPT_CHARS)
+    error_chars: int = Field(default=200, validation_alias=EnvVar.DISPLAY_ERROR_CHARS)
+    json_chars: int = Field(default=300, validation_alias=EnvVar.DISPLAY_JSON_CHARS)
+    cli_element_chars: int = Field(default=80, validation_alias=EnvVar.DISPLAY_CLI_ELEMENT_CHARS)
+    tier_sample_size: int = Field(default=5, validation_alias=EnvVar.DISPLAY_TIER_SAMPLE_SIZE)
+    cli_arg_preview: int = Field(default=4, validation_alias=EnvVar.DISPLAY_CLI_ARG_PREVIEW)
+    log_error_chars: int = Field(default=500, validation_alias=EnvVar.DISPLAY_LOG_ERROR_CHARS)
+    lint_feedback_chars: int = Field(default=200, validation_alias=EnvVar.DISPLAY_LINT_FEEDBACK_CHARS)
+    memory_query_chars: int = Field(default=50, validation_alias=EnvVar.DISPLAY_MEMORY_QUERY_CHARS)
+    mcp_element_chars: int = Field(default=500, validation_alias=EnvVar.DISPLAY_MCP_ELEMENT_CHARS)
+    wiki_topics: int = Field(default=30, validation_alias=EnvVar.DISPLAY_WIKI_TOPICS)
+    query_expansions: int = Field(default=7, validation_alias=EnvVar.DISPLAY_QUERY_EXPANSIONS)
+    web_nodes: int = Field(default=10, validation_alias=EnvVar.DISPLAY_WEB_NODES)
+    search_snippet_chars: int = Field(default=300, validation_alias=EnvVar.DISPLAY_SEARCH_SNIPPET_CHARS)
 
 
 class NotesConfig(_KnoxBaseModel):
-    file: str = Field(default="NOTES.md", validation_alias="KNOX_NOTES_FILE")
+    file: str = Field(default="NOTES.md", validation_alias=EnvVar.NOTES_FILE)
 
 
 class IngestConfig(_KnoxBaseModel):
-    parser: str = Field(default="liteparse", validation_alias="KNOX_INGEST_PARSER")
+    parser: str = Field(default="liteparse", validation_alias=EnvVar.INGEST_PARSER)
 
 
 class DownloaderConfig(_KnoxBaseModel):
-    undetected: bool = Field(default=True, validation_alias="KNOX_DOWNLOADER_UNDETECTED")
+    undetected: bool = Field(default=True, validation_alias=EnvVar.DOWNLOADER_UNDETECTED)
 
 
 class ProviderEndpoint(_KnoxBaseModel):
@@ -453,17 +454,17 @@ class CompileConfig(_KnoxBaseModel):
     output_dir: str = "wiki"
 
     compiler: str = "graph"
-    image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias="KNOX_IMAGE_MODE")
+    image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias=EnvVar.IMAGE_MODE)
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
     mode: str = "full"
-    workers: int = Field(default=1, validation_alias="KNOX_WORKERS")
-    no_cache: bool = Field(default=False, validation_alias="KNOX_NO_CACHE")
-    force: bool = Field(default=False, validation_alias="KNOX_FORCE")
+    workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
+    no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
+    force: bool = Field(default=False, validation_alias=EnvVar.FORCE)
     in_place_sources: bool = Field(default=False)
     memory_enabled: bool = Field(default=True)
-    memory_half_life_days: float = Field(default=90.0, validation_alias="KNOX_MEMORY_HALF_LIFE_DAYS")
-    memory_decay_threshold: float = Field(default=0.3, validation_alias="KNOX_MEMORY_DECAY_THRESHOLD")
+    memory_half_life_days: float = Field(default=90.0, validation_alias=EnvVar.MEMORY_HALF_LIFE_DAYS)
+    memory_decay_threshold: float = Field(default=0.3, validation_alias=EnvVar.MEMORY_DECAY_THRESHOLD)
     review: bool = False
     bypass_review: bool = False
     provenance: bool = False

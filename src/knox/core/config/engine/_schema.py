@@ -15,6 +15,7 @@ from knox.core.config.keys import (
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
     COMPILE_TIER_STATE_FILE,
+    EnvVar,
 )
 from knox.core.utils.dicts import flat_keys
 from knox.logging import get_logger
@@ -48,11 +49,11 @@ def _build_env_map() -> dict[str, str]:
     # via CLI overrides). Keys live in ``knox.core.config.keys``.
     env_map.update(
         {
-            COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
-            COMPILE_STOP_AT_TIER: "KNOX_STOP_AT_TIER",
-            COMPILE_TIER_STATE_FILE: "KNOX_TIER_STATE_PATH",
-            COMPILE_CACHE_DIR: "KNOX_COMPILE_CACHE_DIR",
-            COMPILE_RESPECT_GITIGNORE: "KNOX_RESPECT_GITIGNORE",
+            COMPILE_START_AT_TIER: EnvVar.START_AT_TIER,
+            COMPILE_STOP_AT_TIER: EnvVar.STOP_AT_TIER,
+            COMPILE_TIER_STATE_FILE: EnvVar.TIER_STATE_PATH,
+            COMPILE_CACHE_DIR: EnvVar.COMPILE_CACHE_DIR,
+            COMPILE_RESPECT_GITIGNORE: EnvVar.RESPECT_GITIGNORE,
         }
     )
     return env_map
