@@ -65,7 +65,7 @@ backends configured in `parser` are silently skipped (with a warning).
 | `.xlsx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
 | `.adoc` | DoclingParser | AsciiDoc via docling |
 | `.eml`, `.msg` | DoclingParser | Email via docling |
-| `.doc` | PandocParser | Legacy Word (docling does not support this) |
+| `.doc` | LiteParseParser / DoclingParser | Legacy Word — converted via LibreOffice (requires a local install) |
 | `.odt` | PandocParser | OpenDocument text |
 | `.rst` | PandocParser | reStructuredText |
 | `.rtf` | PandocParser | Rich Text Format |
@@ -81,7 +81,7 @@ resort. Truly binary files with unknown extensions are skipped.
 KNOX ships **LiteParse** as the default parser. LiteParse is built on a fast
 Rust core: it is much faster than Docling while being only slightly less
 accurate, which makes it the right default for most ingest workloads. It covers
-PDF, DOCX, PPTX, and XLSX out of the box.
+PDF, DOCX, DOC, PPTX, and XLSX out of the box.
 
 For the highest possible fidelity, install **Docling** (an optional extra) and
 put it ahead of `liteparse` in the `parser` priority list:
@@ -119,9 +119,12 @@ it with `uv add knox[docling]`.
 ## PandocParser: Legacy Format Support
 
 [Pandoc](https://pandoc.org/) (the Python `pandoc` package) handles formats
-that docling does not support: legacy Word (`.doc`), OpenDocument (`.odt`),
-reStructuredText (`.rst`), and Rich Text Format (`.rtf`). It also handles
-plain text files (`.txt`) and serves as the binaryornot text fallback.
+that docling does not support: OpenDocument (`.odt`), reStructuredText
+(`.rst`), LaTeX (`.tex`, `.ltx`), and Rich Text Format (`.rtf`). It also
+handles plain text files (`.txt`) and serves as the binaryornot text
+fallback. Legacy binary Word (`.doc`) is **not** pandoc's job — pandoc has
+no reader for the OLE container format; LiteParse and Docling read `.doc`
+via LibreOffice instead.
 
 PandocParser is registered **after** DoclingParser in the parser router, so
 docling always wins for formats both support (e.g. `.docx` is handled by
@@ -278,7 +281,7 @@ manually:
 
 ```bash
 uv add knox[docling]        # high-accuracy PDF/office (Docling)
-uv add knox[pandoc]         # legacy formats (.doc, .odt, .tex, .epub)
+uv add knox[pandoc]         # legacy formats (.odt, .tex, .rtf, .rst)
 uv pip install marker-pdf   # deep-learning PDF/office/HTML (Marker, highest benchmark accuracy)
 ```
 

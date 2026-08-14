@@ -61,7 +61,8 @@ class PandocParser(BaseParser):
     """Parse documents via pandoc (DOCX, EPUB, HTML, LaTeX, ODT, RST, RTF, …)."""
 
     supported_extensions: set[FileExtension] = {
-        FileExtension.DOC,
+        # Legacy binary .doc is NOT claimed: pandoc has no reader for it
+        # (the docx reader needs an OOXML zip; a .doc is an OLE container).
         FileExtension.LTX,
         FileExtension.ODT,
         FileExtension.RST,
@@ -75,7 +76,6 @@ class PandocParser(BaseParser):
     #: for *which* extensions exist; this class-level map declares which
     #: *pandoc reader* each one needs — owned by the parser, not the enum.
     _READER_FOR: ClassVar[dict[FileExtension, str]] = {
-        FileExtension.DOC: "docx",
         FileExtension.DOCX: "docx",
         FileExtension.EPUB: "epub",
         FileExtension.HTML: "html",

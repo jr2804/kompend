@@ -57,6 +57,7 @@ class DoclingParser(BaseParser):
 
     supported_extensions: set[FileExtension] = {
         FileExtension.PDF,
+        FileExtension.DOC,
         FileExtension.DOCX,
         FileExtension.PPTX,
         FileExtension.HTML,

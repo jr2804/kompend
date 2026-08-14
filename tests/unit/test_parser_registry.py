@@ -180,14 +180,16 @@ def test_build_default_router_priority_order_routes_by_format() -> None:
     # liteparse has no HTML/TEX → docling (next in the chain) handles them.
     assert isinstance(router.route(Path("page.html")), DoclingParser)
     assert isinstance(router.route(Path("report.tex")), DoclingParser)
-    # neither liteparse nor docling supports DOC → pandoc (auto-appended).
-    assert isinstance(router.route(Path("legacy.doc")), PandocParser)
+    # legacy .doc is read via LibreOffice by liteparse (listed first) — pandoc cannot.
+    assert isinstance(router.route(Path("legacy.doc")), LiteParseParser)
 
 
 def test_build_default_router_always_appends_pandoc() -> None:
     """Pandoc is auto-appended even when not listed, so legacy formats don't regress."""
     router = build_default_router(names="liteparse")
-    assert isinstance(router.route(Path("legacy.doc")), PandocParser)
+    # legacy .doc goes to liteparse (LibreOffice conversion); .odt to pandoc.
+    assert isinstance(router.route(Path("legacy.doc")), LiteParseParser)
+    assert isinstance(router.route(Path("legacy.odt")), PandocParser)
     assert any(isinstance(p, PandocParser) for p in router._parsers)
 
 
@@ -217,7 +219,7 @@ def test_resolve_format_unknown_text_falls_back_to_markdown() -> None:
     assert readers[FileExtension.MD] == "markdown"
     assert readers[FileExtension.TEX] == "latex"
     assert readers[FileExtension.LTX] == "latex"
-    assert readers[FileExtension.DOC] == "docx"
+    assert readers[FileExtension.DOCX] == "docx"
     assert readers[FileExtension.ADOC] == "asciidoc"
 
 

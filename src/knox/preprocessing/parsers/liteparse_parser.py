@@ -5,8 +5,8 @@ no LLM/captioning of its own, so ``figure_enrichment`` is ``False`` and every
 extracted figure still flows through ``VLMEnricher`` (per-figure bypass only
 applies when a description is already present, which LiteParse never sets).
 
-Office formats (DOCX/PPTX/XLSX) are converted via an external LibreOffice
-install; PDF is handled natively via PDFium.
+Office formats (DOC/DOCX/PPT/PPTX/XLS/XLSX) are converted via an external
+LibreOffice install; PDF is handled natively via PDFium.
 """
 
 from __future__ import annotations
@@ -58,6 +58,7 @@ class LiteParseParser(BaseParser):
 
     supported_extensions: set[FileExtension] = {
         FileExtension.PDF,
+        FileExtension.DOC,
         FileExtension.DOCX,
         FileExtension.PPTX,
         FileExtension.XLSX,
