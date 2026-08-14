@@ -56,11 +56,12 @@ and the config key was deleted. Commit: uncommitted (worktree after `fe517d1`).
 
 Same principle applied to the zvec stores (`rag/zvec_store.py`,
 `memory/store.py`): the `embedding_dim=384` defaults were the last
-`dim = 384` literals (AGENTS.md antipattern table). Removed — dim now always
-resolves from `provider.dim`. Additionally, both stores now rebuild instead
-of reopening when an existing collection's stored dimension differs from the
-current model (previously raised "field dimension mismatch" on insert, e.g.
-after switching from a 384-dim to a 768-dim embedding model).
+`dim = 384` literals (AGENTS.md antipattern table). Removed entirely — the
+`embedding_dim` params/attributes and `make_provider(dim=)` are gone; dim
+always resolves from `provider.dim`. Additionally, both stores now rebuild
+instead of reopening when an existing collection's stored dimension differs
+from the current model (previously raised "field dimension mismatch" on
+insert, e.g. after switching from a 384-dim to a 768-dim embedding model).
 
 ### Why `_ENV_LIST_VARS` is schema-derived and `KNOX_CHARS_PER_TOKEN` was dropped
 

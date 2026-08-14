@@ -40,7 +40,7 @@ consolidated to eliminate duplicated, scattered configuration:
 
 ## Architecture
 
-```
+```text
 Agent.run()
   └─ pydantic_ai.Agent
        ├── capabilities: [ContextManagerCapability]              ← NEW
@@ -87,6 +87,7 @@ ContextManagerCapability(
 ```
 
 Key methods (on `SummarizationProcessor`):
+
 - `plan_compression(messages) → CompressionPlan | None` — decide if/when to compress (no LLM)
 - `execute_plan(plan) → SummarizationResult` — run the summary LLM
 - `process(messages) → SummarizationResult` — plan + execute in one call
@@ -142,6 +143,7 @@ class KnoxAgentBase[ResultT, DepsT](ABC):
 ```
 
 Where `_resolve_context_manager` maps:
+
 - `"default"` → `ContextManagerCapability(max_tokens=ctx_window, compress_threshold=0.9, summarization_model=primary_model)`
 - `"aggressive"` → `ContextManagerCapability(max_tokens=ctx_window, compress_threshold=0.7, keep=("messages", 5), summarization_model=primary_model)`
 - `"sliding"` → `SlidingWindowCapability(trigger=("messages", 100), keep=("messages", 50))`
@@ -276,7 +278,7 @@ compression is orthogonal to the batching loop.
 
 `instructor` v1.15.4 has these providers:
 
-```
+```text
 from_openai, from_anthropic, from_genai, from_gemini, from_cohere,
 from_perplexity, from_xai, from_groq, from_mistral, from_fireworks,
 from_cerebras, from_writer, from_bedrock, from_vertexai, from_litellm,

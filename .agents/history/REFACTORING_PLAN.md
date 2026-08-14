@@ -3,6 +3,7 @@
 ## Overview
 
 KNOX has grown to **32,085 total lines** across **164 Python files**, of which:
+
 - **19,966 net code lines** (actual logic)
 - **1,076 comment lines** (`#` comments, counted via `tokenize`)
 - **5,511 docstring lines** (triple-quoted strings, counted via `ast.get_docstring`)
@@ -13,6 +14,7 @@ target of ~350 net lines per file. This plan identifies the worst offenders
 and proposes a submodule-based reorganization.
 
 **Targets:**
+
 - Max ~350 net lines per file (preferably ~200)
 - Max 7 Python files per submodule, excluding `__init__.py` (preferably ≤5)
 - Reorganize into submodules, not flat distribution
@@ -92,7 +94,7 @@ Keep `two_phase.py` as a module. Extract the three distinct flows into
 sibling modules under `compilation/flows/`. The compiler class stays as a
 coordinator that delegates to the flow modules.
 
-```
+```text
 compilation/flows/
 ├── __init__.py          — re-exports
 ├── extraction.py        — extract(), _extract_one(), _extract_incremental(),
@@ -126,7 +128,7 @@ wiki-assembly logic.
 
 Split by pipeline tier — maps cleanly to the 5-tier domain model.
 
-```
+```text
 core/pipeline/stages/
 ├── __init__.py          — re-exports
 ├── chunk.py             — _parse_and_chunk(), _process_single_source(),
@@ -154,7 +156,7 @@ checkpointing, segmentation.
 
 **Plan — extract checkpoints only:**
 
-```
+```text
 compilation/_checkpoints.py   — _gen_checkpoint_dir/path, _load/save/delete_gen_checkpoint (~80 lines)
 ```
 
@@ -174,7 +176,7 @@ micro-modulitis — too thin to justify.
 One-file-per-tool (39 lines avg) violates the ≤7 files rule. Group related
 tools into 4 files by domain:
 
-```
+```text
 mcp/tools/
 ├── __init__.py          — exports create_mcp_server
 ├── knowledge.py         — parse_document, compile_wiki, wiki_capture,
@@ -193,7 +195,7 @@ TOML loading, path discovery, coercion, validation.
 
 **Plan — `engine/` with 5 files (NOT 7):**
 
-```
+```text
 core/config/engine/
 ├── __init__.py          — re-exports resolve_config, ResolvedConfig
 ├── resolve.py           — resolve_config(), _apply_layer(), _merge_project_configs() (~150 lines)
@@ -215,7 +217,7 @@ core/config/engine/
 
 **Plan — extract post-compile into sibling:**
 
-```
+```text
 cli/_post_compile.py     — _run_post_compile_lint, _cli_build_vector_index,
                            _print_compile_summary, _run_overview_synthesis,
                            _post_compile_actions, _PostCompileOptions,
@@ -229,7 +231,7 @@ resolution → **~200 lines**.
 
 **Plan — `output/pages/` split:**
 
-```
+```text
 output/pages/
 ├── __init__.py          — re-exports
 ├── index.py             — generate_index(), _node_type_counts(), _per_source_stats() (~200 lines)
@@ -244,7 +246,7 @@ output/pages/
 
 **Plan — flat split (NOT nested `web/api/routes/`):**
 
-```
+```text
 web/routes_pages.py      — dashboard, wiki_list, wiki_page, query_page,
                            force_graph, ingest_page, lint_page, settings_page (~200 lines)
 web/routes_api.py        — api_ingest_url, api_learn, api_compile            (~50 lines)
@@ -260,7 +262,7 @@ with sub-sub-packages is over-structure for this size.
 
 **Plan — extract helpers to sibling:**
 
-```
+```text
 cli/_query_helpers.py    — _classify_intent, _execute_query_search,
                            _handle_adaptive_search, _handle_enhanced_search,
                            _synthesize_and_output, _build_enhanced_retriever,
@@ -291,7 +293,7 @@ cli/_query_helpers.py    — _classify_intent, _execute_query_search,
 (e.g., splitting `pipeline.py` into `compile.py` + `ingest.py` makes it 20).
 The correct fix is grouping into domain subdirs:
 
-```
+```text
 cli/cmds/pipeline/   — compile, index, status, config
 cli/cmds/quality/    — doctor, lint, review, log
 cli/cmds/knowledge/  — query, capture, organize, memory, sources, pack
@@ -371,6 +373,7 @@ test suite → commit independently.
 | `compilation/wicer.py` | 296 | ~150 | Extract `_wicer_loop.py` |
 
 **Goals:**
+
 - No file exceeds 350 net lines
 - Submodules contain ≤5 files each (all new submodules stay at 5)
 - Import compatibility maintained via re-exports where needed
@@ -402,6 +405,7 @@ test suite → commit independently.
 | `core/pipeline/orchestrator.py` | 44 | 147 | 811 | 5.4% | 18.1% |
 
 **Findings:**
+
 - All under 13% comment ratio — no redundant-comment debt
 - `core/config/_core.py` has 52% docstring ratio — this is good API docs, not bloat
 - `core/templates/loader.py` has substantive docstrings (template precedence, validation) — preserve, optionally expand to `docs/`
@@ -416,6 +420,7 @@ test suite → commit independently.
 ### Import Breakage
 
 **Mitigation:**
+
 - Use re-export pattern: keep old paths working via `__init__.py` re-exports
 - Run `rg "from knox.X import Y"` before and after each split
 - Prefer sibling extraction over package conversion (lower blast radius)
@@ -423,6 +428,7 @@ test suite → commit independently.
 ### Circular Dependencies
 
 **Mitigation:**
+
 - Analyze import graph with `codegraph_callers`/`codegraph_callees` before splitting
 - Keep shared utilities in leaf modules (no outward imports)
 - Use `from __future__ import annotations` for type hints
@@ -430,6 +436,7 @@ test suite → commit independently.
 ### Test Coverage
 
 **Mitigation:**
+
 - Run full test suite before and after each phase
 - Each phase is independently committable and revertable
 - Run `check_field_consistency.py` + `check_antipatterns.py` after each phase
