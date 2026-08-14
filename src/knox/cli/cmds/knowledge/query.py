@@ -90,7 +90,7 @@ def query_cmd(
         no_user_tracking=no_user_tracking,
         synthesis_verbosity=verbosity.value if verbosity is not None else None,
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     if format is None:
         format = LlmDataFormat(cfg.get(QUERY_FORMAT, LlmDataFormat.MARKDOWN.value))
     sources_dir = vp.sources_dir

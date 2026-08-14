@@ -183,15 +183,15 @@ def _register_for_argv(argv: list[str]) -> None:
 
 def register_command(name: str) -> None:
     """Import the module that registers *name*.  No-op if unknown or already loaded."""
-    module_path = _LAZY_MODULES.get(name)
-    if module_path is not None:
-        importlib.import_module(module_path)
+    module_name = _LAZY_MODULES.get(name)
+    if module_name is not None:
+        importlib.import_module(module_name)
 
 
 def register_all_commands() -> None:
     """Import every command module (for ``--help``, bare ``knox``, shell completion)."""
-    for module_path in dict.fromkeys(_LAZY_MODULES.values()):
-        importlib.import_module(module_path)
+    for module_name in dict.fromkeys(_LAZY_MODULES.values()):
+        importlib.import_module(module_name)
 
 
 def _find_requested_command(argv: list[str]) -> str | None:

@@ -419,7 +419,7 @@ knox sources tag sources/paper.pdf attention
 knox sources untag sources/paper.pdf attention
 ```
 
-The `file_path` argument matches the `source_file` recorded at ingestion —
+The `file` argument matches the `source_file` recorded at ingestion —
 `knox sources list` shows the exact value to use.
 
 ## Environment Variables

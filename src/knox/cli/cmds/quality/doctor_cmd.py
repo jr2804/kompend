@@ -37,7 +37,7 @@ def doctor_cmd(
     vp = vault_paths_from_ctx(ctx)
     if wiki_dir:
         vp = vault_paths(wiki_dir)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
