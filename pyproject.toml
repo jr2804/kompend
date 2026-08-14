@@ -63,22 +63,14 @@ dependencies = [
     "summarization-pydantic-ai>=0.1.10",
     "aenum>=3.1.17",
     "lazy-loader",
+    "liteparse>=2.4.0",
+    "trafilatura>=2.0.0",
 ]
-
-[project.optional-dependencies]
-# Alternative parser/OCR backends with incompatible transitive deps.
-# marker-pdf and glmocr conflict on pillow (marker needs <11, glmocr needs >=12).
-# mineru conflicts with both docling and marker on pillow/transformers.
-# These cannot be locked — install manually if needed:
-#   uv pip install marker-pdf   # or glmocr, mineru
 
 [project.scripts]
 knox = "knox.cli.app:main"
 
-[dependency-groups]
-liteparse = [
-    "liteparse>=2.4.0",
-]
+[project.optional-dependencies]
 
 docling = [
     "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
@@ -87,20 +79,27 @@ docling = [
     "opencv-python-headless>=4.13.0.92",
     "onnxruntime>=1.26.0",
 ]
+
 pandoc = [
     "pypandoc>=1.17",
 ]
-web = [
-    "trafilatura>=2.0.0",
-]
-# Meta-groups: single source of truth via include-group.
-default = [
-    {include-group = "liteparse"},
-    {include-group = "web"},
-]
-# NOTE: marker, glm-ocr, and mineru are extras (optional-dependencies), not
-# groups — they conflict with each other and with docling on transitive deps.
-# docling and pandoc are groups since they coexist cleanly.
+
+# The original plan was to offer further advanced parser backends as optional dependencies,
+# but they conflict on transitive dependencies (pillow, transformers, etc.) and
+# cannot be locked. So for now, we just provide a single default parser
+# backend (liteparse) and let users install alternatives manually if needed.
+#
+# Implemented options are:
+# - marker-pdf
+# - glmocr
+# - mineru (conflict on pillow, marker needs <11, glmocr needs >=12).
+#
+# Manually if needed:
+#   uv pip install marker-pdf   # or glmocr, mineru
+
+
+[dependency-groups]
+
 dev = [
     "mkdocs-material>=9.7.6",
     "pytest>=8.0.0",

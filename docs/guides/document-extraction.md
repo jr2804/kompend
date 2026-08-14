@@ -13,20 +13,34 @@ See also:
 
 ## Optional Parser Backends
 
-Each parser backend is an **optional dependency**. Only `liteparse` (the
-default) is installed out of the box. Install additional backends as needed:
+Installed by default:
+
+- `liteparse` — the default PDF/office parser
+- `web` — trafilatura HTML parser
+
+Additional backends install as package extras:
 
 ```bash
-uv sync --group docling    # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
-uv sync --group mineru     # layout-aware PDF/Office with OCR (heavy deps: torch, ONNX)
-uv sync --group pandoc     # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
-uv sync --group web        # trafilatura HTML parser for web pages
+uv add knox[docling]        # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
+uv add knox[pandoc]         # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
 ```
 
-Or install multiple at once:
+Or several at once:
 
 ```bash
-uv sync --group docling --group pandoc
+uv add knox[docling,pandoc]
+```
+
+> For `pip` users: `pip install knox[docling,pandoc]`.
+
+A few backends cannot ship as extras because their transitive dependencies
+conflict (pillow, transformers, ONNX) and cannot be locked. Install them
+manually:
+
+```bash
+uv pip install marker-pdf   # deep-learning PDF/office/HTML
+uv pip install glmocr       # multimodal OCR for images and PDFs
+uv pip install mineru       # layout-aware PDF/Office with OCR (torch, ONNX)
 ```
 
 List currently available backends with `knox list-parsers`. Uninstalled
@@ -34,17 +48,21 @@ backends configured in `parser` are silently skipped (with a warning).
 
 ## Supported Formats
 
+> **Default coverage:** `liteparse` handles `.pdf`, `.docx`, `.pptx`, and
+> `.xlsx`. The remaining formats below require `docling` or `pandoc` (extras)
+> or `web` (trafilatura, default for HTML).
+
 | Format | Parser | Notes |
 |--------|--------|-------|
-| `.pdf` | DoclingParser | Structure-preserving, incl. tables, images, headings |
-| `.docx` | DoclingParser | Office format via docling |
-| `.pptx` | DoclingParser | PowerPoint via docling |
-| `.html` | DoclingParser | Web pages via docling |
+| `.pdf` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy, incl. tables, images, headings |
+| `.docx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
+| `.pptx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
+| `.html` | WebPageParser / DoclingParser | Trafilatura HTML→Markdown (default); docling alternative |
 | `.md`, `.markdown` | DoclingParser | Markdown via docling |
 | `.epub` | DoclingParser | E-book format via docling |
 | `.tex`, `.ltx` | DoclingParser | LaTeX via docling |
 | `.csv` | DoclingParser | Tabular data via docling |
-| `.xlsx` | DoclingParser | Excel via docling |
+| `.xlsx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
 | `.adoc` | DoclingParser | AsciiDoc via docling |
 | `.eml`, `.msg` | DoclingParser | Email via docling |
 | `.doc` | PandocParser | Legacy Word (docling does not support this) |
@@ -58,11 +76,27 @@ Unknown file extensions are checked with
 is determined to be plain text, it is fed to `PandocParser` as a last
 resort. Truly binary files with unknown extensions are skipped.
 
-## Primary Parser: Docling
+## Parser Strategy: Speed vs. Accuracy
 
-[Docling](https://github.com/docling-project/docling) (MIT license) is KNOX's primary
-document parser. It is a pure-Python library (with C++ acceleration) that
-requires no external runtimes or sidecar processes.
+KNOX ships **LiteParse** as the default parser. LiteParse is built on a fast
+Rust core: it is much faster than Docling while being only slightly less
+accurate, which makes it the right default for most ingest workloads. It covers
+PDF, DOCX, PPTX, and XLSX out of the box.
+
+For the highest possible fidelity, install **Docling** (an optional extra) and
+put it ahead of `liteparse` in the `parser` priority list:
+
+```toml
+[ingest]
+parser = "docling,liteparse,web"
+```
+
+## Docling
+
+[Docling](https://github.com/docling-project/docling) (MIT license) is KNOX's
+highest-accuracy document parser. It is a pure-Python library (with C++
+acceleration) that requires no external runtimes or sidecar processes. Install
+it with `uv add knox[docling]`.
 
 ## Strengths
 
@@ -119,10 +153,10 @@ source file to Markdown (with extracted images), then walks the Markdown into
 KNOX `DocumentElement` values.
 
 MinerU requires heavy dependencies (torch, transformers, ONNX models). It is
-**not** installed by default — install it explicitly:
+**not** installed by default — install it manually:
 
 ```bash
-uv sync --group mineru
+uv pip install mineru
 ```
 
 Then enable it in the priority list: `parser = "web,mineru,docling"`.
@@ -238,15 +272,14 @@ plain text.
 
 ## Optional Parser Frontends
 
-KNOX ships with **LiteParse** as the default parser (always installed).
-Additional parser backends are available as optional dependency groups.
-Install the ones you need:
+KNOX ships with **LiteParse** and **web** (trafilatura) as the default
+parsers (always installed). Additional parser backends install as extras or
+manually:
 
 ```bash
-uv sync --group docling    # high-accuracy PDF/office (Docling)
-uv sync --group marker     # deep-learning PDF/office/HTML (Marker, highest benchmark accuracy)
-uv sync --group pandoc     # legacy formats (.doc, .odt, .tex, .epub)
-uv sync --group web        # HTML/web-page extraction (trafilatura)
+uv add knox[docling]        # high-accuracy PDF/office (Docling)
+uv add knox[pandoc]         # legacy formats (.doc, .odt, .tex, .epub)
+uv pip install marker-pdf   # deep-learning PDF/office/HTML (Marker, highest benchmark accuracy)
 ```
 
 Configure the parser order in `knox.toml` under `[ingest]`:
@@ -254,7 +287,7 @@ Configure the parser order in `knox.toml` under `[ingest]`:
 ```toml
 [ingest]
 # Comma-separated list; first matching backend per file wins.
-parser = "liteparse,marker,docling,pandoc"
+parser = "liteparse,docling,pandoc"
 ```
 
 Backends that are known but not installed are silently skipped (with a
@@ -278,7 +311,7 @@ Two conversion modes (configured via `mode`):
 Install:
 
 ```bash
-uv sync --group marker
+uv pip install marker-pdf
 ```
 
 Marker has no internal figure captioning, so `figure_enrichment` is `False`
