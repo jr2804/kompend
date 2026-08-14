@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -32,6 +33,23 @@ from knox.llm.format import salvage_json
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class _Payload:
+    """One debug dump written to ``KNOX_DEBUG_LLM_DIR``."""
+
+    model: str
+    stage: str
+    source_id: str
+    timestamp: str
+    user_turns: int
+    assistant_turns: int
+    messages: list[dict[str, Any]]
+    kwargs: dict[str, Any]
+    response_parsed: dict[str, Any] | list[Any] | None
+    response: str
+    finish_reason: str | None
 
 
 class _DebugSource(Protocol):
@@ -89,19 +107,19 @@ def save_debug_prompt(
     parsed = salvage_json(response_content)
     parsed_obj = parsed if isinstance(parsed, (dict, list)) else None
 
-    payload: dict[str, Any] = {
-        "model": model_string,  # nocheck: debug log dict, not wiki metadata
-        "stage": agent.stage,
-        "source_id": agent.current_source_id,
-        "timestamp": datetime.now().isoformat(),
-        "user_turns": user_turns,
-        "assistant_turns": assistant_turns,
-        "messages": messages,
-        "kwargs": {k: v for k, v in kwargs.items() if k not in ("messages", "model")},
-        "response_parsed": parsed_obj,
-        "response": response_content,
-        "finish_reason": finish_reason,
-    }
+    payload = _Payload(
+        model=model_string,
+        stage=agent.stage,
+        source_id=agent.current_source_id,
+        timestamp=datetime.now().isoformat(),
+        user_turns=user_turns,
+        assistant_turns=assistant_turns,
+        messages=messages,
+        kwargs={k: v for k, v in kwargs.items() if k not in ("messages", "model")},
+        response_parsed=parsed_obj,
+        response=response_content,
+        finish_reason=finish_reason,
+    )
 
     try:
         # errors="backslashreplace": messages may carry lone surrogates (e.g.
@@ -109,7 +127,7 @@ def save_debug_prompt(
         # they encode as \udXXX escapes — still valid, round-trippable JSON —
         # instead of aborting the dump with a zero-byte file.
         filepath.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False),
+            json.dumps(asdict(payload), indent=2, ensure_ascii=False),
             encoding="utf-8",
             errors="backslashreplace",
         )
