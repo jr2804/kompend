@@ -321,7 +321,7 @@ def _fuzzy_dedup_references(
         return references
 
     try:
-        provider = make_provider(embedding_model, dim=None)
+        provider = make_provider(embedding_model)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Reference fuzzy merge disabled: provider creation failed: %s", exc)
         return references

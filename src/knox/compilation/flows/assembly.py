@@ -49,7 +49,7 @@ def merge_similar_concepts(
 
     if embedding_model and embedding_model != "hash":
         try:
-            provider = make_provider(embedding_model, dim=None)
+            provider = make_provider(embedding_model)
             vecs = [provider.embed(t) for t in embed_texts]
         except Exception as exc:
             logger.warning(

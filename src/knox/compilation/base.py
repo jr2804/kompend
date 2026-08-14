@@ -87,7 +87,7 @@ class BaseCompiler(ABC):
             return nodes
 
         try:
-            provider = make_provider(embedding_model, dim=None)
+            provider = make_provider(embedding_model)
             titles = [n.title for n in concept_nodes]
             vecs = [provider.embed(t) for t in titles]
         except Exception as exc:

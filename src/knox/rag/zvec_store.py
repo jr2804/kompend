@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import shutil
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
@@ -115,11 +116,9 @@ class ZvecWikiStore:
         self,
         db_file: str | Path = "./.knox/vectors",
         embedding_provider: EmbeddingProvider | None = None,
-        embedding_dim: int = 384,
     ) -> None:
         self.db_file = Path(db_file)
         self._provider = embedding_provider
-        self._embedding_dim = embedding_dim
         self._collection: ZvecCollection | None = None
 
     @property
@@ -145,8 +144,7 @@ class ZvecWikiStore:
         if self._provider is None:
             if not embedding_model:
                 raise ValueError("embedding_model is required when no provider was injected")
-            self._provider = make_provider(embedding_model, dim=self._embedding_dim)
-            self._embedding_dim = self._provider.dim
+            self._provider = make_provider(embedding_model)
 
         self._collection = self._create_collection()
         return self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
@@ -181,7 +179,6 @@ class ZvecWikiStore:
         cls,
         db_file: str | Path,
         embedding_model: str | None = None,
-        embedding_dim: int | None = None,
         *,
         embedding_provider: EmbeddingProvider | None = None,
     ) -> ZvecWikiStore:
@@ -191,8 +188,8 @@ class ZvecWikiStore:
         :meth:`build_index`. Either pass ``embedding_provider`` directly,
         or pass ``embedding_model`` to create one via :func:`make_provider`.
         """
-        provider = embedding_provider or make_provider(embedding_model or "", dim=embedding_dim or 384)
-        store = cls(db_file=db_file, embedding_provider=provider, embedding_dim=provider.dim)
+        provider = embedding_provider or make_provider(embedding_model or "")
+        store = cls(db_file=db_file, embedding_provider=provider)
         coll_dir = Path(store.db_file)
         if coll_dir.exists():
             try:
@@ -204,6 +201,8 @@ class ZvecWikiStore:
         return store
 
     def _create_collection(self) -> ZvecCollection:
+        if self._provider is None:
+            raise RuntimeError("Embedding provider not configured. Call build_index() first.")
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
         schema = _zvec.CollectionSchema(
             name=_ZVEC_COLLECTION_NAME,
@@ -218,10 +217,28 @@ class ZvecWikiStore:
             vectors=_zvec.VectorSchema(
                 ZvecField.EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
-                self._embedding_dim,
+                self._provider.dim,
             ),
         )
-        collection = _zvec.open(path=str(self.db_file)) if self.db_file.exists() else _zvec.create_and_open(path=str(self.db_file), schema=schema)
+        if self.db_file.exists():
+            try:
+                collection = _zvec.open(path=str(self.db_file))
+                stored_dim = collection.schema.vectors[0].dimension
+                if stored_dim != self._provider.dim:
+                    logger.warning(
+                        "Vector store at %s has dimension %d but the embedding model produces %d; rebuilding",
+                        self.db_file,
+                        stored_dim,
+                        self._provider.dim,
+                    )
+                    collection.destroy()
+                    collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+            except Exception as exc:
+                logger.warning("Vector store at %s is unreadable (%s); rebuilding", self.db_file, exc)
+                shutil.rmtree(self.db_file, ignore_errors=True)
+                collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+        else:
+            collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
         self._collection = collection
         return collection
 

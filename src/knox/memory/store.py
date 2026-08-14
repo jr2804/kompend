@@ -5,6 +5,7 @@ for chronological logs.
 from __future__ import annotations
 
 import json
+import shutil
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -51,7 +52,6 @@ class MemoryStore:
         self,
         base_dir: str | Path,
         embedding_model: str | None = None,
-        embedding_dim: int = 384,
         *,
         embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
@@ -60,7 +60,6 @@ class MemoryStore:
         self.db_file = _paths.memory_db_file
         self.log_file = _paths.memory_log_file
         self._embedding_model = embedding_model
-        self._embedding_dim = embedding_dim
         self._provider: EmbeddingProvider | None = embedding_provider
         self._collection: _zvec.Collection | None = None
 
@@ -167,19 +166,14 @@ class MemoryStore:
         if self._collection is not None:
             return
 
-        if self._provider is None:
+        provider = self._provider
+        if provider is None:
             if not self._embedding_model:
                 raise RuntimeError("No embedding model configured for memory store")
-            self._provider = make_provider(self._embedding_model, dim=self._embedding_dim)
-            self._embedding_dim = self._provider.dim
+            provider = make_provider(self._embedding_model)
+            self._provider = provider
 
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
-        # Existing store: reopen instead of recreating. ``create_and_open``
-        # raises when the path already exists, which previously broke every
-        # ``knox memory add`` after the first.
-        if self.db_file.exists():
-            self._collection = _zvec.open(path=str(self.db_file))
-            return
         schema = _zvec.CollectionSchema(
             name=_MEMORY_COLLECTION_NAME,
             fields=[
@@ -191,9 +185,32 @@ class MemoryStore:
             vectors=_zvec.VectorSchema(
                 MemoryField.QUERY_EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
-                self._embedding_dim,
+                provider.dim,
             ),
         )
+        # Existing store: reopen instead of recreating. ``create_and_open``
+        # raises when the path already exists, which previously broke every
+        # ``knox memory add`` after the first. Rebuild when the stored vector
+        # dimension no longer matches the current embedding model.
+        if self.db_file.exists():
+            try:
+                collection = _zvec.open(path=str(self.db_file))
+                stored_dim = collection.schema.vectors[0].dimension
+                if stored_dim != provider.dim:
+                    logger.warning(
+                        "Memory store at %s has dimension %d but the embedding model produces %d; rebuilding",
+                        self.db_file,
+                        stored_dim,
+                        provider.dim,
+                    )
+                    collection.destroy()
+                    collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+                self._collection = collection
+            except Exception as exc:
+                logger.warning("Memory store at %s is unreadable (%s); rebuilding", self.db_file, exc)
+                shutil.rmtree(self.db_file, ignore_errors=True)
+                self._collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+            return
         self._collection = _zvec.create_and_open(
             path=str(self.db_file),
             schema=schema,
