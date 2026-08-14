@@ -12,6 +12,7 @@ import pytest
 from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
 from knox.compilation._two_phase_core import Extraction
+from knox.compilation.schema import Concept, Entity
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
@@ -736,7 +737,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Active Noise Control", definition="Noise reduction technique")])},
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("Active Noise Control")]), base_dir=tmp_path, agent=_mock_remediate_llm())
@@ -753,7 +754,7 @@ class TestCoverageGapRemediation:
             lambda b, s: {
                 "doc1": Extraction(
                     source="doc1",
-                    entities=[{"name": "ITU-T P.57", "type": "Standard", "context": "Telephone transmission quality"}],
+                    entities=[Entity(name="ITU-T P.57", type="Standard", context="Telephone transmission quality")],
                 )
             },
         )
@@ -783,8 +784,8 @@ class TestCoverageGapRemediation:
             lambda b, s: {
                 "doc1": Extraction(
                     source="doc1",
-                    concepts=[{"name": "ERP", "definition": "Equalization-based acoustic metric"}],
-                    entities=[{"name": "ERP", "type": "Metric", "context": "Entity-only context"}],
+                    concepts=[Concept(name="ERP", definition="Equalization-based acoustic metric")],
+                    entities=[Entity(name="ERP", type="Metric", context="Entity-only context")],
                 )
             },
         )
@@ -798,7 +799,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Echo Cancellation", "definition": "DSP technique"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Echo Cancellation", definition="DSP technique")])},
         )
         wiki = _make_wiki()
         actions = remediate(
@@ -816,7 +817,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Existing", "definition": "Already there"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Existing", definition="Already there")])},
         )
         wiki = _make_wiki([_make_node("existing", "Existing", "pre-existing")])
         actions = remediate(wiki, LintReport(results=[_gap_result("Existing")]), base_dir=tmp_path, agent=_mock_remediate_llm())
@@ -832,7 +833,7 @@ class TestCoverageGapRemediation:
                 "doc1": Extraction(
                     source="doc1",
                     summary=unique_summary,
-                    concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}],
+                    concepts=[Concept(name="Active Noise Control", definition="Noise reduction technique")],
                 )
             },
         )
@@ -851,7 +852,7 @@ class TestCoverageGapRemediation:
                 "doc_relevant": Extraction(
                     source="doc_relevant",
                     summary="RELEVANT_SUMMARY_MARKER",
-                    concepts=[{"name": "ANC", "definition": "technique"}],
+                    concepts=[Concept(name="ANC", definition="technique")],
                 ),
                 "doc_other": Extraction(
                     source="doc_other",
@@ -871,7 +872,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "POLQA", "definition": "Speech quality metric"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="POLQA", definition="Speech quality metric")])},
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("POLQA")]), base_dir=tmp_path, agent=_mock_remediate_llm())
@@ -883,7 +884,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "Active Noise Control", "definition": "Noise reduction technique"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Active Noise Control", definition="Noise reduction technique")])},
         )
         output_dir = tmp_path / "wiki"
         wiki = _make_wiki()
@@ -903,7 +904,7 @@ class TestCoverageGapRemediation:
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
-            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[{"name": "POLQA", "definition": "Speech quality metric"}])},
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="POLQA", definition="Speech quality metric")])},
         )
         ghost = _make_node("polqa", "POLQA", "stale", metadata={"source": "lint-remediation"})
         wiki = _make_wiki([ghost])

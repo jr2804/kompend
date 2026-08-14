@@ -42,7 +42,7 @@ from knox.memory import MemoryStore
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import HybridRetriever, SearchResult, synthesize_results
+from knox.search.retriever import HybridRetriever, SearchResult, SynthesisResult, synthesize_results
 
 _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
     Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
@@ -243,7 +243,7 @@ def is_captured_source(source_file: str | None) -> bool:
     return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
 
 
-def structured_answer(synthesis: Any, wiki: CompiledWiki | None = None) -> dict[str, Any]:  # noqa: ANN401
+def structured_answer(synthesis: SynthesisResult, wiki: CompiledWiki | None = None) -> dict[str, Any]:
     """Build the structured ``{answer, citations}`` payload for agent output."""
     node_types = node_type_index(wiki)
     return {

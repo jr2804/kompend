@@ -8,7 +8,7 @@ import json
 import shutil
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import NotRequired, TypedDict
 
 import zvec as _zvec
 
@@ -38,6 +38,17 @@ class MemoryField(StrEnum):
     MEMORY_BY = "memory_by"
     SCORE = "score"
     QUERY_EMBEDDING = "query_embedding"
+
+
+class MemoryEntry(TypedDict):
+    """Schema for one memory entry (search result / JSONL log line)."""
+
+    query: str
+    answer: str
+    feedback: str
+    timestamp: str
+    memory_by: NotRequired[str]
+    score: NotRequired[float]
 
 
 class MemoryStore:
@@ -117,7 +128,7 @@ class MemoryStore:
         self,
         query: str,
         top_k: int = 5,
-    ) -> list[dict[str, Any]]:
+    ) -> list[MemoryEntry]:
         """Search memory entries semantically by query."""
         self._ensure_collection()
         if self._collection is None:
@@ -129,21 +140,21 @@ class MemoryStore:
             topk=top_k,
         )
 
-        entries = []
+        entries: list[MemoryEntry] = []
         for res in results:
             fields = res.fields if isinstance(res.fields, dict) else {}
             entries.append(
                 {
-                    str(MemoryField.QUERY): fields.get(MemoryField.QUERY, ""),
-                    str(MemoryField.ANSWER): fields.get(MemoryField.ANSWER, ""),
-                    str(MemoryField.FEEDBACK): fields.get(MemoryField.FEEDBACK, ""),
-                    str(MemoryField.TIMESTAMP): fields.get(MemoryField.TIMESTAMP, ""),
-                    str(MemoryField.SCORE): res.score if res.score is not None else 0.0,
+                    "query": str(fields.get(MemoryField.QUERY, "")),
+                    "answer": str(fields.get(MemoryField.ANSWER, "")),
+                    "feedback": str(fields.get(MemoryField.FEEDBACK, "")),
+                    "timestamp": str(fields.get(MemoryField.TIMESTAMP, "")),
+                    "score": res.score if res.score is not None else 0.0,
                 }
-            )
+            )  # MemoryEntry
         return entries
 
-    def get_recent_entries(self, limit: int = 20) -> list[dict[str, Any]]:
+    def get_recent_entries(self, limit: int = 20) -> list[MemoryEntry]:
         """Get the most recent memory entries chronologically (for synthesis)."""
         if not self.log_file.exists():
             return []

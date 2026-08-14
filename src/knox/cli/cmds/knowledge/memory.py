@@ -15,7 +15,7 @@ from knox.core.config.keys import COMPILE_EMBEDDING_MODEL, DISPLAY_MEMORY_ENTRIE
 from knox.core.templates import get_template_loader
 from knox.core.trust.actor import resolve_actor
 from knox.logging import get_console, get_err_console
-from knox.memory.store import MemoryField, MemoryStore
+from knox.memory.store import MemoryStore
 
 memory_app = typer.Typer(
     name="memory",
@@ -60,11 +60,11 @@ def memory_search(
 
         get_console().print(f"Found {len(results)} relevant memory entries:\n")
         for i, res in enumerate(results, 1):
-            get_console().print(f"[{i}] Query: {res[MemoryField.QUERY]}", markup=False)
-            get_console().print(f"    Answer: {res[MemoryField.ANSWER]}")
-            if res.get(MemoryField.FEEDBACK):
-                get_console().print(f"    Feedback: {res[MemoryField.FEEDBACK]}")
-            get_console().print(f"    Score: {res[MemoryField.SCORE]:.4f}\n")
+            get_console().print(f"[{i}] Query: {res['query']}", markup=False)
+            get_console().print(f"    Answer: {res['answer']}")
+            if res.get("feedback"):
+                get_console().print(f"    Feedback: {res['feedback']}")
+            get_console().print(f"    Score: {res['score']:.4f}\n")
     except Exception as exc:
         get_err_console().print(f"Error searching memory: {exc}")
         raise typer.Exit(1)

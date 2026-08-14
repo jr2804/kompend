@@ -202,7 +202,7 @@ def verify_claims(
 
     # Stamp the OKF v0.2 ``verified`` trust event (§5.2).
     verified_events = list(wiki.metadata.get("verified") or [])
-    verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})
+    verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})  # TrustEvent (output.models)
     wiki.metadata["verified"] = verified_events
 
 

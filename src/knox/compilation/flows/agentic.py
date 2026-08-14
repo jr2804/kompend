@@ -82,7 +82,7 @@ def extract_agentic(
         cached = compiler._cache_store.get("extract", cache_deps)
         if cached is not None:
             logger.info("TwoPhase: agentic extraction cache hit for '%s'", source)
-            return cached
+            return Extraction.from_dict(cached)
         logger.info(
             "TwoPhase: agentic extraction cache miss for '%s' (text_hash=%.16s)",
             source,
@@ -185,8 +185,8 @@ def extract_agentic(
         section_extraction = Extraction(
             source=source,
             summary=validated.summary,
-            entities=[e.model_dump() for e in validated.entities],
-            concepts=[c.model_dump() for c in validated.concepts],
+            entities=list(validated.entities),
+            concepts=list(validated.concepts),
             tags=validated.tags,
         )
         memory.ingest(section_extraction)
@@ -210,7 +210,7 @@ def extract_agentic(
     final = memory.to_extraction(source)
 
     if not compiler._config.no_cache:
-        compiler._cache_store.set("extract", cache_deps, final)
+        compiler._cache_store.set("extract", cache_deps, final.to_dict())
         logger.info("TwoPhase: cached agentic result for '%s'", source)
 
     return final

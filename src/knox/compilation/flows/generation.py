@@ -30,7 +30,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.compilation.graph import GraphCompiler
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiField, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, WikiField, WikiNode
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
@@ -112,7 +112,7 @@ def prepare_concepts(compiler: GraphCompiler, extractions: ExtractionSet) -> lis
         sample_keys: set[str] = set()
         for ext in extractions.extractions:
             for c in ext.concepts:
-                sample_keys.update(c.keys())
+                sample_keys.update(c.model_fields)
         logger.warning(
             "TwoPhase: concept_pages() empty — extraction concept keys: %s",
             sorted(sample_keys) or "(no concepts returned)",
@@ -157,7 +157,7 @@ def run_generation_with_checkpoint(
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
-    all_images: list[dict[str, Any]],
+    all_images: list[ImageRef],
     pinned_clean: list[str],
 ) -> tuple[list[WikiNode], dict[str, int]]:
     """Run generation with checkpoint support, returning nodes and slug map."""
@@ -192,7 +192,7 @@ def generate_all_pages(
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
-    all_images: list[dict[str, Any]],
+    all_images: list[ImageRef],
     *,
     pinned_facts: list[str],
     initial_nodes: list[WikiNode] | None = None,

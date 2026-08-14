@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from knox.core.models import load_cached_wiki
 from knox.core.paths import VaultPaths
+from knox.core.reporting.runlog import RunEvent
 from knox.lint.history import history_to_text, load_lint_history
 from knox.logging import get_logger
 from knox.output.wiki_index import generate_log_entry
@@ -112,11 +112,11 @@ def _lint_section(lint_file: Path, *, last_n: int) -> list[str]:
     return ["## Lint Trend", "", text, ""]
 
 
-def _load_runs(runs_dir: Path) -> list[dict[str, Any]]:
+def _load_runs(runs_dir: Path) -> list[RunEvent]:
     """Parse ``runs.jsonl`` into a list of event dicts (skips bad lines)."""
     if not runs_dir.is_file():
         return []
-    out: list[dict[str, Any]] = []
+    out: list[RunEvent] = []
     for raw in runs_dir.read_text(encoding="utf-8").splitlines():
         stripped = raw.strip()
         if not stripped:

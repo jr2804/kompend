@@ -3,9 +3,9 @@
 Each line is a JSON dict with keys: timestamp, duration_seconds, options,
 llm, config_snapshot, wiki_meta, report.
 
-ponytail: single JSONL append, no dataclass wrapping. Use
-  save_lint_entry()/load_lint_history() for I/O; callers pass dicts.
-  If typed access is needed later, add a TypedDict or pydantic model.
+The :class:`LintEntry` TypedDict is the schema for one JSONL line — it types
+  key access without a runtime wrapper. Use save_lint_entry()/
+  load_lint_history() for I/O; callers pass ``LintEntry`` dicts.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from knox.core.config.keys import (
     COMPILE_COMPILER,
@@ -38,6 +38,18 @@ _SNAPSHOT_KEYS = (
 _SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
 
+class LintEntry(TypedDict):
+    """Schema for one JSONL line in the lint history file."""
+
+    timestamp: str
+    duration_seconds: float
+    options: dict[str, Any]
+    llm: dict[str, Any] | None
+    config_snapshot: dict[str, Any]
+    wiki_meta: dict[str, Any]
+    report: dict[str, Any]
+
+
 def entry_from_report(
     report: LintReport,
     *,
@@ -47,8 +59,8 @@ def entry_from_report(
     node_count: int,
     llm: dict[str, Any] | None = None,
     timestamp: str | None = None,
-) -> dict[str, Any]:
-    """Build a lint history dict from a lint run."""
+) -> LintEntry:
+    """Build a lint history entry from a lint run."""
     return {
         "timestamp": timestamp or iso_local(),
         "duration_seconds": round(duration_seconds, 3),  # nocheck — lint-history schema, not WikiField
@@ -65,7 +77,7 @@ def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
     return {key: getattr(cfg, "get", lambda k: None)(key) for key in _SNAPSHOT_KEYS}
 
 
-def save_lint_entry(entry: dict[str, Any], path: Path) -> None:
+def save_lint_entry(entry: LintEntry, path: Path) -> None:
     """Append *entry* as a single JSONL line to *path*."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
@@ -111,7 +123,7 @@ def load_lint_history(
     path: Path,
     *,
     last_n: int | None = None,
-) -> list[dict[str, Any]]:
+) -> list[LintEntry]:
     """Load lint history entries from *path* (oldest first).
 
     A missing file returns an empty list.
@@ -119,7 +131,7 @@ def load_lint_history(
     if not path.exists():
         return []
 
-    entries: list[dict[str, Any]] = []
+    entries: list[LintEntry] = []
     with path.open("r", encoding="utf-8") as fh:
         for raw_line in fh:
             stripped = raw_line.strip()
@@ -132,13 +144,13 @@ def load_lint_history(
     return entries
 
 
-def history_to_json(entries: list[dict[str, Any]]) -> str:
+def history_to_json(entries: list[LintEntry]) -> str:
     """Serialise a list of entries to a pretty JSON string."""
     return json.dumps(entries, indent=2, default=str, ensure_ascii=False)
 
 
 def history_to_text(
-    entries: list[dict[str, Any]],
+    entries: list[LintEntry],
     *,
     show_trend: bool = False,
 ) -> str:
@@ -186,7 +198,7 @@ def _parse_timestamp(ts: str) -> datetime:
     return datetime.fromisoformat(ts)
 
 
-def _rewrite(path: Path, entries: list[dict[str, Any]]) -> None:
+def _rewrite(path: Path, entries: list[LintEntry]) -> None:
     """Atomically rewrite the history file with *entries*."""
     tmp = path.with_suffix(".tmp")
     with tmp.open("w", encoding="utf-8") as fh:

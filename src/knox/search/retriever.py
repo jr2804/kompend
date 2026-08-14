@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Final, TypedDict
 
 from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
@@ -42,7 +42,17 @@ class SearchResult:
 @dataclass
 class SynthesisResult:
     answer: str
-    citations: list[dict[str, Any]] = field(default_factory=list)
+    citations: list[Citation] = field(default_factory=list)
+
+
+class Citation(TypedDict):
+    """Schema for one citation in a synthesis result."""
+
+    article: str
+    article_id: str | None
+    source: str | None
+    snippet: str
+    score: float
 
 
 # ── HybridRetriever (vector-only) ──────────────────────────────────────
@@ -199,7 +209,7 @@ def synthesize_results(
     lines, and passes them to :class:`QueryAgent`.
     """
     if not model:
-        citations: list[dict[str, Any]] = []
+        citations: list[Citation] = []
         for r in results:
             citations.append(
                 {
@@ -240,7 +250,7 @@ def synthesize_results(
         logger.warning("Query synthesis failed: %s", exc, exc_info=True)
         answer = ""
 
-    citations_out: list[dict[str, Any]] = []
+    citations_out: list[Citation] = []
     for r in results:
         citations_out.append(
             {

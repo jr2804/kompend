@@ -36,13 +36,13 @@ from typing import Any, ClassVar, override
 
 import yaml
 
-from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
 from knox.core.paths import INDEX_FILE, LOG_FILE
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
 from knox.output.markdown import MarkdownWriter
-from knox.output.models import Document
+from knox.output.models import Document, OkfSource
 from knox.output.reference_links import format_bibliography_entry
 from knox.output.vault import OKF_VERSION, VaultWriter
 
@@ -288,7 +288,7 @@ def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
 def _provenance_sources(
     node: WikiNode,
     ref_store: ReferenceStore | None,
-) -> list[dict[str, Any]]:
+) -> list[OkfSource]:
     """Build the OKF v0.2 ``sources`` list for a node from its provenance.
 
     Provenance is a list of source identifiers (filenames/URLs). When a
@@ -310,7 +310,7 @@ def _provenance_sources(
             seen.add(ps)
             prov_ids.append(ps)
 
-    sources: list[dict[str, Any]] = []
+    sources: list[OkfSource] = []
     if ref_store is not None:
         for prov in prov_ids:
             refs = ref_store.get_source(prov) or ref_store.get_source(Path(prov).stem)
@@ -324,7 +324,7 @@ def _provenance_sources(
     return sources
 
 
-def _reference_to_okf_source(ref: Any) -> dict[str, Any]:
+def _reference_to_okf_source(ref: Reference) -> OkfSource:
     """Build an OKF v0.2 ``sources`` entry (§5.1) from a CSL-aligned Reference.
 
     The ``id`` is the join key for per-claim footnote attribution (§5.1);
@@ -334,7 +334,7 @@ def _reference_to_okf_source(ref: Any) -> dict[str, Any]:
     if not resource:
         # Fall back to the citing source path so the entry always has a resource.
         resource = ref.citing_source or ref.id
-    entry: dict[str, Any] = {"id": ref.id or ref.citing_source or ref.short_label()}
+    entry: OkfSource = {"id": ref.id or ref.citing_source or ref.short_label()}
     if resource:
         entry["resource"] = resource
     if ref.title:
@@ -345,7 +345,7 @@ def _reference_to_okf_source(ref: Any) -> dict[str, Any]:
     return entry
 
 
-def _format_source_footnotes(sources: list[dict[str, Any]]) -> str:
+def _format_source_footnotes(sources: list[OkfSource]) -> str:
     """Render footnote definitions for OKF §5.1 per-claim attribution.
 
     Each ``sources[].id`` becomes a ``[^id]: <title or resource>`` line. The

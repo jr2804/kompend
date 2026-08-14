@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from knox.core.models.enums import WikiField
 from knox.core.paths import VaultPaths
@@ -14,6 +14,8 @@ __all__ = [
     "CompiledWiki",
     "CrossReferenceIssue",
     "CrossReferenceResult",
+    "GraphEdge",
+    "TocEntry",
     "WikiNode",
     "load_cached_wiki",
 ]
@@ -60,11 +62,33 @@ class CompiledWiki:
     """Output of Tier 4: Compilation."""
 
     nodes: list[WikiNode]
-    edges: list[dict[str, Any]]
-    toc: list[dict[str, Any]]
+    edges: list[GraphEdge]
+    toc: list[TocEntry]
     quality_score: float = 0.0
     iteration: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class GraphEdge(TypedDict):
+    """Schema for one entry in ``CompiledWiki.edges``.
+
+    ``entity`` is only present on ``entity_reference`` edges;
+    ``confidence`` only on typed relation edges.
+    """
+
+    source: str
+    target: str
+    type: str
+    entity: NotRequired[str]
+    confidence: NotRequired[float]
+
+
+class TocEntry(TypedDict):
+    """Schema for one entry in ``CompiledWiki.toc``."""
+
+    title: str
+    id: str
+    level: int
 
 
 def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:

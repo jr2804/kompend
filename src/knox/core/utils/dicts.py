@@ -3,6 +3,9 @@
 These are pure utilities with no domain logic. Used by the config engine
 (``knox.core.config.engine``) and any other module that needs dotted-key
 traversal of nested ``dict[str, Any]`` structures.
+
+ponytail: ``dict[str, Any]`` here is the correct signature (C3) — the whole
+point of these helpers is arbitrary-depth, heterogeneous nested dicts.
 """
 
 from __future__ import annotations

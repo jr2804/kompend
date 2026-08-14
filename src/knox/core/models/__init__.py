@@ -8,7 +8,7 @@ implementation detail.
 from __future__ import annotations
 
 from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.models.chunks import Chunk, ResolvedChunk
+from knox.core.models.chunks import Chunk, ImageRef, ResolvedChunk
 from knox.core.models.citations import (
     LIFECYCLE_ARCHIVED,
     LIFECYCLE_DRAFT,
@@ -49,6 +49,8 @@ from knox.core.models.wiki import (
     CompiledWiki,
     CrossReferenceIssue,
     CrossReferenceResult,
+    GraphEdge,
+    TocEntry,
     WikiNode,
     load_cached_wiki,
 )
@@ -78,6 +80,8 @@ __all__ = [
     "DocumentElement",
     "ElementType",
     "EquationVariable",
+    "GraphEdge",
+    "ImageRef",
     "MetadataField",
     "ParsedDocument",
     "Reference",
@@ -89,6 +93,7 @@ __all__ = [
     "StructuredField",
     "StructuredFigure",
     "StructuredTable",
+    "TocEntry",
     "WikiField",
     "WikiNode",
     "extract_citations",

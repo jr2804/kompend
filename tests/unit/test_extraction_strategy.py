@@ -128,7 +128,7 @@ class TestReduceExtractions:
             assert result.source == "doc.md"
             assert result.summary == "Full document summary."
             assert len(result.entities) == 1
-            assert result.entities[0]["name"] == "KNOX"
+            assert result.entities[0].name == "KNOX"
             assert len(result.concepts) == 1
             assert result.tags == ["ai", "docs"]
 
@@ -215,8 +215,8 @@ class TestHistoryCompaction:
         ext = Extraction(
             source="doc.md",
             summary="Doc is about X.",
-            entities=[{"name": "Entity1"}, {"name": "Entity2"}],
-            concepts=[{"name": "ConceptA"}, {"name": "ConceptB"}],
+            entities=[Entity(name="Entity1"), Entity(name="Entity2")],
+            concepts=[Concept(name="ConceptA"), Concept(name="ConceptB")],
             tags=["x"],
         )
         msg = _synthetic_history_response(ext)
@@ -242,11 +242,11 @@ class TestExtractIncrementalHistoryCompaction:
             source="doc.md",
             summary="Cached summary.",
             entities=[],
-            concepts=[{"name": "CachedConcept"}],
+            concepts=[Concept(name="CachedConcept")],
             tags=[],
         )
         # Patch the cache store to always hit on the first batch.
-        compiler._cache_store.get = MagicMock(return_value=cached_ext)
+        compiler._cache_store.get = MagicMock(return_value=cached_ext.to_dict())
 
         # Patch _synthetic_history_response so we can assert it was called.
         with patch.object(ext_module, "_synthetic_history_response") as synth_mock, patch.object(ext_module, "_compact_history_inplace") as compact_mock:
@@ -259,8 +259,9 @@ class TestExtractIncrementalHistoryCompaction:
 
         assert stopped is False
         assert len(results) == 1
-        assert results[0] is cached_ext
-        synth_mock.assert_called_once_with(cached_ext)
+        # Cache serves a JSON round-trip (dict -> from_dict), so compare by value.
+        assert results[0] == cached_ext
+        synth_mock.assert_called_once_with(results[0])
         compact_mock.assert_called_once()
 
 

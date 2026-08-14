@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from knox.core.models.enums import ChunkField, ElementType
 
-__all__ = ["Chunk", "ResolvedChunk"]
+__all__ = ["Chunk", "ImageRef", "ResolvedChunk"]
 
 
 @dataclass
@@ -65,3 +65,15 @@ class ResolvedChunk:
     relations: list[dict[str, Any]] = field(default_factory=list)
     resolved_references: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class ImageRef(TypedDict):
+    """Schema for one image reference passed through compile into output.
+
+    Built by ``compilation._two_phase_core.extract_images_from_chunks``,
+    stored in ``node.metadata["images"]``, consumed by the output writers.
+    """
+
+    path: str
+    caption: str
+    element_type: str

@@ -42,6 +42,8 @@ from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.types import JSON, CacheValue
 
+# ponytail: registry-boundary (C2) — cache round-trips known dataclasses via
+# JSON tags. Add new cacheable types here, or store to_dict() payloads instead.
 _CACHE_DATACLASSES: dict[str, type] = {
     "DocumentElement": DocumentElement,
     "ParsedDocument": ParsedDocument,

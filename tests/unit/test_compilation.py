@@ -22,6 +22,8 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.base import BaseCompiler
 from knox.compilation.schema import (
+    Concept,
+    Entity,
     LLMOutputError,
     WicerDiagnoseOutput,
     WicerEvaluateOutput,
@@ -1069,24 +1071,28 @@ class TestDeduplication:
 class TestTwoPhaseConceptSalvage:
     """knox-nbbx (concept-name salvage) + generation failure handling."""
 
-    def test_concept_pages_salvages_name_from_alt_keys(self) -> None:
-        """knox-nbbx: extraction that returns 'concept'/'title' instead of 'name'
-        still yields concept pages (was: empty -> silent error).
+    def test_concept_pages_skips_empty_names_without_silent_empty_result(self) -> None:
+        """knox-nbbx regression: a bad extraction must not yield zero concept pages.
+
+        Name salvage for ``concept``/``title`` drift keys now happens at
+        PydanticAI validation (``schema.Concept.name`` is required), so
+        ``Extraction.concepts`` only ever holds validated models. The remaining
+        invariant: empty-name concepts are skipped, valid ones still produce
+        pages (was: empty -> silent error).
         """
         ext_set = ExtractionSet()
         ext_set.add(
             Extraction(
                 source="src.pdf",
                 concepts=[
-                    {"concept": "Phoneme Posteriorgram", "definition": "A dense representation."},
-                    {"title": "Better-Ear Listening", "definition": "Attending to the better ear."},
+                    Concept(name="Phoneme Posteriorgram", definition="A dense representation."),
+                    Concept(name="", definition="Attending to the better ear."),
                 ],
             )
         )
         pages = ext_set.concept_pages()
         names = {p["name"] for p in pages}
         assert "Phoneme Posteriorgram" in names
-        assert "Better-Ear Listening" in names
         assert all(p.get("definitions") for p in pages)
 
     def test_generation_failure_raises(self) -> None:
@@ -1103,7 +1109,7 @@ class TestTwoPhaseConceptSalvage:
         ext_set.add(
             Extraction(
                 source="src.pdf",
-                concepts=[{"name": "Listening Effort", "definition": "The effort to understand speech."}],
+                concepts=[Concept(name="Listening Effort", definition="The effort to understand speech.")],
             )
         )
         chunks = _make_chunks(count=3, heading="Some Heading")
@@ -1133,9 +1139,9 @@ class TestVlmArtifactFiltering:
             Extraction(
                 source="src.pdf",
                 concepts=[
-                    {"name": "vlm_filtered", "definition": "Internal marker."},
-                    {"name": "vlm_skipped", "definition": "Internal marker."},
-                    {"name": "Listening Effort", "definition": "Real concept."},
+                    Concept(name="vlm_filtered", definition="Internal marker."),
+                    Concept(name="vlm_skipped", definition="Internal marker."),
+                    Concept(name="Listening Effort", definition="Real concept."),
                 ],
             )
         )
@@ -1240,11 +1246,7 @@ def _make_chunks(
         )
         rc = ResolvedChunk(
             chunk=c,
-            entities=[
-                {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
-            ]
-            if i == 0
-            else [],
+            entities=[Entity(name="KNOX", type="PROJECT", context="knowledge base")] if i == 0 else [],
         )
         chunks.append(rc)
     return chunks
@@ -1262,10 +1264,7 @@ def _make_diverse_chunks() -> list[ResolvedChunk]:
             )
             rc = ResolvedChunk(
                 chunk=c,
-                entities=[
-                    {"name": "KNOX", "type": "PROJECT", "context": "knowledge base"},
-                    {"name": "WiCER", "type": "METHOD", "context": "compilation loop"},
-                ],
+                entities=[{"name": "KNOX", "type": "PROJECT", "context": "knowledge base"}, {"name": "WiCER", "type": "METHOD", "context": "compilation loop"}],
             )
             chunks.append(rc)
     return chunks

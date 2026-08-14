@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import NotRequired, TypedDict
 
 from knox.core.config import DEFAULTS, resolve_config
 from knox.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS, PATHS_STATE_DIR, PATHS_WIKI_DIR
@@ -44,6 +44,19 @@ class RunHandle:
     start_iso: str
 
 
+class RunEvent(TypedDict):
+    """Schema for one line in ``runs.jsonl`` (start/end run records)."""
+
+    event: str  # "start" | "end"
+    run_id: str
+    cmd: str
+    ts: str
+    status: NotRequired[str]
+    duration_s: NotRequired[float]
+    exit: NotRequired[int]
+    error: NotRequired[str]
+
+
 def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
     """Append a ``start`` line for the current command. No-op without a vault."""
     state_dir = resolve_state_dir(wiki_dir=wiki_dir)
@@ -62,7 +75,7 @@ def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
                         "run_id": run_id,
                         "cmd": _command_label(),
                         "ts": start_iso,
-                    },
+                    },  # RunEvent
                     ensure_ascii=False,
                 )
                 + "\n"
@@ -124,7 +137,7 @@ def log_run_end(
     if handle is None:
         return
     duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
-    payload: dict[str, Any] = {
+    payload: RunEvent = {
         "event": "end",
         "run_id": handle.run_id,
         "cmd": handle.cmd,

@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
+from knox.compilation.schema import Concept, Entity
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -467,11 +468,11 @@ class TestExtractionData:
             extractions=[
                 Extraction(
                     source="a.pdf",
-                    concepts=[{"name": "attention", "definition": "x"}],
+                    concepts=[Concept(name="attention", definition="x")],
                 ),
                 Extraction(
                     source="b.pdf",
-                    concepts=[{"name": "attention", "definition": "y"}],
+                    concepts=[Concept(name="attention", definition="y")],
                 ),
             ]
         )
@@ -484,8 +485,8 @@ class TestExtractionData:
     def test_entity_index(self) -> None:
         ext = ExtractionSet(
             extractions=[
-                Extraction(source="a.pdf", entities=[{"name": "KNOX", "type": "PROJECT"}]),
-                Extraction(source="b.pdf", entities=[{"name": "KNOX", "type": "PROJECT"}]),
+                Extraction(source="a.pdf", entities=[Entity(name="KNOX", type="PROJECT")]),
+                Extraction(source="b.pdf", entities=[Entity(name="KNOX", type="PROJECT")]),
             ]
         )
         idx = ext.entity_index()
@@ -534,11 +535,11 @@ class TestConceptPagesMerge:
             extractions=[
                 Extraction(
                     source="a.pdf",
-                    concepts=[{"name": "Deep Neural Network", "definition": "x"}],
+                    concepts=[Concept(name="Deep Neural Network", definition="x")],
                 ),
                 Extraction(
                     source="b.pdf",
-                    concepts=[{"name": "Deep Neural Networks (DNNs)", "definition": "y"}],
+                    concepts=[Concept(name="Deep Neural Networks (DNNs)", definition="y")],
                 ),
             ]
         )
@@ -551,11 +552,11 @@ class TestConceptPagesMerge:
             extractions=[
                 Extraction(
                     source="a.pdf",
-                    concepts=[{"name": "Automatic Speech Recognition (ASR)", "definition": "x"}],
+                    concepts=[Concept(name="Automatic Speech Recognition (ASR)", definition="x")],
                 ),
                 Extraction(
                     source="b.pdf",
-                    concepts=[{"name": "Automatic speech recognition (ASR)", "definition": "y"}],
+                    concepts=[Concept(name="Automatic speech recognition (ASR)", definition="y")],
                 ),
             ]
         )
@@ -569,11 +570,11 @@ class TestConceptPagesMerge:
             extractions=[
                 Extraction(
                     source="a.pdf",
-                    concepts=[{"name": "Short-Time Objective Intelligibility (STOI)", "definition": "x"}],
+                    concepts=[Concept(name="Short-Time Objective Intelligibility (STOI)", definition="x")],
                 ),
                 Extraction(
                     source="b.pdf",
-                    concepts=[{"name": "Short Time Objective Intelligibility (STOI)", "definition": "y"}],
+                    concepts=[Concept(name="Short Time Objective Intelligibility (STOI)", definition="y")],
                 ),
             ]
         )
@@ -585,11 +586,11 @@ class TestConceptPagesMerge:
             extractions=[
                 Extraction(
                     source="a.pdf",
-                    concepts=[{"name": "Listening Effort", "definition": "x"}],
+                    concepts=[Concept(name="Listening Effort", definition="x")],
                 ),
                 Extraction(
                     source="b.pdf",
-                    concepts=[{"name": "Speech Intelligibility", "definition": "y"}],
+                    concepts=[Concept(name="Speech Intelligibility", definition="y")],
                 ),
             ]
         )
@@ -818,7 +819,7 @@ class TestTwoPhaseCompiler:
         ):
             ext = compiler.extract(chunks)
         assert ext.extractions[0].summary == "x"
-        assert ext.extractions[0].concepts[0]["name"] == "attention"
+        assert ext.extractions[0].concepts[0].name == "attention"
 
     def test_extract_populates_extraction_stats(self) -> None:
         config = PipelineConfig(

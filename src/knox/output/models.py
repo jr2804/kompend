@@ -7,7 +7,11 @@ It is rendered to a specific Markdown flavor by :class:`DocumentRenderer`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NotRequired, TypedDict
+
+from knox.core.models import TocEntry
+
+__all__ = ["Document", "OkfSource", "TrustEvent"]
 
 
 @dataclass
@@ -33,7 +37,7 @@ class Document:
     source_chunks: list[str] | None = None
     """Source chunk IDs this page was compiled from (for provenance)."""
 
-    toc_entries: list[dict[str, Any]] | None = None
+    toc_entries: list[TocEntry] | None = None
     """TOC entries contributed by this document (slug + title)."""
 
     page_slug: str = ""
@@ -42,3 +46,19 @@ class Document:
     node_type: str = ""
     """Compiler-assigned kind (concept/overview/comparison/entity/...).
     Used to route the page into a subfolder in vault mode."""
+
+
+class TrustEvent(TypedDict):
+    """OKF v0.2 §5.2 trust event (``verified`` frontmatter entry)."""
+
+    by: str
+    at: str
+
+
+class OkfSource(TypedDict):
+    """OKF v0.2 §5.1 ``sources`` entry (spec-defined, rendered to YAML)."""
+
+    id: str
+    resource: NotRequired[str]
+    title: NotRequired[str]
+    author: NotRequired[str]

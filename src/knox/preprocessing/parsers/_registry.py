@@ -14,7 +14,7 @@ import importlib
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from knox.core.config import PdfConfig
 from knox.logging import get_logger
@@ -57,8 +57,19 @@ _BACKEND_MODULES: dict[str, str] = {
 
 logger = get_logger(__name__)
 
+
 # Metadata powering ``knox list-parsers`` (name/type/extensions/figure_enrichment).
-_registry: dict[str, dict[str, Any]] = {}
+_registry: dict[str, ParserMetadata] = {}
+
+
+class ParserMetadata(TypedDict):
+    """Schema for one entry in the parser registry (``knox list-parsers``)."""
+
+    name: str
+    type: str
+    extensions: list[str]
+    figure_enrichment: bool
+    metadata: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -100,7 +111,7 @@ def register_backend(
     )
 
 
-def get_registered_parsers() -> list[dict[str, Any]]:
+def get_registered_parsers() -> list[ParserMetadata]:
     """Return all registered parsers as a list of metadata dicts."""
     _ensure_backends(KNOWN_BACKENDS)
     return list(_registry.values())

@@ -144,14 +144,14 @@ def _build_concept_lookup(
 
     for ext in extraction_map.values():
         for ent in ext.entities:
-            name = ent.get("name", "").strip()
+            name = ent.name.strip()
             if not name:
                 continue
             key = name.lower().strip()
             bucket = concept_lookup.setdefault(key, {"name": name, "sources": [], "definitions": []})
             if ext.source not in bucket["sources"]:
                 bucket["sources"].append(ext.source)
-            context = ent.get("context", "")
+            context = ent.context
             if context and context not in bucket["definitions"]:
                 bucket["definitions"].append(context)
 

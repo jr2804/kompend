@@ -68,13 +68,11 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             return
         ext.summary = _rewrite_asset_mentions(ext.summary, id_map)
         for c in ext.concepts:
-            for field in ("name", "definition", "description", "context"):
-                if field in c:
-                    c[field] = _rewrite_asset_mentions(c[field], id_map)
+            c.name = _rewrite_asset_mentions(c.name, id_map)
+            c.definition = _rewrite_asset_mentions(c.definition, id_map)
         for e in ext.entities:
-            for field in ("name", "description", "context"):
-                if field in e:
-                    e[field] = _rewrite_asset_mentions(e[field], id_map)
+            e.name = _rewrite_asset_mentions(e.name, id_map)
+            e.context = _rewrite_asset_mentions(e.context, id_map)
 
     by_source: dict[str, list[ResolvedChunk]] = defaultdict(list)
     base_dir = compiler._config.paths.base_dir  # noqa: SLF001
@@ -234,7 +232,7 @@ def extract_one(compiler: GraphCompiler, source: str, combined: str, extraction_
         cached = compiler._cache_store.get("extract", extract_deps)
         if cached is not None:
             logger.info("TwoPhase: extraction cache hit for '%s'", source)
-            return cached
+            return Extraction.from_dict(cached)
         logger.info(
             "TwoPhase: extraction cache miss for '%s' (text_hash=%.16s, chunk_min=%s, chunk_max=%s)",
             source,
@@ -290,12 +288,12 @@ def extract_one(compiler: GraphCompiler, source: str, combined: str, extraction_
     result = Extraction(
         source=source,
         summary=validated.summary,
-        entities=[e.model_dump() for e in validated.entities],
-        concepts=[c.model_dump() for c in validated.concepts],
+        entities=list(validated.entities),
+        concepts=list(validated.concepts),
         tags=validated.tags,
     )
     if not compiler._config.no_cache:
-        compiler._cache_store.set("extract", extract_deps, result)
+        compiler._cache_store.set("extract", extract_deps, result.to_dict())
     return result
 
 
@@ -335,6 +333,7 @@ def extract_incremental(
             cached = compiler._cache_store.get("extract", extract_deps)
             if cached is not None:
                 logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
+                cached = Extraction.from_dict(cached)
                 results.append(cached)
                 # Inject a synthetic summary of the cached result so the
                 # next uncached batch sees coherent cross-batch context
@@ -377,12 +376,12 @@ def extract_incremental(
             result = Extraction(
                 source=source,
                 summary=validated.summary,
-                entities=[e.model_dump() for e in validated.entities],
-                concepts=[c.model_dump() for c in validated.concepts],
+                entities=list(validated.entities),
+                concepts=list(validated.concepts),
                 tags=validated.tags,
             )
             if not compiler._config.no_cache:
-                compiler._cache_store.set("extract", extract_deps, result)
+                compiler._cache_store.set("extract", extract_deps, result.to_dict())
             results.append(result)
         except LLMOutputError:
             logger.warning(
@@ -450,8 +449,8 @@ def _synthetic_history_response(extraction: Extraction) -> ModelResponse:
     upstream. Rather than replaying the original (potentially huge)
     assistant turn, we inject a compact one-line summary.
     """
-    concepts = ", ".join(c.get("name", "?") for c in extraction.concepts[:5])
-    entities = ", ".join(e.get("name", "?") for e in extraction.entities[:5])
+    concepts = ", ".join(c.name or "?" for c in extraction.concepts[:5])
+    entities = ", ".join(e.name or "?" for e in extraction.entities[:5])
     summary_bits = [f"summary: {extraction.summary}"]
     if concepts:
         summary_bits.append(f"concepts: {concepts}")
@@ -483,7 +482,7 @@ def reduce_extractions(compiler: GraphCompiler, source: str, parts: list[Extract
     if not compiler._config.no_cache:
         cached = compiler._cache_store.get("extract", reduce_deps_key)
         if cached is not None:
-            return cached
+            return Extraction.from_dict(cached)
 
     agent = ExtractionReduceAgent(
         model_string=compiler._model or "",
@@ -502,10 +501,10 @@ def reduce_extractions(compiler: GraphCompiler, source: str, parts: list[Extract
     result = Extraction(
         source=source,
         summary=validated.summary,
-        entities=[e.model_dump() for e in validated.entities],
-        concepts=[c.model_dump() for c in validated.concepts],
+        entities=list(validated.entities),
+        concepts=list(validated.concepts),
         tags=validated.tags,
     )
     if not compiler._config.no_cache:
-        compiler._cache_store.set("extract", reduce_deps_key, result)
+        compiler._cache_store.set("extract", reduce_deps_key, result.to_dict())
     return result

@@ -28,11 +28,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from knox import __version__ as _KNOX_VERSION
-from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
 from knox.core.paths import INDEX_FILE
 from knox.core.pipeline.references import ReferenceStore
 from knox.output.base import BaseOutputWriter
-from knox.output.models import Document
+from knox.output.models import Document, OkfSource, TrustEvent
 from knox.output.reference_links import rewrite_source_references
 
 # OKF spec version every vault writer targets.
@@ -123,8 +123,8 @@ class VaultWriter(BaseOutputWriter):
         compiled_at: str,
         frontmatter_defaults: dict[str, Any] | None = None,
         *,
-        sources: list[dict[str, Any]] | None = None,
-        verified: list[dict[str, str]] | None = None,
+        sources: list[OkfSource] | None = None,
+        verified: list[TrustEvent] | None = None,
     ) -> dict[str, Any]:
         """Build the canonical OKF v0.2 frontmatter for a wiki node.
 
@@ -291,7 +291,7 @@ class VaultWriter(BaseOutputWriter):
 
     @staticmethod
     def _build_related_edges(
-        edges: list[dict[str, Any]],
+        edges: list[GraphEdge],
         node_map: dict[str, str],
     ) -> dict[str, list[tuple[str, str, float | None]]]:
         """Build a map of page slug -> sorted list of related page entries.
@@ -356,7 +356,7 @@ class VaultWriter(BaseOutputWriter):
         return candidates
 
     @staticmethod
-    def _embed_images(body: str, images: list[dict[str, Any]]) -> str:
+    def _embed_images(body: str, images: list[ImageRef]) -> str:
         """Embed image references into the document body.
 
         Each image dict should have:

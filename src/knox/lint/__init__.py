@@ -3,6 +3,7 @@
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, RemediationAction, RemediationStatus, Severity
 from knox.lint.gap_analysis import GapRecommendation, analyze_gaps, gaps_to_text
 from knox.lint.history import (
+    LintEntry,
     entry_from_report,
     load_lint_history,
     prune_lint_history,
@@ -16,6 +17,7 @@ __all__ = [
     "STRUCTURAL_RULES",
     "BaseLintRule",
     "GapRecommendation",
+    "LintEntry",
     "LintResult",
     "LintRuleOutcome",
     "LintRunner",

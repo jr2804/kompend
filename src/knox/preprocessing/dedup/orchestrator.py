@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
@@ -41,6 +41,19 @@ class DedupResult:
     closest_method: str
     embedding_score: float | None = None
     minhash_score: float | None = None
+
+
+class StoreEntry(TypedDict):
+    """Schema for one slug entry in the persistent dedup store (JSON)."""
+
+    verdict: str
+    closest_match: str | None
+    closest_score: float
+    closest_method: str
+    embedding_score: float | None
+    minhash_score: float | None
+    embedding: list | None
+    minhash: list[int] | None
 
 
 class DedupOrchestrator:
@@ -74,7 +87,7 @@ class DedupOrchestrator:
     def store(self) -> DedupStore:
         return self._store
 
-    def fingerprint(self, slug: str, text: str) -> dict[str, Any]:
+    def fingerprint(self, slug: str, text: str) -> dict[str, CacheValue]:
         """Compute all configured fingerprints for a single document.
 
         Call this **during extraction** (per-document). Embedding network
@@ -92,14 +105,14 @@ class DedupOrchestrator:
         """
         if not self.enabled:
             return {}
-        fps: dict[str, Any] = {}
+        fps: dict[str, CacheValue] = {}
         for matcher in self._matchers:
             fps[matcher.name] = matcher.fingerprint(text)
         return fps
 
     def compare(  # noqa: PLR0915 — multi-phase comparison flow
         self,
-        fingerprints: dict[str, dict[str, Any]],
+        fingerprints: dict[str, dict[str, CacheValue]],
         progress_fn: ProgressFn | None = None,
     ) -> dict[str, DedupResult]:
         """Compare pre-computed fingerprints and produce verdicts.
@@ -191,7 +204,7 @@ class DedupOrchestrator:
             results[slug] = result
 
             # Store this doc's fingerprints + verdict
-            entry: dict[str, Any] = {
+            entry: StoreEntry = {
                 "verdict": result.verdict.value,
                 "closest_match": best_match,
                 "closest_score": best_score,
@@ -291,7 +304,7 @@ class DedupOrchestrator:
         self,
         slug: str,
         matcher_name: str,
-        slug_to_fp: dict[str, dict[str, Any]],
+        slug_to_fp: dict[str, dict[str, CacheValue]],
         matcher: ContentMatcher,
     ) -> CacheValue:
         """Get a fingerprint for *slug* — from batch cache or persistent store."""

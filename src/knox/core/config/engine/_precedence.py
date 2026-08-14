@@ -50,6 +50,8 @@ class ResolvedConfig:
     """Fully merged configuration with provenance tracking."""
 
     raw: dict[str, Any] = field(default_factory=dict)
+    # ponytail: `raw` stays dict[str, Any] (C3) — config values are heterogeneous
+    # by depth; a dataclass per level would be a config-layer rewrite, not a refactor.
     provenance: dict[str, ConfigSource] = field(default_factory=dict)
     project_config_file: Path | None = None
     project_config_paths: list[Path] = field(default_factory=list)

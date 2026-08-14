@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from knox.compilation._two_phase_core import Extraction
+from knox.compilation.schema import Concept, Entity
 
 # ── Memory digests ─────────────────────────────────────────────────────
 
@@ -65,36 +66,35 @@ class ExtractionMemory:
             ``tags``, and ``summary`` attributes.
         """
         for c in extraction.concepts:
-            key = self._norm(c.get("name", c.get("title", "")))
+            key = self._norm(c.name)
             if not key:
                 continue
             if key in self.concepts:
                 self.concepts[key].ref_count += 1
                 # overwrite definition with latest occurrence
-                new_def = c.get("definition", "")
-                if new_def:
-                    self.concepts[key].definition = new_def
+                if c.definition:
+                    self.concepts[key].definition = c.definition
             else:
                 self.concepts[key] = ConceptDigest(
-                    title=c.get("name", c.get("title", "")),
-                    definition=c.get("definition", ""),
+                    title=c.name,
+                    definition=c.definition,
                 )
 
         for e in extraction.entities:
-            key = self._norm(e.get("name", ""))
+            key = self._norm(e.name)
             if not key:
                 continue
             if key in self.entities:
                 self.entities[key].ref_count += 1
                 # update context if richer
-                ctx = e.get("context", "")
+                ctx = e.context
                 if ctx and len(ctx) > len(self.entities[key].context):
                     self.entities[key].context = ctx
             else:
                 self.entities[key] = EntityDigest(
-                    name=e.get("name", ""),
-                    entity_type=e.get("type", ""),
-                    context=e.get("context", ""),
+                    name=e.name,
+                    entity_type=e.type,
+                    context=e.context,
                 )
 
         for t in getattr(extraction, "tags", ()):
@@ -194,7 +194,7 @@ class ExtractionMemory:
             source=source,
             summary=self.section_summaries[0] if self.section_summaries else "",
             concepts=[
-                {"name": d.title, "definition": d.definition}
+                Concept(name=d.title, definition=d.definition)
                 for d in sorted(
                     self.concepts.values(),
                     key=lambda d: d.ref_count,
@@ -202,11 +202,7 @@ class ExtractionMemory:
                 )
             ],
             entities=[
-                {
-                    "name": d.name,
-                    "type": d.entity_type,
-                    "context": d.context,
-                }
+                Entity(name=d.name, type=d.entity_type, context=d.context)
                 for d in sorted(
                     self.entities.values(),
                     key=lambda d: d.ref_count,

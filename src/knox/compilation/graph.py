@@ -17,7 +17,7 @@ from knox.compilation.base import BaseCompiler
 from knox.compilation.concept_keys import is_structural_concept
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_EXCERPT_CHARS
-from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, GraphEdge, MetadataField, ResolvedChunk, TocEntry, WikiField, WikiNode
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -233,9 +233,9 @@ class GraphCompiler(BaseCompiler):
         chunks: list[ResolvedChunk],
         nodes: list[WikiNode],
         node_index: dict[tuple[str, str | None], int],
-    ) -> tuple[list[dict[str, Any]], dict[str, set[int]]]:
+    ) -> tuple[list[GraphEdge], dict[str, set[int]]]:
         """Build entity cross-reference edges and the entity-location index."""
-        edges: list[dict[str, Any]] = []
+        edges: list[GraphEdge] = []
         entity_location: dict[str, set[int]] = defaultdict(set)
 
         for rc in chunks:
@@ -270,9 +270,9 @@ class GraphCompiler(BaseCompiler):
         chunks: list[ResolvedChunk],
         nodes: list[WikiNode],
         entity_location: dict[str, set[int]],
-    ) -> list[dict[str, Any]]:
+    ) -> list[GraphEdge]:
         """Build typed relation edges from resolver-extracted relations."""
-        edges: list[dict[str, Any]] = []
+        edges: list[GraphEdge] = []
         seen_edges: set[tuple[str, str, str]] = set()
 
         for rc in chunks:
@@ -295,7 +295,7 @@ class GraphCompiler(BaseCompiler):
                         if edge_key in seen_edges:
                             continue
                         seen_edges.add(edge_key)
-                        edge: dict[str, Any] = {
+                        edge: GraphEdge = {
                             "source": src_id,
                             "target": tgt_id,
                             "type": rel_type,
@@ -309,8 +309,8 @@ class GraphCompiler(BaseCompiler):
     @staticmethod
     def _build_source_sibling_edges(
         nodes: list[WikiNode],
-        existing_edges: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
+        existing_edges: list[GraphEdge],
+    ) -> list[GraphEdge]:
         """Create bidirectional edges between consecutive same-source nodes.
 
         Pages from a multi-section source document are linked in reading
@@ -325,7 +325,7 @@ class GraphCompiler(BaseCompiler):
             if source is not None:
                 by_source[source].append(idx)
 
-        new_edges: list[dict[str, Any]] = []
+        new_edges: list[GraphEdge] = []
         for indices in by_source.values():
             if len(indices) < 2:
                 continue
@@ -345,7 +345,7 @@ class GraphCompiler(BaseCompiler):
         *,
         min_sources: int,
         max_pages: int,
-    ) -> tuple[list[WikiNode], list[dict[str, Any]]]:
+    ) -> tuple[list[WikiNode], list[GraphEdge]]:
         """Create concept pages for entities spanning multiple source documents.
 
         Each entity appearing in nodes from at least *min_sources* distinct
@@ -381,7 +381,7 @@ class GraphCompiler(BaseCompiler):
             candidates = candidates[:max_pages]
 
         concept_nodes: list[WikiNode] = []
-        concept_edges: list[dict[str, Any]] = []
+        concept_edges: list[GraphEdge] = []
         entity_lower = ""
 
         for entity_name, node_indices, sources in candidates:
@@ -426,7 +426,7 @@ class GraphCompiler(BaseCompiler):
         return concept_nodes, concept_edges
 
     @staticmethod
-    def _build_toc(nodes: list[WikiNode]) -> list[dict[str, Any]]:
+    def _build_toc(nodes: list[WikiNode]) -> list[TocEntry]:
         """Build a top-level table of contents from nodes."""
         return [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
 

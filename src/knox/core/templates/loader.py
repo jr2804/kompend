@@ -27,7 +27,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 import yaml
 from jinja2 import BaseLoader, ChoiceLoader, Environment, FileSystemLoader, PackageLoader, StrictUndefined, meta
@@ -92,7 +92,7 @@ class TemplateMeta:
         Your prompt text with {{ title }} and {{ content }}.
     """
 
-    variables: list[dict[str, Any]] = field(default_factory=list)
+    variables: list[TemplateVariable] = field(default_factory=list)
     """Declared variables with name, type hint, and required flag."""
 
     role: str = ""
@@ -107,11 +107,11 @@ class TemplateMeta:
 
     def required_variable_names(self) -> set[str]:
         """Return the set of variable names marked as required."""
-        return {v["name"] for v in self.variables if isinstance(v, dict) and v.get("required")}
+        return {v["name"] for v in self.variables if v.get("required")}
 
     def declared_variable_names(self) -> set[str]:
         """Return the set of all declared variable names."""
-        return {v["name"] for v in self.variables if isinstance(v, dict) and v.get("name")}
+        return {v["name"] for v in self.variables}
 
     @classmethod
     def from_yaml_block(cls, yaml_text: str) -> TemplateMeta:
@@ -430,6 +430,14 @@ class TemplateLoader:
             logger.debug("Failed to list built-in templates: %s", exc, exc_info=True)
 
         return layers
+
+
+class TemplateVariable(TypedDict):
+    """Schema for one declared variable in a template's YAML frontmatter."""
+
+    name: str
+    type: NotRequired[str]
+    required: NotRequired[bool]
 
 
 def get_template_loader() -> TemplateLoader:

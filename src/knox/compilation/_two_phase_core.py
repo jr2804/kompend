@@ -20,8 +20,8 @@ from knox.compilation.concept_keys import (
     is_structural_concept,
     normalize_concept_key,
 )
-from knox.compilation.schema import ExtractionOutput, GenerationOutput, LLMOutputError
-from knox.core.models import ElementType, ResolvedChunk, WikiNode
+from knox.compilation.schema import Concept, Entity, ExtractionOutput, GenerationOutput, LLMOutputError
+from knox.core.models import ElementType, ImageRef, ResolvedChunk, WikiNode
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
@@ -47,8 +47,6 @@ MIN_SEGMENT_TOKENS: int = 512
 _DEFAULT_CHARS_PER_TOKEN: float = 3.85
 
 
-_CONCEPT_NAME_KEYS = ("name", "concept", "title", "term", "label")
-
 # Internal names injected by VLMEnricher for bookkeeping — must never
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
@@ -64,16 +62,16 @@ class Extraction:
 
     source: str
     summary: str = ""
-    entities: list[dict[str, str]] = field(default_factory=list)
-    concepts: list[dict[str, str]] = field(default_factory=list)
+    entities: list[Entity] = field(default_factory=list)
+    concepts: list[Concept] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "source": self.source,
             "summary": self.summary,
-            "entities": list(self.entities),
-            "concepts": list(self.concepts),
+            "entities": [e.model_dump() for e in self.entities],
+            "concepts": [c.model_dump() for c in self.concepts],
             "tags": list(self.tags),
         }
 
@@ -82,8 +80,8 @@ class Extraction:
         return cls(
             source=data.get("source", ""),
             summary=data.get("summary", ""),
-            entities=list(data.get("entities", [])),
-            concepts=list(data.get("concepts", [])),
+            entities=[Entity.model_validate(e) for e in data.get("entities", [])],
+            concepts=[Concept.model_validate(c) for c in data.get("concepts", [])],
             tags=list(data.get("tags", [])),
         )
 
@@ -112,7 +110,7 @@ class ExtractionSet:
         merged: dict[str, dict[str, Any]] = {}
         for ext in self.extractions:
             for concept in ext.concepts:
-                name = _concept_name(concept)
+                name = concept.name.strip()
                 if not name or name in _RESERVED_CONCEPT_NAMES or name.startswith("vlm_"):
                     continue
                 if is_structural_concept(name):
@@ -127,7 +125,7 @@ class ExtractionSet:
                     merged[key]["name"] = name
                 bucket = merged[key]
                 bucket["sources"].append(ext.source)
-                definition = concept.get("definition") or concept.get("importance") or concept.get("description")
+                definition = concept.definition or concept.importance
                 if definition:
                     bucket["definitions"].append(definition)
         return list(merged.values())
@@ -137,7 +135,7 @@ class ExtractionSet:
         out: dict[str, list[str]] = defaultdict(list)
         for ext in self.extractions:
             for ent in ext.entities:
-                name = ent.get("name", "").strip()
+                name = ent.name.strip()
                 if name:
                     out[name].append(ext.source)
         return dict(out)
@@ -242,7 +240,7 @@ def _dedup_id(node_id: str, seen: set[str]) -> str:
     return candidate
 
 
-def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, Any]]:
+def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
     """Extract image metadata from IMAGE chunks.
 
     Returns a list of dicts with keys: path, caption, element_type.
@@ -251,7 +249,7 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, An
     - chunk.metadata["image_base64"] (base64 mode)
     - VLM captions from resolved.entities with type="image_description"
     """
-    images: list[dict[str, Any]] = []
+    images: list[ImageRef] = []
 
     for rc in chunks:
         if ElementType.IMAGE not in rc.chunk.element_types:
@@ -277,7 +275,7 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[dict[str, An
                 "caption": caption,
                 "element_type": "image",
             }
-        )
+        )  # ImageRef
 
     return images
 
@@ -310,20 +308,6 @@ def compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) ->
 # so the ``wicer`` (GraphCompiler) and TwoPhase backends share one
 # implementation. Re-exported here for callers that already import it
 # from this module.
-
-
-def _concept_name(concept: dict[str, Any]) -> str:
-    """Salvage a concept name, tolerating schema drift.
-
-    The extraction prompt asks for ``name``; LLMs sometimes return
-    ``concept``/``title``/``term`` instead. Without salvage, concept_pages()
-    returns empty and generation silently falls back.
-    """
-    for key in _CONCEPT_NAME_KEYS:
-        val = str(concept.get(key, "")).strip()
-        if val:
-            return val
-    return ""
 
 
 def try_pydanticai_extraction(
@@ -416,20 +400,20 @@ def merge_extractions(source: str, parts: list[Extraction]) -> Extraction:
         return parts[0]
 
     summary = " ".join(p.summary for p in parts if p.summary)
-    entities: list[dict[str, str]] = []
-    concepts: list[dict[str, str]] = []
+    entities: list[Entity] = []
+    concepts: list[Concept] = []
     tags: list[str] = []
     seen_entities: set[str] = set()
     seen_concepts: set[str] = set()
     seen_tags: set[str] = set()
     for p in parts:
         for e in p.entities:
-            key = e.get("name", "").strip().lower()
+            key = e.name.strip().lower()
             if key and key not in seen_entities:
                 entities.append(e)
                 seen_entities.add(key)
         for c in p.concepts:
-            key = c.get("name", "").strip().lower()
+            key = c.name.strip().lower()
             if key and key not in seen_concepts:
                 concepts.append(c)
                 seen_concepts.add(key)
