@@ -81,7 +81,7 @@ docling = [
 ]
 
 pandoc = [
-    "pypandoc>=1.17",
+    "pypandoc[tinytex]>=1.17",
 ]
 
 # The original plan was to offer further advanced parser backends as optional dependencies,
