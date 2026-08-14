@@ -49,8 +49,9 @@ to bypass its ignore-file filtering — dir scans get eaten by `.gitignore`.
 
 ### Plans completed and archived (2026-08-14)
 
-`MIGRATION_PLAN.md` (summarization-pydantic-ai integration) and
-`REFACTORING_PLAN.md` (super-module splits) moved to `.agents/history/`.
+`2026-08-14-migration-plan.md` (summarization-pydantic-ai integration) and
+`2026-08-14-refactoring-plan.md` (super-module splits) archived to
+`.agents/history/`.
 
 - MIGRATION_PLAN: fully implemented — `summarization-pydantic-ai>=0.1.10` in
   pyproject, `ContextManagerCapability` wired in `agents/base.py`,

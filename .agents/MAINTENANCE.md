@@ -44,6 +44,15 @@ How to keep `.agents/` files current.
 | `plans/` | New feature implementation starts |
 | `history/` | HISTORY.md overflow or completed plans archived |
 
+### Plan naming and dating
+
+- Active plans in `plans/` keep their working name (no date prefix) but must
+  carry date info in the document (e.g. a `Created: YYYY-MM-DD` line under
+  the title; update a `Status:` line as work progresses).
+- On archiving into `history/`, rename to `YYYY-MM-DD-<plan-slug>.md` where
+  the date is the **completion date** (e.g. `2026-08-14-migration-plan.md`).
+  Update any references to the old filename (HISTORY.md entries, links).
+
 ### Cross-reference map
 
 | `.agents/` file | Referenced from |
