@@ -41,13 +41,14 @@ class _CapabilityCheck(_BM):
 class CheckResult:
     """Result of a single doctor check."""
 
-    def __init__(self, name: str, passed: bool, message: str = "") -> None:
+    def __init__(self, name: str, passed: bool, message: str = "", warning: bool = False) -> None:
         self.name = name
         self.passed = passed
         self.message = message
+        self.warning = warning
 
     def to_dict(self) -> dict[str, str | bool]:
-        return {"name": self.name, "passed": self.passed, "message": self.message}
+        return {"name": self.name, "passed": self.passed, "message": self.message, "warning": self.warning}
 
 
 # ── Doctor runner ───────────────────────────────────────────────────────
@@ -232,7 +233,10 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
     """Ping a single completion-type model (LLM or VLM) via PydanticAI DoctorAgent."""
     name = f"connectivity-{label}"
     if not model:
-        return CheckResult(name, True, f"No {label} model configured — skipped")
+        if label == "llm":
+            # Missing LLM is a hard failure — a compile cannot run without it.
+            return CheckResult(name, False, "No llm model configured — skipped")
+        return CheckResult(name, True, f"No {label} model configured — skipped", warning=True)
 
     try:
         agent = DoctorAgent(
@@ -253,7 +257,7 @@ def _ping_embed_model(model: str | None) -> CheckResult:
     """Ping an embedding model via pydantic-ai's Embedder."""
     name = "connectivity-embed"
     if not model:
-        return CheckResult(name, True, "No embed model configured — skipped")
+        return CheckResult(name, True, "No embed model configured — skipped", warning=True)
 
     try:
         pydantic_ai_string = to_pydantic_ai_embedding_string(model)
@@ -372,13 +376,15 @@ def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
 
 
 def print_doctor_results(results: list[CheckResult], json_output: bool = False) -> int:
-    """Print doctor results. Returns exit code (0 = all passed)."""
-    passed_count = sum(1 for r in results if r.passed)
+    """Print doctor results. Returns exit code (0 = no failures)."""
     failed_count = sum(1 for r in results if not r.passed)
+    warn_count = sum(1 for r in results if r.passed and r.warning)
+    ok_count = sum(1 for r in results if r.passed and not r.warning)
 
     if json_output:
         data = {
-            "passed": passed_count,
+            "passed": ok_count,
+            "warning": warn_count,
             "failed": failed_count,
             "total": len(results),
             "checks": [r.to_dict() for r in results],
@@ -387,11 +393,18 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
         sys.stdout.write("\n")
     else:
         for r in results:
-            icon = "[OK]" if r.passed else "[!]"
+            if not r.passed:
+                icon = "[!]"
+            elif r.warning:
+                icon = "[WARN]"
+            else:
+                icon = "[OK]"
             get_console().print(f"  {icon} {r.name}: {r.message}", markup=False)
 
         total = len(results)
-        get_console().print(f"\n  {passed_count}/{total} checks passed", end="")
+        get_console().print(f"\n  {ok_count}/{total} checks passed", end="")
+        if warn_count:
+            get_console().print(f", {warn_count} warning(s)", end="")
         if failed_count:
             get_console().print(f", {failed_count} failed", end="")
         get_console().print("")

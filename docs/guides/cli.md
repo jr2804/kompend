@@ -234,7 +234,7 @@ Checks performed:
 10. **VLM connectivity** — quick ping to configured VLM
 11. **Embedding connectivity** — quick ping to configured embedding model
 
-Exit code: `0` if all checks pass, `1` if any check fails.
+Exit code: `0` if no check fails, `1` if any check fails. Warnings are reported but do not fail the run; a missing LLM (`connectivity-llm`) is a hard failure.
 
 Example output::
 
@@ -248,13 +248,13 @@ Example output::
   [OK] context-window-vlm: No vlm model configured — skipped
   [OK] budget-consistency: Budgets OK: 128000 ctx, 32768 gen_out, 16384 extract_out, ~95104 input
   [OK] connectivity-llm: llm OK (ollama/gemma4:e2b)
-  [OK] connectivity-vlm: No vlm model configured — skipped
-  [OK] connectivity-embed: No embed model configured — skipped
+  [WARN] connectivity-vlm: No vlm model configured — skipped
+  [WARN] connectivity-embed: No embed model configured — skipped
 
-  11/11 checks passed
+  9/11 checks passed, 2 warning(s)
 ```
 
-Exit code: `0` if all checks pass, `1` if any check fails.
+Exit code: `0` if no check fails (warnings do not fail), `1` if any check fails.
 
 ## `knox status`
 
@@ -395,7 +395,7 @@ reference the old paths. Updated locations:
 - Inline `[filename:start-end]` citations in `wiki/**/*.md`
 - `.knox/provenance/*.json` per-node citation records
 - `metadata.source_file` in `.knox/last_wiki.json`
-- `source_path` in `.knox/compile_state.json`
+- `source_file` in `.knox/compile_state.json`
 
 A report is written to `.knox/last_organize.json`. Files without an
 extraction summary are left in place at the top level.

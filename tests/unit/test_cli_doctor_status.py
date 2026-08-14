@@ -79,25 +79,27 @@ class TestRunDoctor:
         assert src_check.passed is True
         assert out_check.passed is True
 
-    def test_no_model_skips_llm(self) -> None:
-        """Without a model, LLM connectivity check is skipped (passed)."""
+    def test_no_model_fails_llm(self) -> None:
+        """Without a model, LLM connectivity check is a hard failure."""
         results = run_doctor()
         llm_check = next(r for r in results if r.name == "connectivity-llm")
-        assert llm_check.passed is True
+        assert llm_check.passed is False
         assert "skipped" in llm_check.message
 
     def test_vlm_skipped_without_model(self) -> None:
-        """Without a VLM model, VLM check is skipped (passed)."""
+        """Without a VLM model, VLM check is a warning, not a pass."""
         results = run_doctor()
         vlm_check = next(r for r in results if r.name == "connectivity-vlm")
         assert vlm_check.passed is True
+        assert vlm_check.warning is True
         assert "skipped" in vlm_check.message
 
     def test_embed_skipped_without_model(self) -> None:
-        """Without an embed model, embed check is skipped (passed)."""
+        """Without an embed model, embed check is a warning, not a pass."""
         results = run_doctor()
         embed_check = next(r for r in results if r.name == "connectivity-embed")
         assert embed_check.passed is True
+        assert embed_check.warning is True
         assert "skipped" in embed_check.message
 
 
