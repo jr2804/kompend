@@ -32,8 +32,12 @@ opencode.json
 .opencode
 
 # Skills directory — root-level .agents/*.md framework files are tracked
-/.agents/*
+/.agents/skills
+/.agents/plans
 !/.agents/*.md
+!/.agents/history/*.md
+
+
 skills-lock.json
 
 # GrepAI config directory

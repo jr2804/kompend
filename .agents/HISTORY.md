@@ -29,6 +29,22 @@ contributors from re-litigating settled questions.
 
 ## Project-specific History — KNOX
 
+### Plans completed and archived (2026-08-14)
+
+`MIGRATION_PLAN.md` (summarization-pydantic-ai integration) and
+`REFACTORING_PLAN.md` (super-module splits) moved to `.agents/history/`.
+
+- MIGRATION_PLAN: fully implemented — `summarization-pydantic-ai>=0.1.10` in
+  pyproject, `ContextManagerCapability` wired in `agents/base.py`,
+  `_compact_messages` removed (commit `edb4d49`), `compile.llm.context_manager`
+  config key added.
+- REFACTORING_PLAN: Phases 1–4 + cleanup item 12 landed (pipeline `stages/`,
+  config `engine/`, mcp `tools/`, compilation `flows/`, web routes,
+  `_query_helpers`, `_sources_io`, `_post_compile`, `_checkpoints`,
+  `_remediation_gaps`, output `pages/`). Remaining Phase-5 targets
+  (`graph.py`, `wicer.py`, `dedup/orchestrator.py`) re-measured under the
+  350-net-line budget (335/308/184) — splits no longer needed.
+
 ### Why `compile.embedding.dim` was removed
 
 The config fallback `dim = 384` shaped only the empty-text vector in the dedup
@@ -37,6 +53,14 @@ provider's real dimension, so a mismatch crashed `EmbeddingMatcher.score`
 (`zip(..., strict=True)`). `dim` was also a no-op hint — `make_provider()`
 ignores it. Fix: the matcher reads `provider.dim` (lazily probed at runtime)
 and the config key was deleted. Commit: uncommitted (worktree after `fe517d1`).
+
+Same principle applied to the zvec stores (`rag/zvec_store.py`,
+`memory/store.py`): the `embedding_dim=384` defaults were the last
+`dim = 384` literals (AGENTS.md antipattern table). Removed — dim now always
+resolves from `provider.dim`. Additionally, both stores now rebuild instead
+of reopening when an existing collection's stored dimension differs from the
+current model (previously raised "field dimension mismatch" on insert, e.g.
+after switching from a 384-dim to a 768-dim embedding model).
 
 ### Why `_ENV_LIST_VARS` is schema-derived and `KNOX_CHARS_PER_TOKEN` was dropped
 
