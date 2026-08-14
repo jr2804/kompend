@@ -25,6 +25,7 @@ from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.other import SourceTags
 from knox.core.config import resolve_config
+from knox.core.models import MetadataField
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.logging import get_console, get_logger
 
@@ -144,7 +145,7 @@ def _load_all_cache_entries(cache_dir: Path) -> dict[str, dict[str, Any]]:
     for cache_file in sorted(cache_dir.glob("*.json")):
         try:
             data = json.loads(cache_file.read_text(encoding="utf-8"))
-            source_file = data.get("source_file", "")
+            source_file = data.get(MetadataField.SOURCE_FILE, "")
             if source_file:
                 entries[source_file] = data
         except (json.JSONDecodeError, OSError) as exc:
@@ -215,7 +216,7 @@ def _find_cache_file(cache_dir: Path, file: str) -> Path | None:
     for m in matches:
         try:
             data = json.loads(m.read_text(encoding="utf-8"))
-            if data.get("source_file") == file:
+            if data.get(MetadataField.SOURCE_FILE) == file:
                 return m
         except (json.JSONDecodeError, OSError):
             continue

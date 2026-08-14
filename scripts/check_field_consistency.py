@@ -109,6 +109,7 @@ ALLOWLIST_SUFFIXES: list[str] = [
     "core/config/keys.py",
     "compilation/_two_phase_core.py",  # parses extraction JSON from LLM
     "mcp/server.py",  # JSON-RPC protocol keys
+    "llm/__init__.py",  # lazy_loader submod_attrs table: keys are module names
 ]
 
 # Known-generic enum values to skip even outside allowlisted files.

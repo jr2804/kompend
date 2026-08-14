@@ -10,7 +10,7 @@ from pathlib import Path
 
 from knox.compilation._two_phase_core import _merge_node
 from knox.compilation.flows.assembly import cosine_similarity
-from knox.core.models import ChunkTree, CompiledWiki, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -243,14 +243,14 @@ class BaseCompiler(ABC):
                         (survivor.source_chunks or []) + (node.source_chunks or []),
                     ),
                 )
-                ex_prov = {str(x) for x in (survivor.metadata.get("provenance") or [])}
-                inc_prov = {str(x) for x in (node.metadata.get("provenance") or [])}
+                ex_prov = {str(x) for x in (survivor.metadata.get(MetadataField.PROVENANCE) or [])}
+                inc_prov = {str(x) for x in (node.metadata.get(MetadataField.PROVENANCE) or [])}
                 if ex_prov or inc_prov:
-                    survivor.metadata["provenance"] = sorted(ex_prov | inc_prov)
-                ex_rel = {str(x) for x in (survivor.metadata.get("related") or [])}
-                inc_rel = {str(x) for x in (node.metadata.get("related") or [])}
+                    survivor.metadata[MetadataField.PROVENANCE] = sorted(ex_prov | inc_prov)
+                ex_rel = {str(x) for x in (survivor.metadata.get(MetadataField.RELATED) or [])}
+                inc_rel = {str(x) for x in (node.metadata.get(MetadataField.RELATED) or [])}
                 if ex_rel or inc_rel:
-                    survivor.metadata["related"] = sorted(ex_rel | inc_rel)
+                    survivor.metadata[MetadataField.RELATED] = sorted(ex_rel | inc_rel)
                 logger.debug(
                     "Deduped content-duplicate node '%s' (merged into '%s')",
                     node.title,
