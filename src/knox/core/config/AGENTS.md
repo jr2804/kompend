@@ -100,6 +100,10 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 - **Boolean env vars** — `true/1/yes` → `True`, `false/0/no` → `False`.
   Integers are auto-coerced. Comma-separated strings become lists.
   All other values stay as strings.
+- **Env-list set is schema-derived** — which env vars split on commas is
+  computed from list-typed fields, never hand-listed. Direct env reads at the
+  discovery boundary must use the config-map alias (e.g. `KNOX_WIKI_DIR`),
+  never a hand-written variant.
 - **Empty string = unset = None** — an empty string (`""`) is treated
   identically to `None` or a missing key. Consumers that support fallback
   chains (e.g. `dedup.model` → `compile.embedding.model`) must treat all

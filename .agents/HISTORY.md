@@ -29,6 +29,26 @@ contributors from re-litigating settled questions.
 
 ## Project-specific History — KNOX
 
+### Why `compile.embedding.dim` was removed
+
+The config fallback `dim = 384` shaped only the empty-text vector in the dedup
+embedding matcher; non-empty fingerprints came from `provider.embed()` at the
+provider's real dimension, so a mismatch crashed `EmbeddingMatcher.score`
+(`zip(..., strict=True)`). `dim` was also a no-op hint — `make_provider()`
+ignores it. Fix: the matcher reads `provider.dim` (lazily probed at runtime)
+and the config key was deleted. Commit: uncommitted (worktree after `fe517d1`).
+
+### Why `_ENV_LIST_VARS` is schema-derived and `KNOX_CHARS_PER_TOKEN` was dropped
+
+`_ENV_LIST_VARS` hand-listed KNOX_* names and drifted from the schema: it split
+`KNOX_DEDUP_MATCHERS` (a `str` field) and `KNOX_SEARCH_EXPANSION_VARIANTS` (an
+`int` field) into lists and listed dead `KNOX_LINT`. It now derives from
+list-typed config-map fields. Separately, `_two_phase_core` read
+`KNOX_CHARS_PER_TOKEN` by hand while the real config alias is
+`KNOX_LLM_DEFAULT_CHARS_PER_TOKEN` — the direct read was redundant (the value
+already flows via `default_chars_per_token`) and the env var was effectively
+dead. Removed. Commit: uncommitted (worktree after `fe517d1`).
+
 ### Known text-in-code violations (T1–T10)
 
 Tracked via `bd` (beads). Check current status: `bd list`.
