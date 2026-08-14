@@ -71,9 +71,9 @@ def verify_wiki(
     if result.claims:
         result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
 
-    report_path = VaultPaths(base_dir).verification_path
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
+    report_file = VaultPaths(base_dir).verification_file
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
     return result
 
 

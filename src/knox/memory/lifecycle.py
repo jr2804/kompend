@@ -295,14 +295,14 @@ def update_memory_for_compile(
 
     The store is saved alongside other KNOX metadata (``.knox/`` directory).
     """
-    store_path = VaultPaths(base_dir).memory_store_path
-    store = MemoryStore.load(store_path)
+    store_file = VaultPaths(base_dir).memory_store_file
+    store = MemoryStore.load(store_file)
     report = store.update_for_compile(
         wiki.nodes,
         half_life_days=half_life_days,
         decay_threshold=decay_threshold,
     )
-    store.save(store_path)
+    store.save(store_file)
 
     if report.new or report.updated or report.superseded:
         logger.info(

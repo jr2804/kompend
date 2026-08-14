@@ -1026,8 +1026,6 @@ class TestAnnotateWikiWithProvenance:
     """annotate_wiki_with_provenance writes per-node files and updates metadata."""
 
     def test_annotates_and_persists(self, tmp_path: Path) -> None:
-        output_dir = tmp_path / "wiki"
-        output_dir.mkdir()
         wiki = _wiki(
             nodes=[
                 WikiNode(
@@ -1038,11 +1036,11 @@ class TestAnnotateWikiWithProvenance:
                 )
             ]
         )
-        out = annotate_wiki_with_provenance(wiki, output_dir)
+        out = annotate_wiki_with_provenance(wiki, tmp_path)
         assert out.metadata["provenance_annotated"] is True
-        record_path = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
-        assert record_path.exists()
-        record = json.loads(record_path.read_text(encoding="utf-8"))
+        record_file = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
+        assert record_file.exists()
+        record = json.loads(record_file.read_text(encoding="utf-8"))
         assert record["citations"] == ["[a.pdf:1-3]"]
 
 
@@ -1082,10 +1080,8 @@ class TestMarkWikiPrivate:
     """mark_wiki_private writes a private.json index."""
 
     def test_creates_private_index(self, tmp_path: Path) -> None:
-        output_dir = tmp_path / "wiki"
-        output_dir.mkdir()
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
-        mark_wiki_private(wiki, output_dir)
+        mark_wiki_private(wiki, tmp_path)
         path = tmp_path / KNOX_DIR / PRIVATE_FILE
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -1173,14 +1169,12 @@ class TestVerificationUnavailable:
         assert result[0].confidence == 0.0
 
     def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
-        output_dir = tmp_path / "wiki"
-        output_dir.mkdir()
         wiki = _wiki(
             nodes=[
                 WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
             ]
         )
-        result = verify_wiki(wiki, output_dir, agent=self._fake_client())
+        result = verify_wiki(wiki, tmp_path, agent=self._fake_client())
         assert result.total >= 1
         report = tmp_path / KNOX_DIR / VERIFICATION_FILE
         assert report.exists()

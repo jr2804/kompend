@@ -52,7 +52,7 @@ def sources_list(
     Optionally filter by tag using --tags (same semantics as query --tags).
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_path=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config)
     cache_dir = vp.cache_dir
 
     cache_data = _load_all_cache_entries(cache_dir)
@@ -70,8 +70,8 @@ def sources_list(
 
     # Collect all sources
     results = []
-    for file_path in sorted(cache_data):
-        source_tags = _get_source_tags(file_path, cache_data)
+    for file in sorted(cache_data):
+        source_tags = _get_source_tags(file, cache_data)
 
         # Apply tag filter if specified
         if tag_groups:
@@ -79,7 +79,7 @@ def sources_list(
             if not any(all(t in tag_set for t in group) for group in tag_groups):
                 continue
 
-        results.append((file_path, source_tags))
+        results.append((file, source_tags))
 
     if not results:
         get_console().print("[yellow]No sources match the given tag filter.[/]")
@@ -90,12 +90,12 @@ def sources_list(
     # Rich markup metacharacters render verbatim. The literal brackets around
     # the tag list are themselves escaped (``\[``) so a tag named e.g.
     # "original" is not parsed as a ``[original]`` style and swallowed.
-    for file_path, source_tags in results:
+    for file, source_tags in results:
         if source_tags:
             tag_str = escape(", ".join(source_tags))
-            get_console().print(rf"  {escape(file_path)}  \[{tag_str}]")
+            get_console().print(rf"  {escape(file)}  \[{tag_str}]")
         else:
-            get_console().print(f"  {escape(file_path)}  [dim]no tags[/]")
+            get_console().print(f"  {escape(file)}  [dim]no tags[/]")
 
 
 # ── Sub-command: tag / untag ────────────────────────────────────────────
@@ -104,7 +104,7 @@ def sources_list(
 @sources_app.command("tag", help="Add a tag to an ingested source file.")
 def sources_tag(
     ctx: typer.Context,
-    file_path: str,
+    file: str,
     tag: str,
     config: str | None = None,
 ) -> None:
@@ -114,14 +114,14 @@ def sources_tag(
     wiki nodes on the next compile.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_path=config)
-    _mutate_tags(vp.cache_dir, file_path, tag, add=True)
+    resolve_config(base_dir=vp.base_dir, config_file=config)
+    _mutate_tags(vp.cache_dir, file, tag, add=True)
 
 
 @sources_app.command("untag", help="Remove a tag from an ingested source file.")
 def sources_untag(
     ctx: typer.Context,
-    file_path: str,
+    file: str,
     tag: str,
     config: str | None = None,
 ) -> None:
@@ -131,8 +131,8 @@ def sources_untag(
     to be recompiled to reflect the change.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_path=config)
-    _mutate_tags(vp.cache_dir, file_path, tag, add=False)
+    resolve_config(base_dir=vp.base_dir, config_file=config)
+    _mutate_tags(vp.cache_dir, file, tag, add=False)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -141,33 +141,33 @@ def sources_untag(
 def _load_all_cache_entries(cache_dir: Path) -> dict[str, dict[str, Any]]:
     """Load all per-file parse cache entries into a dict keyed by source_file."""
     entries: dict[str, dict[str, Any]] = {}
-    for cache_path in sorted(cache_dir.glob("*.json")):
+    for cache_file in sorted(cache_dir.glob("*.json")):
         try:
-            data = json.loads(cache_path.read_text(encoding="utf-8"))
-            source_file = data.get("source_file") or data.get("source_path", "")
+            data = json.loads(cache_file.read_text(encoding="utf-8"))
+            source_file = data.get("source_file", "")
             if source_file:
                 entries[source_file] = data
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not load cache entry %s: %s", cache_path.name, exc)
+            logger.warning("Could not load cache entry %s: %s", cache_file.name, exc)
     return entries
 
 
-def _get_source_tags(file_path: str, cache_data: dict[str, Any]) -> list[str]:
+def _get_source_tags(file: str, cache_data: dict[str, Any]) -> list[str]:
     """Extract tags for a source file from the parse cache."""
-    entry = cache_data.get(file_path, {})
+    entry = cache_data.get(file, {})
     meta = entry.get("metadata", {})
     return meta.get("tags", [])  # nocheck: source metadata, not wiki metadata
 
 
-def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
+def _mutate_tags(cache_dir: Path, file: str, tag: str, add: bool) -> None:
     """Add or remove a tag on a source file's cache entry."""
-    cache_path = _find_cache_path(cache_dir, file_path)
-    if cache_path is None:
-        get_console().print(f"[red]No cache entry found for '{escape(file_path)}'. Run 'knox ingest' first.[/]")
+    cache_file = _find_cache_file(cache_dir, file)
+    if cache_file is None:
+        get_console().print(f"[red]No cache entry found for '{escape(file)}'. Run 'knox ingest' first.[/]")
         raise typer.Exit(1)
 
     try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         get_console().print(f"[red]Could not read cache entry: {exc}[/]")
         raise typer.Exit(1)
@@ -177,13 +177,13 @@ def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
 
     if add:
         if tag in existing_tags:
-            get_console().print(f"[yellow]Tag '{escape(tag)}' already present on {escape(file_path)}[/]")
+            get_console().print(f"[yellow]Tag '{escape(tag)}' already present on {escape(file)}[/]")
             return
         existing_tags.append(tag)
         action = "Added"
     else:
         if tag not in existing_tags:
-            get_console().print(f"[yellow]Tag '{escape(tag)}' not found on {escape(file_path)}[/]")
+            get_console().print(f"[yellow]Tag '{escape(tag)}' not found on {escape(file)}[/]")
             return
         existing_tags.remove(tag)
         action = "Removed"
@@ -191,21 +191,21 @@ def _mutate_tags(cache_dir: Path, file_path: str, tag: str, add: bool) -> None:
     meta["tags"] = existing_tags  # nocheck: source metadata, not wiki metadata
 
     try:
-        cache_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        cache_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError as exc:
         get_console().print(f"[red]Could not write cache entry: {exc}[/]")
         raise typer.Exit(1)
 
-    get_console().print(f"[green]{action} tag '{escape(tag)}' on {escape(file_path)}[/]")
+    get_console().print(f"[green]{action} tag '{escape(tag)}' on {escape(file)}[/]")
 
 
-def _find_cache_path(cache_dir: Path, file_path: str) -> Path | None:
+def _find_cache_file(cache_dir: Path, file: str) -> Path | None:
     """Find the cache file for a given source file path.
 
     Uses the stem of the filename to glob for matching cache entries.
     Returns the first match, or None if not found.
     """
-    stem = Path(file_path).stem
+    stem = Path(file).stem
     matches = sorted(cache_dir.glob(parse_cache_glob(stem)))
     if not matches:
         return None
@@ -215,7 +215,7 @@ def _find_cache_path(cache_dir: Path, file_path: str) -> Path | None:
     for m in matches:
         try:
             data = json.loads(m.read_text(encoding="utf-8"))
-            if data.get("source_file") == file_path or data.get("source_path") == file_path:
+            if data.get("source_file") == file:
                 return m
         except (json.JSONDecodeError, OSError):
             continue

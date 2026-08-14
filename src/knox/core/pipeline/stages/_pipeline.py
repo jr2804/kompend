@@ -371,7 +371,7 @@ class WikiPipeline:
         """Resolve the persistent state file path."""
         if self.config.tier_state_file is not None:
             return self.config.tier_state_file
-        return self.config.paths.compile_state_path
+        return self.config.paths.compile_state_file
 
     def _record_tier_state(self, tier: int) -> None:
         """Update current_tier for every known source file."""

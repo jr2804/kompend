@@ -20,12 +20,12 @@ from knox.output.typst import TypstWriter
 class TestMarkdownWriter:
     def test_writes_valid_markdown(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=False)
-        result_path = writer.write(sample_wiki, temp_output)
+        result_file = writer.write(sample_wiki, temp_output)
 
-        assert result_path == temp_output / "wiki.md"
-        assert result_path.exists()
+        assert result_file == temp_output / "wiki.md"
+        assert result_file.exists()
 
-        content = result_path.read_text(encoding="utf-8")
+        content = result_file.read_text(encoding="utf-8")
         assert "# Test Wiki" in content
         assert "# Introduction" in content  # heading_level=1 -> prefix "#"
         assert "## Core Concepts" in content  # heading_level=2 -> prefix "##"
@@ -36,27 +36,27 @@ class TestMarkdownWriter:
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=False)
-        result_path = writer.write(empty_wiki, temp_output)
+        result_file = writer.write(empty_wiki, temp_output)
 
-        assert result_path.exists()
-        content = result_path.read_text(encoding="utf-8")
+        assert result_file.exists()
+        content = result_file.read_text(encoding="utf-8")
         assert "# Compiled Wiki" in content
         assert "Table of Contents" not in content
 
     def test_creates_output_dir(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
         deep_dir = tmp_path / "a" / "b" / "c"
         writer = MarkdownWriter(vault_mode=False)
-        result_path = writer.write(sample_wiki, deep_dir)
+        result_file = writer.write(sample_wiki, deep_dir)
 
-        assert result_path.exists()
+        assert result_file.exists()
         assert deep_dir.exists()
 
     def test_vault_mode_writes_one_file_per_node(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=True)
-        result_path = writer.write(sample_wiki, temp_output)
+        result_file = writer.write(sample_wiki, temp_output)
 
-        assert result_path == temp_output / "index.md"
-        assert result_path.exists()
+        assert result_file == temp_output / "index.md"
+        assert result_file.exists()
         # overview/section/procedure stay at root; concept goes to concepts/.
         assert (temp_output / "intro.md").exists()
         assert (temp_output / "concepts" / "concept-1.md").exists()
@@ -100,9 +100,9 @@ class TestMarkdownWriter:
 
     def test_vault_mode_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=True)
-        result_path = writer.write(empty_wiki, temp_output)
+        result_file = writer.write(empty_wiki, temp_output)
 
-        assert result_path == temp_output / "index.md"
+        assert result_file == temp_output / "index.md"
         index = (temp_output / "index.md").read_text(encoding="utf-8")
         assert "# Wiki Index" in index
 
@@ -115,9 +115,9 @@ class TestMarkdownWriter:
             toc=[],
         )
         writer = MarkdownWriter(vault_mode=True)
-        result_path = writer.write(wiki, tmp_path)
+        result_file = writer.write(wiki, tmp_path)
 
-        assert result_path == tmp_path / "index.md"
+        assert result_file == tmp_path / "index.md"
         assert (tmp_path / "concepts" / "test.md").exists()
         content = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
         assert "# Test Page" in content
@@ -225,8 +225,8 @@ class TestFrontmatterEmission:
         for node in sample_wiki.nodes:
             slug = node.id
             folder = MarkdownWriter._folder_for_kind(node.node_type)
-            page_path = (temp_output / folder / f"{slug}.md") if folder else (temp_output / f"{slug}.md")
-            content = page_path.read_text(encoding="utf-8")
+            page_file = (temp_output / folder / f"{slug}.md") if folder else (temp_output / f"{slug}.md")
+            content = page_file.read_text(encoding="utf-8")
             assert content.startswith("---\n"), f"{slug}.md missing frontmatter"
             assert "title:" in content.split("---\n")[1]
 
@@ -237,8 +237,8 @@ class TestFrontmatterEmission:
 
         for node in sample_wiki.nodes:
             folder = MarkdownWriter._folder_for_kind(node.node_type)
-            page_path = (temp_output / folder / f"{node.id}.md") if folder else (temp_output / f"{node.id}.md")
-            fm_block = page_path.read_text(encoding="utf-8").split("---\n")[1]
+            page_file = (temp_output / folder / f"{node.id}.md") if folder else (temp_output / f"{node.id}.md")
+            fm_block = page_file.read_text(encoding="utf-8").split("---\n")[1]
             assert "kind:" in fm_block, f"{node.id}.md missing kind"
             assert "generated:" in fm_block, f"{node.id}.md missing generated"
             assert "by:" in fm_block, f"{node.id}.md missing generated.by"
@@ -317,12 +317,12 @@ class TestFrontmatterEmission:
 class TestJsonWriter:
     def test_writes_valid_json(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = JsonWriter()
-        result_path = writer.write(sample_wiki, temp_output)
+        result_file = writer.write(sample_wiki, temp_output)
 
-        assert result_path == temp_output / "wiki.json"
-        assert result_path.exists()
+        assert result_file == temp_output / "wiki.json"
+        assert result_file.exists()
 
-        data = json.loads(result_path.read_text(encoding="utf-8"))
+        data = json.loads(result_file.read_text(encoding="utf-8"))
         assert len(data["nodes"]) == 3
         assert data["nodes"][0]["id"] == "intro"
         assert data["nodes"][0]["title"] == "Introduction"
@@ -344,9 +344,9 @@ class TestJsonWriter:
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = JsonWriter()
-        result_path = writer.write(empty_wiki, temp_output)
+        result_file = writer.write(empty_wiki, temp_output)
 
-        data = json.loads(result_path.read_text(encoding="utf-8"))
+        data = json.loads(result_file.read_text(encoding="utf-8"))
         assert data["nodes"] == []
         assert data["edges"] == []
         assert data["toc"] == []
@@ -354,8 +354,8 @@ class TestJsonWriter:
 
     def test_creates_output_dir(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
         writer = JsonWriter()
-        result_path = writer.write(sample_wiki, tmp_path / "deep" / "dir")
-        assert result_path.exists()
+        result_file = writer.write(sample_wiki, tmp_path / "deep" / "dir")
+        assert result_file.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -366,12 +366,12 @@ class TestJsonWriter:
 class TestTypstWriter:
     def test_writes_valid_typst_source(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = TypstWriter()
-        result_path = writer.write(sample_wiki, temp_output)
+        result_file = writer.write(sample_wiki, temp_output)
 
-        assert result_path == temp_output / "wiki.typ"
-        assert result_path.exists()
+        assert result_file == temp_output / "wiki.typ"
+        assert result_file.exists()
 
-        content = result_path.read_text(encoding="utf-8")
+        content = result_file.read_text(encoding="utf-8")
         # Document setup
         assert '#set page("a4")' in content
         assert "#set text(size: 11pt)" in content
@@ -404,10 +404,10 @@ class TestTypstWriter:
 
     def test_handles_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = TypstWriter()
-        result_path = writer.write(empty_wiki, temp_output)
+        result_file = writer.write(empty_wiki, temp_output)
 
-        assert result_path.exists()
-        content = result_path.read_text(encoding="utf-8")
+        assert result_file.exists()
+        content = result_file.read_text(encoding="utf-8")
         assert '#set page("a4")' in content
         assert "Compiled Wiki" in content  # fallback title
         assert "#pagebreak()" in content
@@ -421,14 +421,14 @@ class TestTypstWriter:
             metadata={},
         )
         writer = TypstWriter()
-        result_path = writer.write(wiki, temp_output)
-        content = result_path.read_text(encoding="utf-8")
+        result_file = writer.write(wiki, temp_output)
+        content = result_file.read_text(encoding="utf-8")
         assert "Compiled Wiki" in content
 
     def test_creates_output_dir(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
         writer = TypstWriter()
-        result_path = writer.write(sample_wiki, tmp_path / "nested" / "path")
-        assert result_path.exists()
+        result_file = writer.write(sample_wiki, tmp_path / "nested" / "path")
+        assert result_file.exists()
 
 
 # ---------------------------------------------------------------------------

@@ -132,10 +132,10 @@ class TestPipelineNotesInjection:
     def test_pipeline_loads_notes_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """When notes_file exists, its content is set in template global context during run."""
         notes_content = "# My Notes\nImportant context here."
-        notes_path = tmp_path / "NOTES.md"
-        notes_path.write_text(notes_content, encoding="utf-8")
+        notes_file = tmp_path / "NOTES.md"
+        notes_file.write_text(notes_content, encoding="utf-8")
 
-        config = self._make_config(tmp_path, notes_path)
+        config = self._make_config(tmp_path, notes_file)
         pipeline = WikiPipeline(config=config)
         pipeline.run()
 

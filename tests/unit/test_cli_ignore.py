@@ -36,7 +36,7 @@ class TestMatchesAny:
         f = tmp_path / "test.txt"
         assert matches_any(f, ["*.pdf"]) is False
 
-    def test_match_nested_path(self, tmp_path: Path) -> None:
+    def test_match_nested(self, tmp_path: Path) -> None:
         nested = tmp_path / "sub" / "doc.pdf"
         nested.parent.mkdir()
         nested.write_text("x")

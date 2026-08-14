@@ -322,11 +322,11 @@ def _build_image_element_from_pil(
     else:
         images_dir.mkdir(parents=True, exist_ok=True)
         safe_name = Path(img_name).stem or f"img_{reading_order}"
-        out_path = images_dir / f"{source_file.stem}_{safe_name}.{fmt}"
-        out_path.write_bytes(raw)
-        content = str(out_path)
+        out_file = images_dir / f"{source_file.stem}_{safe_name}.{fmt}"
+        out_file.write_bytes(raw)
+        content = str(out_file)
         meta = {
-            MetadataField.IMAGE_PATH: str(out_path),
+            MetadataField.IMAGE_FILE: str(out_file),
             "image_mode": "file",
         }
 

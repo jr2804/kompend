@@ -126,53 +126,53 @@ class NodeSummarizer:
         if len(content) > self._max_content_chars:
             content = content[: self._max_content_chars]
 
-        heading_path = " / ".join(node.heading_path) if node.heading_path else ""
+        heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
 
-        cached = self._cache_lookup(content, heading_path)
+        cached = self._cache_lookup(content, heading_chain)
         if cached is not None:
             return cached
 
-        summary = self._llm_summarize(content, heading_path) if self._agent is not None else self._extractive_summary(parts)
+        summary = self._llm_summarize(content, heading_chain) if self._agent is not None else self._extractive_summary(parts)
 
-        self._cache_store(content, heading_path, summary)
+        self._cache_store(content, heading_chain, summary)
         return summary
 
-    def _llm_summarize(self, content: str, heading_path: str) -> str:
+    def _llm_summarize(self, content: str, heading_chain: str) -> str:
         """Call LLM via the node-summary template."""
-        prompt = self._loader.render(_TEMPLATE, content=content, heading_path=heading_path)
-        deps = PipelineAgentDeps(text=prompt, source_id=heading_path, timeout=120)
+        prompt = self._loader.render(_TEMPLATE, content=content, heading_chain=heading_chain)
+        deps = PipelineAgentDeps(text=prompt, source_id=heading_chain, timeout=120)
         try:
             if self._agent is None:
                 raise RuntimeError("SummarizerAgent not initialized")
             result = self._agent.run(deps)
             return result.strip()
         except Exception as exc:
-            logger.warning("Summarizer failed for '%s': %s", heading_path, exc)
+            logger.warning("Summarizer failed for '%s': %s", heading_chain, exc)
             return self._extractive_summary([content])
 
-    def _cache_lookup(self, content: str, heading_path: str) -> str | None:
+    def _cache_lookup(self, content: str, heading_chain: str) -> str | None:
         if self._cache is None:
             return None
-        deps = self._cache_deps(content, heading_path)
+        deps = self._cache_deps(content, heading_chain)
         result = self._cache.get(_CACHE_LAYER, deps)
         if isinstance(result, str):
             return result
         return None
 
-    def _cache_store(self, content: str, heading_path: str, summary: str) -> None:
+    def _cache_store(self, content: str, heading_chain: str, summary: str) -> None:
         if self._cache is None:
             return
-        deps = self._cache_deps(content, heading_path)
+        deps = self._cache_deps(content, heading_chain)
         self._cache.set(_CACHE_LAYER, deps, summary)
 
-    def _cache_deps(self, content: str, heading_path: str) -> dict[str, str]:
+    def _cache_deps(self, content: str, heading_chain: str) -> dict[str, str]:
         model = ""
         if self._agent is not None:
             model = self._agent.model_string
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
         return {
             "content_hash": content_hash,
-            "heading_path": hashlib.sha256(heading_path.encode()).hexdigest()[:16],
+            "heading_chain": hashlib.sha256(heading_chain.encode()).hexdigest()[:16],
             "model": model,  # nocheck: summarizer cache deps, not wiki metadata
         }
 

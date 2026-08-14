@@ -250,7 +250,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 | `memory_synthesize` | Generate system context from memory | `wiki_dir: str = "."`, `limit: int \| None` |
 | `config_get` | Get a resolved config value | `key: str`, `wiki_dir: str = "."` |
 | `config_set` | Set a config value | `key: str`, `value: str`, `wiki_dir: str = "."` |
-| `parse_document` | Parse a single document | `file_path: str` |
+| `parse_document` | Parse a single document | `file: str` |
 | `wiki_list_attachments` | List registered attachments (optionally by source) | `source: str \| None`, `wiki_dir: str \| None` |
 | `wiki_read_attachment` | Read text content (up to 100KB) or metadata for binary files | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |
 | `wiki_attachment_info` | Return manifest entry + file metadata | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |

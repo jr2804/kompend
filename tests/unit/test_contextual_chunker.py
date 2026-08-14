@@ -147,7 +147,7 @@ def _make_leaf(node_id: str, text: str = "some text", heading: tuple[str, ...] =
     )
     return ChunkNode(
         id=node_id,
-        heading_path=heading,
+        heading_chain=heading,
         chunk=chunk,
     )
 

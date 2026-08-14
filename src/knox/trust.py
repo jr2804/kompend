@@ -166,7 +166,7 @@ def filter_sensitive(text: str) -> tuple[str, int]:
 
 def mark_wiki_private(wiki: CompiledWiki, base_dir: Path) -> None:
     """Write .knox/private.json index of private pages."""
-    private_index = VaultPaths(base_dir).private_path
+    private_index = VaultPaths(base_dir).private_file
     private_index.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "saved_at": iso_local(),

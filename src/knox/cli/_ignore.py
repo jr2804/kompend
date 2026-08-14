@@ -62,8 +62,8 @@ def filter_files(
     return result
 
 
-def matches_any(subject_path: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
-    """Check if *subject_path* matches any of the given glob patterns.
+def matches_any(subject: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
+    """Check if *subject* matches any of the given glob patterns.
 
     Each pattern is tested against the path's name and, when possible, against
     the path relative to *base_dir*.
@@ -73,11 +73,11 @@ def matches_any(subject_path: Path, patterns: list[str], base_dir: Path | None =
 
     # Compute relative path string (best-effort — may not be under base_dir)
     try:
-        rel_path = subject_path.relative_to(base_dir) if base_dir else subject_path
+        relative = subject.relative_to(base_dir) if base_dir else subject
     except ValueError:
-        rel_path = subject_path
-    rel_str = str(rel_path).replace("\\", "/")
-    name = rel_path.name
+        relative = subject
+    rel_str = str(relative).replace("\\", "/")
+    name = relative.name
 
     for pattern in patterns:
         p = pattern.replace("\\", "/")

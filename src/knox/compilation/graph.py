@@ -472,7 +472,7 @@ class GraphCompiler(BaseCompiler):
                     {
                         "type": type(chunk_node.structured).__name__,
                         "data": asdict(chunk_node.structured),
-                        "heading_path": list(chunk_node.heading_path),
+                        "heading_chain": list(chunk_node.heading_chain),
                     }
                 )
 

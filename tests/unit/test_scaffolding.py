@@ -118,7 +118,7 @@ class TestScaffoldProject:
         scaffold_project(target, force=True)
         assert old_config.read_text(encoding="utf-8") != "# old"
 
-    def test_target_path_is_file_raises(self, tmp_path: Path) -> None:
+    def test_target_is_file_raises(self, tmp_path: Path) -> None:
         target = tmp_path / "not_a_dir"
         target.write_text("file", encoding="utf-8")
         with pytest.raises(ScaffoldError, match="not a directory"):

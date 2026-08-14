@@ -5,8 +5,8 @@ from typing import Any
 
 from knox.core.config import (
     coerce_config_value,
-    get_global_config_path,
-    get_project_config_path,
+    get_global_config_file,
+    get_project_config_file,
     resolve_config,
     set_config_file_value,
     validate_config_key,
@@ -68,9 +68,9 @@ def config_set(
         return {"status": "error", "message": str(exc)}
 
     if global_:
-        config_file = get_global_config_path(create=True)
+        config_file = get_global_config_file(create=True)
     else:
-        config_file = get_project_config_path()
+        config_file = get_project_config_file()
         if not config_file.exists():
             return {"status": "error", "message": "Not in a KNOX vault â€” run `knox init` first or use `--global`"}
     try:

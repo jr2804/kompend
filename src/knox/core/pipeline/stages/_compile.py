@@ -48,7 +48,7 @@ def run_output_tier(pipeline: PipelineRuntime) -> None:
 
 def save_compiled_wiki(pipeline: PipelineRuntime, wiki: CompiledWiki) -> None:
     """Serialize CompiledWiki to JSON on disk."""
-    path = compiled_wiki_path(pipeline)
+    path = compiled_wiki_file(pipeline)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         WikiField.NODES: [
@@ -73,7 +73,7 @@ def save_compiled_wiki(pipeline: PipelineRuntime, wiki: CompiledWiki) -> None:
 
 def load_compiled_wiki(pipeline: PipelineRuntime) -> CompiledWiki | None:
     """Load CompiledWiki from JSON on disk. Returns *None* on cache miss."""
-    path = compiled_wiki_path(pipeline)
+    path = compiled_wiki_file(pipeline)
     if not path.exists():
         return None
     # Corrupt snapshot is a bug — let it raise so the real cause surfaces
@@ -90,16 +90,16 @@ def load_compiled_wiki(pipeline: PipelineRuntime) -> CompiledWiki | None:
     )
 
 
-def compiled_wiki_path(pipeline: PipelineRuntime) -> Path:
+def compiled_wiki_file(pipeline: PipelineRuntime) -> Path:
     """Resolve the compiled wiki JSON path."""
-    return pipeline.config.paths.compiled_wiki_path
+    return pipeline.config.paths.compiled_wiki_file
 
 
 def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
     """Populate WikiNode hierarchy fields from ChunkTree data.
 
     Maps ChunkTree internal node structure onto WikiNodes by matching
-    heading paths. Sets parent_id, children_ids, depth, and heading_path
+    heading paths. Sets parent_id, children_ids, depth, and heading_chain
     on each WikiNode.
 
     # ponytail: matching by (heading_context, source_file) from metadata
@@ -150,6 +150,6 @@ def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
             if (chunk_node.chunk.heading_context or "_root") != heading:
                 continue
             node.depth = chunk_node.depth
-            node.heading_path = chunk_node.heading_path
+            node.heading_chain = chunk_node.heading_chain
             _link_parent(node, chunk_node, tree, source, node_by_heading)
             break

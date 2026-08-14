@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from knox.core.models.enums import ChunkField, ElementType, MetadataField
+from knox.core.models.enums import ChunkField, ElementType
 
 __all__ = ["Chunk", "ResolvedChunk"]
 
@@ -42,7 +42,7 @@ class Chunk:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Chunk:
         """Deserialize from a dict produced by :meth:`to_dict`."""
-        src = d.get(ChunkField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
+        src = d.get(ChunkField.SOURCE_FILE)
         return cls(
             id=d[ChunkField.ID],
             text=d[ChunkField.TEXT],

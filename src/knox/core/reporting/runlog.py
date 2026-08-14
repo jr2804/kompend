@@ -40,7 +40,7 @@ class RunHandle:
 
     run_id: str
     cmd: str
-    runs_path: Path
+    runs_dir: Path
     start_iso: str
 
 
@@ -49,12 +49,12 @@ def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
     state_dir = resolve_state_dir(wiki_dir=wiki_dir)
     if state_dir is None:
         return None
-    runs_path = state_dir / RUNS_FILE
+    runs_dir = state_dir / RUNS_FILE
     run_id = uuid.uuid4().hex[:8]
     start_iso = iso_local()
     try:
-        runs_path.parent.mkdir(parents=True, exist_ok=True)
-        with runs_path.open("a", encoding="utf-8") as fh:
+        runs_dir.parent.mkdir(parents=True, exist_ok=True)
+        with runs_dir.open("a", encoding="utf-8") as fh:
             fh.write(
                 json.dumps(
                     {
@@ -70,8 +70,8 @@ def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
     except OSError as exc:  # never let logging crash the command
         logger.debug("run-log start write failed: %s", exc)
         return None
-    _maybe_prune(runs_path)
-    return RunHandle(run_id=run_id, cmd=_command_label(), runs_path=runs_path, start_iso=start_iso)
+    _maybe_prune(runs_dir)
+    return RunHandle(run_id=run_id, cmd=_command_label(), runs_dir=runs_dir, start_iso=start_iso)
 
 
 def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
@@ -138,7 +138,7 @@ def log_run_end(
         log_error_limit = DEFAULTS.get(DISPLAY_LOG_ERROR_CHARS, 500)
         payload["error"] = error[:log_error_limit]
     try:
-        with handle.runs_path.open("a", encoding="utf-8") as fh:
+        with handle.runs_dir.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
     except OSError as exc:
         logger.debug("run-log end write failed: %s", exc)
@@ -152,18 +152,18 @@ def _parse_iso(iso: str) -> datetime:
         return now_local()
 
 
-def _maybe_prune(runs_path: Path) -> None:
+def _maybe_prune(runs_dir: Path) -> None:
     """Trim the run log to the last ``_KEEP_LINES`` once it exceeds the cap."""
     try:
-        line_count = sum(1 for _ in runs_path.open(encoding="utf-8"))
+        line_count = sum(1 for _ in runs_dir.open(encoding="utf-8"))
     except OSError:
         return
     if line_count <= _SOFT_CAP_LINES:
         return
     try:
-        with runs_path.open(encoding="utf-8") as fh:
+        with runs_dir.open(encoding="utf-8") as fh:
             lines = fh.readlines()
-        with runs_path.open("w", encoding="utf-8") as fh:
+        with runs_dir.open("w", encoding="utf-8") as fh:
             fh.writelines(lines[-_KEEP_LINES:])
     except OSError as exc:
         logger.debug("run-log prune failed: %s", exc)

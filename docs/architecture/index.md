@@ -45,7 +45,7 @@ The output of Tier 1 (pre-processing).
 ```python
 @dataclass
 class ParsedDocument:
-    source_path: Path
+    source_file: Path
     elements: list[DocumentElement]
     title: str = ""
     author: str = ""
@@ -103,7 +103,7 @@ class ChunkNode:
     parent_id: str | None = None
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
-    heading_path: tuple[str, ...] = field(default_factory=tuple)
+    heading_chain: tuple[str, ...] = field(default_factory=tuple)
     chunk: Chunk | None = None          # leaf prose
     structured: StructuredData | None = None  # leaf table/equation/figure
     summary: str = ""                   # internal node summary

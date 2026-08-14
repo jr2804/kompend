@@ -320,10 +320,10 @@ def _build_image_element(
     else:
         target_dir = images_dir
         target_dir.mkdir(parents=True, exist_ok=True)
-        out_path = target_dir / f"{source_file.stem}_{img_name}"
-        out_path.write_bytes(raw)
-        content = str(out_path)
-        meta = {MetadataField.IMAGE_PATH: str(out_path), "image_mode": "file"}
+        out_file = target_dir / f"{source_file.stem}_{img_name}"
+        out_file.write_bytes(raw)
+        content = str(out_file)
+        meta = {MetadataField.IMAGE_FILE: str(out_file), "image_mode": "file"}
 
     if alt_text:
         meta["alt_text"] = alt_text

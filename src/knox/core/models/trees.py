@@ -12,7 +12,6 @@ from knox.core.models.enums import (
     ChunkNodeField,
     ChunkStrategy,
     ChunkTreeField,
-    MetadataField,
 )
 from knox.core.models.structured import StructuredData, structured_from_dict
 
@@ -36,7 +35,7 @@ class ChunkNode:
     parent_id: str | None = None
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
-    heading_path: tuple[str, ...] = ()
+    heading_chain: tuple[str, ...] = ()
     chunk: Chunk | None = None
     structured: StructuredData | None = None
     summary: str = ""
@@ -51,7 +50,7 @@ class ChunkNode:
             ChunkNodeField.PARENT_ID: self.parent_id,
             ChunkNodeField.CHILDREN_IDS: self.children_ids,
             ChunkNodeField.DEPTH: self.depth,
-            ChunkNodeField.HEADING_PATH: list(self.heading_path),
+            ChunkNodeField.HEADING_CHAIN: list(self.heading_chain),
             ChunkNodeField.CHUNK: self.chunk.to_dict() if self.chunk else None,
             ChunkNodeField.STRUCTURED: self.structured.to_dict() if self.structured else None,
             ChunkNodeField.SUMMARY: self.summary,
@@ -66,7 +65,7 @@ class ChunkNode:
             parent_id=d.get(ChunkNodeField.PARENT_ID),
             children_ids=d.get(ChunkNodeField.CHILDREN_IDS, []),
             depth=d.get(ChunkNodeField.DEPTH, 0),
-            heading_path=tuple(d.get(ChunkNodeField.HEADING_PATH, ())),
+            heading_chain=tuple(d.get(ChunkNodeField.HEADING_CHAIN, ())),
             chunk=Chunk.from_dict(d[ChunkNodeField.CHUNK]) if d.get(ChunkNodeField.CHUNK) else None,
             structured=structured_from_dict(d[ChunkNodeField.STRUCTURED]) if d.get(ChunkNodeField.STRUCTURED) else None,
             summary=d.get(ChunkNodeField.SUMMARY, ""),
@@ -96,7 +95,7 @@ class ChunkTree:
         """Depth-first traversal from root."""
         yield from self._walk(self.root_id)
 
-    def get_path(self, node_id: str) -> list[ChunkNode]:
+    def get_chain(self, node_id: str) -> list[ChunkNode]:
         """Return the path from root to ``node_id`` (inclusive)."""
         path: list[ChunkNode] = []
         current = self.nodes.get(node_id)
@@ -145,7 +144,7 @@ class ChunkTree:
         if version != CHUNK_TREE_CACHE_VERSION:
             msg = f"ChunkTree cache version mismatch: expected {CHUNK_TREE_CACHE_VERSION}, got {version}"
             raise ValueError(msg)
-        src = d.get(ChunkTreeField.SOURCE_FILE) or d.get(MetadataField.SOURCE_PATH)
+        src = d.get(ChunkTreeField.SOURCE_FILE)
         return cls(
             root_id=d[ChunkTreeField.ROOT_ID],
             nodes={nid: ChunkNode.from_dict(n) for nid, n in d.get(ChunkTreeField.NODES, {}).items()},

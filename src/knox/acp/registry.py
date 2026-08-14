@@ -69,21 +69,21 @@ class AgentRegistry:
         agents: dict[str, AgentDefinition] = {}
 
         # 1. Built-in agents
-        for toml_path in sorted(_BUILTIN_DIR.glob("*.toml")):
+        for toml_file in sorted(_BUILTIN_DIR.glob("*.toml")):
             try:
-                definition = AgentDefinition.from_toml(toml_path)
+                definition = AgentDefinition.from_toml(toml_file)
                 agents[definition.name] = definition
             except Exception:
-                logger.exception("Failed to load built-in agent: %s", toml_path)
+                logger.exception("Failed to load built-in agent: %s", toml_file)
 
         # 2. Vault agents (override built-in on name collision)
         if self.vault_agents_dir and self.vault_agents_dir.is_dir():
-            for toml_path in sorted(self.vault_agents_dir.glob("*.toml")):
+            for toml_file in sorted(self.vault_agents_dir.glob("*.toml")):
                 try:
-                    definition = AgentDefinition.from_toml(toml_path)
+                    definition = AgentDefinition.from_toml(toml_file)
                     agents[definition.name] = definition
                 except Exception:
-                    logger.exception("Failed to load vault agent: %s", toml_path)
+                    logger.exception("Failed to load vault agent: %s", toml_file)
 
         self._cache = agents
         return agents

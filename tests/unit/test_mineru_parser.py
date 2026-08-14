@@ -14,15 +14,18 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.core.models.enums import ElementType, MetadataField
-from knox.preprocessing.parsers._registry import (
-    PARSER_BACKENDS,
-    ParserBuildOptions,
-    get_backend,
-    get_registered_parsers,
-)
-from knox.preprocessing.parsers.base import FileExtension
-from knox.preprocessing.parsers.mineru_parser import MinerUParser
+try:
+    from knox.core.models.enums import ElementType, MetadataField
+    from knox.preprocessing.parsers._registry import (
+        PARSER_BACKENDS,
+        ParserBuildOptions,
+        get_backend,
+        get_registered_parsers,
+    )
+    from knox.preprocessing.parsers.base import FileExtension
+    from knox.preprocessing.parsers.mineru_parser import MinerUParser
+except ImportError:
+    pytest.importorskip("mineru")
 
 SIMPLE_MARKDOWN = """\
 # Document Title
@@ -105,10 +108,10 @@ class TestMarkdownWalking:
         images = [e for e in doc.elements if e.type == ElementType.IMAGE]
         assert len(images) == 1
         img = images[0]
-        assert MetadataField.IMAGE_PATH in img.metadata
-        out_path = Path(img.metadata[MetadataField.IMAGE_PATH])
-        assert out_path.exists()
-        assert out_path.read_bytes() == image
+        assert MetadataField.IMAGE_FILE in img.metadata
+        out_file = Path(img.metadata[MetadataField.IMAGE_FILE])
+        assert out_file.exists()
+        assert out_file.read_bytes() == image
         assert img.metadata["alt_text"] == "Figure 1 caption"
 
     def test_image_extraction_base64_mode(self, tmp_path: Path) -> None:

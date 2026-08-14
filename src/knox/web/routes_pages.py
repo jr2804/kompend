@@ -380,10 +380,10 @@ async def lint_page() -> str:
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page() -> str:
-    config_path = project_dir() / PROJECT_CONFIG_FILE
+    config_file = project_dir() / PROJECT_CONFIG_FILE
     config_content = ""
-    if config_path.exists():
-        config_content = config_path.read_text(encoding="utf-8")
+    if config_file.exists():
+        config_content = config_file.read_text(encoding="utf-8")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>KNOX Settings</title>
@@ -412,7 +412,7 @@ async def settings_page() -> str:
 <div class="container">
   <div class="card">
     <h2 style="margin-bottom:0.5rem">Configuration</h2>
-    <p style="color:#666;margin-bottom:1rem">{config_path if config_path.exists() else "No knox.toml found"}</p>
+    <p style="color:#666;margin-bottom:1rem">{config_file if config_file.exists() else "No knox.toml found"}</p>
     <pre>{config_content or "No configuration file found."}</pre>
   </div>
 </div>

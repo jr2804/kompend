@@ -74,7 +74,7 @@ class TestEntityRegistry:
         assert len(rec.all_definitions) == 2
 
     def test_location_tracked(self) -> None:
-        loc = EntityLocation(source_file="doc.md", heading_path=("Section 1",))
+        loc = EntityLocation(source_file="doc.md", heading_chain=("Section 1",))
         reg = EntityRegistry()
         reg.register("ABC", location=loc)
         assert reg.query("ABC") is not None
@@ -84,14 +84,14 @@ class TestEntityRegistry:
 
     def test_text_extraction_acronyms(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         reg._extract_from_text("The Signal-to-Noise Ratio (SNR) is critical.", loc)
         assert reg.entity_count >= 1
         assert reg.query("SNR") is not None
 
     def test_text_extraction_reverse_acronym(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         reg._extract_from_text("The SNR (Signal-to-Noise Ratio) is important.", loc)
         assert reg.entity_count >= 1
         rec = reg.query("SNR")
@@ -99,7 +99,7 @@ class TestEntityRegistry:
 
     def test_text_extraction_definition(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         reg._extract_from_text(
             "Precedence Effect is defined as the auditory illusion where the first arriving sound dominates localization.",
             loc,
@@ -108,13 +108,13 @@ class TestEntityRegistry:
 
     def test_text_extraction_means(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         reg._extract_from_text("Psychoacoustics means the study of how humans perceive sound.", loc)
         assert reg.query("Psychoacoustics") is not None
 
     def test_text_extraction_also_known_as(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         reg._extract_from_text("Haas effect (also known as Precedence Effect) is important.", loc)
         rec = reg.query("Haas effect")
         assert rec is not None
@@ -122,7 +122,7 @@ class TestEntityRegistry:
 
     def test_structured_equation_variables(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         eq = StructuredEquation(
             latex=r"E = mc^2",
             variables=[
@@ -140,7 +140,7 @@ class TestEntityRegistry:
 
     def test_structured_table_columns(self) -> None:
         reg = EntityRegistry()
-        loc = EntityLocation(source_file="doc.md", heading_path=())
+        loc = EntityLocation(source_file="doc.md", heading_chain=())
         tbl = StructuredTable(
             columns=["Frequency", "Threshold dB"],
             rows=[
@@ -230,7 +230,7 @@ def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) 
         id=nid,
         parent_id=parent,
         depth=len(heading) + 1,
-        heading_path=heading,
+        heading_chain=heading,
         chunk=_make_chunk(nid, text),
         token_count=max(1, len(text) // 4),
     )
@@ -254,7 +254,7 @@ def _structured_node(
         id=nid,
         parent_id=parent,
         depth=len(heading) + 1,
-        heading_path=heading,
+        heading_chain=heading,
         structured=structured,
         token_count=1,
     )

@@ -186,12 +186,12 @@ class TemplateLoader:
         """Remove all global context variables."""
         self._global_context.clear()
 
-    def render(self, template_path: str, **kwargs: Any) -> str:
+    def render(self, template_file: str, **kwargs: Any) -> str:
         """Load and render a Jinja2 template with variable validation.
 
         Parameters
         ----------
-        template_path:
+        template_file:
             Relative path inside the templates directory, e.g.
             ``"lint/factual-consistency.md.j2"``.
         **kwargs:
@@ -209,11 +209,11 @@ class TemplateLoader:
         FileNotFoundError
             The template does not exist in any search path.
         """
-        meta = self.get_meta(template_path)
-        body_text = self._get_body(template_path)
+        meta = self.get_meta(template_file)
+        body_text = self._get_body(template_file)
 
         # Determine which variables the template actually uses
-        used = self._find_undeclared_variables(template_path)
+        used = self._find_undeclared_variables(template_file)
 
         # Inject global context for variables the template uses but the
         # caller did not provide.  This lets pipeline-wide variables like
@@ -225,13 +225,13 @@ class TemplateLoader:
         required = meta.required_variable_names()
         missing = required - kwargs.keys()
         if missing:
-            raise ValueError(f"Template '{template_path}' requires missing variables: {', '.join(sorted(missing))}")
+            raise ValueError(f"Template '{template_file}' requires missing variables: {', '.join(sorted(missing))}")
 
         extra = kwargs.keys() - used - set()
         if extra:
             logger.warning(
                 "Template '%s' unused variables: %s. Expected: %s",
-                template_path,
+                template_file,
                 ", ".join(sorted(extra)),
                 ", ".join(sorted(used)),
             )
@@ -247,7 +247,7 @@ class TemplateLoader:
         template = env.from_string(body_text)
         return template.render(**kwargs)
 
-    def render_from_env(self, template_path: str, **kwargs: Any) -> str:
+    def render_from_env(self, template_file: str, **kwargs: Any) -> str:
         """Render using the cached Jinja2 environment (no validation).
 
         Faster than :meth:`render` for hot paths, but skips frontmatter
@@ -255,35 +255,35 @@ class TemplateLoader:
         validated variables elsewhere.
         """
         env = self._get_env()
-        template = env.get_template(template_path)
+        template = env.get_template(template_file)
         return template.render(**kwargs)
 
-    def get_text(self, template_path: str) -> str:
+    def get_text(self, template_file: str) -> str:
         """Load raw template text (including any YAML frontmatter)."""
-        source, _ = self._locate(template_path)
+        source, _ = self._locate(template_file)
         return source
 
-    def get_body(self, template_path: str) -> str:
+    def get_body(self, template_file: str) -> str:
         """Load template body text (with frontmatter stripped)."""
-        return self._get_body(template_path)
+        return self._get_body(template_file)
 
-    def get_meta(self, template_path: str) -> TemplateMeta:
+    def get_meta(self, template_file: str) -> TemplateMeta:
         """Parse and return the template's YAML frontmatter metadata.
 
         Results are cached after first parse.
         """
-        if template_path in self._meta_cache:
-            return self._meta_cache[template_path]
+        if template_file in self._meta_cache:
+            return self._meta_cache[template_file]
 
-        text = self.get_text(template_path)
+        text = self.get_text(template_file)
         fm, _ = parse_frontmatter(text)
         meta = TemplateMeta.from_yaml_block("\n".join(f"{k}: {v}" for k, v in fm.items()))
-        self._meta_cache[template_path] = meta
+        self._meta_cache[template_file] = meta
         return meta
 
-    def locate(self, template_path: str) -> TemplateSource:
+    def locate(self, template_file: str) -> TemplateSource:
         """Return where a template was found (source label + path)."""
-        _, identifier = self._locate(template_path)
+        _, identifier = self._locate(template_file)
         return identifier
 
     def list_templates(self) -> list[str]:
@@ -297,26 +297,26 @@ class TemplateLoader:
 
     # ── Internals ───────────────────────────────────────────────────
 
-    def _get_body(self, template_path: str) -> str:
+    def _get_body(self, template_file: str) -> str:
         """Return template body with frontmatter stripped."""
-        text = self.get_text(template_path)
+        text = self.get_text(template_file)
         _, body = parse_frontmatter(text)
         return body
 
-    def _find_undeclared_variables(self, template_path: str) -> set[str]:
+    def _find_undeclared_variables(self, template_file: str) -> set[str]:
         """Parse the template AST and return all referenced variable names.
 
         Uses ``jinja2.meta.find_undeclared_variables()`` which parses
         the template without rendering it.
         """
-        body = self._get_body(template_path)
+        body = self._get_body(template_file)
         env = Environment()  # noqa: S701 — only used for AST parsing, not rendering
         ast = env.parse(body)
         return meta.find_undeclared_variables(ast)
 
-    def _locate(self, template_path: str) -> tuple[str, TemplateSource]:
+    def _locate(self, template_file: str) -> tuple[str, TemplateSource]:
         """Search project → user → builtin, return (source_text, source_info)."""
-        normalized = template_path.replace("\\", "/")
+        normalized = template_file.replace("\\", "/")
 
         cached = self._search_cache.get(normalized)
         if cached is not None:
@@ -466,9 +466,9 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 
 def _find_project_root() -> Path | None:
-    toml_path = find_project_config()
-    if toml_path is not None:
-        return toml_path.parent
+    toml_file = find_project_config()
+    if toml_file is not None:
+        return toml_file.parent
     return None
 
 
@@ -487,10 +487,10 @@ def _user_templates_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _builtin_exists(template_path: str) -> bool:
+def _builtin_exists(template_file: str) -> bool:
     """Check if a built-in template exists."""
     try:
-        _read_builtin(template_path)
+        _read_builtin(template_file)
         return True
     except Exception:
         return False
@@ -499,8 +499,8 @@ def _builtin_exists(template_path: str) -> bool:
 # ── Built-in template access (importlib.resources) ─────────────────
 
 
-def _read_builtin(template_path: str) -> str:
-    ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_path
+def _read_builtin(template_file: str) -> str:
+    ref = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR / template_file
     return ref.read_text(encoding="utf-8")
 
 

@@ -86,7 +86,7 @@ class ContextualEnricher:
         Uses the heading path and document metadata to describe where
         this chunk fits in the document.
         """
-        heading_path = " > ".join(h for h in (node.heading_path or []) if h) or "document root"
+        heading_chain = " > ".join(h for h in (node.heading_chain or []) if h) or "document root"
 
         # Estimate chunk content length
         content_preview = ""
@@ -101,10 +101,10 @@ class ContextualEnricher:
                 "chunking/contextual_context.md.j2",
                 doc_title=doc_title,
                 doc_summary=doc_summary,
-                heading_path=heading_path,
+                heading_chain=heading_chain,
                 content_preview=content_preview,
             )
-            deps = PipelineAgentDeps(text=rendered, source_id=heading_path, timeout=120)
+            deps = PipelineAgentDeps(text=rendered, source_id=heading_chain, timeout=120)
             if self._agent is None:
                 raise RuntimeError("ContextChunkAgent not initialized")
             result = self._agent.run(deps)
@@ -112,10 +112,10 @@ class ContextualEnricher:
             if context:
                 return context
         except Exception as exc:
-            logger.debug("Contextual enrichment failed for %s: %s", heading_path, exc)
+            logger.debug("Contextual enrichment failed for %s: %s", heading_chain, exc)
 
         # Fallback: structural context without LLM
-        return f"This chunk is from '{doc_title}', under section: {heading_path}."
+        return f"This chunk is from '{doc_title}', under section: {heading_chain}."
 
     @staticmethod
     def _collect_leaves(tree: ChunkTree) -> list[ChunkNode]:

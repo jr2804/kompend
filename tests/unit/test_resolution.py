@@ -24,11 +24,11 @@ class TestVLMEnricher:
         for entity in resolved.entities:
             assert entity.get("type") != "image_description"
 
-    def test_image_chunk_placeholder_when_no_path(self) -> None:
+    def test_image_chunk_placeholder_when_no_file(self) -> None:
         """Image chunk without a file path produces a placeholder entity."""
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent)
-        chunk = _image_chunk(image_path=None)
+        chunk = _image_chunk(image_file=None)
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
@@ -38,33 +38,33 @@ class TestVLMEnricher:
         """Image path pointing to a non-existent file → filtered entity, no LLM call."""
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
-        chunk = _image_chunk(image_path=str(tmp_path / "missing.png"))
+        chunk = _image_chunk(image_file=str(tmp_path / "missing.png"))
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "missing" in descs[0]["context"].lower()
 
     def test_caption_generated_when_agent_succeeds(self, tmp_path: Path) -> None:
-        png_path = tmp_path / "test.png"
-        png_path.write_bytes(b"PNG mock data")
+        png_file = tmp_path / "test.png"
+        png_file.write_bytes(b"PNG mock data")
 
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
         with patch.object(agent, "run", return_value="A test image caption"):
-            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert descs[0]["context"] == "A test image caption"
         assert resolved.metadata.get("vlm_enriched") is True
 
     def test_caption_returns_none_records_error(self, tmp_path: Path) -> None:
-        png_path = tmp_path / "test.png"
-        png_path.write_bytes(b"PNG mock data")
+        png_file = tmp_path / "test.png"
+        png_file.write_bytes(b"PNG mock data")
 
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
         with patch.object(agent, "run", side_effect=Exception("VLM failed")):
-            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "failed" in descs[0]["context"].lower()
@@ -88,7 +88,7 @@ class TestVLMEnricher:
         Image.new("RGB", (8, 8)).save(tiny)
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent)  # default thresholds
-        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(tiny))))
+        resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(tiny))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert "filtered" in descs[0]["context"].lower()
@@ -104,7 +104,7 @@ class TestVLMEnricher:
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent)  # default thresholds
         with patch.object(agent, "run", return_value="A red square."):
-            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(big))))
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(big))))
         descs = [e for e in resolved.entities if e.get("type") == "image_description"]
         assert len(descs) == 1
         assert descs[0]["context"] == "A red square."
@@ -118,8 +118,8 @@ class TestVLMEnricherIntegration:
         """End-to-end: VlmAgent routes through the unified pydantic-ai agent
         path (build_model + KnoxModel), not a direct pydantic-ai model call.
         """
-        png_path = tmp_path / "img.png"
-        png_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
+        png_file = tmp_path / "img.png"
+        png_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
 
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
@@ -130,7 +130,7 @@ class TestVLMEnricherIntegration:
         mock_ai_agent.run_sync.return_value = mock_result
 
         with patch.object(VlmAgent, "_build_agent", return_value=mock_ai_agent):
-            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_path=str(png_path))))
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
 
         mock_ai_agent.run_sync.assert_called_once()
         # The user prompt passed to run_sync is a sequence: [text, BinaryContent].
@@ -146,13 +146,13 @@ def _text_chunk(text: str = "Apple Inc. was founded by Steve Jobs in 1976.") -> 
     return Chunk(id="chunk_001", text=text, element_types=[ElementType.TEXT], source_elements=[0])
 
 
-def _image_chunk(image_path: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
+def _image_chunk(image_file: str | None = "/tmp/test.png") -> Chunk:  # noqa: S108
     return Chunk(
         id="chunk_img_001",
         text="Figure showing architecture.",
         element_types=[ElementType.IMAGE],
         source_elements=[2],
-        metadata={"image_path": image_path} if image_path else {},
+        metadata={"image_file": image_file} if image_file else {},
     )
 
 

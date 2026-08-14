@@ -213,12 +213,12 @@ class VaultWriter(BaseOutputWriter):
                     stale.unlink()
 
         # slug/title -> bundle-relative path mapping for link rendering.
-        slug_to_path: dict[str, str] = {}
+        slug_targets: dict[str, str] = {}
         for doc in docs:
             folder = self._folder_for_kind(doc.node_type)
             path = f"/{folder}/{doc.page_slug or 'untitled'}.md" if folder else f"/{doc.page_slug or 'untitled'}.md"
-            slug_to_path[doc.page_slug] = path
-            slug_to_path[doc.title] = path
+            slug_targets[doc.page_slug] = path
+            slug_targets[doc.title] = path
 
         node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
 
@@ -248,7 +248,7 @@ class VaultWriter(BaseOutputWriter):
                             body = rewritten
                             break
 
-            rendered = self._render_document(doc, body, related_edges.get(doc.page_slug, []), wiki, slug_to_path)
+            rendered = self._render_document(doc, body, related_edges.get(doc.page_slug, []), wiki, slug_targets)
             (target_dir / filename).write_text(rendered, encoding="utf-8")
 
         # Generate references page if store has entries.
@@ -271,7 +271,7 @@ class VaultWriter(BaseOutputWriter):
         body: str,
         related: list[tuple[str, str, float | None]],
         wiki: CompiledWiki,
-        slug_to_path: dict[str, str],
+        slug_targets: dict[str, str],
     ) -> str: ...
 
     @abstractmethod
@@ -369,14 +369,14 @@ class VaultWriter(BaseOutputWriter):
         lines: list[str] = [body.rstrip(), ""] if body.strip() else []
 
         for img in images:
-            img_path = img.get("path", "")
+            img_file = img.get("path", "")
             caption = img.get("caption", "")
 
-            if not img_path:
+            if not img_file:
                 continue
 
             alt_text = caption or "image"
-            lines.append(f"![{alt_text}]({img_path})")
+            lines.append(f"![{alt_text}]({img_file})")
             if caption:
                 lines.append(f"*{caption}*")
             lines.append("")

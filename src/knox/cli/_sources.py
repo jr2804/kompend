@@ -124,7 +124,7 @@ def ensure_in_sources(
                     logger.debug("Skipping %s — identical file exists in sources", input_file)
                     result.append(target_file)
                     continue
-                target_file = _unique_path(target_file)
+                target_file = _unique_file(target_file)
             shutil.copy2(resolved_input, target_file)
             logger.debug("Copied %s -> %s", input_file, target_file)
             result.append(target_file)
@@ -235,7 +235,7 @@ def _add(candidate_file: Path, seen: set[Path], results: list[Path]) -> None:
         results.append(candidate_file)
 
 
-def _unique_path(target_file: Path) -> Path:
+def _unique_file(target_file: Path) -> Path:
     """If *target_file* exists, append _1, _2, … until unique."""
     if not target_file.exists():
         return target_file

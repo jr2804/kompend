@@ -187,7 +187,7 @@ class _TreeBuilder:
             id=node_id,
             parent_id=pid,
             depth=p_depth + 1,
-            heading_path=hpath,
+            heading_chain=hpath,
         )
         self._nodes[pid].children_ids.append(node_id)
         self._stack.append((level, text, node_id))
@@ -214,7 +214,7 @@ class _TreeBuilder:
             id=leaf_id,
             parent_id=pid,
             depth=p_depth + 1,
-            heading_path=hpath,
+            heading_chain=hpath,
             chunk=chunk,
             structured=structured,
             token_count=_estimate_tokens(text_repr),
@@ -269,7 +269,7 @@ class _TreeBuilder:
             id=leaf_id,
             parent_id=pid,
             depth=depth,
-            heading_path=hpath,
+            heading_chain=hpath,
             chunk=chunk,
             token_count=tokens,
         )

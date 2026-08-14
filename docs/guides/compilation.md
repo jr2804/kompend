@@ -212,7 +212,7 @@ KNOX persists a tier checkpoint for every source file:
   "entries": {
     "paper": {
       "stem": "paper",
-      "source_path": "sources/paper.pdf",
+      "source_file": "sources/paper.pdf",
       "content_hash": "a1b2c3...",
       "current_tier": 3,
       "last_compile": "2026-06-08T12:34:56+00:00",

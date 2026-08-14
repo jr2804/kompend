@@ -167,7 +167,7 @@ class TwoPhaseCompiler(BaseCompiler):
         # ── Reference extraction (pre-extraction pass) ─────────────────
         # Detect and parse bibliographic references before the main
         # extraction phase so the LLM sees content, not bibliographies.
-        ref_store = ReferenceStore(self._config.paths.references_path)
+        ref_store = ReferenceStore(self._config.paths.references_file)
         ref_start = time.monotonic()
         try:
             run_reference_extraction(self, chunks, ref_store)
@@ -187,7 +187,7 @@ class TwoPhaseCompiler(BaseCompiler):
         # extraction input references them by id + summary instead of
         # inlining full (potentially huge) content. See
         # ``.agents/plans/structured-asset-separation.md``.
-        self._asset_store = AssetStore(self._config.paths.assets_path)
+        self._asset_store = AssetStore(self._config.paths.assets_file)
         self._asset_id_maps = {}
         if trees:
             for t in trees:

@@ -113,7 +113,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert leaves[0].heading_path == ("Chapter 1", "Section 1.1")
+        assert leaves[0].heading_chain == ("Chapter 1", "Section 1.1")
         assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"  # ty: ignore
 
     def test_nested_heading_hierarchy(self) -> None:
@@ -264,7 +264,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert "Config [key] = value" in leaves[0].heading_path
+        assert "Config [key] = value" in leaves[0].heading_chain
 
     def test_config_chunk_size_flows_to_effective_max(self) -> None:
         chunker = HierarchicalChunker(max_tokens=1024, reserve_tokens=205)

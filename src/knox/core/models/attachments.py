@@ -226,21 +226,21 @@ class AttachmentManifest:
         with self._path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(attachment.to_dict()) + "\n")
 
-    def remove(self, attachment_path: str) -> bool:
+    def remove(self, attachment_file: str) -> bool:
         """Mark an attachment as deleted (tombstone entry).
 
         Args:
-            attachment_path: The relative path of the attachment to remove.
+            attachment_file: The relative path of the attachment to remove.
 
         Returns:
             ``True`` if the attachment existed and was marked deleted.
         """
         existing = self.read_all()
-        if attachment_path not in existing:
+        if attachment_file not in existing:
             return False
         tombstone = Attachment(
-            path=attachment_path,
-            source=existing[attachment_path].source,
+            path=attachment_file,
+            source=existing[attachment_file].source,
             deleted=True,
         )
         self.append(tombstone)

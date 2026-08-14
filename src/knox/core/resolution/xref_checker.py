@@ -90,7 +90,7 @@ class CrossReferenceChecker:
             for node in tree.walk():
                 if not node.chunk or not node.chunk.text:
                     continue
-                heading_path = "/".join(node.heading_path)
+                heading_chain = "/".join(node.heading_chain)
                 for ref_type, pattern in _REF_PATTERNS:
                     for match in pattern.finditer(node.chunk.text):
                         ref_id = match.group(1)
@@ -100,7 +100,7 @@ class CrossReferenceChecker:
                                     issue_type="unresolved",
                                     description=(f"Reference to {ref_type} {ref_id} does not match any {ref_type} in the document"),
                                     entity=f"{ref_type}:{ref_id}",
-                                    locations=[f"{source_file}:{heading_path}"],
+                                    locations=[f"{source_file}:{heading_chain}"],
                                 )
                             )
         return issues
@@ -172,8 +172,8 @@ class CrossReferenceChecker:
 
         for tree in trees:
             for node in tree.walk():
-                if node.heading_path:
-                    section_num = _extract_heading_number(node.heading_path[-1])
+                if node.heading_chain:
+                    section_num = _extract_heading_number(node.heading_chain[-1])
                     if section_num:
                         targets["section"].add(section_num)
 
@@ -198,8 +198,8 @@ class CrossReferenceChecker:
             source_file = str(tree.source_file) if tree.source_file else "unknown"
             for node in tree.walk():
                 if node.structured and isinstance(node.structured, StructuredTable):
-                    heading_path = "/".join(node.heading_path)
-                    result.append((f"{source_file}:{heading_path}", node.structured))
+                    heading_chain = "/".join(node.heading_chain)
+                    result.append((f"{source_file}:{heading_chain}", node.structured))
         return result
 
 

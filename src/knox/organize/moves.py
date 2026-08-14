@@ -154,7 +154,7 @@ def update_wiki_links(base_dir: Path, output_dir: Path, remap: LinkRemap) -> dic
         for fpath in prov_dir.glob("*.json"):
             counts["provenance_files"] += _rewrite_provenance(fpath, remap)
     counts["wiki_node_metadata"] = _rewrite_wiki_node_paths(output_dir, remap)
-    counts["tier_state"] = _rewrite_tier_state(paths.compile_state_path, remap, output_dir)
+    counts["tier_state"] = _rewrite_tier_state(paths.compile_state_file, remap, output_dir)
     return counts
 
 
@@ -220,7 +220,7 @@ def _rewrite_tier_state(filepath: Path, remap: LinkRemap, wiki_root: Path) -> in
         source = entry.get(MetadataField.SOURCE_FILE)
         if not isinstance(source, str):
             continue
-        new_source = _remap_path(source, remap)
+        new_source = _remap(source, remap)
         if new_source != source:
             entry[MetadataField.SOURCE_FILE] = new_source
             edits += 1
@@ -231,7 +231,7 @@ def _rewrite_tier_state(filepath: Path, remap: LinkRemap, wiki_root: Path) -> in
 
 def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
     """Rewrite source_file metadata in wiki_cache.json."""
-    cache = VaultPaths(wiki_root.parent).wiki_cache_path
+    cache = VaultPaths(wiki_root.parent).wiki_cache_file
     if not cache.is_file():
         return 0
     try:
@@ -253,7 +253,7 @@ def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
         source = meta.get(MetadataField.SOURCE_FILE)
         if not isinstance(source, str):
             continue
-        new = _remap_path(source, remap)
+        new = _remap(source, remap)
         if new != source:
             meta[MetadataField.SOURCE_FILE] = new
             edits += 1
@@ -262,7 +262,7 @@ def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
     return edits
 
 
-def _remap_path(value: str, remap: LinkRemap) -> str:
+def _remap(value: str, remap: LinkRemap) -> str:
     """Replace filename portion of path using remap."""
     parsed = Path(value.replace("\\", "/"))
     new_name = remap.get(parsed.name)

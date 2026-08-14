@@ -144,7 +144,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
     _delta_retry_state: dict[int, AgentResult] = field(default_factory=dict, init=False, repr=False)
-    _last_debug_path: Path | None = field(default=None, init=False, repr=False)
+    _last_debug_file: Path | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         # Resolve result_type / deps_type from the generic type params.
@@ -166,12 +166,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         Only variables declared in the template's frontmatter are passed,
         avoiding warnings about unused variables.
         """
-        template_path = f"{self.template_prefix}{self.template_name}"
-        meta = self._template_loader.get_meta(template_path)
+        template_file = f"{self.template_prefix}{self.template_name}"
+        meta = self._template_loader.get_meta(template_file)
         declared = meta.declared_variable_names()
         vars_dict = self._deps_to_template_vars(deps)
         filtered = {k: v for k, v in vars_dict.items() if k in declared}
-        return self._template_loader.render(template_path, **filtered)
+        return self._template_loader.render(template_file, **filtered)
 
     def render_system_prompt(self, deps: DepsT) -> str:
         """Render the system-prompt template, appending any skill instructions.
@@ -232,7 +232,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 message_history=message_history,
             )
         except Exception as exc:
-            debug_hint = f" (debug: {self._last_debug_path})" if self._last_debug_path else ""
+            debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             logger.warning(
                 "Agent '%s' failed on '%s': %s%s",
                 type(self).__name__,
@@ -268,7 +268,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 message_history=message_history,
             )
         except Exception as exc:
-            debug_hint = f" (debug: {self._last_debug_path})" if self._last_debug_path else ""
+            debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             logger.warning(
                 "Agent '%s' failed on '%s': %s%s",
                 type(self).__name__,

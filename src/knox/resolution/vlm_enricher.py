@@ -74,10 +74,10 @@ class VLMEnricher(BaseResolver):
             resolved.metadata["figure_enriched"] = True
             return resolved
 
-        image_path = resolved.chunk.metadata.get(MetadataField.IMAGE_PATH) or resolved.metadata.get(MetadataField.IMAGE_PATH)
+        image_file = resolved.chunk.metadata.get(MetadataField.IMAGE_FILE) or resolved.metadata.get(MetadataField.IMAGE_FILE)
 
-        if not image_path:
-            logger.debug("No image_path in metadata for chunk %s — adding placeholder", resolved.chunk.id)
+        if not image_file:
+            logger.debug("No image_file in metadata for chunk %s — adding placeholder", resolved.chunk.id)
             resolved.entities.append(
                 {
                     "name": "vlm_placeholder",
@@ -89,7 +89,7 @@ class VLMEnricher(BaseResolver):
 
         context_hint = self._build_context_hint(resolved.chunk)
 
-        skip, reason = self._should_skip(image_path)
+        skip, reason = self._should_skip(image_file)
         if skip:
             logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
             resolved.entities.append(
@@ -103,13 +103,13 @@ class VLMEnricher(BaseResolver):
             return resolved
 
         try:
-            caption = self._generate_caption(image_path, context_hint=context_hint)
+            caption = self._generate_caption(image_file, context_hint=context_hint)
         except FileNotFoundError:
             resolved.entities.append(
                 {
                     "name": "vlm_error",
                     "type": "image_description",
-                    "context": f"Image file not found: {image_path}",
+                    "context": f"Image file not found: {image_file}",
                 }
             )
             return resolved
@@ -143,14 +143,14 @@ class VLMEnricher(BaseResolver):
         resolved.metadata["vlm_enriched"] = True
         return resolved
 
-    def _should_skip(self, image_path: str | Path) -> tuple[bool, str]:
+    def _should_skip(self, image_file: str | Path) -> tuple[bool, str]:
         """Cheap pre-filter: return (skip, reason) without calling the VLM.
 
         Filters tiny/decorative images (logos, icons, spacers, bullets) via
         file size and pixel dimensions. These are the bulk of extraction
         noise and would otherwise each consume a slow VLM call.
         """
-        p = Path(image_path)
+        p = Path(image_file)
         if not p.is_file():
             return True, "image file missing"
         size = p.stat().st_size
@@ -173,7 +173,7 @@ class VLMEnricher(BaseResolver):
             return None
 
         prompt = (f"[Context: {context_hint}] " if context_hint else "") + self._VLM_PROMPT_INSTRUCTION
-        deps = VlmDeps(prompt=prompt, image_path=str(image_ref), timeout=self._agent.timeout)
+        deps = VlmDeps(prompt=prompt, image_file=str(image_ref), timeout=self._agent.timeout)
         try:
             return self._agent.run(deps)
         except FileNotFoundError:

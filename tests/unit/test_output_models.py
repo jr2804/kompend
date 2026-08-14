@@ -195,9 +195,9 @@ class TestMarkdownWriterRegression:
             metadata={"title": "Test Wiki"},
         )
         writer = MarkdownWriter(flavor="obsidian", vault_mode=False)
-        output_path = writer.write(wiki, tmp_path)
+        output_file = writer.write(wiki, tmp_path)
 
-        text = output_path.read_text(encoding="utf-8")
+        text = output_file.read_text(encoding="utf-8")
         assert "# Test Wiki" in text
         assert "# Test Page" in text or "## Test Page" in text
         assert "This is the body." in text

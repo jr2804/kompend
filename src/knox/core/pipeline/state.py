@@ -63,7 +63,7 @@ class SourceState:
     def from_dict(cls, data: dict[str, Any]) -> SourceState:
         return cls(
             stem=data.get("stem", ""),
-            source_file=data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, ""),
+            source_file=data.get(MetadataField.SOURCE_FILE, ""),
             content_hash=data.get("content_hash", ""),
             current_tier=int(data.get("current_tier", 0)),
             last_compile=data.get("last_compile", ""),

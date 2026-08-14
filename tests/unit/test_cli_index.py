@@ -84,9 +84,9 @@ def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: py
 def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Knox index errors when load_cached_wiki returns None (no wiki to index)."""
     # The "no embedding model" guard is reachable only when config returns an
-    # empty string for compile.embedding.model, which the default ('all-MiniLM-L6-v2')
-    # prevents. The primary error path is missing-wiki, covered above. This test
-    # instead verifies the embed_model flag overrides the config default.
+    # empty string for compile.embedding.model, which is now the default.
+    # The primary error path is missing-wiki, covered above. This test instead
+    # verifies the embed_model flag overrides the config default.
     base = _setup_vault(tmp_path)
     monkeypatch.chdir(base)
 

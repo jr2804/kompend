@@ -58,10 +58,10 @@ class TestAgentDefinition:
             max_turns = 5
             stream_progress = false
             """)
-        toml_path = tmp_path / "my-agent.toml"
-        toml_path.write_text(toml_content, encoding="utf-8")
+        toml_file = tmp_path / "my-agent.toml"
+        toml_file.write_text(toml_content, encoding="utf-8")
 
-        agent = AgentDefinition.from_toml(toml_path)
+        agent = AgentDefinition.from_toml(toml_file)
         assert agent.name == "my-agent"
         assert agent.task == AgentTask.COMPILE
         assert agent.llm.model == "ollama-cloud/deepseek-v4-flash"
@@ -80,10 +80,10 @@ class TestAgentDefinition:
             [prompt]
             system = "Answer questions."
             """)
-        toml_path = tmp_path / "no-model.toml"
-        toml_path.write_text(toml_content, encoding="utf-8")
+        toml_file = tmp_path / "no-model.toml"
+        toml_file.write_text(toml_content, encoding="utf-8")
 
-        agent = AgentDefinition.from_toml(toml_path)
+        agent = AgentDefinition.from_toml(toml_file)
         assert agent.llm.model is None
 
     def test_from_toml_missing_file_raises(self, tmp_path: Path) -> None:
@@ -113,11 +113,11 @@ class TestAgentDefinition:
             [prompt]
             system = "x"
             """)
-        toml_path = tmp_path / "extra.toml"
-        toml_path.write_text(toml_content, encoding="utf-8")
+        toml_file = tmp_path / "extra.toml"
+        toml_file.write_text(toml_content, encoding="utf-8")
 
         with pytest.raises(ValidationError):
-            AgentDefinition.from_toml(toml_path)
+            AgentDefinition.from_toml(toml_file)
 
     def test_all_task_values(self) -> None:
         """Every AgentTask value produces a valid agent."""

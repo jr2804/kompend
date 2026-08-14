@@ -7,7 +7,7 @@ Covers all acceptance criteria from knox-7q3z:
 - Retrieval budget management
 - Cross-reference checking (entity dedup, contradiction detection)
 - Cache behavior (serialization round-trip, version invalidation)
-- WikiNode hierarchy (parent_id, children_ids, depth, heading_path)
+- WikiNode hierarchy (parent_id, children_ids, depth, heading_chain)
 """
 
 from __future__ import annotations
@@ -207,14 +207,14 @@ class TestAdaptiveStrategyCorrectness:
         assert max(depths) > 1, f"Expected depth > 1, got max depth {max(depths)}"
 
     def test_heading_path_on_leaves(self) -> None:
-        """Leaf nodes have heading_path reflecting document structure."""
+        """Leaf nodes have heading_chain reflecting document structure."""
         doc = make_test_doc(num_paragraphs=3, include_tables=True, include_code=False, include_images=False)
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)
         for n in tree.leaves():
             if n.chunk is not None:
-                assert len(n.heading_path) > 0, f"Leaf {n.id} has empty heading_path"
-                assert isinstance(n.heading_path, tuple)
+                assert len(n.heading_chain) > 0, f"Leaf {n.id} has empty heading_chain"
+                assert isinstance(n.heading_chain, tuple)
 
     def test_subtree_tokens_match_sum(self) -> None:
         """subtree_tokens for internal node equals sum of leaf tokens."""
@@ -353,7 +353,7 @@ class TestCacheBehavior:
             rest = restored.nodes[nid]
             assert orig.id == rest.id
             assert orig.depth == rest.depth
-            assert orig.heading_path == rest.heading_path
+            assert orig.heading_chain == rest.heading_chain
             assert orig.token_count == rest.token_count
             assert orig.parent_id == rest.parent_id
             assert orig.children_ids == rest.children_ids
@@ -409,16 +409,16 @@ class TestWikiNodeHierarchy:
     """Verify WikiNode hierarchy fields are populated correctly."""
 
     def test_wikinode_hierarchy_fields_exist(self) -> None:
-        """WikiNode has parent_id, children_ids, depth, heading_path fields."""
+        """WikiNode has parent_id, children_ids, depth, heading_chain fields."""
         node = WikiNode(id="test", title="Test", content="Content", node_type="concept")
         assert hasattr(node, "parent_id")
         assert hasattr(node, "children_ids")
         assert hasattr(node, "depth")
-        assert hasattr(node, "heading_path")
+        assert hasattr(node, "heading_chain")
         assert node.parent_id is None
         assert node.children_ids == []
         assert node.depth == 0
-        assert node.heading_path == ()
+        assert node.heading_chain == ()
 
     def test_wikinode_structured_sections_exist(self) -> None:
         """WikiNode has structured_sections field."""
@@ -447,7 +447,7 @@ class TestWikiNodeHierarchy:
         assert all(hasattr(n, "parent_id") for n in wiki.nodes)
         assert all(hasattr(n, "children_ids") for n in wiki.nodes)
         assert all(hasattr(n, "depth") for n in wiki.nodes)
-        assert all(hasattr(n, "heading_path") for n in wiki.nodes)
+        assert all(hasattr(n, "heading_chain") for n in wiki.nodes)
 
 
 # ---------------------------------------------------------------------------

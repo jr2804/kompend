@@ -123,7 +123,7 @@ def references_export(
 def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
     """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
     vp = vault_paths_from_ctx(ctx)
-    ref_file = vp.references_path
+    ref_file = vp.references_file
     if not ref_file.exists():
         return None
     return ReferenceStore(ref_file)
@@ -156,7 +156,7 @@ def references_fetch(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
-    ref_file = vp.references_path
+    ref_file = vp.references_file
     if not ref_file.exists():
         get_console().print("No references found. Run a compile first to extract references.")
         raise typer.Exit(0)

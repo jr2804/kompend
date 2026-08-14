@@ -220,7 +220,7 @@ def _load_related_titles(
 ) -> list[str]:
     """Return titles of wiki nodes that reference any of the given sources."""
     related: list[str] = []
-    wiki_cache = VaultPaths(base_dir).wiki_cache_path
+    wiki_cache = VaultPaths(base_dir).wiki_cache_file
     if not wiki_cache.exists() or not source_texts:
         return related
     try:

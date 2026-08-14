@@ -91,7 +91,7 @@ class TestCacheStoreTypes:
             source_elements=[0],
             source_file=Path("x.pdf"),
             reading_order=(1, 2),
-            metadata={"image_path": Path("img.png"), "raw": b"deadbeef"},
+            metadata={"image_file": Path("img.png"), "raw": b"deadbeef"},
         )
         obj = ResolvedChunk(chunk=chunk)
         store.set("test", {"d": "1"}, obj)
@@ -100,7 +100,7 @@ class TestCacheStoreTypes:
         assert result == obj
         assert result.chunk.source_file == Path("x.pdf")
         assert result.chunk.reading_order == (1, 2)
-        assert result.chunk.metadata["image_path"] == Path("img.png")
+        assert result.chunk.metadata["image_file"] == Path("img.png")
         assert result.chunk.metadata["raw"] == b"deadbeef"
 
     def test_custom_object(self, tmp_path: Path) -> None:

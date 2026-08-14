@@ -18,8 +18,8 @@ from knox.core.config._core import (
     find_project_config,
     flat_keys,
     get_dot,
-    get_global_config_path,
-    get_project_config_path,
+    get_global_config_file,
+    get_project_config_file,
     load_toml,
     read_env_vars,
     resolve_config,
@@ -527,6 +527,21 @@ class TestHierarchicalConfig:
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 999
 
+    def test_base_dir_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
+        # C1: the base_dir parameter (from --wiki-dir) must redirect discovery
+        # even when cwd has no config. Regression: base_dir was ignored for
+        # discovery, so `knox doctor -w <vault>` from another cwd loaded nothing.
+        tmp_path = tmp_path.resolve()
+        vault = tmp_path / "vault"
+        (vault / KNOX_DIR).mkdir(parents=True)
+        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 555\n")
+        foreign_cwd = tmp_path / "elsewhere"
+        foreign_cwd.mkdir()
+        monkeypatch.chdir(foreign_cwd)  # cwd has no config
+        cfg = resolve_config(base_dir=vault)
+        assert cfg.get("compile.budget.chunk_size_min") == 555
+        assert cfg.project_config_file is not None
+
     def test_hierarchy_env_overrides_all(self, tmp_path: Any, monkeypatch: Any) -> None:
         parent = tmp_path / "parent"
         parent.mkdir()
@@ -622,7 +637,7 @@ class TestGetProjectConfigPath:
     def test_returns_existing_knox_toml(self, tmp_path: Any) -> None:
         config_file = tmp_path / "knox.toml"
         config_file.write_text("")
-        assert get_project_config_path(start_dir=tmp_path) == config_file
+        assert get_project_config_file(start_dir=tmp_path) == config_file
 
     def test_prefers_dot_knox_config(self, tmp_path: Any) -> None:
         dot_knox = tmp_path / KNOX_DIR
@@ -630,10 +645,10 @@ class TestGetProjectConfigPath:
         dot_knox_file = dot_knox / "config.toml"
         dot_knox_file.write_text("")
         (tmp_path / "knox.toml").write_text("")
-        assert get_project_config_path(start_dir=tmp_path) == dot_knox_file
+        assert get_project_config_file(start_dir=tmp_path) == dot_knox_file
 
     def test_returns_path_without_creating_dir(self, tmp_path: Any) -> None:
-        path = get_project_config_path(start_dir=tmp_path)
+        path = get_project_config_file(start_dir=tmp_path)
         assert path == tmp_path / KNOX_DIR / "config.toml"
         assert not path.parent.exists()
 
@@ -641,12 +656,12 @@ class TestGetProjectConfigPath:
 class TestGetGlobalConfigPath:
     def test_uses_xdg_config_home(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        path = get_global_config_path()
+        path = get_global_config_file()
         assert path == tmp_path / "knox" / "config.toml"
 
     def test_creates_parent_dir(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        path = get_global_config_path(create=True)
+        path = get_global_config_file(create=True)
         assert path.parent.is_dir()
 
 
@@ -752,10 +767,10 @@ class TestKnoxDotExampleSync:
     """knox.toml.example must document every key in DEFAULTS."""
 
     def test_example_covers_all_defaults(self) -> None:
-        example_path = _PROJECT_ROOT / "knox.toml.example"
-        if not example_path.exists():
+        example_file = _PROJECT_ROOT / "knox.toml.example"
+        if not example_file.exists():
             pytest.skip("knox.toml.example not found")
-        text = example_path.read_text(encoding="utf-8")
+        text = example_file.read_text(encoding="utf-8")
         example_keys = extract_toml_keys(text)
         missing = get_default_keys() - example_keys
         assert not missing, f"knox.toml.example is missing keys present in DEFAULTS: {sorted(missing)}"

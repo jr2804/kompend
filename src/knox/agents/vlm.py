@@ -44,7 +44,7 @@ class VlmDeps:
     """Deps for VLM captioning."""
 
     prompt: str
-    image_path: str
+    image_file: str
     source_id: str = "vlm"
     timeout: float = 120.0
 
@@ -70,7 +70,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
     def run(self, deps: VlmDeps, *, message_history: list[Any] | None = None) -> str:  # noqa: PLR6301
         """Run VLM captioning with image input via the unified model path."""
         self._current_source_id = deps.source_id
-        image_file = Path(deps.image_path)
+        image_file = Path(deps.image_file)
         if not image_file.is_file():
             msg = f"Image not found: {image_file}"
             raise FileNotFoundError(msg)
@@ -91,7 +91,7 @@ class VlmAgent(KnoxAgentBase[str, VlmDeps]):
         try:
             result = self._agent.run_sync(user_prompt, deps=deps)
         except Exception as exc:
-            logger.warning("VLM call failed for '%s': %s", deps.image_path, exc)
+            logger.warning("VLM call failed for '%s': %s", deps.image_file, exc)
             raise LLMOutputError(f"VLM failed for model '{self.model_string}': {exc}") from exc
 
         caption = strip_reasoning(result.output).strip()

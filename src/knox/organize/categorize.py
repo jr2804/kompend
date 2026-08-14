@@ -158,10 +158,10 @@ def _resolve_cached_source(source: str, sources_root: Path, files_by_name: dict[
     return files_by_name.get(Path(source).name)
 
 
-def _is_within(subject_path: Path, root_dir: Path) -> bool:
-    """Return True if *subject_path* is the same as or nested inside *root_dir*."""
+def _is_within(subject: Path, root_dir: Path) -> bool:
+    """Return True if *subject* is the same as or nested inside *root_dir*."""
     try:
-        subject_path.relative_to(root_dir)
+        subject.relative_to(root_dir)
     except ValueError:
         return False
     return True

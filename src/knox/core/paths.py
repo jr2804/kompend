@@ -8,7 +8,7 @@ Usage — names (for scaffolding / string-level operations)::
 
     from knox.core.paths import KNOX_DIR, CACHE_SUBDIR
 
-    knox_path = target / KNOX_DIR
+    knox_dir = target / KNOX_DIR
 
 Usage — resolved paths (preferred for all runtime code)::
 
@@ -143,21 +143,21 @@ class VaultPaths:
         │   ├── provenance/         ← provenance_dir
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir
-        │   ├── config.toml         ← config_path
-        │   ├── compile_state.json  ← compile_state_path
-        │   ├── last_wiki.json      ← wiki_cache_path
-        │   ├── compiled_wiki.json  ← compiled_wiki_path
-        │   ├── search.db           ← search_db_path
-        │   ├── memory.db           ← memory_db_path
-        │   ├── memory.jsonl        ┆ memory_log_path
-        │   ├── memory.json         ← memory_store_path
-        │   ├── verification.json   ← verification_path
-        │   ├── private.json        ← private_path
-        │   ├── downloaded.json     ← downloaded_path
-    │   ├── last_organize.json  ← organize_report_path
-    │   ├── lint_history.jsonl  ← lint_history_path
-    │   ├── references.json     ← references_path
-    │   ├── attachments.jsonl   ← attachments_manifest_path
+        │   ├── config.toml         ← config_file
+        │   ├── compile_state.json  ← compile_state_file
+        │   ├── last_wiki.json      ← wiki_cache_file
+        │   ├── compiled_wiki.json  ← compiled_wiki_file
+        │   ├── search.db           ← search_db_file
+        │   ├── memory.db           ← memory_db_file
+        │   ├── memory.jsonl        ┆ memory_log_file
+        │   ├── memory.json         ← memory_store_file
+        │   ├── verification.json   ← verification_file
+        │   ├── private.json        ← private_file
+        │   ├── downloaded.json     ← downloaded_file
+    │   ├── last_organize.json  ← organize_report_file
+    │   ├── lint_history.jsonl  ← lint_history_file
+    │   ├── references.json     ← references_file
+    │   ├── attachments.jsonl   ← attachments_manifest_file
     │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── attachments/            ← attachments_dir (per-source)
@@ -246,77 +246,77 @@ class VaultPaths:
     # ── Files inside .knox/ ─────────────────────────────────────────────
 
     @property
-    def config_path(self) -> Path:
+    def config_file(self) -> Path:
         """Project-level config file (``.knox/config.toml``)."""
         return self.knox_dir / CONFIG_FILE
 
     @property
-    def compile_state_path(self) -> Path:
+    def compile_state_file(self) -> Path:
         """Persistent tier-state checkpoint file."""
         return self.knox_dir / COMPILE_STATE_FILE
 
     @property
-    def wiki_cache_path(self) -> Path:
+    def wiki_cache_file(self) -> Path:
         """Serialised ``CompiledWiki`` snapshot."""
         return self.knox_dir / WIKI_CACHE_FILE
 
     @property
-    def compiled_wiki_path(self) -> Path:
+    def compiled_wiki_file(self) -> Path:
         """Full compiled wiki JSON (used by pipeline internally)."""
         return self.knox_dir / COMPILED_WIKI_FILE
 
     @property
-    def search_db_path(self) -> Path:
+    def search_db_file(self) -> Path:
         """SQLite search index database."""
         return self.knox_dir / SEARCH_DB_FILE
 
     @property
-    def memory_db_path(self) -> Path:
+    def memory_db_file(self) -> Path:
         """SQLite memory store database."""
         return self.knox_dir / MEMORY_DB_FILE
 
     @property
-    def memory_log_path(self) -> Path:
+    def memory_log_file(self) -> Path:
         """Append-only memory log."""
         return self.knox_dir / MEMORY_LOG_FILE
 
     @property
-    def memory_store_path(self) -> Path:
+    def memory_store_file(self) -> Path:
         """Memory JSON export."""
         return self.knox_dir / MEMORY_STORE_FILE
 
     @property
-    def verification_path(self) -> Path:
+    def verification_file(self) -> Path:
         """Verification results JSON."""
         return self.knox_dir / VERIFICATION_FILE
 
     @property
-    def private_path(self) -> Path:
+    def private_file(self) -> Path:
         """Private page manifest."""
         return self.knox_dir / PRIVATE_FILE
 
     @property
-    def downloaded_path(self) -> Path:
+    def downloaded_file(self) -> Path:
         """URL download manifest (inside cache)."""
         return self.cache_dir / DOWNLOADED_FILE
 
     @property
-    def organize_report_path(self) -> Path:
+    def organize_report_file(self) -> Path:
         """Last ``knox organize`` report."""
         return self.knox_dir / ORGANIZE_REPORT_FILE
 
     @property
-    def references_path(self) -> Path:
+    def references_file(self) -> Path:
         """Bibliographic references store (CSL JSON-aligned)."""
         return self.knox_dir / REFERENCES_FILE
 
     @property
-    def assets_path(self) -> Path:
+    def assets_file(self) -> Path:
         """Separated structured-asset store (tables/figures, JSON)."""
         return self.knox_dir / ASSETS_FILE
 
     @property
-    def attachments_manifest_path(self) -> Path:
+    def attachments_manifest_file(self) -> Path:
         """Attachment manifest (JSONL)."""
         return self.knox_dir / ATTACHMENTS_MANIFEST
 
@@ -331,12 +331,12 @@ class VaultPaths:
         return self.knox_dir / LOG_FILE
 
     @property
-    def lint_history_path(self) -> Path:
+    def lint_history_file(self) -> Path:
         """Append-only JSONL log of lint runs."""
         return self.knox_dir / LINT_HISTORY_FILE
 
     @property
-    def runs_path(self) -> Path:
+    def runs_dir(self) -> Path:
         """Append-only JSONL audit trail of every CLI command run."""
         return self.knox_dir / RUNS_FILE
 

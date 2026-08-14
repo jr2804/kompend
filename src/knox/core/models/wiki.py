@@ -52,7 +52,7 @@ class WikiNode:
     parent_id: str | None = None
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
-    heading_path: tuple[str, ...] = field(default_factory=tuple)
+    heading_chain: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -78,7 +78,7 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
     surfaces instead of producing a misleading "run compile first" message.
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
-    cache_file = VaultPaths(base_dir).wiki_cache_path
+    cache_file = VaultPaths(base_dir).wiki_cache_file
     if not cache_file.exists():
         return None
     data = json.loads(cache_file.read_text(encoding="utf-8"))

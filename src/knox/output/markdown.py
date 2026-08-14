@@ -98,7 +98,7 @@ class MarkdownWriter(VaultWriter):
         body: str,
         related: list[tuple[str, str, float | None]],
         wiki: CompiledWiki,
-        slug_to_path: dict[str, str],
+        slug_targets: dict[str, str],
     ) -> str:
         """Render one page: frontmatter + body (citation-rewritten) + Related."""
         rendered_doc = replace(doc, body=body) if body != doc.body else doc

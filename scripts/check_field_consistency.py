@@ -47,7 +47,7 @@ SRC_ROOT = REPO_ROOT / "src" / "knox"
 # their own module + direct readers — enforcing them project-wide would
 # drown in false positives on generic words like "content", "title", "id".
 #
-# Entry shape: ``(module_path, class_name, consumer_glob_patterns)``.
+# Entry shape: ``(module_name, class_name, consumer_glob_patterns)``.
 # ``consumer_glob_patterns`` is matched as POSIX-style suffix; an empty list
 # means "everywhere except the defining module and the global allowlist".
 _IMPORT_ALL: list[str] = []  # sentinel: apply repo-wide
@@ -158,7 +158,7 @@ class Violation:
 class EnumEntry:
     """One enforced enum + the consumer modules its values are policed in."""
 
-    module_path: str
+    module_name: str
     class_name: str
     consumers: list[str]  # POSIX suffixes; empty = repo-wide
     values: dict[str, str] = field(default_factory=dict)  # value -> qualified
@@ -166,7 +166,7 @@ class EnumEntry:
     def applies_to(self, path: Path) -> bool:
         posix = path.as_posix()
         # The defining module always excluded (handled by caller).
-        if posix.endswith(self.module_path.replace(".", "/") + ".py"):
+        if posix.endswith(self.module_name.replace(".", "/") + ".py"):
             return False
         if self.consumers:
             return any(posix.endswith(c) for c in self.consumers)
@@ -243,17 +243,17 @@ def main() -> int:
 def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
     """Import each StrEnum and register its member values."""
     out: list[EnumEntry] = []
-    for module_path, class_name, consumers in enums:
+    for module_name, class_name, consumers in enums:
         try:
-            mod = importlib.import_module(module_path)
+            mod = importlib.import_module(module_name)
         except Exception as exc:  # noqa: BLE001
-            print(f"WARNING: could not import {module_path}: {exc}", file=sys.stderr)
+            print(f"WARNING: could not import {module_name}: {exc}", file=sys.stderr)
             continue
         cls = getattr(mod, class_name, None)
         if cls is None:
-            print(f"WARNING: {module_path}.{class_name} not found", file=sys.stderr)
+            print(f"WARNING: {module_name}.{class_name} not found", file=sys.stderr)
             continue
-        entry = EnumEntry(module_path, class_name, consumers)
+        entry = EnumEntry(module_name, class_name, consumers)
         for member in cls:
             entry.values[str(member.value)] = f"{class_name}.{member.name}"
         out.append(entry)

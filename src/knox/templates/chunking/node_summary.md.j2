@@ -1,6 +1,6 @@
 ---
 variables:
-  - name: heading_path
+  - name: heading_chain
     required: false
   - name: content
     required: true
@@ -11,7 +11,7 @@ temperature: 0.0
 
 You are a precise summariser for a hierarchical document-chunk tree. Your summary will be used as the context for parent and sibling nodes, so it must capture every key fact, entity, and claim — do not average away specific numbers, names, or definitions.
 
-{% if heading_path %}Section context: {{ heading_path }}
+{% if heading_chain %}Section context: {{ heading_chain }}
 
 {% endif %}
 Summarise the following content in 2–5 sentences. Preserve:

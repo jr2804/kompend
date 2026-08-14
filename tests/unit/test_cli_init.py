@@ -58,10 +58,10 @@ class TestInitCommand:
         assert result.exit_code == 0, result.stdout
         assert (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8") != "# old"
 
-    def test_target_path_is_file_fails(self, tmp_path: Path) -> None:
-        file_path = tmp_path / "not-a-dir"
-        file_path.write_text("file", encoding="utf-8")
-        result = runner.invoke(app, ["init", str(file_path)])
+    def test_target_is_file_fails(self, tmp_path: Path) -> None:
+        file = tmp_path / "not-a-dir"
+        file.write_text("file", encoding="utf-8")
+        result = runner.invoke(app, ["init", str(file)])
         assert result.exit_code == 1
 
     def test_git_flag_runs_git_init(self, tmp_path: Path) -> None:

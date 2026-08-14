@@ -205,8 +205,8 @@ def mock_embedding_provider() -> DeterministicTestEmbeddingProvider:
 
 def test_tier_state_round_trip(tmp_path: Path) -> None:
     """TierStateStore serializes and re-loads TierState correctly."""
-    store_path = tmp_path / KNOX_DIR / STATE_FILE
-    store = TierStateStore(store_path)
+    store_file = tmp_path / KNOX_DIR / STATE_FILE
+    store = TierStateStore(store_file)
 
     state = TierState(
         entries={

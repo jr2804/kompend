@@ -134,10 +134,10 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
 def write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
     """Serialize the compiled wiki to ``.knox/last_wiki.json``."""
     paths = VaultPaths(base_dir)
-    cache_file = paths.wiki_cache_path
+    cache_file = paths.wiki_cache_file
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
-    def _rel_path(p: str) -> str:
+    def _relative(p: str) -> str:
         try:
             return str(Path(p).relative_to(base_dir))
         except ValueError:
@@ -149,7 +149,7 @@ def write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
         meta = nd.get("metadata", {})
         if MetadataField.SOURCE_FILE in meta:
             meta = dict(meta)
-            meta[MetadataField.SOURCE_FILE] = _rel_path(meta[MetadataField.SOURCE_FILE])
+            meta[MetadataField.SOURCE_FILE] = _relative(meta[MetadataField.SOURCE_FILE])
             nd["metadata"] = meta
         nodes_dicts.append(nd)
 
@@ -326,7 +326,7 @@ def run_overview_synthesis(
             synthesize_tracker.update_progress(current, f"[{current}/{total}] Synthesizing overview…")
 
     try:
-        overview_path = write_overview(
+        overview_file = write_overview(
             wiki,
             base_dir,
             agent=WikiIndexAgent(
@@ -341,8 +341,8 @@ def run_overview_synthesis(
         get_err_console().print(f"Overview generation failed: {exc}")
         return
     synthesize_tracker.finish()
-    if overview_path:
-        get_console().print(f"Overview: {overview_path}")
+    if overview_file:
+        get_console().print(f"Overview: {overview_file}")
     else:
         get_err_console().print("Overview generation skipped (no content to summarise).")
 
@@ -355,7 +355,7 @@ def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
     (``attachments/<slug>/<filename>``).
     """
     vp = VaultPaths(base_dir)
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
         return
 

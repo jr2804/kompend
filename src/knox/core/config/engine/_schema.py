@@ -14,7 +14,7 @@ from knox.core.config.keys import (
     COMPILE_RESPECT_GITIGNORE,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
-    COMPILE_TIER_STATE_PATH,
+    COMPILE_TIER_STATE_FILE,
 )
 from knox.core.utils.dicts import flat_keys
 from knox.logging import get_logger
@@ -44,11 +44,13 @@ def _build_env_map() -> dict[str, str]:
                     env_map[dotted] = alias
 
     _walk(KnoxConfig)
+    # Env aliases not expressible as field validation aliases (surfaced per-run
+    # via CLI overrides). Keys live in ``knox.core.config.keys``.
     env_map.update(
         {
             COMPILE_START_AT_TIER: "KNOX_START_AT_TIER",
             COMPILE_STOP_AT_TIER: "KNOX_STOP_AT_TIER",
-            COMPILE_TIER_STATE_PATH: "KNOX_TIER_STATE_PATH",
+            COMPILE_TIER_STATE_FILE: "KNOX_TIER_STATE_PATH",
             COMPILE_CACHE_DIR: "KNOX_COMPILE_CACHE_DIR",
             COMPILE_RESPECT_GITIGNORE: "KNOX_RESPECT_GITIGNORE",
         }

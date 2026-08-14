@@ -234,7 +234,7 @@ class DebugSaver:
 
         The *agent* argument is a pydantic-ai ``Agent`` instance with
         ``stage`` and ``current_source_id`` properties (protocol defined
-        in ``knox.llm.debug``).  Its ``_last_debug_path`` attribute is
+        in ``knox.llm.debug``).  Its ``_last_debug_file`` attribute is
         set after a successful save.
         """
         self._agent = agent
@@ -265,8 +265,8 @@ class DebugSaver:
             user_turns=user_turns,
             assistant_turns=assistant_turns,
         )
-        if filepath is not None and hasattr(self._agent, "_last_debug_path"):
-            self._agent._last_debug_path = filepath
+        if filepath is not None and hasattr(self._agent, "_last_debug_file"):
+            self._agent._last_debug_file = filepath
 
 
 # ── Pipeline composition ─────────────────────────────────────────────────

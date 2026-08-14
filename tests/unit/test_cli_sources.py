@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from knox.cli._sources import (
-    _unique_path,
+    _unique_file,
     ensure_in_sources,
     get_supported_extensions,
     looks_like_html_url,
@@ -212,18 +212,18 @@ class TestEnsureInSources:
         assert result[1] == external.resolve()
 
 
-# ── _unique_path ────────────────────────────────────────────────────────
+# ── _unique_file ────────────────────────────────────────────────────────
 
 
 class TestUniquePath:
     def test_no_conflict(self, tmp_path: Path) -> None:
         target_file = tmp_path / "doc.pdf"
-        assert _unique_path(target_file) == target_file
+        assert _unique_file(target_file) == target_file
 
     def test_one_conflict(self, tmp_path: Path) -> None:
         target_file = tmp_path / "doc.pdf"
         target_file.write_text("first")
-        result = _unique_path(target_file)
+        result = _unique_file(target_file)
         assert result.name == "doc_1.pdf"
 
     def test_multiple_conflicts(self, tmp_path: Path) -> None:
@@ -231,7 +231,7 @@ class TestUniquePath:
         target_file.write_text("0")
         (tmp_path / "doc_1.pdf").write_text("1")
         (tmp_path / "doc_2.pdf").write_text("2")
-        result = _unique_path(target_file)
+        result = _unique_file(target_file)
         assert result.name == "doc_3.pdf"
 
 

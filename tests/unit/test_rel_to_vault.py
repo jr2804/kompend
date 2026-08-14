@@ -77,7 +77,7 @@ class TestRelToVault:
         """The 'unknown' sentinel used when source_file is None passes through."""
         assert rel_to_vault("unknown", tmp_path) == "unknown"
 
-    def test_deeply_nested_path(self, tmp_path: Path) -> None:
+    def test_deeply_nested(self, tmp_path: Path) -> None:
         base = tmp_path
         p = base / "a" / "b" / "c" / "d" / "file.txt"
         assert rel_to_vault(p, base) == "a/b/c/d/file.txt"

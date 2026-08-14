@@ -55,8 +55,8 @@ def add_attachment(
     console = get_console()
 
     # ── Validate source ────────────────────────────────────────────────
-    source_path = Path(source)
-    source_stem = source_path.stem  # e.g., "report" from "papers/report.pdf"
+    source_file = Path(source)
+    source_stem = source_file.stem  # e.g., "report" from "papers/report.pdf"
     slug = attachment_slug(source)
 
     # ── Validate attachment file ───────────────────────────────────────
@@ -93,17 +93,17 @@ def add_attachment(
     shutil.copy2(attachment_file, dest)
 
     # ── Record in manifest ─────────────────────────────────────────────
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
-    relative_path = f"{slug}/{attachment_file.name}"
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    relative_file = f"{slug}/{attachment_file.name}"
     att = Attachment(
-        path=relative_path,
+        path=relative_file,
         source=source_stem,
         ingestible=ingest,
         embed=embed,
     )
     manifest.append(att)
 
-    console.print(f"[green]Registered attachment:[/green] {relative_path}")
+    console.print(f"[green]Registered attachment:[/green] {relative_file}")
     if ingest:
         console.print("  → ingestible (will be processed during compile)")
     if embed is not None:
@@ -114,7 +114,7 @@ def add_attachment(
 @attachments_app.command("remove")
 def remove_attachment(
     ctx: typer.Context,
-    attachment_path: str = typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
+    attachment_file: str = typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
 ) -> None:
     """Remove (tombstone) a registered attachment.
 
@@ -124,31 +124,31 @@ def remove_attachment(
     vp = vault_paths_from_ctx(ctx)
     console = get_console()
 
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
     existing = manifest.read_all()
 
     # ── Resolve path (support bare filename) ───────────────────────────
-    resolved_path = attachment_path
-    if "/" not in attachment_path and "\\" not in attachment_path:
+    resolved_file = attachment_file
+    if "/" not in attachment_file and "\\" not in attachment_file:
         # Bare filename — find matching entry
-        matches = [p for p in existing if Path(p).name == attachment_path]
+        matches = [p for p in existing if Path(p).name == attachment_file]
         if len(matches) == 1:
-            resolved_path = matches[0]
+            resolved_file = matches[0]
         elif len(matches) > 1:
-            console.print(f"[yellow]Multiple matches for '{attachment_path}':[/yellow]")
+            console.print(f"[yellow]Multiple matches for '{attachment_file}':[/yellow]")
             for m in matches:
                 console.print(f"  {m}")
             console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
             raise typer.Exit(1)
 
-    if resolved_path not in existing:
-        console.print(f"[red]Error:[/red] Attachment not found: {resolved_path}")
+    if resolved_file not in existing:
+        console.print(f"[red]Error:[/red] Attachment not found: {resolved_file}")
         raise typer.Exit(1)
 
-    if manifest.remove(resolved_path):
-        console.print(f"[green]Removed attachment:[/green] {resolved_path}")
+    if manifest.remove(resolved_file):
+        console.print(f"[green]Removed attachment:[/green] {resolved_file}")
     else:
-        console.print(f"[red]Error:[/red] Failed to remove attachment: {resolved_path}")
+        console.print(f"[red]Error:[/red] Failed to remove attachment: {resolved_file}")
         raise typer.Exit(1)
 
 
@@ -162,7 +162,7 @@ def list_attachments(
     vp = vault_paths_from_ctx(ctx)
     console = get_console()
 
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
 
     if not manifest.exists():
         console.print("No attachments registered.")

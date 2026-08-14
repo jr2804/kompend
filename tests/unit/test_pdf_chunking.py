@@ -18,14 +18,14 @@ class TestCountPdfPages:
     """Tests for DoclingParser._count_pdf_pages."""
 
     def test_count_single_page(self, tmp_path: Path) -> None:
-        pdf_path = tmp_path / "one.pdf"
-        _create_pdf(pdf_path, 1)
-        assert DoclingParser._count_pdf_pages(pdf_path) == 1
+        pdf_file = tmp_path / "one.pdf"
+        _create_pdf(pdf_file, 1)
+        assert DoclingParser._count_pdf_pages(pdf_file) == 1
 
     def test_count_multiple_pages(self, tmp_path: Path) -> None:
-        pdf_path = tmp_path / "three.pdf"
-        _create_pdf(pdf_path, 3)
-        assert DoclingParser._count_pdf_pages(pdf_path) == 3
+        pdf_file = tmp_path / "three.pdf"
+        _create_pdf(pdf_file, 3)
+        assert DoclingParser._count_pdf_pages(pdf_file) == 3
 
 
 class TestPdfConfigDefaults:
@@ -54,16 +54,16 @@ class TestParseChunked:
 
     def test_small_pdf_no_chunking(self, tmp_path: Path) -> None:
         """A PDF below the threshold should not trigger chunked parsing."""
-        pdf_path = tmp_path / "small.pdf"
-        _create_pdf(pdf_path, 3)
+        pdf_file = tmp_path / "small.pdf"
+        _create_pdf(pdf_file, 3)
 
         parser = DoclingParser(pdf_config=PdfConfig(max_pages_before_chunking=50))
 
         fake_result = self._make_fake_result(1, 3)
         with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result") as mock_unload:
             mock_conv.return_value.convert = MagicMock(return_value=fake_result)
-            doc = parser.parse(pdf_path)
-            mock_conv.return_value.convert.assert_called_once_with(str(pdf_path))
+            doc = parser.parse(pdf_file)
+            mock_conv.return_value.convert.assert_called_once_with(str(pdf_file))
             mock_unload.assert_called_once()
 
         assert doc.metadata.get("chunked") is None
@@ -71,8 +71,8 @@ class TestParseChunked:
 
     def test_chunked_parsing_dispatch(self, tmp_path: Path) -> None:
         """A PDF above the threshold should dispatch to _parse_chunked."""
-        pdf_path = tmp_path / "large.pdf"
-        _create_pdf(pdf_path, 5)
+        pdf_file = tmp_path / "large.pdf"
+        _create_pdf(pdf_file, 5)
 
         parser = DoclingParser(
             pdf_config=PdfConfig(max_pages_before_chunking=2, page_chunk_size=2),
@@ -89,7 +89,7 @@ class TestParseChunked:
 
         with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = fake_convert
-            doc = parser.parse(pdf_path)
+            doc = parser.parse(pdf_file)
 
         assert call_log == [(1, 2), (3, 4), (5, 5)]
         assert doc.metadata.get("chunked") is True
@@ -98,8 +98,8 @@ class TestParseChunked:
 
     def test_chunked_reading_order_monotonic(self, tmp_path: Path) -> None:
         """Reading order should be monotonically increasing across chunks."""
-        pdf_path = tmp_path / "large.pdf"
-        _create_pdf(pdf_path, 6)
+        pdf_file = tmp_path / "large.pdf"
+        _create_pdf(pdf_file, 6)
 
         parser = DoclingParser(
             pdf_config=PdfConfig(max_pages_before_chunking=2, page_chunk_size=2),
@@ -112,7 +112,7 @@ class TestParseChunked:
 
         with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = fake_convert
-            doc = parser.parse(pdf_path)
+            doc = parser.parse(pdf_file)
 
         orders = [e.reading_order for e in doc.elements]
         assert orders == sorted(orders)
@@ -120,15 +120,15 @@ class TestParseChunked:
 
     def test_chunking_disabled_via_config(self, tmp_path: Path) -> None:
         """When max_pages_before_chunking=0, chunking never triggers."""
-        pdf_path = tmp_path / "big.pdf"
-        _create_pdf(pdf_path, 100)
+        pdf_file = tmp_path / "big.pdf"
+        _create_pdf(pdf_file, 100)
 
         parser = DoclingParser(pdf_config=PdfConfig(max_pages_before_chunking=0))
 
         fake_result = self._make_fake_result(1, 100)
         with patch.object(parser, "_get_converter") as mock_conv, patch.object(DoclingParser, "_unload_result"):
             mock_conv.return_value.convert = MagicMock(return_value=fake_result)
-            doc = parser.parse(pdf_path)
+            doc = parser.parse(pdf_file)
 
         assert mock_conv.return_value.convert.call_count == 1
         assert doc.metadata.get("chunked") is None

@@ -20,7 +20,7 @@ def test_iter_ingestible_attachments_empty_manifest(vault: VaultPaths) -> None:
 
 def test_iter_ingestible_attachments_filters_non_ingestible(vault: VaultPaths) -> None:
     """Only ingestible attachments are returned."""
-    manifest = AttachmentManifest(vault.attachments_manifest_path)
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=False))
     manifest.append(Attachment(path="r/b.txt", source="r", ingestible=True))
 
@@ -36,7 +36,7 @@ def test_iter_ingestible_attachments_filters_non_ingestible(vault: VaultPaths) -
 
 def test_iter_ingestible_attachments_skips_missing(vault: VaultPaths) -> None:
     """Attachments missing on disk are skipped."""
-    manifest = AttachmentManifest(vault.attachments_manifest_path)
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(Attachment(path="r/ghost.txt", source="r", ingestible=True))
 
     assert iter_ingestible_attachments(vault) == []
@@ -50,7 +50,7 @@ def test_ingest_text_attachment(vault: VaultPaths) -> None:
     att_file = att_dir / "notes.md"
     att_file.write_text("# Title\n\nSome content.")
 
-    manifest = AttachmentManifest(vault.attachments_manifest_path)
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(att)
 
     mock_router = MagicMock()
@@ -65,7 +65,7 @@ def test_ingest_text_attachment(vault: VaultPaths) -> None:
     assert result is not None
     assert result.metadata.get("source_asset") is True
     assert result.metadata.get("parent_source") == "r"
-    assert result.metadata.get("asset_path") == "r/notes.md"
+    assert result.metadata.get("asset_file") == "r/notes.md"
 
     # Element metadata should also be stamped.
     assert result.elements[0].metadata.get("source_asset") is True

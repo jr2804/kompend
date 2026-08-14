@@ -248,8 +248,8 @@ class DedupOrchestrator:
 
     def _build_store(self, recreate: bool = False) -> DedupStore:
         paths = VaultPaths(self._base_dir)
-        store_path = paths.dedup_dir / "fingerprints.json"
-        return DedupStore(store_path, config=self._config)
+        store_dir = paths.dedup_dir / "fingerprints.json"
+        return DedupStore(store_dir, config=self._config)
 
     def _build_matchers(self) -> tuple[list[ContentMatcher], dict[str, ContentMatcher]]:
         matchers_str = self._config.get("dedup.matchers", "embedding,minhash")

@@ -9,8 +9,8 @@ from knox.cli.app import app
 from knox.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 from knox.core.config import (
     coerce_config_value,
-    get_global_config_path,
-    get_project_config_path,
+    get_global_config_file,
+    get_project_config_file,
     resolve_config,
     set_config_file_value,
     validate_config_key,
@@ -67,10 +67,10 @@ def config_set(
         raise typer.Exit(code=1) from exc
 
     if global_:
-        path = get_global_config_path(create=True)
+        path = get_global_config_file(create=True)
     else:
         wiki_dir = vault_paths_from_ctx(ctx).base_dir
-        path = get_project_config_path(start_dir=wiki_dir)
+        path = get_project_config_file(start_dir=wiki_dir)
         if not path.exists():
             get_err_console().print("error: not in a KNOX vault — run `knox init` first or use `--global`")
             raise typer.Exit(code=1)
@@ -102,12 +102,12 @@ def config_list(
 
 
 @config_app.command("path", help="Show the config file path.")
-def config_path(
+def config_file(
     ctx: typer.Context,
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_path(create=False) if global_ else get_project_config_path(start_dir=vault_paths_from_ctx(ctx).base_dir)
+    path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
     get_console().print(str(path), soft_wrap=True)
 
 

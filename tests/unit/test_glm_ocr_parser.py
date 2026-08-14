@@ -12,19 +12,22 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.core.models.enums import ElementType
-from knox.preprocessing.parsers._registry import (
-    KNOWN_BACKENDS,
-    PARSER_BACKENDS,
-    build_default_router,
-    get_registered_parsers,
-)
-from knox.preprocessing.parsers.base import FileExtension
-from knox.preprocessing.parsers.glm_ocr_parser import (
-    GlmOcrParser,
-    _coerce_pages,
-    _markdown_table_to_grid,
-)
+try:
+    from knox.core.models.enums import ElementType
+    from knox.preprocessing.parsers._registry import (
+        KNOWN_BACKENDS,
+        PARSER_BACKENDS,
+        build_default_router,
+        get_registered_parsers,
+    )
+    from knox.preprocessing.parsers.base import FileExtension
+    from knox.preprocessing.parsers.glm_ocr_parser import (
+        GlmOcrParser,
+        _coerce_pages,
+        _markdown_table_to_grid,
+    )
+except ImportError:
+    pytest.importorskip("glmocr")
 
 # ── Registration ──────────────────────────────────────────────────────────
 

@@ -131,10 +131,10 @@ def scaffold_project(
 
     # When force + keep_cache: clear everything except .knox/cache/ and .knox/dedup/.
     if force and keep_cache:
-        knox_path = resolved_target_dir / KNOX_DIR
+        knox_dir = resolved_target_dir / KNOX_DIR
         _clear_directory(resolved_target_dir, skip=KNOX_DIR)
-        if knox_path.exists():
-            _clear_directory(knox_path, skip={CACHE_SUBDIR, DEDUP_DIR})
+        if knox_dir.exists():
+            _clear_directory(knox_dir, skip={CACHE_SUBDIR, DEDUP_DIR})
 
     result = ScaffoldResult(target_dir=resolved_target_dir)
 
@@ -200,7 +200,7 @@ def _render_template(template_name: str, **vars: Any) -> str:
     ``keep_trailing_newline=True`` preserves the trailing newline so
     rendered files match their source layout exactly.
     """
-    content = _template_path(template_name).read_text(encoding="utf-8")
+    content = _template_file(template_name).read_text(encoding="utf-8")
     return jinja2.Template(content, keep_trailing_newline=True).render(**vars)
 
 
@@ -218,7 +218,7 @@ def find_existing_project(target_dir: Path) -> Path | None:
     return None
 
 
-def _read_path_dirs(config_path: Path) -> tuple[str, str]:
+def _read_path_dirs(config_file: Path) -> tuple[str, str]:
     """Read ``paths.sources_dir`` and ``paths.output_dir`` from a config file.
 
     Falls back to :data:`DEFAULTS` when the file is missing or omits the
@@ -227,9 +227,9 @@ def _read_path_dirs(config_path: Path) -> tuple[str, str]:
     """
     sources = DEFAULTS["paths"]["sources_dir"]
     output = DEFAULTS["paths"]["output_dir"]
-    if config_path.is_file():
+    if config_file.is_file():
         try:
-            data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+            data = tomllib.loads(config_file.read_text(encoding="utf-8"))
         except (tomllib.TOMLDecodeError, OSError):
             return sources, output
         paths = data.get("paths", {})
@@ -249,13 +249,13 @@ def _create_directory(target_dir: Path, relative: str) -> Path:
 
 def _copy_template(template_name: str, target_dir: Path, relative: str) -> None:
     """Copy a template file into *target_dir/relative*."""
-    source = _template_path(template_name)
+    source = _template_file(template_name)
     destination = target_dir / relative
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
 
 
-def _template_path(name: str) -> Path:
+def _template_file(name: str) -> Path:
     """Return the filesystem path of a template file shipped with the package."""
     return Path(str(resources.files(TEMPLATES_PACKAGE).joinpath(name)))
 
@@ -292,25 +292,25 @@ def _write_config(target_dir: Path, relative: str, config_file: Path | None = No
 
 def _initialise_git(target_dir: Path) -> None:
     """Run ``git init`` in *target_dir* and stage an initial commit."""
-    git_path = shutil.which("git")
-    if not git_path:
+    git_file = shutil.which("git")
+    if not git_file:
         raise FileNotFoundError("git executable not found in PATH")
 
     # All arguments are hard-coded constants — no untrusted input reaches subprocess.
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "init", "--initial-branch=main"],
+        [git_file, "init", "--initial-branch=main"],
         cwd=target_dir,
         check=True,
         capture_output=True,
     )
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "add", "."],
+        [git_file, "add", "."],
         cwd=target_dir,
         check=True,
         capture_output=True,
     )
     subprocess.run(  # noqa: S603 -- trusted executable with fixed args
-        [git_path, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
+        [git_file, "-c", "user.name=knox init", "-c", "user.email=knox@local", "commit", "-m", "chore: initialise knox wiki project"],
         cwd=target_dir,
         check=True,
         capture_output=True,

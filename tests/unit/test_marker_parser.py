@@ -11,10 +11,13 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from knox.core.models.elements import ElementType
-from knox.preprocessing.parsers import marker_parser as mp
-from knox.preprocessing.parsers._registry import PARSER_BACKENDS
-from knox.preprocessing.parsers.marker_parser import MarkerParser
+try:
+    from knox.core.models.elements import ElementType
+    from knox.preprocessing.parsers import marker_parser as mp
+    from knox.preprocessing.parsers._registry import PARSER_BACKENDS
+    from knox.preprocessing.parsers.marker_parser import MarkerParser
+except ImportError:
+    pytest.importorskip("marker")
 
 SIMPLE_MARKDOWN = """# Heading One
 

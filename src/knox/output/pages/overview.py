@@ -40,9 +40,9 @@ def write_overview(
     }
     cached = cache_store.get("overview", overview_deps)
     if cached is not None:
-        overview_path = base_dir / "overview.md"
-        overview_path.write_text(cached, encoding="utf-8")
-        return overview_path
+        overview_file = base_dir / "overview.md"
+        overview_file.write_text(cached, encoding="utf-8")
+        return overview_file
 
     content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
     if not content:
@@ -50,9 +50,9 @@ def write_overview(
 
     cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
 
-    overview_path = base_dir / "overview.md"
-    overview_path.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
-    return overview_path
+    overview_file = base_dir / "overview.md"
+    overview_file.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
+    return overview_file
 
 
 def generate_overview(

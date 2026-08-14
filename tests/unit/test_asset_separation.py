@@ -269,7 +269,7 @@ class TestAssignAssetIds:
             id=node_id,
             structured=structured,
             summary=node_id,
-            heading_path=(),
+            heading_chain=(),
         )
 
 

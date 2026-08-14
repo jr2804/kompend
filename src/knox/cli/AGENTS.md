@@ -30,7 +30,7 @@ calls the right core function, and formats the output. Nothing more.
 ### Lazy command registration
 
 Command modules are NOT imported eagerly at startup. `app.py` maintains a
-`_LAZY_MODULES` dict mapping command names to `(module_path, attribute_name)`.
+`_LAZY_MODULES` dict mapping command names to `(module_name, attribute_name)`.
 Only the module for the invoked command is imported (or all for `--help`).
 
 **Why:** eager imports pulled heavy deps (pydantic-ai, docling, MCP SDK)

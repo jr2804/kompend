@@ -72,18 +72,19 @@ def save_debug_prompt(
     redundant, but when the model needed repair or emitted unexpected
     text the divergence is preserved.
     """
+    # Dev-only debug hook; deliberately read directly, not a runtime config key.
     debug_dir = os.environ.get("KNOX_DEBUG_LLM_DIR")
     if not debug_dir:
         return
-    debug_path = Path(debug_dir)
-    debug_path.mkdir(parents=True, exist_ok=True)
+    debug_dir = Path(debug_dir)
+    debug_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     # Normalise model string for filename: strip provider prefix (e.g. "ollama/")
     # so the same model always produces the same slug regardless of how it was
     # passed (with or without provider prefix).
     model_slug = model_string.split("/", 1)[-1] if "/" in model_string else model_string
     model_slug = model_slug.replace("/", "_").replace(":", "")
-    filepath = debug_path / f"llm_{ts}_{model_slug}.json"
+    filepath = debug_dir / f"llm_{ts}_{model_slug}.json"
 
     parsed = salvage_json(response_content)
     parsed_obj = parsed if isinstance(parsed, (dict, list)) else None

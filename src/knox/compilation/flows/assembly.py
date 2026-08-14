@@ -236,8 +236,8 @@ def build_tree_texts(
         if node.chunk is None and not node.structured and not node.summary:
             continue
         heading_prefix = ""
-        if node.heading_path:
-            heading_prefix = f"{'#' * min(node.depth + 1, 6)} {' / '.join(node.heading_path)}\n\n"
+        if node.heading_chain:
+            heading_prefix = f"{'#' * min(node.depth + 1, 6)} {' / '.join(node.heading_chain)}\n\n"
         if node.chunk is not None:
             # Leaf prose node — full text.
             texts.append(f"{heading_prefix}{node.chunk.text}")

@@ -23,7 +23,7 @@ class ChunkNode:
     parent_id: str | None = None
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
-    heading_path: tuple[str, ...] = field(default_factory=tuple)
+    heading_chain: tuple[str, ...] = field(default_factory=tuple)
     chunk: Chunk | None = None          # leaf prose content
     structured: StructuredData | None = None  # leaf table/equation/figure
     summary: str = ""                   # internal node summary (LLM-generated)

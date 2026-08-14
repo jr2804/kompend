@@ -57,8 +57,8 @@ class MemoryStore:
     ) -> None:
         self.base_dir = Path(base_dir)
         _paths = VaultPaths(self.base_dir)
-        self.db_file = _paths.memory_db_path
-        self.log_file = _paths.memory_log_path
+        self.db_file = _paths.memory_db_file
+        self.log_file = _paths.memory_log_file
         self._embedding_model = embedding_model
         self._embedding_dim = embedding_dim
         self._provider: EmbeddingProvider | None = embedding_provider

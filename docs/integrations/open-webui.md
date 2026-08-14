@@ -83,5 +83,6 @@ for r in results:
 
 When no embedding model is configured, vector indexing is disabled and the
 retriever falls back to token-overlap search. To enable semantic search, set
-`compile.embedding.model` in your config to either a `litellm:` prefixed model
-or a sentence-transformers model name (e.g. `all-MiniLM-L6-v2`).
+`compile.embedding.model` in your config to a `provider:model` embedding
+(e.g. `ollama:granite-embedding:278m`). A provider prefix is required — there
+is no built-in local embedding model.

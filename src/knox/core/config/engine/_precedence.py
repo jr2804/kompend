@@ -74,7 +74,7 @@ class ResolvedConfig:
 def resolve_config(
     *,
     cli_overrides: dict[str, Any] | None = None,
-    config_path: str | Path | None = None,
+    config_file: str | Path | None = None,
     base_dir: Path | str | None = None,
 ) -> ResolvedConfig:
     """Build a fully resolved config by merging all 5 layers.
@@ -83,7 +83,7 @@ def resolve_config(
     ----------
     cli_overrides:
         Flat dotted-key dict of CLI-provided values.
-    config_path:
+    config_file:
         Explicit config file path (``--config`` flag).
     base_dir:
         Explicit vault root directory. Takes precedence over the
@@ -103,25 +103,29 @@ def resolve_config(
         provenance[key] = ConfigSource("default")
 
     # Layer 4: global config
-    global_path = find_global_config()
-    if global_path is not None:
-        global_data = load_toml(global_path)
+    global_file = find_global_config()
+    if global_file is not None:
+        global_data = load_toml(global_file)
         if global_data:
-            result = _apply_layer(result, global_data, provenance, ConfigSource("global", str(global_path)))
+            result = _apply_layer(result, global_data, provenance, ConfigSource("global", str(global_file)))
 
     # Layer 3: project config
     project_dir: Path | None = None
     project_configs: list[Path] = []
-    if config_path is not None:
-        project_dir = Path(config_path)
+    if config_file is not None:
+        project_dir = Path(config_file)
         if project_dir.is_file():
             project_data = load_toml(project_dir)
             if project_data:
                 result = _apply_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
         else:
-            logger.warning("Config file not found: %s", config_path)
+            logger.warning("Config file not found: %s", config_file)
     else:
         start_dir = wiki_dir_for_discovery(cli_overrides)
+        if base_dir is not None:
+            # base_dir (from --wiki-dir) selects the vault; discovery must walk
+            # from there, not from the CWD, or the vault's config is skipped.
+            start_dir = VaultPaths(base_dir).base_dir
         project_configs = find_all_project_configs(start_dir)
         if project_configs:
             merged_project, project_provenance = _merge_project_configs(project_configs)
@@ -151,7 +155,7 @@ def resolve_config(
         provenance=provenance,
         project_config_file=project_configs[0] if project_configs else project_dir,
         project_config_paths=project_configs,
-        global_config_file=global_path,
+        global_config_file=global_file,
     )
 
 

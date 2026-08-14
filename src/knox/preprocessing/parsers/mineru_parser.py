@@ -154,10 +154,10 @@ class MinerUParser(BaseParser):
                 f_make_md_mode=MakeMode.MM_MD,
             )
 
-            md_path = Path(tmpdir) / stem / self._output_subdir() / f"{stem}.md"
-            images_root = md_path.parent / "images"
+            md_file = Path(tmpdir) / stem / self._output_subdir() / f"{stem}.md"
+            images_root = md_file.parent / "images"
 
-            markdown = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
+            markdown = md_file.read_text(encoding="utf-8") if md_file.exists() else ""
             images_by_name = self._load_images(images_root)
 
         elements, title = _markdown_to_elements(
@@ -335,10 +335,10 @@ def _build_image_element(
         target_dir = images_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         out_name = f"{source_file.stem}_img_{image_name}"
-        out_path = target_dir / out_name
-        out_path.write_bytes(raw)
-        content = str(out_path)
-        meta = {MetadataField.IMAGE_PATH: str(out_path), "image_mode": "file"}
+        out_file = target_dir / out_name
+        out_file.write_bytes(raw)
+        content = str(out_file)
+        meta = {MetadataField.IMAGE_FILE: str(out_file), "image_mode": "file"}
 
     if alt_text:
         meta["alt_text"] = alt_text

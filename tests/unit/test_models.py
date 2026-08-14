@@ -231,15 +231,15 @@ def test_tree_walk_depth_first(sample_tree: tuple[ChunkTree, dict[str, ChunkNode
     assert walk_ids[5] == "leaf-3"
 
 
-def test_tree_get_path(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
+def test_tree_get_chain(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     tree, _ = sample_tree
-    path = tree.get_path("leaf-2")
+    path = tree.get_chain("leaf-2")
     assert [n.id for n in path] == ["root", "section-a", "leaf-2"]
 
 
-def test_tree_get_path_root(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
+def test_tree_get_chain_root(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
     tree, _ = sample_tree
-    path = tree.get_path("root")
+    path = tree.get_chain("root")
     assert len(path) == 1
     assert path[0].id == "root"
 
@@ -377,7 +377,7 @@ def test_tree_heading_path_roundtrip(sample_tree: tuple[ChunkTree, dict[str, Chu
     _, nodes = sample_tree
     node = nodes["section-a"]
     restored = ChunkNode.from_dict(node.to_dict())
-    assert restored.heading_path == ("Chapter 1", "Section A")
+    assert restored.heading_chain == ("Chapter 1", "Section A")
 
 
 # ── ChunkTree ────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
             parent_id="root",
             children_ids=["leaf-1", "leaf-2"],
             depth=1,
-            heading_path=("Chapter 1", "Section A"),
+            heading_chain=("Chapter 1", "Section A"),
             summary="Section A summary",
             token_count=10,
         ),
@@ -401,7 +401,7 @@ def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
             parent_id="root",
             children_ids=["leaf-3"],
             depth=1,
-            heading_path=("Chapter 1", "Section B"),
+            heading_chain=("Chapter 1", "Section B"),
             summary="Section B summary",
             token_count=5,
         ),
@@ -409,7 +409,7 @@ def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
             id="leaf-1",
             parent_id="section-a",
             depth=2,
-            heading_path=("Chapter 1", "Section A"),
+            heading_chain=("Chapter 1", "Section A"),
             chunk=Chunk(id="c1", text="text 1", element_types=[ElementType.TEXT], source_elements=[0], token_count=3),
             token_count=3,
         ),
@@ -417,7 +417,7 @@ def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
             id="leaf-2",
             parent_id="section-a",
             depth=2,
-            heading_path=("Chapter 1", "Section A"),
+            heading_chain=("Chapter 1", "Section A"),
             structured=StructuredTable(columns=["X"], rows=[{"X": "1"}]),
             token_count=7,
         ),
@@ -425,7 +425,7 @@ def sample_tree() -> tuple[ChunkTree, dict[str, ChunkNode]]:
             id="leaf-3",
             parent_id="section-b",
             depth=2,
-            heading_path=("Chapter 1", "Section B"),
+            heading_chain=("Chapter 1", "Section B"),
             chunk=Chunk(id="c3", text="text 3", element_types=[ElementType.TEXT], source_elements=[2], token_count=5),
             token_count=5,
         ),

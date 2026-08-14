@@ -123,7 +123,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     total = len(files)
     paths = VaultPaths(base_dir)
 
-    def _rel_path(p: Path) -> Path:
+    def _relative(p: Path) -> Path:
         try:
             return Path(str(p.relative_to(base_dir)))
         except ValueError:
@@ -132,7 +132,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    state_store = TierStateStore(paths.compile_state_path)
+    state_store = TierStateStore(paths.compile_state_file)
     state = state_store.load()
 
     count = cached = skipped = failed = 0
@@ -158,7 +158,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
-            state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
+            state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
             continue
 
         parser = router.route(source_file)
@@ -181,13 +181,13 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             doc.metadata["tags"] = tags  # nocheck: chunk metadata, not wiki metadata
 
         data = asdict(doc)
-        data[MetadataField.SOURCE_FILE] = str(_rel_path(Path(data[MetadataField.SOURCE_FILE])))
+        data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
         out_file.write_text(
             json.dumps(data, indent=2, default=str),
             encoding="utf-8",
         )
         count += 1
-        state_store.record(state, source_file.stem, _rel_path(source_file), content_hash, tier=1, ingested_by=ingested_by)
+        state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
 
     # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
     # Fingerprints are computed AFTER all files are parsed so that GPU-bound
@@ -257,20 +257,20 @@ def _content_hash(source_file: Path) -> str:
     return hashlib.sha256(source_file.read_bytes()).hexdigest()[:_CACHE_HASH_LEN]
 
 
-def extract_text_from_cached(json_path: Path) -> str:
+def extract_text_from_cached(json_file: Path) -> str:
     """Extract plain text from a cached parsed JSON document.
 
     Concatenates string-type element content. Falls back to reading the
     cached file's raw bytes when no elements are found.
     """
     try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
+        data = json.loads(json_file.read_text(encoding="utf-8"))
     except Exception:
-        logger.debug("Failed to read cached %s", json_path.name, exc_info=True)
-        return json_path.read_text(errors="replace")
+        logger.debug("Failed to read cached %s", json_file.name, exc_info=True)
+        return json_file.read_text(errors="replace")
     text = ""
     for element in data.get("elements", []):
         content = element.get("content")
         if isinstance(content, str) and content.strip():
             text += content + "\n\n"
-    return text or json_path.read_text(errors="replace")
+    return text or json_file.read_text(errors="replace")

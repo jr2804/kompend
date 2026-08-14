@@ -118,16 +118,16 @@ def _agents_use(task_str: str, name: str) -> None:
         get_console().print(f"[red]Invalid config key: {config_key}[/red]")
         raise typer.Exit(1)
 
-    config_path = Path(base_dir) / KNOX_CONFIG_FILE
-    set_config_file_value(config_path, config_key, name)
+    config_file = Path(base_dir) / KNOX_CONFIG_FILE
+    set_config_file_value(config_file, config_key, name)
     get_console().print(f"[green]Active agent for {task.value}: {name}[/green]")
 
 
-def _agents_validate(file_path: str) -> None:
+def _agents_validate(file: str) -> None:
     """Validate a TOML agent definition file."""
-    path = Path(file_path)
+    path = Path(file)
     if not path.exists():
-        get_console().print(f"[red]File not found: {file_path}[/red]")
+        get_console().print(f"[red]File not found: {file}[/red]")
         raise typer.Exit(1)
 
     try:
@@ -147,11 +147,11 @@ def _agents_validate(file_path: str) -> None:
         raise typer.Exit(1) from exc
 
 
-def _agents_install(file_path: str) -> None:
+def _agents_install(file: str) -> None:
     """Install an agent TOML file into the vault."""
-    src = Path(file_path)
+    src = Path(file)
     if not src.exists():
-        get_console().print(f"[red]File not found: {file_path}[/red]")
+        get_console().print(f"[red]File not found: {file}[/red]")
         raise typer.Exit(1)
 
     try:

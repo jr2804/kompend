@@ -47,11 +47,11 @@ def build_log_report(base_dir: Path, *, last_n: int = 25) -> str:
     if compile_section:
         sections.extend(compile_section)
 
-    runs_section = _runs_section(paths.runs_path, last_n=last_n)
+    runs_section = _runs_section(paths.runs_dir, last_n=last_n)
     if runs_section:
         sections.extend(runs_section)
 
-    lint_section = _lint_section(paths.lint_history_path, last_n=last_n)
+    lint_section = _lint_section(paths.lint_history_file, last_n=last_n)
     if lint_section:
         sections.extend(lint_section)
 
@@ -71,9 +71,9 @@ def _compile_section(base_dir: Path) -> list[str]:
     return ["## Last Compile", "", entry, ""]
 
 
-def _runs_section(runs_path: Path, *, last_n: int) -> list[str]:
+def _runs_section(runs_dir: Path, *, last_n: int) -> list[str]:
     """Render the command timeline from ``runs.jsonl``."""
-    runs = _load_runs(runs_path)
+    runs = _load_runs(runs_dir)
     if not runs:
         return []
     # Show the most recent runs; each "end" is a completed command.
@@ -101,23 +101,23 @@ def _runs_section(runs_path: Path, *, last_n: int) -> list[str]:
     return [*lines, ""]
 
 
-def _lint_section(lint_path: Path, *, last_n: int) -> list[str]:
+def _lint_section(lint_file: Path, *, last_n: int) -> list[str]:
     """Render the lint trend from ``lint_history.jsonl``."""
-    if not lint_path.is_file():
+    if not lint_file.is_file():
         return []
-    entries = load_lint_history(lint_path, last_n=last_n)
+    entries = load_lint_history(lint_file, last_n=last_n)
     if not entries:
         return []
     text = history_to_text(entries, show_trend=True)
     return ["## Lint Trend", "", text, ""]
 
 
-def _load_runs(runs_path: Path) -> list[dict[str, Any]]:
+def _load_runs(runs_dir: Path) -> list[dict[str, Any]]:
     """Parse ``runs.jsonl`` into a list of event dicts (skips bad lines)."""
-    if not runs_path.is_file():
+    if not runs_dir.is_file():
         return []
     out: list[dict[str, Any]] = []
-    for raw in runs_path.read_text(encoding="utf-8").splitlines():
+    for raw in runs_dir.read_text(encoding="utf-8").splitlines():
         stripped = raw.strip()
         if not stripped:
             continue

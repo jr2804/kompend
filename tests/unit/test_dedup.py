@@ -234,7 +234,6 @@ class TestDedupOrchestrator:
                 "dedup.enabled": True,
                 "dedup.matchers": "embedding",
                 "dedup.model": "ollama/granite-embedding:278m",
-                "compile.embedding.dim": 384,
             },
         )
         matchers, _ = orch._build_matchers()  # noqa: SLF001 — introspect build
@@ -323,21 +322,26 @@ class TestDedupOrchestrator:
 
     def test_combined_matchers_max_score_used(self, tmp_path: Path) -> None:
         """When both matchers are active, max of both scores is used."""
-        orch = DedupOrchestrator(
-            tmp_path,
-            config={
-                "dedup.enabled": True,
-                "dedup.matchers": "embedding,minhash",
-                "dedup.threshold_identical": 0.95,
-            },
-        )
-        text = "Machine learning neural networks deep learning AI."
-        results = orch.process_batch([("doc-a", text), ("doc-b", text)])
-        r = results["doc-a"]
-        assert r.verdict == DedupVerdict.IDENTICAL
-        # Both scores should be stored
-        assert r.embedding_score is not None
-        assert r.minhash_score is not None
+        with patch(
+            "knox.preprocessing.dedup.orchestrator.make_provider",
+            return_value=DeterministicTestEmbeddingProvider(dim=384),
+        ):
+            orch = DedupOrchestrator(
+                tmp_path,
+                config={
+                    "dedup.enabled": True,
+                    "dedup.matchers": "embedding,minhash",
+                    "dedup.model": "test/provider",
+                    "dedup.threshold_identical": 0.95,
+                },
+            )
+            text = "Machine learning neural networks deep learning AI."
+            results = orch.process_batch([("doc-a", text), ("doc-b", text)])
+            r = results["doc-a"]
+            assert r.verdict == DedupVerdict.IDENTICAL
+            # Both scores should be stored
+            assert r.embedding_score is not None
+            assert r.minhash_score is not None
 
     def test_store_persistence(self, tmp_path: Path) -> None:
         store = DedupStore(tmp_path / "fingerprints.json")
@@ -394,7 +398,6 @@ class TestDedupOrchestrator:
                 "dedup.enabled": True,
                 "dedup.matchers": "embedding",
                 "dedup.model": "ollama/granite-embedding:278m",
-                "compile.embedding.dim": 384,
             },
         )
 

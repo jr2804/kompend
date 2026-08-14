@@ -240,11 +240,11 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
 
 def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument | None:
     """Load a cached ParsedDocument if available."""
-    cache_path = pipeline.cache_directory() / f"{cache_key(source_file)}.json"
-    if not cache_path.exists():
+    cache_file = pipeline.cache_directory() / f"{cache_key(source_file)}.json"
+    if not cache_file.exists():
         return None
     try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
         elements = [
             DocumentElement(
                 type=ElementType(el["type"]),
@@ -260,7 +260,7 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
         # lone \\udXXX escapes that json.loads restores as surrogate chars.
         return scrub_document(
             ParsedDocument(
-                source_file=pipeline.abs_file(data.get(MetadataField.SOURCE_FILE) or data.get(MetadataField.SOURCE_PATH, "")),
+                source_file=pipeline.abs_file(data.get(MetadataField.SOURCE_FILE, "")),
                 elements=elements,
                 title=data.get("title", ""),
                 author=data.get("author", ""),
@@ -271,7 +271,7 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
         )
     except (json.JSONDecodeError, KeyError, OSError):
         # Corrupt/unreadable cache entry = miss: re-parse. Warn so it's visible.
-        logger.warning("Corrupt parse cache at %s — reparsing", cache_path, exc_info=True)
+        logger.warning("Corrupt parse cache at %s — reparsing", cache_file, exc_info=True)
         return None
 
 
@@ -279,7 +279,7 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
     """Write a ParsedDocument to cache."""
     cache_dir = pipeline.cache_directory()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{cache_key(source_file)}.json"
+    cache_file = cache_dir / f"{cache_key(source_file)}.json"
     try:
         data = {
             str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
@@ -300,9 +300,9 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
                 for el in doc.elements
             ],
         }
-        cache_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        cache_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
     except Exception:
-        logger.debug("Cache write failed for %s — ignoring", cache_path, exc_info=True)
+        logger.debug("Cache write failed for %s — ignoring", cache_file, exc_info=True)
 
 
 def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, dict[str, object]]]:
@@ -341,7 +341,7 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
     metadata so the rest of the pipeline can distinguish them.
     """
     vp = VaultPaths(pipeline.base_directory)
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
         return []
 
@@ -380,7 +380,7 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
             for node in tree.leaves():
                 node.metadata["source_asset"] = True
                 node.metadata["parent_source"] = att.source
-                node.metadata["asset_path"] = att.path
+                node.metadata["asset_file"] = att.path
 
             trees.append(tree)
             logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))

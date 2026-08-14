@@ -108,7 +108,7 @@ def download_urls(
     sources_dir = sources_dir.resolve()
     sources_dir.mkdir(parents=True, exist_ok=True)
     resolved_base_dir = base_dir if base_dir is not None else sources_dir.parent
-    detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_path)
+    detector = DuplicateDetector(VaultPaths(resolved_base_dir).downloaded_file)
     resolver_chain = UrlResolverChain()
     http_downloader = HTTPDownloader(detector=detector)
     web_crawler = WebCrawler(detector=detector, undetected=undetected)
@@ -169,7 +169,7 @@ def looks_like_html_url(url: str) -> bool:
     return Path(path).suffix in _HTML_PATH_SUFFIXES
 
 
-def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
+def extract_archive(archive_file: Path, dest_dir: Path) -> Path | None:
     """Expand a compressed archive and return the best inner file.
 
     Supported formats (stdlib only, no extra dependencies):
@@ -192,8 +192,8 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
     matches _ARCHIVE_EXTRACT_PRIORITY. The archive is deleted on success.
     Returns None when the path is not a recognised archive.
     """
-    name_lower = archive_path.name.lower()
-    suffix = archive_path.suffix.lower()
+    name_lower = archive_file.name.lower()
+    suffix = archive_file.suffix.lower()
     _TAR_ENDINGS = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar")
     is_tar = suffix in {".tar", ".tgz"} or any(name_lower.endswith(e) for e in _TAR_ENDINGS)
     is_gz = suffix == ".gz" and not is_tar
@@ -202,19 +202,19 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
 
     try:
         if is_tar:
-            dest = _extract_tar(archive_path, dest_dir)
+            dest = _extract_tar(archive_file, dest_dir)
         elif suffix == ".zip":
-            dest = _extract_zip(archive_path, dest_dir)
+            dest = _extract_zip(archive_file, dest_dir)
         elif suffix == ".7z":
-            dest = _extract_7z(archive_path, dest_dir)
+            dest = _extract_7z(archive_file, dest_dir)
         elif suffix == ".rar":
-            dest = _extract_rar(archive_path, dest_dir)
+            dest = _extract_rar(archive_file, dest_dir)
         elif is_gz:
-            dest = _extract_single_file(archive_path, dest_dir, gzip.decompress)
+            dest = _extract_single_file(archive_file, dest_dir, gzip.decompress)
         elif is_bz2:
-            dest = _extract_single_file(archive_path, dest_dir, bz2.decompress)
+            dest = _extract_single_file(archive_file, dest_dir, bz2.decompress)
         elif is_xz:
-            dest = _extract_single_file(archive_path, dest_dir, lzma.decompress)
+            dest = _extract_single_file(archive_file, dest_dir, lzma.decompress)
         else:
             return None
 
@@ -225,11 +225,11 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> Path | None:
         if dest is None:
             return None
 
-        archive_path.unlink()
-        logger.info("Extracted %s from archive -> %s", dest.name, archive_path.name)
+        archive_file.unlink()
+        logger.info("Extracted %s from archive -> %s", dest.name, archive_file.name)
         return dest
     except Exception as exc:
-        logger.warning("Could not extract archive %s: %s", archive_path.name, exc)
+        logger.warning("Could not extract archive %s: %s", archive_file.name, exc)
         return None
 
 

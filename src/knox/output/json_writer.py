@@ -28,6 +28,6 @@ class JsonWriter(BaseOutputWriter):
             "metadata": wiki.metadata,
         }
 
-        output_path = output_dir / "wiki.json"
-        output_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-        return output_path
+        output_file = output_dir / "wiki.json"
+        output_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        return output_file

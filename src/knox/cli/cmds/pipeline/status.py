@@ -64,7 +64,7 @@ def collect_stats(
         # Config path
         project_config = find_project_config()
         if project_config:
-            stats["config_path"] = str(project_config)
+            stats["config_file"] = str(project_config)
 
     # Compile status from tier state
     state_dir_exists = bool(state_dir and state_dir.exists())
@@ -108,8 +108,8 @@ def print_status(stats: dict, json_output: bool = False) -> int:
         return 0
 
     get_console().print(f"  Wiki:      {stats['wiki_name']}")
-    if stats["config_path"]:
-        get_console().print(f"  Config:    {stats['config_path']}")
+    if stats["config_file"]:
+        get_console().print(f"  Config:    {stats['config_file']}")
     else:
         get_console().print("  Config:    (none — using defaults)")
 

@@ -82,7 +82,7 @@ class HTTPDownloader(BaseDownloader):
         if parsed.scheme not in self._ALLOWED_SCHEMES:
             logger.warning("Blocked URL with disallowed scheme: %s", url)
             return None
-        target_file, original_name = self._build_target_path(url, target_dir)
+        target_file, original_name = self._build_target_file(url, target_dir)
 
         # Check duplicate detector: skip download if URL already known
         if self._detector and self._detector.is_duplicate(url):
@@ -175,7 +175,7 @@ class HTTPDownloader(BaseDownloader):
                 logger.warning("Failed to download %s: %s", url, e, exc_info=True)
         return results
 
-    def _build_target_path(self, url: str, target_dir: Path) -> tuple[Path, str]:
+    def _build_target_file(self, url: str, target_dir: Path) -> tuple[Path, str]:
         """Return (target path, original file name) for a URL."""
         parsed = urlparse(url)
         file_name = Path(parsed.path).name or self._hash_url(url)

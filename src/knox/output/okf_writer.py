@@ -132,7 +132,7 @@ class OkfWriter(MarkdownWriter):
         body: str,
         related: list[tuple[str, str, float | None]],
         wiki: CompiledWiki,
-        slug_to_path: dict[str, str],
+        slug_targets: dict[str, str],
     ) -> str:
         """Render one OKF page: frontmatter + body (absolute links) + Related + footnotes."""
         rendered = _okf_frontmatter(doc.frontmatter)
@@ -140,7 +140,7 @@ class OkfWriter(MarkdownWriter):
         rendered += f"{prefix} {doc.title}\n\n"
 
         # Convert wikilinks to OKF absolute bundle-relative links (§6.1).
-        body = convert_wikilinks(body, slug_to_path)
+        body = convert_wikilinks(body, slug_targets)
         rendered += body
         if body and not body.endswith("\n"):
             rendered += "\n"
@@ -149,7 +149,7 @@ class OkfWriter(MarkdownWriter):
         if related:
             rendered += "\n## Related\n\n"
             for title, rel_type, confidence in related[: self.max_related_links]:
-                path = slug_to_path.get(title, "")
+                path = slug_targets.get(title, "")
                 link = f"[{title}]({path})" if path else title
                 annotation = f" ({rel_type})" if rel_type else ""
                 if confidence is not None:
@@ -221,9 +221,9 @@ class OkfWriter(MarkdownWriter):
             lines.append(f"# {type_name}\n")
             for doc in sorted(group, key=lambda d: d.title):
                 folder = self._folder_for_kind(doc.node_type)
-                rel_path = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
+                relative = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
                 description = doc.frontmatter.get("description", "")
-                entry = f"- [{doc.title}](/{rel_path})"
+                entry = f"- [{doc.title}](/{relative})"
                 lines.append(f"{entry} - {description}" if description else entry)
             lines.append("")
 
@@ -232,26 +232,26 @@ class OkfWriter(MarkdownWriter):
     @override
     def _write_log(self, output_dir: Path, wiki: CompiledWiki) -> None:
         """Write ``log.md`` per §9: ISO date headings, bold action prefix."""
-        log_path = output_dir / LOG_FILE
+        log_file = output_dir / LOG_FILE
         today = datetime.now(UTC).strftime("%Y-%m-%d")
         article_count = len(wiki.nodes)
         source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
         entry = f"**Creation**: Compiled {article_count} page(s) from {source_count} source(s).\n"
 
-        existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+        existing = log_file.read_text(encoding="utf-8") if log_file.exists() else ""
 
         date_heading = f"## {today}"
         if date_heading in existing:
             # Prepend entry under the existing date heading.
             existing = existing.replace(date_heading, f"{date_heading}\n{entry}", 1)
-            log_path.write_text(existing, encoding="utf-8")
+            log_file.write_text(existing, encoding="utf-8")
         else:
             new_section = f"# Bundle Update Log\n\n{date_heading}\n{entry}\n"
             if existing:
                 stripped = re.sub(r"^# Bundle Update Log\n+", "", existing)
-                log_path.write_text(new_section + stripped, encoding="utf-8")
+                log_file.write_text(new_section + stripped, encoding="utf-8")
             else:
-                log_path.write_text(new_section, encoding="utf-8")
+                log_file.write_text(new_section, encoding="utf-8")
 
 
 def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
@@ -266,10 +266,10 @@ def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
     return f"---\n{yaml_str}\n---\n\n"
 
 
-def convert_wikilinks(body: str, slug_to_path: dict[str, str]) -> str:
+def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
     """Convert ``[[wikilinks]]`` to OKF absolute markdown links.
 
-    ``slug_to_path`` maps page slugs/titles to bundle-relative paths
+    ``slug_targets`` maps page slugs/titles to bundle-relative paths
     (e.g. ``"my-page" -> "/concepts/my-page.md"``).
     Unknown targets are left as plain text (OKF §6.1: broken links are valid).
     """
@@ -277,7 +277,7 @@ def convert_wikilinks(body: str, slug_to_path: dict[str, str]) -> str:
     def _replace(match: re.Match[str]) -> str:
         target = match.group(1)
         alias = match.group(2) or target
-        path = slug_to_path.get(target)
+        path = slug_targets.get(target)
         if path is not None:
             return f"[{alias}]({path})"
         return alias

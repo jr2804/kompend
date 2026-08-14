@@ -18,8 +18,8 @@ from knox.core.config.engine._loading import (
     find_all_project_configs,
     find_global_config,
     find_project_config,
-    get_global_config_path,
-    get_project_config_path,
+    get_global_config_file,
+    get_project_config_file,
     load_toml,
 )
 from knox.core.config.engine._overlay import set_config_file_value
@@ -46,8 +46,8 @@ __all__ = [
     "find_project_config",
     "flat_keys",
     "get_dot",
-    "get_global_config_path",
-    "get_project_config_path",
+    "get_global_config_file",
+    "get_project_config_file",
     "load_toml",
     "read_env_vars",
     "resolve_config",

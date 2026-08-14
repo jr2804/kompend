@@ -87,9 +87,9 @@ class ReviewQueue:
         """Add a wiki node to the pending queue."""
         self.review_dir.mkdir(parents=True, exist_ok=True)
         slug = slugify(node.title)
-        pending_path = self._pending_path(slug)
-        if not pending_path.exists():
-            pending_path.write_text(node.content, encoding="utf-8")
+        pending_file = self._pending_file(slug)
+        if not pending_file.exists():
+            pending_file.write_text(node.content, encoding="utf-8")
         entry = ReviewEntry(
             slug=slug,
             status=ReviewStatus.PENDING,
@@ -132,10 +132,10 @@ class ReviewQueue:
 
     def lock(self, slug: str) -> bool:
         """Mark an approved page as locked — re-compile will not overwrite it."""
-        if not self._approved_path(slug).exists():
+        if not self._approved_file(slug).exists():
             return False
-        lock_path = self.review_dir / f"{slug}.locked"
-        lock_path.touch()
+        lock_file = self.review_dir / f"{slug}.locked"
+        lock_file.touch()
         return True
 
     def is_locked(self, slug: str) -> bool:
@@ -155,23 +155,23 @@ class ReviewQueue:
     # Internal path helpers
     # ------------------------------------------------------------------
 
-    def _pending_path(self, slug: str) -> Path:
+    def _pending_file(self, slug: str) -> Path:
         return self.review_dir / f"{slug}.md"
 
-    def _approved_path(self, slug: str) -> Path:
+    def _approved_file(self, slug: str) -> Path:
         return self.review_dir / f"{slug}.approved.md"
 
-    def _rejected_path(self, slug: str) -> Path:
+    def _rejected_file(self, slug: str) -> Path:
         return self.review_dir / f"{slug}.rejected.md"
 
-    def _state_path(self) -> Path:
+    def _state_file(self) -> Path:
         return self.review_dir / self.STATE_FILENAME
 
     def _load_state(self) -> dict[str, ReviewEntry]:
-        if not self._state_path().exists():
+        if not self._state_file().exists():
             return {}
         try:
-            data = json.loads(self._state_path().read_text(encoding="utf-8"))
+            data = json.loads(self._state_file().read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {}
         if not isinstance(data, dict):
@@ -184,7 +184,7 @@ class ReviewQueue:
             "saved_at": iso_local(),
             "entries": {k: v.to_dict() for k, v in state.items()},
         }
-        self._state_path().write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        self._state_file().write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
     def _upsert_state(self, entry: ReviewEntry) -> None:
         state = self._load_state()
@@ -193,13 +193,13 @@ class ReviewQueue:
 
     def _move(self, slug: str, *, pending: bool = False, approved: bool = False, rejected: bool = False) -> None:
         """Move a single file from pending to its destination."""
-        src = self._pending_path(slug)
+        src = self._pending_file(slug)
         if not src.exists():
             return
         if approved:
-            shutil.move(str(src), str(self._approved_path(slug)))
+            shutil.move(str(src), str(self._approved_file(slug)))
         elif rejected:
-            shutil.move(str(src), str(self._rejected_path(slug)))
+            shutil.move(str(src), str(self._rejected_file(slug)))
 
 
 def slugify(title: str) -> str:

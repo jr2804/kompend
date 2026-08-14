@@ -83,14 +83,14 @@ def test_arxiv_pdf_downloads_and_parses(tmp_path: Path) -> None:
     assert resolved.download_url != ARXIV_PDF_URL, "URL should be rewritten to PDF"
 
     downloader = HTTPDownloader(timeout=60)
-    pdf_path = downloader.download(resolved.download_url, tmp_path)
-    assert pdf_path is not None, "PDF download failed"
-    assert pdf_path.suffix.lower() == ".pdf", f"Expected .pdf, got {pdf_path.suffix}"
+    pdf_file = downloader.download(resolved.download_url, tmp_path)
+    assert pdf_file is not None, "PDF download failed"
+    assert pdf_file.suffix.lower() == ".pdf", f"Expected .pdf, got {pdf_file.suffix}"
 
     router = build_default_router(options=ParserBuildOptions(), names="liteparse,docling")
-    parser = router.route(pdf_path)
+    parser = router.route(pdf_file)
     assert parser is not None
-    doc = parser.parse(pdf_path)
+    doc = parser.parse(pdf_file)
 
     assert isinstance(doc, ParsedDocument)
     text = _all_text(doc)
@@ -120,15 +120,15 @@ def test_arxiv_html_downloads_as_html_and_parses_with_trafilatura(tmp_path: Path
     assert resolved.prefer_http is True, "ArxivHtmlResolver should set prefer_http"
 
     downloader = HTTPDownloader(timeout=60)
-    html_path = downloader.download(resolved.download_url, tmp_path)
-    assert html_path is not None, "HTML download failed"
-    assert html_path.suffix.lower() in {".html", ".htm"}, f"Expected .html, got {html_path}"
+    html_file = downloader.download(resolved.download_url, tmp_path)
+    assert html_file is not None, "HTML download failed"
+    assert html_file.suffix.lower() in {".html", ".htm"}, f"Expected .html, got {html_file}"
 
     router = build_default_router(options=ParserBuildOptions(), names="web,liteparse,docling")
-    parser = router.route(html_path)
+    parser = router.route(html_file)
     assert isinstance(parser, WebPageParser), f"Expected WebPageParser for .html, got {type(parser).__name__}"
 
-    doc = parser.parse(html_path)
+    doc = parser.parse(html_file)
     assert isinstance(doc, ParsedDocument)
     text = _all_text(doc)
     assert "<html>" not in text, "Raw HTML tags must not appear in trafilatura output"
@@ -158,18 +158,18 @@ def test_arxiv_source_downloads_tarball_then_extracts_tex(tmp_path: Path) -> Non
     assert resolved.prefer_http is True
 
     downloader = HTTPDownloader(timeout=120)
-    archive_path = downloader.download(resolved.download_url, tmp_path)
-    assert archive_path is not None, "Archive download should succeed"
-    logger.info("Downloaded archive: %s (%d bytes)", archive_path.name, archive_path.stat().st_size)
+    archive_file = downloader.download(resolved.download_url, tmp_path)
+    assert archive_file is not None, "Archive download should succeed"
+    logger.info("Downloaded archive: %s (%d bytes)", archive_file.name, archive_file.stat().st_size)
 
     # Archive should be recognisable (tar.gz or similar).
-    name_lower = archive_path.name.lower()
-    assert any(name_lower.endswith(s) for s in (".tar.gz", ".gz", ".tar", ".tgz")), f"Expected a tar.gz file, got {archive_path.name}"
+    name_lower = archive_file.name.lower()
+    assert any(name_lower.endswith(s) for s in (".tar.gz", ".gz", ".tar", ".tgz")), f"Expected a tar.gz file, got {archive_file.name}"
 
-    extracted = extract_archive(archive_path, tmp_path)
+    extracted = extract_archive(archive_file, tmp_path)
     assert extracted is not None, "_extract_archive should find a .tex file"
     assert extracted.suffix.lower() == ".tex", f"Expected a .tex file, extracted {extracted.name}"
-    assert not archive_path.exists(), "Original archive should be removed after extraction"
+    assert not archive_file.exists(), "Original archive should be removed after extraction"
     logger.info("Extracted: %s (%d bytes)", extracted.name, extracted.stat().st_size)
 
 
@@ -180,10 +180,10 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     resolved = chain.resolve(ARXIV_SRC_URL)
 
     downloader = HTTPDownloader(timeout=120)
-    archive_path = downloader.download(resolved.download_url, tmp_path)
-    assert archive_path is not None
+    archive_file = downloader.download(resolved.download_url, tmp_path)
+    assert archive_file is not None
 
-    extracted = extract_archive(archive_path, tmp_path)
+    extracted = extract_archive(archive_file, tmp_path)
     assert extracted is not None
     assert extracted.suffix.lower() == ".tex"
 

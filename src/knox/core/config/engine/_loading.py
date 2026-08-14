@@ -103,24 +103,30 @@ def wiki_dir_for_discovery(cli_overrides: dict[str, Any] | None) -> Path | None:
     """Return the dir to start project-config discovery from.
 
     Reflects explicit vault selection (``--wiki-dir`` or ``KNOX_WIKI_DIR``).
+
+    Kept as a direct read rather than delegating to ``vault_paths_from_ctx``:
+    this runs during config discovery, below the CLI layer, so it can't depend
+    on ``ctx``.
     """
     raw: str | None = None
     if cli_overrides:
         raw = cli_overrides.get(PATHS_WIKI_DIR)
     if raw is None:
+        # KNOX_WIKI_DIR is the config-map env alias for PATHS_WIKI_DIR; read it
+        # directly here because config discovery needs the dir to start from.
         raw = os.environ.get("KNOX_WIKI_DIR")
     if not raw:
         return None
     return Path(raw).expanduser().resolve()
 
 
-def get_project_config_path(start_dir: Path | None = None) -> Path:
+def get_project_config_file(start_dir: Path | None = None) -> Path:
     """Return the project config file path used by ``knox config set``."""
     current = VaultPaths(start_dir).base_dir
     found = find_project_config(current)
     if found is not None:
         return found
-    return VaultPaths(current).config_path
+    return VaultPaths(current).config_file
 
 
 # ── Config file discovery ───────────────────────────────────────────────
@@ -137,7 +143,7 @@ def find_project_config(start_dir: Path | None = None) -> Path | None:
     return None
 
 
-def get_global_config_path(*, create: bool = False) -> Path:
+def get_global_config_file(*, create: bool = False) -> Path:
     """Return the global config file path (XDG convention)."""
     xdg = os.environ.get("XDG_CONFIG_HOME")
     config_dir = Path(xdg) if xdg else Path.home() / ".config"

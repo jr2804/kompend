@@ -56,7 +56,7 @@ class EntityLocation:
     """Where an entity was found in the document tree."""
 
     source_file: str
-    heading_path: tuple[str, ...]
+    heading_chain: tuple[str, ...]
 
 
 @dataclass
@@ -165,7 +165,7 @@ class EntityRegistry:
         for record in self._records:
             unique_defs = {d.lower().strip() for d in record.all_definitions if d}
             if len(unique_defs) > 1:
-                locations = [f"{loc.source_file}:{'/'.join(loc.heading_path)}" for loc in record.locations]
+                locations = [f"{loc.source_file}:{'/'.join(loc.heading_chain)}" for loc in record.locations]
                 issues.append(
                     CrossReferenceIssue(
                         issue_type="conflict",
@@ -202,7 +202,7 @@ class EntityRegistry:
                                     f"may refer to the same entity (shared: {', '.join(sorted(overlap))})"
                                 ),
                                 entity=record_a.canonical_name,
-                                locations=[f"{loc.source_file}:{'/'.join(loc.heading_path)}" for loc in record_a.locations + record_b.locations],
+                                locations=[f"{loc.source_file}:{'/'.join(loc.heading_chain)}" for loc in record_a.locations + record_b.locations],
                             )
                         )
         return issues
@@ -211,8 +211,8 @@ class EntityRegistry:
         """Extract entities from all nodes in a ChunkTree."""
         source_file = str(tree.source_file) if tree.source_file else "unknown"
         for node in tree.walk():
-            heading_path = tuple(node.heading_path)
-            location = EntityLocation(source_file=source_file, heading_path=heading_path)
+            heading_chain = tuple(node.heading_chain)
+            location = EntityLocation(source_file=source_file, heading_chain=heading_chain)
 
             if node.chunk and node.chunk.text:
                 self._extract_from_text(node.chunk.text, location)

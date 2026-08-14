@@ -85,6 +85,6 @@ class TypstWriter(BaseOutputWriter):
             lines.append("#pagebreak()")
             lines.append("")
 
-        output_path = output_dir / "wiki.typ"
-        output_path.write_text("\n".join(lines), encoding="utf-8")
-        return output_path
+        output_file = output_dir / "wiki.typ"
+        output_file.write_text("\n".join(lines), encoding="utf-8")
+        return output_file

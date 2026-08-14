@@ -29,11 +29,11 @@ from knox.preprocessing.parsers import ParserBuildOptions, ParserRouter, get_bac
 logger = get_logger(__name__)
 
 
-def parse_document(file_path: str) -> dict[str, Any]:
+def parse_document(file: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
-    doc_file = Path(file_path)
+    doc_file = Path(file)
     if not doc_file.exists():
-        return {"status": "error", "message": f"File not found: {file_path}"}
+        return {"status": "error", "message": f"File not found: {file}"}
 
     router = ParserRouter()
     try:
@@ -235,7 +235,7 @@ def wiki_list_attachments(
         Dict with ``attachments`` list (each: source, path, ingestible, embed).
     """
     vp = vault_paths(wiki_dir)
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
         return {"status": "ok", "attachments": [], "count": 0}
 
@@ -282,16 +282,16 @@ def wiki_read_attachment(
         Dict with ``content`` (text) or ``binary: true``.
     """
     vp = vault_paths(wiki_dir)
-    att_path = f"{source}/{attachment_name}"
-    att_file = vp.attachments_dir / att_path
+    att_file = f"{source}/{attachment_name}"
+    att_file = vp.attachments_dir / att_file
 
     if not att_file.exists():
-        return {"status": "error", "message": f"Attachment not found: {att_path}"}
+        return {"status": "error", "message": f"Attachment not found: {att_file}"}
 
     info = {
         "status": "ok",
         "source": source,
-        "path": att_path,
+        "path": att_file,
         "size": att_file.stat().st_size,
     }
 
@@ -321,19 +321,19 @@ def wiki_attachment_info(
         Dict with manifest entry and file existence/size.
     """
     vp = vault_paths(wiki_dir)
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
-    att_path = f"{source}/{attachment_name}"
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    att_file = f"{source}/{attachment_name}"
 
     entry = None
     if manifest.exists():
-        entry = manifest.read_all().get(att_path)
+        entry = manifest.read_all().get(att_file)
 
-    att_file = vp.attachments_dir / att_path
+    att_file = vp.attachments_dir / att_file
 
     return {
         "status": "ok",
         "source": source,
-        "path": att_path,
+        "path": att_file,
         "registered": entry is not None,
         "ingestible": entry.ingestible if entry else None,
         "embed": entry.embed if entry else None,

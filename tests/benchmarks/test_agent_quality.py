@@ -36,7 +36,7 @@ from knox.compilation.schema import ExtractionOutput
 
 # Agents to benchmark — each is a KnoxAgentBase subclass
 _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
-    # (label, module_path, class_name, template_dir, is_query_agent)
+    # (label, module_name, class_name, template_dir, is_query_agent)
     ("extraction", "knox.agents.extraction", "ExtractionAgent", "compilation", False),
     ("generation", "knox.agents.generation", "GenerationAgent", "compilation", False),
     ("query", "knox.agents.query", "QueryAgent", "query", True),
@@ -48,9 +48,9 @@ pytestmark = pytest.mark.benchmark
 class TestAgentConstructionBenchmark:
     """Benchmark: agent construction latency (model string → KnoxAgentBase instance)."""
 
-    @pytest.mark.parametrize(("label", "module_path", "cls_name", "_dir", "_is_query"), _AGENT_SPECS)
-    def test_construction_latency(self, label: str, module_path: str, cls_name: str, _dir: str, _is_query: bool) -> None:
-        agent_cls = _import_agent(module_path, cls_name)
+    @pytest.mark.parametrize(("label", "module_name", "cls_name", "_dir", "_is_query"), _AGENT_SPECS)
+    def test_construction_latency(self, label: str, module_name: str, cls_name: str, _dir: str, _is_query: bool) -> None:
+        agent_cls = _import_agent(module_name, cls_name)
         _agent, elapsed = _benchmark_construction(agent_cls)
         print(f"\n  [{label}] construction: {elapsed * 1000:.1f} ms")
         # Sanity: construction should be under 2 s even with model resolution
@@ -60,9 +60,9 @@ class TestAgentConstructionBenchmark:
 class TestTemplateRenderBenchmark:
     """Benchmark: system-prompt template render latency."""
 
-    @pytest.mark.parametrize(("label", "module_path", "cls_name", "_dir", "is_query"), _AGENT_SPECS)
-    def test_render_latency(self, label: str, module_path: str, cls_name: str, _dir: str, is_query: bool) -> None:
-        agent_cls = _import_agent(module_path, cls_name)
+    @pytest.mark.parametrize(("label", "module_name", "cls_name", "_dir", "is_query"), _AGENT_SPECS)
+    def test_render_latency(self, label: str, module_name: str, cls_name: str, _dir: str, is_query: bool) -> None:
+        agent_cls = _import_agent(module_name, cls_name)
         agent, _ = _benchmark_construction(agent_cls)
         deps = QueryDeps(question="test", context="ctx", source_id="test") if is_query else PipelineAgentDeps(text="test chunk", source_id="test")
         elapsed = _benchmark_template_render(agent, deps)
@@ -74,9 +74,9 @@ class TestTemplateRenderBenchmark:
 class TestFullRunBenchmark:
     """Benchmark: full agent.run() with mocked LLM call."""
 
-    @pytest.mark.parametrize(("label", "module_path", "cls_name", "_dir", "is_query"), _AGENT_SPECS)
-    def test_run_latency(self, label: str, module_path: str, cls_name: str, _dir: str, is_query: bool) -> None:
-        agent_cls = _import_agent(module_path, cls_name)
+    @pytest.mark.parametrize(("label", "module_name", "cls_name", "_dir", "is_query"), _AGENT_SPECS)
+    def test_run_latency(self, label: str, module_name: str, cls_name: str, _dir: str, is_query: bool) -> None:
+        agent_cls = _import_agent(module_name, cls_name)
 
         if label == "extraction":
             deps = PipelineAgentDeps(text="test chunk", source_id="test")
@@ -112,9 +112,9 @@ class TestFullRunBenchmark:
         assert elapsed < 1.0
 
 
-def _import_agent(module_path: str, class_name: str) -> type:
+def _import_agent(module_name: str, class_name: str) -> type:
     """Import an agent class lazily."""
-    mod = importlib.import_module(module_path)
+    mod = importlib.import_module(module_name)
     return getattr(mod, class_name)
 
 

@@ -230,7 +230,7 @@ class DoclingParser(BaseParser):
                     "image_mode": self.image_mode,
                 }
                 if self.image_mode == "file" and content and not content.startswith("["):
-                    img_meta[MetadataField.IMAGE_PATH] = content
+                    img_meta[MetadataField.IMAGE_FILE] = content
                 elif self.image_mode == "base64" and content.startswith("data:"):
                     img_meta[MetadataField.IMAGE_BASE64] = content
                 captions = getattr(item, "captions", [])
@@ -310,18 +310,18 @@ class DoclingParser(BaseParser):
             stem = source_file.stem
             images_dir = self.images_dir or (source_file.parent / f"{stem}_images")
             images_dir.mkdir(parents=True, exist_ok=True)
-            out_path = images_dir / f"{stem}_img_{idx}.png"
+            out_file = images_dir / f"{stem}_img_{idx}.png"
 
             if uri_str and uri_str.startswith("data:"):
                 try:
                     header, b64data = uri_str.split(",", 1)
                     raw = base64.b64decode(b64data)
-                    out_path.write_bytes(raw)
-                    return str(out_path.resolve())
+                    out_file.write_bytes(raw)
+                    return str(out_file.resolve())
                 except (binascii.Error, ValueError, OSError):
                     # Malformed data URI or disk write failure: fall back to a placeholder
                     # so one bad image does not abort the whole document parse.
-                    logger.warning("Failed to save image from data URI for %s", out_path.name, exc_info=True)
+                    logger.warning("Failed to save image from data URI for %s", out_file.name, exc_info=True)
 
             caption_text = str(captions[0]) if captions else ""
             return f"[Image: {caption_text if caption_text else 'figure'}]"

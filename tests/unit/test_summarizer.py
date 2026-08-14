@@ -147,12 +147,12 @@ class TestSummarizerCache:
 class TestSummarizerStructuredLeaf:
     def test_structured_leaf_content(self) -> None:
         root = ChunkNode(id="r", depth=0)
-        section = ChunkNode(id="s", parent_id="r", depth=1, heading_path=("Data",))
+        section = ChunkNode(id="s", parent_id="r", depth=1, heading_chain=("Data",))
         table_leaf = ChunkNode(
             id="t",
             parent_id="s",
             depth=2,
-            heading_path=("Data",),
+            heading_chain=("Data",),
             structured=StructuredTable(
                 columns=["A", "B"],
                 rows=[{"A": "1", "B": "2"}],
@@ -189,13 +189,13 @@ def sample_tree() -> ChunkTree:
         id="doc_h1",
         parent_id="doc_root",
         depth=1,
-        heading_path=("Introduction",),
+        heading_chain=("Introduction",),
     )
     leaf_a = ChunkNode(
         id="doc_t1",
         parent_id="doc_h1",
         depth=2,
-        heading_path=("Introduction",),
+        heading_chain=("Introduction",),
         chunk=_make_chunk("doc_t1", "The SNR threshold is 20 dB for intelligibility."),
         token_count=10,
     )
@@ -203,7 +203,7 @@ def sample_tree() -> ChunkTree:
         id="doc_t2",
         parent_id="doc_h1",
         depth=2,
-        heading_path=("Introduction",),
+        heading_chain=("Introduction",),
         chunk=_make_chunk("doc_t2", "Results show improvement at higher levels."),
         token_count=8,
     )
@@ -211,13 +211,13 @@ def sample_tree() -> ChunkTree:
         id="doc_h2",
         parent_id="doc_root",
         depth=1,
-        heading_path=("Methodology",),
+        heading_chain=("Methodology",),
     )
     leaf_c = ChunkNode(
         id="doc_t3",
         parent_id="doc_h2",
         depth=2,
-        heading_path=("Methodology",),
+        heading_chain=("Methodology",),
         chunk=_make_chunk("doc_t3", "We used a standard test setup with calibration."),
         token_count=10,
     )
@@ -259,12 +259,12 @@ def single_pass_tree() -> ChunkTree:
 def single_child_tree() -> ChunkTree:
     """Tree with single-child internal nodes."""
     root = ChunkNode(id="r", depth=0)
-    wrapper = ChunkNode(id="w", parent_id="r", depth=1, heading_path=("Wrapper",))
+    wrapper = ChunkNode(id="w", parent_id="r", depth=1, heading_chain=("Wrapper",))
     leaf = ChunkNode(
         id="l",
         parent_id="w",
         depth=2,
-        heading_path=("Wrapper",),
+        heading_chain=("Wrapper",),
         chunk=_make_chunk("l", "content"),
         token_count=2,
     )

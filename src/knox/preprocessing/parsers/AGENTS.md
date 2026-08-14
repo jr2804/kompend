@@ -98,7 +98,7 @@ VLM-captioned. Backends that do not enrich (Docling, LiteParse, Pandoc) leave
 
 ### Parser output contract
 
-Image elements set `metadata["image_path"]` (file mode) or
+Image elements set `metadata["image_file"]` (file mode) or
 `metadata["image_base64"]` (base64 mode) — use `MetadataField.IMAGE_PATH` /
 `IMAGE_BASE64` symbols, never bare literals. An enriching backend writes its
 description to `metadata["description"]`, which flows via `extractors.py` →

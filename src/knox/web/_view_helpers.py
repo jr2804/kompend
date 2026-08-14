@@ -40,7 +40,7 @@ def source_of(node: dict[str, Any]) -> str:
 
 def load_wiki() -> dict[str, Any]:
     """Load the compiled wiki from cache."""
-    cache = VaultPaths(_PROJECT_DIR).wiki_cache_path
+    cache = VaultPaths(_PROJECT_DIR).wiki_cache_file
     if not cache.exists():
         return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, MetadataField.NODE_COUNT: 0}
     try:

@@ -223,11 +223,11 @@ def _ensure_backend(name: str) -> None:
     """
     if name in PARSER_BACKENDS:
         return
-    module_path = _BACKEND_MODULES.get(name)
-    if module_path is None:
+    module_name = _BACKEND_MODULES.get(name)
+    if module_name is None:
         return
     try:
-        importlib.import_module(module_path)
+        importlib.import_module(module_name)
     except ImportError:  # pragma: no cover - optional dependency not installed
         return
 

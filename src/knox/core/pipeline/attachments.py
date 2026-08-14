@@ -40,7 +40,7 @@ def iter_ingestible_attachments(vp: VaultPaths) -> list[Attachment]:
         exist in the attachments directory. Missing files are logged and
         skipped.
     """
-    manifest = AttachmentManifest(vp.attachments_manifest_path)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
         return []
 
@@ -156,7 +156,7 @@ def _tag_metadata(doc: ParsedDocument, att: Attachment) -> None:
         {
             "source_asset": True,
             "parent_source": att.source,
-            "asset_path": att.path,
+            "asset_file": att.path,
         }
     )
     for el in doc.elements:
@@ -166,6 +166,6 @@ def _tag_metadata(doc: ParsedDocument, att: Attachment) -> None:
             {
                 "source_asset": True,
                 "parent_source": att.source,
-                "asset_path": att.path,
+                "asset_file": att.path,
             }
         )

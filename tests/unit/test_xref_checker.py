@@ -50,7 +50,7 @@ class TestCrossReferenceChecker:
                 id="h1",
                 parent_id="root",
                 depth=1,
-                heading_path=("3.1 Signal Processing",),
+                heading_chain=("3.1 Signal Processing",),
             ),
             _text_node(
                 "t1",
@@ -204,7 +204,7 @@ def _text_node(nid: str, parent: str, text: str, heading: tuple[str, ...] = ()) 
         id=nid,
         parent_id=parent,
         depth=len(heading) + 1,
-        heading_path=heading,
+        heading_chain=heading,
         chunk=_make_chunk(nid, text),
         token_count=max(1, len(text) // 4),
     )
@@ -226,7 +226,7 @@ def _table_node(nid: str, parent: str, table: StructuredTable, heading: tuple[st
         id=nid,
         parent_id=parent,
         depth=len(heading) + 1,
-        heading_path=heading,
+        heading_chain=heading,
         structured=table,
         token_count=1,
     )

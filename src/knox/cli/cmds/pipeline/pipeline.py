@@ -202,7 +202,7 @@ def compile_cmd(  # noqa: PLR0915
         in_place_sources=in_place,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
@@ -343,7 +343,7 @@ def ingest_cmd(
         parser=parser,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     sources_dir = vp.sources_dir
     base_dir = vp.base_dir
 
@@ -441,7 +441,7 @@ def index_cmd(
         vp = vault_paths(wiki_dir)
 
     cli_overrides = build_cli_overrides(cli_set=parse_cli_set(cli_set))
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     output_dir = vp.output_dir
 
     wiki = load_cached_wiki(vp.base_dir)

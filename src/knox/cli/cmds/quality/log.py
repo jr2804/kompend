@@ -51,7 +51,7 @@ def log_cmd(
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_path=config,
+        config_file=config,
     )
     base_dir = vp.base_dir
 

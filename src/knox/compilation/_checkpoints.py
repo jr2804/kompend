@@ -31,7 +31,7 @@ def load_gen_checkpoint(
     """
     if getattr(config, "no_cache", False):
         return None
-    path = _gen_checkpoint_path(config, gen_deps)
+    path = _gen_checkpoint_file(config, gen_deps)
     if not path.exists():
         return None
     try:
@@ -63,7 +63,7 @@ def save_gen_checkpoint(
     """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
     if getattr(config, "no_cache", False):
         return
-    path = _gen_checkpoint_path(config, gen_deps)
+    path = _gen_checkpoint_file(config, gen_deps)
     path.parent.mkdir(parents=True, exist_ok=True)
     base_dir = config.paths.base_dir
     data = {
@@ -109,7 +109,7 @@ def delete_gen_checkpoint(config: PipelineConfig, gen_deps: dict[str, str]) -> N
     """Remove a generation checkpoint from disk."""
     if getattr(config, "no_cache", False):
         return
-    path = _gen_checkpoint_path(config, gen_deps)
+    path = _gen_checkpoint_file(config, gen_deps)
     try:
         path.unlink()
         logger.debug("Generation checkpoint deleted: %s", path)
@@ -117,7 +117,7 @@ def delete_gen_checkpoint(config: PipelineConfig, gen_deps: dict[str, str]) -> N
         logger.debug("Generation checkpoint delete failed -- ignoring", exc_info=True)
 
 
-def _gen_checkpoint_path(config: PipelineConfig, gen_deps: dict[str, str]) -> Path:
+def _gen_checkpoint_file(config: PipelineConfig, gen_deps: dict[str, str]) -> Path:
     """On-disk path for the generation checkpoint."""
     return _gen_checkpoint_dir(config) / f"{make_cache_key(gen_deps)}.json"
 

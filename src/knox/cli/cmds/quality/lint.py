@@ -97,7 +97,7 @@ def lint_run(
         knox lint run --rule broken-wikilinks --rule orphan-page
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_path=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
     state_dir = vp.knox_dir
@@ -274,7 +274,7 @@ def lint_history(
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_path=config,
+        config_file=config,
     )
     state_dir = vp.knox_dir
 
@@ -312,7 +312,7 @@ def lint_prune(
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_path=config,
+        config_file=config,
     )
     state_dir = vp.knox_dir
 
@@ -347,7 +347,7 @@ def lint_gaps(
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_path=config,
+        config_file=config,
     )
     state_dir = vp.knox_dir
 
@@ -405,7 +405,7 @@ def lint_remediate(
     cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_path=config,
+        config_file=config,
     )
     output_dir = vp.output_dir
     state_dir = vp.knox_dir

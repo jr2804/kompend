@@ -48,7 +48,7 @@ COMPILE_MEMORY_ENABLED: Final[str] = "compile.memory_enabled"
 COMPILE_MEMORY_HALF_LIFE_DAYS: Final[str] = "compile.memory_half_life_days"
 COMPILE_MEMORY_DECAY_THRESHOLD: Final[str] = "compile.memory_decay_threshold"
 COMPILE_SOURCE_TAGS: Final[str] = "compile.source_tags"
-COMPILE_TIER_STATE_PATH: Final[str] = "compile.tier_state_file"
+COMPILE_TIER_STATE_FILE: Final[str] = "compile.tier_state_file"
 # ── compile.llm sub-section ──
 COMPILE_LLM_DEFAULT_MODEL: Final[str] = "compile.llm.default_model"
 COMPILE_LLM_VLM_MODEL: Final[str] = "compile.llm.vlm_model"

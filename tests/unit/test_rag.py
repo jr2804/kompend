@@ -166,8 +166,12 @@ class TestEmbeddingStringConversion:
     def test_provider_colon_format_unchanged(self) -> None:
         assert to_pydantic_ai_embedding_string("openai:text-embedding-3-small") == "openai:text-embedding-3-small"
 
-    def test_bare_hf_name_gets_default_provider_prefix(self) -> None:
-        assert to_pydantic_ai_embedding_string("BAAI/bge-small-en") == "sentence-transformers:BAAI/bge-small-en"
+    def test_bare_hf_name_rejected_without_provider(self) -> None:
+        """A model without an explicit provider prefix is rejected (no local fallback)."""
+        with pytest.raises(ValueError, match="provider"):
+            to_pydantic_ai_embedding_string("BAAI/bge-small-en")
+        with pytest.raises(ValueError, match="provider"):
+            to_pydantic_ai_embedding_string("all-MiniLM-L6-v2")
 
 
 class TestPydanticAIEmbeddingProvider:
