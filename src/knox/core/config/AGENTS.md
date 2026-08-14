@@ -22,7 +22,11 @@ through this package — no other module reads config files or env vars directly
 - `__init__.py` — Public API re-exports
 - `_core.py` — Config resolution entry point (merge, precedence, discovery)
 - `generate.py` — Code-driven TOML generation from DEFAULTS
-- `keys.py` — Config key constants (StrEnum)
+- `keys.py` — Config dotted-key constants (re-exports `EnvVar`)
+- `../env.py` — `EnvVar` StrEnum, the **only** place a `"KNOX_*"` env-var name may be
+  defined. Lives outside this package: `paths.py` reads env vars before the config
+  package finishes loading. Enforced by `scripts/check_antipatterns.py`
+  (`ENV-VAR-LITERAL` rule).
 - `_configs.py` — Config dataclass definitions
 - `engine/` — Split resolution engine (discrete stages):
   - `_env.py` — Env var loading (``KNOX_*``)
@@ -66,11 +70,12 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 ### Adding a new config key — checklist
 
 1. **Add to `DEFAULTS` dict** in `_core.py` — every key must have a default.
-2. **Add to `_ENV_MAP`** if the key makes sense as an env var override. Use the
-   `KNOX_` prefix and the dotted config path as the dict key. Example:
+2. **Add the env alias** — `validation_alias=EnvVar.<NAME>` on the field in
+   `_configs.py` (auto-derived into `ENV_MAP`), or add the name to the
+   `EnvVar` enum in `../env.py` if it is a CLI-only override. Example:
 
    ```python
-   "compile.cache.ttl": "KNOX_CACHE_TTL",
+   ttl: int = Field(default=3600, validation_alias=EnvVar.CACHE_TTL)
    ```
 
 3. **Do NOT add a CLI flag for output-shape or tuning keys.** Those are

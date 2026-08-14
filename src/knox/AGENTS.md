@@ -117,6 +117,8 @@ historical design decisions.
 | `content[:200]` / `text[:4096]` | ❌ | Full content, or batch with a config/model-derived limit |
 | Config fallback that must match a runtime provider's output (`dim = 384`) | ❌ | Read the value from the provider at runtime (`provider.dim`), never a config literal |
 | Bare schema/field-name literals (`hit.get("source_file")`) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
+| Hard-coded `"KNOX_*"` env-var literal in env access (`os.environ.get("KNOX_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `knox.core.env` (single definition; enforced by `scripts/check_antipatterns.py` `ENV-VAR-LITERAL`) |
+| Stable-shape dict without a schema (JSONL records, persisted entries, spec payloads: lint history, dedup store, OKF sources, graph edges, citations) | ❌ | `TypedDict` next to the owning model — types keys with zero runtime/on-disk cost. Dataclasses only where the shape is also constructed/validated in code, not just serialized |
 | Absolute path in a `.knox/` artifact (`citing_source = str(path)`) | ❌ | `rel_to_vault(path, base_dir)` at the persistence boundary |
 
 #### Jinja2 conventions
