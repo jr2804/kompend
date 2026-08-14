@@ -59,9 +59,9 @@ or **CLI arg** (when the ingest command supports it).
 # Cosine similarity threshold for "similar" verdict (>80%)
 # threshold_similar = 0.80
 
-# Embedding model override.
-# An empty string "" is treated the same as None / not set — the dedup
-# matcher falls back to compile.embedding.model, then to all-MiniLM-L6-v2.
+# Embedding model override (requires an explicit provider prefix; no local
+# fallback). An empty string "" is treated the same as None / not set — the
+# embedding matcher is skipped.
 # model = ""
 
 # Jaccard threshold for MinHash LSH index
@@ -83,11 +83,12 @@ or **CLI arg** (when the ingest command supports it).
 
 ### Embedding Matcher
 
-Uses [sentence-transformers](https://www.sbert.net/) (or any litellm-compatible
+Uses [sentence-transformers](https://www.sbert.net/) (or any pydantic-ai-compatible
 embedding provider) to compute document vectors, then compares via cosine
-similarity.
+similarity. The model must specify an explicit provider prefix (e.g.
+`ollama:granite-embedding:278m`); there is no built-in local model.
 
-- **Model:** Configurable; defaults to `all-MiniLM-L6-v2` (384-dim, fast).
+- **Model:** Configurable; must include a provider prefix.
 - **Chunking:** Long documents are split into word chunks and mean-pooled into
   a single vector.
 - **Strengths:** Captures semantic similarity — same paper in different formats
@@ -184,9 +185,9 @@ by the Markdown output writer.
 
 ## Performance
 
-- **Embedding:** ~100ms per document with `all-MiniLM-L6-v2` on CPU.
-  Scales as O(n·m) — fine for typical usage (tens to low hundreds of
-  sources). For very large corpora, consider enabling only MinHash with LSH.
+- **Embedding:** provider-dependent latency; scales as O(n·m) — fine for
+  typical usage (tens to low hundreds of sources). For very large corpora,
+  consider enabling only MinHash with LSH.
 - **MinHash:** < 10ms per document pair. LSH indexing provides sub-linear
   candidate lookup for corpora > 1000 documents.
 - **Storage:** ~3 KB per document (embedding vector + MinHash signature).
@@ -195,6 +196,6 @@ by the Markdown output writer.
 
 The fingerprint store includes a version stamp computed from all relevant
 config keys (`dedup.matchers`, `dedup.model`, `dedup.minhash_lsh_threshold`,
-`compile.embedding.model`, `compile.embedding.dim`). If the config changes,
-the store is detected as stale and fingerprints are rebuilt from cached
-parsed documents — no re-downloading or re-parsing is required.
+`compile.embedding.model`). If the config changes, the store is detected as
+stale and fingerprints are rebuilt from cached parsed documents — no
+re-downloading or re-parsing is required.

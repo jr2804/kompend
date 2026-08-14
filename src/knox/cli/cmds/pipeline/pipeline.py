@@ -472,7 +472,7 @@ def index_cmd(
         raise typer.Exit(1) from exc
 
     # Persist embedding model metadata so ``knox query`` can open the store.
-    wiki.metadata["embedding_model"] = resolved_model
+    wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
     write_wiki_cache(wiki, vp.base_dir)
 
     if count > 0:

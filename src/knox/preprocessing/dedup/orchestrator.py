@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from knox.core.config.keys import COMPILE_EMBEDDING_DIM
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
@@ -260,17 +259,20 @@ class DedupOrchestrator:
         # Resolve the effective embedding model.
         # Empty string "" and None are both treated as "not set" (falsy),
         # so `or` chains the fallback: dedup.model → compile.embedding.model → built-in.
-        model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "") or "all-MiniLM-L6-v2"
-        dim = int(self._config.get(COMPILE_EMBEDDING_DIM, 384))
+        model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "")
         lsh_threshold = float(self._config.get("dedup.minhash_lsh_threshold", 0.8))
 
         for name in names:
             if name == "embedding":
-                # Reuse the canonical EmbeddingProvider factory — it correctly
-                # resolves the provider/model convention and defaults to
-                # the sentence-transformers provider for bare HF names.
-                provider = make_provider(model, dim=dim)
-                m = EmbeddingMatcher(model_name=model, dim=dim, provider=provider)
+                if not model:
+                    logger.warning("dedup embedding matcher requested but no embedding model configured — skipping")
+                    continue
+                # Reuse the canonical EmbeddingProvider factory — it requires
+                # an explicit provider/model prefix (no local fallback). The
+                # dimension is detected from the model at runtime (provider.dim),
+                # matching the vectors the provider returns.
+                provider = make_provider(model)
+                m = EmbeddingMatcher(model_name=model, dim=provider.dim, provider=provider)
                 matchers.append(m)
                 by_name[name] = m
             elif name == "minhash":

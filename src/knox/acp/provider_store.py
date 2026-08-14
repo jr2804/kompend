@@ -122,8 +122,13 @@ class ProviderCredentials:
 
         prefix = _provider_prefix(self._provider.api_type)
 
-        model = self._provider.model or "default"
-        self._set_env("KNOX_LLM_DEFAULT_MODEL", f"{prefix}/{model}")
+        # Only inject the model when the provider names one — otherwise leave the
+        # pipeline's configured default in place (a fabricated "prefix/default"
+        # would be rejected by the LLM client).
+        # KNOX_LLM_DEFAULT_MODEL is a config-map key; the API base/key are litellm
+        # session credentials injected here, not knox config values.
+        if self._provider.model:
+            self._set_env("KNOX_LLM_DEFAULT_MODEL", f"{prefix}/{self._provider.model}")
         self._set_env("KNOX_LLM_API_BASE", self._provider.base_url)
 
         for key, val in self._provider.headers.items():

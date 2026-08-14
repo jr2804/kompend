@@ -394,20 +394,16 @@ context_manager = "default"
 # ── Embedding settings ──────────────────────────────────────────────────
 
 [compile.embedding]
-# Embedding model for semantic search / RAG.
-# Set KNOX_EMBEDDING_MODEL in your environment, or uncomment and set below.
-# Formats accepted:
-#   "<provider>:<model>" — pydantic-ai Embedder format (openai, ollama, google, cohere, etc.)
-#   "<model>" (no prefix) — loads a local embedding model from HuggingFace
-# Embedding models use pydantic-ai's Embedder for broad provider support.
-# Default: all-MiniLM-L6-v2 (local HuggingFace model, 384 dim, no API key needed).
-# model = "all-MiniLM-L6-v2"
+# Embedding model for semantic search / RAG. Empty (default) = no embedding /
+# no vector index. Set KNOX_EMBEDDING_MODEL in your environment, or uncomment
+# and set below. A provider prefix is required — there is no local fallback.
+# Format: "<provider>:<model>" (pydantic-ai Embedder format: openai, ollama,
+# google, cohere, etc.)
+# model = ""
 # model = "ollama:granite-embedding:278m"
 
 # Embedding batch size (number of texts to embed per API call)
 # batch_size = 10
-# Embedding dimension (must match the embedding model's output).
-# dim = 384
 
 # ── Output settings ─────────────────────────────────────────────────────
 

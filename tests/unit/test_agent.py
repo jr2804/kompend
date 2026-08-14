@@ -80,15 +80,27 @@ class TestProviderCredentials:
             headers={"Authorization": "Bearer sk-test"},
         )
         store.set(cfg)
-        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/default"
+        # These names mirror provider_store's litellm env injection (KNOX_LLM_DEFAULT_MODEL is a config-map key).
+        # No model on the provider → the pipeline's own default stays untouched.
+        assert "KNOX_LLM_DEFAULT_MODEL" not in os.environ
         assert os.environ.get("KNOX_LLM_API_BASE") == "https://api.openai.com/v1"
         assert os.environ.get("KNOX_LLM_API_KEY") == "sk-test"
 
+    def test_set_reconfigures_model_when_provided(self) -> None:
+        store = ProviderCredentials()
+        cfg = ProviderConfig(
+            api_type="openai",
+            model="gpt-4o",
+            base_url="https://api.openai.com/v1",
+        )
+        store.set(cfg)
+        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/gpt-4o"
+
     def test_disable_restores_env(self) -> None:
         store = ProviderCredentials()
-        cfg = ProviderConfig(api_type="openai", base_url="https://api.openai.com/v1")
+        cfg = ProviderConfig(api_type="openai", model="gpt-4o", base_url="https://api.openai.com/v1")
         store.set(cfg)
-        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/default"
+        assert os.environ.get("KNOX_LLM_DEFAULT_MODEL") == "openai/gpt-4o"
         store.disable()
         assert "KNOX_LLM_DEFAULT_MODEL" not in os.environ
         assert "KNOX_LLM_API_BASE" not in os.environ

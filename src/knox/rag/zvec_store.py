@@ -304,8 +304,8 @@ def make_provider(
     """Select an embedding provider based on model name.
 
     Uses the same ``provider/model`` or ``provider:model`` convention as
-    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
-    (no prefix) defaults to the ``sentence-transformers`` provider.
+    :func:`knox.llm.models.build_model`. An explicit provider prefix is
+    required — there is no fallback to a local embedding provider.
     """
     pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
     return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
@@ -315,11 +315,10 @@ def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
     """Translate a KNOX embedding-model config value to pydantic-ai format.
 
     Uses the same ``provider/model`` or ``provider:model`` convention as
-    :func:`knox.llm.models.build_model`. A bare HuggingFace model name
-    (e.g. ``BAAI/bge-small-en`` or ``all-MiniLM-L6-v2``) defaults to the
-    ``sentence-transformers`` provider.
+    :func:`knox.llm.models.build_model`. An explicit provider prefix is
+    required — there is no silent fallback to a local embedding provider.
     """
-    # Known LLM/embedding providers — anything else is a HF model name.
+    # Known LLM/embedding providers — anything else is rejected.
     _KNOWN_PROVIDERS = frozenset(
         {
             "ollama",
@@ -342,4 +341,6 @@ def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
         provider = embedding_model.split("/", 1)[0]
         if provider in _KNOWN_PROVIDERS:
             return provider + ":" + embedding_model.split("/", 1)[1]
-    return f"sentence-transformers:{embedding_model}"
+    raise ValueError(
+        f"Embedding model {embedding_model!r} has no known provider prefix. Use provider/model or provider:model syntax, e.g. ollama:granite-embedding:278m."
+    )

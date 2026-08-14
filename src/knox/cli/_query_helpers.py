@@ -32,7 +32,7 @@ from knox.core.config.keys import (
     SEARCH_SYNTHESIS_TOKENS_STANDARD,
     SEARCH_SYNTHESIS_VERBOSITY,
 )
-from knox.core.models import CompiledWiki
+from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
 from knox.llm.context_window import ContextWindow
@@ -59,7 +59,7 @@ def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | Non
     if not db_file.exists():
         return None
 
-    embed_model = wiki.metadata.get("embedding_model")
+    embed_model = wiki.metadata.get(str(MetadataField.EMBEDDING_MODEL))
     if not embed_model:
         logger.debug("No embedding model recorded in wiki metadata; skipping vector store")
         return None

@@ -140,6 +140,10 @@ class _KnoxBaseModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
+# Env-var mapping: every field below carries its ``KNOX_*`` env override as a
+# ``validation_alias``; ``_build_env_map`` in ``engine/_schema.py`` turns those
+# aliases into the config-map automatically.
+
 # ── Compile sub-configs ──────────────────────────────────────────────────
 
 
@@ -228,14 +232,12 @@ class OutputConfig(_KnoxBaseModel):
 class EmbeddingConfig(_KnoxBaseModel):
     """Configuration for embedding models.
 
-    Dimensions are auto-detected from the model at runtime — ``dim`` is a
-    fallback used by the dedup orchestrator when the provider hasn't been
-    instantiated yet.
+    Vector dimensionality is detected from the model at runtime via the
+    embedding provider — no ``dim`` config value is needed.
     """
 
-    model: str = Field(default="all-MiniLM-L6-v2")
+    model: str = Field(default="")
     batch_size: int = Field(default=10, validation_alias="KNOX_EMBEDDING_BATCH_SIZE")
-    dim: int = 384
 
 
 class PdfConfig(_KnoxBaseModel):

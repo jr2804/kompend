@@ -480,6 +480,8 @@ def vault_paths(wiki_dir: str | Path | None = None) -> VaultPaths:
     """
     if wiki_dir is None:
         default = _default_wiki_dir().get()
+        # KNOX_WIKI_DIR is defined in the config-map (keys.PATHS_WIKI_DIR); read
+        # directly here because vault resolution predates config discovery.
         wiki_dir = default if default is not None else os.environ.get("KNOX_WIKI_DIR", ".")
     return VaultPaths(Path(wiki_dir).resolve())
 

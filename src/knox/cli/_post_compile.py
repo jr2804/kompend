@@ -111,14 +111,16 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             show_progress=opts.show_progress,
         )
 
-    # Build vector index unless explicitly disabled (--no-index).
-    if opts.index_store is not False:
-        opts.wiki.metadata["embedding_model"] = opts.embed_model or opts.pipeline_config.embedding.model
+    # Build vector index unless explicitly disabled (--no-index) or no
+    # embedding model is configured (embedding is opt-in, no default model).
+    embed_model = opts.embed_model or opts.pipeline_config.embedding.model
+    if opts.index_store is not False and embed_model:
+        opts.wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = embed_model
         try:
             cli_build_vector_index(
                 opts.wiki,
                 opts.output_dir,
-                opts.pipeline_config.embedding.model,
+                embed_model,
                 base_dir=base_dir,
                 embed_attachments=opts.embed_attachments,
             )

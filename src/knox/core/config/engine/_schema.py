@@ -83,10 +83,12 @@ def coerce_config_value(value: str, key: str) -> ConfigValue:
     value = value.strip()
     field_info = resolve_field_info(key)
     if field_info is None:
-        with contextlib.suppress(ValueError):
-            return int(value)
-        with contextlib.suppress(ValueError):
-            return float(value)
+        # The field is unknown to the schema — try int, then float, else keep
+        # the raw string. (Each ``suppress`` can fall through independently, so
+        # the float branch is reachable, e.g. "1.5".)
+        for _conv in (int, float):
+            with contextlib.suppress(ValueError):
+                return _conv(value)
         return value
 
     ann = field_info.annotation

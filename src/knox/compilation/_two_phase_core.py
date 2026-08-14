@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import functools
 import hashlib
-import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -44,7 +43,7 @@ _FAILURE_THRESHOLD_MIN: int = 5
 MIN_SEGMENT_TOKENS: int = 512
 
 # Default chars-per-token heuristic. Configurable via ``compile.llm.default_chars_per_token``
-# and the ``KNOX_CHARS_PER_TOKEN`` env var.
+# (env override ``KNOX_LLM_DEFAULT_CHARS_PER_TOKEN``).
 _DEFAULT_CHARS_PER_TOKEN: float = 3.85
 
 
@@ -204,15 +203,10 @@ def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
 def _get_chars_per_token(*, default: float | None = None) -> float:
     """Return the characters-per-token heuristic used for budget estimation.
 
-    Priority: ``KNOX_CHARS_PER_TOKEN`` env var > *default* argument >
-    ``_DEFAULT_CHARS_PER_TOKEN`` module constant > ``compile.llm.default_chars_per_token`` config.
+    Priority: *default* argument (the resolved ``compile.llm.default_chars_per_token``
+    config value, which already honours the ``KNOX_LLM_DEFAULT_CHARS_PER_TOKEN``
+    env override) > ``_DEFAULT_CHARS_PER_TOKEN`` module constant.
     """
-    env_raw = os.environ.get("KNOX_CHARS_PER_TOKEN")
-    if env_raw is not None:
-        try:
-            return float(env_raw)
-        except ValueError:
-            logger.warning("Invalid KNOX_CHARS_PER_TOKEN value %r; using fallback", env_raw)
     return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
 
 

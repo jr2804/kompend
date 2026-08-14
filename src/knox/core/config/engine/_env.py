@@ -11,15 +11,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from knox.core.config.engine._schema import ENV_MAP, resolve_field_info
 from knox.core.utils.dicts import set_dot
 
-# Env vars that carry comma-separated lists.
-_ENV_LIST_VARS: frozenset[str] = frozenset(
-    {
-        "KNOX_LLM_FALLBACK_CHAIN",
-        "KNOX_LINT",
-        "KNOX_DEDUP_MATCHERS",
-        "KNOX_SEARCH_EXPANSION_VARIANTS",
-    }
-)
+
+def _is_list_env_key(dotted: str) -> bool:
+    """Return True if *dotted* config key maps to a comma-separated list field."""
+    info = resolve_field_info(dotted)
+    return info is not None and get_origin(info.annotation) is list
+
+
+# Env vars that carry comma-separated lists, derived from the schema's
+# list-typed fields so the set can't drift from the config-map.
+_ENV_LIST_VARS: frozenset[str] = frozenset(env for dotted, env in ENV_MAP.items() if _is_list_env_key(dotted))
 
 
 def read_env_vars() -> dict[str, Any]:

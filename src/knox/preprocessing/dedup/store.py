@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from knox.core.config.keys import COMPILE_EMBEDDING_DIM
 from knox.logging import get_logger
 from knox.types import CacheValue
 
@@ -48,7 +47,6 @@ class DedupStore:
             cfg.get("dedup.model", ""),
             str(cfg.get("dedup.minhash_lsh_threshold", 0.8)),
             cfg.get("compile.embedding.model", ""),
-            str(cfg.get(COMPILE_EMBEDDING_DIM, 384)),
         ]
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
