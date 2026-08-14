@@ -68,15 +68,7 @@ def remediate_coverage_gaps(
     for gap in gap_concepts:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup, token_index)
         if not matched:
-            actions.append(
-                RemediationAction(
-                    tier=3,
-                    category="Coverage gap (no extraction match)",
-                    description=f"'{gap}' -- not found in cached extractions",
-                    status=RemediationStatus.RECOMMENDED,
-                    details={"action": "Add a source document covering this concept.", "concept": gap},
-                )
-            )
+            logger.info("'%s' not found in cached extractions; see 'knox lint gaps' for recommendations", gap)
             continue
 
         concept_name = matched.get("name", gap)
@@ -87,7 +79,6 @@ def remediate_coverage_gaps(
         if dry_run:
             actions.append(
                 RemediationAction(
-                    tier=2,
                     category="Coverage gap",
                     description=f"Would generate concept page for '{concept_name}'",
                     status=RemediationStatus.SKIPPED,
@@ -100,7 +91,6 @@ def remediate_coverage_gaps(
         if content is None:
             actions.append(
                 RemediationAction(
-                    tier=2,
                     category="Coverage gap (LLM failed)",
                     description=f"Failed to generate page for '{concept_name}'",
                     status=RemediationStatus.SKIPPED,
@@ -131,7 +121,6 @@ def remediate_coverage_gaps(
 
         actions.append(
             RemediationAction(
-                tier=2,
                 category="Coverage gap",
                 description=f"Generated concept page '{concept_name}' from {len(matched.get('sources', []))} source(s)",
                 status=RemediationStatus.APPLIED,

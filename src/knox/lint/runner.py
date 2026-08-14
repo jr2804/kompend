@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from knox.agents.lint import LintRuleAgent
@@ -12,7 +13,7 @@ from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
-from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule
+from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule, RumdlRule
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -73,6 +74,7 @@ class LintRunner:
         fix: bool = False,
         sources_dir: str | None = None,
         lint_config: LintConfig | None = None,
+        rumdl_config: Path | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
@@ -81,6 +83,7 @@ class LintRunner:
         self.fix = fix
         self.sources_dir = sources_dir
         self._lint_config = lint_config
+        self.rumdl_config = rumdl_config
 
     def run(
         self,
@@ -133,8 +136,9 @@ class LintRunner:
 
         llm_kwargs = {"agent": self._lint_agent, "lint_page_budget": self.lint_page_budget}
 
-        # Config-derived values for DuplicateReferencesRule
+        # Config-derived values for DuplicateReferencesRule / RumdlRule
         ref_kwargs: dict[str, Any] = {}
+        rumdl_kwargs: dict[str, Any] = {"rumdl_config": self.rumdl_config}
         if self._lint_config is not None:
             ref_kwargs["fuzzy_threshold"] = self._lint_config.fuzzy_threshold
 
@@ -142,11 +146,13 @@ class LintRunner:
             """Resolve a rule name to an instance, handling class-vs-singleton."""
             if name == "duplicate-references":
                 return DuplicateReferencesRule(**ref_kwargs)
+            if name == "rumdl":
+                return RumdlRule(**rumdl_kwargs)
             entry = RULE_BY_NAME.get(name)
             if entry is None:
                 return None
             if isinstance(entry, type):
-                return entry(**ref_kwargs)
+                return entry()
             return entry
 
         if self.requested_rules:
@@ -161,8 +167,9 @@ class LintRunner:
                         logger.warning("Unknown lint rule: %s", name)
         else:
             rules.extend(STRUCTURAL_RULES)
-            # DuplicateReferencesRule is not a singleton — instantiate with config
+            # Non-singletons — instantiate with config values
             rules.append(DuplicateReferencesRule(**ref_kwargs))
+            rules.append(RumdlRule(**rumdl_kwargs))
 
         if self.enable_llm:
             existing_names = {r.name for r in rules}

@@ -7,7 +7,10 @@ directory on disk) and return :class:`LintResult` findings.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,7 @@ from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import REFERENCES_FILE, VaultPaths
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from knox.logging import get_logger
 
 #: Max chars of a reference title used for display labels in lint findings.
 _REF_LABEL_TITLE_MAX = 40
@@ -24,6 +28,29 @@ _REF_LABEL_TITLE_MAX = 40
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _HEADING_RE = re.compile(r"^(#{1,6})\s", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+#: Image file extensions — ``[[img.png]]`` is an embed-syntax error, not a
+#: broken wikilink; :class:`ImageEmbedRule` handles those.
+_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".bmp",
+        ".tiff",
+    }
+)
+
+#: ``[[img.png]]`` without the ``!`` embed prefix.
+_IMAGE_EMBED_RE = re.compile(
+    r"(?<!\!)\[\[([^\]]+\.(?:png|jpg|jpeg|gif|svg|webp|bmp|tiff))\]\]",
+    re.IGNORECASE,
+)
+
+logger = get_logger(__name__)
 
 
 # ── Rule 1: broken-wikilinks ──────────────────────────────────────────────
@@ -40,6 +67,9 @@ class BrokenWikilinksRule(BaseLintRule):
         results: list[LintResult] = []
         for node in wiki.nodes:
             for target_title in _extract_wikilinks(node.content):
+                if Path(target_title).suffix.lower() in _IMAGE_EXTENSIONS:
+                    # Image embeds are handled by ImageEmbedRule — not page links.
+                    continue
                 if target_title.lower() not in title_to_id:
                     results.append(
                         LintResult(
@@ -77,7 +107,48 @@ class BrokenWikilinksRule(BaseLintRule):
         return fixed
 
 
-# ── Rule 2: missing-frontmatter ─────────────────────────────────────────
+# ── Rule 2: image-embed ───────────────────────────────────────────────────
+
+
+class ImageEmbedRule(BaseLintRule):
+    """Detect image wikilinks written without the ``!`` embed prefix."""
+
+    name = "image-embed"
+    description = "Image links that should use ![[...]] embed syntax"
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        results: list[LintResult] = []
+        for node in wiki.nodes:
+            for target in _IMAGE_EMBED_RE.findall(node.content or ""):
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.FAIL,
+                        severity=Severity.WARNING,
+                        message=f"Image link [[{target}]] in page '{node.title}' should be ![[{target}]]",
+                        page_id=node.id,
+                        details={"target": target},
+                    )
+                )
+        if not results:
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All image links use embed syntax"))
+        return results
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+        """Rewrite ``[[img.png]]`` → ``![[img.png]]`` in page content."""
+        fixed = list(results)
+        for node in wiki.nodes:
+            content = node.content or ""
+            if not _IMAGE_EMBED_RE.search(content):
+                continue
+            node.content = _IMAGE_EMBED_RE.sub(lambda m: f"![[{m.group(1)}]]", content)
+            for r in fixed:
+                if r.page_id == node.id and r.outcome == LintRuleOutcome.FAIL:
+                    r.fix_applied = True
+        return fixed
+
+
+# ── Rule 3: missing-frontmatter ─────────────────────────────────────────
 
 
 class MissingFrontmatterRule(BaseLintRule):
@@ -560,6 +631,119 @@ class DuplicateReferencesRule(BaseLintRule):
         return duplicates
 
 
+# ── Rule 10: rumdl ───────────────────────────────────────────────────────
+
+
+class RumdlRule(BaseLintRule):
+    """Markdown style via ``rumdl check`` on all vault folders except sources.
+
+    Scans every ``*.md`` file under the vault root (derived from
+    *sources_dir*'s parent), excluding ``sources/``, ``.knox/``, and
+    ``attachments/``. Sources are never read or modified. Files are passed
+    explicitly to bypass rumdl's ignore-file filtering — self-written notes
+    that are gitignored still get checked. rumdl auto-discovers a
+    ``.rumdl.toml`` in the vault.
+    """
+
+    name = "rumdl"
+    description = "Markdown style issues found by rumdl (all vault folders except sources)"
+
+    #: Explicit paths bypass rumdl's ignore-file filtering, but the Windows
+    #: command line caps at ~32k chars — batch to stay well under it.
+    _BATCH_SIZE = 100
+
+    def __init__(self, rumdl_config: Path | None = None) -> None:
+        self.rumdl_config = rumdl_config
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        exe = shutil.which("rumdl")
+        if not exe:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="rumdl is not installed")]
+        if not sources_dir:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Sources directory unknown — cannot derive vault root")]
+        files = self._md_files(sources_dir)
+        if not files:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No markdown files to check")]
+
+        findings: list[dict[str, Any]] = []
+        for batch in _batched(files, self._BATCH_SIZE):
+            findings.extend(self._run_rumdl(exe, ["check", *self._config_args(), "--output-format", "json", *batch]))
+        if not findings:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All markdown files pass rumdl checks")]
+        return [self._to_result(f) for f in findings]
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+        """Apply ``rumdl check --fix`` to the files with fixable findings."""
+        exe = shutil.which("rumdl")
+        if not exe:
+            return results
+        fixable_files = sorted(
+            {r.details.get("file", "") for r in results if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable") and r.details.get("file")}
+        )
+        for batch in _batched(fixable_files, self._BATCH_SIZE):
+            self._run_rumdl(exe, ["check", "--fix", *self._config_args(), "--output-format", "json", *batch])
+        for r in results:
+            if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable"):
+                r.fix_applied = True
+        return results
+
+    def _config_args(self) -> list[str]:
+        """``--config`` args when a custom rumdl config is set (else auto-discovery)."""
+        return ["--config", str(self.rumdl_config)] if self.rumdl_config else []
+
+    def _to_result(self, finding: dict[str, Any]) -> LintResult:
+        severity = Severity.ERROR if finding.get("severity") == "error" else Severity.WARNING
+        return LintResult(
+            rule=self.name,
+            outcome=LintRuleOutcome.FAIL,
+            severity=severity,
+            message=f"{finding.get('file')}:{finding.get('line')} {finding.get('rule')}: {finding.get('message')}",
+            page_id="",
+            details={
+                "file": finding.get("file", ""),
+                "line": finding.get("line"),
+                "column": finding.get("column"),
+                "rumdl_rule": finding.get("rule"),
+                "fixable": bool(finding.get("fixable")),
+            },
+        )
+
+    @staticmethod
+    def _md_files(sources_dir: str) -> list[str]:
+        """All ``*.md`` files under the vault root, excluding sources/.knox/attachments."""
+        base = Path(sources_dir).parent
+        sources_path = Path(sources_dir)
+        excluded_names = {".knox", "attachments"}
+        files: list[str] = []
+        for path in base.rglob("*.md"):
+            rel = path.relative_to(base)
+            if sources_path in path.parents:
+                continue
+            if any(part in excluded_names for part in rel.parts[:-1]):
+                continue
+            files.append(str(path))
+        return sorted(files)
+
+    @staticmethod
+    def _run_rumdl(exe: str, cmd: list[str]) -> list[dict[str, Any]]:
+        """Run rumdl and return its JSON diagnostics (empty list on failure)."""
+        try:
+            result = subprocess.run(  # noqa: S603 — internally constructed cmd list
+                [exe, *cmd],
+                capture_output=True,
+                encoding="utf-8",
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            logger.warning("rumdl invocation failed: %s", cmd[:4])
+            return []
+        try:
+            return json.loads(result.stdout or "[]")
+        except json.JSONDecodeError:
+            return []
+
+
 def _node_ids_set(wiki: CompiledWiki) -> set[str]:
     return {n.id for n in wiki.nodes}
 
@@ -585,9 +769,15 @@ def _node_titles_index(wiki: CompiledWiki) -> dict[str, str]:
     return {n.title.lower(): n.id for n in wiki.nodes}
 
 
+def _batched(items: list[str], size: int) -> list[list[str]]:
+    """Split *items* into consecutive batches of at most *size*."""
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
 # ── Registry ────────────────────────────────────────────────────────────
 
 STRUCTURAL_RULES: list[BaseLintRule] = [
+    ImageEmbedRule(),
     BrokenWikilinksRule(),
     MissingFrontmatterRule(),
     OrphanPageRule(),
@@ -599,6 +789,8 @@ STRUCTURAL_RULES: list[BaseLintRule] = [
 ]
 
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}
-# DuplicateReferencesRule is not a singleton — register a factory reference
-# so it can be looked up by name in LintRunner._resolve_rules.
+# RumdlRule and DuplicateReferencesRule are not singletons — register factory
+# references so they can be looked up by name and instantiated with config
+# values in LintRunner._resolve_rules.
+RULE_BY_NAME["rumdl"] = RumdlRule
 RULE_BY_NAME["duplicate-references"] = DuplicateReferencesRule

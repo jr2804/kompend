@@ -6,7 +6,7 @@ Sub-commands
 * ``knox lint run``       — run lint rules and save to history.
 * ``knox lint history``   — query past lint runs.
 * ``knox lint gaps``      — analyze lint results for knowledge gaps.
-* ``knox lint remediate`` — auto-fix, LLM-generate, or recommend fixes for lint findings.
+* ``knox lint remediate`` — LLM-generate missing pages for lint findings.
 * ``knox lint prune``     — remove old history entries.
 """
 
@@ -41,7 +41,7 @@ from knox.cli.args import (
 )
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
-from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT, LINT_FUZZY_THRESHOLD
+from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT, COMPILE_OUTPUT_RUMDL_CONFIG, LINT_FUZZY_THRESHOLD
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import LINT_HISTORY_FILE
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
@@ -133,6 +133,7 @@ def lint_run(
         fix=fix,
         sources_dir=sources_dir_str,
         lint_config=lint_config,
+        rumdl_config=cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG) or None,
     )
     lint_start = time.monotonic()
     progress = (
@@ -378,28 +379,23 @@ def lint_gaps(
 # ── Sub-command: remediate ───────────────────────────────────────────────
 
 
-@lint_app.command("remediate", help="Auto-fix, LLM-generate, or recommend fixes for lint findings.")
+@lint_app.command("remediate", help="LLM-generate missing pages for lint findings.")
 def lint_remediate(
     ctx: typer.Context,
     dry_run: LintDryRun = False,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
 ) -> None:
-    """Remediate lint findings from the latest lint run.
+    """Generate missing concept pages for coverage-gap findings.
 
-    Three tiers of remediation:
-
-    * **Tier 1** (auto-fix, no LLM): image embed syntax errors.
-    * **Tier 2** (LLM-generated): coverage gaps filled from cached extractions.
-    * **Tier 3** (recommendations): issues needing new sources or manual review.
-
-    Tier 2 uses ``compile.llm.default_model`` from config. Without a
-    configured model, only tier 1 runs and tier 2/3 are reported as
-    recommendations.
+    Uses ``compile.llm.default_model`` from config. Coverage-gap findings
+    are matched against cached phase-1 extractions; matched concepts get
+    concept pages generated from that source material. Unmatched concepts
+    are skipped — ``knox lint gaps`` shows recommendations for those.
 
     Examples:
-        knox lint remediate                          # tier 1 (+ tier 2 if model configured)
-        knox lint remediate --dry-run                # preview all tiers
+        knox lint remediate                          # generate pages
+        knox lint remediate --dry-run                # preview without writing
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(
@@ -447,7 +443,6 @@ def lint_remediate(
             json.dumps(
                 [
                     {
-                        "tier": a.tier,
                         "category": a.category,
                         "description": a.description,
                         "status": a.status,

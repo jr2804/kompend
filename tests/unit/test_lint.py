@@ -30,8 +30,10 @@ from knox.lint.structural import (
     DuplicateTitleRule,
     EmptyPageRule,
     HeadingSkipRule,
+    ImageEmbedRule,
     MissingFrontmatterRule,
     OrphanPageRule,
+    RumdlRule,
     SourceNotFoundRule,
     StalePageRule,
 )
@@ -90,6 +92,52 @@ class TestBrokenWikilinksRule:
         rule = BrokenWikilinksRule()
         results = rule.check(wiki)
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_image_embeds_not_flagged(self) -> None:
+        """Correct ``![[img.png]]`` and wrong ``[[img.png]]`` are not broken page links."""
+        node = _make_node("n1", "Alpha", "See ![[diagram.png]] and [[photo.jpg]]")
+        wiki = _make_wiki([node])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+
+# ── Rule 1b: image-embed ─────────────────────────────────────────────────
+
+
+class TestImageEmbedRule:
+    def test_detects_missing_embed_prefix(self) -> None:
+        node = _make_node("n1", "Alpha", "See [[diagram.png]] here")
+        wiki = _make_wiki([node])
+        rule = ImageEmbedRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details["target"] == "diagram.png"
+
+    def test_correct_embed_passes(self) -> None:
+        node = _make_node("n1", "Alpha", "See ![[diagram.png]] here")
+        wiki = _make_wiki([node])
+        rule = ImageEmbedRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_fix_adds_embed_prefix(self) -> None:
+        node = _make_node("n1", "Alpha", "See [[diagram.png]] and [[chart.svg]]")
+        wiki = _make_wiki([node])
+        rule = ImageEmbedRule()
+        failures = [r for r in rule.check(wiki) if r.outcome == LintRuleOutcome.FAIL]
+        fixed = rule.fix(wiki, failures)
+        assert all(r.fix_applied for r in fixed)
+        assert node.content == "See ![[diagram.png]] and ![[chart.svg]]"
+
+    def test_fix_does_not_touch_correct_embeds(self) -> None:
+        node = _make_node("n1", "Alpha", "Already ![[ok.png]] here")
+        wiki = _make_wiki([node])
+        rule = ImageEmbedRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+        assert "![[ok.png]]" in node.content
 
 
 # ── Rule 2: missing-frontmatter ─────────────────────────────────────────
@@ -478,6 +526,80 @@ class TestBuildReport:
 # ── Edge cases from task requirements ────────────────────────────────────
 
 
+class TestRumdlRule:
+    """Filesystem-based rule — uses real tmp vaults, real rumdl subprocess."""
+
+    def test_checks_wiki_and_notes_but_not_sources(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        # Sources file with issues — must never be reported.
+        (base / "sources" / "s.md").write_text("# Bad\n\n## X\n\n## X\n", encoding="utf-8")
+        # Wiki output page with issues.
+        (base / "wiki" / "page.md").write_text("# Bad\n\n## Y\n\n## Y\n", encoding="utf-8")
+        # Self-written note with issues.
+        (base / "note.md").write_text("# Bad\n\n## Z\n\n## Z\n", encoding="utf-8")
+
+        results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        checked_files = {r.details["file"] for r in failures}
+        assert all("sources" not in f for f in checked_files)
+        assert any(f.endswith("page.md") for f in checked_files)
+        assert any(f.endswith("note.md") for f in checked_files)
+        assert all(r.details["rumdl_rule"] for r in failures)
+
+    def test_clean_vault_passes(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        (base / "wiki" / "ok.md").write_text("# Ok\n\n## One\n\n### Two\n", encoding="utf-8")
+        results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_fix_reformats_self_written_note(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        note = base / "note.md"
+        # MD012 (multiple trailing blank lines) is auto-fixable; MD024 is not.
+        note.write_text("# Note\n\nText.\n\n\n\n", encoding="utf-8")
+        rule = RumdlRule()
+        results = rule.check(_make_wiki([]), sources_dir=str(base / "sources"))
+        fixable = [r for r in results if r.outcome == LintRuleOutcome.FAIL and r.details["fixable"]]
+        assert fixable, "expected at least one fixable finding"
+        fixed = rule.fix(_make_wiki([]), results)
+        assert all(r.fix_applied for r in fixed if r.details.get("fixable"))
+        assert note.read_text(encoding="utf-8").endswith("Text.\n")
+
+    def test_skips_when_rumdl_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        monkeypatch.setattr("knox.lint.structural.shutil.which", lambda _: None)
+        results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
+        assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
+
+    def test_skips_without_sources_dir(self) -> None:
+        results = RumdlRule().check(_make_wiki([]), sources_dir=None)
+        assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
+
+    def test_config_forwarded_to_rumdl(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """compile.output.rumdl_config is passed as --config to rumdl."""
+        captured: list[list[str]] = []
+
+        def fake_run_rumdl(exe: str, cmd: list[str]) -> list[dict]:
+            captured.append(cmd)
+            return []
+
+        monkeypatch.setattr(RumdlRule, "_run_rumdl", staticmethod(fake_run_rumdl))
+        base = self._vault(tmp_path)
+        (base / "note.md").write_text("# Note\n", encoding="utf-8")
+        cfg_file = base / ".rumdl.toml"
+        results = RumdlRule(rumdl_config=cfg_file).check(_make_wiki([]), sources_dir=str(base / "sources"))
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+        assert captured
+        assert "--config" in captured[0]
+        assert str(cfg_file) in captured[0]
+
+    def _vault(self, tmp_path: Path) -> Path:
+        (tmp_path / "sources").mkdir()
+        (tmp_path / "wiki").mkdir()
+        (tmp_path / ".knox").mkdir()
+        return tmp_path
+
+
 class TestEdgeCases:
     def test_single_page_all_violations(self) -> None:
         """A single page with broken links, no frontmatter, empty content."""
@@ -504,14 +626,16 @@ class TestEdgeCases:
         assert len(failures) == 0
 
     def test_structural_rules_registry_complete(self) -> None:
-        """All 9 structural rules should be registered.
+        """All 11 structural rules should be registered.
 
-        ``DuplicateReferencesRule`` is NOT a singleton — it is instantiated
-        by ``LintRunner._resolve_rules`` with config values. The singleton
-        list has 8 entries; ``RULE_BY_NAME`` still maps all 9 names.
+        ``RumdlRule`` and ``DuplicateReferencesRule`` are NOT singletons —
+        they are instantiated by ``LintRunner._resolve_rules`` with config
+        values. The singleton list has 9 entries; ``RULE_BY_NAME`` maps all
+        11 names.
         """
-        assert len(STRUCTURAL_RULES) == 8
+        assert len(STRUCTURAL_RULES) == 9
         expected = {
+            "image-embed",
             "broken-wikilinks",
             "missing-frontmatter",
             "orphan-page",
@@ -520,6 +644,7 @@ class TestEdgeCases:
             "heading-skip",
             "stale-page",
             "source-not-found",
+            "rumdl",
             "duplicate-references",
         }
         assert set(RULE_BY_NAME.keys()) == expected
@@ -605,7 +730,7 @@ class TestContradictionDetectionRule:
 
 
 class TestCoverageGapRemediation:
-    """Coverage-gap remediation — concept vs entity lookup, priority, tier-3 fallback."""
+    """Coverage-gap remediation — concept vs entity lookup, priority."""
 
     def test_concept_match_generates_page(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(
@@ -615,7 +740,7 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("Active Noise Control")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
         assert len(applied) == 1
         assert "Active Noise Control" in applied[0].description
         assert any(n.title == "Active Noise Control" for n in wiki.nodes)
@@ -634,12 +759,13 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("ITU-T P.57")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
         assert len(applied) == 1
         assert "ITU-T P.57" in applied[0].description
         assert any(n.title == "ITU-T P.57" for n in wiki.nodes)
 
-    def test_no_match_yields_tier3_recommendation(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_no_match_produces_no_action(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Concepts without an extraction match are skipped (gaps shows recommendations)."""
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
@@ -647,8 +773,7 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("POLQA")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        tier3 = [a for a in actions if a.tier == 3 and "no extraction match" in a.category.lower()]
-        assert len(tier3) == 1
+        assert actions == []
 
     def test_concept_takes_priority_over_entity(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """When both a concept and entity exist for the same name, concept data is used."""
@@ -665,7 +790,7 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("ERP")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
         assert len(applied) == 1
         assert "ERP" in applied[0].description
 
@@ -683,7 +808,7 @@ class TestCoverageGapRemediation:
             agent=_mock_remediate_llm(),
             dry_run=True,
         )
-        skipped = [a for a in actions if a.status == RemediationStatus.SKIPPED and a.tier == 2]
+        skipped = [a for a in actions if a.status == RemediationStatus.SKIPPED]
         assert len(skipped) == 1
         assert not any(n.title == "Echo Cancellation" for n in wiki.nodes)
 
@@ -695,7 +820,7 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki([_make_node("existing", "Existing", "pre-existing")])
         actions = remediate(wiki, LintReport(results=[_gap_result("Existing")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        assert not any(a.tier == 2 for a in actions)
+        assert not actions
 
     def test_source_summary_seed_included_in_prompt(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Per-source document summary is passed to the LLM prompt as seed material."""
@@ -741,8 +866,8 @@ class TestCoverageGapRemediation:
         assert "RELEVANT_SUMMARY_MARKER" in prompt
         assert "UNRELATED_SUMMARY_MARKER" not in prompt
 
-    def test_tier2_concept_not_duplicated_in_tier3(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """A concept generated by tier 2 must not reappear as a tier-3 recommendation."""
+    def test_generated_page_appears_once(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A generated concept is not reported twice."""
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
@@ -750,10 +875,8 @@ class TestCoverageGapRemediation:
         )
         wiki = _make_wiki()
         actions = remediate(wiki, LintReport(results=[_gap_result("POLQA")]), base_dir=tmp_path, agent=_mock_remediate_llm())
-        tier2 = [a for a in actions if a.tier == 2]
-        tier3_coverage = [a for a in actions if a.tier == 3 and a.category == "Coverage gap"]
-        assert len(tier2) == 1
-        assert len(tier3_coverage) == 0
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
+        assert len(applied) == 1
 
     def test_remediate_writes_md_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Generated concept pages are written as .md into output_dir."""
@@ -792,7 +915,7 @@ class TestCoverageGapRemediation:
             output_dir=output_dir,
             agent=_mock_remediate_llm("fresh content"),
         )
-        applied = [a for a in actions if a.status == RemediationStatus.APPLIED and a.tier == 2]
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
         assert len(applied) == 1
         polqa_nodes = [n for n in wiki.nodes if n.id == "polqa"]
         assert len(polqa_nodes) == 1
