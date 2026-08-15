@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 
-from pydantic_ai import Agent, NativeOutput, RunContext, Tool
+from pydantic_ai import Agent, NativeOutput, RunContext, Tool, UsageLimits
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
@@ -49,6 +49,7 @@ from pydantic_ai_summarization import (
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.knox_model import KnoxModel
+from knox.agents.rlm import RLMCapability, resolve_rlm_preset
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import salvage_json
@@ -75,6 +76,13 @@ _CONTEXT_PRESETS: dict[str, tuple[float, ContextSize]] = {
 #: SlidingWindowCapability default trigger/keep (zero-cost, no LLM call).
 _SLIDING_TRIGGER: ContextSize = ("messages", 100)
 _SLIDING_KEEP: ContextSize = ("messages", 50)
+
+#: Placeholder replacing the inlined context in prompts when RLM is
+#: enabled — the context stays available in the deps (REPL ``context``
+#: variable) but is not packed into the prompt.
+RLM_CONTEXT_PLACEHOLDER: str = (
+    "(The full context is not inlined in this prompt. It is pre-loaded as the `context` variable of the execute_code REPL — explore it there.)"
+)
 
 logger = get_logger(__name__)
 
@@ -126,6 +134,18 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     tools: list[Tool] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
+    #: RLM preset (``False`` off, ``"default"``/``"aggressive"``/``True``)
+    #: enabling code-exploration tools on this agent.
+    rlm: str | bool = False
+    #: Optional sub-model string for ``llm_query()`` inside the RLM REPL;
+    #: defaults to the agent's main model when unset.
+    rlm_sub_model: str | None = None
+    #: Deps attribute holding the document context for the RLM REPL.
+    rlm_context_field: str = "text"
+    #: Remaining recursion depth for ``rlm_query`` inside the REPL
+    #: (0 = non-recursive, only ``llm_query``). Mirrors ``rlm_max_depth``
+    #: config at the wiring sites.
+    rlm_depth: int = 0
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
     template_name: ClassVar[str] = ""
@@ -145,6 +165,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     _current_source_id: str = field(default="", init=False, repr=False)
     _delta_retry_state: dict[int, AgentResult] = field(default_factory=dict, init=False, repr=False)
     _last_debug_file: Path | None = field(default=None, init=False, repr=False)
+    _rlm_usage_limits: UsageLimits | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         # Resolve result_type / deps_type from the generic type params.
@@ -165,12 +186,19 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
         Only variables declared in the template's frontmatter are passed,
         avoiding warnings about unused variables.
+
+        When RLM is enabled, the deps attribute named by ``rlm_context_field``
+        is replaced with a placeholder in the rendered prompt — the full
+        context stays in the deps (available to the REPL ``context`` variable)
+        but is not inlined, so the model actually explores it via code.
         """
         template_file = f"{self.template_prefix}{self.template_name}"
         meta = self._template_loader.get_meta(template_file)
         declared = meta.declared_variable_names()
         vars_dict = self._deps_to_template_vars(deps)
         filtered = {k: v for k, v in vars_dict.items() if k in declared}
+        if self.rlm and self.rlm_context_field in filtered:
+            filtered[self.rlm_context_field] = RLM_CONTEXT_PLACEHOLDER
         return self._template_loader.render(template_file, **filtered)
 
     def render_system_prompt(self, deps: DepsT) -> str:
@@ -230,6 +258,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 deps=deps,
                 instructions=system_prompt,
                 message_history=message_history,
+                usage_limits=self._rlm_usage_limits,
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
@@ -266,6 +295,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 deps=deps,
                 instructions=system_prompt,
                 message_history=message_history,
+                usage_limits=self._rlm_usage_limits,
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
@@ -338,6 +368,12 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             capabilities.append(capability)
         if self.delta_retry_enabled and self.use_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
+        rlm_capability = self._resolve_rlm_capability(top_model)
+        if rlm_capability is not None:
+            capabilities.append(rlm_capability)
+            self._rlm_usage_limits = UsageLimits(
+                tool_calls_limit=rlm_capability.max_tool_calls,
+            )
         agent = Agent(
             top_model,
             deps_type=self.deps_type,
@@ -482,6 +518,40 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             on_usage_update=self._on_usage_update,
             on_before_compress=self._on_before_compress,
             on_after_compress=self._on_after_compress,
+        )
+
+    def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
+        """Build the RLM capability from the configured preset.
+
+        Returns ``None`` when RLM is disabled. The sub-model defaults to the
+        agent's top-level model (same failover chain); an explicit
+        ``rlm_sub_model`` resolves via ``build_model`` and is wrapped in
+        :class:`KnoxModel` for usage tracking.
+
+        Args:
+            model: The top-level (failover) model — reused as the
+                ``llm_query`` sub-model when ``rlm_sub_model`` is unset.
+        """
+        if self.rlm is False or self.rlm is None:
+            return None
+        try:
+            max_tool_calls, code_timeout = resolve_rlm_preset(self.rlm)
+        except ValueError:
+            return None
+        if self.rlm_sub_model:
+            sub_model: Model = KnoxModel(
+                build_model(self.rlm_sub_model),
+                usage_tracker=self.usage_tracker,
+            )
+        else:
+            sub_model = model
+        return RLMCapability(
+            context_field=self.rlm_context_field,
+            code_timeout=code_timeout,
+            sub_model=sub_model,
+            max_tool_calls=max_tool_calls,
+            main_model=model,
+            depth=self.rlm_depth,
         )
 
     # ── ContextManagerCapability callbacks ─────────────────────────────

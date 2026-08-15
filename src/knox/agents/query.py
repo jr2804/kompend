@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from knox.agents.base import KnoxAgentBase
+from knox.agents.base import RLM_CONTEXT_PLACEHOLDER, KnoxAgentBase
 from knox.agents.deps import QueryDeps
 
 
@@ -49,10 +49,18 @@ class QueryAgent(KnoxAgentBase[str, QueryDeps]):
         return deps.question
 
     def render_system_prompt(self, deps: QueryDeps) -> str:
-        """Render the system prompt from the synthesis template + skills."""
+        """Render the system prompt from the synthesis template + skills.
+
+        When RLM is enabled the inlined context is replaced with a
+        placeholder — the full context stays in the deps (REPL ``context``
+        variable) so the model explores it via code instead.
+        """
+        ctx = deps.context
+        if self.rlm:
+            ctx = RLM_CONTEXT_PLACEHOLDER
         prompt = self._template_loader.render(
             f"query/{self.system_template_name}",
-            context=deps.context,
+            context=ctx,
             verbosity=deps.verbosity,
         )
         if self.skills:

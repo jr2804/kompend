@@ -271,6 +271,43 @@ reasoning_effort = "none"
 Set via `KNOX_LLM_REASONING_EFFORT`. Best-effort: providers that don't
 recognize the key ignore it.
 
+## RLM (code-exploration mode)
+
+RLM lets the agent explore the document context **with code** instead of
+having the whole context packed into the prompt. When enabled, the context
+attribute is replaced by a placeholder in the rendered prompt, and an
+`execute_code` REPL is attached with the full context pre-loaded as a
+`context` variable. The model runs search/aggregation code against it, so
+conversation size stays bounded even for corpora larger than the model's
+context window.
+
+```toml
+[compile.llm]
+# false (default) | "default" (50 tool calls / 60s code timeout)
+#               | "aggressive" (100 tool calls / 120s code timeout)
+rlm = "default"
+# Optional sub-model for llm_query() inside the REPL; defaults to the
+# primary model. Must be a valid provider/model string.
+rlm_sub_model = "ollama/qwen3:8b"
+# Recursion depth for rlm_query(prompt, slice) — child agents recurse up
+# to this depth (0 = non-recursive, default 2). Guarded by a per-run node
+# budget (16) and cycle detection.
+rlm_max_depth = 2
+```
+
+Set via `KNOX_LLM_RLM`, `KNOX_LLM_RLM_SUB_MODEL`, `KNOX_LLM_RLM_MAX_DEPTH`.
+
+Wired into the query/synthesis stage, generation, and the WiCER probe.
+Extraction is intentionally not wired (its input is already chunk-bounded).
+Requires the optional extra (`uv add knox[rlm]`) and a local model that
+calls tools — a weak or non-agentic model may ignore the `execute_code`
+tool and answer from the placeholder, which contains no content.
+
+Verify against a live local model with
+`uv run python scripts/verify/verify_rlm.py` (runs the query agent with RLM on
+vs. off over a synthetic corpus larger than the model's context window;
+skips cleanly when Ollama is unavailable).
+
 ## Per-role model overrides
 
 Some roles can be routed to a different model than the primary (e.g. a

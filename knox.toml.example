@@ -356,6 +356,24 @@ extraction_strategy = "incremental"
 #   false        — disable (history preserved verbatim)
 context_manager = "default"
 
+# RLM (Recursive Language Model) — lets agents explore large contexts by
+# writing Python code in a sandboxed REPL instead of packing everything
+# into the prompt. Requires the optional `rlm` extra
+# (uv add knox[rlm]). Composes with context_manager above.
+#   "default"    — max 50 tool calls, 60s per code execution
+#   "aggressive" — max 100 tool calls, 120s per code execution
+#   false        — disabled (default)
+rlm = false
+
+# Optional sub-model for llm_query() inside the RLM REPL. When unset, the
+# agent's main model is used. Only consulted when rlm is enabled.
+# rlm_sub_model = "ollama/gpt-oss:20b"
+
+# Recursion depth for rlm_query() inside the RLM REPL. 0 disables
+# recursion (structural exploration + llm_query only). Total recursive
+# calls per run are budgeted (default 16) with cycle detection.
+rlm_max_depth = 2
+
 # Per-role model overrides — use a different model for specific LLM roles.
 # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).
 # Common roles: "compile.extract", "compile.generate", "wicer.probe",

@@ -248,6 +248,10 @@ def generate_all_pages(
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_manager=compiler._config.llm.context_manager,
                 context_window=compiler._context_window.max_input,
+                rlm=compiler._config.llm.rlm,
+                rlm_sub_model=compiler._config.llm.rlm_sub_model,
+                rlm_depth=compiler._config.llm.rlm_max_depth,
+                rlm_context_field="content",
             )
             gen_output = try_pydanticai_generation(
                 agent,

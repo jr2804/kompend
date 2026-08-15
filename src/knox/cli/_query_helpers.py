@@ -19,6 +19,9 @@ from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_OUTPUT_RETRIES,
     COMPILE_LLM_REASONING_EFFORT,
+    COMPILE_LLM_RLM,
+    COMPILE_LLM_RLM_MAX_DEPTH,
+    COMPILE_LLM_RLM_SUB_MODEL,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
     SEARCH_EXPANSION_ENABLED,
@@ -212,10 +215,31 @@ def synthesize_and_output(
 
     try:
         reasoning_effort: str | None = cfg.get(COMPILE_LLM_REASONING_EFFORT)
+        rlm: str | bool = cfg.get(COMPILE_LLM_RLM, False)
+        rlm_sub_model: str | None = cfg.get(COMPILE_LLM_RLM_SUB_MODEL)
+        rlm_depth: int = cfg.get(COMPILE_LLM_RLM_MAX_DEPTH, 0) if rlm else 0
         if has_enhanced and enhanced is not None:
-            synthesis = enhanced.synthesize(query, results, verbosity=verbosity, max_tokens=max_tokens, reasoning_effort=reasoning_effort)
+            synthesis = enhanced.synthesize(
+                query,
+                results,
+                verbosity=verbosity,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+                rlm=rlm,
+                rlm_sub_model=rlm_sub_model,
+                rlm_depth=rlm_depth,
+            )
         else:
-            synthesis = synthesize_results(query, results, model=model, verbosity=verbosity, max_tokens=max_tokens)
+            synthesis = synthesize_results(
+                query,
+                results,
+                model=model,
+                verbosity=verbosity,
+                max_tokens=max_tokens,
+                rlm=rlm,
+                rlm_sub_model=rlm_sub_model,
+                rlm_depth=rlm_depth,
+            )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")

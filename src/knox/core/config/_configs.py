@@ -170,6 +170,14 @@ class LLMConfig(_KnoxBaseModel):
     batch_failure_threshold_min: int = Field(default=5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_MIN)
     reasoning_effort: str | None = Field(default=None, validation_alias=EnvVar.LLM_REASONING_EFFORT)
     context_manager: str | bool = Field(default="default", validation_alias=EnvVar.LLM_CONTEXT_MANAGER)
+    #: RLM preset: ``False`` (off) | ``"default"`` | ``"aggressive"``. Enables
+    #: REPL code-exploration tools on compilation/query agents.
+    rlm: str | bool = Field(default=False, validation_alias=EnvVar.LLM_RLM)
+    #: Optional sub-model for ``llm_query()`` inside the RLM REPL; defaults
+    #: to the agent's main model when unset.
+    rlm_sub_model: str | None = Field(default=None, validation_alias=EnvVar.LLM_RLM_SUB_MODEL)
+    #: Recursion depth for ``rlm_query`` inside the RLM REPL (0 = non-recursive).
+    rlm_max_depth: int = Field(default=2, validation_alias=EnvVar.LLM_RLM_MAX_DEPTH)
     extraction_strategy: ExtractionStrategy = Field(
         default=ExtractionStrategy.INCREMENTAL,
         validation_alias=EnvVar.LLM_EXTRACTION_STRATEGY,

@@ -146,6 +146,9 @@ class EnhancedRetriever:
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         reasoning_effort: str | None = None,
+        rlm: str | bool = False,
+        rlm_sub_model: str | None = None,
+        rlm_depth: int = 0,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(
@@ -156,6 +159,9 @@ class EnhancedRetriever:
             max_tokens=max_tokens,
             skills=skills,
             reasoning_effort=reasoning_effort,
+            rlm=rlm,
+            rlm_sub_model=rlm_sub_model,
+            rlm_depth=rlm_depth,
         )
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────

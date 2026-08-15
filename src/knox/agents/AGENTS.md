@@ -66,6 +66,25 @@ The base class provides:
   `UsageTracker.record_context_usage`; `on_before/after_compress` log
   compression events. Disabled by default at the code-API level
   (`context_manager=False`); enabled by config (`compile.llm.context_manager`).
+- **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
+  `[rlm]` extra) attaches from the `rlm` preset
+  (`"default"`/`"aggressive"`/`false`; sub-model via
+  `rlm_sub_model`, default = main model; recursion depth via
+  `rlm_max_depth`, 0 = non-recursive). It registers an
+  `execute_code` tool (sandboxed REPL, deps context pre-loaded from
+  `rlm_context_field`) and RLM mode instructions; the sub-model powers
+  `llm_query()` inside the REPL and is usage-tracked via `KnoxModel`.
+  With `rlm_max_depth > 0` the REPL also exposes `rlm_query(prompt,
+  slice)` — a child agent (same main model, own REPL) recursing up to
+  the depth budget, guarded by a per-root-run node budget (default 16)
+  and cycle detection on (depth, prompt, context fingerprint). Run
+  tool-calls are bounded by `UsageLimits` from the preset. When RLM is
+  enabled, the `rlm_context_field` deps value is replaced by a
+  placeholder in rendered prompts (`RLM_CONTEXT_PLACEHOLDER`) so the
+  model explores the context via code instead of reading it inline
+  (the deps still carry the full value for the REPL). Composes with
+  context management (compaction bounds the conversation, RLM keeps
+  document data out of it). Disabled by default (`rlm=False`).
 - **Skill injection** — user-defined skills from `compile.skills` are
   appended to the system prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
