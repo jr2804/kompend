@@ -14,7 +14,7 @@ To seed the vault with a chosen config (e.g. a cloud/local LLM profile), pass it
 — the file is copied verbatim into `<dir>/.knox/config.toml`:
 
 ```bash
-knox init ./my-vault --config scripts/config-cloud.toml
+knox init ./my-vault --config scripts/configs/config-cloud.toml
 ```
 
 ## What it creates
@@ -91,7 +91,7 @@ generated default. Use this to seed a vault with a specific LLM/budget/profile
 (e.g. a cloud or local demo config). The file is copied verbatim.
 
 ```bash
-knox init ./my-vault --config scripts/config-cloud.toml
+knox init ./my-vault --config scripts/configs/config-cloud.toml
 ```
 
 ### `--git`

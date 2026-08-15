@@ -5,15 +5,15 @@ run = "uv sync -U --dev --all-extras --all-groups"
 
 [tasks.set-repo-topics]
 description = "Set repository topics on Codeberg from pyproject.toml keywords"
-run = "uv run scripts/set_repo_topics.py"
+run = "uv run scripts/repo/set_repo_topics.py"
 
 [tasks.check-field-consistency]
 description = "Detect bare-string literals used as cross-file contract keys (Antipattern 5)"
-run = "uv run python scripts/check_field_consistency.py"
+run = "uv run python scripts/checks/check_field_consistency.py"
 
 [tasks.check-antipatterns]
 description = "Detect banned-noqa, magic crops, try/except ImportError guards, and global keyword usage"
-run = "uv run python scripts/check_antipatterns.py"
+run = "uv run python scripts/checks/check_antipatterns.py"
 
 [tasks.check-all]
 description = "Run all AST-based antipattern checkers"

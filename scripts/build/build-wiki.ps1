@@ -313,7 +313,7 @@ if (-not $Preview) {
 }
 
 # ------ Load demo content from TOML (learn/capture/write/query phrases) ------------
-$DemoContentFile = Join-Path $PSScriptRoot "demo-content.toml"
+$DemoContentFile = Join-Path $PSScriptRoot "..\configs\demo-content.toml"
 $DemoContent = $null
 if (Test-Path $DemoContentFile) {
     $json = & uv run python -c "import json, sys, tomllib; print(json.dumps(tomllib.load(open(sys.argv[1], 'rb'))))" $DemoContentFile

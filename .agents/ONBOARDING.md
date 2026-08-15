@@ -77,8 +77,8 @@ uv run pytest tests/integration -x --timeout=120   # integration tests
 uv run pytest tests/benchmarks/ -q --no-cov        # benchmarks
 ruff check                                           # lint
 ty check src/knox                                    # type check (not mypy)
-uv run python scripts/check_field_consistency.py     # bare-string contract keys
-uv run python scripts/check_antipatterns.py          # banned-noqa, magic crops, global
+uv run python scripts/checks/check_field_consistency.py     # bare-string contract keys
+uv run python scripts/checks/check_antipatterns.py          # banned-noqa, magic crops, global
 uv run mkdocs build --strict                        # doc build check
 ```
 

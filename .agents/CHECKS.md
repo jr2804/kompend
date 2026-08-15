@@ -39,8 +39,8 @@ All exit non-zero on violations; all run in CI.
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
 - Run `ty check src/knox` for type checking (mypy is not used)
-- Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
-- Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
+- Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
 - Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/knox/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
@@ -69,10 +69,10 @@ Tick these BEFORE writing a function:
 | Script | Catches | Lives in |
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
-| `scripts/check_field_consistency.py` | Bare-string contract keys | scripts/ |
-| `scripts/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/ |
-| `scripts/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/ |
-| `scripts/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/ |
+| `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ |
+| `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
+| `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
 
 All four run in CI. Run locally: `mise run check-all`.
-Run the codebase analyzer: `uv run python scripts/analyze_codebase.py`.
+Run the codebase analyzer: `uv run python scripts/analyze/analyze_codebase.py`.

@@ -15,7 +15,7 @@ data/
 
 The initial document set. Tests in `test_parse_quality.py` and
 `test_real_corpus.py` scan this directory for PDFs to parse, and
-`scripts/build-wiki.ps1` ingests it for the first compile pass. Download
+`scripts/build/build-wiki.ps1` ingests it for the first compile pass. Download
 URLs for the first pass live in `sources/urls.txt`.
 
 Keep files small (< 5 MB each) so the repo doesn't bloat.

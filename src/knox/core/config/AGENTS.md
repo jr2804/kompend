@@ -25,7 +25,7 @@ through this package — no other module reads config files or env vars directly
 - `keys.py` — Config dotted-key constants (re-exports `EnvVar`)
 - `../env.py` — `EnvVar` StrEnum, the **only** place a `"KNOX_*"` env-var name may be
   defined. Lives outside this package: `paths.py` reads env vars before the config
-  package finishes loading. Enforced by `scripts/check_antipatterns.py`
+  package finishes loading. Enforced by `scripts/checks/check_antipatterns.py`
   (`ENV-VAR-LITERAL` rule).
 - `_configs.py` — Config dataclass definitions
 - `engine/` — Split resolution engine (discrete stages):

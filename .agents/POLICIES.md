@@ -107,8 +107,8 @@ hoarding rationale. Cut first; split the subtree only as a last resort.
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=120` for integration tests
 - Run `ty check src/knox` for type checking (mypy is not used)
-- Run `uv run python scripts/check_field_consistency.py` to catch hard-coded contract keys
-- Run `uv run python scripts/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
+- Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
 - Run `mise run check-all` for the full local enforcement suite
 
 ## Response format

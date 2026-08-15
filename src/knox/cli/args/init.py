@@ -59,7 +59,7 @@ InitConfig = Annotated[
         help=(
             "Path to a TOML config to install as the vault's .knox/config.toml "
             "instead of the generated default. Use to seed a vault with a chosen "
-            "LLM/budget/profile (e.g. scripts/config-cloud.toml). The file is "
+            "LLM/budget/profile (e.g. scripts/configs/config-cloud.toml). The file is "
             "copied verbatim."
         ),
     ),
