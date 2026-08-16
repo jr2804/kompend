@@ -55,6 +55,7 @@ from knox.core.models import load_cached_wiki, load_wiki_from_files
 from knox.core.paths import vault_paths
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_err_console, get_logger
+from knox.output.pages.log import log_stage
 from knox.search.classifier import classify
 from knox.search.retriever import HybridRetriever, KeywordRetriever
 
@@ -141,6 +142,8 @@ def query_cmd(
     finally:
         if vector_store is not None:
             vector_store.close()
+
+    log_stage(vp, action="Query", detail=f'"{query}" \u2192 {len(results)} result(s)')
 
     if not results:
         get_console().print("No relevant content found.")

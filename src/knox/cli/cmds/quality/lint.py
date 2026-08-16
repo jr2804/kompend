@@ -60,6 +60,7 @@ from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.logging import get_console, get_err_console
+from knox.output.pages.log import log_stage
 from knox.output.renderer import format_output
 
 lint_app = typer.Typer(
@@ -208,6 +209,11 @@ def lint_run(
         get_console().print(report_to_json(report))
     else:
         get_console().print(report_to_text(report))
+    log_stage(
+        vp,
+        action="Lint",
+        detail=f"Health score {report.health_score:.1f}% ({report.passes}/{report.total_checks} checks passed)",
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

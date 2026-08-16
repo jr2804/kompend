@@ -82,6 +82,7 @@ from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.trust.actor import resolve_actor
 from knox.core.utils.exceptions import LLMOutputError
 from knox.logging import get_console, get_err_console, get_logger
+from knox.output.pages.log import log_stage
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions
 from knox.preprocessing.parsers.base import ParserRouter
 from knox.rag import build_vector_index
@@ -413,6 +414,7 @@ def ingest_cmd(
     if result.dedup_skipped:
         summary += f" ({result.dedup_skipped} duplicates identified)"
     get_console().print(summary)
+    log_stage(vp, action="Ingest", detail=summary)
 
 
 @app.command(name="index")
