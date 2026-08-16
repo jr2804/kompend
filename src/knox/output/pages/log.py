@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from knox.core.models import CompiledWiki, MetadataField, WikiField
+from knox.core.paths import LOG_FILE, VaultPaths
 from knox.core.utils.time import iso_local
+from knox.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def log_stage(vault: VaultPaths, *, action: str, detail: str) -> None:
+    """Append a stage entry (``Ingest``/``Query``/``Lint``/\u2026) to the bundle log.
+
+    Best-effort: a log-write failure must never break the command that
+    produced the event.
+    """
+    try:
+        append_log_entry(vault.output_dir / LOG_FILE, action=action, detail=detail)
+    except OSError as exc:
+        logger.warning("Could not append %s entry to log: %s", action, exc)
 
 
 def generate_log_entry(wiki: CompiledWiki, *, stage: str = "compile") -> str:  # noqa: PLR0915
@@ -346,12 +363,47 @@ def _display_title(text: str, max_chars: int = 80) -> str:
 
 
 def prepend_log(log_file: Path, entry: str) -> None:
-    """Prepend a log entry to *log_file* (newest first).
+    """Prepend a raw entry to *log_file* (newest first). Creates the file if missing.
 
-    Creates the file if missing.
+    Low-level helper: *entry* is inserted verbatim above any existing content,
+    separated by ``---``. Prefer :func:`append_log_entry` for OKF §9 entries.
     """
     if log_file.exists():
         existing = log_file.read_text(encoding="utf-8")
         if existing.strip():
             entry = entry.rstrip("\n") + "\n\n---\n\n" + existing
     log_file.write_text(entry, encoding="utf-8")
+
+
+def append_log_entry(log_file: Path, *, action: str, detail: str) -> None:
+    """Record one OKF §9 log entry, newest first.
+
+    Entries are date-grouped under ``## YYYY-MM-DD`` headings (per §9), each
+    entry a list item with a ``[HH:mm:ss]`` timestamp prefix and a bold
+    action (``- [14:23:45] **Query**: \u2026``). Newest date section first;
+    newest entry first within a day. The file is created with a
+    ``# Bundle Update Log`` header when missing and is never deleted by
+    recompiles.
+    """
+    header = "# Bundle Update Log"
+    now = datetime.now(UTC)
+    date_heading = f"## {now.strftime('%Y-%m-%d')}"
+    entry = f"- [{now.strftime('%H:%M:%S')}] **{action}**: {detail}\n"
+
+    existing = log_file.read_text(encoding="utf-8").strip() if log_file.exists() else ""
+    if not existing:
+        log_file.write_text(f"{header}\n\n{date_heading}\n\n{entry}", encoding="utf-8")
+        return
+    if not existing.startswith(header):
+        existing = f"{header}\n\n{existing}"
+
+    if date_heading in existing:
+        # Newest entry first within the day: insert right after the heading.
+        anchor_end = existing.index(date_heading) + len(date_heading)
+        rest = existing[anchor_end:].lstrip("\n")
+        body = f"{existing[:anchor_end]}\n\n{entry}{rest}"
+    else:
+        # Newest date section first, directly after the file header.
+        rest = existing[len(header):].lstrip("\n")
+        body = f"{header}\n\n{date_heading}\n\n{entry}\n{rest}"
+    log_file.write_text(body, encoding="utf-8")

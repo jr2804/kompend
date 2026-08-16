@@ -25,7 +25,10 @@ What this writer emits:
   references and the definitions are emitted at the foot of each page.
 - ``index.md`` has grouped sections with descriptions (§8). Root index declares
   ``okf_version: "0.2"`` — the only frontmatter permitted in an index (§12).
-- ``log.md`` uses ISO date headings with bold action prefix (§9).
+- ``log.md`` follows OKF §9: date-grouped ``## YYYY-MM-DD`` headings,
+  newest first; entries are ``- [HH:mm:ss] **Action**: prose`` list items
+  that accumulate across recompiles, ingests, queries, and lint passes
+  (never wiped).
 - ``references.md`` is a ``type: Reference`` concept with a formatted bibliography.
 
 Two modes:
@@ -38,7 +41,6 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, override
 
@@ -50,6 +52,7 @@ from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
 from knox.output.models import Document, OkfSource
+from knox.output.pages.log import append_log_entry
 from knox.output.reference_links import format_bibliography_entry
 from knox.output.renderer import DocumentRenderer
 from knox.output.vault import OKF_VERSION, VaultWriter
@@ -287,27 +290,17 @@ class MarkdownWriter(VaultWriter):
 
     @override
     def _write_log(self, output_dir: Path, wiki: CompiledWiki) -> None:
-        """Write ``log.md`` per §9: ISO date headings, bold action prefix."""
-        log_file = output_dir / LOG_FILE
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        """Write ``log.md`` per OKF §9: ``## YYYY-MM-DD`` headings, newest first.
+
+        Entries survive recompiles — the log is appended to, never wiped.
+        """
         article_count = len(wiki.nodes)
         source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
-        entry = f"**Creation**: Compiled {article_count} page(s) from {source_count} source(s).\n"
-
-        existing = log_file.read_text(encoding="utf-8") if log_file.exists() else ""
-
-        date_heading = f"## {today}"
-        if date_heading in existing:
-            # Prepend entry under the existing date heading.
-            existing = existing.replace(date_heading, f"{date_heading}\n{entry}", 1)
-            log_file.write_text(existing, encoding="utf-8")
-        else:
-            new_section = f"# Bundle Update Log\n\n{date_heading}\n{entry}\n"
-            if existing:
-                stripped = re.sub(r"^# Bundle Update Log\n+", "", existing)
-                log_file.write_text(new_section + stripped, encoding="utf-8")
-            else:
-                log_file.write_text(new_section, encoding="utf-8")
+        append_log_entry(
+            output_dir / LOG_FILE,
+            action="Creation",
+            detail=f"Compiled {article_count} page(s) from {source_count} source(s).",
+        )
 
 
 def _relativize(bundle_path: str, folder: str) -> str:

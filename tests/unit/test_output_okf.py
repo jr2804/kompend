@@ -344,6 +344,17 @@ def test_log_uses_iso_date_headings(tmp_path: Path) -> None:
     match = _ISO_DATE_HEADING_RE.search(log_text)
     assert match is not None, "log.md missing ISO date heading"
 
+def test_log_survives_recompiles(tmp_path: Path) -> None:
+    """log.md is never wiped: each compile adds an entry."""
+    writer = OkfWriter()
+    writer.write(_make_wiki([_make_node()]), tmp_path)
+    first = (tmp_path / "log.md").read_text(encoding="utf-8")
+    writer.write(_make_wiki([_make_node()]), tmp_path)
+    second = (tmp_path / "log.md").read_text(encoding="utf-8")
+
+    assert second.count("**Creation**:") == 2, "expected one new entry per compile"
+    assert first in second, "previous compile entry must survive"
+
 
 def test_log_has_bold_action_prefix(tmp_path: Path) -> None:
     """OKF §9 convention: log entries use bold action prefix."""

@@ -28,7 +28,7 @@ from typing import Any, ClassVar
 
 from knox import __version__ as _KNOX_VERSION
 from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
-from knox.core.paths import INDEX_FILE
+from knox.core.paths import INDEX_FILE, LOG_FILE
 from knox.core.pipeline.references import ReferenceStore
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document, OkfSource, TrustEvent
@@ -203,8 +203,10 @@ class VaultWriter(BaseOutputWriter):
         # Clear stale compile output so the on-disk vault exactly reflects the
         # current CompiledWiki. Root ``*.md`` plus generated subfolders are
         # removed; user-authored subfolders (``_distilled/``, ``write/``) stay.
+        # ``log.md`` is append-only history (Karpathy) and survives recompiles.
         for stale in output_dir.glob("*.md"):
-            stale.unlink()
+            if stale.name != LOG_FILE:
+                stale.unlink()
         for folder in set(self._KIND_FOLDERS.values()):
             sub = output_dir / folder
             if sub.is_dir():

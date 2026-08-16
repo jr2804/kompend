@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.output.pages.index import write_index
+from knox.output.pages.index import generate_index, write_index
 from knox.output.wiki_index import (
-    generate_index,
+    append_log_entry,
     generate_log_entry,
     generate_overview,
-    prepend_log,
-    write_index,
 )
+
+_ISO_DATE_HEADING_RE = re.compile(r"## \d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?")
 
 
 class TestGenerateIndex:
@@ -156,22 +157,36 @@ class TestGenerateLogEntry:
         assert "Alpha paper." in entry
 
 
-class TestPrependLog:
-    def test_creates_file(self, tmp_path: Path) -> None:
+class TestAppendLogEntry:
+    def test_creates_file_with_header(self, tmp_path: Path) -> None:
         log_file = tmp_path / "log.md"
-        prepend_log(log_file, "## [2026-01-01] test\n")
-        assert log_file.exists()
-        assert "test" in log_file.read_text(encoding="utf-8")
+        append_log_entry(log_file, action="Ingest", detail="1 document(s)")
+        text = log_file.read_text(encoding="utf-8")
+        assert text.startswith("# Bundle Update Log")
+        assert "**Ingest**: 1 document(s)" in text
 
-    def test_newest_on_top(self, tmp_path: Path) -> None:
+    def test_newest_section_first(self, tmp_path: Path) -> None:
         log_file = tmp_path / "log.md"
-        prepend_log(log_file, "## [2026-01-01] first\n")
-        prepend_log(log_file, "## [2026-01-02] second\n")
+        append_log_entry(log_file, action="Creation", detail="first")
+        append_log_entry(log_file, action="Query", detail="second")
         text = log_file.read_text(encoding="utf-8")
         assert "first" in text
         assert "second" in text
         # newest entry must appear BEFORE the older entry
         assert text.index("second") < text.index("first")
+
+    def test_each_entry_gets_timestamped_heading(self, tmp_path: Path) -> None:
+        log_file = tmp_path / "log.md"
+        append_log_entry(log_file, action="Creation", detail="one")
+        append_log_entry(log_file, action="Lint", detail="two")
+        text = log_file.read_text(encoding="utf-8")
+        # one date-grouped heading, both entries as timestamped list items
+        assert len(_ISO_DATE_HEADING_RE.findall(text)) == 1
+        assert len(re.findall(r"^- \[\d{2}:\d{2}:\d{2}\] \*\*\w+\*\*", text, re.M)) == 2
+        # newest entry first within the day
+        assert text.index("**Lint**") < text.index("**Creation**")
+        # MD022/MD032: blank line between heading and list
+        assert re.search(r"## \d{4}-\d{2}-\d{2}\n\n- \[", text)
 
 
 class TestWriteIndex:
