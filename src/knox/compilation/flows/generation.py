@@ -30,6 +30,7 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.compilation.graph import GraphCompiler
+from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, WikiField, WikiNode
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
@@ -259,6 +260,7 @@ def generate_all_pages(
                 content=content_block,
                 source_id=seg_label,
                 pinned_facts=pinned_facts,
+                categories=_categories_block(compiler._config.extraction_categories),
                 timeout=compiler._timeout,
             )
             debug_file = getattr(agent, "_last_debug_file", None)
@@ -323,12 +325,13 @@ def generate_all_pages(
 
             for idx, page in enumerate(valid_pages):
                 node_id = slugify(page.title or f"concept-{batch_start + idx}", max_length=compiler._config.llm.slug_max_length)
+                kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
                 upsert_node(
                     WikiNode(
                         id=node_id,
                         title=page.title or f"Concept {batch_start + idx}",
                         content=page.content,
-                        node_type="concept",
+                        node_type=kind,
                         source_chunks=[],
                         metadata={
                             MetadataField.PROVENANCE: page.provenance,
@@ -359,6 +362,22 @@ def generate_all_pages(
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx
+
+
+def _allowed_kind(kind: str, extras: dict[str, str]) -> str:
+    """Validate an LLM-assigned page kind against the taxonomy.
+
+    Mandatory kinds plus configured extras are accepted; anything else falls
+    back to ``concept`` (permissive-consumption model, OKF §10).
+    """
+    if kind in MANDATORY_KINDS or kind in extras:
+        return kind
+    return "concept"
+
+
+def _categories_block(extras: dict[str, str]) -> str:
+    """Render configured extra categories as prompt instruction lines."""
+    return "\n".join(f'- "{name}" — {desc}'.rstrip(".") for name, desc in extras.items())
 
 
 def assemble_wiki(

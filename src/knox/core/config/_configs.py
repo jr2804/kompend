@@ -16,10 +16,23 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from knox.core.config.keys import EnvVar
+from knox.core.config.keys import MANDATORY_KINDS, EnvVar
 from knox.core.paths import CACHE_DIR, KNOX_DIR
+
+
+class ExportMode(StrEnum):
+    """Where extracted data goes in a ``sources export``.
+
+    - ``OFF``: skip entirely
+    - ``INLINE``: markdown section in the exported file
+    - ``ASSET``: JSON file in the export's assets directory
+    """
+
+    OFF = "off"
+    INLINE = "inline"
+    ASSET = "asset"
 
 
 class ExtractionStrategy(StrEnum):
@@ -417,6 +430,34 @@ class DownloaderConfig(_KnoxBaseModel):
     undetected: bool = Field(default=True, validation_alias=EnvVar.DOWNLOADER_UNDETECTED)
 
 
+class ExportConfig(_KnoxBaseModel):
+    """Where extracted knowledge lands in ``knox sources export``."""
+
+    annotations: ExportMode = Field(default=ExportMode.INLINE, validation_alias=EnvVar.EXPORT_ANNOTATIONS)
+    summary: ExportMode = Field(default=ExportMode.INLINE, validation_alias=EnvVar.EXPORT_SUMMARY)
+
+
+class ExtractionConfig(_KnoxBaseModel):
+    """Category extraction configuration.
+
+    ``categories`` maps extra page-kind names to prompt instructions. The
+    mandatory taxonomy (``concept``, ``entity``, ``summary``, ``comparison``)
+    is always active and cannot be shadowed.
+    """
+
+    categories: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _no_reserved_kinds(self) -> ExtractionConfig:
+        reserved = sorted(MANDATORY_KINDS & set(self.categories))
+        if reserved:
+            raise ValueError("compile.extraction.categories may not redefine mandatory kinds: " + ", ".join(reserved))
+        for name, desc in self.categories.items():
+            if not desc.strip():
+                raise ValueError(f"compile.extraction.categories[{name!r}] needs a non-empty instruction")
+        return self
+
+
 class ProviderEndpoint(_KnoxBaseModel):
     """A user-defined OpenAI-compatible provider endpoint.
 
@@ -488,6 +529,7 @@ class CompileConfig(_KnoxBaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     pdf: PdfConfig = Field(default_factory=PdfConfig)
+    extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     skills: dict[str, SkillConfig] = Field(default_factory=dict)
 
@@ -517,4 +559,5 @@ class KnoxConfig(_KnoxBaseModel):
     notes: NotesConfig = Field(default_factory=NotesConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)
+    export: ExportConfig = Field(default_factory=ExportConfig)
     providers: dict[str, ProviderEndpoint] = Field(default_factory=dict)

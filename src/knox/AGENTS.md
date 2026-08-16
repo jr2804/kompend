@@ -227,11 +227,15 @@ v0.2-compliant), `json`, `typst`.
    entries as `- [HH:mm:ss] **Action**: prose` list items; it is never
    wiped — compiles, ingests, queries, and lint runs all append entries to
    the same file (`log_stage` in `output/pages/log.py`).
-6. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
+6. **Page kinds** follow the mandatory taxonomy (`concept`, `entity`,
+   `summary`, `comparison` — `MANDATORY_KINDS` in `core/config/keys.py`)
+   plus `compile.extraction.categories` extras; the LLM assigns `kind` per
+   page, unknown values fall back to `concept` (see `compilation/AGENTS.md`).
+7. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
    `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list. Inline
    `[sources/x.pdf]` citations are rewritten to `[^id]` refs; definitions are
    emitted only for referenced ids, ordered by first reference.
-7. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
+8. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
    unknown frontmatter keys, broken cross-links, and missing `index.md` files
    (§10 — permissive consumption model).
 

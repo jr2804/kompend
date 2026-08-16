@@ -356,6 +356,7 @@ def try_pydanticai_generation(
     content: str,
     source_id: str,
     pinned_facts: list[str] | None = None,
+    categories: str = "",
     timeout: float = 120.0,
 ) -> GenerationOutput | None:
     """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
@@ -369,6 +370,8 @@ def try_pydanticai_generation(
         content: Combined source-content block.
         source_id: Provenance / log label for the batch.
         pinned_facts: Facts that must appear in the output.
+        categories: Rendered extra-category instructions for the prompt (empty
+            when no `compile.extraction.categories` are configured).
         timeout: Per-call timeout in seconds.
 
     Returns:
@@ -381,6 +384,7 @@ def try_pydanticai_generation(
             content=content,
             source_id=source_id,
             pinned_facts=pinned_facts or [],
+            categories=categories,
             timeout=timeout,
         )
         return agent.run(deps)

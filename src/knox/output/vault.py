@@ -47,6 +47,7 @@ KIND_TO_TYPE: dict[str, str] = {
     "concept": "Concept",
     "comparison": "Comparison",
     "entity": "Entity",
+    "summary": "Summary",
     "overview": "Overview",
     "procedure": "Procedure",
     "section": "Section",
@@ -72,6 +73,7 @@ class VaultWriter(BaseOutputWriter):
         "concept": "concepts",
         "comparison": "concepts",
         "entity": "concepts",
+        "summary": "concepts",
     }
 
     def __init__(

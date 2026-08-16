@@ -93,6 +93,7 @@ class GenerationPage(BaseModel):
     content: str = ""
     provenance: list[str] = Field(default_factory=list)
     related: list[str] = Field(default_factory=list)
+    kind: str = "concept"  # category: concept | entity | summary | comparison | configured extras
 
 
 # Type coercion for small-model output (None→"", non-list→[], dict→slug

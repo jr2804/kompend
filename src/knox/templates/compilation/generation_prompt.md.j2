@@ -6,6 +6,8 @@ variables:
     required: true
   - name: pinned_facts
     required: false
+  - name: categories
+    required: false
 role: compile.generate
 response_format: json_object
 ---
@@ -27,6 +29,18 @@ Return a JSON object with exactly one key "pages", whose value is a list of obje
   - "content": the full wiki page markdown (150–400 words, with ## subheadings and provenance)
   - "provenance": list of source filenames cited
   - "related": list of other concept titles this page links to
+  - "kind": the category from the list below (e.g. "concept", "entity", "comparison"; default "concept")
+
+Each page must declare its category ("kind") from this list:
+
+- "concept" — a topic, idea, or approach (default when no other kind fits)
+- "entity" — a named thing: standard (e.g. P.863), body (ITU-T), organization, product, person. Give the canonical definition, aliases, and its role in the sources.
+- "summary" — a digest of what one significant source contributes: its key claims and how they relate to other pages.
+- "comparison" — evaluates alternatives ("X vs Y", "A versus B"): dimensions compared, verdict, evidence per side.
+{% if categories|default("") %}
+Configured extra categories:
+{{ categories }}
+{% endif %}
 
 Concepts to generate pages for:
 {{ concepts_json }}

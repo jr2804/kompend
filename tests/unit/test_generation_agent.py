@@ -15,6 +15,7 @@ import pytest
 
 from knox.agents.deps import GenerationDeps
 from knox.agents.generation import GenerationAgent
+from knox.compilation.flows.generation import _allowed_kind, _categories_block
 from knox.compilation.schema import GenerationOutput, GenerationPage
 
 
@@ -121,3 +122,34 @@ class TestGenerationDeps:
             pinned_facts=["fact1", "fact2"],
         )
         assert deps.pinned_facts == ["fact1", "fact2"]
+
+
+class TestPageKinds:
+    """Category taxonomy: mandatory kinds, configured extras, coercion."""
+
+    def test_generation_page_defaults_to_concept(self) -> None:
+        page = GenerationPage(title="T", content="c")
+        assert page.kind == "concept"
+
+    def test_generation_page_accepts_any_kind(self) -> None:
+        # The schema is permissive; strict validation happens at node creation.
+        assert GenerationPage(title="T", content="c", kind="entity").kind == "entity"
+
+    def test_allowed_kind_accepts_mandatory_and_extras(self) -> None:
+        assert _allowed_kind("concept", {}) == "concept"
+        assert _allowed_kind("entity", {}) == "entity"
+        assert _allowed_kind("summary", {}) == "summary"
+        assert _allowed_kind("comparison", {}) == "comparison"
+        assert _allowed_kind("procedure", {"procedure": "how-to"}) == "procedure"
+
+    def test_allowed_kind_falls_back_to_concept(self) -> None:
+        assert _allowed_kind("garbage", {}) == "concept"
+        assert _allowed_kind("procedure", {}) == "concept"  # extra not configured
+
+    def test_categories_block_renders_instructions(self) -> None:
+        block = _categories_block({"procedure": "how-to pages.", "case-study": "worked example."})
+        assert '- "procedure" — how-to pages' in block
+        assert '- "case-study" — worked example' in block
+
+    def test_categories_block_empty_for_no_extras(self) -> None:
+        assert _categories_block({}) == ""

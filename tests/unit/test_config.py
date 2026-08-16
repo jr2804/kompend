@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
+from knox.core.config._configs import ExtractionConfig, KnoxConfig
 from knox.core.config._core import (
     coerce_config_value,
     deep_merge,
@@ -774,3 +776,28 @@ class TestKnoxDotExampleSync:
         example_keys = extract_toml_keys(text)
         missing = get_default_keys() - example_keys
         assert not missing, f"knox.toml.example is missing keys present in DEFAULTS: {sorted(missing)}"
+
+
+class TestExtractionCategories:
+    """compile.extraction.categories: validation and wiring."""
+
+    def test_default_empty(self) -> None:
+
+        assert KnoxConfig().compile.extraction.categories == {}
+
+    def test_rejects_mandatory_kind_shadowing(self) -> None:
+
+        with pytest.raises(ValidationError, match="mandatory"):
+            ExtractionConfig(categories={"concept": "no"})
+        with pytest.raises(ValidationError, match="mandatory"):
+            ExtractionConfig(categories={"entity": "no", "procedure": "ok"})
+
+    def test_rejects_empty_instruction(self) -> None:
+
+        with pytest.raises(ValidationError, match="non-empty"):
+            ExtractionConfig(categories={"procedure": "  "})
+
+    def test_accepts_extra_categories(self) -> None:
+
+        cfg = ExtractionConfig(categories={"procedure": "how-to pages"})
+        assert cfg.categories == {"procedure": "how-to pages"}

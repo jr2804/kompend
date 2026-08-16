@@ -331,6 +331,28 @@ def test_index_has_grouped_sections(tmp_path: Path) -> None:
     assert "First concept." in index_text
 
 
+def test_index_groups_mandatory_kinds(tmp_path: Path) -> None:
+    """Index renders one ``## {Type}`` group per kind (concept/entity/summary/comparison)."""
+    wiki = _make_wiki(
+        [
+            _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
+            _make_node("e1", "Entity 1", "An entity.", node_type="entity"),
+            _make_node("s1", "Summary 1", "A digest.", node_type="summary"),
+            _make_node("p1", "Comparison 1", "X vs Y.", node_type="comparison"),
+        ]
+    )
+    writer = OkfWriter()
+    writer.write(wiki, tmp_path)
+
+    index_text = (tmp_path / "index.md").read_text(encoding="utf-8")
+    assert "## Concept" in index_text
+    assert "## Entity" in index_text
+    assert "## Summary" in index_text
+    assert "## Comparison" in index_text
+    for slug in ("c1", "e1", "s1", "p1"):
+        assert f"{slug}.md" in index_text
+
+
 # ── Log conformance (§9) ────────────────────────────────────────────────
 
 
@@ -343,6 +365,7 @@ def test_log_uses_iso_date_headings(tmp_path: Path) -> None:
     # Must contain a ## YYYY-MM-DD heading
     match = _ISO_DATE_HEADING_RE.search(log_text)
     assert match is not None, "log.md missing ISO date heading"
+
 
 def test_log_survives_recompiles(tmp_path: Path) -> None:
     """log.md is never wiped: each compile adds an entry."""

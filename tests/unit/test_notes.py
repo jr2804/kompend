@@ -178,3 +178,27 @@ def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
     for name, content in templates.items():
         (tpl_dir / name).write_text(content, encoding="utf-8")
     return tmp_path
+
+
+class TestExtractionCategoriesWiring:
+    """compile.extraction.categories reaches PipelineConfig via from_resolved."""
+
+    def test_extra_categories_flow_into_pipeline_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
+        monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL, "openai/gpt-4o")
+        (tmp_path / "knox.toml").write_text(
+            '[compile.extraction.categories]\nprocedure = "how-to pages"\n',
+            encoding="utf-8",
+        )
+        cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
+        pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
+        assert pc.extraction_categories == {"procedure": "how-to pages"}
+
+    def test_default_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
+        monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL, "openai/gpt-4o")
+        cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
+        pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
+        assert pc.extraction_categories == {}

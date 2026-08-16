@@ -134,10 +134,20 @@ okf_version: "0.2"
 - [Audio Processing](/concepts/audio-processing.md) — Signal processing techniques
 - [Python Fundamentals](/concepts/python-fundamentals.md) — Core language concepts
 
-# Overview
+# Entity
 
-- [System Architecture](/concepts/system-architecture.md) — High-level design
+- [ITU-T](/concepts/itu-t.md) — International body standardizing speech quality
+
+# Summary
+
+- [Beerends 2013](/concepts/beerends-2013-summary.md) — Perceptual model foundations
 ```
+
+KNOX generates pages in the mandatory taxonomy — `Concept`, `Entity`
+(named things: standards, bodies, products), `Summary` (per-source
+digests), `Comparison` ("X vs Y" evaluations) — plus any categories
+configured via `compile.extraction.categories`. The LLM assigns the
+`kind` per page; unknown kinds fall back to `Concept`.
 
 ## Change Log
 

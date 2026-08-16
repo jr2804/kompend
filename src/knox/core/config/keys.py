@@ -23,6 +23,10 @@ INGEST_PARSER: Final[str] = "ingest.parser"
 # ── downloader section ──
 DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"
 
+# ── export section ──
+EXPORT_ANNOTATIONS: Final[str] = "export.annotations"
+EXPORT_SUMMARY: Final[str] = "export.summary"
+
 # ── compile section (flat keys) ──
 COMPILE_SOURCES_DIR: Final[str] = "compile.sources_dir"
 COMPILE_OUTPUT_DIR: Final[str] = "compile.output_dir"
@@ -121,6 +125,14 @@ COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX: Final[str] = "compile.budget.capture_sou
 
 # ── compile.skills sub-section ──
 COMPILE_SKILLS: Final[str] = "compile.skills"
+
+# ── compile.extraction sub-section ──
+COMPILE_EXTRACTION_CATEGORIES: Final[str] = "compile.extraction.categories"
+
+#: Mandatory page kinds — always allowed, cannot be deactivated or shadowed
+#: by compile.extraction.categories (Karpathy taxonomy: concepts, entities,
+#: summaries, comparisons).
+MANDATORY_KINDS: frozenset[str] = frozenset({"concept", "entity", "summary", "comparison"})
 
 # ── compile.output sub-section ──
 COMPILE_OUTPUT_FLAVOR: Final[str] = "compile.output.flavor"

@@ -26,6 +26,9 @@ for the full field reference, trust signals, and the v0.1→v0.2 migration table
   (``[Title](concepts/title.md)`` from the bundle root) — they render in
   Obsidian, GitHub, and any Markdown viewer
 - ``index.md`` has grouped sections with descriptions; root declares ``okf_version: "0.2"``
+- Pages carry a ``kind`` from the mandatory taxonomy — ``Concept``, ``Entity``,
+  ``Summary``, ``Comparison`` — plus any ``compile.extraction.categories``
+  extras; unknown kinds fall back to ``Concept`` (permissive consumption)
 - ``log.md`` follows OKF §9: date-grouped ``## YYYY-MM-DD`` headings, newest
   first; entries are ``- [HH:mm:ss] **Action**: prose`` list items. Never
   wiped — compiles, ingests, queries, and lint runs all append entries to the

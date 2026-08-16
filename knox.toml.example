@@ -58,6 +58,16 @@ file = "NOTES.md"
 # No effect on the direct HTTPDownloader path used for PDF/binary URLs.
 # undetected = true
 
+# ── Export settings (knox sources export) ──────────────────────────────
+
+[export]
+# Where extracted knowledge lands when exporting a source to markdown.
+# Values: off (skip) | inline (markdown section) | asset (extracted.json in
+# the export's assets directory). Overridable per run with --annotations /
+# --summary on `knox sources export`.
+annotations = "inline"   # table/figure annotations -> `## Annotated Items`
+summary = "inline"       # one-line document summary -> `## Summary`
+
 # ── Display settings ────────────────────────────────────────────────────
 
 [display]
@@ -402,6 +412,19 @@ rlm_max_depth = 2
 # - NR: Noise Reduction
 # - DOA: Direction of Arrival
 # '''
+
+# ── Category extraction ──────────────────────────────────────────────────
+
+# Extra page kinds beyond the mandatory taxonomy. Mandatory kinds (always
+# extracted, cannot be deactivated or overridden):
+#   concept      — a topic, idea, or approach (default)
+#   entity       — a named thing: standard (P.863), body (ITU-T), product, person
+#   summary      — a digest of what one significant source contributes
+#   comparison   — evaluates alternatives ("X vs Y"): dimensions, verdict, evidence
+# Each extra maps a kind name to the prompt instruction telling the LLM when
+# to emit it and what the page must contain.
+# [compile.extraction.categories]
+# procedure = "Step-by-step how-to pages: prerequisites, numbered steps, verification."
 
 # Example: style guide for wiki generation
 # [compile.skills."style-guide"]

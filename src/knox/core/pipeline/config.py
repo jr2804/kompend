@@ -33,6 +33,7 @@ from knox.core.config import (
 from knox.core.config.keys import (
     COMPILE_CACHE_DIR,
     COMPILE_COMPILER,
+    COMPILE_EXTRACTION_CATEGORIES,
     COMPILE_FORCE,
     COMPILE_IMAGE_MODE,
     COMPILE_LLM_DEFAULT_MODEL,
@@ -183,6 +184,7 @@ class PipelineConfig:
     privacy_filter: bool = True  # redact PII/secrets from parsed content
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
     skills: dict[str, str] = field(default_factory=dict)  # user-defined skill instructions (PydanticAI)
+    extraction_categories: dict[str, str] = field(default_factory=dict)  # compile.extraction.categories (extra page kinds)
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
@@ -289,6 +291,7 @@ class PipelineConfig:
             pdf=pdf_config,
             display=display_config,
             skills={name: skill.get("instructions", "") for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()},
+            extraction_categories=dict(cfg.get(COMPILE_EXTRACTION_CATEGORIES) or {}),
             source_tags=cfg.get(COMPILE_SOURCE_TAGS, []),
             providers=cfg.get("providers", {}),
         )

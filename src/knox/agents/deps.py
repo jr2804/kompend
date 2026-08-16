@@ -70,6 +70,7 @@ class GenerationDeps:
     content: str
     source_id: str
     pinned_facts: list[str] = field(default_factory=list)
+    categories: str = ""  # rendered extra-category instructions ("- \"name\" — desc" lines)
     timeout: float = 120.0
 
 
