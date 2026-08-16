@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from knox.core.config import ExportMode
 from knox.core.config.keys import EnvVar
 
 from .common import APP_NAME_UPPERCASE
@@ -186,6 +187,32 @@ IngestTarget = Annotated[
     str,
     typer.Argument(
         help="URL or file path to ingest into the sources directory.",
+    ),
+]
+
+# ── sources export ───────────────────────────────────────────────────────
+
+ExportInline = Annotated[
+    bool,
+    typer.Option(
+        "--inline/--no-inline",
+        help="Embed images as data URIs (default: copy to <output stem>_assets/).",
+    ),
+]
+
+ExportAnnotations = Annotated[
+    ExportMode | None,
+    typer.Option(
+        "--annotations",
+        help="Where extracted table/figure annotations go: off, inline, or asset (default: export.annotations config).",
+    ),
+]
+
+ExportSummary = Annotated[
+    ExportMode | None,
+    typer.Option(
+        "--summary",
+        help="Where the document summary goes: off, inline, or asset (default: export.summary config).",
     ),
 ]
 

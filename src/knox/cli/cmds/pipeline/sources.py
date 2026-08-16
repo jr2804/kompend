@@ -6,6 +6,7 @@ Sub-commands
 * ``knox sources list``  — list ingested source files (optionally filter by tag).
 * ``knox sources tag``   — add a tag to an ingested source file.
 * ``knox sources untag`` — remove a tag from an ingested source file.
+* ``knox sources export`` — render an ingested source as clean markdown.
 
 Tags are persisted in the per-file parse cache (``metadata.tags``), the same
 store written by ``--tag`` at ingestion time. Wiki nodes pick up tag changes on
@@ -21,11 +22,18 @@ from typing import Any
 import typer
 from rich.markup import escape
 
-from knox.cli._shared import vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
-from knox.cli.args.other import SourceTags
+from knox.cli.args.other import (
+    ExportAnnotations,
+    ExportInline,
+    ExportSummary,
+    SourceTags,
+)
 from knox.core.config import resolve_config
+from knox.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from knox.core.models import MetadataField
+from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.logging import get_console, get_logger
 
@@ -134,6 +142,58 @@ def sources_untag(
     vp = vault_paths_from_ctx(ctx)
     resolve_config(base_dir=vp.base_dir, config_file=config)
     _mutate_tags(vp.cache_dir, file, tag, add=False)
+
+
+# ── Sub-command: export ─────────────────────────────────────────────────
+
+
+@sources_app.command("export", help="Export an ingested source as clean markdown.")
+def sources_export(  # noqa: PLR0917 — one param per typer CLI option
+    ctx: typer.Context,
+    source_id: str,
+    output: str,
+    inline: ExportInline = False,
+    annotations: ExportAnnotations = None,
+    summary: ExportSummary = None,
+    config: str | None = None,
+) -> None:
+    """Render an ingested source as a clean, self-contained markdown file.
+
+    The source is reconstructed from the Tier-1 parse cache ("as ingested"),
+    not from the original file. Figures are copied to an assets directory next
+    to the output file (or embedded as data URIs with --inline); attachments
+    stay in the vault and are listed at the end with links.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    out = Path(output)
+    if out.suffix.lower() != ".md":
+        get_console().print(f"[red]Output file must end in .md, got '{escape(out.suffix or '<none>')}'[/]")
+        raise typer.Exit(1)
+
+    cli_set: dict[str, Any] = {}
+    if annotations is not None:
+        cli_set[EXPORT_ANNOTATIONS] = annotations.value
+    if summary is not None:
+        cli_set[EXPORT_SUMMARY] = summary.value
+    cfg = resolve_config(
+        base_dir=vp.base_dir,
+        config_file=config,
+        cli_overrides=build_cli_overrides(cli_set=cli_set),
+    )
+    try:
+        export_source(
+            base_dir=vp.base_dir,
+            cache_dir=vp.cache_dir,
+            source_id=source_id,
+            out_path=out,
+            inline=inline,
+            annotations=cfg.get(EXPORT_ANNOTATIONS),
+            summary=cfg.get(EXPORT_SUMMARY),
+        )
+    except FileNotFoundError as exc:
+        get_console().print(f"[red]{escape(str(exc))}[/]")
+        raise typer.Exit(1) from exc
+    get_console().print(f"[green]Exported {escape(source_id)} -> {escape(str(out))}[/]")
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
