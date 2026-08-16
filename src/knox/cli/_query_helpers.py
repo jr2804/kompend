@@ -13,8 +13,8 @@ import typer
 
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli.args.query import SearchMode
-from knox.core.config import ResolvedConfig, coerce_rlm_config
-from knox.core.config._configs import LlmDataFormat, Verbosity  # type: ignore[attr-defined]
+from knox.core.config import ResolvedConfig, RlmConfig
+from knox.core.config._configs import LlmDataFormat, Verbosity
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_OUTPUT_RETRIES,
@@ -218,7 +218,7 @@ def synthesize_and_output(
 
     try:
         reasoning_effort: str | None = cfg.get(COMPILE_LLM_REASONING_EFFORT)
-        rlm_cfg = coerce_rlm_config(cfg.get(COMPILE_LLM_RLM, False))
+        rlm_cfg = RlmConfig.model_validate(cfg.get(COMPILE_LLM_RLM) or {})
         if has_enhanced and enhanced is not None:
             synthesis = enhanced.synthesize(
                 query,

@@ -176,10 +176,8 @@ def print_tier_listing(pipeline: WikiPipeline) -> None:
         get_err_console().print("Pipeline does not support tier listing.")
         return
 
-    get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))  # type: ignore[union-attr]
-
-
-# ── JSON progress callback ──────────────────────────────────────────────
+    get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))
+    # ── JSON progress callback ──────────────────────────────────────────────
 
 
 def make_json_progress_callback() -> Callable[[str, int, int, str], None]:

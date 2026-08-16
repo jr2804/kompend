@@ -57,7 +57,7 @@ def agent_cmd(
 def _run_sync(agent: Agent[None, str]) -> None:
     """Run the ACP agent synchronously."""
     run_acp_stdio_sync(
-        agent,  # type: ignore[arg-type]
+        agent,
         session_config=knox_session_config,
         name="knox",
         version="0.1.0",

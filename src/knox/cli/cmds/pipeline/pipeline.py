@@ -23,6 +23,7 @@ from knox.cli._pipeline_helpers import (
 from knox.cli._post_compile import write_wiki_cache
 from knox.cli._progress import PipelineProgress
 from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import (
     DEFAULT_LLM_FALLBACK_MAX_RETRIES,
@@ -101,13 +102,10 @@ def parse_cmd(
 
     Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
     """
-    resolved = resolve_compile_inputs(
-        files=files,
-        online_urls=[],
-        url_file=None,
-        sources_dir=None,  # ty: ignore
+    resolved = resolve_files(
+        *files,
         recursive=recursive,
-        ignore=None,
+        ignore_patterns=None,
     )
     router: ParserRouter = build_default_router(names=parser or "liteparse")
     for path in resolved:
@@ -120,7 +118,8 @@ def parse_cmd(
         if print_elements:
             element_text_limit = DEFAULTS.get(DISPLAY_CLI_ELEMENT_CHARS, 80)
             for el in doc.elements:
-                get_console().print(f"  - {el.get('type')}: {str(el.get('text', ''))[:element_text_limit]}")  # ty: ignore
+                content = el.content if isinstance(el.content, str) else repr(el.content)
+                get_console().print(f"  - {el.type}: {content[:element_text_limit]}")
 
 
 @app.command(name="compile")
