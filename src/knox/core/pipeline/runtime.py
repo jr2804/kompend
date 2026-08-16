@@ -22,7 +22,6 @@ from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
 from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkTree
-from knox.core.models.attachments import AttachmentManifest
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.xref_checker import CrossReferenceResult
@@ -67,9 +66,6 @@ class PipelineRuntime(Protocol):
 
     @property
     def state(self) -> TierState: ...
-
-    @property
-    def attachments(self) -> AttachmentManifest: ...
 
     # ── Methods used by stages ─────────────────────────────────────────
     def emit(self, phase: str, current: int, total: int, detail: str = "") -> None: ...

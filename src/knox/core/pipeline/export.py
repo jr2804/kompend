@@ -219,8 +219,8 @@ def collect_annotations(data: dict[str, Any], store: AssetStore) -> list[dict[st
             continue
         caption = ""
         sd_data = record.data
-        if hasattr(sd_data, "caption"):
-            caption = str(sd_data.caption or "")  # type: ignore[attr-defined]
+        # All StructuredData variants carry ``caption``.
+        caption = sd_data.caption
         out.append(
             {
                 "id": record.id,

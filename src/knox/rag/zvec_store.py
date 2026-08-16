@@ -19,7 +19,7 @@ import shutil
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import zvec as _zvec
 from pydantic_ai import Embedder
@@ -101,6 +101,19 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         if self._dim is None:
             self._dim = len(vector)
         return vector
+
+
+class VectorStoreLike(Protocol):
+    """Vector-store surface used by the retrievers.
+
+    :class:`ZvecWikiStore` satisfies this structurally; tests inject a
+    lightweight in-memory fake.
+    """
+
+    @property
+    def available(self) -> bool: ...
+
+    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]: ...
 
 
 class ZvecWikiStore:

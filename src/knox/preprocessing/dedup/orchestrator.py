@@ -178,7 +178,7 @@ class DedupOrchestrator:
                 if combined > best_score:
                     best_score = combined
                     best_match = candidate_slug
-                    best_method = max(matcher_scores, key=matcher_scores.get, default="")  # ty:ignore[no-matching-overload]
+                    best_method = max(matcher_scores, key=lambda m: matcher_scores[m], default="")
                     scores = matcher_scores
 
             # Update progress: (i+1) * M + (i+1) * i / 2 comparisons done so far

@@ -12,7 +12,7 @@ from typing import Any
 
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.document import InputDocument
+from docling.datamodel.document import DoclingDocument
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import ConversionResult, DocumentConverter, PdfFormatOption
 
@@ -178,7 +178,7 @@ class DoclingParser(BaseParser):
 
     def _extract_elements(
         self,
-        doc: InputDocument,
+        doc: DoclingDocument,
         source_file: Path,
         reading_order_start: int = 0,
     ) -> tuple[list[DocumentElement], int]:

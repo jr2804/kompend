@@ -13,7 +13,7 @@ from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.logging import get_logger
-from knox.rag.zvec_store import ZvecField, ZvecWikiStore
+from knox.rag.zvec_store import VectorStoreLike, ZvecField
 from knox.search.budget import BudgetPlan, ContextBudgetManager
 from knox.search.retriever import SearchResult, extract_snippet, tokenize
 
@@ -33,7 +33,7 @@ class AdaptiveRetriever:
         self,
         wiki: CompiledWiki,
         *,
-        vector_store: ZvecWikiStore | None = None,
+        vector_store: VectorStoreLike | None = None,
         max_input_tokens: int = 128_000,
     ) -> None:
         self._wiki = wiki

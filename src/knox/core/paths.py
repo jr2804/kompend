@@ -172,16 +172,26 @@ class VaultPaths:
     sources_dir_name: str = DEFAULT_SOURCES_DIR_NAME
     output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME
 
-    def __post_init__(self) -> None:
-        """Normalize base_dir to an absolute, resolved path.
+    def __init__(
+        self,
+        base_dir: Path | str | None = None,
+        sources_dir_name: str = DEFAULT_SOURCES_DIR_NAME,
+        output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME,
+    ) -> None:
+        """Turn any input (``None``/``str``/``Path``) into a canonical vault root.
 
-        Accepts ``None``, ``"."``, a relative str, or a ``Path`` — making
-        :class:`VaultPaths` the single constructor that turns any input into
-        a canonical vault root. No other code should call ``Path.cwd()`` or
-        ``Path(x).resolve()`` on a wiki root.
+        ``None`` or ``""`` means the current working directory. No other code
+        should call ``Path.cwd()`` or ``Path(x).resolve()`` on a wiki root.
         """
-        resolved = Path.cwd().resolve() if self.base_dir is None or self.base_dir == Path("") else Path(self.base_dir).expanduser().resolve()
+        resolved = (
+            Path.cwd().resolve()
+            if base_dir is None or base_dir == Path("")
+            else Path(base_dir).expanduser().resolve()
+        )
         object.__setattr__(self, "base_dir", resolved)
+        object.__setattr__(self, "sources_dir_name", sources_dir_name)
+        object.__setattr__(self, "output_dir_name", output_dir_name)
+
 
     # ── Top-level directories ───────────────────────────────────────────
 

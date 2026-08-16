@@ -22,6 +22,7 @@ from knox.core.models import (
     ChunkTree,
     CompiledWiki,
     MetadataField,
+    ResolvedChunk,
     WikiField,
 )
 from knox.core.paths import VaultPaths, rel_to_vault
@@ -152,7 +153,7 @@ class WikiPipeline:
             self.cache_store.invalidate()
 
         all_trees: list[ChunkTree] = []
-        resolved: list[ChunkTree] = []
+        resolved: list[ResolvedChunk] = []
         wiki = CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
         self._tier_timings.clear()
 
@@ -266,12 +267,12 @@ class WikiPipeline:
         sample = list(state.entries.values())[:sample_limit]
         return [
             {
-                "tier": name,
-                "level": Tier.level_of(name),
-                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(name)),
-                "description": _TIER_DESCRIPTIONS[name],
+                "tier": tier.value,
+                "level": Tier.level_of(tier),
+                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(tier)),
+                "description": _TIER_DESCRIPTIONS[tier],
             }
-            for name in [ti.tier.value for ti in Tier.all_tiers()]
+            for tier in [ti.tier for ti in Tier.all_tiers()]
         ] + [
             {
                 "tier": "_distribution",
@@ -308,7 +309,9 @@ class WikiPipeline:
         """Convert known absolute path values in metadata to relative."""
         if MetadataField.SOURCE_FILE in metadata:
             meta = dict(metadata)
-            meta[MetadataField.SOURCE_FILE] = self.rel_file(Path(meta[MetadataField.SOURCE_FILE]))
+            source_file = meta[MetadataField.SOURCE_FILE]
+            if isinstance(source_file, str):
+                meta[MetadataField.SOURCE_FILE] = self.rel_file(Path(source_file))
             return meta
         return metadata
 

@@ -10,7 +10,7 @@ import functools
 import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from slugify import slugify as _slugify_impl
 
@@ -21,8 +21,13 @@ from knox.compilation.concept_keys import (
     normalize_concept_key,
 )
 from knox.compilation.schema import Concept, Entity, ExtractionOutput, GenerationOutput, LLMOutputError
-from knox.core.models import ElementType, ImageRef, ResolvedChunk, WikiNode
+from knox.core.cache.store import CacheStore
+from knox.core.config import BudgetConfig
+from knox.core.models import ElementType, GraphEdge, ImageRef, ResolvedChunk, WikiNode
+from knox.core.pipeline.assets import AssetStore
+from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
+from knox.llm.context_window import ContextWindow
 from knox.logging import get_logger
 
 # Maximum slug length. Windows limits a single path component to 255 chars;
@@ -177,6 +182,55 @@ class BatchFailureTracker:
         return self.total >= self._min_batches and self.failed / self.total > self._ratio
 
 
+class TwoPhaseRuntime(Protocol):
+    """Structural interface for the compiler passed to the two-phase flows.
+
+    Flow modules (``flows/extraction.py``, ``flows/generation.py``,
+    ``flows/agentic.py``, ``flows/references.py``) receive the compiler as
+    a parameter but cannot import :class:`TwoPhaseCompiler` directly
+    (circular import — ``two_phase.py`` imports the flows). This Protocol
+    breaks the cycle: flows type-hint against the abstraction, and
+    :class:`TwoPhaseCompiler` satisfies it structurally.
+
+    Only the attributes and methods that the flows actually access are
+    declared.
+    """
+
+    # ── Compiler state accessed by the flows ─────────────────────────
+    _config: PipelineConfig
+    _budget: BudgetConfig
+    _timeout: float
+    _model: str
+    _cache_store: CacheStore
+    _context_window: ContextWindow
+    _batch_tracker: BatchFailureTracker
+    _extraction_stats: list[dict[str, Any]]
+    _asset_store: AssetStore | None
+    _active_gen_deps: dict[str, str]
+    _extract_system_tokens: int
+    _gen_system_tokens: int
+    _llm_stats: list[tuple[int, int]]
+
+    # ── Methods the flows call ───────────────────────────────────────
+    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...
+
+    def _report(self, current: int, total: int, description: str) -> None: ...
+
+    def merge_duplicate_nodes(
+        self,
+        nodes: list[WikiNode],
+        embedding_model: str,
+        *,
+        threshold: float,
+    ) -> list[WikiNode]: ...
+
+    def filter_empty_nodes(self, nodes: list[WikiNode], *, min_content_length: int) -> list[WikiNode]: ...
+
+    def dedup_content_duplicate_nodes(self, nodes: list[WikiNode]) -> list[WikiNode]: ...
+
+    def disambiguate_duplicate_titles(self, nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> None: ...
+
+
 def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
     """Convert token count to approximate character count.
 
@@ -280,7 +334,7 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
     return images
 
 
-def compute_quality_score(nodes: list[WikiNode], edges: list[dict[str, Any]]) -> float:
+def compute_quality_score(nodes: list[WikiNode], edges: list[GraphEdge]) -> float:
     """Compute a 0–100 quality score for a compiled wiki.
 
     Weighted average of three sub-scores:

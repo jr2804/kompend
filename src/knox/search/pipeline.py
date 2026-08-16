@@ -208,11 +208,11 @@ class EnhancedRetriever:
         Falls back to the original order if no vector store is available.
         """
         try:
-            if self._retriever._vector_store is None:
-                logger.debug("Neural re-rank skipped — no vector store")
+            store = self._retriever._vector_store
+            if not isinstance(store, ZvecWikiStore):
+                logger.debug("Neural re-rank skipped — no zvec store")
                 return candidates
-
-            provider = self._retriever._vector_store._provider
+            provider = store._provider
             if provider is None:
                 logger.debug("Neural re-rank skipped — no embedding provider")
                 return candidates

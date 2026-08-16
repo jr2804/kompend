@@ -23,14 +23,11 @@ through ``VLMEnricher``.
 from __future__ import annotations
 
 import base64
+import importlib
 import io
 import re
 from pathlib import Path
 from typing import Any
-
-from marker.converters.pdf import PdfConverter
-from marker.models import create_model_dict
-from marker.renderers.markdown import MarkdownOutput
 
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
@@ -40,6 +37,16 @@ from knox.preprocessing.parsers.base import (
     BaseParser,
     FileExtension,
 )
+
+# Optional backend: marker-pdf is not a locked dependency (see pyproject
+# optional-dependencies comment) — installed manually. Importing it here
+# raises ImportError when absent, which the parser registry relies on to
+# skip this backend. ``importlib`` keeps ty from flagging a module that
+# may not be installed in the current environment.
+PdfConverter = importlib.import_module("marker.converters.pdf").PdfConverter
+create_model_dict = importlib.import_module("marker.models").create_model_dict
+MarkdownOutput = importlib.import_module("marker.renderers.markdown").MarkdownOutput
+
 
 # Marker emits a page separator of ``"-" * 48`` by default between pages.
 _PAGE_SEP_RE = re.compile(r"\n-{48,}\n")

@@ -64,6 +64,10 @@ class _DebugSource(Protocol):
     def current_source_id(self) -> str:
         """Source id of the most recent ``run()`` call."""
 
+    #: Set by the debug-save path so the agent can report where its last
+    #: prompt dump went (see ``KnoxAgentBase._last_debug_file``).
+    _last_debug_file: Path | None
+
 
 def save_debug_prompt(
     agent: _DebugSource,

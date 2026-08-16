@@ -173,7 +173,7 @@ def apply_privacy_filter(elements: list[DocumentElement]) -> None:
         if isinstance(el.content, str):
             el.content, _ = filter_sensitive(el.content)
         elif isinstance(el.content, list):
-            el.content = [filter_sensitive(item)[0] if isinstance(item, str) else item for item in el.content]
+            el.content = [[filter_sensitive(cell)[0] for cell in row] for row in el.content]
 
 
 def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:
@@ -359,6 +359,9 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
         return []
 
     router = pipeline.router
+    if router is None:
+        logger.warning("No parser router available — skipping attachment ingestion")
+        return []
     vlm_captioner = None
     if pipeline.config.llm.vlm_model:
         try:
@@ -387,9 +390,11 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
             # Stamp source-asset metadata on all leaves so downstream
             # resolve/index stages can distinguish attachment content.
             for node in tree.leaves():
-                node.metadata["source_asset"] = True
-                node.metadata["parent_source"] = att.source
-                node.metadata["asset_file"] = att.path
+                if node.chunk is None:
+                    continue
+                node.chunk.metadata["source_asset"] = True
+                node.chunk.metadata["parent_source"] = att.source
+                node.chunk.metadata["asset_file"] = att.path
 
             trees.append(tree)
             logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))

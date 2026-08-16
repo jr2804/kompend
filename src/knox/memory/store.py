@@ -86,19 +86,19 @@ class MemoryStore:
         *memory_by* records the acting OS user (auditing); empty string
         records no identity.
         """
-        self._ensure_collection()
+        provider = self._ensure_collection()
         if self._collection is None:
             raise RuntimeError("Memory collection is not initialized")
         timestamp = iso_local(timespec="microseconds")
 
         # Trigger embedding to ensure dim is resolved if using LiteLLM
-        embedding = self._provider.embed(query)  # ty: ignore
-
+        embedding = provider.embed(query)
         doc = _zvec.Doc(
             id=f"mem_{timestamp.replace(':', '').replace('.', '')}",
             vectors={str(MemoryField.QUERY_EMBEDDING): embedding},
             fields={
                 str(MemoryField.QUERY): query,
+
                 str(MemoryField.ANSWER): answer,
                 str(MemoryField.FEEDBACK): feedback or "",
                 str(MemoryField.TIMESTAMP): timestamp,
@@ -130,11 +130,11 @@ class MemoryStore:
         top_k: int = 5,
     ) -> list[MemoryEntry]:
         """Search memory entries semantically by query."""
-        self._ensure_collection()
+        provider = self._ensure_collection()
         if self._collection is None:
             raise RuntimeError("Memory collection is not initialized")
 
-        embedding = self._provider.embed(query)  # ty: ignore
+        embedding = provider.embed(query)
         results = self._collection.query(
             _zvec.VectorQuery(MemoryField.QUERY_EMBEDDING, vector=embedding),
             topk=top_k,
@@ -172,10 +172,11 @@ class MemoryStore:
         if self._collection is not None:
             self._collection = None
 
-    def _ensure_collection(self) -> None:
+    def _ensure_collection(self) -> EmbeddingProvider:
         """Initialize the zvec collection and JSONL file for memory entries."""
         if self._collection is not None:
-            return
+            assert self._provider is not None
+            return self._provider
 
         provider = self._provider
         if provider is None:
@@ -221,8 +222,9 @@ class MemoryStore:
                 logger.warning("Memory store at %s is unreadable (%s); rebuilding", self.db_file, exc)
                 shutil.rmtree(self.db_file, ignore_errors=True)
                 self._collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
-            return
+            return provider
         self._collection = _zvec.create_and_open(
             path=str(self.db_file),
             schema=schema,
         )
+        return provider

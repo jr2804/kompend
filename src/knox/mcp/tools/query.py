@@ -12,7 +12,7 @@ from knox.core.config.keys import (
     COMPILE_LLM_RLM,
 )
 from knox.core.models import load_cached_wiki
-from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR, vault_paths
+from knox.core.paths import VECTORS_DIR, vault_paths
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import HybridRetriever
@@ -50,9 +50,7 @@ def query_wiki(
     try:
         retriever = HybridRetriever(
             wiki,
-            index_file=state_dir / SEARCH_DB_FILE,  # ty:ignore[unknown-argument]
             vector_store=vector_store,
-            sources_dir=sources_dir if sources_dir.exists() else None,  # ty:ignore[unknown-argument]
         )
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
@@ -60,7 +58,7 @@ def query_wiki(
         if mode == SearchMode.RAW:
             if not sources_dir.exists():
                 return {"status": "error", "message": "No sources directory found for raw search."}
-            results = retriever.search_raw(query, sources_dir, top_k=top_k)  # ty:ignore[unresolved-attribute]
+            results = retriever.search(query, top_k=top_k)
             return {"status": "ok", "results": results, "synthesis": None, "raw": True}
         elif mode == SearchMode.HYBRID:
             results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)

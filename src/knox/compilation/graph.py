@@ -89,10 +89,10 @@ class GraphCompiler(BaseCompiler):
         groups = self._group_chunks(chunks)
         if self._min_content_length > 0:
             groups = self.filter_empty_groups(
-                dict(groups),  # ty: ignore
-                min_content_length=self._min_content_length,
+                dict(groups),
+                    min_content_length=self._min_content_length,
             )
-        nodes, node_index = self._build_nodes(dict(groups))  # ty: ignore
+        nodes, node_index = self._build_nodes(dict(groups))
         self.disambiguate_duplicate_titles(nodes, chunks)
         edges, entity_location = self._build_entity_edges(chunks, nodes, node_index)
         edges.extend(self._build_typed_edges(chunks, nodes, entity_location))

@@ -320,7 +320,8 @@ class VaultWriter(BaseOutputWriter):
                 target_title = node_map[tgt]
                 current = related.setdefault(src, {})
                 # Prefer the highest-confidence annotation per target.
-                if target_title not in current or (confidence is not None and (current[target_title][1] is None or confidence > current[target_title][1])):  # ty: ignore
+                prev = current.get(target_title)
+                if prev is None or (confidence is not None and (prev[1] is None or confidence > prev[1])):
                     current[target_title] = (rel_type, confidence)
 
         result: dict[str, list[tuple[str, str, float | None]]] = {}

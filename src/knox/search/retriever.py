@@ -21,7 +21,7 @@ from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPP
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.templates import TemplateLoader
 from knox.logging import get_logger
-from knox.rag.zvec_store import ZvecField, ZvecWikiStore
+from knox.rag.zvec_store import VectorStoreLike, ZvecField
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
@@ -70,7 +70,7 @@ class HybridRetriever:
     def __init__(
         self,
         wiki: CompiledWiki,
-        vector_store: ZvecWikiStore | None = None,
+        vector_store: VectorStoreLike | None = None,
     ) -> None:
         self._wiki = wiki
         self._vector_store = vector_store

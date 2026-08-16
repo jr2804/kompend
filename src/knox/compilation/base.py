@@ -7,12 +7,16 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from knox.compilation._two_phase_core import _merge_node
 from knox.compilation.flows.assembly import cosine_similarity
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
+
+#: Generic group key — compilers key groups by heading/source tuples.
+K = TypeVar("K")
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
 
@@ -158,10 +162,10 @@ class BaseCompiler(ABC):
 
     @staticmethod
     def filter_empty_groups(
-        groups: dict[str, list[ResolvedChunk]],
+        groups: dict[K, list[ResolvedChunk]],
         *,
         min_content_length: int,
-    ) -> dict[str, list[ResolvedChunk]]:
+    ) -> dict[K, list[ResolvedChunk]]:
         """Remove groups whose merged content falls below *min_content_length*.
 
         Content is measured after stripping markdown headings and
@@ -170,7 +174,7 @@ class BaseCompiler(ABC):
         """
         if min_content_length <= 0:
             return groups
-        kept: dict[str, list[ResolvedChunk]] = {}
+        kept: dict[K, list[ResolvedChunk]] = {}
         for heading, group_chunks in groups.items():
             if heading == "_root":
                 kept[heading] = group_chunks

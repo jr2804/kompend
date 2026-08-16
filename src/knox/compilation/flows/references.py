@@ -18,13 +18,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from typing import Protocol
+
+from pydantic_ai.messages import ModelMessage
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.reference_extraction import ReferenceExtractionAgent
-from knox.agents.reference_resolver import ReferenceResolverAgent
-from knox.compilation.base import BaseCompiler
+from knox.compilation._two_phase_core import TwoPhaseRuntime
 from knox.compilation.reference_excision import excise_references
 from knox.core.models import ResolvedChunk
+from knox.core.models.references import ReferenceResolutionOutput
 from knox.core.paths import rel_to_vault
 from knox.core.pipeline.references import ReferenceStore
 from knox.logging import get_logger
@@ -32,8 +35,23 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
+class ReferenceResolver(Protocol):
+    """Minimal resolver surface used by :func:`resolve_unresolved_references`.
+
+    :class:`~knox.agents.reference_resolver.ReferenceResolverAgent` satisfies
+    this structurally; tests use a lightweight stub.
+    """
+
+    def run(
+        self,
+        deps: PipelineAgentDeps,
+        *,
+        message_history: list[ModelMessage] | None = None,
+    ) -> ReferenceResolutionOutput: ...
+
+
 def run_reference_extraction(
-    compiler: BaseCompiler,
+    compiler: TwoPhaseRuntime,
     chunks: list[ResolvedChunk],
     store: ReferenceStore,
 ) -> None:
@@ -121,7 +139,7 @@ def run_reference_extraction(
 
 def resolve_unresolved_references(
     store: ReferenceStore,
-    agent: ReferenceResolverAgent,
+    agent: ReferenceResolver,
     timeout: float,
     *,
     source: str | None = None,

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import Any, get_origin
+from typing import Any, cast, get_origin
 
-from pydantic import Field, create_model
+from pydantic import ConfigDict, Field, create_model
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from knox.core.config.engine._schema import ENV_MAP, resolve_field_info
@@ -25,7 +25,7 @@ _ENV_LIST_VARS: frozenset[str] = frozenset(env for dotted, env in ENV_MAP.items(
 
 def read_env_vars() -> dict[str, Any]:
     """Read KNOX_* env vars via pydantic-settings and return a nested config dict."""
-    settings = _get_env_settings_model()()  # ty: ignore
+    settings = _get_env_settings_model()()
     result: dict[str, Any] = {}
 
     for dotted_key, env_name in ENV_MAP.items():
@@ -41,9 +41,9 @@ def read_env_vars() -> dict[str, Any]:
 
 
 @cache
-def _get_env_settings_model() -> BaseSettings:
+def _get_env_settings_model() -> type[BaseSettings]:
     """Build pydantic-settings model dynamically from _ENV_MAP."""
-    _KnoxEnvFields: dict[str, tuple[Any, Any]] = {}
+    _KnoxEnvFields: dict[str, Any] = {}
     for _env_name in ENV_MAP.values():
         _fn = _env_name.removeprefix("KNOX_").lower()
         if _env_name in _ENV_LIST_VARS:
@@ -53,12 +53,13 @@ def _get_env_settings_model() -> BaseSettings:
         _ann = _field_info.annotation if _field_info is not None else None
         _KnoxEnvFields[_fn] = _classify_env_field(_ann)
 
-    return create_model(
+    model = create_model(
         "_KnoxEnvSettings",
         __base__=BaseSettings,
-        __config__=SettingsConfigDict(env_prefix="KNOX_", extra="ignore"),
+        __config__=cast("ConfigDict", SettingsConfigDict(env_prefix="KNOX_", extra="ignore")),
         **_KnoxEnvFields,
-    )  # ty: ignore
+    )
+    return model
 
 
 def _classify_env_field(ann: Any) -> tuple[Any, Any]:

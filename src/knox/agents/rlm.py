@@ -27,7 +27,7 @@ import asyncio
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, override
+from typing import Any, cast, override
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import AbstractCapability
@@ -254,13 +254,13 @@ def _get_repl(
     with _repl_lock:
         repl = _repl_registry.get(deps_id)
         if repl is None:
-            # ponytail: sub_model is typed ``str`` upstream but
-            # ``model_request_sync`` accepts ``Model | str`` at runtime — a
-            # KnoxModel instance flows through the same usage-tracking path.
+            # The dependency annotates ``sub_model`` as ``str | None`` but its
+            # REPL forwards the value to ``model_request_sync``, which accepts
+            # ``Model | str`` — a KnoxModel flows through unchanged.
             repl = REPLEnvironment(
                 context=context,
                 config=RLMConfig(
-                    sub_model=sub_model,  # ty: ignore[invalid-argument-type] — Model|str at runtime
+                    sub_model=cast("str | None", sub_model),
                     code_timeout=code_timeout,
                 ),
             )
@@ -372,7 +372,7 @@ def build_rlm_instructions(*, sub_model: bool, recursive: bool = False) -> str:
     return "## RLM Mode\n\n" + numbered + "\n"
 
 
-def resolve_rlm_preset(setting: str | bool) -> tuple[int, float]:
+def resolve_rlm_preset(setting: str | bool | None) -> tuple[int, float]:
     """Resolve an ``rlm`` config value to ``(max_tool_calls, code_timeout)``.
 
     ``False``/``None``/``"off"``-like values raise :class:`ValueError` so

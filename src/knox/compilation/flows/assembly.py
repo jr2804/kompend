@@ -12,7 +12,7 @@ from typing import Any
 from knox.compilation._two_phase_core import ExtractionSet
 from knox.compilation.asset_registry import AssetIdMap
 from knox.compilation.asset_summarizer import summarize_asset
-from knox.core.models import ChunkTree, ResolvedChunk, WikiNode
+from knox.core.models import ChunkTree, GraphEdge, ResolvedChunk, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.models.structured import StructuredEquation, structured_to_text
 from knox.logging import get_logger
@@ -287,9 +287,9 @@ def build_edges(
     extractions: ExtractionSet,
     *,
     min_title_len: int,
-) -> list[dict[str, Any]]:
+) -> list[GraphEdge]:
     """Build cross-source entity and explicit related edges."""
-    edges: list[dict[str, Any]] = []
+    edges: list[GraphEdge] = []
     entity_index = extractions.entity_index()
     entity_to_node: dict[str, set[str]] = defaultdict(set)
     for ent_name in entity_index:

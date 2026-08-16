@@ -513,7 +513,7 @@ def _read_builtin(template_file: str) -> str:
 
 
 def _list_builtin_templates() -> list[str]:
-    tpl_dir = ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR
+    tpl_dir = Path(str(ir.files(_BUILTIN_TEMPLATE_PACKAGE) / _BUILTIN_TEMPLATE_DIR))
     if not tpl_dir.is_dir():
         return []
-    return sorted(str(p.relative_to(tpl_dir).as_posix()) for p in tpl_dir.rglob("*") if p.is_file())  # ty: ignore
+    return sorted(str(p.relative_to(tpl_dir).as_posix()) for p in tpl_dir.rglob("*") if p.is_file())

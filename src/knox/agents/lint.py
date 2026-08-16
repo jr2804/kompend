@@ -38,7 +38,7 @@ class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
         """
         return deps.text
 
-    def run(  # type: ignore[override]
+    def run(
         self,
         deps: PipelineAgentDeps,
         *,

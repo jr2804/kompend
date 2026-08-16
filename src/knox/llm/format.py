@@ -182,7 +182,7 @@ def _coerce_nulls_for_schema(data: JSON, schema: type[BaseModel] | dict[str, obj
     are passed through unchanged.  This is the minimal post-fix for the one
     gap json_repair leaves open.
     """
-    if not hasattr(schema, "model_fields"):
+    if not isinstance(schema, type) or not issubclass(schema, BaseModel):
         return data
 
     if isinstance(data, dict):
@@ -244,11 +244,11 @@ def _coerce_list_to_object(items: list[JSON], schema: type[BaseModel] | dict[str
 
     # Get expected field names from the schema.
     expected_fields: set[str] | None = None
-    if hasattr(schema, "model_fields"):
+    if isinstance(schema, type) and issubclass(schema, BaseModel):
         expected_fields = set(schema.model_fields.keys())
     elif isinstance(schema, dict):
-        props = schema.get("properties", {})
-        expected_fields = set(props.keys()) if props else None
+        props = schema.get("properties")
+        expected_fields = set(props.keys()) if isinstance(props, dict) else None
 
     if expected_fields is None:
         return None  # Can't determine schema shape

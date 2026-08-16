@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 from knox.core.models import CompiledWiki
 
@@ -102,18 +102,13 @@ class RemediationAction:
 class BaseLintRule(ABC):
     """Abstract base class that every lint rule must implement.
 
-    Subclasses must define :attr:`name`, :attr:`description` and
-    :meth:`check`. The :meth:`fix` method is optional — the default
-    implementation returns results unchanged (no auto-fix).
+    Subclasses must set :attr:`name`, :attr:`description` (class attributes)
+    and implement :meth:`check`. The :meth:`fix` method is optional — the
+    default implementation returns results unchanged (no auto-fix).
     """
 
-    @property
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @property
-    @abstractmethod
-    def description(self) -> str: ...
+    name: ClassVar[str]
+    description: ClassVar[str]
 
     @abstractmethod
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...

@@ -24,13 +24,12 @@ every extracted figure still flows through ``VLMEnricher``.
 from __future__ import annotations
 
 import base64
+import importlib
 import io
 import json
 from pathlib import Path
 from typing import Any
 
-from glmocr import PipelineResult
-from glmocr import parse as glm_parse
 from PIL import Image
 
 from knox.core.models import (
@@ -46,6 +45,14 @@ from knox.preprocessing.parsers.base import (
     BaseParser,
     FileExtension,
 )
+
+# Optional backend: glmocr is not a locked dependency — installed manually
+# (see pyproject optional-dependencies comment). Importing raises ImportError
+# when absent; the parser registry relies on that to skip this backend.
+# ``importlib`` keeps ty from flagging a module missing from this env.
+PipelineResult = importlib.import_module("glmocr").PipelineResult
+glm_parse = importlib.import_module("glmocr").parse
+
 
 # GLM-OCR element labels → KNOX ElementType.
 _LABEL_TO_TYPE: dict[str, ElementType] = {

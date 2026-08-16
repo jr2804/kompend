@@ -13,7 +13,7 @@ from knox.logging import get_logger
 logger = get_logger(__name__)
 
 
-def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[ChunkTree]:
+def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[ResolvedChunk]:
     """Resolve leaf chunks from trees and build entity registry + xref.
 
     VLM enrichment (image captions) runs per-leaf when configured.
@@ -35,10 +35,10 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Ch
     )
 
     if not pipeline.resolver:
-        return [node.chunk for t in trees for node in t.leaves() if node.chunk]
+        return [ResolvedChunk(chunk=c) for t in trees for node in t.leaves() if (c := node.chunk)]
 
     leaf_chunks = [node.chunk for t in trees for node in t.leaves() if node.chunk]
-    resolved: list[ChunkTree] = []
+    resolved: list[ResolvedChunk] = []
     total = len(leaf_chunks)
 
     # Two-pass resolution: non-image chunks first (no VLM), then all

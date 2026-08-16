@@ -222,7 +222,7 @@ class PipelineConfig:
             coercion (str-to-enum, str-to-Path) during construction.
             """
             out: dict[str, Any] = {}
-            for name in cls.model_fields:  # type: ignore[union-attr]
+            for name in cls.model_fields:
                 val = cfg.get(f"{section}.{name}")
                 if val is not None:
                     out[name] = val

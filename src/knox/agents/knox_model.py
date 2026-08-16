@@ -26,17 +26,18 @@ Failover is handled by wrapping multiple :class:`KnoxModel` instances in
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 
 from pydantic import BaseModel
-from pydantic_ai import Agent
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
+from pydantic_ai.models.openai import OpenAIChatModelSettings
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
+from knox.llm.debug import _DebugSource
 from knox.llm.postprocess import default_pipeline
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
@@ -67,7 +68,7 @@ class KnoxModel(Model):
         delegate: Model,
         *,
         usage_tracker: UsageTracker | None = None,
-        agent: Agent[Any, Any] | None = None,
+        agent: _DebugSource | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
         self._delegate = delegate
@@ -147,7 +148,7 @@ class KnoxModel(Model):
                 self._reasoning_effort,
             )
             return model_settings
-        settings = cast("ModelSettings", dict(model_settings or {}))
+        settings = cast("OpenAIChatModelSettings", dict(model_settings or {}))
         settings.setdefault("thinking", thinking)
         # pydantic-ai drops the unified ``thinking`` key when the model profile
         # lacks ``supports_thinking`` (true for most Ollama HF models), so the
@@ -160,5 +161,5 @@ class KnoxModel(Model):
         # bypasses the profile gate. Ollama's /v1/chat/completions endpoint
         # respects ``reasoning_effort: 'none'`` and disables thinking.
         if thinking is False:
-            settings["openai_reasoning_effort"] = "none"  # ty: ignore[invalid-key]
+            settings["openai_reasoning_effort"] = "none"
         return settings

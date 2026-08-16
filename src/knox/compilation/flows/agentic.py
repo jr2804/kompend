@@ -28,10 +28,9 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.extraction import ExtractionAgent
-from knox.compilation._two_phase_core import Extraction
+from knox.compilation._two_phase_core import Extraction, TwoPhaseRuntime
 from knox.compilation.asset_tools import build_asset_tools
 from knox.compilation.extraction_memory import ExtractionMemory
-from knox.compilation.graph import GraphCompiler
 from knox.compilation.schema import ExtractionOutput
 from knox.core.models.enums import CacheDeps
 from knox.core.utils.exceptions import LLMOutputError
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def extract_agentic(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     source: str,
     texts: list[str],
     extraction_system: str,
@@ -101,7 +100,7 @@ def extract_agentic(
         reasoning_effort=compiler._config.llm.reasoning_effort,
         context_manager=compiler._config.llm.context_manager,
         context_window=compiler._context_window.max_input,
-        tools=tools,
+        tools=tools or [],
     )
 
     memory = ExtractionMemory()

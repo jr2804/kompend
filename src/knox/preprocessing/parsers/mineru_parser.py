@@ -19,13 +19,11 @@ and every extracted figure flows through ``VLMEnricher``.
 from __future__ import annotations
 
 import base64
+import importlib
 import re
 import tempfile
 from pathlib import Path
 from typing import Any
-
-from mineru.cli.common import do_parse
-from mineru.utils.enum_class import MakeMode
 
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
@@ -35,6 +33,14 @@ from knox.preprocessing.parsers.base import (
     BaseParser,
     FileExtension,
 )
+
+# Optional backend: mineru is not a locked dependency — installed manually
+# (see pyproject optional-dependencies comment). Importing raises ImportError
+# when absent; the parser registry relies on that to skip this backend.
+# ``importlib`` keeps ty from flagging a module missing from this env.
+do_parse = importlib.import_module("mineru.cli.common").do_parse
+MakeMode = importlib.import_module("mineru.utils.enum_class").MakeMode
+
 
 # Markdown line classifiers (shared shape with the LiteParse walker).
 _IMAGE_REF_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")

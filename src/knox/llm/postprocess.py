@@ -142,8 +142,9 @@ class ThinkingPartRepair:
         """Convert ThinkingPart/TextPart with JSON to ToolCallPart."""
         schema = self._get_schema()
         is_structured = schema is not None
+        parts = list(response.parts)
 
-        for i, part in enumerate(response.parts):
+        for i, part in enumerate(parts):
             if not isinstance(part, ThinkingPart):
                 continue
             content = part.content
@@ -152,15 +153,15 @@ class ThinkingPartRepair:
             repaired = salvage_json(content)
             if isinstance(repaired, (dict, list)):
                 new_part = TextPart(content=json.dumps(repaired, ensure_ascii=False))
-                response.parts[i] = new_part  # ty: ignore[invalid-assignment]
+                parts[i] = new_part
                 logger.info(
                     "Converted ThinkingPart to TextPart (%d chars of JSON)",
                     len(new_part.content),
                 )
 
-        has_tool_call = any(isinstance(p, ToolCallPart) for p in response.parts)
+        has_tool_call = any(isinstance(p, ToolCallPart) for p in parts)
 
-        for i, part in enumerate(response.parts):
+        for i, part in enumerate(parts):
             if not isinstance(part, TextPart):
                 continue
             content = part.content
@@ -173,7 +174,7 @@ class ThinkingPartRepair:
                 continue
 
             if is_structured and not has_tool_call and isinstance(repaired, dict):
-                response.parts[i] = ToolCallPart(  # ty: ignore[invalid-assignment]
+                parts[i] = ToolCallPart(
                     tool_name="final_result",
                     args=repaired,
                 )
@@ -189,6 +190,7 @@ class ThinkingPartRepair:
                     len(content),
                     len(part.content),
                 )
+        response.parts = parts
 
 
 class UsageRecorder:

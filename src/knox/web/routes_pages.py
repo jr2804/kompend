@@ -137,7 +137,7 @@ async def wiki_page(node_id: str) -> str:
     wiki = load_wiki()
     node = next((n for n in wiki.get(WikiField.NODES, []) if n.get("id") == node_id), None)
     if not node:
-        return HTMLResponse("<h1>Not Found</h1>", status_code=404)  # ty: ignore
+        return "<h1>Not Found</h1>"
     content = node.get("content", "")
     return f"""<!DOCTYPE html>
 <html lang="en">

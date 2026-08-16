@@ -61,7 +61,7 @@ class _IdentityDefaultDict(dict[str, str]):
     stdlib does not support directly.
     """
 
-    def __missing__(self, key: str) -> str:  # type: ignore[override]
+    def __missing__(self, key: str) -> str:
         return key
 
 

@@ -157,7 +157,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
-    deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)  # type: ignore[assignment]# Lazy-init internal state (not constructor params)
+    deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)
+    # Lazy-init internal state (not constructor params)
     _agent: Agent[DepsT, ResultT] | None = field(default=None, init=False, repr=False)
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
@@ -452,7 +453,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
             # Try to validate against the schema
             try:
-                validated = schema.model_validate(parsed)  # ty: ignore[unresolved-attribute]
+                validated = schema.model_validate(parsed)
             except Exception:
                 # Validation failed — build a delta message
                 step = ctx.run_step if hasattr(ctx, "run_step") else 0

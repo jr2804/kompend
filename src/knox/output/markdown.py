@@ -76,7 +76,7 @@ _FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]]+)\]")
 class _NoAliasDumper(yaml.Dumper):
     """YAML Dumper that disables anchor/alias emission."""
 
-    def ignore_aliases(self, data: object) -> bool:  # type: ignore[override]  # noqa: PLR6301
+    def ignore_aliases(self, data: object) -> bool:# noqa: PLR6301
         return True
 
 
