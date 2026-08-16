@@ -1,7 +1,7 @@
 
 [tasks.dev]
 description = "Install development dependencies"
-run = "uv sync -U --dev --all-extras --all-groups"
+run = "uv sync -U --dev --all-extras" #  --all-groups
 
 [tasks.set-repo-topics]
 description = "Set repository topics on Codeberg from pyproject.toml keywords"
