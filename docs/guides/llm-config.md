@@ -299,9 +299,9 @@ Set via `KNOX_LLM_RLM`, `KNOX_LLM_RLM_SUB_MODEL`, `KNOX_LLM_RLM_MAX_DEPTH`.
 
 Wired into the query/synthesis stage, generation, and the WiCER probe.
 Extraction is intentionally not wired (its input is already chunk-bounded).
-Requires the optional extra (`uv add knox[rlm]`) and a local model that
-calls tools — a weak or non-agentic model may ignore the `execute_code`
-tool and answer from the placeholder, which contains no content.
+Requires a local model that calls tools — a weak or non-agentic model may
+ignore the `execute_code` tool and answer from the placeholder, which
+contains no content.
 
 Verify against a live local model with
 `uv run python scripts/verify/verify_rlm.py` (runs the query agent with RLM on

@@ -44,6 +44,7 @@ dependencies = [
     "mcp>=1.27.2",
     "pydantic>=2.13.4",
     "pydantic-ai[sentence-transformers]>=2.8.0",
+    "pydantic-ai-rlm>=0.1.2",
     "python-slugify[unidecode]>=8.0.4",
     "tomli-w>=1.2.0",
     "binaryornot>=0.6.0",
@@ -82,10 +83,6 @@ docling = [
 
 pandoc = [
     "pypandoc[tinytex]>=1.17",
-]
-
-rlm = [
-    "pydantic-ai-rlm>=0.1.2",
 ]
 
 # The original plan was to offer further advanced parser backends as optional dependencies,
