@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -21,7 +20,6 @@ from knox.cli._progress import PipelineProgress
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, MetadataField, WikiField
-from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
@@ -69,9 +67,6 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
     base_dir = opts.pipeline_config.resolved_base_dir()
     write_wiki_cache(opts.wiki, base_dir)
     print_compile_summary(opts.wiki)
-
-    # Copy registered attachments into the wiki output (wiki/attachments/).
-    copy_attachments_to_wiki(base_dir, opts.output_dir)
 
     if opts.review and not opts.bypass_review:
         send_to_review_queue(opts.wiki, base_dir)
@@ -362,43 +357,6 @@ def run_overview_synthesis(
         return
     synthesize_tracker.finish()
     if overview_file:
-        get_console().print(f"Overview: {overview_file}")
+        get_console().print("Overview: {overview_file}")
     else:
         get_err_console().print("Overview generation skipped (no content to summarise).")
-
-
-def copy_attachments_to_wiki(base_dir: Path, output_dir: Path) -> None:
-    """Copy registered attachments into the wiki output directory.
-
-    Each source's attachments are copied to ``<output>/attachments/<source-slug>/``
-    so generated content can link to them with relative paths
-    (``attachments/<slug>/<filename>``).
-    """
-    vp = VaultPaths(base_dir)
-    manifest = AttachmentManifest(vp.attachments_manifest_file)
-    if not manifest.exists():
-        return
-
-    entries = manifest.read_all()
-    if not entries:
-        return
-
-    dest_root = output_dir / "attachments"
-    copied = 0
-    for att in entries.values():
-        src_file = vp.attachments_dir / att.path
-        if not src_file.exists():
-            logger.debug("Skipping missing attachment: %s", src_file)
-            continue
-        dest = dest_root / att.path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copy2(src_file, dest)
-            copied += 1
-        except OSError as exc:
-            logger.warning("Failed to copy attachment %s: %s", src_file, exc)
-
-    if copied:
-        get_console().print(f"Attachments: copied {copied} attachment(s) to {dest_root}")
-    else:
-        logger.debug("No attachments copied to wiki output")

@@ -78,9 +78,8 @@ When `--ingest` is set on an attachment:
    otherwise skipped with a warning).
 2. **Chunk/compile**: attachment content becomes wiki nodes tagged with
    `source_asset: true` and `parent_source: <slug>` metadata.
-3. **Output**: all registered attachments are copied to `wiki/attachments/` so
-   generated content can link to them with relative paths
-   (`attachments/<slug>/<filename>`).
+3. **Output**: attachments are not duplicated into the compiled wiki — they stay
+   in the vault at `attachments/<slug>/<filename>`.
 
 ## Embedding (search/RAG)
 
