@@ -42,10 +42,15 @@ from knox.llm.context_window import ContextWindow
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
 from knox.memory import MemoryStore
+from knox.output.vault import VaultWriter
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import HybridRetriever, SearchResult, SynthesisResult, synthesize_results
+
+#: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
+#: the overview kind, which stays at the bundle root.
+_KIND_FOLDERS: dict[str, str] = {**VaultWriter._KIND_FOLDERS, "overview": ""}
 
 _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
     Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
@@ -293,10 +298,17 @@ def node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
 
 
 def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:
-    """Build a relative path into the compiled wiki."""
+    """Build a relative path into the compiled wiki.
+
+    The on-disk folder mirrors the writer's kind mapping (``concept``/\u2026
+    -> ``concepts/``; ``overview`` -> bundle root), not the bare node type.
+    """
     if not article_id or article_id not in node_types:
         return None
-    return f"{DEFAULT_OUTPUT_DIR_NAME}/{node_types[article_id]}/{article_id}.md"
+    folder = _KIND_FOLDERS.get(node_types[article_id], "concepts")
+    if not folder:
+        return f"{DEFAULT_OUTPUT_DIR_NAME}/{article_id}.md"
+    return f"{DEFAULT_OUTPUT_DIR_NAME}/{folder}/{article_id}.md"
 
 
 def print_raw_results(results: list[SearchResult], format: LlmDataFormat) -> None:
