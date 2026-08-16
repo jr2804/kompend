@@ -13,15 +13,13 @@ import typer
 
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli.args.query import SearchMode
-from knox.core.config import ResolvedConfig
+from knox.core.config import ResolvedConfig, coerce_rlm_config
 from knox.core.config._configs import LlmDataFormat, Verbosity  # type: ignore[attr-defined]
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_OUTPUT_RETRIES,
     COMPILE_LLM_REASONING_EFFORT,
     COMPILE_LLM_RLM,
-    COMPILE_LLM_RLM_MAX_DEPTH,
-    COMPILE_LLM_RLM_SUB_MODEL,
     SEARCH_CRAG_ENABLED,
     SEARCH_CRAG_THRESHOLD,
     SEARCH_EXPANSION_ENABLED,
@@ -46,7 +44,7 @@ from knox.output.vault import VaultWriter
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import HybridRetriever, SearchResult, SynthesisResult, synthesize_results
+from knox.search.retriever import HybridRetriever, KeywordRetriever, SearchResult, SynthesisResult, synthesize_results
 
 #: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
 #: the overview kind, which stays at the bundle root.
@@ -79,7 +77,7 @@ def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | Non
 
 
 def execute_query_search(
-    retriever: HybridRetriever,
+    retriever: HybridRetriever | KeywordRetriever,
     query: str,
     search_mode: str,
     sources_dir: Path | None,
@@ -220,9 +218,7 @@ def synthesize_and_output(
 
     try:
         reasoning_effort: str | None = cfg.get(COMPILE_LLM_REASONING_EFFORT)
-        rlm: str | bool = cfg.get(COMPILE_LLM_RLM, False)
-        rlm_sub_model: str | None = cfg.get(COMPILE_LLM_RLM_SUB_MODEL)
-        rlm_depth: int = cfg.get(COMPILE_LLM_RLM_MAX_DEPTH, 0) if rlm else 0
+        rlm_cfg = coerce_rlm_config(cfg.get(COMPILE_LLM_RLM, False))
         if has_enhanced and enhanced is not None:
             synthesis = enhanced.synthesize(
                 query,
@@ -230,9 +226,7 @@ def synthesize_and_output(
                 verbosity=verbosity,
                 max_tokens=max_tokens,
                 reasoning_effort=reasoning_effort,
-                rlm=rlm,
-                rlm_sub_model=rlm_sub_model,
-                rlm_depth=rlm_depth,
+                rlm=rlm_cfg,
             )
         else:
             synthesis = synthesize_results(
@@ -241,9 +235,7 @@ def synthesize_and_output(
                 model=model,
                 verbosity=verbosity,
                 max_tokens=max_tokens,
-                rlm=rlm,
-                rlm_sub_model=rlm_sub_model,
-                rlm_depth=rlm_depth,
+                rlm=rlm_cfg,
             )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")

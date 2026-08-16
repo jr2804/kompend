@@ -29,6 +29,7 @@ from knox.agents.rlm import (
     cleanup_rlm_repls,
     resolve_rlm_preset,
 )
+from knox.core.config import RlmConfig
 from knox.llm.usage import UsageTracker
 
 
@@ -113,6 +114,7 @@ class TestKnoxAgentRlmWiring:
         assert agent._rlm_usage_limits.tool_calls_limit == 50
         # request_limit must not bind below the tool-call budget: each tool
         # call costs >=1 model request, retries can double a turn.
+        assert agent._rlm_usage_limits.request_limit is not None
         assert agent._rlm_usage_limits.request_limit >= 50
         assert agent._rlm_usage_limits.request_limit == 50 * 2 + 5
 
@@ -125,6 +127,35 @@ class TestKnoxAgentRlmWiring:
         for setting in ("off", "false", "none", ""):
             agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=setting)
             assert agent._resolve_rlm_capability(agent._build_top_level_model()) is None
+
+    def test_rlm_config_group_overrides_preset(self) -> None:
+        """A RlmConfig (compile.llm.rlm group) overrides the preset budget."""
+
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+            pass
+
+        agent = DefaultBuilder(
+            model_string="ollama/llama3.1",
+            rlm=RlmConfig(preset="aggressive", max_tool_calls=150, code_timeout=90.0, node_budget=32),
+        )
+        cap = agent._resolve_rlm_capability(agent._build_top_level_model())
+        assert cap is not None
+        assert cap.max_tool_calls == 150
+        assert cap._code_timeout == 90.0
+        assert cap._node_budget == 32
+        agent._build_agent()
+        assert agent._rlm_usage_limits is not None
+        assert agent._rlm_usage_limits.tool_calls_limit == 150
+        assert agent._rlm_usage_limits.request_limit == 150 * 2 + 5
+
+    def test_rlm_config_disabled_returns_none(self) -> None:
+        """A RlmConfig with enabled=False resolves to no capability."""
+
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+            pass
+
+        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enabled=False))
+        assert agent._resolve_rlm_capability(agent._build_top_level_model()) is None
 
 
 class TestRlmCapabilityToolset:
@@ -391,7 +422,7 @@ class TestRlmPresets:
     def test_resolve_rlm_preset_disabled(self) -> None:
         for setting in (False, None, "off", "false", "none", ""):
             with pytest.raises(ValueError, match="RLM disabled"):
-                resolve_rlm_preset(setting)  # type: ignore[arg-type]
+                resolve_rlm_preset(setting)
 
     def test_cleanup_rlm_repls(self) -> None:
         """Cleanup drops cached REPL environments (no crash when empty)."""

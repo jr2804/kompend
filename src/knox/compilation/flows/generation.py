@@ -20,6 +20,7 @@ from knox.compilation._checkpoints import (
 )
 from knox.compilation._two_phase_core import (
     ExtractionSet,
+    TwoPhaseRuntime,
     compute_quality_score,
     extract_images_from_chunks,
     segment_sources,
@@ -29,9 +30,8 @@ from knox.compilation._two_phase_core import (
     upsert_node,
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
-from knox.compilation.graph import GraphCompiler
 from knox.core.config.keys import MANDATORY_KINDS
-from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, WikiField, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
@@ -44,7 +44,7 @@ _loader = get_template_loader()
 
 
 def run_generation(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     extractions: ExtractionSet,
     chunks: list[ResolvedChunk],
     *,
@@ -90,7 +90,7 @@ def run_generation(
     return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
 
 
-def prepare_concepts(compiler: GraphCompiler, extractions: ExtractionSet) -> list[dict[str, Any]]:
+def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> list[dict[str, Any]]:
     """Merge and validate concepts from extractions. Returns empty list if none."""
     concepts = extractions.concept_pages()
     embed_model = compiler._config.embedding.model
@@ -121,7 +121,7 @@ def prepare_concepts(compiler: GraphCompiler, extractions: ExtractionSet) -> lis
     return concepts
 
 
-def prepare_source_segments(compiler: GraphCompiler, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
+def prepare_source_segments(compiler: TwoPhaseRuntime, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
     """Build source segments sized to the context window."""
     by_source: dict[str, str] = defaultdict(str)
     for rc in chunks:
@@ -154,7 +154,7 @@ def prepare_source_segments(compiler: GraphCompiler, chunks: list[ResolvedChunk]
 
 
 def run_generation_with_checkpoint(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -189,7 +189,7 @@ def run_generation_with_checkpoint(
 
 
 def generate_all_pages(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
     generation_system: str,
@@ -250,8 +250,6 @@ def generate_all_pages(
                 context_manager=compiler._config.llm.context_manager,
                 context_window=compiler._context_window.max_input,
                 rlm=compiler._config.llm.rlm,
-                rlm_sub_model=compiler._config.llm.rlm_sub_model,
-                rlm_depth=compiler._config.llm.rlm_max_depth,
                 rlm_context_field="content",
             )
             gen_output = try_pydanticai_generation(
@@ -381,7 +379,7 @@ def _categories_block(extras: dict[str, str]) -> str:
 
 
 def assemble_wiki(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],
     chunks: list[ResolvedChunk],
@@ -429,7 +427,7 @@ def assemble_wiki(
     attach_tags_to_nodes(nodes, chunks)
     edges = build_edges(nodes, extractions, min_title_len=compiler._config.budget.edge_min_title_len)
     quality = compute_quality_score(nodes, edges)
-    toc = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
+    toc: list[TocEntry] = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
     return CompiledWiki(
         nodes=nodes,
         edges=edges,
@@ -448,7 +446,7 @@ def assemble_wiki(
 
 
 def gen_cache_deps(
-    compiler: GraphCompiler,
+    compiler: TwoPhaseRuntime,
     extractions: ExtractionSet,
     *,
     pinned_facts: list[str] | None = None,

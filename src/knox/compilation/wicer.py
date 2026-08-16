@@ -382,8 +382,6 @@ class WiCERCompiler(BaseCompiler):
                 context_manager="aggressive",
                 context_window=self._context_window.max_input if self._context_window else None,
                 rlm=self._config.llm.rlm,
-                rlm_sub_model=self._config.llm.rlm_sub_model,
-                rlm_depth=self._config.llm.rlm_max_depth,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
             return [p.model_dump() for p in output.probes]

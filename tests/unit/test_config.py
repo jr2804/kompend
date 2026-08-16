@@ -11,7 +11,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from knox.core.config._configs import ExtractionConfig, KnoxConfig
+from knox.core.config import coerce_rlm_config
+from knox.core.config._configs import ExtractionConfig, KnoxConfig, LLMConfig
 from knox.core.config._core import (
     coerce_config_value,
     deep_merge,
@@ -801,3 +802,40 @@ class TestExtractionCategories:
 
         cfg = ExtractionConfig(categories={"procedure": "how-to pages"})
         assert cfg.categories == {"procedure": "how-to pages"}
+
+
+class TestRlmConfig:
+    """compile.llm.rlm group: scalar shorthand + table coercion."""
+
+    def test_scalar_shorthand(self) -> None:
+        assert coerce_rlm_config(None) is None
+        assert coerce_rlm_config(False) is None
+        assert coerce_rlm_config("off") is None
+        assert coerce_rlm_config("false") is None
+        assert coerce_rlm_config(True) is not None
+        assert coerce_rlm_config(True).preset == "default"
+        assert coerce_rlm_config("aggressive").preset == "aggressive"
+
+    def test_table_overrides_preset(self) -> None:
+        cfg = coerce_rlm_config({"preset": "aggressive", "max_tool_calls": 150, "node_budget": 32})
+        assert cfg is not None
+        assert cfg.enabled
+        assert cfg.preset == "aggressive"
+        assert cfg.max_tool_calls == 150
+        assert cfg.node_budget == 32
+
+    def test_table_can_disable(self) -> None:
+        cfg = coerce_rlm_config({"enabled": False})
+        assert cfg is not None
+        assert cfg.enabled is False
+
+    def test_llm_config_default_disabled(self) -> None:
+        assert LLMConfig().rlm is None
+
+    def test_env_alias_scalar(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KNOX_LLM_RLM", "aggressive")
+        from knox.core.config._core import resolve_config
+
+        cfg = resolve_config()
+        assert cfg.get("compile.llm.rlm") == "aggressive"

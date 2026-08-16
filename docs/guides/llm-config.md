@@ -286,16 +286,24 @@ context window.
 # false (default) | "default" (50 tool calls / 60s code timeout)
 #               | "aggressive" (100 tool calls / 120s code timeout)
 rlm = "default"
-# Optional sub-model for llm_query() inside the REPL; defaults to the
-# primary model. Must be a valid provider/model string.
-rlm_sub_model = "ollama/qwen3:8b"
-# Recursion depth for rlm_query(prompt, slice) — child agents recurse up
-# to this depth (0 = non-recursive, default 2). Guarded by a per-run node
-# budget (16) and cycle detection.
-rlm_max_depth = 2
 ```
 
-Set via `KNOX_LLM_RLM`, `KNOX_LLM_RLM_SUB_MODEL`, `KNOX_LLM_RLM_MAX_DEPTH`.
+Or the full group — a configured table enables RLM, `preset` picks the
+baseline budget, and explicit fields override it:
+
+```toml
+[compile.llm.rlm]
+preset = "aggressive"       # baseline: "default" | "aggressive"
+max_tool_calls = 150        # override preset (UsageLimits.tool_calls_limit)
+code_timeout = 120.0        # override preset (seconds per code execution)
+sub_model = "ollama/qwen3:8b"  # llm_query sub-model; defaults to the primary
+max_depth = 2               # rlm_query recursion depth (0 = non-recursive)
+node_budget = 32            # total recursive rlm_query calls per root run
+```
+
+The scalar shorthand maps to the group (`true` → default preset, a preset
+name → that preset); `false` disables. `KNOX_LLM_RLM` accepts the scalar
+shorthand; the group's fields are configured in the TOML file.
 
 Wired into the query/synthesis stage, generation, and the WiCER probe.
 Extraction is intentionally not wired (its input is already chunk-bounded).

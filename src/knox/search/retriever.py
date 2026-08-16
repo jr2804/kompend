@@ -16,7 +16,7 @@ from typing import Final, TypedDict
 from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
 from knox.agents.search import QueryExpansionAgent
-from knox.core.config import DEFAULTS
+from knox.core.config import DEFAULTS, RlmConfig
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.templates import TemplateLoader
@@ -103,9 +103,7 @@ class HybridRetriever:
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         model: str = "",
-        rlm: str | bool = False,
-        rlm_sub_model: str | None = None,
-        rlm_depth: int = 0,
+        rlm: str | bool | RlmConfig | None = False,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(
@@ -116,8 +114,6 @@ class HybridRetriever:
             max_tokens=max_tokens,
             skills=skills,
             rlm=rlm,
-            rlm_sub_model=rlm_sub_model,
-            rlm_depth=rlm_depth,
         )
 
     def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
@@ -266,16 +262,14 @@ def synthesize_results(
     max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
     reasoning_effort: str | None = None,
-    rlm: str | bool = False,
-    rlm_sub_model: str | None = None,
-    rlm_depth: int = 0,
+    rlm: str | bool | RlmConfig | None = False,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
     This is a standalone function (no retriever needed) — it takes already-
     retrieved ``SearchResult`` objects, formats them as numbered context
-    lines, and passes them to :class:`QueryAgent`. The ``rlm_*`` kwargs
-    enable RLM code-exploration over the synthesized context
+    lines, and passes them to :class:`QueryAgent`. The ``rlm`` kwarg enables
+    RLM code-exploration over the synthesized context
     (``compile.llm.rlm`` config).
     """
     if not model:
@@ -309,8 +303,6 @@ def synthesize_results(
             skills=skills or {},
             reasoning_effort=reasoning_effort,
             rlm=rlm,
-            rlm_sub_model=rlm_sub_model,
-            rlm_depth=rlm_depth,
             rlm_context_field="context",
         )
         deps = QueryDeps(

@@ -5,13 +5,11 @@ from typing import Any
 
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.pipeline.status import collect_stats
-from knox.core.config import resolve_config
+from knox.core.config import coerce_rlm_config, resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_RLM,
-    COMPILE_LLM_RLM_MAX_DEPTH,
-    COMPILE_LLM_RLM_SUB_MODEL,
 )
 from knox.core.models import load_cached_wiki
 from knox.core.paths import SEARCH_DB_FILE, VECTORS_DIR, vault_paths
@@ -88,9 +86,7 @@ def query_wiki(
                 query,
                 results,
                 model=model,
-                rlm=cfg.get(COMPILE_LLM_RLM, False),
-                rlm_sub_model=cfg.get(COMPILE_LLM_RLM_SUB_MODEL),
-                rlm_depth=cfg.get(COMPILE_LLM_RLM_MAX_DEPTH, 0),
+                rlm=coerce_rlm_config(cfg.get(COMPILE_LLM_RLM, False)),
             )
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {

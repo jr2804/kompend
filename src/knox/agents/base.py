@@ -51,7 +51,12 @@ from pydantic_ai_summarization import (
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.knox_model import KnoxModel
-from knox.agents.rlm import RLMCapability, resolve_rlm_preset
+from knox.agents.rlm import (
+    _DEFAULT_NODE_BUDGET,
+    RLMCapability,
+    resolve_rlm_preset,
+)
+from knox.core.config._configs import RlmConfig
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import salvage_json
@@ -136,17 +141,19 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     tools: list[Tool] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
-    #: RLM preset (``False`` off, ``"default"``/``"aggressive"``/``True``)
-    #: enabling code-exploration tools on this agent.
-    rlm: str | bool = False
+    #: RLM configuration: legacy scalar (``False`` off, ``True`` /
+    #: ``"default"``/``"aggressive"`` presets) or a resolved
+    #: :class:`~knox.core.config._configs.RlmConfig` (``compile.llm.rlm``).
+    rlm: str | bool | RlmConfig | None = False
     #: Optional sub-model string for ``llm_query()`` inside the RLM REPL;
-    #: defaults to the agent's main model when unset.
+    #: defaults to the agent's main model when unset. Only consulted when
+    #: ``rlm`` is a scalar preset, not a :class:`RlmConfig`.
     rlm_sub_model: str | None = None
     #: Deps attribute holding the document context for the RLM REPL.
     rlm_context_field: str = "text"
     #: Remaining recursion depth for ``rlm_query`` inside the REPL
-    #: (0 = non-recursive, only ``llm_query``). Mirrors ``rlm_max_depth``
-    #: config at the wiring sites.
+    #: (0 = non-recursive, only ``llm_query``). Only consulted when ``rlm``
+    #: is a scalar preset, not a :class:`RlmConfig`.
     rlm_depth: int = 0
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
@@ -380,17 +387,20 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 # retries can double a turn. Derive from max_tool_calls.
                 request_limit=rlm_capability.max_tool_calls * 2 + 5,
             )
-        agent = Agent(
-            top_model,
-            deps_type=self.deps_type,
-            output_type=output_type,
-            model_settings=model_settings,
-            retries=self.retries,
-            capabilities=capabilities or None,
+        agent = cast(
+            "Agent[DepsT, ResultT]",
+            Agent(
+                top_model,
+                deps_type=cast("type[DepsT]", self.deps_type),
+                output_type=output_type,
+                model_settings=model_settings,
+                retries=self.retries,
+                capabilities=capabilities or None,
+            ),
         )
         if type(self).validate_output is not KnoxAgentBase.validate_output:
             agent.output_validator(self.validate_output)
-        return cast("Agent[DepsT, ResultT]", agent)
+        return agent
 
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + KNOX wrapper) for the Agent."""
@@ -477,7 +487,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             if step in state:
                 merged = _merge_valid_data(state[step], validated, schema)
                 if merged is not None:
-                    _set_response_text(response, merged)
+                    _set_response_text(response, json.dumps(merged, ensure_ascii=False, default=str))
                 del state[step]
             return response
 
@@ -530,24 +540,43 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
         """Build the RLM capability from the configured preset.
 
-        Returns ``None`` when RLM is disabled. The sub-model defaults to the
-        agent's top-level model (same failover chain); an explicit
-        ``rlm_sub_model`` resolves via ``build_model`` and is wrapped in
-        :class:`KnoxModel` for usage tracking.
+        Returns ``None`` when RLM is disabled. Accepts either a resolved
+        :class:`~knox.core.config._configs.RlmConfig` (``compile.llm.rlm``
+        group — its explicit fields override the preset baseline) or the
+        legacy scalar shorthand (``True``, ``"default"``, ``"aggressive"``).
+        The sub-model defaults to the agent's top-level model (same failover
+        chain); an explicit ``rlm_sub_model`` resolves via ``build_model``
+        and is wrapped in :class:`KnoxModel` for usage tracking.
 
         Args:
             model: The top-level (failover) model — reused as the
                 ``llm_query`` sub-model when ``rlm_sub_model`` is unset.
         """
-        if self.rlm is False or self.rlm is None:
-            return None
-        try:
-            max_tool_calls, code_timeout = resolve_rlm_preset(self.rlm)
-        except ValueError:
-            return None
-        if self.rlm_sub_model:
+        rlm = self.rlm
+        if isinstance(rlm, RlmConfig):
+            if not rlm.enabled:
+                return None
+            max_tool_calls, code_timeout = resolve_rlm_preset(rlm.preset)
+            if rlm.max_tool_calls is not None:
+                max_tool_calls = rlm.max_tool_calls
+            if rlm.code_timeout is not None:
+                code_timeout = rlm.code_timeout
+            sub_model_str = rlm.sub_model or self.rlm_sub_model
+            depth = rlm.max_depth
+            node_budget = rlm.node_budget
+        else:
+            if rlm is False or rlm is None:
+                return None
+            try:
+                max_tool_calls, code_timeout = resolve_rlm_preset(rlm)
+            except ValueError:
+                return None
+            sub_model_str = self.rlm_sub_model
+            depth = self.rlm_depth
+            node_budget = None
+        if sub_model_str:
             sub_model: Model = KnoxModel(
-                build_model(self.rlm_sub_model),
+                build_model(sub_model_str),
                 usage_tracker=self.usage_tracker,
             )
         else:
@@ -558,7 +587,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             sub_model=sub_model,
             max_tool_calls=max_tool_calls,
             main_model=model,
-            depth=self.rlm_depth,
+            depth=depth,
+            node_budget=node_budget or _DEFAULT_NODE_BUDGET,
         )
 
     # ── ContextManagerCapability callbacks ─────────────────────────────
@@ -620,14 +650,13 @@ def _get_response_text(response: ModelResponse) -> str | None:
     return None
 
 
-def _set_response_text(response: ModelResponse, data: ModelResponse) -> None:
-    """Replace the text content of a ModelResponse with serialized data."""
-    text = json.dumps(data, ensure_ascii=False, default=str)
+def _set_response_text(response: ModelResponse, data: str) -> None:
+    """Replace the text content of a ModelResponse with JSON text."""
     for part in response.parts:
         if isinstance(part, TextPart):
-            part.content = text
+            part.content = data
             return
-    response.parts.append(TextPart(content=text))  # ty: ignore[unresolved-attribute]
+    response.parts = [*response.parts, TextPart(content=data)]
 
 
 def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None:

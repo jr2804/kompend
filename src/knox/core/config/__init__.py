@@ -25,6 +25,8 @@ from knox.core.config._configs import (
     OutputConfig,
     OutputFormat,
     PdfConfig,
+    RlmConfig,
+    coerce_rlm_config,
 )
 from knox.core.config._core import (
     DEFAULTS,
@@ -58,7 +60,9 @@ __all__ = [
     "OutputFormat",
     "PdfConfig",
     "ResolvedConfig",
+    "RlmConfig",
     "coerce_config_value",
+    "coerce_rlm_config",
     "find_all_project_configs",
     "find_global_config",
     "find_project_config",

@@ -16,6 +16,7 @@ from __future__ import annotations
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.compilation.two_phase import cosine_similarity
+from knox.core.config import RlmConfig
 from knox.core.models import CompiledWiki
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.logging import get_logger
@@ -146,9 +147,7 @@ class EnhancedRetriever:
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         reasoning_effort: str | None = None,
-        rlm: str | bool = False,
-        rlm_sub_model: str | None = None,
-        rlm_depth: int = 0,
+        rlm: str | bool | RlmConfig | None = False,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(
@@ -160,8 +159,6 @@ class EnhancedRetriever:
             skills=skills,
             reasoning_effort=reasoning_effort,
             rlm=rlm,
-            rlm_sub_model=rlm_sub_model,
-            rlm_depth=rlm_depth,
         )
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────
