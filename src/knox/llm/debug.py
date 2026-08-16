@@ -96,6 +96,10 @@ def save_debug_prompt(
     if not debug_dir:
         return
     debug_dir = Path(debug_dir)
+    # Relative paths are ambiguous across projects (each cwd would get its own
+    # dump dir) — only absolute paths are honored.
+    if not debug_dir.is_absolute():
+        return
     debug_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     # Normalise model string for filename: strip provider prefix (e.g. "ollama/")
