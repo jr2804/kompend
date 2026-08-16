@@ -32,6 +32,7 @@ from knox.cli.args import (
     JsonOutput,
     LintDryRun,
     LintFix,
+    LintFormatCheck,
     LintHistoryLast,
     LintHistoryTrend,
     LintLlm,
@@ -42,8 +43,9 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
 from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT, COMPILE_OUTPUT_RUMDL_CONFIG, LINT_FUZZY_THRESHOLD
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, load_cached_wiki
-from knox.core.paths import LINT_HISTORY_FILE
+from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
@@ -58,6 +60,7 @@ from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.logging import get_console, get_err_console
+from knox.output.renderer import format_output
 
 lint_app = typer.Typer(
     name="lint",
@@ -133,7 +136,7 @@ def lint_run(
         fix=fix,
         sources_dir=sources_dir_str,
         lint_config=lint_config,
-        rumdl_config=cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG) or None,
+        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG)),
     )
     lint_start = time.monotonic()
     progress = (
@@ -459,6 +462,59 @@ def lint_remediate(
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(remediation_to_text(actions))
+
+
+# ── Sub-command: format ─────────────────────────────────────────────────
+
+
+@lint_app.command("format", help="Format generated wiki markdown with rumdl fmt.")
+def lint_format(
+    ctx: typer.Context,
+    check: LintFormatCheck = False,
+    config: ConfigPath = None,
+) -> None:
+    """Run ``rumdl fmt`` over the compiled output (bundle + root index).
+
+    Formats every generated ``.md`` file with the vault's rumdl config
+    (``compile.output.rumdl_config``, default ``.knox/rumdl.toml``). Works
+    without a compiled-wiki cache — the files on disk are the source of
+    truth. ``--check`` exits 1 if any formatting changes are needed (CI).
+
+    Examples:
+        knox lint format                 # format generated markdown
+        knox lint format --check         # CI: exit 1 if changes needed
+    """
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(),
+        config_file=config,
+    )
+    rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG))
+    extra_files: list[Path] = []
+    for name in (INDEX_FILE, "overview.md"):
+        p = vp.base_dir / name
+        if p.exists():
+            extra_files.append(p)
+    changed = format_output(
+        vp.output_dir,
+        flavor=cfg.get("compile.output.flavor"),
+        rumdl_config=rumdl_cfg,
+        extra_files=extra_files or None,
+        check_only=check,
+    )
+    if check:
+        if changed:
+            get_err_console().print(
+                f"{len(changed)} file(s) need formatting. Run 'knox lint format' to fix.",
+            )
+            raise typer.Exit(1)
+        get_console().print("All generated markdown is formatted.")
+        return
+    if changed:
+        get_console().print(f"Formatted {len(changed)} file(s) with rumdl.")
+    else:
+        get_console().print("No formatting changes needed.")
 
 
 def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:

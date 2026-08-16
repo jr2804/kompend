@@ -80,6 +80,14 @@ LintDryRun = Annotated[
     ),
 ]
 
+LintFormatCheck = Annotated[
+    bool,
+    typer.Option(
+        "--check",
+        help="Exit with code 1 if any formatting changes are needed (CI).",
+    ),
+]
+
 # ── N5 web serve command ─────────────────────────────────────────────────
 
 ServeHost = Annotated[
