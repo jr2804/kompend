@@ -36,7 +36,6 @@ error and the WIP's `test_config` gap (fixed by documenting the new keys in
   `[export]` row in `docs/guides/configuration.md`; `knox.toml.example`
   documents `export.annotations`/`export.summary`.
 
-
 ## Goal
 
 `knox sources export <source-id> <out.md> [--inline|--no-inline]` — a
@@ -81,7 +80,7 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
   |---|---|
   | text | paragraph (`\n\n`) |
   | heading | `#` × `heading_level` |
-  | list_item | `- ` item |
+  | list_item | `-` item |
   | code | ``` ```lang ``` ``` fence (lang from metadata if present) |
   | formula | `$$ … $$` |
   | table | GFM pipe table; **first row is always the header** (Docling emits the header row first — no sniffing, no detection) |
@@ -145,30 +144,32 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
    following the existing pattern); values `off|inline|asset`, default
    `inline`.
 3. **Renderer** — `core/pipeline/export.py`: `render_document_markdown` +
-  element switch + table/image handling; `export_source` (copies assets,
-  writes file, writes attachment table); annotation lookup (extractors +
-  `asset_id_for` + `AssetStore`) and summary recompute; inline sections and
-  `extracted.json` writer. Resolves image paths against `base_dir`; never
-  emits an absolute path.
+
+   element switch + table/image handling; `export_source` (copies assets,
+   writes file, writes attachment table); annotation lookup (extractors +
+   `asset_id_for` + `AssetStore`) and summary recompute; inline sections and
+   `extracted.json` writer. Resolves image paths against `base_dir`; never
+   emits an absolute path.
 4. **CLI** — `export` command in `cli/cmds/pipeline/sources.py` +
-  `load_cache_entry` id resolution (reuse `_load_all_cache_entries`-style
-  loading, or glob single entry).
+
+   `load_cache_entry` id resolution (reuse `_load_all_cache_entries`-style
+   loading, or glob single entry).
 5. **Tests** — `tests/unit/test_export.py` (new module → new test file):
-  - round-trip: build a `ParsedDocument` with one element of every type
-    (incl. a table and an image data URI), serialize, render, assert the
-    markdown contains each expected form;
-  - no-inline mode: image file written to `<stem>_assets/`, relative link
-    present, no absolute path anywhere in output;
-  - relative image path in cache (post-portability fix) resolves against
-    `base_dir` correctly;
-  - attachments table rendered with working relative links;
-  - same-stem ambiguity: two cache entries, exact `source_file` id wins;
-  - annotations inline: element matches an `AssetRecord` (seeded store) →
-    entry appears under `## Annotated Items`; no match → no entry;
-  - summary inline: `## Summary` present with heading-derived text;
-  - `asset` mode for both: `extracted.json` written, correct shape,
-    no summary/annotations sections in the `.md`;
-  - `off` mode: no sections, no JSON.
+   - round-trip: build a `ParsedDocument` with one element of every type
+   (incl. a table and an image data URI), serialize, render, assert the
+   markdown contains each expected form;
+   - no-inline mode: image file written to `<stem>_assets/`, relative link
+   present, no absolute path anywhere in output;
+   - relative image path in cache (post-portability fix) resolves against
+   `base_dir` correctly;
+   - attachments table rendered with working relative links;
+   - same-stem ambiguity: two cache entries, exact `source_file` id wins;
+   - annotations inline: element matches an `AssetRecord` (seeded store) →
+   entry appears under `## Annotated Items`; no match → no entry;
+   - summary inline: `## Summary` present with heading-derived text;
+   - `asset` mode for both: `extracted.json` written, correct shape,
+   no summary/annotations sections in the `.md`;
+   - `off` mode: no sections, no JSON.
 6. **Docs + DOX pass** — `docs/` page for the command (after closeout rules
    in root AGENTS.md); update `cli/cmds/pipeline/sources.py` docstring
    sub-command list.
