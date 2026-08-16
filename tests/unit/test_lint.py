@@ -1009,7 +1009,7 @@ class TestRumdlConfigResolution:
         assert resolved == tmp_path / ".knox" / "rumdl.toml"
         assert resolved.exists()
         content = resolved.read_text(encoding="utf-8")
-        assert "MD013 = false" in content
+        assert 'disable = ["MD013"]' in content
         assert 'front-matter-title = ""' in content
 
     def test_existing_config_not_overwritten(self, tmp_path: Path) -> None:

@@ -139,8 +139,14 @@ the shipped default on first use — edit that copy, it is never overwritten).
 Point `compile.output.rumdl_config` elsewhere to use a custom file:
 
 ```toml
-MD013 = { line_length = 200 }
-MD033 = { allowed_elements = ["sup", "sub"] }
+[global]
+disable = ["MD013"]  # line length is style, not correctness
+
+[MD025]
+front-matter-title = ""  # frontmatter `title:` must not count as a second H1
+
+[MD033]
+allowed-elements = ["sup", "sub"]
 ```
 
 > **Note:** If a flavor you need is not supported, contribute upstream to
