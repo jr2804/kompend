@@ -96,19 +96,19 @@ class TestKnoxAgentRlmWiring:
             pass
 
         agent = DefaultBuilder(model_string="ollama/llama3.1")
-        assert agent.rlm is False
+        assert agent.rlm is None
         # No capability is resolved, so no toolset and no tool-call budget.
         assert agent._resolve_rlm_capability(agent._build_top_level_model()) is None
         agent._build_agent()
         assert agent._rlm_usage_limits is None
 
     def test_rlm_enabled_sets_usage_limits(self) -> None:
-        """rlm='default' attaches the capability and a tool-call budget."""
+        """A group with enable=true attaches the capability and a budget."""
 
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm="default")
+        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True, preset="default"))
         agent._build_agent()
         assert agent._rlm_usage_limits is not None
         assert agent._rlm_usage_limits.tool_calls_limit == 50
@@ -118,15 +118,6 @@ class TestKnoxAgentRlmWiring:
         assert agent._rlm_usage_limits.request_limit >= 50
         assert agent._rlm_usage_limits.request_limit == 50 * 2 + 5
 
-    def test_rlm_off_string_disables(self) -> None:
-        """'off'-like string values disable RLM entirely."""
-
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
-            pass
-
-        for setting in ("off", "false", "none", ""):
-            agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=setting)
-            assert agent._resolve_rlm_capability(agent._build_top_level_model()) is None
 
     def test_rlm_config_group_overrides_preset(self) -> None:
         """A RlmConfig (compile.llm.rlm group) overrides the preset budget."""
@@ -136,7 +127,7 @@ class TestKnoxAgentRlmWiring:
 
         agent = DefaultBuilder(
             model_string="ollama/llama3.1",
-            rlm=RlmConfig(preset="aggressive", max_tool_calls=150, code_timeout=90.0, node_budget=32),
+            rlm=RlmConfig(enable=True, preset="aggressive", max_tool_calls=150, code_timeout=90.0, node_budget=32),
         )
         cap = agent._resolve_rlm_capability(agent._build_top_level_model())
         assert cap is not None
@@ -149,12 +140,12 @@ class TestKnoxAgentRlmWiring:
         assert agent._rlm_usage_limits.request_limit == 150 * 2 + 5
 
     def test_rlm_config_disabled_returns_none(self) -> None:
-        """A RlmConfig with enabled=False resolves to no capability."""
+        """A RlmConfig with enable=False resolves to no capability."""
 
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enabled=False))
+        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig())
         assert agent._resolve_rlm_capability(agent._build_top_level_model()) is None
 
 
@@ -389,7 +380,7 @@ class TestPromptPlaceholder:
         plain = QueryAgent(model_string="ollama/x")
         assert big in plain.render_system_prompt(deps)
         # Enabled: placeholder instead.
-        rlm_agent = QueryAgent(model_string="ollama/x", rlm="default", rlm_context_field="context")
+        rlm_agent = QueryAgent(model_string="ollama/x", rlm=RlmConfig(enable=True), rlm_context_field="context")
         rendered = rlm_agent.render_system_prompt(deps)
         assert big not in rendered
         assert "execute_code" in rendered
@@ -404,7 +395,7 @@ class TestPromptPlaceholder:
         assert big in plain.render_user_prompt(deps)
         rlm_agent = GenerationAgent(
             model_string="ollama/x",
-            rlm="default",
+            rlm=RlmConfig(enable=True),
             rlm_context_field="content",
         )
         assert big not in rlm_agent.render_user_prompt(deps)

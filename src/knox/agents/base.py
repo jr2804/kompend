@@ -141,20 +141,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     tools: list[Tool] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
-    #: RLM configuration: legacy scalar (``False`` off, ``True`` /
-    #: ``"default"``/``"aggressive"`` presets) or a resolved
-    #: :class:`~knox.core.config._configs.RlmConfig` (``compile.llm.rlm``).
-    rlm: str | bool | RlmConfig | None = False
-    #: Optional sub-model string for ``llm_query()`` inside the RLM REPL;
-    #: defaults to the agent's main model when unset. Only consulted when
-    #: ``rlm`` is a scalar preset, not a :class:`RlmConfig`.
-    rlm_sub_model: str | None = None
+    #: RLM configuration from the ``compile.llm.rlm`` group
+    #: (:class:`~knox.core.config._configs.RlmConfig`); ``None`` disables.
+    rlm: RlmConfig | None = None
     #: Deps attribute holding the document context for the RLM REPL.
     rlm_context_field: str = "text"
-    #: Remaining recursion depth for ``rlm_query`` inside the REPL
-    #: (0 = non-recursive, only ``llm_query``). Only consulted when ``rlm``
-    #: is a scalar preset, not a :class:`RlmConfig`.
-    rlm_depth: int = 0
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
     template_name: ClassVar[str] = ""
@@ -166,9 +157,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
-    deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)  # type: ignore[assignment]
-
-    # Lazy-init internal state (not constructor params)
+    deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)  # type: ignore[assignment]# Lazy-init internal state (not constructor params)
     _agent: Agent[DepsT, ResultT] | None = field(default=None, init=False, repr=False)
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
@@ -538,42 +527,29 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         )
 
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
-        """Build the RLM capability from the configured preset.
+        """Build the RLM capability from the ``compile.llm.rlm`` group.
 
-        Returns ``None`` when RLM is disabled. Accepts either a resolved
-        :class:`~knox.core.config._configs.RlmConfig` (``compile.llm.rlm``
-        group — its explicit fields override the preset baseline) or the
-        legacy scalar shorthand (``True``, ``"default"``, ``"aggressive"``).
-        The sub-model defaults to the agent's top-level model (same failover
-        chain); an explicit ``rlm_sub_model`` resolves via ``build_model``
-        and is wrapped in :class:`KnoxModel` for usage tracking.
+        Returns ``None`` when RLM is disabled (``rlm`` unset or
+        ``enable = false``). The sub-model defaults to the agent's top-level
+        model (same failover chain); ``sub_model`` resolves via
+        ``build_model`` and is wrapped in :class:`KnoxModel` for usage
+        tracking.
 
         Args:
             model: The top-level (failover) model — reused as the
-                ``llm_query`` sub-model when ``rlm_sub_model`` is unset.
+                ``llm_query`` sub-model when ``sub_model`` is unset.
         """
         rlm = self.rlm
-        if isinstance(rlm, RlmConfig):
-            if not rlm.enabled:
-                return None
-            max_tool_calls, code_timeout = resolve_rlm_preset(rlm.preset)
-            if rlm.max_tool_calls is not None:
-                max_tool_calls = rlm.max_tool_calls
-            if rlm.code_timeout is not None:
-                code_timeout = rlm.code_timeout
-            sub_model_str = rlm.sub_model or self.rlm_sub_model
-            depth = rlm.max_depth
-            node_budget = rlm.node_budget
-        else:
-            if rlm is False or rlm is None:
-                return None
-            try:
-                max_tool_calls, code_timeout = resolve_rlm_preset(rlm)
-            except ValueError:
-                return None
-            sub_model_str = self.rlm_sub_model
-            depth = self.rlm_depth
-            node_budget = None
+        if not isinstance(rlm, RlmConfig) or not rlm.enable:
+            return None
+        max_tool_calls, code_timeout = resolve_rlm_preset(rlm.preset)
+        if rlm.max_tool_calls is not None:
+            max_tool_calls = rlm.max_tool_calls
+        if rlm.code_timeout is not None:
+            code_timeout = rlm.code_timeout
+        sub_model_str = rlm.sub_model
+        depth = rlm.max_depth
+        node_budget = rlm.node_budget
         if sub_model_str:
             sub_model: Model = KnoxModel(
                 build_model(sub_model_str),

@@ -67,11 +67,11 @@ The base class provides:
   compression events. Disabled by default at the code-API level
   (`context_manager=False`); enabled by config (`compile.llm.context_manager`).
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
-  `[rlm]` extra) attaches from the `rlm` config — either the legacy scalar
-  preset (`"default"`/`"aggressive"`/`false`) or a
-  `compile.llm.rlm` group (`RlmConfig` in `core/config/_configs.py`:
-  `preset`, `max_tool_calls`, `code_timeout`, `sub_model`, `max_depth`,
-  `node_budget` — explicit fields override the preset baseline). It
+  `[rlm]` extra) attaches from the `compile.llm.rlm` group
+  (`RlmConfig` in `core/config/_configs.py`:
+  `enable`, `preset`, `max_tool_calls`, `code_timeout`, `sub_model`,
+  `max_depth`, `node_budget` — `enable` is the only switch, explicit
+  fields override the preset baseline; no scalar shorthand). It
   registers an `execute_code` tool (sandboxed REPL, deps context
   pre-loaded from `rlm_context_field`) and RLM mode instructions; the
   sub-model powers `llm_query()` inside the REPL and is usage-tracked

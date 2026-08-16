@@ -16,7 +16,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from knox.core.config.keys import MANDATORY_KINDS, EnvVar
 from knox.core.paths import CACHE_DIR, KNOX_DIR
@@ -165,42 +165,20 @@ class _KnoxBaseModel(BaseModel):
 class RlmConfig(_KnoxBaseModel):
     """RLM (recursive research-loop) agent configuration.
 
-    ``preset`` picks a baseline budget (``default``: 50 tool calls / 60 s
-    code timeout, ``aggressive``: 100 / 120 s); explicit fields override
-    the preset values. Coercion from the legacy scalar shorthand
-    (``true``, ``"default"``, ``"aggressive"``, ``false``) happens at the
-    ``LLMConfig.rlm`` field; disabling is ``rlm = false`` (or ``None``),
-    not ``enabled = false``.
+    Single source of truth is the ``[compile.llm.rlm]`` table; ``enable``
+    is the only switch (the legacy ``rlm = true/false`` scalar shorthand is
+    gone). ``preset`` picks a baseline budget (``default``: 50 tool calls /
+    60 s code timeout, ``aggressive``: 100 / 120 s); explicit fields
+    override the preset values.
     """
 
-    enabled: bool = True
+    enable: bool = False
     preset: str = "default"
     max_tool_calls: int | None = None
     code_timeout: float | None = None
     sub_model: str | None = None
     max_depth: int = 2
     node_budget: int | None = None
-
-
-def coerce_rlm_config(value: Any) -> RlmConfig | None:
-    """Coerce a raw ``compile.llm.rlm`` config value.
-
-    Accepts the legacy scalar shorthand (``True`` / ``False`` /
-    ``"default"`` / ``"aggressive"`` / ``"off"``-like strings) or a
-    ``[compile.llm.rlm]`` table dict. Returns ``None`` for disabled.
-    """
-    if value is None or value is False:
-        return None
-    if value is True:
-        return RlmConfig()
-    if isinstance(value, str):
-        setting = value.strip().lower()
-        if setting in {"", "off", "false", "none", "no"}:
-            return None
-        return RlmConfig(preset=setting)
-    if isinstance(value, dict):
-        return RlmConfig(**value)
-    raise ValueError(f"invalid compile.llm.rlm value: {value!r}")
 
 
 class LLMConfig(_KnoxBaseModel):
@@ -226,17 +204,9 @@ class LLMConfig(_KnoxBaseModel):
     reasoning_effort: str | None = Field(default=None, validation_alias=EnvVar.LLM_REASONING_EFFORT)
     context_manager: str | bool = Field(default="default", validation_alias=EnvVar.LLM_CONTEXT_MANAGER)
     #: RLM recursive research-loop configuration (see :class:`RlmConfig`);
-    #: ``None`` disables.
-    rlm: RlmConfig | None = Field(
-        default=None,
-        validation_alias=EnvVar.LLM_RLM,
-        validate_default=False,
-    )
-
-    @field_validator("rlm", mode="before")
-    @classmethod
-    def _coerce_rlm(cls, value: Any) -> Any:
-        return coerce_rlm_config(value)
+    #: ``None`` disables. Only the group form is accepted — no scalar
+    #: shorthand.
+    rlm: RlmConfig | None = None
     extraction_strategy: ExtractionStrategy = Field(
         default=ExtractionStrategy.INCREMENTAL,
         validation_alias=EnvVar.LLM_EXTRACTION_STRATEGY,

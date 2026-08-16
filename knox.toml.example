@@ -371,21 +371,18 @@ context_manager = "default"
 # into the prompt. Requires the optional `rlm` extra
 # (uv add knox[rlm]). Composes with context_manager above.
 #
-# Scalar shorthand (kept for compatibility):
-#   rlm = "default"    — max 50 tool calls, 60s per code execution
-#   rlm = "aggressive" — max 100 tool calls, 120s per code execution
-#   rlm = false        — disabled (default)
-#
-# Or the full group — a configured table enables RLM, `preset` picks the
-# baseline budget, and explicit fields override it:
-# [compile.llm.rlm]
+# Single source of truth is the [compile.llm.rlm] table — `enable` is the
+# only switch (the legacy scalar `rlm = true/false` is gone). `preset`
+# picks the baseline budget; explicit fields override it:
+# rlm = false  # legacy scalar form removed — use the group below
+[compile.llm.rlm]
+enable = false             # the only on/off switch
 # preset = "default"        # baseline: "default" | "aggressive"
 # max_tool_calls = 150      # override preset (UsageLimits.tool_calls_limit)
 # code_timeout = 120.0      # override preset (seconds per code execution)
 # sub_model = "ollama/gpt-oss:20b"  # llm_query sub-model (default: main model)
 # max_depth = 2             # rlm_query recursion depth (0 = non-recursive)
 # node_budget = 32          # total recursive rlm_query calls per root run
-rlm = false
 
 # Per-role model overrides — use a different model for specific LLM roles.
 # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).

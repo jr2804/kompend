@@ -103,7 +103,7 @@ class HybridRetriever:
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         model: str = "",
-        rlm: str | bool | RlmConfig | None = False,
+        rlm: RlmConfig | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(
@@ -262,7 +262,7 @@ def synthesize_results(
     max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
     reasoning_effort: str | None = None,
-    rlm: str | bool | RlmConfig | None = False,
+    rlm: RlmConfig | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 

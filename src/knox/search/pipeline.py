@@ -147,7 +147,7 @@ class EnhancedRetriever:
         max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         reasoning_effort: str | None = None,
-        rlm: str | bool | RlmConfig | None = False,
+        rlm: RlmConfig | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(

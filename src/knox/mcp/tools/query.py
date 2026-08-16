@@ -5,7 +5,7 @@ from typing import Any
 
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.pipeline.status import collect_stats
-from knox.core.config import coerce_rlm_config, resolve_config
+from knox.core.config import RlmConfig, resolve_config
 from knox.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
@@ -86,7 +86,7 @@ def query_wiki(
                 query,
                 results,
                 model=model,
-                rlm=coerce_rlm_config(cfg.get(COMPILE_LLM_RLM, False)),
+                rlm=RlmConfig.model_validate(cfg.get(COMPILE_LLM_RLM) or {}),
             )
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {
