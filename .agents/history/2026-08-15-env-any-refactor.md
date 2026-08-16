@@ -253,6 +253,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 ### C.3 C1 conversion targets (the actual work)
 
 **Phase C1-1 — `llm/` (start here; partially done)**
+
 - `llm/debug.py` — ✅ `_Payload` dataclass done (A). Remaining: `messages_to_debug_dicts`
   returns `list[dict[str, Any]]` of tagged part dicts (`type`-discriminated union of
   6 pydantic-ai part shapes). Verdict: keep as tagged dicts (serialization boundary,
@@ -263,6 +264,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `llm/usage.py:1`, `llm/format.py:1`, `llm/user_providers.py:2` — audit; likely C2/C4.
 
 **Phase C1-2 — lint history (self-contained, high value)**
+
 - `lint/history.py` (11 sites) — lint-history entries
   (`timestamp`, `type`, `options`, `config`, `llm`, …) flow as bare dicts through
   `save_lint_entry` / `load_lint_history` / `prune_lint_history`. → `@dataclass LintEntry`
@@ -275,6 +277,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   (`_find_fuzzy_duplicates`), `lint/_remediation_gaps.py` (6) — audit per site.
 
 **Phase C1-3 — compilation graph/flow payloads**
+
 - `compilation/graph.py` (12) — graph edges (`source`, `target`, `label`, …) and
   TOC entries built as dicts in `_build_edges`/`_build_toc`. → `@dataclass GraphEdge`,
   `@dataclass TocEntry`. Widely consumed (`output/okf_writer.py`, `output/vault.py`,
@@ -289,6 +292,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   schema models).
 
 **Phase C1-4 — dedup fingerprints**
+
 - `preprocessing/dedup/orchestrator.py` (8) — `fingerprint()` returns a dict with
   stable keys (matcher name → per-matcher data); `_serialize_fp` round-trips it to
   disk. → `@dataclass Fingerprint` (or `TypedDict` if the per-matcher part is
@@ -297,6 +301,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `preprocessing/dedup/minhash_matcher.py` (2), `preprocessing/dedup/store.py` (2) — audit.
 
 **Phase C1-5 — parser outputs**
+
 - `preprocessing/parsers/marker_parser.py` (5) — `images` dicts, config dicts
   (`{"use_llm": ...}` → real kwargs, not a dict).
 - `preprocessing/parsers/glm_ocr_parser.py` (3) — `_element_metadata` builds
@@ -307,6 +312,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   (stable keys: name, description, …).
 
 **Phase C1-6 — output writers**
+
 - `output/okf_writer.py` (6) — OKF source dicts (`_reference_to_okf_source`,
   `_okf_frontmatter`) → C1 for sources; frontmatter stays C4.
 - `output/vault.py` (6) — `sources`, `edges` params → C1 (reuse graph/okf types);
@@ -317,6 +323,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   `output/pages/log.py:1` — audit.
 
 **Phase C1-7 — memory / organize / mcp**
+
 - `memory/lifecycle.py:101-105`, `memory/store.py` (2) — `NodeState.to_dict/from_dict`
   are C2 (class exists).
 - `organize/categorize.py` (2) — `_tree_from_json`/`_node_from_json` parse external
@@ -326,6 +333,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   (C2). Audit per site; convert only stable internal payloads.
 
 **Phase C1-8 — remaining C1 candidates (audit)**
+
 - `core/templates/loader.py` (6) — `TemplateVariable` (→ C1 dataclass), `raw`
   frontmatter (C4), `_global_context` (C4 — Jinja context is open by design).
 - `core/cache/store.py:101` — cache entries decode from JSON → C4.
@@ -461,7 +469,6 @@ why at each site.
 
 - D.1: `src/knox/acp/provider_store.py` (+ `tests/unit/test_agent.py` if behavior asserts header extraction)
 - D.2: `src/knox/compilation/_two_phase_core.py`, `compilation/flows/extraction.py`, `output/vault.py` (audit), `llm/http_client.py` (optional `Mapping` widening)
-
 - `src/knox/core/config/keys.py` (new `EnvVar`), `_configs.py`, `engine/_schema.py`
 - CLI: `cli/app.py`, `cli/args/common.py`, `cli/args/other.py`, `cli/args/pipeline.py`,
   `cli/cmds/knowledge/query.py`, `cli/cmds/pipeline/pipeline.py`,

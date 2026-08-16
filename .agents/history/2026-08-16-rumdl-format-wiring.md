@@ -16,6 +16,7 @@ verified in code:
 | index pages unformatted | `VaultWriter.write` (vault.py:258) writes concept pages but `_write_index`/`_write_log`/`_write_references_page` write raw markdown; `OkfWriter` never uses `DocumentRenderer` at all; `pages/index.py:write_index` (root landing) is raw. |
 
 What already exists (no duplication to remove — gap is coverage, not code):
+
 - `DocumentRenderer._format_via_rumdl` (renderer.py:99) pipes MarkdownWriter concept pages through `rumdl fmt --flavor … --stdin --config …`.
 - `RumdlRule.fix` (structural.py:675) runs `rumdl check --fix` under `lint run --fix`.
 - `compile.output.rumdl_config` config key + env alias already exist (`keys.py:129`, `_configs.py:237`); `knox.toml.example:452` documents `.knox/rumdl.toml` as the example.
@@ -49,11 +50,12 @@ render it too). Consequences:
 
 User clarification (binding): OKF = compatibility with Google's Open
 Knowledge Base format
-(https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+(<https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>).
 It is **not** a format sibling of markdown/json/typst. `format = "okf"`
 must be removed.
 
 Current state (verified):
+
 - `OutputFormat` enum (`_configs.py:105-116`): `OKF = "okf"` is the default
   member; `_configs.py:234` defaults `compile.output.format` to it.
 - `OkfWriter(MarkdownWriter)` (`okf_writer.py:65`, `name = "okf"`) registers
@@ -64,6 +66,7 @@ Current state (verified):
   "exempt" from rules 2–6).
 
 Changes:
+
 1. `OutputFormat` enum: remove `OKF` member; `MARKDOWN` becomes the default.
    Existing configs that explicitly set `format = "okf"` fail validation
    with a clear message listing valid formats (p863 wiki doesn't set it —
@@ -90,6 +93,7 @@ Phases 2/3/6 below target the merged `MarkdownWriter` (not `okf_writer.py`).
 ## Phase 1 — shipped default config + `.knox/rumdl.toml` materialization
 
 1. **`src/knox/lint/rumdl.toml`** (ships via hatchling package data like `src/knox/acp/builtin/*.toml`; no-text-in-code rule — config lives in a TOML file, not Python):
+
    ```toml
    # KNOX default rumdl config for generated wiki output.
    # Copy to .knox/rumdl.toml and edit to override.
@@ -98,6 +102,7 @@ Phases 2/3/6 below target the merged `MarkdownWriter` (not `okf_writer.py`).
    [MD025]
    front-matter-title = ""   # frontmatter `title:` must not count as a second H1
    ```
+
    MD066 stays **enabled** — fixed properly in Phase 3 (footnotes get referenced). MD005 needs no config: `rumdl fmt`/`check --fix` auto-fix it (Phase 2 + existing `lint run --fix`).
 2. **`src/knox/core/paths.py`**: add `RUMDL_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/rumdl.toml"` (path constants live here per FILES.md).
 3. **`_configs.py:237`**: `rumdl_config` default `None` → keep `None` (semantics: "use vault default"). New resolver `resolve_rumdl_config(base_dir, configured)` in `src/knox/lint/structural.py` (or `core/config/`):
@@ -128,6 +133,7 @@ Lazy-correct approach: one fmt pass over the whole generated tree after write, i
 ## Phase 4 — `knox lint format` subcommand (advice: subcommand, not top-level)
 
 **Recommend `knox lint format`**, sibling of `run`/`gaps`/`remediate`/`prune`:
+
 - Mirrors rumdl's own `check`/`fmt` pair and `lint run` (check) ↔ `lint format` (fmt).
 - Reuses the `lint_app` typer group, `vault_paths_from_ctx`, `resolve_config`, progress bar, and Phase 2 helper. No new top-level command plumbing, no doc/registration surface.
 - Semantics: `rumdl fmt --config <resolved> <output_dir> <root index.md>`; flags: `--check` (exit 1 if changes needed — CI), `--dry-run` (diff only), `--config` override.

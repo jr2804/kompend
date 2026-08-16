@@ -171,15 +171,6 @@ class TestPipelineNotesInjection:
         )
 
 
-def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
-    """Create template files in the correct project structure."""
-    tpl_dir = tmp_path / "knox" / "templates"
-    tpl_dir.mkdir(parents=True, exist_ok=True)
-    for name, content in templates.items():
-        (tpl_dir / name).write_text(content, encoding="utf-8")
-    return tmp_path
-
-
 class TestExtractionCategoriesWiring:
     """compile.extraction.categories reaches PipelineConfig via from_resolved."""
 
@@ -202,3 +193,12 @@ class TestExtractionCategoriesWiring:
         cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
         assert pc.extraction_categories == {}
+
+
+def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
+    """Create template files in the correct project structure."""
+    tpl_dir = tmp_path / "knox" / "templates"
+    tpl_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in templates.items():
+        (tpl_dir / name).write_text(content, encoding="utf-8")
+    return tmp_path

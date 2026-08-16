@@ -404,6 +404,6 @@ def append_log_entry(log_file: Path, *, action: str, detail: str) -> None:
         body = f"{existing[:anchor_end]}\n\n{entry}{rest}"
     else:
         # Newest date section first, directly after the file header.
-        rest = existing[len(header):].lstrip("\n")
+        rest = existing[len(header) :].lstrip("\n")
         body = f"{header}\n\n{date_heading}\n\n{entry}\n{rest}"
     log_file.write_text(body, encoding="utf-8")
