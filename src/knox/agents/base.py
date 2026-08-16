@@ -34,12 +34,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 
-from pydantic_ai import Agent, NativeOutput, RunContext, Tool, UsageLimits
+from pydantic import BaseModel
+from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai_summarization import (
     ContextManagerCapability,
@@ -331,7 +333,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             if len(args) >= 2:
                 result_arg, deps_arg = args[0], args[1]
                 self.result_type = self._coerce_type(result_arg, str)
-                self.deps_type = self._coerce_type(deps_arg, PipelineAgentDeps)
+                self.deps_type = cast("type[AgentDeps]", self._coerce_type(deps_arg, PipelineAgentDeps))
                 return
         self.result_type = str
         self.deps_type = PipelineAgentDeps
@@ -351,7 +353,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if self.max_tokens is not None:
             model_settings["max_tokens"] = self.max_tokens
 
-        output_type: type | NativeOutput = self.result_type
+        output_type: OutputSpec[Any] = self.result_type
         if self.use_native_output:
             output_type = NativeOutput(
                 self.result_type,
@@ -373,6 +375,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             capabilities.append(rlm_capability)
             self._rlm_usage_limits = UsageLimits(
                 tool_calls_limit=rlm_capability.max_tool_calls,
+                # pydantic-ai's default request_limit (50) binds before the
+                # tool-call budget: each tool call costs >=1 model request, and
+                # retries can double a turn. Derive from max_tool_calls.
+                request_limit=rlm_capability.max_tool_calls * 2 + 5,
             )
         agent = Agent(
             top_model,
@@ -422,19 +428,20 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         Only fires for agents with ``use_delta_retry = True`` and a Pydantic
         ``result_type`` (structured output).
         """
-        schema = self.result_type
         state = self._delta_retry_state
-
         hooks = Hooks()
 
         @hooks.on.after_model_request
         async def _delta_retry_hook(
             ctx: RunContext[DepsT],
             *,
-            request_context: RunContext[DepsT],
+            request_context: ModelRequestContext,
             response: ModelResponse,
         ) -> ModelResponse:
             # Only handle structured output (TextPart with JSON)
+            schema = self.result_type
+            if not isinstance(schema, type) or not issubclass(schema, BaseModel):
+                return response  # text output — nothing to salvage
             text = _get_response_text(response)
             if not text:
                 return response

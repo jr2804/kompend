@@ -111,6 +111,10 @@ class TestKnoxAgentRlmWiring:
         agent._build_agent()
         assert agent._rlm_usage_limits is not None
         assert agent._rlm_usage_limits.tool_calls_limit == 50
+        # request_limit must not bind below the tool-call budget: each tool
+        # call costs >=1 model request, retries can double a turn.
+        assert agent._rlm_usage_limits.request_limit >= 50
+        assert agent._rlm_usage_limits.request_limit == 50 * 2 + 5
 
     def test_rlm_off_string_disables(self) -> None:
         """'off'-like string values disable RLM entirely."""
