@@ -6,8 +6,8 @@
 ## Purpose
 
 Tier 5 output — render a ``CompiledWiki`` into multiple formats (Markdown,
-OKF bundles, JSON, Typst). Also builds the wiki index page and serves
-wiki page previews.
+JSON, Typst). The markdown writer is OKF v0.2-compliant by default. Also
+builds the wiki index page and serves wiki page previews.
 
 ## Ownership
 
@@ -18,23 +18,29 @@ wiki page previews.
 | Module | Contents |
 |--------|----------|
 | ``base.py`` | ``BaseOutputWriter`` ABC with plugin registry (``register`` / ``get``) |
-| ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering via rumdl |
-| ``markdown.py`` | ``MarkdownWriter`` — Markdown output (obsidian, gfm flavors) |
-| ``okf_writer.py`` | ``OkfWriter`` — OKF v0.2 compliant bundle output |
+| ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering via rumdl; ``format_output`` — post-write ``rumdl fmt`` pass over generated output |
+| ``markdown.py`` | ``MarkdownWriter`` — the single markdown writer (OKF v0.2-compliant bundle, portable relative links, §5.1 footnote attribution) |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
 | ``typst.py`` | ``TypstWriter`` — Typst output |
 | ``wiki_index.py`` | Wiki index page construction |
 | ``models.py`` | Output-specific data models |
 | ``pages/`` | Wiki page sub-renderers |
-| ``pages/index.py`` | Index page rendering |
+| ``pages/index.py`` | Vault-root index page rendering (portable catalog) |
 | ``pages/overview.py`` | Overview page rendering |
 | ``pages/log.py`` | Log page rendering |
 
 ## Rules
 
 - Import from the package root: ``from knox.output import MarkdownWriter``.
-- ``DocumentRenderer`` is the single path for all Markdown output.
-- All flavor-specific Markdown formatting goes through ``rumdl fmt`` —
-  no hand-rolled flavor converters.
+- ``DocumentRenderer`` is the single path for per-page Markdown rendering;
+  all generated output is additionally piped through ``rumdl fmt``
+  (``format_output``) after write — no hand-rolled flavor converters.
+- OKF is a **compliance spec**, not an output format: there is exactly one
+  markdown writer, and it is OKF v0.2-compliant. Never add a second
+  markdown variant for flavor/link-syntax reasons.
+- Links are portable, folder-relative markdown paths — no ``[[wikilinks]]``,
+  no leading-slash absolute links.
+- Footnote definitions are emitted only for ids actually referenced in the
+  body, ordered by first reference (MD066/MD067-clean).
 - Importing this package auto-registers all built-in writers via
   ``BaseOutputWriter`` subclass registration.

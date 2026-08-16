@@ -428,11 +428,11 @@ rlm_max_depth = 2
 # ── Output settings ─────────────────────────────────────────────────────
 
 [compile.output]
-# Output format: okf (default, Open Knowledge Format v0.2) | markdown | json | typst
-# OKF is the recommended format — it adds compliant frontmatter, absolute
-# bundle-relative links, reserved files (index.md, log.md), and citations.
-# Use "markdown" only for legacy Obsidian vault compatibility.
-# format = "okf"
+# Output format: markdown (default, OKF v0.2-compliant) | json | typst
+# OKF (Open Knowledge Format) is NOT a format — it is the compliance spec
+# the default markdown output follows: compliant frontmatter, portable
+# relative links, reserved files (index.md, log.md), §5.1 footnotes.
+# format = "markdown"
 
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
 # Set to auto-detect when omitted.
@@ -446,9 +446,10 @@ rlm_max_depth = 2
 # language = "en"
 # domain = "ml"
 
-# Path to a custom RUMDL configuration file. Applies to render-time
-# formatting (rumdl fmt) AND the `rumdl` lint rule (check/fix). When unset,
-# rumdl auto-discovers a .rumdl.toml in the vault.
+# Path to the rumdl configuration file for this vault. Defaults to
+# .knox/rumdl.toml (auto-materialized from the shipped default on first
+# use — edit that copy to override). Applies to compile-time formatting
+# (rumdl fmt), the `rumdl` lint rule (check/fix), and `knox lint format`.
 # rumdl_config = ".knox/rumdl.toml"
 
 # ── PDF processing settings ─────────────────────────────────────────────

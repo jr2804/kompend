@@ -197,36 +197,44 @@ The `pack.toml` manifest:
 
 ### OKF compliance — output format rules
 
-KNOX produces **OKF v0.2** (Open Knowledge Format) bundles by default.
+KNOX produces **OKF v0.2** (Open Knowledge Format) bundles by default. OKF is
+NOT an output format — it is a **compliance spec** for the markdown output.
 The spec is at <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
+
+`compile.output.format` offers only real formats: `markdown` (default, OKF
+v0.2-compliant), `json`, `typst`.
 
 **All output-related code must maintain OKF v0.2 conformance:**
 
-1. **Default format is OKF.** The `compile.output.format` config key defaults to
-   `"okf"`. Other formats (`"markdown"`, `"json"`, `"typst"`) are opt-in.
-2. **Frontmatter** is built once by `VaultWriter.okf_frontmatter()` — every
+1. **Frontmatter** is built once by `VaultWriter.okf_frontmatter()` — every
    vault writer MUST delegate to it (single source of truth). Every concept
    file has parseable YAML frontmatter with a non-empty `type` field (§11.2).
-3. **Trust fields:** `generated: {by, at}` (§5.2; `by` uses the §7 actor
+2. **Trust fields:** `generated: {by, at}` (§5.2; `by` uses the §7 actor
    convention `knox/<version>`) supersedes the v0.1 `timestamp`. `verified`
    (§5.2) is emitted only when a verification pass ran; `status` defaults to
    `stable` (§5.4).
-4. **Provenance fields are distinct:** `tags` = topic tags only (no filename
+3. **Provenance fields are distinct:** `tags` = topic tags only (no filename
    overload); `source_files` = KNOX extension (provenance filename stems);
    `sources` = OKF §5.1 structured objects `{id, resource, title, author}` from
    the reference store — NEVER bare strings.
-5. **Cross-links** use standard markdown absolute bundle-relative paths:
-   `[Title](/concepts/title.md)` — never `[[wikilinks]]` (OKF §6.1).
-6. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (§8, §9).
+4. **Cross-links** are portable, folder-relative markdown paths:
+   `[Title](concepts/title.md)` from the bundle root, `[Title](title.md)` from
+   inside `concepts/` — never `[[wikilinks]]`, never leading-slash absolute
+   links. Portable Markdown must render outside Obsidian too.
+5. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (§8, §9).
    Root `index.md` MAY declare `okf_version: "0.2"` in frontmatter (§12).
-7. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
-   `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list.
-8. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
+6. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
+   `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list. Inline
+   `[sources/x.pdf]` citations are rewritten to `[^id]` refs; definitions are
+   emitted only for referenced ids, ordered by first reference.
+7. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
    unknown frontmatter keys, broken cross-links, and missing `index.md` files
    (§10 — permissive consumption model).
 
-**When adding a new output writer or modifying an existing one**, verify
-conformance against the OKF spec. The Obsidian-flavored `MarkdownWriter` is exempt from rules 2\u20136 but must remain functional.
+**Generated output must be rumdl-clean**: compile runs `rumdl fmt` over the
+output and lint uses the vault's rumdl config (`compile.output.rumdl_config`,
+default `.knox/rumdl.toml`, auto-materialized from the shipped default).
+There is a single markdown writer (OKF-compliant); no exempt variants.
 
 ### ACP agent — credential-free LLM injection and conversational agents
 

@@ -1,13 +1,15 @@
 # Output Configuration Guide
 
 KNOX supports multiple output formats for the compiled wiki, controlled by the
-`compile.output.format` config key (default: ``okf``).
+`compile.output.format` config key (default: ``markdown``).
 
-## Open Knowledge Format (OKF) v0.2 (default)
+## Markdown (OKF v0.2-compliant, default)
 
-KNOX produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an open,
-human- and agent-friendly format for representing knowledge — a directory of
-markdown files with YAML frontmatter. See the [OKF concept page](../concepts/open-knowledge-format.md)
+The default markdown output is a **OKF v0.2**-compliant knowledge bundle. OKF
+is an open, human- and agent-friendly **format spec** — a directory of
+markdown files with YAML frontmatter. It is **not** a separate output format:
+`compile.output.format` offers only `markdown` (OKF-compliant), `json`, and
+`typst`. See the [OKF concept page](../concepts/open-knowledge-format.md)
 for the full field reference, trust signals, and the v0.1→v0.2 migration table.
 
 **Spec:** <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
@@ -20,18 +22,17 @@ for the full field reference, trust signals, and the v0.1→v0.2 migration table
   ``status`` (default ``stable``), optional ``verified``
 - ``tags`` = topic tags only; ``source_files`` = provenance filename stems
   (KNOX extension); ``sources`` = §5.1 structured objects — never bare strings
-- Cross-links use absolute bundle-relative paths: ``[Title](/concepts/title.md)``
+- Cross-links are portable folder-relative markdown paths
+  (``[Title](concepts/title.md)`` from the bundle root) — they render in
+  Obsidian, GitHub, and any Markdown viewer
 - ``index.md`` has grouped sections with descriptions; root declares ``okf_version: "0.2"``
 - ``log.md`` uses ISO date headings with bold action prefix
-- Per-claim attribution via footnotes ``[^id]`` keyed to ``sources[].id``
-  (replaces the v0.1 body ``# Citations`` numbered list)
+- Per-claim attribution via footnotes ``[^id]`` keyed to ``sources[].id``:
+  inline ``[sources/x.pdf]`` citations are rewritten to ``[^id]`` refs, with
+  definitions emitted only for referenced ids (replaces the v0.1 body
+  ``# Citations`` numbered list)
 
-## Legacy formats
-
-### Markdown (Obsidian vault mode)
-
-Select with ``compile.output.format = "markdown"`` or ``--set compile.output.format=markdown``.
-Produces ``.md`` files with ``[[wikilinks]]``, ``index.md`` TOC, and ``concepts/`` subfolder.
+## Other formats
 
 ### JSON
 
@@ -40,6 +41,13 @@ Select with ``compile.output.format = "json"``. Single ``wiki.json`` file.
 ### Typst
 
 Select with ``compile.output.format = "typst"``. Single ``wiki.typ`` file.
+
+## Formatting (rumdl)
+
+Compile runs `rumdl fmt` over the generated output, and `knox lint format`
+re-runs it on demand (`--check` for CI). The per-vault rumdl config lives at
+`.knox/rumdl.toml` (auto-materialized from the shipped default) and can be
+overridden via `compile.output.rumdl_config`.
 
 ## Flavor configuration
 
@@ -126,19 +134,13 @@ If rumdl is not installed, KNOX falls back to raw canonical Markdown with a warn
 
 ### Custom rumdl configuration
 
-Create `.rumdl.toml` in your project root:
+The vault's rumdl config lives at `.knox/rumdl.toml` (auto-materialized from
+the shipped default on first use — edit that copy, it is never overwritten).
+Point `compile.output.rumdl_config` elsewhere to use a custom file:
 
 ```toml
-line-length = 100
-rules.MD013.line-length = 100
-rules.MD033.allowed_elements = ["sup", "sub"]
-```
-
-Then reference it in your KNOX config:
-
-```yaml
-output:
-  rumdl_config: .rumdl.toml
+MD013 = { line_length = 200 }
+MD033 = { allowed_elements = ["sup", "sub"] }
 ```
 
 > **Note:** If a flavor you need is not supported, contribute upstream to

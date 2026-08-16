@@ -41,7 +41,7 @@ remain *consumable*, but only the v0.2 fields above are *canonical*.
 
 ## Bundle Structure
 
-A KNOX wiki compiled with ``compile.output.format = "okf"`` produces:
+A KNOX wiki compiled with the default markdown output produces an OKF v0.2 bundle:
 
 ```text
 wiki/
