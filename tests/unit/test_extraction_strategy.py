@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.flows import extraction as ext_module
@@ -206,7 +206,7 @@ class TestHistoryCompaction:
 
     def test_compact_empty_history_is_noop(self) -> None:
 
-        history: list[object] = []
+        history: list[ModelMessage] = []
         _compact_history_inplace(history, max_tokens=10)
         assert history == []
 

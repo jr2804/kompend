@@ -93,12 +93,14 @@ def test_ingest_image_attachment_with_vlm(vault: VaultPaths) -> None:
 
     mock_router = MagicMock()
     mock_captioner = MagicMock()
-    mock_captioner.caption_image.return_value = "A landscape photo."
+    mock_captioner.run.return_value = "A landscape photo."
 
     result = ingest_attachment(vault, att, mock_router, vlm_captioner=mock_captioner)
     assert result is not None
     assert result.metadata.get("asset_type") == "image_caption"
-    assert "landscape" in result.elements[0].content.lower()
+    content = result.elements[0].content
+    assert isinstance(content, str)
+    assert "landscape" in content.lower()
 
 
 def test_ingest_unsupported_type(vault: VaultPaths) -> None:

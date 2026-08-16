@@ -59,7 +59,7 @@ class TestSearchPipeline:
         wiki = _make_wiki()
         retriever = EnhancedRetriever(wiki)
         # Mock inner retriever to return nothing
-        retriever._retriever.search_hybrid = MagicMock(return_value=[])  # type: ignore[method-assign]
+        retriever._retriever.search_hybrid = MagicMock(return_value=[])
         results = retriever.search("something completely absent", top_k=5)
         assert results == []
 
@@ -113,7 +113,7 @@ class TestSynthesize:
         with patch("knox.search.pipeline.synthesize_results") as mock_synth:
             mock_synth.return_value = SynthesisResult(
                 answer="the answer",
-                citations=[{"article": "alpha"}],
+                citations=[{"article": "alpha", "article_id": None, "source": None, "snippet": "", "score": 1.0}],
             )
             synthesis = retriever.synthesize("q", results)
 

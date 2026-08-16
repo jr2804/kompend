@@ -8,8 +8,6 @@ no vector store, no live CLI).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any
 
 import toon_format as _toon
 
@@ -19,20 +17,7 @@ from knox.cli.cmds.knowledge.query import (
     structured_answer,
 )
 from knox.core.config._configs import LlmDataFormat
-
-
-@dataclass
-class _Synth:
-    answer: str
-    citations: list[dict[str, Any]]
-
-
-@dataclass
-class _Hit:
-    title: str
-    source_file: str | None
-    snippet: str
-    score: float
+from knox.search.retriever import SearchResult, SynthesisResult
 
 
 class TestStructuredAnswer:
@@ -80,19 +65,19 @@ class TestEncodeStructured:
 
 class TestEncodeRawResults:
     def test_json_raw_results_parse(self) -> None:
-        results = [_Hit("Title", "f.pdf", "snip", 0.5)]
+        results = [SearchResult(article_id="x", title="Title", source_file="f.pdf", snippet="snip", score=0.5)]
         parsed = json.loads(encode_raw_results(results, LlmDataFormat.JSON))
         assert parsed[0]["article"] == "Title"
         assert parsed[0]["score"] == 0.5
 
     def test_toon_raw_results_decode(self) -> None:
-        results = [_Hit("Title", "f.pdf", "snip", 0.5)]
+        results = [SearchResult(article_id="x", title="Title", source_file="f.pdf", snippet="snip", score=0.5)]
         out = encode_raw_results(results, LlmDataFormat.TOON)
         assert "Title" in out
 
 
-def _synth() -> _Synth:
-    return _Synth(
+def _synth() -> SynthesisResult:
+    return SynthesisResult(
         answer="Neural nets approximate functions via layers.",
         citations=[
             {"article": "Neural Networks", "article_id": "neural-networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},

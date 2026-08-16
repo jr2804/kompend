@@ -191,7 +191,7 @@ class TestMarkdownWriterRegression:
                 ),
             ],
             edges=[],
-            toc=[{"id": "test-page", "title": "Test Page"}],
+            toc=[{"id": "test-page", "title": "Test Page", "level": 1}],
             metadata={"title": "Test Wiki"},
         )
         writer = MarkdownWriter(flavor="obsidian", vault_mode=False)

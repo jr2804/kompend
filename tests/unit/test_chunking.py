@@ -1,9 +1,11 @@
 """Tests for the KNOX HierarchicalChunker."""
 
 from pathlib import Path
+from typing import TypeGuard
 
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.core.models import (
+    Chunk,
     ChunkNode,
     ChunkStrategy,
     ChunkTree,
@@ -38,7 +40,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert "Hello world." in leaves[0].chunk.text  # ty: ignore
+        assert "Hello world." in leaves[0].chunk.text
 
     def test_source_file_propagated(self) -> None:
         doc = _make_doc([DocumentElement(type=ElementType.TEXT, content="x")])
@@ -83,7 +85,9 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         eqs = [n for n in _structured_leaves(tree) if isinstance(n.structured, StructuredEquation)]
         assert len(eqs) == 1
-        assert eqs[0].structured.latex == r"E = mc^2"  # ty: ignore
+        structured = eqs[0].structured
+        assert isinstance(structured, StructuredEquation)
+        assert structured.latex == r"E = mc^2"
 
     # ── heading hierarchy ───────────────────────────────────────────────
 
@@ -114,7 +118,7 @@ class TestHierarchicalChunker:
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
         assert leaves[0].heading_chain == ("Chapter 1", "Section 1.1")
-        assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"  # ty: ignore
+        assert leaves[0].chunk.heading_context == "Chapter 1 / Section 1.1"
 
     def test_nested_heading_hierarchy(self) -> None:
         doc = _make_doc(
@@ -185,7 +189,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=512).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) == 1
-        assert "Real content." in leaves[0].chunk.text  # ty: ignore
+        assert "Real content." in leaves[0].chunk.text
 
     # ── strategy selection ──────────────────────────────────────────────
 
@@ -305,7 +309,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=24, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         assert len(leaves) >= 1
-        assert any(_sentence_ends(n.chunk.text) for n in leaves if n.chunk is not None)  # type: ignore[union-attr]
+        assert any(_sentence_ends(n.chunk.text) for n in leaves if n.chunk is not None)
 
     def test_no_mid_sentence_cut_when_chunk_fits(self) -> None:
         sentences = [
@@ -317,7 +321,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=12, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
-            assert _sentence_ends(n.chunk.text)  # ty: ignore
+            assert _sentence_ends(n.chunk.text)
 
     def test_long_paragraph_split_at_sentence_boundary(self) -> None:
         text = "Sentence one is moderately long. " * 6
@@ -325,7 +329,7 @@ class TestHierarchicalChunker:
         tree = HierarchicalChunker(max_tokens=16, reserve_tokens=0).chunk(doc)
         leaves = _text_leaves(tree)
         for n in leaves:
-            assert _sentence_ends(n.chunk.text)  # ty: ignore
+            assert _sentence_ends(n.chunk.text)
 
 
 class TestContextWindowClamp:
@@ -365,9 +369,19 @@ def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
     return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
 
 
-def _text_leaves(tree: ChunkTree) -> list[ChunkNode]:
+class _TextLeaf(ChunkNode):
+    """Leaf whose ``chunk`` is guaranteed present (see ``_is_text_leaf``)."""
+
+    chunk: Chunk
+
+
+def _is_text_leaf(n: ChunkNode) -> TypeGuard[_TextLeaf]:
+    return n.chunk is not None and ElementType.TEXT in n.chunk.element_types
+
+
+def _text_leaves(tree: ChunkTree) -> list[_TextLeaf]:
     """Leaf nodes carrying a TEXT chunk."""
-    return [n for n in tree.leaves() if n.chunk is not None and ElementType.TEXT in n.chunk.element_types]
+    return [n for n in tree.leaves() if _is_text_leaf(n)]
 
 
 def _structured_leaves(tree: ChunkTree) -> list[ChunkNode]:

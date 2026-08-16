@@ -115,7 +115,7 @@ class TestParseChunked:
             doc = parser.parse(pdf_file)
 
         orders = [e.reading_order for e in doc.elements]
-        assert orders == sorted(orders)
+        assert orders == sorted(o for o in orders if o is not None)
         assert len(orders) == 6
 
     def test_chunking_disabled_via_config(self, tmp_path: Path) -> None:

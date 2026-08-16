@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+from knox.core.models import CompiledWiki
 from knox.core.models.references import Author, Reference
 from knox.core.pipeline.references import (
     ReferenceStore,
@@ -20,6 +21,8 @@ from knox.core.pipeline.references import (
 )
 from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import DuplicateReferencesRule
+
+_EMPTY_WIKI = CompiledWiki(nodes=[], edges=[], toc=[])
 
 
 class _FakeProvider:
@@ -274,13 +277,13 @@ class TestLintRuleFuzzy:
 
     def test_lint_rule_skip_no_sources_dir(self) -> None:
         rule = DuplicateReferencesRule()
-        results = rule.check(wiki=None)  # type: ignore[arg-type]
+        results = rule.check(_EMPTY_WIKI)
         assert len(results) == 1
         assert results[0].outcome == LintRuleOutcome.SKIP
 
     def test_lint_rule_skip_no_ref_file(self, tmp_path: Path) -> None:
         rule = DuplicateReferencesRule()
-        results = rule.check(wiki=None, sources_dir=str(tmp_path / "src" / "doc.md"))  # type: ignore[arg-type]
+        results = rule.check(_EMPTY_WIKI, sources_dir=str(tmp_path / "src" / "doc.md"))
         assert len(results) == 1
         assert results[0].outcome == LintRuleOutcome.SKIP
 
@@ -296,7 +299,7 @@ class TestLintRuleFuzzy:
         src_dir.write_text("test")
 
         rule = DuplicateReferencesRule()
-        results = rule.check(wiki=None, sources_dir=str(src_dir))  # type: ignore[arg-type]
+        results = rule.check(_EMPTY_WIKI, sources_dir=str(src_dir))
         assert len(results) == 1
         assert results[0].outcome == LintRuleOutcome.PASS
 
@@ -312,7 +315,7 @@ class TestLintRuleFuzzy:
         src_dir.write_text("test")
 
         rule = DuplicateReferencesRule()
-        results = rule.check(wiki=None, sources_dir=str(src_dir))  # type: ignore[arg-type]
+        results = rule.check(_EMPTY_WIKI, sources_dir=str(src_dir))
         assert len(results) == 1
         assert results[0].outcome == LintRuleOutcome.FAIL
         assert len(results[0].details.get("duplicates", [])) > 0
@@ -343,7 +346,7 @@ class TestLintRuleFuzzy:
         rule.fuzzy_threshold = 0.5
 
         with patch("knox.core.pipeline.references.make_provider", return_value=_FakeProvider()):
-            results = rule.check(wiki=None, sources_dir=str(src_dir))  # type: ignore[arg-type]
+            results = rule.check(_EMPTY_WIKI, sources_dir=str(src_dir))
 
         assert len(results) == 1
         assert results[0].outcome == LintRuleOutcome.FAIL

@@ -35,6 +35,7 @@ def test_wiki_store_rebuilds_on_dim_change() -> None:
         # Same path, model now produces 8 dims — must rebuild, not reopen.
         store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(8))
         assert store.build_index(_wiki(8)) == 1
+        assert store._collection is not None
         assert store._collection.schema.vectors[0].dimension == 8
         assert store.search("q")  # insert + query at 8 dims works
         store.close()
@@ -50,6 +51,7 @@ def test_memory_store_rebuilds_on_dim_change(tmp_path: Path) -> None:
 
     store = MemoryStore(db, embedding_model="", embedding_provider=StubProvider(8))
     store.add_entry("q2", "a2")
+    assert store._collection is not None
     assert store._collection.schema.vectors[0].dimension == 8
 
 

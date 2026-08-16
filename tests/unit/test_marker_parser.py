@@ -88,7 +88,7 @@ class TestMarkerParserParse:
         assert result.source_file == src
         assert len(result.elements) > 0
         heading = [e for e in result.elements if e.type == ElementType.HEADING]
-        assert any("Heading One" in (e.content or "") for e in heading)
+        assert any("Heading One" in (e.content if isinstance(e.content, str) else "") for e in heading)
 
     def test_parse_extracts_paragraphs(self, parser: MarkerParser, tmp_path: Path) -> None:
         fake_output = _FakeMarkdownOutput(SIMPLE_MARKDOWN)
@@ -214,9 +214,8 @@ def parser(tmp_path: Path) -> MarkerParser:
     return _make_parser(tmp_path)
 
 
-def _make_parser(tmp_path: Path, **kwargs: object) -> MarkerParser:
+def _make_parser(tmp_path: Path) -> MarkerParser:
     return MarkerParser(
         image_mode="reference",
         images_dir=tmp_path / "images",
-        **kwargs,
     )

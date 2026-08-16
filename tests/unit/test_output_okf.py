@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from knox.core.models import CompiledWiki, MetadataField, WikiNode
+from knox.core.models import CompiledWiki, GraphEdge, MetadataField, WikiNode
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
 from knox.core.models.structured import StructuredFigure, StructuredTable
@@ -16,6 +16,7 @@ from knox.core.pipeline.assets import AssetStore
 from knox.output.base import BaseOutputWriter
 from knox.output.markdown import MarkdownWriter as OkfWriter
 from knox.output.markdown import convert_wikilinks, rewrite_citations_to_footnotes
+from knox.output.models import OkfSource
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -459,28 +460,28 @@ def _parse_frontmatter(text: str) -> dict | None:
 
 def test_citation_rewritten_to_footnote_reference() -> None:
     """[sources/x.pdf] inline citations become [^x] footnote refs (MD066)."""
-    sources = [{"id": "paper-1", "resource": "sources/paper-1.pdf"}]
+    sources: list[OkfSource] = [{"id": "paper-1", "resource": "sources/paper-1.pdf"}]
     result = rewrite_citations_to_footnotes("Claim here [sources/paper-1.pdf].", sources)
     assert result == "Claim here [^paper-1]."
 
 
 def test_multi_source_citation_becomes_multiple_footnotes() -> None:
 
-    sources = [{"id": "a", "resource": "sources/a.pdf"}, {"id": "b", "resource": "sources/b.pdf"}]
+    sources: list[OkfSource] = [{"id": "a", "resource": "sources/a.pdf"}, {"id": "b", "resource": "sources/b.pdf"}]
     result = rewrite_citations_to_footnotes("Synthesis [sources/a.pdf, sources/b.pdf] done.", sources)
     assert result == "Synthesis [^a][^b] done."
 
 
 def test_unmatched_citation_stays_plain_text() -> None:
     """Citations without a footnote definition must not become orphan refs."""
-    sources = [{"id": "a", "resource": "sources/a.pdf"}]
+    sources: list[OkfSource] = [{"id": "a", "resource": "sources/a.pdf"}]
     result = rewrite_citations_to_footnotes("Claim [sources/unknown.pdf].", sources)
     assert result == "Claim [sources/unknown.pdf]."
 
 
 def test_no_citations_unchanged() -> None:
 
-    sources = [{"id": "a", "resource": "sources/a.pdf"}]
+    sources: list[OkfSource] = [{"id": "a", "resource": "sources/a.pdf"}]
     assert rewrite_citations_to_footnotes("Plain text, no citations.", sources) == "Plain text, no citations."
 
 
@@ -508,7 +509,7 @@ def test_index_has_single_top_level_heading(tmp_path: Path) -> None:
     assert "## Concept" in index
 
 
-def _make_wiki(nodes: list[WikiNode] | None = None, edges: list[dict] | None = None) -> CompiledWiki:
+def _make_wiki(nodes: list[WikiNode] | None = None, edges: list[GraphEdge] | None = None) -> CompiledWiki:
     if nodes is None:
         nodes = [_make_node()]
     return CompiledWiki(nodes=nodes, edges=edges or [], toc=[])

@@ -14,6 +14,7 @@ from knox.llm.debug import save_debug_prompt
 class _FakeAgent:
     stage = "compile"
     current_source_id = "src-1"
+    _last_debug_file: Path | None = None
 
 
 def test_save_debug_prompt_writes_valid_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

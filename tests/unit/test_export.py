@@ -188,6 +188,7 @@ class TestAnnotations:
         el = _element("table", [["h"], ["v"]])
         el_dict = _element_from_dict(el)
         record_dict = _structured_dict(el_dict)
+        assert record_dict is not None
         aid = _asset_id(AssetKind.TABLE, record_dict)
 
         _seed_asset_store(

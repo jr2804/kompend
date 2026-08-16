@@ -11,8 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic_ai.messages import ModelMessage
 from typer.testing import CliRunner
 
+from knox.agents.deps import PipelineAgentDeps
 from knox.cli.app import app
 from knox.cli.cmds.knowledge import references as references_cmd
 from knox.compilation.flows.references import resolve_unresolved_references
@@ -30,7 +32,7 @@ class _StubResolver:
     def __init__(self, *args, **kwargs) -> None:  # noqa: D401
         self.calls: list = []
 
-    def run(self, deps: object, *, message_history: object | None = None) -> ReferenceResolutionOutput:
+    def run(self, deps: PipelineAgentDeps, *, message_history: list[ModelMessage] | None = None) -> ReferenceResolutionOutput:
         self.calls.append(deps)
         return ReferenceResolutionOutput(
             resolved=True,
@@ -106,12 +108,12 @@ class TestResolveUnresolvedFlow:
 
     def test_agent_failure_is_non_fatal(self, store_with_unresolved: ReferenceStore) -> None:
         class _FailingResolver:
-            def run(self, deps: object, *, message_history: object | None = None) -> ReferenceResolutionOutput:
+            def run(self, deps: PipelineAgentDeps, *, message_history: list[ModelMessage] | None = None) -> ReferenceResolutionOutput:
                 raise RuntimeError("boom")
 
         resolved = resolve_unresolved_references(
             store_with_unresolved,
-            _FailingResolver(),  # type: ignore[arg-type]
+            _FailingResolver(),
             timeout=10.0,
         )
         assert resolved == 0

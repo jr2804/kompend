@@ -149,7 +149,7 @@ class TestMarkdownWalking:
             doc = MinerUParser().parse(pdf)
 
         texts = [e for e in doc.elements if e.type == ElementType.TEXT]
-        para_contents = [t.content for t in texts if "Line one" in t.content]
+        para_contents = [t.content for t in texts if isinstance(t.content, str) and "Line one" in t.content]
         assert len(para_contents) == 1
         assert "Line one of paragraph." in para_contents[0]
         assert "Line two continues directly." in para_contents[0]
@@ -263,8 +263,8 @@ def _fake_do_parse_factory(markdown: str, image_bytes: bytes | None = None) -> o
         **kwargs: object,
     ) -> None:
         stem = pdf_file_names[0]
-        backend = kwargs.get("backend", "pipeline")
-        parse_method = kwargs.get("parse_method", "auto")
+        backend = str(kwargs.get("backend", "pipeline"))
+        parse_method = str(kwargs.get("parse_method", "auto"))
         subdir = parse_method if backend == "pipeline" else backend
         md_dir = Path(output_dir) / stem / subdir
         images_dir = md_dir / "images"

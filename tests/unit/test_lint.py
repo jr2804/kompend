@@ -1069,7 +1069,7 @@ def _make_node(
 # ── LLM rule: contradiction-detection ────────────────────────────────────
 
 
-def _mock_llm_client(json_data: dict[str, Any] | None) -> MagicMock:
+def _mock_llm_client(json_data: Any) -> MagicMock:
     agent = MagicMock(spec=LintRuleAgent)
     agent.timeout = 120
     agent.usage = None

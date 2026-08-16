@@ -139,7 +139,7 @@ def test_register_backend_populates_metadata() -> None:
 
 def _dummy_cls() -> type[BaseParser]:
     class _Dummy(BaseParser):
-        supported_extensions = set()  # type: ignore[assignment]
+        supported_extensions = set()
         figure_enrichment = True
 
         def parse(self, source_file: Path) -> ParsedDocument:

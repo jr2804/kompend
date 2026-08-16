@@ -818,8 +818,10 @@ class TestRlmConfig:
         cfg = RlmConfig.model_validate(
             {"enable": True, "preset": "aggressive", "max_tool_calls": 150, "node_budget": 32}
         )
-        assert cfg.enable and cfg.preset == "aggressive"
-        assert cfg.max_tool_calls == 150 and cfg.node_budget == 32
+        assert cfg.enable
+        assert cfg.preset == "aggressive"
+        assert cfg.max_tool_calls == 150
+        assert cfg.node_budget == 32
 
     def test_scalar_shorthand_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -830,7 +832,8 @@ class TestRlmConfig:
     def test_llm_config_accepts_group(self) -> None:
         cfg = LLMConfig(rlm={"enable": True, "preset": "default", "max_tool_calls": 200})
         assert cfg.rlm is not None
-        assert cfg.rlm.enable and cfg.rlm.max_tool_calls == 200
+        assert cfg.rlm.enable
+        assert cfg.rlm.max_tool_calls == 200
 
     def test_unknown_group_key_rejected(self) -> None:
         with pytest.raises(ValidationError):

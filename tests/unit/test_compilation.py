@@ -866,7 +866,7 @@ class TestWiCERCompilerWithMock:
                 return CompiledWiki(
                     nodes=[WikiNode(id="dummy", title="Dummy", content="X", node_type="section")],
                     edges=[],
-                    toc=[{"title": "Dummy", "id": "dummy"}],
+                    toc=[{"title": "Dummy", "id": "dummy", "level": 1}],
                     metadata={"custom": True},
                 )
 
@@ -1246,7 +1246,7 @@ def _make_chunks(
         )
         rc = ResolvedChunk(
             chunk=c,
-            entities=[Entity(name="KNOX", type="PROJECT", context="knowledge base")] if i == 0 else [],
+            entities=[Entity(name="KNOX", type="PROJECT", context="knowledge base").model_dump()] if i == 0 else [],
         )
         chunks.append(rc)
     return chunks

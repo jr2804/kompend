@@ -117,7 +117,7 @@ class TestSalvageSchemaGuided:
         assert salvage_json('{"a": 1}') == {"a": 1}
 
     @staticmethod
-    def _schema() -> type:
+    def _schema() -> type[BaseModel]:
         class Page(BaseModel):
             title: str
             content: str

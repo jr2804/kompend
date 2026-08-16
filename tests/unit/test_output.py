@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
@@ -465,14 +465,14 @@ def sample_wiki() -> CompiledWiki:
             metadata={},
         ),
     ]
-    edges = [
-        {"source": "intro", "target": "concept-1", "relation": "contains"},
-        {"source": "concept-1", "target": "procedure-1", "relation": "prerequisite"},
+    edges: list[GraphEdge] = [
+        {"source": "intro", "target": "concept-1", "type": "contains"},
+        {"source": "concept-1", "target": "procedure-1", "type": "prerequisite"},
     ]
-    toc = [
-        {"id": "intro", "title": "Introduction"},
-        {"id": "concept-1", "title": "Core Concepts"},
-        {"id": "procedure-1", "title": "How to Use"},
+    toc: list[TocEntry] = [
+        {"id": "intro", "title": "Introduction", "level": 1},
+        {"id": "concept-1", "title": "Core Concepts", "level": 1},
+        {"id": "procedure-1", "title": "How to Use", "level": 1},
     ]
     metadata = {"title": "Test Wiki", "description": "A wiki for testing"}
     return CompiledWiki(nodes=nodes, edges=edges, toc=toc, metadata=metadata)

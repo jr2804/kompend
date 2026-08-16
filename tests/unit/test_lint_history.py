@@ -11,6 +11,7 @@ import pytest
 
 from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.history import (
+    LintEntry,
     entry_from_report,
     history_to_json,
     history_to_text,
@@ -234,7 +235,8 @@ class TestFormatting:
         assert "openai/gpt-4o" in text
 
 
-def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> dict[str, Any]:
+def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> LintEntry:
+    """Build a fully-populated ``LintEntry`` for history tests."""
     report = _make_report(health_score=score)
     return {
         "timestamp": timestamp,

@@ -8,9 +8,12 @@ Covers:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
+from pydantic_ai import Tool
 
 from knox.compilation.asset_tools import build_asset_tools
 from knox.core.models.assets import AssetRecord
@@ -58,7 +61,7 @@ class TestGetTable:
         tools = build_asset_tools(store)
         get_table = next(t for t in tools if t.name == "get_table")
         # Call the underlying function
-        raw_func = get_table.function
+        raw_func = _raw_func(get_table)
         text = raw_func("tab-a1b2c3")
         assert "Name" in text
         assert "Value" in text
@@ -69,7 +72,7 @@ class TestGetTable:
         """get_table returns error for unknown asset id."""
         tools = build_asset_tools(store)
         get_table = next(t for t in tools if t.name == "get_table")
-        raw_func = get_table.function
+        raw_func = _raw_func(get_table)
         text = raw_func("tab-unknown")
         assert "unknown asset" in text.lower()
 
@@ -77,7 +80,7 @@ class TestGetTable:
         """get_table returns error when asset is not a table."""
         tools = build_asset_tools(store)
         get_table = next(t for t in tools if t.name == "get_table")
-        raw_func = get_table.function
+        raw_func = _raw_func(get_table)
         text = raw_func("fig-d4e5f6")
         assert "not a table" in text.lower()
 
@@ -87,7 +90,7 @@ class TestGetTable:
         store.save()
         tools = build_asset_tools(store)
         get_table = next(t for t in tools if t.name == "get_table")
-        raw_func = get_table.function
+        raw_func = _raw_func(get_table)
         text = raw_func("tab-none")
         assert "unknown asset" in text.lower()
 
@@ -104,7 +107,7 @@ class TestGetFigure:
         """get_figure_description returns caption and alt-text."""
         tools = build_asset_tools(store)
         get_fig = next(t for t in tools if t.name == "get_figure_description")
-        raw_func = get_fig.function
+        raw_func = _raw_func(get_fig)
         text = raw_func("fig-d4e5f6")
         assert "Caption: A bar chart" in text
         assert "Alt text: Bar chart" in text
@@ -113,7 +116,7 @@ class TestGetFigure:
         """get_figure_description returns error for unknown id."""
         tools = build_asset_tools(store)
         get_fig = next(t for t in tools if t.name == "get_figure_description")
-        raw_func = get_fig.function
+        raw_func = _raw_func(get_fig)
         text = raw_func("fig-unknown")
         assert "unknown asset" in text.lower()
 
@@ -121,7 +124,7 @@ class TestGetFigure:
         """get_figure_description returns error when asset is not a figure."""
         tools = build_asset_tools(store)
         get_fig = next(t for t in tools if t.name == "get_figure_description")
-        raw_func = get_fig.function
+        raw_func = _raw_func(get_fig)
         text = raw_func("tab-a1b2c3")
         assert "not a figure" in text.lower()
 
@@ -129,7 +132,7 @@ class TestGetFigure:
         """get_figure_description handles figure without metadata gracefully."""
         tools = build_asset_tools(store)
         get_fig = next(t for t in tools if t.name == "get_figure_description")
-        raw_func = get_fig.function
+        raw_func = _raw_func(get_fig)
         text = raw_func("fig-abc123")
         assert "no caption" in text.lower() or "figure" in text.lower()
 
@@ -177,3 +180,12 @@ def store(tmp_path: Path) -> AssetStore:
     s.put(figure_no_caption)
     s.save()
     return s
+
+
+def _raw_func(tool: Tool) -> Callable[[str], str]:
+    """Asset tools are plain ``str -> str`` closures (see asset_tools.py).
+
+    ``Tool.function``'s declared type also allows a RunContext first arg,
+    which these closures don't take.
+    """
+    return cast("Callable[[str], str]", tool.function)

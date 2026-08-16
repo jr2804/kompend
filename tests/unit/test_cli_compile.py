@@ -17,15 +17,17 @@ from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.llm.context_window import ContextSource, ContextWindow
 from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
+from knox.resolution.base import BaseResolver
+from knox.resolution.chain import ResolverChain
 
 
-class _OrderTrackingResolver:
+class _OrderTrackingResolver(BaseResolver):
     """Mock resolver that records the element_types of each resolved chunk."""
 
     def __init__(self) -> None:
         self.resolved_types: list[ElementType] = []
 
-    def resolve(self, chunk: Chunk) -> ResolvedChunk:  # type: ignore[override]
+    def resolve(self, chunk: Chunk) -> ResolvedChunk:
         self.resolved_types.append(chunk.element_types[0] if chunk.element_types else ElementType.TEXT)
         return ResolvedChunk(chunk=chunk)
 
@@ -65,8 +67,9 @@ def test_build_pipeline_adds_vlm_enricher_when_configured(tmp_path: Path) -> Non
     """When vlm_model is set, the resolver chain contains a VLMEnricher."""
     config = _make_config(tmp_path, vlm_model="openai/gpt-4o")
     pipeline = build_pipeline(config)
-    assert pipeline.resolver is not None
-    resolver_names = {r.__class__.__name__ for r in pipeline.resolver._resolvers}  # ty: ignore
+    resolver = pipeline.resolver
+    assert isinstance(resolver, ResolverChain)
+    resolver_names = {r.__class__.__name__ for r in resolver._resolvers}
     assert "VLMEnricher" in resolver_names
 
 
@@ -74,8 +77,9 @@ def test_build_pipeline_skips_vlm_without_model(tmp_path: Path) -> None:
     """When vlm_model is unset, the resolver chain has no VLMEnricher."""
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
-    assert pipeline.resolver is not None
-    resolver_names = {r.__class__.__name__ for r in pipeline.resolver._resolvers}  # ty: ignore
+    resolver = pipeline.resolver
+    assert isinstance(resolver, ResolverChain)
+    resolver_names = {r.__class__.__name__ for r in resolver._resolvers}
     assert "VLMEnricher" not in resolver_names
 
 
@@ -131,8 +135,9 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
     """
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
-    pipeline.resolver = _OrderTrackingResolver()  # ty: ignore
-
+    pipeline.resolver = _OrderTrackingResolver()
+    resolver = pipeline.resolver
+    assert isinstance(resolver, _OrderTrackingResolver)
     # Build a tree with interleaved image/text chunks:
     #   text1, image1, text2, image2, text3
     chunks = [
@@ -151,7 +156,7 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
 
     assert len(resolved) == 5
     # Image chunks must all be at the end, contiguous
-    types = pipeline.resolver.resolved_types  # ty: ignore
+    types = resolver.resolved_types
     assert types == [ElementType.TEXT, ElementType.TEXT, ElementType.TEXT, ElementType.IMAGE, ElementType.IMAGE]
 
 

@@ -86,7 +86,7 @@ def _make_wiki() -> CompiledWiki:
             ),
         ],
         edges=[{"source": "intro", "target": "intro", "type": "self"}],
-        toc=[{"id": "intro", "title": "Introduction"}],
+        toc=[{"id": "intro", "title": "Introduction", "level": 1}],
         quality_score=0.85,
         iteration=2,
         metadata={"key": "value"},

@@ -43,7 +43,9 @@ class TestEntityRegistry:
         reg = EntityRegistry()
         reg.register("Signal-to-Noise Ratio", aliases=["SNR"])
         assert reg.entity_count == 1
-        assert reg.query("SNR").canonical_name == "Signal-to-Noise Ratio"  # ty: ignore
+        rec = reg.query("SNR")
+        assert rec is not None
+        assert rec.canonical_name == "Signal-to-Noise Ratio"
 
     def test_acronym_dedup_reverse(self) -> None:
         """Registering Signal-to-Noise Ratio as alias of SNR → single record."""
@@ -51,7 +53,9 @@ class TestEntityRegistry:
         reg.register("SNR", aliases=["Signal-to-Noise Ratio"])
         assert reg.entity_count == 1
         assert reg.query("Signal-to-Noise Ratio") is not None
-        assert reg.query("signal-to-noise ratio").canonical_name == "SNR"  # ty: ignore
+        rec = reg.query("signal-to-noise ratio")
+        assert rec is not None
+        assert rec.canonical_name == "SNR"
 
     def test_acronym_dedup_separate_registrations(self) -> None:
         """Two separate .register() calls with acronym relationship → merged."""
