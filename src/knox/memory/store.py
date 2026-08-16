@@ -174,7 +174,8 @@ class MemoryStore:
     def _ensure_collection(self) -> EmbeddingProvider:
         """Initialize the zvec collection and JSONL file for memory entries."""
         if self._collection is not None:
-            assert self._provider is not None
+            if self._provider is None:
+                raise RuntimeError("Memory collection exists but embedding provider is unset — internal invariant violated")
             return self._provider
 
         provider = self._provider
