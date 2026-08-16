@@ -23,7 +23,7 @@ from knox.core.pipeline.attachments import (
     iter_ingestible_attachments,
 )
 from knox.core.pipeline.config import PipelineConfig
-from knox.core.pipeline.ingest import parse_cache_name
+from knox.core.pipeline.ingest import parse_cache_name, relativize_image_paths
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
@@ -134,6 +134,11 @@ def _process_single_source(
         if el.source_file is not None:
             el.source_file = Path(pipeline.rel_file(el.source_file))
 
+    # Portable cache: absolute image paths -> relative to the vault. Must run
+    # BEFORE chunking so asset ids (which hash figure image_ref) stay
+    # consistent between the parse cache and the asset store.
+    relativize_image_paths(parsed, Path(pipeline.base_directory))
+
     if pipeline.config.privacy_filter:
         apply_privacy_filter(parsed.elements)
 
@@ -200,6 +205,10 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
     except Exception:
         logger.exception("Failed to parse %s", source_file)
         return None
+    # Portable cache: absolute image paths -> relative to the vault, BEFORE the
+    # cache write so cache and in-memory doc agree (asset ids hash figure
+    # image_ref; the same doc is chunked after this function returns).
+    relativize_image_paths(parsed, Path(pipeline.base_directory))
     if use_cache:
         _save_cache(pipeline, source_file, parsed)
     return parsed

@@ -10,11 +10,12 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import MetadataField, ParsedDocument
+from knox.core.models import ElementType, MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.state import TierStateStore
 from knox.logging import get_logger
@@ -180,6 +181,9 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 doc.metadata = {}
             doc.metadata["tags"] = tags  # nocheck: chunk metadata, not wiki metadata
 
+        # Portable cache: image paths relative to the vault, like source_file.
+        relativize_image_paths(doc, base_dir)
+
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
         out_file.write_text(
@@ -240,6 +244,22 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         dedup_skipped=dedup_skipped,
         cache_dir=cache_dir,
     )
+
+
+def relativize_image_paths(doc: ParsedDocument, base_dir: Path) -> None:
+    """Rewrite absolute image element content to paths relative to *base_dir*.
+
+    Keeps the parse cache portable (no machine-specific absolute paths). Data
+    URIs and ``[Image: ...]`` placeholders are left untouched. Idempotent:
+    already-relative paths pass through unchanged (cache-hit path).
+    """
+    for el in doc.elements:
+        if el.type is ElementType.IMAGE and isinstance(el.content, str):
+            path = Path(el.content)
+            if path.is_absolute():
+                # Outside the vault: leave as-is. Within it: relativize.
+                with suppress(ValueError):
+                    el.content = path.relative_to(base_dir).as_posix()
 
 
 def parse_cache_name(source_file: Path) -> str:
