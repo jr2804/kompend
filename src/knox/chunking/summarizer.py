@@ -27,15 +27,8 @@ import re
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.summarizer import SummarizerAgent
 from knox.core.cache.store import CacheStore
-from knox.core.models import (
-    ChunkNode,
-    ChunkStrategy,
-    ChunkTree,
-    StructuredData,
-    StructuredEquation,
-    StructuredFigure,
-    StructuredTable,
-)
+from knox.core.models import ChunkNode, ChunkStrategy, ChunkTree
+from knox.core.models.structured import structured_to_text
 from knox.core.templates import get_template_loader
 from knox.logging import get_logger
 
@@ -202,27 +195,6 @@ class NodeSummarizer:
         return " ".join(sentences)
 
 
-def structured_to_text(s: StructuredData) -> str:
-    """Flatten a :class:`StructuredData` variant to a text representation."""
-    if isinstance(s, StructuredTable):
-        header = " | ".join(s.columns)
-        rows = [" | ".join(row.get(col, "") for col in s.columns) for row in s.rows]
-        caption = f" — {s.caption}" if s.caption else ""
-        return f"Table{caption}\n{header}\n" + "\n".join(rows)
-    if isinstance(s, StructuredEquation):
-        parts = [s.latex]
-        if s.variables:
-            parts.append("where " + ", ".join(f"{v.name}={v.definition}" for v in s.variables if v.definition))
-        if s.caption:
-            parts.append(f"({s.caption})")
-        return " ".join(parts)
-    if isinstance(s, StructuredFigure):
-        parts = []
-        if s.caption:
-            parts.append(s.caption)
-        if s.alt_text:
-            parts.append(f"[{s.alt_text}]")
-        if s.image_ref:
-            parts.append(f"({s.image_ref})")
-        return " ".join(parts) if parts else "[figure]"
-    return ""
+#: ``structured_to_text`` lives in ``knox.core.models.structured`` — importing
+#: it from here would pull the agent stack into the models layer and re-create
+#: the chunking/agents/compilation circular import.

@@ -12,10 +12,9 @@ from __future__ import annotations
 
 from pydantic_ai import Tool
 
-from knox.chunking.summarizer import structured_to_text
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
-from knox.core.models.structured import StructuredFigure
+from knox.core.models.structured import StructuredFigure, structured_to_text
 from knox.core.pipeline.assets import AssetStore
 
 # ---------------------------------------------------------------------------

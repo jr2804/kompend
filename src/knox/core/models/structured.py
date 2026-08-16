@@ -137,12 +137,44 @@ def structured_to_dict(s: StructuredData) -> dict[str, Any]:
 _structured_to_dict = structured_to_dict  # backward-compat alias
 
 
+def structured_to_text(s: StructuredData) -> str:
+    """Flatten a :class:`StructuredData` variant to a text representation.
+
+    Lives here (not in ``knox.chunking.summarizer``) because both the chunking
+    and compilation tiers consume it — importing it from the chunker pulls in
+    the agent stack and creates a circular import.
+    """
+    if isinstance(s, StructuredTable):
+        header = " | ".join(s.columns)
+        rows = [" | ".join(row.get(col, "") for col in s.columns) for row in s.rows]
+        caption = f" — {s.caption}" if s.caption else ""
+        return f"Table{caption}\n{header}\n" + "\n".join(rows)
+    if isinstance(s, StructuredEquation):
+        parts = [s.latex]
+        if s.variables:
+            parts.append("where " + ", ".join(f"{v.name}={v.definition}" for v in s.variables if v.definition))
+        if s.caption:
+            parts.append(f"({s.caption})")
+        return " ".join(parts)
+    if isinstance(s, StructuredFigure):
+        parts = []
+        if s.caption:
+            parts.append(s.caption)
+        if s.alt_text:
+            parts.append(f"[{s.alt_text}]")
+        if s.image_ref:
+            parts.append(f"({s.image_ref})")
+        return " ".join(parts) if parts else "[figure]"
+    return ""
+
+
 __all__ = [
     "EquationVariable",
     "StructuredData",
     "StructuredEquation",
     "StructuredFigure",
     "StructuredTable",
+    "structured_to_text",
 ]
 
 

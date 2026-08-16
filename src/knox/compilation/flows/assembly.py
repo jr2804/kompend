@@ -9,13 +9,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from knox.chunking.summarizer import structured_to_text
 from knox.compilation._two_phase_core import ExtractionSet
 from knox.compilation.asset_registry import AssetIdMap
 from knox.compilation.asset_summarizer import summarize_asset
 from knox.core.models import ChunkTree, ResolvedChunk, WikiNode
 from knox.core.models.enums import MetadataField
-from knox.core.models.structured import StructuredEquation
+from knox.core.models.structured import StructuredEquation, structured_to_text
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 

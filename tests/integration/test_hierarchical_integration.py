@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from knox.chunking import HierarchicalChunker
-from knox.chunking.summarizer import structured_to_text
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import (
     ChunkStrategy,
@@ -32,6 +31,7 @@ from knox.core.models import (
     StructuredTable,
     WikiNode,
 )
+from knox.core.models.structured import structured_to_text
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.preprocessing.parsers.docling_parser import DoclingParser

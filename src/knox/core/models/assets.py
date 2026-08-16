@@ -6,7 +6,7 @@ id + summary in the extraction input (instead of being inlined as
 pipe-delimited text). See ``.agents/plans/structured-asset-separation.md``.
 
 Equations are deferred (Phase 1 leaves them inlined via
-:func:`knox.chunking.summarizer.structured_to_text`).
+:func:`knox.core.models.structured.structured_to_text`).
 """
 
 from __future__ import annotations
