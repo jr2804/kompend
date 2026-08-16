@@ -47,6 +47,16 @@ all `*.md` files under the vault root except `sources/`, `.knox/`, and
 reformatted, sources never touched). Files are passed explicitly to rumdl
 to bypass its ignore-file filtering — dir scans get eaten by `.gitignore`.
 
+### Plans completed and archived (2026-08-16)
+
+`2026-08-16-source-export-md.md` (`knox sources export`) archived to
+`.agents/history/`. Fully implemented — `export_source` in
+`core/pipeline/export.py`, `sources export` CLI command, `export.annotations` /
+`export.summary` config keys, parse-cache image paths relativized at write
+(portable caches), and the pre-existing `knox.chunking` circular import fixed
+by moving `structured_to_text` to `core/models/structured.py`. 19 new unit
+tests; full unit suite green.
+
 ### Plans completed and archived (2026-08-14)
 
 `2026-08-14-migration-plan.md` (summarization-pydantic-ai integration) and

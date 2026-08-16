@@ -21,6 +21,7 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox sources list` | List ingested source files with their tags (`--tags` filter) |
 | `knox sources tag` | Add a tag to an ingested source file |
 | `knox sources untag` | Remove a tag from an ingested source file |
+| `knox sources export` | Render an ingested source as clean markdown |
 | `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox capture` | LLM-extract knowledge items from free text (`--tag`) |
 | `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`) |
@@ -404,7 +405,8 @@ extraction summary are left in place at the top level.
 
 ## `knox sources`
 
-Manage ingested source files and the tags attached to them. Tags are the same
+Manage ingested source files: list them, tag them, and export them as clean
+markdown. Tags are the same
 `metadata.tags` field written by `--tag` at ingestion time; changes here are
 persisted in the per-file parse cache under `.knox/cache/` and propagate to
 wiki nodes on the next `knox compile`.
@@ -419,9 +421,34 @@ knox sources list --tags paper,attention --tags transformer
 # Add / remove a tag on an already-ingested source (no re-ingest needed)
 knox sources tag sources/paper.pdf attention
 knox sources untag sources/paper.pdf attention
+
+# Export a source as clean markdown, reconstructed from the parse cache
+# ("as ingested" — not from the original file)
+knox sources export sources/paper.pdf out.md
 ```
 
-The `file` argument matches the `source_file` recorded at ingestion —
+### `knox sources export`
+
+The source is rebuilt from the Tier-1 parse cache in `.knox/cache/`, so the
+result is a faithful markdown rendering of what KNOX ingested. Figures are
+copied to `<output stem>_assets/` next to the output file by default, or
+embedded as data URIs with `--inline`. Attachments stay in the vault and are
+listed in an `## Attachments` table at the end with relative links.
+
+```bash
+# Default: images to out_assets/, annotations + summary as markdown sections
+knox sources export sources/paper.pdf out.md
+
+# Embed images inline; skip extracted knowledge
+knox sources export sources/paper.pdf out.md --inline --annotations off --summary off
+
+# Write extracted knowledge to out_assets/extracted.json instead of sections
+knox sources export sources/paper.pdf out.md --annotations asset --summary asset
+```
+
+`--annotations` / `--summary` take `off | inline | asset` and override the
+`export.annotations` / `export.summary` config keys (default `inline`). The
+`source_id` argument matches the `source_file` recorded at ingestion —
 `knox sources list` shows the exact value to use.
 
 ## Environment Variables

@@ -120,6 +120,7 @@ The main configuration sections:
 | `[compile.embedding]` | Embedding model for vector index (`litellm:` prefix or sentence-transformers name; `null` disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
+| `[export]` | `knox sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
 | `[notes]` | User notes file configuration |
 | `[hooks]` | Event hook callbacks |
 
