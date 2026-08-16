@@ -6,6 +6,9 @@ Search infrastructure and output formatting helpers live in
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import typer
 
 from knox.cli._query_helpers import (  # noqa: F401  # re-exported for backward compat
@@ -48,12 +51,12 @@ from knox.core.config.keys import (
     QUERY_FORMAT,
     EnvVar,
 )
-from knox.core.models import load_cached_wiki
+from knox.core.models import load_cached_wiki, load_wiki_from_files
 from knox.core.paths import vault_paths
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_err_console, get_logger
 from knox.search.classifier import classify
-from knox.search.retriever import HybridRetriever
+from knox.search.retriever import HybridRetriever, KeywordRetriever
 
 logger = get_logger(__name__)
 
@@ -104,30 +107,37 @@ def query_cmd(
     tag_groups = _parse_tag_groups(tags)
 
     wiki = load_cached_wiki(vp.base_dir)
+    portable = wiki is None
+    if portable:
+        # No .knox cache — build the wiki from the generated markdown files
+        # (portable mode: the wiki folder alone is the source of truth).
+        wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
         get_err_console().print(
             f"No compiled wiki found in {output_dir}. Run 'knox compile' first.",
         )
         raise typer.Exit(1)
 
-    vector_store = open_vector_store(state_dir, wiki)
+    vector_store = open_vector_store(state_dir, wiki) if not portable else None
+    if portable:
+        get_console().print("Portable mode: no .knox cache — searching the wiki files directly.")
     model = cfg.get("compile.llm.default_model", "")
     cw = discover_context_window(model, context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP)) if model else None
 
     try:
-        if adaptive:
-            results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
-            has_enhanced = False
-        else:
-            enhanced_result = handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
-            if enhanced_result is not None:
-                results = enhanced_result
-                raw = False
-                has_enhanced = True
-            else:
-                retriever = HybridRetriever(wiki, vector_store=vector_store)
-                results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
-                has_enhanced = False
+        results, raw, has_enhanced = _execute_search(
+            wiki=wiki,
+            query=query,
+            top_k=top_k,
+            search_mode=search_mode,
+            sources_dir=sources_dir,
+            state_dir=state_dir,
+            vector_store=vector_store,
+            tag_groups=tag_groups,
+            adaptive=adaptive,
+            cfg=cfg,
+            model=model,
+        )
     finally:
         if vector_store is not None:
             vector_store.close()
@@ -147,6 +157,40 @@ def query_cmd(
 
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
     synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)
+
+
+def _execute_search(
+    *,
+    wiki: Any,
+    query: str,
+    top_k: int,
+    search_mode: str,
+    sources_dir: Path | None,
+    state_dir: Path,
+    vector_store: Any,
+    tag_groups: list[list[str]] | None,
+    adaptive: bool,
+    cfg: Any,
+    model: str,
+) -> tuple[list[Any], bool, bool]:
+    """Dispatch query search; returns (results, raw, has_enhanced).
+
+    Without a vector store (portable mode — no ``.knox/`` state), falls back
+    to keyword search over the wiki pages.
+    """
+    if vector_store is None:
+        retriever: HybridRetriever | KeywordRetriever = KeywordRetriever(wiki)
+        results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
+        return results, raw, False
+    if adaptive:
+        results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
+        return results, raw, False
+    enhanced_result = handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
+    if enhanced_result is not None:
+        return enhanced_result, False, True
+    retriever = HybridRetriever(wiki, vector_store=vector_store)
+    results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
+    return results, raw, False
 
 
 def _parse_tag_groups(tags: list[str] | None) -> list[list[str]]:

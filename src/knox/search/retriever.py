@@ -195,6 +195,65 @@ class HybridRetriever:
         return sorted_results[:top_k]
 
 
+class KeywordRetriever:
+    """Portable keyword search over a CompiledWiki — no vector store needed.
+
+    Used when the ``.knox/`` vector store is absent (e.g. a wiki handed over
+    without internal state): title tokens score 3x, content tokens 1x.
+    Implements the same surface as :class:`HybridRetriever` so the query
+    dispatch is unchanged.
+    """
+
+    def __init__(self, wiki: CompiledWiki) -> None:
+        self._nodes = {n.id: n for n in wiki.nodes}
+
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """Rank wiki pages by token overlap with *query*."""
+        query_tokens = set(tokenize(query))
+        scored: list[tuple[float, WikiNode]] = []
+        for node in self._nodes.values():
+            title_tokens = set(tokenize(node.title))
+            content_tokens = set(tokenize(node.content or ""))
+            desc = (node.metadata or {}).get("description", "") if node.metadata else ""
+            desc_tokens = set(tokenize(str(desc)))
+            score = len(query_tokens & title_tokens) * 3 + len(query_tokens & desc_tokens) * 2 + len(query_tokens & content_tokens)
+            if score > 0:
+                scored.append((float(score), node))
+        scored.sort(key=lambda t: (-t[0], t[1].title.lower()))
+
+        results: list[SearchResult] = []
+        for score, node in scored[:top_k]:
+            snippet = extract_snippet(node.content, query_tokens) if node.content else node.title
+            source_file = None
+            if node.metadata and node.metadata.get(MetadataField.SOURCE):
+                source_file = str(node.metadata[MetadataField.SOURCE])
+            results.append(
+                SearchResult(
+                    article_id=node.id,
+                    title=node.title,
+                    snippet=snippet,
+                    score=score,
+                    source_file=source_file,
+                    tags=_node_tags(node),
+                )
+            )
+        return results
+
+    def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """Alias of :meth:`search`."""
+        return self.search(query, top_k=top_k)
+
+    def search_hybrid(
+        self,
+        query: str,
+        sources_dir: Path | None = None,
+        top_k: int = 5,
+        expand_graph: bool = False,
+    ) -> list[SearchResult]:
+        """Alias of :meth:`search` — no raw-source fallback in portable mode."""
+        return self.search(query, top_k=top_k)
+
+
 # ── Synthesis (context formatting + LLM call) ──────────────────────────
 
 
@@ -313,6 +372,16 @@ def expand_query(
 def tokenize(text: str) -> list[str]:
     """Split text into lowercase alphanumeric tokens."""
     return [t for t in TOKEN_SPLIT_RE.split(text.lower()) if t]
+
+
+def _node_tags(node: WikiNode) -> set[str]:
+    """Tags from node metadata, guarded against missing/non-list shapes."""
+    if not node.metadata:
+        return set()
+    raw = node.metadata.get(MetadataField.TAGS)
+    if isinstance(raw, list):
+        return {str(t) for t in raw}
+    return set()
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:

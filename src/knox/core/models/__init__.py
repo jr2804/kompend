@@ -53,6 +53,7 @@ from knox.core.models.wiki import (
     TocEntry,
     WikiNode,
     load_cached_wiki,
+    load_wiki_from_files,
 )
 
 __all__ = [
@@ -98,5 +99,6 @@ __all__ = [
     "WikiNode",
     "extract_citations",
     "load_cached_wiki",
+    "load_wiki_from_files",
     "merge_duplicate_citations",
 ]
