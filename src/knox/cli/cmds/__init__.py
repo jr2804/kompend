@@ -18,10 +18,6 @@ Standalone modules:
 - ``serve.py``    — local HTTP server and MCP server
 
 All commands register themselves with the app.Typer instance on import.
-
-BACKWARD COMPATIBILITY:
-- Old paths are preserved as re-export wrappers (``from knox.cli.cmds.lint import ...``
-  still works by delegating to ``knox.cli.cmds.quality.lint``).
 """
 
 from __future__ import annotations
@@ -31,41 +27,19 @@ from types import ModuleType
 
 _MODULE_NAMES: frozenset[str] = frozenset(
     {
-        "capture",
-        "config",
-        "doctor",
         "init",
-        "lint",
-        "log",
-        "memory",
-        "organize",
-        "pack",
         "pipeline",
         "quality",
-        "query",
-        "review",
         "serve",
-        "status",
     }
 )
 
 
 __all__ = [
-    "capture",
-    "config",
-    "doctor",
     "init",
-    "lint",
-    "log",
-    "memory",
-    "organize",
-    "pack",
     "pipeline",
     "quality",
-    "query",
-    "review",
     "serve",
-    "status",
 ]
 
 

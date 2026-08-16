@@ -97,7 +97,7 @@ def _callback(
         None,
         "--wiki-dir",
         "-w",
-        help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
+        help="Project root directory. All other paths are resolved relative to it. Default: current working directory.",
         envvar=EnvVar.WIKI_DIR,
     ),
     no_user_tracking: bool = typer.Option(

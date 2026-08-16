@@ -24,8 +24,9 @@ WikiDir = Annotated[
     typer.Option(
         "--wiki-dir",
         "-w",
-        help="Project root directory. All other paths are resolved relative to it. Default: current working directory. Env: KNOX_WIKI_DIR.",
+        help="Project root directory. All other paths are resolved relative to it. Default: current working directory.",
         envvar=EnvVar.WIKI_DIR,
+        rich_help_panel="Project",
     ),
 ]
 
@@ -44,10 +45,9 @@ ConfigPath = Annotated[
     typer.Option(
         "--config",
         "-c",
-        help=(
-            f"Path to configuration file. Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml. Env: {APP_NAME_UPPERCASE}_CONFIG."
-        ),
+        help=("Path to configuration file. Default: auto-discover './knox.toml' (walking up) then ~/.config/knox/config.toml."),
         envvar=EnvVar.CONFIG,
+        rich_help_panel="Project",
     ),
 ]
 
@@ -72,6 +72,7 @@ Progress = Annotated[
     typer.Option(
         "--progress/--no-progress",
         help="Show rich progress bars (auto-detected for TTY).",
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -85,7 +86,7 @@ CliSet = Annotated[
             "key's type. Does NOT persist — use `knox config set` for a "
             "permanent change."
         ),
-        rich_help_panel="Overrides",
+        rich_help_panel="Project",
     ),
 ]
 
@@ -97,8 +98,7 @@ Parser = Annotated[
             "Ingestion backend name, or a comma-separated priority list "
             "(e.g. 'liteparse,docling'). The first backend that supports a "
             "file's format wins; list multiple to keep coverage of formats "
-            "the primary lacks. See `knox doctor` for available backends. "
-            f"Env: {APP_NAME_UPPERCASE}_INGEST_PARSER."
+            "the primary lacks. See `knox doctor` for available backends."
         ),
         envvar=EnvVar.INGEST_PARSER,
     ),

@@ -14,6 +14,7 @@ OnlineUrls = Annotated[
     typer.Option(
         "--url",
         help="URLs to download before processing (repeatable).",
+        rich_help_panel="Sources",
     ),
 ]
 
@@ -31,6 +32,7 @@ Ignore = Annotated[
     typer.Option(
         "--ignore",
         help="Ignore pattern (glob-style, repeatable).",
+        rich_help_panel="Sources",
     ),
 ]
 
@@ -39,6 +41,7 @@ IndexStore = Annotated[
     typer.Option(
         "--index/--no-index",
         help="Index compiled wiki in zvec for semantic search. Default: on.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -46,7 +49,8 @@ EmbedModel = Annotated[
     str | None,
     typer.Option(
         "--embed-model",
-        help="Embedding model for zvec indexing.",
+        help="Embedding model for zvec indexing. Default: config compile.embedding.model (empty = no vector index).",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -65,6 +69,7 @@ SynthesizeFlag = Annotated[
     typer.Option(
         "--synthesize/--no-synthesize",
         help="Also generate an LLM-synthesized overview.md page. Default: on.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -74,6 +79,7 @@ CompileLint = Annotated[
     bool | None,
     typer.Option(
         "--lint/--no-lint",
-        help="Run lint after compilation and report quality issues.",
+        help="Run lint after compilation and report quality issues. Default: off.",
+        rich_help_panel="Output",
     ),
 ]

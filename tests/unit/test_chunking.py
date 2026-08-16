@@ -357,6 +357,12 @@ class TestContextWindowClamp:
         assert chunker._effective_max == 819
 
 
+class _TextLeaf(ChunkNode):
+    """Leaf whose ``chunk`` is guaranteed present (see ``_is_text_leaf``)."""
+
+    chunk: Chunk
+
+
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:
     return ParsedDocument(
         source_file=Path(f"{title}.pdf"),
@@ -369,19 +375,13 @@ def _text_elements(paragraphs: list[str]) -> list[DocumentElement]:
     return [DocumentElement(type=ElementType.TEXT, content=p) for p in paragraphs]
 
 
-class _TextLeaf(ChunkNode):
-    """Leaf whose ``chunk`` is guaranteed present (see ``_is_text_leaf``)."""
-
-    chunk: Chunk
+def _text_leaves(tree: ChunkTree) -> list[_TextLeaf]:
+    """Leaf nodes carrying a TEXT chunk."""
+    return [n for n in tree.leaves() if _is_text_leaf(n)]
 
 
 def _is_text_leaf(n: ChunkNode) -> TypeGuard[_TextLeaf]:
     return n.chunk is not None and ElementType.TEXT in n.chunk.element_types
-
-
-def _text_leaves(tree: ChunkTree) -> list[_TextLeaf]:
-    """Leaf nodes carrying a TEXT chunk."""
-    return [n for n in tree.leaves() if _is_text_leaf(n)]
 
 
 def _structured_leaves(tree: ChunkTree) -> list[ChunkNode]:

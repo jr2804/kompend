@@ -34,14 +34,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-# Optional backend: mineru is not a locked dependency — installed manually
-# (see pyproject optional-dependencies comment). Importing raises ImportError
-# when absent; the parser registry relies on that to skip this backend.
-# ``importlib`` keeps ty from flagging a module missing from this env.
-do_parse = importlib.import_module("mineru.cli.common").do_parse
-MakeMode = importlib.import_module("mineru.utils.enum_class").MakeMode
-
-
 # Markdown line classifiers (shared shape with the LiteParse walker).
 _IMAGE_REF_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|?\s*$")
@@ -63,6 +55,13 @@ _VALID_BACKENDS = {"pipeline", "vlm", "hybrid"}
 #: Parse methods for the pipeline backend: ``auto`` (OCR auto-detect),
 #: ``ocr`` (force OCR), ``txt`` (text-layer only).
 _VALID_PARSE_METHODS = {"auto", "ocr", "txt"}
+
+# Optional backend: mineru is not a locked dependency — installed manually
+# (see pyproject optional-dependencies comment). Importing raises ImportError
+# when absent; the parser registry relies on that to skip this backend.
+# ``importlib`` keeps ty from flagging a module missing from this env.
+do_parse = importlib.import_module("mineru.cli.common").do_parse
+MakeMode = importlib.import_module("mineru.utils.enum_class").MakeMode
 
 logger = get_logger(__name__)
 

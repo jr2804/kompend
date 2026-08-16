@@ -183,15 +183,10 @@ class VaultPaths:
         ``None`` or ``""`` means the current working directory. No other code
         should call ``Path.cwd()`` or ``Path(x).resolve()`` on a wiki root.
         """
-        resolved = (
-            Path.cwd().resolve()
-            if base_dir is None or base_dir == Path("")
-            else Path(base_dir).expanduser().resolve()
-        )
+        resolved = Path.cwd().resolve() if base_dir is None or base_dir == Path("") else Path(base_dir).expanduser().resolve()
         object.__setattr__(self, "base_dir", resolved)
         object.__setattr__(self, "sources_dir_name", sources_dir_name)
         object.__setattr__(self, "output_dir_name", output_dir_name)
-
 
     # ── Top-level directories ───────────────────────────────────────────
 

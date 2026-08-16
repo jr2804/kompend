@@ -19,30 +19,18 @@ Every command entry point lives here — commands are the only way users invoke 
 ### File organization
 
 Commands organized by domain/functional grouping. Top-level modules are
-individual entry points; ``knowledge/`` and ``pipeline/`` are group sub-apps:
+individual entry points; ``knowledge/``, ``quality/``, and ``pipeline/``
+are subpackages:
 
 | Module(s) | Purpose | Entry Point(s) |
 |-----------|---------|-----------------|
 | `agent.py` | Agent CLI (ACP interactive) | `/knox agent` |
 | `agents.py` | Agent management | `/knox agents` |
-| `capture.py` | Document capture | `/knox capture` |
-| `config.py` | Configuration management | `/knox config` (sub-app: get, set, validate, show) |
-| `doctor.py` | Health/diagnostic checks | `/knox doctor` |
 | `init.py` | Project initialization | `/knox init` (sub-app: bare, scaffold, bootstrap) |
-| `lint.py` | Linting and validation | `/knox lint` (sub-app: run, history, prune) |
-| `log.py` | Run log viewer | `/knox log` |
-| `memory.py` | Memory/RAG operations | `/knox memory` (sub-app: query, add, feedback) |
-| `organize.py` | Wiki organization | `/knox organize` |
-| `pack.py` | Archive packing | `/knox pack` |
-| `pipeline.py` | Tiered compilation pipeline | `/knox pipeline` |
-| `quality.py` | Quality diagnostics | `/knox quality` |
-| `query.py` | Vector search / RAG queries | `/knox query` |
-| `review.py` | Review queue management | `/knox review` |
-| `serve.py` | Local HTTP server | `/knox serve` |
-| `sources.py` | Source management | `/knox sources` |
-| `status.py` | Wiki statistics | `/knox status` |
-| `knowledge/` | Knowledge sub-app | capture, learn, distill, memory, organize, pack, query |
-| `pipeline/` | Pipeline sub-app | compile, config, sources, status |
+| `serve.py` | MCP + web server | `/knox mcp`, `/knox serve` |
+| `knowledge/` | Capture, query, memory, organize, pack, attachments, references | `/knox capture`, `/knox learn`, `/knox distill`, `/knox write`, `/knox query`, `/knox memory`, `/knox organize`, `/knox pack-list`, `/knox pack-install`, `/knox attachments`, `/knox references` |
+| `pipeline/` | Parse, compile, ingest, index, config, sources | `/knox parse`, `/knox compile`, `/knox ingest`, `/knox index`, `/knox config`, `/knox sources` |
+| `quality/` | Doctor, lint, review, log, status, trace, list-parsers | `/knox doctor`, `/knox lint`, `/knox review`, `/knox log`, `/knox status`, `/knox trace`, `/knox list-parsers` |
 
 ### Command function patterns
 
@@ -90,13 +78,13 @@ def compile(
 
 - Command functions are lowercase: `compile()`, `lint()`, `query()`
 - Helper functions prefixed with `_` (private): `_build_review_queue()`, `_annotate_provenance()`
-- Sub-app functions follow the same pattern (e.g., `config.py` defines `config` and its sub-commands)
+- Sub-app functions follow the same pattern (e.g., `pipeline/config.py` defines `config` and its sub-commands)
 
-### Sub-apps (config, init, memory)
+### Sub-apps (config, memory, attachments, references, sources, lint)
 
 Each sub-app has its own Typer instance and set of sub-commands:
 
-**config.py:**
+**pipeline/config.py:**
 
 ```python
 config_app = typer.Typer()
@@ -113,7 +101,7 @@ def set(key: str, value: str) -> None: ...
 app.add_typer(config_app, name="config")
 ```
 
-Same structure for init.py and memory.py — each is a thin wrapper with sub-commands.
+Same structure for `knowledge/memory.py`, `knowledge/attachments.py`, `knowledge/references.py`, `pipeline/sources.py`, and `quality/lint.py`.
 
 ## Known patterns
 
@@ -123,9 +111,9 @@ Every CLI flag that affects config must be mapped in `_build_cli_overrides()` in
 
 Example:
 
-- Flag: `--llm-model` (from args.py)
-- Config key: `llm.model`
-- Resolved in command: `cfg = resolve_config(overrides={"llm.model": llm_model})`
+- Flag: `--llm-default-model` (from `args/other.py`)
+- Config key: `llm.default_model`
+- Resolved in command: `cfg = resolve_config(cli_overrides=...)` via `build_cli_overrides()` in `_shared.py`
 
 ### Error handling
 
@@ -145,8 +133,7 @@ Example:
 - All modules import successfully: `uv run python -c "from knox.cli.cmds import *"`
 - No circular imports with `app.py`: `uv run python -c "from knox.cli import app, cmds"`
 - All commands register with app: `uv run python -m knox.cli --help` shows all commands
-- Backward compatibility maintained: Old import paths (`from knox.cli.lint_cmds import lint`) still work via `__init__.py` re-exports
-- `__init__.py` uses `__getattr__` for lazy module loading — do NOT add eager imports; add new modules to `_MODULE_NAMES` frozenset instead
+- `__init__.py` uses `__getattr__` for lazy module loading — do NOT add eager imports; add new modules to `_LAZY_MODULES` in `app.py` and `_MODULE_NAMES` in `__init__.py`
 
 ## Child DOX Index
 

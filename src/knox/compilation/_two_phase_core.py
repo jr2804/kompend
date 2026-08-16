@@ -211,11 +211,6 @@ class TwoPhaseRuntime(Protocol):
     _gen_system_tokens: int
     _llm_stats: list[tuple[int, int]]
 
-    # ── Methods the flows call ───────────────────────────────────────
-    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...
-
-    def _report(self, current: int, total: int, description: str) -> None: ...
-
     def merge_duplicate_nodes(
         self,
         nodes: list[WikiNode],
@@ -229,6 +224,11 @@ class TwoPhaseRuntime(Protocol):
     def dedup_content_duplicate_nodes(self, nodes: list[WikiNode]) -> list[WikiNode]: ...
 
     def disambiguate_duplicate_titles(self, nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> None: ...
+
+    # ── Methods the flows call ───────────────────────────────────────
+    def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...
+
+    def _report(self, current: int, total: int, description: str) -> None: ...
 
 
 def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:

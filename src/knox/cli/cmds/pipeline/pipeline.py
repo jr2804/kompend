@@ -37,6 +37,7 @@ from knox.cli.args import (
     Ignore,
     IndexStore,
     InPlaceFlag,
+    JsonProgress,
     ListTiers,
     LlmDefaultModel,
     LlmFallbackChain,
@@ -73,7 +74,6 @@ from knox.core.config.keys import (
     INGEST_PARSER,
     LINT_FUZZY_THRESHOLD,
     SEARCH_EMBED_ATTACHMENTS,
-    EnvVar,
 )
 from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths, vault_paths
@@ -125,13 +125,7 @@ def parse_cmd(
 @app.command(name="compile")
 def compile_cmd(  # noqa: PLR0915
     ctx: typer.Context,
-    wiki_dir: str | None = typer.Option(
-        None,
-        "--wiki-dir",
-        "-w",
-        help="Project root directory. Default: current working directory or KNOX_WIKI_DIR.",
-        envvar=EnvVar.WIKI_DIR,
-    ),
+    wiki_dir: WikiDir = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -160,7 +154,7 @@ def compile_cmd(  # noqa: PLR0915
     memory_enabled: MemoryEnabled = None,
     llm_role_model: LlmRoleModel = None,
     cli_set: CliSet = None,
-    json_progress: bool = typer.Option(False, "--json-progress", help="Emit progress as JSONL to stdout (for machine consumers)"),
+    json_progress: JsonProgress = False,
 ) -> None:
     """Compile documents into a knowledge wiki.
 

@@ -43,7 +43,7 @@ modules when any single command is accessed.
 
 **Adding a new command:**
 
-1. Add `"name": ("knox.cli.cmds.module", "app")` to `_LAZY_MODULES` in `app.py`
+1. Add `"name": "knox.cli.cmds.module"` to `_LAZY_MODULES` in `app.py`
 2. Add `"name"` to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
 3. Tests: `conftest.py` calls `register_all_commands()` at session start
 4. No other changes needed — the module is imported on first invocation

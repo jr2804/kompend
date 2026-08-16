@@ -122,19 +122,35 @@ These live in `common.py` and are imported by multiple command modules:
 - `JsonOutput` — Serialize output as JSON
 - `Progress` — Show progress bar
 
+### Help panels
+
+Options rendered into named groups in `--help` via `rich_help_panel=`.
+Canonical panel names (compile command):
+
+- `Project` — wiki dir, config path, `--set` overrides
+- `Sources` — URLs, ignore patterns, in-place source handling
+- `Pipeline` — tier entry, cache, workers, force, progress, memory
+- `Output` — synthesize, index/embed, lint, review, verify, provenance, privacy
+- `LLM` — model selection and failover chain
+
+Options shared with other commands keep the same panel; a panel renders only
+when the command actually has options in it.
+
 ### Domain-specific argument clusters
 
 **Compile arguments** (`compile.py`):
 
-- `CompileFiles` — Input files/directories
 - `OnlineUrls` — Fetch and embed external URLs
+- `UrlFile` — File with URLs to download
+- `Ignore` — Glob ignore patterns
 - `EmbedModel` — Embedding model name
+- `SynthesizeFlag` / `IndexStore` / `CompileLint` — output toggles
 
 **Query arguments** (`query.py`):
 
 - `QueryText` — Search text
 - `QueryTopK` — Number of results
-- `QueryFormat` — Output format
+- `QueryFormatOption` — Output format
 - `QuerySearchMode` — Vector, BM25, or hybrid search
 
 **Pipeline arguments** (`pipeline.py`):
@@ -142,6 +158,7 @@ These live in `common.py` and are imported by multiple command modules:
 - `StartAtTier` — Which compilation tier to begin at
 - `Workers` — Number of parallel workers
 - `NoCacheFlag` — Skip cache and recompile
+- `JsonProgress` — Machine-readable progress output
 
 ## Verification
 

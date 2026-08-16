@@ -1,6 +1,6 @@
 """Search infrastructure and output formatting for the query command.
 
-Extracted from :mod:`knox.cli.cmds.query` to reduce module size.
+Extracted from :mod:`knox.cli.cmds.knowledge.query` to reduce module size.
 """
 
 from __future__ import annotations

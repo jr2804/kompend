@@ -8,8 +8,6 @@ import typer
 
 from knox.core.config.keys import EnvVar
 
-from .common import APP_NAME_UPPERCASE
-
 # ── Q20 tiered compilation ──────────────────────────────────────────────
 
 StartAtTier = Annotated[
@@ -19,10 +17,10 @@ StartAtTier = Annotated[
         help=(
             "Pipeline entry point: index | chunk | resolve | compile | output. "
             "Tiers before this are skipped (cached results reused). "
-            "Previous tiers must have been completed in a prior run. "
-            f"Env: {APP_NAME_UPPERCASE}_START_AT_TIER."
+            "Previous tiers must have been completed in a prior run."
         ),
         envvar=EnvVar.START_AT_TIER,
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -31,6 +29,7 @@ NoCacheFlag = Annotated[
     typer.Option(
         "--no-cache/--cache",
         help="Bypass the parse cache and re-parse every source. Default: cache on.",
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -41,6 +40,7 @@ Workers = Annotated[
         "-j",
         help="Number of parallel parse workers (1 = sequential).",
         min=1,
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -48,7 +48,8 @@ ForceTier = Annotated[
     bool | None,
     typer.Option(
         "--force/--no-force",
-        help="Re-process every source regardless of persisted tier state.",
+        help="Re-process every source regardless of persisted tier state. Default: off (reuse cached results).",
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -56,7 +57,8 @@ InPlaceFlag = Annotated[
     bool | None,
     typer.Option(
         "--in-place/--no-in-place",
-        help="Keep source files at their original location instead of copying to sources/.",
+        help="Keep source files at their original location instead of copying to sources/. Default: off (copy into sources/).",
+        rich_help_panel="Sources",
     ),
 ]
 
@@ -65,5 +67,15 @@ ListTiers = Annotated[
     typer.Option(
         "--list-tiers",
         help="Show the available pipeline tiers and their current state, then exit.",
+        rich_help_panel="Pipeline",
+    ),
+]
+
+JsonProgress = Annotated[
+    bool,
+    typer.Option(
+        "--json-progress",
+        help="Emit progress as JSONL to stdout (for machine consumers).",
+        rich_help_panel="Pipeline",
     ),
 ]

@@ -46,14 +46,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-# Optional backend: glmocr is not a locked dependency — installed manually
-# (see pyproject optional-dependencies comment). Importing raises ImportError
-# when absent; the parser registry relies on that to skip this backend.
-# ``importlib`` keeps ty from flagging a module missing from this env.
-PipelineResult = importlib.import_module("glmocr").PipelineResult
-glm_parse = importlib.import_module("glmocr").parse
-
-
 # GLM-OCR element labels → KNOX ElementType.
 _LABEL_TO_TYPE: dict[str, ElementType] = {
     "text": ElementType.TEXT,
@@ -76,6 +68,13 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+# Optional backend: glmocr is not a locked dependency — installed manually
+# (see pyproject optional-dependencies comment). Importing raises ImportError
+# when absent; the parser registry relies on that to skip this backend.
+# ``importlib`` keeps ty from flagging a module missing from this env.
+PipelineResult = importlib.import_module("glmocr").PipelineResult
+glm_parse = importlib.import_module("glmocr").parse
 
 logger = get_logger(__name__)
 

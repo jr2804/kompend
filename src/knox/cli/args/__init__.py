@@ -94,6 +94,7 @@ from .parse import ParseFiles, PrintElements
 from .pipeline import (
     ForceTier,
     InPlaceFlag,
+    JsonProgress,
     ListTiers,
     NoCacheFlag,
     StartAtTier,
@@ -146,6 +147,7 @@ __all__ = [
     "InitKeepCache",
     "InitTarget",
     "JsonOutput",
+    "JsonProgress",
     "LearnText",
     "LintDryRun",
     "LintFix",

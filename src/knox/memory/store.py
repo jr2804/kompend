@@ -98,7 +98,6 @@ class MemoryStore:
             vectors={str(MemoryField.QUERY_EMBEDDING): embedding},
             fields={
                 str(MemoryField.QUERY): query,
-
                 str(MemoryField.ANSWER): answer,
                 str(MemoryField.FEEDBACK): feedback or "",
                 str(MemoryField.TIMESTAMP): timestamp,

@@ -67,7 +67,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "s1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         results = retriever.search("filtering", mode="zoom_in", top_k=5)
         assert len(results) > 0
@@ -88,7 +89,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=hits)
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         results = retriever.search("section", mode="zoom_out", top_k=5)
         assert len(results) > 0
@@ -101,7 +103,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "structured", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         results = retriever.search("table", mode="targeted", top_k=5)
         assert len(results) > 0
@@ -112,7 +115,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         results = retriever.search("test", mode="unknown_mode", top_k=5)
         assert len(results) == 1
@@ -123,7 +127,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         candidates = retriever._collect_candidates("signal", top_k=10)
         assert len(candidates) == 1
@@ -136,7 +141,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         candidates = retriever._collect_candidates("", top_k=10)
         assert len(candidates) == 0
@@ -154,7 +160,8 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,max_input_tokens=128_000,
+            vector_store=fake,
+            max_input_tokens=128_000,
         )
         results = retriever._wiki_vector_results("test", top_k=5)
         assert len(results) == 1

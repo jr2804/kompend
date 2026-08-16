@@ -38,16 +38,6 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-# Optional backend: marker-pdf is not a locked dependency (see pyproject
-# optional-dependencies comment) — installed manually. Importing it here
-# raises ImportError when absent, which the parser registry relies on to
-# skip this backend. ``importlib`` keeps ty from flagging a module that
-# may not be installed in the current environment.
-PdfConverter = importlib.import_module("marker.converters.pdf").PdfConverter
-create_model_dict = importlib.import_module("marker.models").create_model_dict
-MarkdownOutput = importlib.import_module("marker.renderers.markdown").MarkdownOutput
-
-
 # Marker emits a page separator of ``"-" * 48`` by default between pages.
 _PAGE_SEP_RE = re.compile(r"\n-{48,}\n")
 # ``![alt](image_id.png)`` — Marker image refs.
@@ -65,6 +55,15 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+# Optional backend: marker-pdf is not a locked dependency (see pyproject
+# optional-dependencies comment) — installed manually. Importing it here
+# raises ImportError when absent, which the parser registry relies on to
+# skip this backend. ``importlib`` keeps ty from flagging a module that
+# may not be installed in the current environment.
+PdfConverter = importlib.import_module("marker.converters.pdf").PdfConverter
+create_model_dict = importlib.import_module("marker.models").create_model_dict
+MarkdownOutput = importlib.import_module("marker.renderers.markdown").MarkdownOutput
 
 logger = get_logger(__name__)
 

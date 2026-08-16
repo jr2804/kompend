@@ -118,7 +118,6 @@ class TestKnoxAgentRlmWiring:
         assert agent._rlm_usage_limits.request_limit >= 50
         assert agent._rlm_usage_limits.request_limit == 50 * 2 + 5
 
-
     def test_rlm_config_group_overrides_preset(self) -> None:
         """A RlmConfig (compile.llm.rlm group) overrides the preset budget."""
 

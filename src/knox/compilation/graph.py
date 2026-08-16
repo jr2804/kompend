@@ -90,7 +90,7 @@ class GraphCompiler(BaseCompiler):
         if self._min_content_length > 0:
             groups = self.filter_empty_groups(
                 dict(groups),
-                    min_content_length=self._min_content_length,
+                min_content_length=self._min_content_length,
             )
         nodes, node_index = self._build_nodes(dict(groups))
         self.disambiguate_duplicate_titles(nodes, chunks)

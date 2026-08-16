@@ -815,9 +815,7 @@ class TestRlmConfig:
         assert RlmConfig.model_validate({"enable": True}).enable is True
 
     def test_table_overrides_preset(self) -> None:
-        cfg = RlmConfig.model_validate(
-            {"enable": True, "preset": "aggressive", "max_tool_calls": 150, "node_budget": 32}
-        )
+        cfg = RlmConfig.model_validate({"enable": True, "preset": "aggressive", "max_tool_calls": 150, "node_budget": 32})
         assert cfg.enable
         assert cfg.preset == "aggressive"
         assert cfg.max_tool_calls == 150

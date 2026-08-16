@@ -9,8 +9,6 @@ import typer
 from knox.core.config import ExportMode
 from knox.core.config.keys import EnvVar
 
-from .common import APP_NAME_UPPERCASE
-
 # ── N1 lint command ────────────────────────────────────────────────────
 
 LintFix = Annotated[
@@ -222,7 +220,8 @@ ReviewMode = Annotated[
     bool | None,
     typer.Option(
         "--review/--no-review",
-        help="Send generated pages to the review queue instead of the output dir.",
+        help="Send generated pages to the review queue instead of the output dir. Default: off.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -231,6 +230,7 @@ BypassReview = Annotated[
     typer.Option(
         "--bypass-review",
         help="Skip review entirely (overrides --review).",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -240,7 +240,8 @@ Provenance = Annotated[
     bool | None,
     typer.Option(
         "--provenance/--no-provenance",
-        help="Emit claim-level [source:42-58] citations in generated pages.",
+        help="Emit claim-level [source:42-58] citations in generated pages. Default: off.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -248,7 +249,8 @@ Private = Annotated[
     bool | None,
     typer.Option(
         "--private/--no-private",
-        help="Mark generated pages as private (excluded from default search).",
+        help="Mark generated pages as private (excluded from default search). Default: off.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -257,6 +259,7 @@ NoPrivacy = Annotated[
     typer.Option(
         "--no-privacy/--privacy",
         help="Disable privacy redaction (secrets/PII patterns kept as-is). Default: filter on.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -265,6 +268,7 @@ Verify = Annotated[
     typer.Option(
         "--verify/--no-verify",
         help="Run grounding verification on each claim. Default: on; --no-verify skips.",
+        rich_help_panel="Output",
     ),
 ]
 
@@ -277,10 +281,10 @@ LlmDefaultModel = Annotated[
         help=(
             "Primary model in provider/model format ('provider/model'), "
             "e.g. 'openai/gpt-4o' or 'ollama/llama3.2'. "
-            "Overrides the config-file model/provider when set. "
-            f"Env: {APP_NAME_UPPERCASE}_LLM_DEFAULT_MODEL."
+            "Overrides the config-file model/provider when set."
         ),
         envvar=EnvVar.LLM_DEFAULT_MODEL,
+        rich_help_panel="LLM",
     ),
 ]
 
@@ -291,10 +295,10 @@ VlmModel = Annotated[
         help=(
             "Vision model in provider/model format ('provider/model') used to caption "
             "IMAGE chunks during resolution. When set, VLMEnricher is added to "
-            "the resolver chain. Example: 'openai/gpt-4o'. "
-            f"Env: {APP_NAME_UPPERCASE}_VLM_MODEL."
+            "the resolver chain. Example: 'openai/gpt-4o'. Default: off."
         ),
         envvar=EnvVar.VLM_MODEL,
+        rich_help_panel="LLM",
     ),
 ]
 
@@ -302,12 +306,9 @@ MemoryEnabled = Annotated[
     bool | None,
     typer.Option(
         "--memory/--no-memory",
-        help=(
-            "Track node lifecycle (confidence, tiers, supersession, retention/decay) "
-            "across compiles. Disabled skips the memory update pass. "
-            f"Env: {APP_NAME_UPPERCASE}_MEMORY_ENABLED."
-        ),
+        help=("Track node lifecycle (confidence, tiers, supersession, retention/decay) across compiles. Disabled skips the memory update pass. Default: on."),
         envvar=EnvVar.MEMORY_ENABLED,
+        rich_help_panel="Pipeline",
     ),
 ]
 
@@ -319,9 +320,10 @@ LlmFallbackChain = Annotated[
             "Ordered fallback model(s) tried when the primary LLM fails "
             "(repeatable). Each value is a message-dict 'provider/model' "
             "string, e.g. 'openai/gpt-4o'. Empty means single-model mode. "
-            f"Env: {APP_NAME_UPPERCASE}_LLM_FALLBACK_CHAIN (comma-separated)."
+            "Env var value: comma-separated list."
         ),
         envvar=EnvVar.LLM_FALLBACK_CHAIN,
+        rich_help_panel="LLM",
     ),
 ]
 
@@ -332,6 +334,7 @@ LlmFallbackMaxRetries = Annotated[
         help=("Transient-error retries before advancing to the next model in the failover chain. 2 means up to three attempts per model."),
         min=0,
         envvar=EnvVar.LLM_FALLBACK_MAX_RETRIES,
+        rich_help_panel="LLM",
     ),
 ]
 
@@ -344,8 +347,9 @@ LlmRoleModel = Annotated[
             "Format: 'role=provider/model', e.g. "
             "'resolve=openai/gpt-4o-mini' "
             "'compile=anthropic/claude-3.5-sonnet'. "
-            "Roles: resolve, compile, enrich, query."
+            "Roles: resolve, compile, enrich, query. Default: config llm.role_models."
         ),
         envvar=EnvVar.LLM_ROLE_MODEL,
+        rich_help_panel="LLM",
     ),
 ]
