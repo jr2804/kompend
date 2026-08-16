@@ -252,7 +252,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 
 ### C.3 C1 conversion targets (the actual work)
 
-**Phase C1-1 — `llm/` (start here; partially done)**
+#### Phase C1-1 — `llm/` (start here; partially done)
 
 - `llm/debug.py` — ✅ `_Payload` dataclass done (A). Remaining: `messages_to_debug_dicts`
   returns `list[dict[str, Any]]` of tagged part dicts (`type`-discriminated union of
@@ -263,7 +263,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   dict or `model_dump()` boundary → C2.
 - `llm/usage.py:1`, `llm/format.py:1`, `llm/user_providers.py:2` — audit; likely C2/C4.
 
-**Phase C1-2 — lint history (self-contained, high value)**
+#### Phase C1-2 — lint history (self-contained, high value)
 
 - `lint/history.py` (11 sites) — lint-history entries
   (`timestamp`, `type`, `options`, `config`, `llm`, …) flow as bare dicts through
@@ -276,7 +276,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `lint/runner.py:139-140` (`ref_kwargs`, `rumdl_kwargs`), `lint/structural.py:555`
   (`_find_fuzzy_duplicates`), `lint/_remediation_gaps.py` (6) — audit per site.
 
-**Phase C1-3 — compilation graph/flow payloads**
+#### Phase C1-3 — compilation graph/flow payloads
 
 - `compilation/graph.py` (12) — graph edges (`source`, `target`, `label`, …) and
   TOC entries built as dicts in `_build_edges`/`_build_toc`. → `@dataclass GraphEdge`,
@@ -291,7 +291,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `compilation/wicer.py` (1), `compilation/two_phase.py` (1) — audit (likely C2,
   schema models).
 
-**Phase C1-4 — dedup fingerprints**
+#### Phase C1-4 — dedup fingerprints
 
 - `preprocessing/dedup/orchestrator.py` (8) — `fingerprint()` returns a dict with
   stable keys (matcher name → per-matcher data); `_serialize_fp` round-trips it to
@@ -300,7 +300,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   (`dedup/store.py` reads it).
 - `preprocessing/dedup/minhash_matcher.py` (2), `preprocessing/dedup/store.py` (2) — audit.
 
-**Phase C1-5 — parser outputs**
+#### Phase C1-5 — parser outputs
 
 - `preprocessing/parsers/marker_parser.py` (5) — `images` dicts, config dicts
   (`{"use_llm": ...}` → real kwargs, not a dict).
@@ -311,7 +311,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `preprocessing/parsers/_registry.py` (2) — registry of parser metadata → C1
   (stable keys: name, description, …).
 
-**Phase C1-6 — output writers**
+#### Phase C1-6 — output writers
 
 - `output/okf_writer.py` (6) — OKF source dicts (`_reference_to_okf_source`,
   `_okf_frontmatter`) → C1 for sources; frontmatter stays C4.
@@ -322,7 +322,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
 - `output/markdown.py:38` (frontmatter_defaults) → C4. `output/renderer.py:1`,
   `output/pages/log.py:1` — audit.
 
-**Phase C1-7 — memory / organize / mcp**
+#### Phase C1-7 — memory / organize / mcp
 
 - `memory/lifecycle.py:101-105`, `memory/store.py` (2) — `NodeState.to_dict/from_dict`
   are C2 (class exists).
@@ -332,7 +332,7 @@ Extend `scripts/check_antipatterns.py` (the existing checker wired into
   `mcp/tools/query.py` (2) — MCP tool returns; many are `model_dump()` boundaries
   (C2). Audit per site; convert only stable internal payloads.
 
-**Phase C1-8 — remaining C1 candidates (audit)**
+#### Phase C1-8 — remaining C1 candidates (audit)
 
 - `core/templates/loader.py` (6) — `TemplateVariable` (→ C1 dataclass), `raw`
   frontmatter (C4), `_global_context` (C4 — Jinja context is open by design).
@@ -414,7 +414,11 @@ Keep-as-is (honest lookup/constant/map usage — C2/C3/C4):
 - `core/cache/store.py` (4), `compilation/_checkpoints.py` (4), `compilation/flows/extraction.py` (3), `compilation/flows/generation.py` (3) — dep-key maps (`gen_deps`, `extract_deps`), cache layers: id→value maps. Honest.
 - `cli/_query_helpers.py:47` `_SYNTHESIS_TOKEN_KEYS` — constant table `Verbosity → config key` (values are already `keys.py` constants). Honest.
 - `output/vault.py:47,72` `KIND_TO_TYPE`/`_KIND_FOLDERS`, `preprocessing/parsers/_registry.py:33,48` `KNOWN_BACKENDS`/`_BACKEND_MODULES`, `acp/provider_store.py` `_IdentityDefaultDict` — constant lookup tables. Honest.
-- `organize/categorize.py:66,77`, `organize/moves.py:36,134` `mapping`, `output/okf_writer.py:135,269` + `output/pages/log.py:51` `slug_targets`/`source_titles`, `compilation/graph.py:450` `chunk_source`, `search/retriever.py:94,192` `skills`, `core/config/_configs.py:163` `role_models`, `_two_phase_core.py:557-584` `_split_sections`/`_merge_sections` (heading→text), `lint/_remediation_gaps.py:158`, `core/models/references.py:42` `to_csl()` (CSL-JSON boundary) — id→value / name→value maps. Keep.
+- `organize/categorize.py:66,77`, `organize/moves.py:36,134` `mapping`, `output/okf_writer.py:135,269` +
+  `output/pages/log.py:51` `slug_targets`/`source_titles`, `compilation/graph.py:450` `chunk_source`,
+  `search/retriever.py:94,192` `skills`, `core/config/_configs.py:163` `role_models`,
+  `_two_phase_core.py:557-584` `_split_sections`/`_merge_sections` (heading→text), `lint/_remediation_gaps.py:158`,
+  `core/models/references.py:42` `to_csl()` (CSL-JSON boundary) — id→value / name→value maps. Keep.
 - `cli/app.py:1`, `core/pipeline/config.py:1`, `chunking/summarizer.py:1`, `agents/base.py:1`, `packs/base.py:1`, `output/renderer.py:1` etc. — single-use contexts; audit with C2/C3/C4 default = keep.
 
 ### D.3 hardcoded string comparisons — codebase sweep
