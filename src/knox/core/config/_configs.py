@@ -105,13 +105,14 @@ class LlmDataFormat(StrEnum):
 class OutputFormat(StrEnum):
     """Output format for the compiled wiki.
 
-    - ``OKF``: Open Knowledge Format v0.1 bundle (default)
-    - ``MARKDOWN``: Markdown files (Obsidian-flavored vault mode)
+    OKF (Open Knowledge Format v0.2) is a **compliance spec**, not a format
+    — the default markdown output is OKF-compliant by default.
+
+    - ``MARKDOWN``: Markdown vault (OKF v0.2-compliant, default)
     - ``JSON``: JSON file
     - ``TYPST``: Typst file
     """
 
-    OKF = "okf"
     MARKDOWN = "markdown"
     JSON = "json"
     TYPST = "typst"
@@ -228,10 +229,10 @@ class BudgetConfig(_KnoxBaseModel):
 class OutputConfig(_KnoxBaseModel):
     """Configuration for output formatting and rendering.
 
-    ``format`` defaults to ``okf`` (Open Knowledge Format v0.1).
+    ``format`` defaults to ``markdown`` (an OKF v0.2-compliant vault).
     """
 
-    format: OutputFormat = Field(default=OutputFormat.OKF, validation_alias=EnvVar.FORMAT)
+    format: OutputFormat = Field(default=OutputFormat.MARKDOWN, validation_alias=EnvVar.FORMAT)
     flavor: str | None = Field(default=None, validation_alias=EnvVar.OUTPUT_FLAVOR)
     frontmatter: dict[str, Any] = Field(default_factory=dict)
     rumdl_config: Path | None = Field(default=None, validation_alias=EnvVar.RUMDL_CONFIG)

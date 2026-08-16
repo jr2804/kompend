@@ -6,12 +6,11 @@ the references/index/log page orchestration — is implemented exactly once
 here in :class:`VaultWriter`.
 
 OKF (Open Knowledge Format v0.2) frontmatter is the **unique, canonical
-standard** every vault writer emits. Markdown *flavors* (Obsidian
-``[[wikilinks]]``, GFM, …) change only the link *syntax* in the page body —
-never the frontmatter. There is one frontmatter schema; build it with
-:meth:`VaultWriter.okf_frontmatter`.
+standard** every vault writer emits. The single markdown writer
+(:class:`~knox.output.markdown.MarkdownWriter`) is OKF-compliant and uses
+portable relative links — no Obsidian-only syntax.
 
-Subclasses fill in the rendering hooks that differ by flavor:
+Subclasses fill in the rendering hooks that differ by format:
 
 - :meth:`_wiki_to_documents` — build the ``Document`` list (frontmatter, etc.)
 - :meth:`_render_document` — render one page (body already citation-rewritten)
@@ -213,10 +212,11 @@ class VaultWriter(BaseOutputWriter):
                     stale.unlink()
 
         # slug/title -> bundle-relative path mapping for link rendering.
+        # Paths are relative (no leading slash) so links stay portable.
         slug_targets: dict[str, str] = {}
         for doc in docs:
             folder = self._folder_for_kind(doc.node_type)
-            path = f"/{folder}/{doc.page_slug or 'untitled'}.md" if folder else f"/{doc.page_slug or 'untitled'}.md"
+            path = f"{folder}/{doc.page_slug or 'untitled'}.md" if folder else f"{doc.page_slug or 'untitled'}.md"
             slug_targets[doc.page_slug] = path
             slug_targets[doc.title] = path
 

@@ -14,7 +14,8 @@ from knox.core.models.enums import AssetKind
 from knox.core.models.structured import StructuredFigure, StructuredTable
 from knox.core.pipeline.assets import AssetStore
 from knox.output.base import BaseOutputWriter
-from knox.output.okf_writer import OkfWriter, convert_wikilinks
+from knox.output.markdown import MarkdownWriter as OkfWriter
+from knox.output.markdown import convert_wikilinks, rewrite_citations_to_footnotes
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -112,10 +113,10 @@ class TestAssetFootnotes:
 
 
 def test_okf_writer_registered() -> None:
-    """OkfWriter must be discoverable via BaseOutputWriter.get('okf')."""
-    cls = BaseOutputWriter.get("okf")
+    """The merged markdown writer is the OKF-compliant writer."""
+    cls = BaseOutputWriter.get("markdown")
     assert cls is OkfWriter
-    assert "okf" in BaseOutputWriter.available_formats()
+    assert "okf" not in BaseOutputWriter.available_formats()
 
 
 # ── Frontmatter conformance (§11 item 2) ────────────────────────────────
@@ -240,8 +241,8 @@ def test_generated_actor_convention(tmp_path: Path) -> None:
 # ── Cross-link conformance (§6) ─────────────────────────────────────────
 
 
-def test_wikilinks_converted_to_absolute_markdown_links(tmp_path: Path) -> None:
-    """OKF §6: cross-links use standard markdown, not [[wikilinks]]."""
+def test_wikilinks_converted_to_folder_relative_markdown_links(tmp_path: Path) -> None:
+    """Cross-links use portable folder-relative markdown, not [[wikilinks]]."""
     wiki = _make_wiki(
         [
             _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type="concept"),
@@ -258,9 +259,9 @@ def test_wikilinks_converted_to_absolute_markdown_links(tmp_path: Path) -> None:
     assert "[[beta]]" not in alpha
     assert "[[alpha]]" not in beta
 
-    # Absolute bundle-relative links present
-    assert "[beta](/concepts/beta.md)" in alpha
-    assert "[alpha](/concepts/alpha.md)" in beta
+    # Portable folder-relative links (pages live in concepts/)
+    assert "[beta](beta.md)" in alpha
+    assert "[alpha](alpha.md)" in beta
 
 
 def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
@@ -277,7 +278,7 @@ def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
 
     alpha = (tmp_path / "concepts" / "a.md").read_text(encoding="utf-8")
     assert "[[Beta]]" not in alpha
-    assert "[Beta](/concepts/b.md)" in alpha
+    assert "[Beta](b.md)" in alpha
 
 
 def test_convert_wikilinks_unknown_target_left_as_text() -> None:
@@ -361,19 +362,22 @@ def test_source_footnotes_emitted_for_provenance(tmp_path: Path) -> None:
 
     Replaces the v0.1 body ``# Citations`` numbered list (§13.1).
     """
-    wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "https://example.com/article"])])
+    # Body cites paper.pdf; the URL source is never cited.
+    wiki = _make_wiki([_make_node("test", "Test", "Claim [sources/paper.pdf].", provenance=["paper.pdf", "https://example.com/article"])])
     writer = OkfWriter()
     writer.write(wiki, tmp_path)
 
     text = (tmp_path / "concepts" / "test.md").read_text(encoding="utf-8")
     # v0.1 numbered Citations section must NOT appear.
     assert "# Citations" not in text
-    # Footnote definitions (``[^id]: label``) for each source id.
+    # Footnote definition for the referenced source id.
+    assert "[^paper]: paper.pdf" in text
+    # Unreferenced sources get no orphan definition (MD066).
     fm = _parse_frontmatter(text)
     assert fm is not None
     for src in fm["sources"]:
-        sid = src["id"]
-        assert f"[^{sid}]:" in text, f"missing footnote definition for source id '{sid}'"
+        if src["id"] != "paper":
+            assert f"[^{src['id']}]:" not in text
 
 
 def test_no_attribution_section_without_provenance(tmp_path: Path) -> None:
@@ -403,6 +407,73 @@ def test_no_yaml_anchors_in_frontmatter(tmp_path: Path) -> None:
     assert "*id" not in text
 
 
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _parse_frontmatter(text: str) -> dict | None:
+    """Extract and parse the YAML frontmatter block from a markdown file."""
+    if not text.startswith("---"):
+        return None
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+    return yaml.safe_load(parts[1])
+
+
+# ── Footnote citation rewriting (MD066) ──────────────────────────────────
+
+
+def test_citation_rewritten_to_footnote_reference() -> None:
+    """[sources/x.pdf] inline citations become [^x] footnote refs (MD066)."""
+    sources = [{"id": "paper-1", "resource": "sources/paper-1.pdf"}]
+    result = rewrite_citations_to_footnotes("Claim here [sources/paper-1.pdf].", sources)
+    assert result == "Claim here [^paper-1]."
+
+
+def test_multi_source_citation_becomes_multiple_footnotes() -> None:
+
+    sources = [{"id": "a", "resource": "sources/a.pdf"}, {"id": "b", "resource": "sources/b.pdf"}]
+    result = rewrite_citations_to_footnotes("Synthesis [sources/a.pdf, sources/b.pdf] done.", sources)
+    assert result == "Synthesis [^a][^b] done."
+
+
+def test_unmatched_citation_stays_plain_text() -> None:
+    """Citations without a footnote definition must not become orphan refs."""
+    sources = [{"id": "a", "resource": "sources/a.pdf"}]
+    result = rewrite_citations_to_footnotes("Claim [sources/unknown.pdf].", sources)
+    assert result == "Claim [sources/unknown.pdf]."
+
+
+def test_no_citations_unchanged() -> None:
+
+    sources = [{"id": "a", "resource": "sources/a.pdf"}]
+    assert rewrite_citations_to_footnotes("Plain text, no citations.", sources) == "Plain text, no citations."
+
+
+def test_source_footnote_definition_is_referenced(tmp_path: Path) -> None:
+    """Generated page: every [^id]: definition has a matching [^id] reference."""
+    wiki = _make_wiki([_make_node("n1", "Page One", "Claim [sources/paper-1.pdf].", node_type="concept", provenance=["paper-1"])])
+    OkfWriter().write(wiki, tmp_path)
+    page = (tmp_path / "concepts" / "n1.md").read_text(encoding="utf-8")
+    assert "[^paper-1]: paper-1" in page
+    assert "Claim [^paper-1]." in page
+
+
+def test_index_has_single_top_level_heading(tmp_path: Path) -> None:
+    """MD025: bundle index keeps one H1 (group headings are ##)."""
+    wiki = _make_wiki(
+        [
+            _make_node("c1", "Concept A", "x", node_type="concept"),
+            _make_node("c2", "Concept B", "x", node_type="concept"),
+        ]
+    )
+    OkfWriter().write(wiki, tmp_path)
+    index = (tmp_path / "index.md").read_text(encoding="utf-8")
+    h1 = [line for line in index.splitlines() if line.startswith("# ")]
+    assert h1 == ["# Knowledge Bundle"]
+    assert "## Concept" in index
+
+
 def _make_wiki(nodes: list[WikiNode] | None = None, edges: list[dict] | None = None) -> CompiledWiki:
     if nodes is None:
         nodes = [_make_node()]
@@ -427,16 +498,3 @@ def _make_node(
         source_chunks=[],
         metadata=metadata,
     )
-
-
-# ── Helpers ─────────────────────────────────────────────────────────────
-
-
-def _parse_frontmatter(text: str) -> dict | None:
-    """Extract and parse the YAML frontmatter block from a markdown file."""
-    if not text.startswith("---"):
-        return None
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return None
-    return yaml.safe_load(parts[1])

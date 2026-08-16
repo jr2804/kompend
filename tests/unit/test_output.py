@@ -78,7 +78,7 @@ class TestMarkdownWriter:
 
         intro = (temp_output / "intro.md").read_text(encoding="utf-8")
         assert "## Related" in intro
-        assert "[[Core Concepts]]" in intro
+        assert "[Core Concepts](concepts/concept-1.md)" in intro
 
     def test_vault_mode_typed_relation_annotation(self, temp_output: Path) -> None:
         wiki = CompiledWiki(
@@ -96,7 +96,7 @@ class TestMarkdownWriter:
 
         page_a = (temp_output / "a.md").read_text(encoding="utf-8")
         assert "## Related" in page_a
-        assert "[[Page B]] (uses) — confidence 0.91" in page_a
+        assert "[Page B](b.md) (uses) — confidence 0.91" in page_a
 
     def test_vault_mode_empty_wiki(self, empty_wiki: CompiledWiki, temp_output: Path) -> None:
         writer = MarkdownWriter(vault_mode=True)
@@ -104,7 +104,7 @@ class TestMarkdownWriter:
 
         assert result_file == temp_output / "index.md"
         index = (temp_output / "index.md").read_text(encoding="utf-8")
-        assert "# Wiki Index" in index
+        assert "# Knowledge Bundle" in index
 
     def test_vault_mode_single_node(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(
@@ -208,10 +208,10 @@ class TestSubfolderLayout:
     def test_index_lists_all_pages_regardless_of_folder(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         MarkdownWriter(vault_mode=True).write(sample_wiki, temp_output)
         index = (temp_output / "index.md").read_text(encoding="utf-8")
-        # Wikilinks use titles/slugs, which resolve across folders in Obsidian.
-        assert "[[Introduction" in index
-        assert "concept-1" in index
-        assert "procedure-1" in index
+        # Portable relative links to every page regardless of folder.
+        assert "[Introduction](intro.md)" in index
+        assert "concept-1.md" in index
+        assert "procedure-1.md" in index
 
 
 class TestFrontmatterEmission:
@@ -265,14 +265,14 @@ class TestFrontmatterEmission:
         assert "paper_a" in content
         assert "paper_b" in content
 
-    def test_index_has_title_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
-        """index.md also has frontmatter with the wiki title."""
+    def test_index_has_okf_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
+        """index.md has OKF §12 frontmatter (okf_version, no title field)."""
         writer = MarkdownWriter(vault_mode=True)
         writer.write(sample_wiki, temp_output)
 
         index = (temp_output / "index.md").read_text(encoding="utf-8")
         assert index.startswith("---\n")
-        assert "title: Test Wiki" in index
+        assert 'okf_version: "0.2"' in index
 
     def test_frontmatter_defaults_preserved(self, temp_output: Path) -> None:
         """frontmatter_defaults from config are included alongside title."""

@@ -9,6 +9,7 @@ from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import INDEX_FILE
 from knox.core.utils.time import display_local
+from knox.output.vault import VaultWriter
 
 
 def write_index(
@@ -29,14 +30,24 @@ def write_index(
 
     # index.md — entry point at base_dir level
     index_file = resolved_base / INDEX_FILE
-    index_content = generate_index(wiki)
+    index_content = generate_index(wiki, output_dir=output_dir, base_dir=resolved_base)
     index_file.write_text(index_content, encoding="utf-8")
 
     return {"index": index_file}
 
 
-def generate_index(wiki: CompiledWiki) -> str:
-    """Generate ``index.md`` — TOC + stats for the compiled wiki."""
+def generate_index(
+    wiki: CompiledWiki,
+    *,
+    output_dir: Path | None = None,
+    base_dir: Path | None = None,
+) -> str:
+    """Generate ``index.md`` — TOC + stats for the compiled wiki.
+
+    TOC entries use portable relative links with one-line descriptions
+    (catalog style per the LLM-wiki design); no Obsidian-only syntax.
+    """
+    prefix = _bundle_prefix(output_dir, base_dir)
     lines: list[str] = ["# Wiki Index\n"]
 
     # Stats summary
@@ -55,6 +66,7 @@ def generate_index(wiki: CompiledWiki) -> str:
         lines.append(f"- **Duration:** {duration:.1f}s")
     if wiki.quality_score:
         lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
+    lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
     lines.append("")
 
     # Topic / concept cloud (from edges metadata)
@@ -65,10 +77,24 @@ def generate_index(wiki: CompiledWiki) -> str:
         lines.append(" ".join(f"`{t}`" for t in sorted(topics)[:topics_limit]))
         lines.append("")
 
-    # Full TOC
+    # Full TOC — catalog entries: link + one-line description.
     lines.append("## Table of Contents\n")
     for i, node in enumerate(wiki.nodes, 1):
         slug = node.id
-        lines.append(f"  {i}. [[{slug}|{node.title}]]")
+        folder = VaultWriter._KIND_FOLDERS.get(node.node_type or "", "")
+        link = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
+        desc = VaultWriter.okf_description(node)
+        entry = f"{i}. [{node.title}]({link})"
+        lines.append(f"{entry} - {desc}" if desc else entry)
 
     return "\n".join(lines)
+
+
+def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:
+    """Portable path prefix from the index location to the bundle pages."""
+    if output_dir is not None and base_dir is not None:
+        try:
+            return output_dir.relative_to(base_dir).as_posix()
+        except ValueError:
+            pass
+    return output_dir.name if output_dir is not None else "wiki"

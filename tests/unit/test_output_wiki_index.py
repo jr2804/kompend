@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.output.pages.index import write_index
 from knox.output.wiki_index import (
     generate_index,
     generate_log_entry,
@@ -237,6 +238,52 @@ class TestGenerateOverviewProgress:
         result = generate_overview(["short text"], agent=mock_agent, overview_budget=10000)
 
         assert result is not None
+
+
+# ── generate_index (portable catalog) ────────────────────────────────────
+
+
+class TestGenerateIndexPortable:
+    """Root index: unindented list, relative links, summaries, bundle link."""
+
+    def test_entries_unindented_with_relative_links(self, tmp_path: Path) -> None:
+
+        wiki = self._wiki()
+        output_dir = tmp_path / "wiki"
+        write_index(wiki, output_dir, base_dir=tmp_path)
+
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "\n  1." not in index  # no indented list (MD005)
+        assert "\n1. [Concept A](wiki/concepts/concept-a.md)" in index
+        assert "\n2. [Introduction](wiki/intro.md)" in index
+
+    def test_entries_carry_one_line_summaries(self, tmp_path: Path) -> None:
+
+        write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "Concept A" in index
+        assert "First line of concept A." in index
+
+    def test_links_to_bundle_index(self, tmp_path: Path) -> None:
+
+        write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "- **Bundle:** [wiki/index.md](wiki/index.md)" in index
+
+    def test_no_obsidian_shortlinks(self, tmp_path: Path) -> None:
+
+        write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
+        assert "[[" not in (tmp_path / "index.md").read_text(encoding="utf-8")
+
+    def _wiki(self) -> CompiledWiki:
+        return CompiledWiki(
+            nodes=[
+                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type="concept"),
+                WikiNode(id="intro", title="Introduction", content="The introduction section.", node_type="section"),
+            ],
+            edges=[],
+            toc=[],
+        )
 
 
 def _make_wiki(**overrides: object) -> CompiledWiki:

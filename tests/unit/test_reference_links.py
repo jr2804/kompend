@@ -18,7 +18,7 @@ from knox.core.models import CompiledWiki, WikiNode
 from knox.core.models.references import Author, Reference
 from knox.core.pipeline.references import ReferenceStore
 from knox.output.markdown import MarkdownWriter
-from knox.output.okf_writer import OkfWriter
+from knox.output.markdown import MarkdownWriter as OkfWriter
 from knox.output.reference_links import (
     build_reference_key_index,
     format_bibliography_entry,
