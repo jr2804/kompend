@@ -9,6 +9,7 @@ from knox.compilation.graph import GraphCompiler
 from knox.compilation.two_phase import TwoPhaseCompiler
 from knox.compilation.wicer import WiCERCompiler
 from knox.core.cache.store import CacheStore
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.pipeline.config import Compiler, PipelineConfig, Tier
 from knox.core.pipeline.stages._parse import build_resolver_chain
 from knox.core.pipeline.stages._pipeline import WikiPipeline
@@ -124,7 +125,7 @@ def build_pipeline(
         output_writer=writer_cls(
             flavor=config.output.flavor,
             frontmatter_defaults=config.output.frontmatter or {},
-            rumdl_config=config.output.rumdl_config,
+            rumdl_config=resolve_rumdl_config(config.paths.base_dir, config.output.rumdl_config),
             max_related_links=config.output.max_related_links,
             references_file=config.paths.references_file,
             assets_file=config.paths.assets_file,

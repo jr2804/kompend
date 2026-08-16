@@ -13,6 +13,7 @@ from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import RemediationAgent
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.schema import Concept, Entity
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
@@ -993,6 +994,42 @@ class TestCoverageGapSuppression:
         fails = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(fails) == 1
         assert fails[0].details["concept"] == "Truly Missing"
+
+
+# ── rumdl config resolution ──────────────────────────────────────────────
+
+
+class TestRumdlConfigResolution:
+    """resolve_rumdl_config: default .knox/rumdl.toml, materialization, overrides."""
+
+    def test_default_materializes_knox_rumdl_toml(self, tmp_path: Path) -> None:
+
+        resolved = resolve_rumdl_config(tmp_path)
+        assert resolved is not None
+        assert resolved == tmp_path / ".knox" / "rumdl.toml"
+        assert resolved.exists()
+        content = resolved.read_text(encoding="utf-8")
+        assert "MD013 = false" in content
+        assert 'front-matter-title = ""' in content
+
+    def test_existing_config_not_overwritten(self, tmp_path: Path) -> None:
+
+        target = tmp_path / ".knox" / "rumdl.toml"
+        target.parent.mkdir(parents=True)
+        target.write_text("[MD013]\nline_length = 999\n", encoding="utf-8")
+
+        resolve_rumdl_config(tmp_path)
+        assert target.read_text(encoding="utf-8") == "[MD013]\nline_length = 999\n"
+
+    def test_explicit_config_wins(self, tmp_path: Path) -> None:
+
+        custom = tmp_path / "custom.toml"
+        custom.write_text("", encoding="utf-8")
+        assert resolve_rumdl_config(tmp_path, custom) == custom
+
+    def test_relative_explicit_config_resolves_against_base_dir(self, tmp_path: Path) -> None:
+
+        assert resolve_rumdl_config(tmp_path, ".knox/rumdl.toml") == tmp_path / ".knox" / "rumdl.toml"
 
 
 def _make_wiki(nodes: list[WikiNode] | None = None, **kwargs: Any) -> CompiledWiki:

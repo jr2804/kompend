@@ -1,0 +1,12 @@
+# KNOX default rumdl configuration for generated wiki output.
+# Copied to .knox/rumdl.toml on first use — edit that copy to override.
+
+# Line length is pure style in a knowledge base: generated prose lines run
+# long, rumdl fmt does not reflow text, and viewers wrap automatically.
+# Disabled by default; set line_length + enable to enforce.
+MD013 = false
+
+# Every page has a `title:` in frontmatter AND a body H1. Without this,
+# the frontmatter title counts as a second top-level heading.
+[MD025]
+front-matter-title = ""

@@ -49,6 +49,7 @@ PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, DI
 CONFIG_FILE: Final[str] = "config.toml"
 KNOX_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/{CONFIG_FILE}"
 PROJECT_CONFIG_FILE: Final[str] = "knox.toml"
+RUMDL_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/rumdl.toml"
 
 # ── Cache ───────────────────────────────────────────────────────────────
 CACHE_SUBDIR: Final[str] = "cache"

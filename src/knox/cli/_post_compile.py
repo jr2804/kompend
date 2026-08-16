@@ -19,6 +19,7 @@ from knox.agents.verification import VerificationAgent
 from knox.agents.wiki_index import WikiIndexAgent
 from knox.cli._progress import PipelineProgress
 from knox.core.config._configs import LintConfig
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
@@ -27,6 +28,7 @@ from knox.core.utils.time import iso_local
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
+from knox.output.renderer import format_output
 from knox.output.wiki_index import write_index, write_overview
 from knox.provenance import annotate_wiki_with_provenance
 from knox.rag import build_vector_index
@@ -110,6 +112,22 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             base_dir=base_dir,
             show_progress=opts.show_progress,
         )
+
+    # One rumdl fmt pass over the generated output (bundle + root index +
+    # overview) so compiled markdown is style-clean. Skips silently when
+    # rumdl is absent.
+    extra_files = [generated["index"]]
+    overview = base_dir / "overview.md"
+    if overview.exists():
+        extra_files.append(overview)
+    changed = format_output(
+        opts.output_dir,
+        flavor=opts.pipeline_config.output.flavor,
+        rumdl_config=resolve_rumdl_config(base_dir, opts.pipeline_config.output.rumdl_config),
+        extra_files=extra_files,
+    )
+    if changed:
+        get_console().print(f"Formatted {len(changed)} file(s) with rumdl")
 
     # Build vector index unless explicitly disabled (--no-index) or no
     # embedding model is configured (embedding is opt-in, no default model).
