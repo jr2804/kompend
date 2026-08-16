@@ -141,21 +141,17 @@ okf_version: "0.2"
 
 ## Change Log
 
-The ``log.md`` uses ISO 8601 date headings with bold action prefix (§9):
+The ``log.md`` follows OKF §9: entries are **date-grouped under
+``## YYYY-MM-DD`` headings, newest first**, each entry a list item with a
+``[HH:mm:ss]`` timestamp and a bold action. The log is never wiped —
+compiles (``**Creation**``), ingests (``**Ingest**``), queries
+(``**Query**``), and lint runs (``**Lint**``) all append entries to the
+same file:
 
 ```markdown
 ## 2026-07-10
 
-**Creation**: Compiled 42 page(s) from 15 source(s).
+- [14:23:45] **Lint**: Health score 100.0% (12/12 checks passed)
+- [09:41:07] **Query**: "PESQ" → 5 result(s)
+- [08:02:31] **Creation**: Compiled 42 page(s) from 15 source(s).
 ```
-
-## Legacy Formats
-
-Select a different output format with ``compile.output.format``:
-
-| Format | Config value | Description |
-|--------|-------------|-------------|
-| OKF (default) | ``okf`` | Open Knowledge Format v0.2 |
-| Markdown | ``markdown`` | Obsidian vault mode (``[[wikilinks]]``) |
-| JSON | ``json`` | Single ``wiki.json`` file |
-| Typst | ``typst`` | Single ``wiki.typ`` file |

@@ -8,6 +8,14 @@
 # `[MD013] line-length = …` if you want a custom limit).
 disable = ["MD013"]
 
+[MD022]
+# Headings need blank lines above/below them (auto-fixed by `rumdl fmt`).
+lines-above = 1
+lines-below = 1
+
+[MD023]
+# Headings must start at the beginning of the line (auto-fixed by `rumdl fmt`).
+
 # Every page has a `title:` in frontmatter AND a body H1. Without this,
 # the frontmatter title counts as a second top-level heading.
 [MD025]

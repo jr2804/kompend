@@ -223,6 +223,10 @@ v0.2-compliant), `json`, `typst`.
    links. Portable Markdown must render outside Obsidian too.
 5. **Reserved filenames** (`index.md`, `log.md`) follow OKF structure (§8, §9).
    Root `index.md` MAY declare `okf_version: "0.2"` in frontmatter (§12).
+   `log.md` follows §9: date-grouped `## YYYY-MM-DD` headings, newest first,
+   entries as `- [HH:mm:ss] **Action**: prose` list items; it is never
+   wiped — compiles, ingests, queries, and lint runs all append entries to
+   the same file (`log_stage` in `output/pages/log.py`).
 6. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
    `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list. Inline
    `[sources/x.pdf]` citations are rewritten to `[^id]` refs; definitions are

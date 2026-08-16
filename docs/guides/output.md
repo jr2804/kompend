@@ -26,7 +26,10 @@ for the full field reference, trust signals, and the v0.1→v0.2 migration table
   (``[Title](concepts/title.md)`` from the bundle root) — they render in
   Obsidian, GitHub, and any Markdown viewer
 - ``index.md`` has grouped sections with descriptions; root declares ``okf_version: "0.2"``
-- ``log.md`` uses ISO date headings with bold action prefix
+- ``log.md`` follows OKF §9: date-grouped ``## YYYY-MM-DD`` headings, newest
+  first; entries are ``- [HH:mm:ss] **Action**: prose`` list items. Never
+  wiped — compiles, ingests, queries, and lint runs all append entries to the
+  same file (one shared timeline)
 - Per-claim attribution via footnotes ``[^id]`` keyed to ``sources[].id``:
   inline ``[sources/x.pdf]`` citations are rewritten to ``[^id]`` refs, with
   definitions emitted only for referenced ids (replaces the v0.1 body
