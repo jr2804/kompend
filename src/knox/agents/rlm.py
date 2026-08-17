@@ -42,14 +42,6 @@ from pydantic_ai_rlm.utils import format_repl_result
 from knox.agents.deps import PipelineAgentDeps
 from knox.logging import get_logger
 
-#: RLM presets: name -> (max_tool_calls, code_timeout).
-#: ``max_tool_calls`` bounds the whole agent run (``UsageLimits``), not just
-#: REPL calls — matches the package's ``run_rlm_analysis`` behavior.
-_RLM_PRESETS: dict[str, tuple[int, float]] = {
-    "default": (50, 60.0),
-    "aggressive": (100, 120.0),
-}
-
 _EXECUTE_CODE_DESCRIPTION = """\
 Execute Python code in a sandboxed REPL environment.
 
@@ -370,21 +362,3 @@ def build_rlm_instructions(*, sub_model: bool, recursive: bool = False) -> str:
     steps.append("Synthesize your final answer normally (as the agent's output).")
     numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
     return "## RLM Mode\n\n" + numbered + "\n"
-
-
-def resolve_rlm_preset(setting: str | bool | None) -> tuple[int, float]:
-    """Resolve an ``rlm`` config value to ``(max_tool_calls, code_timeout)``.
-
-    ``False``/``None``/``"off"``-like values raise :class:`ValueError` so
-    callers can treat them as "disabled" before calling.
-    """
-    if setting is False or setting is None:
-        raise ValueError("RLM disabled")
-    preset = "default" if setting is True else str(setting).strip().lower()
-    if preset in {"", "off", "false", "none", "no"}:
-        raise ValueError("RLM disabled")
-    try:
-        return _RLM_PRESETS[preset]
-    except KeyError:
-        logger.warning("Unknown rlm preset %r — falling back to 'default'", setting)
-        return _RLM_PRESETS["default"]

@@ -163,19 +163,15 @@ class _KnoxBaseModel(BaseModel):
 
 
 class RlmConfig(_KnoxBaseModel):
-    """RLM (recursive research-loop) agent configuration.
+    """RLM (recursive research-loop) agent configuration (``[compile.llm.rlm]``).
 
-    Single source of truth is the ``[compile.llm.rlm]`` table; ``enable``
-    is the only switch (the legacy ``rlm = true/false`` scalar shorthand is
-    gone). ``preset`` picks a baseline budget (``default``: 50 tool calls /
-    60 s code timeout, ``aggressive``: 100 / 120 s); explicit fields
-    override the preset values.
+    ``enable`` turns the capability on; the remaining fields set the
+    execution budget directly.
     """
 
     enable: bool = False
-    preset: str = "default"
-    max_tool_calls: int | None = None
-    code_timeout: float | None = None
+    max_tool_calls: int = 50
+    code_timeout: float = 60.0
     sub_model: str | None = None
     max_depth: int = 2
     node_budget: int | None = None

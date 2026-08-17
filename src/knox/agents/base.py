@@ -54,7 +54,6 @@ from knox.agents.knox_model import KnoxModel
 from knox.agents.rlm import (
     _DEFAULT_NODE_BUDGET,
     RLMCapability,
-    resolve_rlm_preset,
 )
 from knox.core.config._configs import RlmConfig
 from knox.core.templates import TemplateLoader, get_template_loader
@@ -543,11 +542,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         rlm = self.rlm
         if not isinstance(rlm, RlmConfig) or not rlm.enable:
             return None
-        max_tool_calls, code_timeout = resolve_rlm_preset(rlm.preset)
-        if rlm.max_tool_calls is not None:
-            max_tool_calls = rlm.max_tool_calls
-        if rlm.code_timeout is not None:
-            code_timeout = rlm.code_timeout
+        max_tool_calls = rlm.max_tool_calls
+        code_timeout = rlm.code_timeout
         sub_model_str = rlm.sub_model
         depth = rlm.max_depth
         node_budget = rlm.node_budget

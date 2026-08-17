@@ -110,6 +110,9 @@ def extract_toml_keys(text: str) -> set[str]:
     for line in text.splitlines():
         if sect_match := _SECTION_RE.match(line):
             current_section = sect_match.group(1)
+            # A section header documents the group path itself (e.g.
+            # ``[compile.llm.rlm]`` covers the ``compile.llm.rlm`` key).
+            keys.add(current_section)
             continue
         if key_match := _KEY_RE.match(line):
             key = key_match.group(1)
