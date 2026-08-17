@@ -133,3 +133,13 @@ class TestConfigPath:
         result = runner.invoke(app, ["config", "path"])
         assert result.exit_code == 0
         assert result.stdout.strip() == str(tmp_path / "knox.toml")
+
+
+def test_config_list_redacts_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / KNOX_DIR).mkdir()
+    (tmp_path / KNOX_DIR / "config.toml").write_text('[providers.omniroute]\nbase_url = "https://x/v1"\napi_key = "sk-secret"\n')
+    result = runner.invoke(app, ["config", "list"])
+    assert result.exit_code == 0
+    assert "providers.omniroute.api_key = ***" in result.stdout
+    assert "sk-secret" not in result.stdout

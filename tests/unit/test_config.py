@@ -232,6 +232,27 @@ class TestResolveConfig:
         assert cfg.get("compile.budget.chunk_size_min") == 128
         assert cfg.get("compile.output.format") == "markdown"  # still default
 
+    def test_local_overlay_overrides_committed(self, tmp_path: Any, monkeypatch: Any) -> None:
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
+        local_file = tmp_path / "knox.local.toml"
+        local_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.budget.chunk_size_min") == 64
+        assert cfg.source_of("compile.budget.chunk_size_min").path == "project"
+
+    def test_local_overlay_alone_merges(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Local-only keys surface even when the committed config exists."""
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
+        local_file = tmp_path / "knox.local.toml"
+        local_file.write_text('[providers.omniroute]\nbase_url = "https://x/v1"\napi_key = "${KNOX_PROVIDER_KEY}"\n')
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.budget.chunk_size_min") == 128
+        assert cfg.get("providers.omniroute.api_key") == "${KNOX_PROVIDER_KEY}"
+
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")

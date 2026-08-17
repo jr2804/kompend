@@ -72,7 +72,12 @@ def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
 
 
 def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:
-    """Walk up from *start_dir* collecting all project config files."""
+    """Walk up from *start_dir* collecting all project config files.
+
+    Per directory, a gitignored local overlay (``<config>.local.toml``,
+    mise-style) is listed before its committed sibling so the closest-wins
+    merge in :func:`_merge_project_configs` applies it last.
+    """
     current = VaultPaths(start_dir).base_dir
     found: list[Path] = []
     seen_dirs: set[Path] = set()
@@ -83,6 +88,9 @@ def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:
         for name in _PROJECT_CONFIG_NAMES:
             candidate = parent / name
             if candidate.is_file():
+                local = candidate.with_name(candidate.name.removesuffix(".toml") + ".local.toml")
+                if local.is_file():
+                    found.append(local)
                 found.append(candidate)
                 break
     return found

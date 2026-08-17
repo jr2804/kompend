@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import typer
 
 from knox.cli._shared import vault_paths_from_ctx
@@ -27,6 +29,9 @@ config_app = typer.Typer(
 app.add_typer(config_app)
 
 
+_ENV_REF_RE = re.compile(r"^\$\{\w+\}$")
+
+
 @config_app.command("get", help="Print a resolved config value.")
 def config_get(
     ctx: typer.Context,
@@ -45,7 +50,7 @@ def config_get(
 
     cfg = resolve_config(cli_overrides=overrides)
     value = cfg.get(key)
-    get_console().print(_format_value(value))
+    get_console().print(_format_value(_redact_api_key(key, value)))
 
 
 @config_app.command("set", help="Set a config value.")
@@ -98,7 +103,7 @@ def config_list(
     cfg = resolve_config(cli_overrides=overrides)
     for key, value in sorted(cfg.flat().items()):
         source = cfg.source_of(key)
-        get_console().print(f"{key} = {_format_value(value)}  # {source}")
+        get_console().print(f"{key} = {_format_value(_redact_api_key(key, value))}  # {source}")
 
 
 @config_app.command("path", help="Show the config file path.")
@@ -120,3 +125,10 @@ def _format_value(value: JSON) -> str:
     if isinstance(value, list):
         return ", ".join(str(v) for v in value)
     return str(value)
+
+
+def _redact_api_key(key: str, value: JSON) -> JSON:
+    """Hide provider API keys in CLI output; env-var refs (``${VAR}``) stay visible."""
+    if key.rsplit(".", maxsplit=1)[-1] == "api_key" and isinstance(value, str) and not _ENV_REF_RE.match(value):
+        return "***"
+    return value

@@ -46,6 +46,13 @@ KNOX searches for project config files by walking up from the current directory 
 - **`.knox/config.toml`** — the primary project config (created by `knox init`)
 - **`knox.toml`** — legacy fallback, supported for backward compatibility
 
+Each committed config can be overlaid by a **local, gitignored twin** —
+`.knox/config.local.toml` next to `.knox/config.toml`, `knox.local.toml`
+next to `knox.toml` (mise-style, created by appending `.local` to the
+filename). Local values win over the committed config in the same
+directory. Use it for machine-specific secrets like provider API keys;
+`knox init` ignores these files in the generated `.gitignore`.
+
 If multiple files exist in the hierarchy, they are merged with **closest-to-CWD wins** semantics. Deep merge at the section level; individual keys are overwritten (lists replaced, not concatenated).
 
 Example hierarchy:
@@ -99,6 +106,7 @@ knox config list
 ```
 
 Prints all resolved keys with provenance — which file or source supplied each value.
+Provider `api_key` values are redacted (`***`) unless they are `${ENV_VAR}` references.
 
 ### `knox config path`
 
