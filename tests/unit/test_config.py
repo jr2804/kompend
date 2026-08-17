@@ -814,12 +814,16 @@ class TestRlmConfig:
     def test_group_enable_switch(self) -> None:
         assert RlmConfig.model_validate({"enable": True}).enable is True
 
-    def test_table_overrides_preset(self) -> None:
-        cfg = RlmConfig.model_validate({"enable": True, "preset": "aggressive", "max_tool_calls": 150, "node_budget": 32})
+    def test_table_fields_apply(self) -> None:
+        cfg = RlmConfig.model_validate({"enable": True, "max_tool_calls": 150, "node_budget": 32})
         assert cfg.enable
-        assert cfg.preset == "aggressive"
         assert cfg.max_tool_calls == 150
         assert cfg.node_budget == 32
+
+    def test_defaults(self) -> None:
+        cfg = RlmConfig(enable=True)
+        assert cfg.max_tool_calls == 50
+        assert cfg.code_timeout == 60.0
 
     def test_scalar_shorthand_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -828,7 +832,7 @@ class TestRlmConfig:
             LLMConfig(rlm=cast("RlmConfig | None", True))
 
     def test_llm_config_accepts_group(self) -> None:
-        cfg = LLMConfig(rlm={"enable": True, "preset": "default", "max_tool_calls": 200})
+        cfg = LLMConfig(rlm={"enable": True, "max_tool_calls": 200})
         assert cfg.rlm is not None
         assert cfg.rlm.enable
         assert cfg.rlm.max_tool_calls == 200

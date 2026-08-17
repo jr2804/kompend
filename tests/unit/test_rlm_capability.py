@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
     ModelMessage,
@@ -27,7 +26,6 @@ from knox.agents.rlm import (
     RLMCapability,
     build_rlm_instructions,
     cleanup_rlm_repls,
-    resolve_rlm_preset,
 )
 from knox.core.config import RlmConfig
 from knox.llm.usage import UsageTracker
@@ -108,7 +106,7 @@ class TestKnoxAgentRlmWiring:
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
-        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True, preset="default"))
+        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True))
         agent._build_agent()
         assert agent._rlm_usage_limits is not None
         assert agent._rlm_usage_limits.tool_calls_limit == 50
@@ -118,15 +116,15 @@ class TestKnoxAgentRlmWiring:
         assert agent._rlm_usage_limits.request_limit >= 50
         assert agent._rlm_usage_limits.request_limit == 50 * 2 + 5
 
-    def test_rlm_config_group_overrides_preset(self) -> None:
-        """A RlmConfig (compile.llm.rlm group) overrides the preset budget."""
+    def test_rlm_config_fields_apply(self) -> None:
+        """A RlmConfig (compile.llm.rlm group) sets the execution budget."""
 
         class DefaultBuilder(KnoxAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(
             model_string="ollama/llama3.1",
-            rlm=RlmConfig(enable=True, preset="aggressive", max_tool_calls=150, code_timeout=90.0, node_budget=32),
+            rlm=RlmConfig(enable=True, max_tool_calls=150, code_timeout=90.0, node_budget=32),
         )
         cap = agent._resolve_rlm_capability(agent._build_top_level_model())
         assert cap is not None
@@ -401,18 +399,18 @@ class TestPromptPlaceholder:
         assert "execute_code" in rlm_agent.render_user_prompt(deps)
 
 
-class TestRlmPresets:
-    def test_resolve_rlm_preset(self) -> None:
-        assert resolve_rlm_preset(True) == (50, 60.0)
-        assert resolve_rlm_preset("default") == (50, 60.0)
-        assert resolve_rlm_preset("aggressive") == (100, 120.0)
-        # Unknown presets warn and fall back to default.
-        assert resolve_rlm_preset("bogus") == (50, 60.0)
+class TestRlmConfigDefaults:
+    def test_default_budget(self) -> None:
+        """enable=true with no fields uses the default budget."""
 
-    def test_resolve_rlm_preset_disabled(self) -> None:
-        for setting in (False, None, "off", "false", "none", ""):
-            with pytest.raises(ValueError, match="RLM disabled"):
-                resolve_rlm_preset(setting)
+        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+            pass
+
+        agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True))
+        cap = agent._resolve_rlm_capability(agent._build_top_level_model())
+        assert cap is not None
+        assert cap.max_tool_calls == 50
+        assert cap._code_timeout == 60.0
 
     def test_cleanup_rlm_repls(self) -> None:
         """Cleanup drops cached REPL environments (no crash when empty)."""
