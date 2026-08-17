@@ -368,21 +368,14 @@ context_manager = "default"
 
 # RLM (Recursive Language Model) — lets agents explore large contexts by
 # writing Python code in a sandboxed REPL instead of packing everything
-# into the prompt. Requires the optional `rlm` extra
-# (uv add knox[rlm]). Composes with context_manager above.
-#
-# Single source of truth is the [compile.llm.rlm] table — `enable` is the
-# only switch (the legacy scalar `rlm = true/false` is gone). `preset`
-# picks the baseline budget; explicit fields override it:
-# rlm = false  # legacy scalar form removed — use the group below
+# into the prompt. Composes with context_manager above.
 [compile.llm.rlm]
-enable = false             # the only on/off switch
-# preset = "default"        # baseline: "default" | "aggressive"
-# max_tool_calls = 150      # override preset (UsageLimits.tool_calls_limit)
-# code_timeout = 120.0      # override preset (seconds per code execution)
+enable = false                    # on/off switch
+# max_tool_calls = 50             # tool-call budget for the whole run (UsageLimits)
+# code_timeout = 60.0             # seconds per code execution
 # sub_model = "ollama/gpt-oss:20b"  # llm_query sub-model (default: main model)
-# max_depth = 2             # rlm_query recursion depth (0 = non-recursive)
-# node_budget = 32          # total recursive rlm_query calls per root run
+# max_depth = 2                   # rlm_query recursion depth (0 = non-recursive)
+# node_budget = 32                # total recursive rlm_query calls per root run
 
 # Per-role model overrides — use a different model for specific LLM roles.
 # Keys are LLMRole enum values (see knox.llm.roles.LLMRole).

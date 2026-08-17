@@ -283,21 +283,14 @@ context window.
 
 ```toml
 [compile.llm.rlm]
-enable = true               # the only on/off switch
-preset = "aggressive"       # baseline: "default" | "aggressive"
-max_tool_calls = 150        # override preset (UsageLimits.tool_calls_limit)
-code_timeout = 120.0        # override preset (seconds per code execution)
+enable = true               # on/off switch
+max_tool_calls = 150        # tool-call budget for the whole run (UsageLimits)
+code_timeout = 120.0        # seconds per code execution
 sub_model = "ollama/qwen3:8b"  # llm_query sub-model; defaults to the primary
 max_depth = 2               # rlm_query recursion depth (0 = non-recursive)
 node_budget = 32            # total recursive rlm_query calls per root run
 ```
 
-The table is the single source of truth — `enable` is the only switch;
-there is no scalar `rlm = true/false` shorthand. The group is configured
-in the TOML file.
-
-Wired into the query/synthesis stage, generation, and the WiCER probe.
-Extraction is intentionally not wired (its input is already chunk-bounded).
 Requires a local model that calls tools — a weak or non-agentic model may
 ignore the `execute_code` tool and answer from the placeholder, which
 contains no content.
