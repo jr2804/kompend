@@ -44,10 +44,9 @@ from knox.cli.args import (
     SourceTags,
 )
 from knox.cli.args.query import SearchMode
-from knox.core.config import resolve_config
+from knox.core.config import LLMConfig, resolve_config
 from knox.core.config._configs import LlmDataFormat
 from knox.core.config.keys import (
-    COMPILE_LLM_CONTEXT_WINDOW_CAP,
     QUERY_FORMAT,
     EnvVar,
 )
@@ -123,7 +122,8 @@ def query_cmd(
     if portable:
         get_console().print("Portable mode: no .knox cache — searching the wiki files directly.")
     model = cfg.get("compile.llm.default_model", "")
-    cw = discover_context_window(model, context_window_cap=cfg.get(COMPILE_LLM_CONTEXT_WINDOW_CAP)) if model else None
+    llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
+    cw = discover_context_window(model, llm_config=llm_cfg) if model else None
 
     try:
         results, raw, has_enhanced = _execute_search(

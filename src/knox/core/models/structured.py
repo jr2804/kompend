@@ -137,6 +137,16 @@ def structured_to_dict(s: StructuredData) -> dict[str, Any]:
 _structured_to_dict = structured_to_dict  # backward-compat alias
 
 
+__all__ = [
+    "EquationVariable",
+    "StructuredData",
+    "StructuredEquation",
+    "StructuredFigure",
+    "StructuredTable",
+    "structured_to_text",
+]
+
+
 def structured_to_text(s: StructuredData) -> str:
     """Flatten a :class:`StructuredData` variant to a text representation.
 
@@ -166,16 +176,6 @@ def structured_to_text(s: StructuredData) -> str:
             parts.append(f"({s.image_ref})")
         return " ".join(parts) if parts else "[figure]"
     return ""
-
-
-__all__ = [
-    "EquationVariable",
-    "StructuredData",
-    "StructuredEquation",
-    "StructuredFigure",
-    "StructuredTable",
-    "structured_to_text",
-]
 
 
 def structured_from_dict(d: dict[str, Any]) -> StructuredData:

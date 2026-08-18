@@ -98,9 +98,7 @@ class WiCERCompiler(BaseCompiler):
             context_window
             or discover_context_window(
                 config.llm.default_model,
-                fallback_max_input=config.llm.fallback_max_input,
-                fallback_max_output=config.llm.fallback_max_output,
-                context_window_cap=config.llm.context_window_cap,
+                llm_config=config.llm,
             )
             if config.llm.default_model
             else None

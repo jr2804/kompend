@@ -74,9 +74,7 @@ def build_pipeline(
 
         cw = discover_context_window(
             model,
-            fallback_max_input=config.llm.fallback_max_input,
-            fallback_max_output=config.llm.fallback_max_output,
-            context_window_cap=config.llm.context_window_cap,
+            llm_config=config.llm,
         )
         chunker_context_window = cw
         resolver = build_resolver_chain(config)

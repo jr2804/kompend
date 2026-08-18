@@ -120,9 +120,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 raise ValueError(msg)
             cw = discover_context_window(
                 self._model,
-                fallback_max_input=config.llm.fallback_max_input,
-                fallback_max_output=config.llm.fallback_max_output,
-                context_window_cap=config.llm.context_window_cap,
+                llm_config=config.llm,
             )
         self._context_window = cw
 

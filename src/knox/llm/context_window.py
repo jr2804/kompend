@@ -12,6 +12,7 @@ from enum import StrEnum
 
 import ollama
 
+from knox.core.config import LLMConfig
 from knox.llm.models import _user_providers, resolve_model_limits
 from knox.logging import get_logger
 
@@ -37,12 +38,13 @@ class ContextWindow:
     source: ContextSource
 
 
-def discover_context_window(
+def discover_context_window(  # noqa: PLR0915
     model: str,
     *,
     fallback_max_input: int | None = None,
     fallback_max_output: int | None = None,
     context_window_cap: int | str | None = None,
+    llm_config: LLMConfig | None = None,
 ) -> ContextWindow:
     """Discover the context window for *model*.
 
@@ -56,6 +58,10 @@ def discover_context_window(
        If neither source resolves AND no fallback is provided, raise
        ``LookupError`` — a missing context window usually means the model
        name is wrong, the provider is unreachable, or config needs fixing.
+
+    The typed *llm_config* can be passed instead of individual
+    *fallback_max_input* / *fallback_max_output* / *context_window_cap*
+    or to supply defaults that explicit parameters override.
 
     Values from steps 1–2 are used **as-is** — never clamped or capped
     (except by *context_window_cap* if set).  The old ``num_ctx_min`` /
@@ -106,6 +112,15 @@ def discover_context_window(
             source = ContextSource.MODELS_DEV
         except (KeyError, LookupError):
             pass
+
+    # Extract values from typed LLMConfig if provided.
+    if llm_config is not None:
+        if fallback_max_input is None:
+            fallback_max_input = llm_config.fallback_max_input
+        if fallback_max_output is None:
+            fallback_max_output = llm_config.fallback_max_output
+        if context_window_cap is None:
+            context_window_cap = llm_config.context_window_cap
 
     # Apply explicit fallback from config if provided.
     if max_input is None and fallback_max_input is not None:
