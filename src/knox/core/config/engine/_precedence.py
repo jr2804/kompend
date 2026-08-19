@@ -28,6 +28,7 @@ from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
 from knox.types import ConfigValue
 from knox.llm.user_providers import set_user_providers
+from knox.core.config._configs import KnoxConfig
 
 logger = get_logger(__name__)
 
@@ -50,8 +51,6 @@ class ResolvedConfig:
     """Fully merged configuration with provenance tracking."""
 
     raw: dict[str, Any] = field(default_factory=dict)
-    # ponytail: `raw` stays dict[str, Any] (C3) — config values are heterogeneous
-    # by depth; a dataclass per level would be a config-layer rewrite, not a refactor.
     provenance: dict[str, ConfigSource] = field(default_factory=dict)
     project_config_file: Path | None = None
     project_config_paths: list[Path] = field(default_factory=list)
@@ -62,8 +61,27 @@ class ResolvedConfig:
         return get_dot(self.raw, key, default)
 
     def source_of(self, key: str) -> ConfigSource:
-        """Return where a specific key's value came from."""
+        """Return where a specific key's value came from for diagnostics."""
         return self.provenance.get(key, ConfigSource("default"))
+
+    @property
+    def knox(self) -> KnoxConfig:
+        """Typed view of the resolved config.
+
+        Returns a validated :class:`KnoxConfig` built from ``raw``. Lets callers
+        use attribute access (e.g. ``cfg.knox.compile.llm.default_model``)
+        instead of importing dotted-key constants and looking up values
+        one-by-one with ``cfg.get(COMPILE_LLM_DEFAULT_MODEL)``.
+
+        Path values are coerced to strings before validation so they match
+        the schema's string-typed fields (the runtime `Path` objects in
+        ``raw`` are preserved for downstream code paths).
+
+        Mutable kwargs are passed by-reference (Pydantic deep-copies on
+        validation), so editing the returned object's nested fields is safe
+        and does not corrupt future lookups.
+        """
+        return KnoxConfig.model_validate(_coerce_paths_to_str(self.raw))
 
     def flat(self) -> dict[str, Any]:
         """Return a flat dotted-key dict of all values."""
@@ -159,6 +177,23 @@ def resolve_config(
         project_config_paths=project_configs,
         global_config_file=global_file,
     )
+
+
+def _coerce_paths_to_str(obj: Any) -> Any:
+    """Recursively convert ``Path`` values to ``str`` in a config dict.
+
+    The runtime config stores Path objects in ``paths.*`` for ergonomic
+    downstream use, but ``KnoxConfig`` types those fields as strings to
+    match the TOML schema. Without this coercion, ``model_validate`` would
+    reject the resolved config.
+    """
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _coerce_paths_to_str(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_coerce_paths_to_str(v) for v in obj]
+    return obj
 
 
 # ── Layer application ────────────────────────────────────────────────────

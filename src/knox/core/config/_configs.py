@@ -534,6 +534,11 @@ class CompileConfig(_KnoxBaseModel):
     synthesize: bool = True
     index: bool = True
     lint: bool = Field(default=False)
+    start_at_tier: str = Field(default="index", validation_alias=EnvVar.START_AT_TIER)
+    stop_at_tier: str = Field(default="output", validation_alias=EnvVar.STOP_AT_TIER)
+    respect_gitignore: bool = True
+    source_tags: list[str] = Field(default_factory=list)
+    tier_state_file: str | None = None
 
     # Nested sub-configs
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
