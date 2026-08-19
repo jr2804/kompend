@@ -50,6 +50,7 @@ from pydantic_ai_summarization import (
 )
 
 from knox.agents.deps import PipelineAgentDeps
+from knox.agents.instrument import configure_observability
 from knox.agents.knox_model import KnoxModel
 from knox.agents.rlm import (
     _DEFAULT_NODE_BUDGET,
@@ -343,6 +344,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         debug saving, and in :class:`~pydantic_ai.models.fallback.FallbackModel`
         when fallback models are configured.
         """
+        # One-shot OTel instrumentation of pydantic-ai agents. No-op unless
+        # KNOX_OTEL_ENABLED is set; guarded internally so it only runs once.
+        configure_observability()
+
         model_settings: ModelSettings = {"timeout": self.timeout}
         if self.temperature is not None:
             model_settings["temperature"] = self.temperature
