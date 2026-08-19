@@ -95,7 +95,7 @@ def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecomm
         if r.rule != "broken-wikilinks" or r.outcome != "fail":
             continue
         target = r.details.get("target", "")
-        if target:
+        if target and not _is_source_reference(target):
             targets.append(target)
 
     recs: list[GapRecommendation] = []
@@ -110,6 +110,14 @@ def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecomm
             )
         )
     return recs
+
+
+def _is_source_reference(target: str) -> bool:
+    """Return True if the target is a source-file citation (e.g., sources/foo.pdf)."""
+    if target.startswith("sources/"):
+        return True
+    lower = target.lower()
+    return any(lower.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".xlsx", ".pptx"))
 
 
 def _analyze_coverage_gaps(results: list[LintReportResult]) -> list[GapRecommendation]:

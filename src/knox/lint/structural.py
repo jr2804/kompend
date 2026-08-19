@@ -70,6 +70,9 @@ class BrokenWikilinksRule(BaseLintRule):
                 if Path(target_title).suffix.lower() in _IMAGE_EXTENSIONS:
                     # Image embeds are handled by ImageEmbedRule — not page links.
                     continue
+                # Source-file citations (sources/foo.pdf) are provenance, not page links.
+                if target_title.startswith("sources/"):
+                    continue
                 if target_title.lower() not in title_to_id:
                     results.append(
                         LintResult(
