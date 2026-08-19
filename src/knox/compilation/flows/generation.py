@@ -8,9 +8,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+# Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
+# can be normalized to the intended [sources/foo.pdf] inline citation format
+# regardless of LLM compliance with the system prompt.
+_SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 
 from knox.agents.generation import GenerationAgent
 from knox.compilation._checkpoints import (
@@ -324,11 +330,15 @@ def generate_all_pages(
             for idx, page in enumerate(valid_pages):
                 node_id = slugify(page.title or f"concept-{batch_start + idx}", max_length=compiler._config.llm.slug_max_length)
                 kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
+                # Strip double brackets around source citations so [[sources/x.pdf]]
+                # becomes [sources/x.pdf] — matches the renderer’s _CITATION_RE and
+                # keeps provenance out of broken-wikilinks lint findings.
+                page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
                 upsert_node(
                     WikiNode(
                         id=node_id,
                         title=page.title or f"Concept {batch_start + idx}",
-                        content=page.content,
+                        content=page_content,
                         node_type=kind,
                         source_chunks=[],
                         metadata={

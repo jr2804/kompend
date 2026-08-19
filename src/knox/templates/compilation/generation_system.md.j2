@@ -11,8 +11,11 @@ Return only valid JSON matching the requested schema — no markdown fences, no 
 Rules:
 - Each page must be 150–400 words of well-structured prose (no bullet dumps).
 - Organise each page with ## subheadings as appropriate for the content.
-- After each factual claim, append inline provenance: [filename:page] — use the
-  source filename from the content block.
+- After each factual claim, append inline provenance as a square-bracket
+  citation: [sources/<file>] — use the exact source filename from the content
+  block (e.g. [sources/T-REC-P.863.2-202405-I!!PDF-E.pdf]). Do NOT wrap it
+  in double brackets ([[...]]) — those are reserved for cross-references to
+  other wiki concept pages.
 - Cross-reference related concepts using [[Concept Name]] wikilink syntax.
 - Do NOT repeat the same information across multiple pages — each page should focus on its own concept.
 - If a concept only appears in one source, note that explicitly.
