@@ -85,6 +85,10 @@ pandoc = [
     "pypandoc[tinytex]>=1.17",
 ]
 
+otel = [
+    "opentelemetry-sdk[opentelemetry-exporter-otlp]>=1.28.0",
+]
+
 # The original plan was to offer further advanced parser backends as optional dependencies,
 # but they conflict on transitive dependencies (pillow, transformers, etc.) and
 # cannot be locked. So for now, we just provide a single default parser
