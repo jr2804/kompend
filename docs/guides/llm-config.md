@@ -340,6 +340,42 @@ Set `KNOX_DEBUG_LLM_DIR` to a directory path to dump every LLM call
 export KNOX_DEBUG_LLM_DIR=".knox/cache/debug"
 ```
 
+## OpenTelemetry tracing
+
+knox can emit [OpenTelemetry](https://opentelemetry.io) traces for its
+pydantic-ai agent runs — including the agent run, every model request,
+and every tool call — so you can replay and inspect exactly what the
+compiler's agents did, including where a local/quantized model hits its
+retry ceiling or where the WiCER evaluate/probe steps diverge from the
+graph compiler.
+
+The SDKs are already shipped with knox (`opentelemetry-sdk` is an
+optional `otel` extra). Enable tracing with two environment variables:
+
+```bash
+export KNOX_OTEL_ENABLED=true
+export KNOX_OTEL_ENDPOINT="http://localhost:4318"   # your OTLP backend
+```
+
+Options:
+
+- `KNOX_OTEL_ENABLED` — `true`/`1`/`yes` turns tracing on. Unset or any
+  other value keeps knox fully uninstrumented (zero overhead). Default off.
+- `KNOX_OTEL_ENDPOINT` — OTLP HTTP endpoint. Default
+  `http://localhost:4318`. For a self-hosted Langfuse
+  (`docker compose up`), use `http://localhost:3000/api/otel`.
+- `KNOX_OTEL_SERVICE_NAME` — service label in the OTel UI (default `knox`).
+- `KNOX_OTEL_HEADERS` — optional `key=value` HTTP headers for the endpoint,
+  e.g. `Authorization=Bearer <token>`.
+
+Install the extra if it isn't present already:
+
+```bash
+uv add knox[otel]
+# or, in this repo's editable install:
+uv sync --extra otel
+```
+
 ## Errors
 
 When an agent's LLM call fails (network error, empty content after
