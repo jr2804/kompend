@@ -134,8 +134,20 @@ image_mode = "file"
 # Pipeline start tier: index | chunk | resolve | compile | output
 # start_at_tier = "index"
 
+# Pipeline stop tier: index | chunk | resolve | compile | output
+# stop_at_tier = "output"
+
 # Parallel parse workers (1 = sequential)
 workers = 1
+
+# Source tags applied during indexing (auto-tags via CLI or manually here).
+source_tags = []
+
+# Honor .gitignore in sources_dir (skip ignored files during index/ingest).
+respect_gitignore = true
+
+# Tier state file (None = base_dir/.knox/compile_state.json).
+# tier_state_file = "compile_state.json"
 
 # Pipeline mode: full | ingest-only | compile-only
 # mode = "full"
