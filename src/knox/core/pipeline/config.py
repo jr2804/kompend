@@ -30,30 +30,6 @@ from knox.core.config import (
     PdfConfig,
     ResolvedConfig,
 )
-from knox.core.config.keys import (
-    COMPILE_CACHE_DIR,
-    COMPILE_COMPILER,
-    COMPILE_EXTRACTION_CATEGORIES,
-    COMPILE_FORCE,
-    COMPILE_IMAGE_MODE,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_MEMORY_DECAY_THRESHOLD,
-    COMPILE_MEMORY_ENABLED,
-    COMPILE_MEMORY_HALF_LIFE_DAYS,
-    COMPILE_NO_CACHE,
-    COMPILE_RESPECT_GITIGNORE,
-    COMPILE_SKILLS,
-    COMPILE_SOURCE_TAGS,
-    COMPILE_START_AT_TIER,
-    COMPILE_STOP_AT_TIER,
-    COMPILE_TIER_STATE_FILE,
-    COMPILE_VLM_MIN_IMAGE_BYTES,
-    COMPILE_VLM_MIN_IMAGE_DIMENSION,
-    COMPILE_WORKERS,
-    INGEST_PARSER,
-    PATHS_WIKI_DIR,
-    TRUST_PRIVACY_FILTER,
-)
 from knox.core.paths import VaultPaths
 
 __all__ = [
@@ -228,13 +204,14 @@ class PipelineConfig:
                     out[name] = val
             return out
 
-        default_model = cfg.get(COMPILE_LLM_DEFAULT_MODEL)
+        knox = cfg.knox
+        default_model = knox.compile.llm.default_model
         if not default_model or "${" in str(default_model):
             raise ValueError(
-                f"{COMPILE_LLM_DEFAULT_MODEL} is not set — "
-                f"set ${{KNOX_LLM_DEFAULT_MODEL}} in the environment, "
-                f"add it to the TOML config file, or pass "
-                f"--set {COMPILE_LLM_DEFAULT_MODEL}=... on the command line."
+                "compile.llm.default_model is not set — "
+                "set ${KNOX_LLM_DEFAULT_MODEL} in the environment, "
+                "add it to the TOML config file, or pass "
+                "--set compile.llm.default_model=... on the command line."
             )
         llm_kwargs = _kwargs_for(LLMConfig, "compile.llm")
         # Sanitize role_models values (pydantic handles enum/Path coercion)
@@ -253,8 +230,8 @@ class PipelineConfig:
         display_config = DisplayConfig(**_kwargs_for(DisplayConfig, "display"))
 
         # Resolve notes file path relative to wiki_dir
-        notes_file_name = cfg.get("notes.file", "NOTES.md")
-        wiki_dir = cfg.get(PATHS_WIKI_DIR)
+        notes_file_name = knox.notes.file
+        wiki_dir = knox.paths.wiki_dir
         notes_file: Path | None = None
         if notes_file_name:
             base_dir = Path(wiki_dir) if wiki_dir else output_dir.parent
@@ -263,26 +240,26 @@ class PipelineConfig:
         return cls(
             source_dir=source_dir,
             output_dir=output_dir,
-            image_mode=ImageMode(cfg.get(COMPILE_IMAGE_MODE, ImageMode.FILE)),
-            vlm_min_image_bytes=cfg.get(COMPILE_VLM_MIN_IMAGE_BYTES, 2048),
-            vlm_min_image_dimension=cfg.get(COMPILE_VLM_MIN_IMAGE_DIMENSION, 64),
+            image_mode=ImageMode(knox.compile.image_mode),
+            vlm_min_image_bytes=knox.compile.vlm_min_image_bytes,
+            vlm_min_image_dimension=knox.compile.vlm_min_image_dimension,
             online_sources=[],
             input_files=input_files,
-            cache_dir=cfg.get(COMPILE_CACHE_DIR),
-            no_cache=cfg.get(COMPILE_NO_CACHE, False),
-            workers=cfg.get(COMPILE_WORKERS, 1),
-            start_at_tier=Tier(cfg.get(COMPILE_START_AT_TIER, Tier.INDEX)),
-            stop_at_tier=Tier(cfg.get(COMPILE_STOP_AT_TIER, Tier.OUTPUT)),
-            force=cfg.get(COMPILE_FORCE, False),
-            tier_state_file=cfg.get(COMPILE_TIER_STATE_FILE),
-            ignore_patterns=list(cfg.get("ignore.patterns", [])),
-            respect_gitignore=cfg.get(COMPILE_RESPECT_GITIGNORE, True),
-            compiler=cfg.get(COMPILE_COMPILER, Compiler.GRAPH),
-            privacy_filter=cfg.get(TRUST_PRIVACY_FILTER, True),
-            parser=cfg.get(INGEST_PARSER, "liteparse"),
-            memory_enabled=cfg.get(COMPILE_MEMORY_ENABLED, True),
-            memory_half_life_days=cfg.get(COMPILE_MEMORY_HALF_LIFE_DAYS, 90.0),
-            memory_decay_threshold=cfg.get(COMPILE_MEMORY_DECAY_THRESHOLD, 0.3),
+            cache_dir=Path(knox.paths.cache_dir) if knox.paths.cache_dir else None,
+            no_cache=knox.compile.no_cache,
+            workers=knox.compile.workers,
+            start_at_tier=Tier(knox.compile.start_at_tier),
+            stop_at_tier=Tier(knox.compile.stop_at_tier),
+            force=knox.compile.force,
+            tier_state_file=Path(knox.compile.tier_state_file) if knox.compile.tier_state_file else None,
+            ignore_patterns=list(knox.ignore.patterns),
+            respect_gitignore=knox.compile.respect_gitignore,
+            compiler=Compiler(knox.compile.compiler),
+            privacy_filter=knox.trust.privacy_filter,
+            parser=knox.ingest.parser,
+            memory_enabled=knox.compile.memory_enabled,
+            memory_half_life_days=knox.compile.memory_half_life_days,
+            memory_decay_threshold=knox.compile.memory_decay_threshold,
             notes_file=notes_file,
             llm=llm_config,
             budget=budget_config,
@@ -290,9 +267,9 @@ class PipelineConfig:
             embedding=embedding_config,
             pdf=pdf_config,
             display=display_config,
-            skills={name: skill.get("instructions", "") for name, skill in (cfg.get(COMPILE_SKILLS) or {}).items()},
-            extraction_categories=dict(cfg.get(COMPILE_EXTRACTION_CATEGORIES) or {}),
-            source_tags=cfg.get(COMPILE_SOURCE_TAGS, []),
+            skills={name: skill.instructions for name, skill in knox.compile.skills.items()},
+            extraction_categories=dict(knox.compile.extraction.categories),
+            source_tags=list(knox.compile.source_tags),
             providers=cfg.get("providers", {}),
         )
 

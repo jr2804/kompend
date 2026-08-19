@@ -16,12 +16,6 @@ from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
 from knox.core.config import OrganizeConfig, resolve_config
-from knox.core.config.keys import (
-    ORGANIZE_COLLAPSE_SINGLE_FILE,
-    ORGANIZE_MAX_DEPTH,
-    ORGANIZE_MIN_FILES_PER_CATEGORY,
-    ORGANIZE_MIN_SUBCATEGORIES,
-)
 from knox.core.paths import VaultPaths, is_protected_source
 from knox.logging import get_logger
 from knox.organize.categorize import (
@@ -136,14 +130,14 @@ def organize_sources(
 def resolve_organize_config(overrides: dict[str, object] | None = None) -> OrganizeConfig:
     """Build an :class:`OrganizeConfig` from the resolved knox config."""
     cfg = resolve_config(cli_overrides=overrides)
-    min_files = int(cfg.get(ORGANIZE_MIN_FILES_PER_CATEGORY, 2))
+    min_files = int(cfg.knox.organize.min_files_per_category)
     if min_files < 1:
         raise ValueError(f"organize.min_files_per_category must be >= 1, got {min_files}")
     return OrganizeConfig(
-        max_depth=int(cfg.get(ORGANIZE_MAX_DEPTH, 3)),
-        min_subcategories=int(cfg.get(ORGANIZE_MIN_SUBCATEGORIES, 2)),
+        max_depth=int(cfg.knox.organize.max_depth),
+        min_subcategories=int(cfg.knox.organize.min_subcategories),
         min_files_per_category=min_files,
-        collapse_single_file=bool(cfg.get(ORGANIZE_COLLAPSE_SINGLE_FILE, True)),
+        collapse_single_file=bool(cfg.knox.organize.collapse_single_file),
     )
 
 

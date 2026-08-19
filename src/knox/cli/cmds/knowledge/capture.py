@@ -20,7 +20,6 @@ from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceTags
 from knox.core.config import resolve_config
-from knox.core.config.keys import COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_RELATED_TITLES
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
@@ -57,9 +56,9 @@ def capture_cmd(
 
     try:
         capture_agent = CaptureAgent(
-            cfg.get("compile.llm.default_model", ""),
-            timeout=float(cfg.get("compile.llm.timeout", 120)),
-            retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES),
+            cfg.knox.compile.llm.default_model,
+            timeout=float(cfg.knox.compile.llm.timeout),
+            retries=cfg.knox.compile.llm.output_retries,
         )
     except Exception:
         capture_agent = None
@@ -113,9 +112,9 @@ def distill_cmd(
 
     try:
         distill_agent = DistillAgent(
-            cfg.get("compile.llm.default_model", ""),
-            timeout=float(cfg.get("compile.llm.timeout", 120)),
-            retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES),
+            cfg.knox.compile.llm.default_model,
+            timeout=float(cfg.knox.compile.llm.timeout),
+            retries=cfg.knox.compile.llm.output_retries,
         )
     except Exception:
         distill_agent = None
@@ -170,7 +169,7 @@ def write_cmd(
 
     # ── Load related wiki nodes from the last compile ────────────────────
     related_titles = _load_related_titles(base_dir, source_texts)
-    related_titles = related_titles[: cfg.get(DISPLAY_RELATED_TITLES, 15)]
+    related_titles = related_titles[: cfg.knox.display.related_titles]
 
     # ── Build body ────────────────────────────────────────────────────────
     fm: dict[str, Any] = {}
@@ -191,14 +190,14 @@ def write_cmd(
         body = "_(Content pending — run with --source to populate)_"
     else:
         # Try LLM synthesis; fall back to concatenation.
-        llm_model = cfg.get("compile.llm.default_model", "")
+        llm_model = cfg.knox.compile.llm.default_model
         body = _synthesize_write_page(
             page_title=page_title,
             source_texts=source_texts,
             related_titles=related_titles,
             model=llm_model,
-            timeout=float(cfg.get("compile.llm.timeout", 120)),
-            source_char_max=cfg.get(COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX, 4000),
+            timeout=float(cfg.knox.compile.llm.timeout),
+            source_char_max=cfg.knox.compile.budget.capture_source_char_max,
         )
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────

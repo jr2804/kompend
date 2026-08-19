@@ -66,14 +66,7 @@ from knox.cli.args import (
 from knox.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
 from knox.core.config._configs import LintConfig
 from knox.core.config.keys import (
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_IN_PLACE_SOURCES,
     DISPLAY_CLI_ELEMENT_CHARS,
-    DISPLAY_SOURCE_NAMES,
-    DOWNLOADER_UNDETECTED,
-    INGEST_PARSER,
-    LINT_FUZZY_THRESHOLD,
-    SEARCH_EMBED_ATTACHMENTS,
 )
 from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths, vault_paths
@@ -244,7 +237,7 @@ def compile_cmd(  # noqa: PLR0915
 
         wiki.metadata[str(WikiField.DURATION_SECONDS)] = round(elapsed, 2)
         wiki.metadata[str(MetadataField.SOURCE_COUNT)] = len(source_files)
-        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[: cfg.get(DISPLAY_SOURCE_NAMES, 20)]]
+        wiki.metadata[str(MetadataField.SOURCE_NAMES)] = [str(f) for f in source_files[: cfg.knox.display.source_names]]
 
         if json_progress:
             emit_json_done(elapsed, f"Compiled wiki written to {output_dir}")
@@ -255,7 +248,7 @@ def compile_cmd(  # noqa: PLR0915
         console.print(f"Compiled wiki written to {output_dir}")
 
         lint_config = LintConfig(
-            fuzzy_threshold=float(cfg.get(LINT_FUZZY_THRESHOLD, 0.85)),
+            fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold),
         )
         post_compile_actions(
             PostCompileOptions(
@@ -274,7 +267,7 @@ def compile_cmd(  # noqa: PLR0915
                 embed_model=embed_model,
                 show_progress=show_progress,
                 lint_config=lint_config,
-                embed_attachments=bool(cfg.get(SEARCH_EMBED_ATTACHMENTS, False)),
+                embed_attachments=bool(cfg.knox.search.embed_attachments),
             )
         )
 
@@ -349,8 +342,8 @@ def ingest_cmd(
         sources_dir,
         recursive,
         ignore,
-        in_place=cfg.get(COMPILE_IN_PLACE_SOURCES, False),
-        undetected=cfg.get(DOWNLOADER_UNDETECTED, True),
+        in_place=cfg.knox.compile.in_place_sources,
+        undetected=cfg.knox.downloader.undetected,
     )
     if not all_input_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
@@ -359,7 +352,7 @@ def ingest_cmd(
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
     images_dir = VaultPaths(base_dir).images_dir
-    parser_name = cfg.get(INGEST_PARSER)
+    parser_name = cfg.knox.ingest.parser
     router: ParserRouter = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name)
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
@@ -446,14 +439,14 @@ def index_cmd(
         raise typer.Exit(1)
 
     # Resolve embed model (CLI flag > config > compile.embedding.model).
-    resolved_model = embed_model or cfg.get(COMPILE_EMBEDDING_MODEL, "")
+    resolved_model = embed_model or cfg.knox.compile.embedding.model
     if not resolved_model:
         get_err_console().print(
             "No embedding model configured. Set compile.embedding.model in config or pass --embed-model.",
         )
         raise typer.Exit(1)
 
-    embed_attachments = bool(cfg.get(SEARCH_EMBED_ATTACHMENTS, False))
+    embed_attachments = bool(cfg.knox.search.embed_attachments)
 
     try:
         count = build_vector_index(

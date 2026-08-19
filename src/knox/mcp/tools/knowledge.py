@@ -157,7 +157,7 @@ def wiki_capture(
 
     try:
         cfg = resolve_config()
-        model = cfg.get("compile.llm.default_model", "")
+        model = cfg.knox.compile.llm.default_model
         capture_agent = CaptureAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
     except Exception:
         capture_agent = None
@@ -205,7 +205,7 @@ def wiki_distill(
         sources_dir = vp.sources_dir
 
         try:
-            model = cfg.get("compile.llm.default_model", "")
+            model = cfg.knox.compile.llm.default_model
             distill_agent = DistillAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
         except Exception:
             distill_agent = None

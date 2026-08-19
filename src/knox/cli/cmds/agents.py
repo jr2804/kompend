@@ -24,7 +24,6 @@ from knox.core.config.keys import (
     AGENTS_COMPILE,
     AGENTS_ORGANIZE,
     AGENTS_QUERY,
-    PATHS_WIKI_DIR,
 )
 from knox.core.paths import KNOX_CONFIG_FILE
 from knox.logging import get_console, get_logger
@@ -192,4 +191,4 @@ def _agents_remove(name: str) -> None:
 def _resolve_base_dir() -> str:
     """Resolve the vault base_dir from config."""
     cfg = resolve_config()
-    return cfg.get(PATHS_WIKI_DIR, ".")
+    return cfg.knox.paths.wiki_dir or "."

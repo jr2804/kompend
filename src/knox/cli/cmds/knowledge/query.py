@@ -47,7 +47,6 @@ from knox.cli.args.query import SearchMode
 from knox.core.config import LLMConfig, resolve_config
 from knox.core.config._configs import LlmDataFormat
 from knox.core.config.keys import (
-    QUERY_FORMAT,
     EnvVar,
 )
 from knox.core.models import load_cached_wiki, load_wiki_from_files
@@ -96,7 +95,7 @@ def query_cmd(
     )
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     if format is None:
-        format = LlmDataFormat(cfg.get(QUERY_FORMAT, LlmDataFormat.MARKDOWN.value))
+        format = LlmDataFormat(cfg.knox.query.format)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
     state_dir = vp.knox_dir
@@ -121,7 +120,7 @@ def query_cmd(
     vector_store = open_vector_store(state_dir, wiki) if not portable else None
     if portable:
         get_console().print("Portable mode: no .knox cache — searching the wiki files directly.")
-    model = cfg.get("compile.llm.default_model", "")
+    model = cfg.knox.compile.llm.default_model
     llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
     cw = discover_context_window(model, llm_config=llm_cfg) if model else None
 

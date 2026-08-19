@@ -15,24 +15,6 @@ from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.cli.args.query import SearchMode
 from knox.core.config import ResolvedConfig, RlmConfig
 from knox.core.config._configs import LlmDataFormat, Verbosity
-from knox.core.config.keys import (
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_LLM_OUTPUT_RETRIES,
-    COMPILE_LLM_REASONING_EFFORT,
-    COMPILE_LLM_RLM,
-    SEARCH_CRAG_ENABLED,
-    SEARCH_CRAG_THRESHOLD,
-    SEARCH_EXPANSION_ENABLED,
-    SEARCH_EXPANSION_VARIANTS,
-    SEARCH_HYDE_ENABLED,
-    SEARCH_RERANKER_ENABLED,
-    SEARCH_RERANKER_MODEL,
-    SEARCH_RERANKER_TOP_K,
-    SEARCH_SYNTHESIS_TOKENS_BRIEF,
-    SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
-    SEARCH_SYNTHESIS_TOKENS_STANDARD,
-    SEARCH_SYNTHESIS_VERBOSITY,
-)
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
@@ -51,9 +33,9 @@ from knox.search.retriever import HybridRetriever, KeywordRetriever, SearchResul
 _KIND_FOLDERS: dict[str, str] = {**VaultWriter._KIND_FOLDERS, "overview": ""}
 
 _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
-    Verbosity.BRIEF.value: SEARCH_SYNTHESIS_TOKENS_BRIEF,
-    Verbosity.STANDARD.value: SEARCH_SYNTHESIS_TOKENS_STANDARD,
-    Verbosity.COMPREHENSIVE.value: SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE,
+    Verbosity.BRIEF.value: "brief",
+    Verbosity.STANDARD.value: "standard",
+    Verbosity.COMPREHENSIVE.value: "comprehensive",
 }
 
 logger = get_logger(__name__)
@@ -139,12 +121,7 @@ def handle_enhanced_search(
     """Search using enhanced retriever with RAG features. Returns results or None."""
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
 
-    has_enhanced = (
-        cfg.get(SEARCH_EXPANSION_ENABLED, False)
-        or cfg.get(SEARCH_CRAG_ENABLED, False)
-        or cfg.get(SEARCH_RERANKER_ENABLED, False)
-        or cfg.get(SEARCH_HYDE_ENABLED, False)
-    )
+    has_enhanced = cfg.knox.search.expansion.enabled or cfg.knox.search.crag.enabled or cfg.knox.search.reranker.enabled or cfg.knox.search.hyde.enabled
 
     if has_enhanced:
         expand_graph = search_mode == SearchMode.GRAPH
@@ -171,7 +148,7 @@ def build_enhanced_retriever(
     model: str,
 ) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
-    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES)
+    _retries = cfg.knox.compile.llm.output_retries
     expansion_agent = QueryExpansionAgent(model, timeout=120, retries=_retries) if model else None
     crag_agent = CragGradeAgent(model, timeout=120, retries=_retries) if model else None
     hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
@@ -181,14 +158,14 @@ def build_enhanced_retriever(
         expansion_agent=expansion_agent,
         crag_agent=crag_agent,
         hyde_agent=hyde_agent,
-        expansion_enabled=cfg.get(SEARCH_EXPANSION_ENABLED, False),
-        expansion_variants=cfg.get(SEARCH_EXPANSION_VARIANTS, 3),
-        crag_enabled=cfg.get(SEARCH_CRAG_ENABLED, False),
-        crag_threshold=cfg.get(SEARCH_CRAG_THRESHOLD, 0.3),
-        reranker_enabled=cfg.get(SEARCH_RERANKER_ENABLED, False),
-        reranker_model=cfg.get(SEARCH_RERANKER_MODEL, ""),
-        reranker_top_k=cfg.get(SEARCH_RERANKER_TOP_K, 20),
-        hyde_enabled=cfg.get(SEARCH_HYDE_ENABLED, False),
+        expansion_enabled=cfg.knox.search.expansion.enabled,
+        expansion_variants=cfg.knox.search.expansion.variants,
+        crag_enabled=cfg.knox.search.crag.enabled,
+        crag_threshold=cfg.knox.search.crag.threshold,
+        reranker_enabled=cfg.knox.search.reranker.enabled,
+        reranker_model=cfg.knox.search.reranker.model,
+        reranker_top_k=cfg.knox.search.reranker.top_k,
+        hyde_enabled=cfg.knox.search.hyde.enabled,
     )
 
 
@@ -211,14 +188,14 @@ def synthesize_and_output(
         get_console().print("No relevant content found.")
         raise typer.Exit(0)
 
-    verbosity: str = cfg.get(SEARCH_SYNTHESIS_VERBOSITY, Verbosity.STANDARD.value)
-    token_key = _SYNTHESIS_TOKEN_KEYS.get(verbosity, SEARCH_SYNTHESIS_TOKENS_STANDARD)
-    target_tokens: int = cfg.get(token_key, 800)
+    verbosity: str = cfg.knox.search.synthesis.verbosity.value
+    token_attr = _SYNTHESIS_TOKEN_KEYS.get(verbosity, "standard")
+    target_tokens: int = getattr(cfg.knox.search.synthesis.tokens, token_attr)
     max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
 
     try:
-        reasoning_effort: str | None = cfg.get(COMPILE_LLM_REASONING_EFFORT)
-        rlm_cfg = RlmConfig.model_validate(cfg.get(COMPILE_LLM_RLM) or {})
+        reasoning_effort: str | None = cfg.knox.compile.llm.reasoning_effort
+        rlm_cfg = RlmConfig.model_validate(cfg.knox.compile.llm.rlm or {})
         if has_enhanced and enhanced is not None:
             synthesis = enhanced.synthesize(
                 query,
@@ -256,7 +233,7 @@ def synthesize_and_output(
         get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
 
     if remember:
-        save_query_memory(state_dir, query, synthesis.answer, cfg.get(COMPILE_EMBEDDING_MODEL), memory_by=resolve_actor(cfg))
+        save_query_memory(state_dir, query, synthesis.answer, cfg.knox.compile.embedding.model, memory_by=resolve_actor(cfg))
 
 
 def is_captured_source(source_file: str | None) -> bool:

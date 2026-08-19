@@ -42,7 +42,6 @@ from knox.cli.args import (
 )
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
-from knox.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, COMPILE_LLM_TIMEOUT, COMPILE_OUTPUT_RUMDL_CONFIG, LINT_FUZZY_THRESHOLD
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE
@@ -112,9 +111,9 @@ def lint_run(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    default_model = cfg.get("compile.llm.default_model", "")
+    default_model = cfg.knox.compile.llm.default_model
     lint_agent = (
-        LintRuleAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120)), retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if default_model else None
+        LintRuleAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout), retries=cfg.knox.compile.llm.output_retries) if default_model else None
     )
     if _uses_llm_rule(rule) and lint_agent is None:
         get_err_console().print(
@@ -128,7 +127,7 @@ def lint_run(
         llm = False
 
     lint_config = LintConfig(
-        fuzzy_threshold=float(cfg.get(LINT_FUZZY_THRESHOLD, 0.85)),
+        fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold),
     )
     runner = LintRunner(
         rules=list(rule) if rule else None,
@@ -137,7 +136,7 @@ def lint_run(
         fix=fix,
         sources_dir=sources_dir_str,
         lint_config=lint_config,
-        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG)),
+        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),
     )
     lint_start = time.monotonic()
     progress = (
@@ -429,8 +428,8 @@ def lint_remediate(
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    default_model = cfg.get("compile.llm.default_model", "")
-    agent = RemediationAgent(default_model, timeout=float(cfg.get(COMPILE_LLM_TIMEOUT, 120))) if default_model else None
+    default_model = cfg.knox.compile.llm.default_model
+    agent = RemediationAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
 
     actions = remediate(
         wiki,
@@ -496,7 +495,7 @@ def lint_format(
         cli_overrides=build_cli_overrides(),
         config_file=config,
     )
-    rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG))
+    rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config)
     extra_files: list[Path] = []
     for name in (INDEX_FILE, "overview.md"):
         p = vp.base_dir / name
@@ -504,7 +503,7 @@ def lint_format(
             extra_files.append(p)
     changed = format_output(
         vp.output_dir,
-        flavor=cfg.get("compile.output.flavor"),
+        flavor=cfg.knox.compile.output.flavor,
         rumdl_config=rumdl_cfg,
         extra_files=extra_files or None,
         check_only=check,

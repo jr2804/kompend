@@ -15,7 +15,6 @@ from knox.cli.args import (
 )
 from knox.core.config import resolve_config
 from knox.core.config.keys import (
-    COMPILE_LLM_TIMEOUT,
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,
@@ -51,8 +50,8 @@ def organize_cmd(
 
     config = resolve_organize_config(overrides or None)
 
-    timeout = cfg.get(COMPILE_LLM_TIMEOUT)
-    default_model = cfg.get("compile.llm.default_model", "")
+    timeout = cfg.knox.compile.llm.timeout
+    default_model = cfg.knox.compile.llm.default_model
     if not default_model:
         get_err_console().print("No LLM model configured. Set compile.llm.default_model in config.")
         raise typer.Exit(1)

@@ -167,14 +167,14 @@ def references_fetch(
         get_console().print("All references already have a DOI or URL.")
         raise typer.Exit(0)
 
-    model = cfg.get("compile.llm.default_model", "")
+    model = cfg.knox.compile.llm.default_model
     if not model:
         get_err_console().print(
             "No LLM model configured. Set KNOX_LLM_DEFAULT_MODEL or run 'knox config set'.",
         )
         raise typer.Exit(1)
 
-    timeout = float(cfg.get("compile.llm.timeout", 120))
+    timeout = float(cfg.knox.compile.llm.timeout)
     try:
         agent = ReferenceResolverAgent(model_string=model, timeout=timeout)
     except Exception as exc:  # noqa: BLE001

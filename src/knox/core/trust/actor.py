@@ -11,7 +11,6 @@ from __future__ import annotations
 import getpass
 
 from knox.core.config import ResolvedConfig
-from knox.core.config.keys import TRUST_USER_TRACKING
 
 _UNKNOWN = "unknown"
 
@@ -22,7 +21,7 @@ def resolve_actor(cfg: ResolvedConfig) -> str:
     Respects ``trust.user_tracking`` (CLI/env/config precedence). An empty
     return value means "do not record identity".
     """
-    if not cfg.get(TRUST_USER_TRACKING, True):
+    if not cfg.knox.trust.user_tracking:
         return ""
     return get_current_user()
 

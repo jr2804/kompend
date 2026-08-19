@@ -6,11 +6,6 @@ from typing import Any
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.pipeline.status import collect_stats
 from knox.core.config import RlmConfig, resolve_config
-from knox.core.config.keys import (
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_RLM,
-)
 from knox.core.models import load_cached_wiki
 from knox.core.paths import VECTORS_DIR, vault_paths
 from knox.logging import get_logger
@@ -42,7 +37,7 @@ def query_wiki(
     vector_store: ZvecWikiStore | None = None
     if state_dir and (state_dir / VECTORS_DIR).exists():
         try:
-            embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
+            embed_model = cfg.knox.compile.embedding.model
             vector_store = ZvecWikiStore.open(state_dir / VECTORS_DIR, embedding_model=embed_model or "hash")
         except Exception:
             vector_store = None
@@ -73,7 +68,7 @@ def query_wiki(
         return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
     try:
-        model = cfg.get(COMPILE_LLM_DEFAULT_MODEL, "")
+        model = cfg.knox.compile.llm.default_model or ""
     except Exception:
         model = ""
 
@@ -84,7 +79,7 @@ def query_wiki(
                 query,
                 results,
                 model=model,
-                rlm=RlmConfig.model_validate(cfg.get(COMPILE_LLM_RLM) or {}),
+                rlm=RlmConfig.model_validate(cfg.knox.compile.llm.rlm or {}),
             )
             result_dicts = [dataclasses.asdict(r) for r in results]
             return {
