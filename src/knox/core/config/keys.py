@@ -1,9 +1,15 @@
-"""Single source of truth for all config dotted-key strings.
+"""Dotted-key constants for config lookups.
 
-Every ``cfg.get("...")`` call must reference a constant from this module.
-This prevents typos and makes config schema changes searchable in one place.
+After the typed-config migration, most code paths use ``cfg.knox.<path>``
+attribute access on :class:`ResolvedConfig` instead of importing these
+constants. The remaining usages are:
 
-No ``"compile.xxx"`` or ``"paths.xxx"`` literal may appear outside this file.
+- CLI override dicts (``overrides[KEY] = value``) — key identifier needed
+- DEFAULTS dict lookups (``DEFAULTS.get(KEY)``) — key identifier needed
+- Tests that build resolved configs and want the dotted string explicitly
+
+The typed config (:mod:`knox.core.config._configs`) is the canonical schema
+and should be preferred for new code.
 """
 
 from typing import Final
@@ -14,7 +20,6 @@ from knox.core.env import EnvVar  # noqa: F401  # re-exported: importers use kno
 PATHS_WIKI_DIR: Final[str] = "paths.wiki_dir"
 PATHS_SOURCES_DIR: Final[str] = "paths.sources_dir"
 PATHS_OUTPUT_DIR: Final[str] = "paths.output_dir"
-PATHS_CACHE_DIR: Final[str] = "paths.cache_dir"
 PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 
 # ── ingest section ──
@@ -31,12 +36,8 @@ EXPORT_SUMMARY: Final[str] = "export.summary"
 COMPILE_SOURCES_DIR: Final[str] = "compile.sources_dir"
 COMPILE_OUTPUT_DIR: Final[str] = "compile.output_dir"
 COMPILE_CACHE_DIR: Final[str] = "compile.cache_dir"
-COMPILE_FORMAT: Final[str] = "compile.output.format"
 COMPILE_COMPILER: Final[str] = "compile.compiler"
 COMPILE_WORKERS: Final[str] = "compile.workers"
-COMPILE_IMAGE_MODE: Final[str] = "compile.image_mode"
-COMPILE_VLM_MIN_IMAGE_BYTES: Final[str] = "compile.vlm_min_image_bytes"
-COMPILE_VLM_MIN_IMAGE_DIMENSION: Final[str] = "compile.vlm_min_image_dimension"
 COMPILE_START_AT_TIER: Final[str] = "compile.start_at_tier"
 COMPILE_STOP_AT_TIER: Final[str] = "compile.stop_at_tier"
 COMPILE_FORCE: Final[str] = "compile.force"
@@ -51,41 +52,16 @@ COMPILE_PROVENANCE: Final[str] = "compile.provenance"
 COMPILE_PRIVATE: Final[str] = "compile.private"
 COMPILE_RESPECT_GITIGNORE: Final[str] = "compile.respect_gitignore"
 COMPILE_MEMORY_ENABLED: Final[str] = "compile.memory_enabled"
-COMPILE_MEMORY_HALF_LIFE_DAYS: Final[str] = "compile.memory_half_life_days"
-COMPILE_MEMORY_DECAY_THRESHOLD: Final[str] = "compile.memory_decay_threshold"
-COMPILE_SOURCE_TAGS: Final[str] = "compile.source_tags"
 COMPILE_TIER_STATE_FILE: Final[str] = "compile.tier_state_file"
+
 # ── compile.llm sub-section ──
 COMPILE_LLM_DEFAULT_MODEL: Final[str] = "compile.llm.default_model"
 COMPILE_LLM_VLM_MODEL: Final[str] = "compile.llm.vlm_model"
 COMPILE_LLM_FALLBACK_CHAIN: Final[str] = "compile.llm.fallback_chain"
 COMPILE_LLM_ROLE_MODELS: Final[str] = "compile.llm.role_models"
 COMPILE_LLM_FALLBACK_MAX_RETRIES: Final[str] = "compile.llm.fallback_max_retries"
-COMPILE_LLM_TIMEOUT: Final[str] = "compile.llm.timeout"
-COMPILE_LLM_FALLBACK_MAX_INPUT: Final[str] = "compile.llm.fallback_max_input"
-COMPILE_LLM_FALLBACK_MAX_OUTPUT: Final[str] = "compile.llm.fallback_max_output"
-COMPILE_LLM_NUM_CTX_MIN: Final[str] = "compile.llm.num_ctx_min"
-COMPILE_LLM_NUM_CTX_MAX: Final[str] = "compile.llm.num_ctx_max"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
-COMPILE_LLM_OUTPUT_RETRIES_ENABLED: Final[str] = "compile.llm.output_retries_enabled"
-COMPILE_LLM_DELTA_RETRY_ENABLED: Final[str] = "compile.llm.delta_retry_enabled"
-COMPILE_LLM_BATCH_FAILURE_THRESHOLD_RATIO: Final[str] = "compile.llm.batch_failure_threshold_ratio"
-COMPILE_LLM_BATCH_FAILURE_THRESHOLD_MIN: Final[str] = "compile.llm.batch_failure_threshold_min"
-COMPILE_LLM_DATA_FORMAT: Final[str] = "compile.llm.data_format"
-COMPILE_LLM_REASONING_EFFORT: Final[str] = "compile.llm.reasoning_effort"
-COMPILE_LLM_RLM: Final[str] = "compile.llm.rlm"
-COMPILE_LLM_CONTEXT_MANAGER: Final[str] = "compile.llm.context_manager"
-COMPILE_LLM_EXTRACTION_STRATEGY: Final[str] = "compile.llm.extraction_strategy"
-COMPILE_LLM_SLUG_MAX_LENGTH: Final[str] = "compile.llm.slug_max_length"
-COMPILE_LLM_BATCH_RETRY_ATTEMPTS: Final[str] = "compile.llm.batch_retry_attempts"
-COMPILE_LLM_MIN_SEGMENT_TOKENS: Final[str] = "compile.llm.min_segment_tokens"
-COMPILE_LLM_CPT: Final[str] = "compile.llm.default_chars_per_token"
-
-# ── compile.pdf sub-section ──
-COMPILE_PDF_MAX_PAGES_BEFORE_CHUNKING: Final[str] = "compile.pdf.max_pages_before_chunking"
-COMPILE_PDF_PAGE_CHUNK_SIZE: Final[str] = "compile.pdf.page_chunk_size"
-COMPILE_PDF_PAGE_CHUNK_OVERLAP: Final[str] = "compile.pdf.page_chunk_overlap"
 
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"
@@ -95,48 +71,11 @@ ORGANIZE_COLLAPSE_SINGLE_FILE: Final[str] = "organize.collapse_single_file"
 
 # ── compile.embedding sub-section ──
 COMPILE_EMBEDDING_MODEL: Final[str] = "compile.embedding.model"
-COMPILE_EMBEDDING_BATCH_SIZE: Final[str] = "compile.embedding.batch_size"
-
-# ── compile.budget sub-section ──
-COMPILE_BUDGET_CONCEPTS_PER_BATCH: Final[str] = "compile.budget.concepts_per_batch"
-COMPILE_BUDGET_VERIFY_MIN_NGRAM: Final[str] = "compile.budget.verify_min_ngram"
-COMPILE_BUDGET_WICER_MAX_ITERATIONS: Final[str] = "compile.budget.wicer_max_iterations"
-COMPILE_BUDGET_MIN_CONTENT_LENGTH: Final[str] = "compile.budget.min_content_length"
-COMPILE_BUDGET_MIN_CONCEPT_SOURCES: Final[str] = "compile.budget.min_concept_sources"
-COMPILE_BUDGET_MAX_CONCEPT_PAGES: Final[str] = "compile.budget.max_concept_pages"
-COMPILE_BUDGET_CHUNK_SIZE_MIN: Final[str] = "compile.budget.chunk_size_min"
-COMPILE_BUDGET_CHUNK_SIZE_MAX: Final[str] = "compile.budget.chunk_size_max"
-COMPILE_BUDGET_EXTRACT_OUTPUT_MAX: Final[str] = "compile.budget.extract_output_max"
-COMPILE_BUDGET_GEN_OUTPUT_MAX: Final[str] = "compile.budget.gen_output_max"
-COMPILE_BUDGET_OVERVIEW_OUTPUT_MAX: Final[str] = "compile.budget.overview_output_max"
-COMPILE_BUDGET_VERIFY_OUTPUT_MAX: Final[str] = "compile.budget.verify_output_max"
-COMPILE_BUDGET_LINT_OUTPUT_MAX: Final[str] = "compile.budget.lint_output_max"
-COMPILE_BUDGET_WICER_PROBE_OUTPUT_MAX: Final[str] = "compile.budget.wicer_probe_output_max"
-COMPILE_BUDGET_WICER_EVAL_OUTPUT_MAX: Final[str] = "compile.budget.wicer_eval_output_max"
-
-# Node summarization (Phase 2 — hierarchical chunk tree summaries)
-COMPILE_BUDGET_SUMMARY_MAX_CONTENT_CHARS: Final[str] = "compile.budget.summary_max_content_chars"
-COMPILE_BUDGET_SUMMARY_TARGET_CHARS: Final[str] = "compile.budget.summary_target_chars"
-COMPILE_BUDGET_SUMMARY_SKIP_SINGLE_CHILD: Final[str] = "compile.budget.summary_skip_single_child"
-COMPILE_BUDGET_SUMMARY_CHUNK_THRESHOLD: Final[str] = "compile.budget.summary_chunk_threshold"
-COMPILE_BUDGET_CAPTURE_SOURCE_CHAR_MAX: Final[str] = "compile.budget.capture_source_char_max"
-
-# ── compile.skills sub-section ──
-COMPILE_SKILLS: Final[str] = "compile.skills"
-
-# ── compile.extraction sub-section ──
-COMPILE_EXTRACTION_CATEGORIES: Final[str] = "compile.extraction.categories"
 
 #: Mandatory page kinds — always allowed, cannot be deactivated or shadowed
 #: by compile.extraction.categories (Karpathy taxonomy: concepts, entities,
 #: summaries, comparisons).
 MANDATORY_KINDS: frozenset[str] = frozenset({"concept", "entity", "summary", "comparison"})
-
-# ── compile.output sub-section ──
-COMPILE_OUTPUT_FLAVOR: Final[str] = "compile.output.flavor"
-COMPILE_OUTPUT_FRONTMATTER: Final[str] = "compile.output.frontmatter"
-COMPILE_OUTPUT_MAX_RELATED_LINKS: Final[str] = "compile.output.max_related_links"
-COMPILE_OUTPUT_RUMDL_CONFIG: Final[str] = "compile.output.rumdl_config"
 
 # ── dedup section ──
 DEDUP_ENABLED: Final[str] = "dedup.enabled"
@@ -168,10 +107,6 @@ SEARCH_SYNTHESIS_VERBOSITY: Final[str] = "search.synthesis.verbosity"
 SEARCH_SYNTHESIS_TOKENS_BRIEF: Final[str] = "search.synthesis.tokens.brief"
 SEARCH_SYNTHESIS_TOKENS_STANDARD: Final[str] = "search.synthesis.tokens.standard"
 SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.comprehensive"
-SEARCH_EMBED_ATTACHMENTS: Final[str] = "search.embed_attachments"
-
-# ── query section ──
-QUERY_FORMAT: Final[str] = "query.format"
 
 # ── display section ──
 DISPLAY_SOURCE_NAMES: Final[str] = "display.source_names"
