@@ -225,19 +225,19 @@ class TestCollectStats:
         assert stats["compile_status"]["error"]
 
 
-def test_trace_no_wiki() -> None:
-    """Knox trace without compiled wiki should exit with error."""
+def test_provenance_no_wiki() -> None:
+    """Knox provenance without compiled wiki should exit with error."""
     runner = CliRunner()
-    result = runner.invoke(app, ["trace", "test-page"])
+    result = runner.invoke(app, ["provenance", "test-page"])
     assert result.exit_code != 0
     assert result.exit_code == 1
 
 
-def test_trace_multiple_slugs_accepted() -> None:
-    """Knox trace accepts multiple positional slugs (variadic)."""
+def test_provenance_multiple_slugs_accepted() -> None:
+    """Knox provenance accepts multiple positional slugs (variadic)."""
     runner = CliRunner()
     # No wiki loaded, but Typer should accept the args without a usage error.
-    result = runner.invoke(app, ["trace", "page-a", "page-b", "page-c"])
+    result = runner.invoke(app, ["provenance", "page-a", "page-b", "page-c"])
     assert result.exit_code != 0  # no wiki → error, but NOT a usage/arg error
     assert "Got unexpected extra argument" not in result.output
 

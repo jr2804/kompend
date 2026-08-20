@@ -1,4 +1,8 @@
-"""``knox trace`` — trace compiled wiki pages back to their source chunks."""
+"""``knox provenance`` — trace compiled wiki pages back to their source chunks.
+
+Note: named ``provenance`` (not ``trace``) to avoid confusion with the
+OpenTelemetry tracing feature — see ``docs/guides/observability.md``.
+"""
 
 from __future__ import annotations
 
@@ -16,8 +20,8 @@ from knox.core.models import MetadataField, WikiNode, load_cached_wiki
 from knox.logging import get_console, get_err_console
 
 
-@app.command(name="trace")
-def trace_cmd(
+@app.command(name="provenance")
+def provenance_cmd(
     ctx: typer.Context,
     page_slugs: list[str] = typer.Argument(None, help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."),  # noqa: B008
     with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
@@ -30,10 +34,10 @@ def trace_cmd(
     Pass multiple slugs to trace several pages at once.
 
     Example:
-        knox trace                      # list all pages and their slugs
-        knox trace self-attention       # show sources for one page
-        knox trace self-attention bert  # show sources for multiple pages
-        knox trace self-attention --with-content
+        knox provenance                       # list all pages and their slugs
+        knox provenance self-attention        # show sources for one page
+        knox provenance self-attention bert   # show sources for multiple pages
+        knox provenance self-attention --with-content
     """
     vp = vault_paths_from_ctx(ctx)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())

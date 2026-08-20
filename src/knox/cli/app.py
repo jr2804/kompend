@@ -43,7 +43,7 @@ _LAZY_MODULES: dict[str, str] = {
     "doctor": "knox.cli.cmds.quality.doctor_cmd",
     "status": "knox.cli.cmds.quality.status_cmd",
     "list-parsers": "knox.cli.cmds.quality.list_parsers_cmd",
-    "trace": "knox.cli.cmds.quality.trace_cmd",
+    "provenance": "knox.cli.cmds.quality.provenance_cmd",
     "init": "knox.cli.cmds.init",
     "lint": "knox.cli.cmds.quality.lint",
     "log": "knox.cli.cmds.quality.log",

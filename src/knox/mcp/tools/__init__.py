@@ -8,7 +8,7 @@
 - :mod:`knox.mcp.tools.references` — list, export, fetch
 - :mod:`knox.mcp.tools.attachments` — add, remove (list/read/info in knowledge)
 - :mod:`knox.mcp.tools.pipeline` — ingest, index, organize, write
-- :mod:`knox.mcp.tools.quality` — lint*, doctor, review, trace, log, list-parsers
+- :mod:`knox.mcp.tools.quality` — lint*, doctor, review, provenance, log, list-parsers
 - :mod:`knox.mcp.tools.packs` — pack-list, pack-install
 """
 
@@ -44,8 +44,8 @@ from knox.mcp.tools.quality import (
     lint_run,
     list_parsers,
     log,
+    provenance,
     review,
-    trace,
 )
 from knox.mcp.tools.query import query_wiki, wiki_status
 from knox.mcp.tools.references import (
@@ -85,6 +85,7 @@ __all__ = [
     "pack_install",
     "pack_list",
     "parse_document",
+    "provenance",
     "query_wiki",
     "references_export",
     "references_fetch",
@@ -94,7 +95,6 @@ __all__ = [
     "sources_list",
     "sources_tag",
     "sources_untag",
-    "trace",
     "wiki_attachment_info",
     "wiki_capture",
     "wiki_distill",

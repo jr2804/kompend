@@ -32,6 +32,7 @@ from knox.mcp.tools import (
     pack_install,
     pack_list,
     parse_document,
+    provenance,
     query_wiki,
     references_export,
     references_fetch,
@@ -41,7 +42,6 @@ from knox.mcp.tools import (
     sources_list,
     sources_tag,
     sources_untag,
-    trace,
     wiki_attachment_info,
     wiki_capture,
     wiki_distill,
@@ -102,7 +102,7 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="lint_format")(lint_format)
     srv.tool(name="doctor")(doctor)
     srv.tool(name="review")(review)
-    srv.tool(name="trace")(trace)
+    srv.tool(name="provenance")(provenance)
     srv.tool(name="log")(log)
     srv.tool(name="list_parsers")(list_parsers)
     srv.tool(name="pack_list")(pack_list)

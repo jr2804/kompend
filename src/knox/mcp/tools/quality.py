@@ -462,16 +462,20 @@ def review(
     return {"status": "error", "message": f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock."}
 
 
-# ── trace ─────────────────────────────────────────────────────────────────
+# ── provenance ────────────────────────────────────────────────────────────
 
 
-def trace(
+def provenance(
     wiki_dir: str | None = None,
     page_slugs: list[str] | None = None,
     with_content: bool = False,
     json_output: bool = False,
 ) -> dict[str, Any]:
-    """Trace compiled wiki page(s) back to their source chunks."""
+    """Trace compiled wiki page(s) back to their source chunks (provenance).
+
+    Named ``provenance`` to avoid confusion with the OpenTelemetry tracing
+    feature (see ``docs/guides/observability.md``).
+    """
     vp = vault_paths(wiki_dir)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     sources_dir = vp.sources_dir
