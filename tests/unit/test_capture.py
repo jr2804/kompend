@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from knox.agents.deps import DistillDeps
+from knox.agents.distill import DistillAgent
 from knox.capture.capture import (
     _merge_tags,
     capture,
@@ -154,6 +156,23 @@ class TestDistill:
 
         paths = distill(sources_dir)
         assert len(paths) == 2
+
+    def test_agent_renders_template_with_distill_deps(self) -> None:
+        """Regression: DistillAgent.run() raised ValueError because the
+        template requires ``notes``/``group_tag`` vars that weren't on deps.
+        """
+        agent = DistillAgent("test-model")
+        deps = DistillDeps(
+            notes=[{"title": "T", "content": "body", "source": "x.md"}],
+            group_tag="ml",
+            text="go",
+            source_id="repro",
+        )
+        up = agent.render_user_prompt(deps)
+        assert "body" in up
+        assert "ml" in up
+        sp = agent.render_system_prompt(deps)
+        assert sp == ""
 
 
 class TestCapture:

@@ -13,12 +13,11 @@ from pathlib import Path
 
 import yaml
 
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.deps import DistillDeps
 from knox.agents.distill import DistillAgent
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
-from knox.core.templates import get_template_loader
 from knox.core.utils.time import display_local
 from knox.logging import get_logger
 
@@ -141,7 +140,6 @@ def _synthesize_with_agent(
     distill_agent: DistillAgent,
 ) -> dict:
     """Use the DistillAgent to synthesize a group of notes into a single page."""
-    loader = get_template_loader()
     notes_data = [
         {
             "title": n.title,
@@ -150,13 +148,10 @@ def _synthesize_with_agent(
         }
         for n in notes
     ]
-    loader.render(
-        "capture/distill.md.j2",
+    user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
+    deps = DistillDeps(
         notes=notes_data,
         group_tag=tag,
-    )
-    user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
-    deps = PipelineAgentDeps(
         text=user_prompt,
         source_id=f"distill-{tag}",
         timeout=distill_agent.timeout,
