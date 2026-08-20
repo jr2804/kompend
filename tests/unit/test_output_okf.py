@@ -282,11 +282,13 @@ def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
     assert "[Beta](b.md)" in alpha
 
 
-def test_convert_wikilinks_unknown_target_left_as_text() -> None:
-    """OKF §6.1: broken links are valid — unknown targets become plain text."""
+def test_convert_wikilinks_unknown_target_left_as_wikilink() -> None:
+    """Unknown wikilinks stay as Obsidian-style ``[[...]]`` so the user
+    sees the broken cross-link in their markdown viewer rather than
+    silently losing it.
+    """
     result = convert_wikilinks("See [[nonexistent]] here", {})
-    assert "[[nonexistent]]" not in result
-    assert "nonexistent" in result
+    assert "[[nonexistent]]" in result
 
 
 def test_convert_wikilinks_with_alias() -> None:
@@ -294,6 +296,38 @@ def test_convert_wikilinks_with_alias() -> None:
     slug_map = {"target": "/concepts/target.md"}
     result = convert_wikilinks("See [[target|Custom Title]]", slug_map)
     assert "[Custom Title](/concepts/target.md)" in result
+
+
+def test_convert_wikilinks_resolves_acronym_alias() -> None:
+    """``[[PESQ]]`` resolves to the page whose long title starts with ``PESQ (``."""
+    slug_map = {
+        "pesq-perceptual-evaluation-of-speech-quality": "/concepts/pesq-perceptual-evaluation-of-speech-quality.md",
+        "PESQ (Perceptual Evaluation of Speech Quality)": "/concepts/pesq-perceptual-evaluation-of-speech-quality.md",
+    }
+    result = convert_wikilinks("See [[PESQ]] for the algorithm", slug_map)
+    assert "[PESQ](/concepts/pesq-perceptual-evaluation-of-speech-quality.md)" in result
+
+
+def test_convert_wikilinks_resolves_short_alias_via_substring() -> None:
+    """``[[P.863]]`` resolves to a page whose long title contains ``P.863``."""
+    slug_map = {
+        "full-scale-database-p-863-evaluation": "/concepts/full-scale-database-p-863-evaluation.md",
+        "Full-scale database (P.863 evaluation)": "/concepts/full-scale-database-p-863-evaluation.md",
+    }
+    result = convert_wikilinks("Implementation in [[P.863]]-based tools", slug_map)
+    assert "[P.863](/concepts/full-scale-database-p-863-evaluation.md)" in result
+
+
+def test_convert_wikilinks_unknown_alias_still_left_as_wikilink() -> None:
+    """A wikilink that doesn't match anything (and has no alias candidate)
+    stays as Obsidian-style ``[[...]]``.
+    """
+    slug_map = {
+        "polqa-...": "/concepts/polqa-...md",
+        "POLQA (...)": "/concepts/polqa-...md",
+    }
+    result = convert_wikilinks("Reference [[Truly Missing XYZ]] here", slug_map)
+    assert "[[Truly Missing XYZ]]" in result
 
 
 # ── Index conformance (§8) ──────────────────────────────────────────────

@@ -839,6 +839,9 @@ def _nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
     target_norm = normalize_concept_key(target)
     if not target_norm:
         return None
+    # Compare against period-stripped forms so ``p.863`` (short alias) matches
+    # ``p 863`` (slug-normalized, period replaced by hyphen-then-space).
+    target_no_punct = target_norm.replace(".", "")
     target_norm_tokens = {t for t in target_norm.split() if len(t) > 2}
 
     best_id: str | None = None
@@ -860,9 +863,16 @@ def _nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
                     best_score = score
                     best_id = page_id
         # Substring containment for short references like "P.863".
-        if len(target_norm) >= 4 and target_norm in key and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
-            best_score = _WIKILINK_ALIAS_SUBSTRING_SCORE
-            best_id = page_id
+        # Compare against the key with hyphens, periods, and spaces
+        # collapsed — so ``p.863`` (short alias) matches
+        # ``full-scale-database-p-863-evaluation`` (slug).
+        if len(target_no_punct) >= 4:
+            key_normalized = key.replace("-", "").replace(".", "").replace(" ", "")
+            if (
+                target_no_punct in key_normalized
+            ) and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
+                best_score = _WIKILINK_ALIAS_SUBSTRING_SCORE
+                best_id = page_id
 
     return best_id
 

@@ -46,11 +46,13 @@ from typing import Any, ClassVar, override
 
 import yaml
 
+from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
 from knox.core.paths import INDEX_FILE, LOG_FILE
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
+from knox.lint.structural import _nearest_alias
 from knox.output.models import Document, OkfSource
 from knox.output.pages.log import append_log_entry
 from knox.output.reference_links import format_bibliography_entry
@@ -325,19 +327,56 @@ def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
     """Convert ``[[wikilinks]]`` to portable bundle-relative markdown links.
 
     ``slug_targets`` maps page slugs/titles to bundle-relative paths
-    (e.g. ``"my-page" -> "concepts/my-page.md"``).
-    Unknown targets are left as plain text (OKF §6.1: broken links are valid).
+    (e.g. ``"my-page" -> "concepts/my-page.md"``). The lookup is
+    alias-aware: short forms like ``[[P.863]]`` resolve to a page whose
+    long title contains the alias, mirroring the lint rule's behaviour
+    so the rendered output stays consistent with what the wiki considers
+    resolvable. Unknown targets are left as Obsidian-style wikilinks
+    (``[[target]]``) so the user can see broken cross-links in their
+    markdown viewer rather than silently losing them.
     """
+    # Build a richer lookup index from slug_targets keys. ``slug_targets``
+    # is keyed by slug + long title; we need the bare-acronym and
+    # normalized forms as well.
+    alias_index: dict[str, str] = dict(slug_targets)
+    alias_index.update(_alias_keys(slug_targets.keys(), slug_targets))
 
     def _replace(match: re.Match[str]) -> str:
         target = match.group(1)
         alias = match.group(2) or target
-        path = slug_targets.get(target)
+        # 1. Direct lookup (slug or long title)
+        path = alias_index.get(target)
+        # 2. Alias-aware nearest-match (short forms like P.863).
+        # _nearest_alias returns the value at the best-scoring key — which
+        # here is the path itself, so we can use it directly.
+        if path is None:
+            path = _nearest_alias(target, alias_index)
         if path is not None:
             return f"[{alias}]({path})"
-        return alias
+        # 3. Unknown — leave as Obsidian wikilink so the user sees it.
+        return match.group(0)
 
     return _WIKILINK_RE.sub(_replace, body)
+
+
+def _alias_keys(titles: Any, paths: dict[str, str]) -> dict[str, str]:
+    """Build alias-aware lookup keys for :func:`convert_wikilinks`.
+
+    Mirrors :func:`knox.lint.structural._node_lookup_index` — acronym,
+    bare-prefix-before-paren, and slug forms — so the rendered output
+    resolves the same targets the lint rule does. Returns a dict of
+    alias-key → path suitable for ``setdefault`` merging.
+    """
+    out: dict[str, str] = {}
+    for key in titles:
+        path = paths[key]
+        stripped = normalize_concept_key(key)
+        if stripped and stripped != key.lower():
+            out.setdefault(stripped, path)
+        before_paren = key.split("(", 1)[0].strip().lower()
+        if before_paren and before_paren != key.lower():
+            out.setdefault(before_paren, path)
+    return out
 
 
 def rewrite_citations_to_footnotes(body: str, sources: list[OkfSource]) -> str:
