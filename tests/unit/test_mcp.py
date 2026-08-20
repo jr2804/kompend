@@ -5,8 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+from knox.cli.app import app as cli_app
+from knox.cli.app import register_all_commands
 from knox.mcp.server import compile_wiki, parse_document
+from knox.mcp.server import server as mcp_server
 from knox.mcp.tools.config import config_check
+
+# ---------------------------------------------------------------------------
+# CLI ↔ MCP parity
+# ---------------------------------------------------------------------------
+#
+# These commands are server-bootstrap / interactive and intentionally have no
+# MCP equivalent. They are excluded from the parity assertion.
+_EXCLUDED_CLI_COMMANDS = {"mcp", "serve", "agent", "agents"}
+_MCP_TO_CLI_ALIASES = {"wiki_list_attachments": "attachments_list"}
 
 # ---------------------------------------------------------------------------
 # parse_document
@@ -101,3 +113,35 @@ class TestConfigCheck:
         b.write_text("[compile]\nworkers = 8\n", encoding="utf-8")
         result = config_check(paths=[str(a), str(b)], merge=False)
         assert len(result["reports"]) == 2
+
+
+def test_cli_mcp_parity() -> None:
+    """Every functional CLI command has a matching MCP tool."""
+    register_all_commands()
+    cli_cmds: set[str] = set()
+    for cmd in cli_app.registered_commands:
+        cli_cmds.add(_normalize_cli(cmd.name))
+    for group in cli_app.registered_groups:
+        sub_app = group.typer_instance
+        gname = sub_app.info.name or str(group.name)
+        gnorm = _normalize_cli(gname)
+        for cmd in sub_app.registered_commands:
+            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name)}")
+
+    mcp_tools = set(mcp_server._tool_manager._tools)
+    mcp_norm = {_normalize_mcp(t) for t in mcp_tools}
+    # Apply explicit aliases: remove the aliased CLI command from the
+    # expected set (the MCP tool already covers it).
+    for cli_cmd in _MCP_TO_CLI_ALIASES.values():
+        cli_cmds.discard(cli_cmd)
+
+    missing = sorted((cli_cmds - _EXCLUDED_CLI_COMMANDS) - mcp_norm)
+    assert not missing, f"CLI commands missing MCP tools: {missing}"
+
+
+def _normalize_cli(name: str) -> str:
+    return name.replace(" ", "_").replace("-", "_").strip("_")
+
+
+def _normalize_mcp(name: str) -> str:
+    return name[len("wiki_") :] if name.startswith("wiki_") else name
