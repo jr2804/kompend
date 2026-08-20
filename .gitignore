@@ -75,8 +75,8 @@ nul
 .slim
 /**/codemap.md
 plan*.md
-.repowise/
 mcporter.json
+.mcp.json
 
 # Pandoc installer (downloaded by build script, not tracked)
 *.msi
@@ -84,4 +84,5 @@ mcporter.json
 .beads/.auto-import-issues.jsonl
 
 # repowise API keys (local)
+.repowise/
 .repowise/.env
