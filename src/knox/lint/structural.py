@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import REFERENCES_FILE, VaultPaths
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
@@ -63,7 +64,10 @@ class BrokenWikilinksRule(BaseLintRule):
     description = "Wikilinks pointing to pages that do not exist"
 
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
-        title_to_id = _node_titles_index(wiki)
+        # Lookup index covers: page title, page slug, and acronym-stripped
+        # short alias (e.g. ``[[P.863]]`` resolves to the page titled
+        # ``POLQA (Perceptual Objective Listening Quality Analysis)``).
+        alias_index, slug_to_id = _node_lookup_index(wiki)
         results: list[LintResult] = []
         for node in wiki.nodes:
             for target_title in _extract_wikilinks(node.content):
@@ -73,7 +77,15 @@ class BrokenWikilinksRule(BaseLintRule):
                 # Source-file citations (sources/foo.pdf) are provenance, not page links.
                 if target_title.startswith("sources/"):
                     continue
-                if target_title.lower() not in title_to_id:
+                if target_title.lower() not in alias_index:
+                    # No exact match — record as broken, but mark it as an
+                    # "alias of existing page" when the LLM likely meant a
+                    # known page but used the wrong short form. This lets
+                    # the gap-analysis layer recommend the right fix.
+                    alias_of = _nearest_alias(target_title, alias_index)
+                    details: dict[str, Any] = {"target": target_title}
+                    if alias_of:
+                        details["alias_of"] = alias_of
                     results.append(
                         LintResult(
                             rule=self.name,
@@ -81,7 +93,7 @@ class BrokenWikilinksRule(BaseLintRule):
                             severity=Severity.ERROR,
                             message=f"Broken wikilink [[{target_title}]] in page '{node.title}'",
                             page_id=node.id,
-                            details={"target": target_title},
+                            details=details,
                         )
                     )
         if not results:
@@ -768,8 +780,101 @@ def _extract_wikilinks(content: str) -> list[str]:
 
 
 def _node_titles_index(wiki: CompiledWiki) -> dict[str, str]:
-    """Map ``node.title.lower()`` → ``node.id``."""
+    """Map ``node.title.lower()`` → ``node.id`` (legacy alias for callers)."""
     return {n.title.lower(): n.id for n in wiki.nodes}
+
+
+def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, str]]:
+    """Build a wikilink lookup that also accepts slugs and acronym aliases.
+
+    Returns a tuple of:
+    - ``alias_index``: maps any of ``node.title.lower()``, ``node.id``,
+      or the acronym-stripped title (e.g. ``"polqa"`` extracted from
+      ``"POLQA (Perceptual Objective Listening Quality Analysis)"``)
+      to ``node.id``.
+    - ``slug_to_id``: just ``node.id`` → ``node.id``, used by alias detection.
+
+    The acronym extraction lives in :mod:`knox.compilation.concept_keys`
+    so the same normalization is used for concept-merge and wikilink
+    resolution — one source of truth.
+    """
+    alias_index: dict[str, str] = {}
+    slug_to_id: dict[str, str] = {}
+    for n in wiki.nodes:
+        # Lower-case first entry wins; existing index already preferred title
+        alias_index.setdefault(n.title.lower(), n.id)
+        alias_index.setdefault(n.id, n.id)
+        slug_to_id[n.id] = n.id
+        stripped = normalize_concept_key(n.title)
+        if stripped:
+            alias_index.setdefault(stripped, n.id)
+        # Also index the bare-acronym form so wikilinks like ``[[MOS-LQO]]``
+        # resolve to the page titled ``MOS-LQO (Mean Opinion Score - ...)``.
+        # ``normalize_concept_key`` strips the parenthetical, so ``stripped``
+        # already gives us this form for hyphen-having prefixes.
+        title_before_paren = n.title.split("(", 1)[0].strip().lower()
+        if title_before_paren and title_before_paren != n.title.lower():
+            alias_index.setdefault(title_before_paren, n.id)
+    return alias_index, slug_to_id
+
+
+def _nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
+    """Return the page id most likely intended by *target*.
+
+    Only triggered when *target* has no exact match in *alias_index*. Uses
+    token-overlap (Jaccard) against known titles to flag "the LLM meant
+    this page but used the wrong short alias" cases. Conservative by
+    design — returns ``None`` (not an alias) unless the match is clear.
+
+    Special case: short identifiers like ``"P.863"`` rarely overlap with
+    long titles on tokens alone. We also accept matches where the target
+    is a **contiguous substring** of the candidate title (case-insensitive)
+    with a length ≥4 chars — this catches ``P.863`` → ``Full-scale
+    database (P.863 evaluation)``, ``ITU-T P.863`` → ``ITU-T P.800.1``
+    prefix matches, etc., without false-positiving on trivial substrings.
+
+    Returns the matched ``node.id``, or ``None`` when no alias candidate
+    is strong enough.
+    """
+    target_norm = normalize_concept_key(target)
+    if not target_norm:
+        return None
+    target_norm_tokens = {t for t in target_norm.split() if len(t) > 2}
+
+    best_id: str | None = None
+    best_score = _WIKILINK_ALIAS_MIN_JACCARD
+
+    for key, page_id in alias_index.items():
+        if len(key) <= 2:
+            continue
+        key_tokens = set(key.split())
+        if not key_tokens:
+            continue
+        # Token Jaccard (catches MOS-LQO ↔ MOS-LQO Fullband).
+        if target_norm_tokens:
+            overlap = len(target_norm_tokens & key_tokens)
+            if overlap:
+                union = target_norm_tokens | key_tokens
+                score = overlap / len(union)
+                if score > best_score:
+                    best_score = score
+                    best_id = page_id
+        # Substring containment for short references like "P.863".
+        if len(target_norm) >= 4 and target_norm in key and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
+            best_score = _WIKILINK_ALIAS_SUBSTRING_SCORE
+            best_id = page_id
+
+    return best_id
+
+
+#: Minimum token-Jaccard score to flag a broken wikilink as an alias of an
+#: existing page (vs. a genuinely missing topic). Conservative default:
+#: 0.5 means at least half the target's tokens overlap with the candidate.
+_WIKILINK_ALIAS_MIN_JACCARD = 0.5
+#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
+#: Above :data:`_WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
+#: below 1.0 so a higher Jaccard can still override.
+_WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
 
 
 def _batched(items: list[str], size: int) -> list[list[str]]:

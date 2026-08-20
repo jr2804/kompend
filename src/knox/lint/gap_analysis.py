@@ -36,12 +36,30 @@ class GapPriority(StrEnum):
 
 @dataclass
 class GapRecommendation:
-    """A single actionable recommendation derived from lint findings."""
+    """A single actionable recommendation derived from lint findings.
+
+    Attributes:
+    ----------
+    priority:
+        Urgency bucket used to sort the printed report.
+    category:
+        Short label (e.g. ``"Missing topic"``, ``"Alias mismatch"``).
+    finding:
+        Human-readable description of the gap (includes counts/qualifiers).
+    action:
+        What the user should do.
+    resolution:
+        Classifies the gap so downstream layers (remediation, MCP) can
+        offer the right fix. ``"alias"`` means an existing page almost
+        certainly matches; ``"missing"`` means the topic is genuinely
+        uncovered; ``"weak"`` means manual review is needed.
+    """
 
     priority: GapPriority
     category: str
     finding: str
     action: str
+    resolution: str = "missing"
 
 
 def analyze_gaps(report: LintReport) -> list[GapRecommendation]:
@@ -89,26 +107,49 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
 
 
 def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecommendation]:
-    """Broken wikilinks point to topics the wiki doesn't cover yet."""
+    """Broken wikilinks point to topics the wiki doesn't cover yet.
+
+    Also distinguishes *alias mismatches* (the LLM used a short form
+    like ``[[P.863]]`` that corresponds to an existing page) from
+    *genuinely missing* topics, so the action text differs.
+    """
     targets: list[str] = []
+    alias_of: dict[str, str] = {}
     for r in results:
         if r.rule != "broken-wikilinks" or r.outcome != "fail":
             continue
         target = r.details.get("target", "")
         if target and not _is_source_reference(target):
             targets.append(target)
+            if "alias_of" in r.details:
+                alias_of[target] = r.details["alias_of"]
 
     recs: list[GapRecommendation] = []
     for target, count in Counter(targets).most_common():
         pages = f" (referenced by {count} page{'s' if count != 1 else ''})" if count > 1 else ""
-        recs.append(
-            GapRecommendation(
-                priority=GapPriority.HIGH,
-                category="Missing topic",
-                finding=f"'{target}'{pages}",
-                action="Add a source document covering this topic.",
+        if target in alias_of:
+            # The wikilink is an alias of an existing page — recommend
+            # updating the link/alias map instead of adding a source.
+            recs.append(
+                GapRecommendation(
+                    priority=GapPriority.HIGH,
+                    category="Alias mismatch",
+                    finding=f"'{target}'{pages} → resolves to existing page {alias_of[target]}",
+                    action="Update the LLM prompt or alias map so the long-form title is used in wikilinks.",
+                    resolution="alias",
+                )
             )
-        )
+        else:
+            # Genuinely missing topic.
+            recs.append(
+                GapRecommendation(
+                    priority=GapPriority.HIGH,
+                    category="Missing topic",
+                    finding=f"'{target}'{pages}",
+                    action="Add a source document covering this topic.",
+                    resolution="missing",
+                )
+            )
     return recs
 
 

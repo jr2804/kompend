@@ -103,6 +103,67 @@ class TestBrokenWikilinksRule:
         results = rule.check(wiki)
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
 
+    def test_acronym_alias_resolves(self) -> None:
+        """``[[PESQ]]`` resolves to the page whose title starts with ``PESQ (``."""
+        node = _make_node(
+            "n1",
+            "Alpha",
+            "See [[PESQ]] for details",
+        )
+        target = _make_node(
+            "pesq-...",
+            "PESQ (Perceptual Evaluation of Speech Quality)",
+            "Definition of PESQ",
+        )
+        wiki = _make_wiki([node, target])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_slug_resolves(self) -> None:
+        """``[[some-kebab-slug]]`` resolves directly to that page id."""
+        node = _make_node("n1", "Alpha", "See [[some-kebab-slug]] here")
+        target = _make_node("some-kebab-slug", "Some Page", "Body")
+        wiki = _make_wiki([node, target])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_near_alias_marked_as_alias(self) -> None:
+        """A wikilink that doesn't exactly match but is a clear substring
+        of an existing page is reported as broken *and* tagged with
+        ``alias_of`` so gap analysis can recommend the right fix.
+        """
+        node = _make_node(
+            "n1",
+            "Alpha",
+            "Implementation in [[P.863]]-based tools",
+        )
+        target = _make_node(
+            "p863-eval",
+            "Full-scale database (P.863 evaluation)",
+            "Definition",
+        )
+        wiki = _make_wiki([node, target])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details["target"] == "P.863"
+        assert failures[0].details.get("alias_of") == "p863-eval"
+
+    def test_genuine_missing_topic_has_no_alias(self) -> None:
+        """A wikilink to a topic with no nearby existing page fails without
+        an alias marker — gap analysis will recommend adding a source.
+        """
+        node = _make_node("n1", "Alpha", "See [[No Such Topic XYZ]] here")
+        wiki = _make_wiki([node])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert "alias_of" not in failures[0].details
+
 
 # ── Rule 1b: image-embed ─────────────────────────────────────────────────
 
