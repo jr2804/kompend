@@ -13,8 +13,11 @@ from knox.core.config import (
     set_config_file_value,
     validate_config_key,
 )
+from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.logging import get_logger
 from knox.scaffolding import ScaffoldError, scaffold_project
+
+_ENV_REF_RE = __import__("re").compile(r"^\$\{\w+\}$")
 
 logger = get_logger(__name__)
 
@@ -113,3 +116,43 @@ def config_check(
         "totals": totals,
         "reports": payload,
     }
+
+
+def config_list(
+    wiki_dir: str | None = None,
+    global_: bool = False,
+) -> dict[str, Any]:
+    """List all resolved config values with their provenance."""
+    overrides = {}
+    if wiki_dir:
+        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+    try:
+        cfg = resolve_config(cli_overrides=overrides)
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+    entries = []
+    for key, value in sorted(cfg.flat().items()):
+        source = cfg.source_of(key)
+        redacted = _redact_api_key(key, value)
+        entries.append({"key": key, "value": redacted, "source": source})
+    return {"status": "ok", "count": len(entries), "entries": entries}
+
+
+def config_path(
+    wiki_dir: str | None = None,
+    global_: bool = False,
+) -> dict[str, Any]:
+    """Show the config file path (project or global)."""
+    try:
+        path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=Path(wiki_dir) if wiki_dir else None)
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+    return {"status": "ok", "path": str(path)}
+
+
+def _redact_api_key(key: str, value: Any) -> Any:
+    """Hide provider API keys in output; env-var refs (${VAR}) stay visible."""
+    if key.rsplit(".", maxsplit=1)[-1] == "api_key" and isinstance(value, str) and not _ENV_REF_RE.match(value):
+        return "***"
+    return value

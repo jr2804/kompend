@@ -8,23 +8,51 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from knox.mcp.tools import (
+    attachments_add,
+    attachments_remove,
     compile_wiki,
     config_check,
     config_get,
+    config_list,
+    config_path,
     config_set,
+    doctor,
     init_wiki,
+    lint_format,
+    lint_gaps,
+    lint_history,
+    lint_prune,
+    lint_remediate,
+    lint_run,
+    list_parsers,
+    log,
     memory_add,
     memory_search,
     memory_synthesize,
+    pack_install,
+    pack_list,
     parse_document,
     query_wiki,
+    references_export,
+    references_fetch,
+    references_list,
+    review,
+    sources_export,
+    sources_list,
+    sources_tag,
+    sources_untag,
+    trace,
     wiki_attachment_info,
     wiki_capture,
     wiki_distill,
+    wiki_index,
+    wiki_ingest,
     wiki_learn,
     wiki_list_attachments,
+    wiki_organize,
     wiki_read_attachment,
     wiki_status,
+    wiki_write,
 )
 from knox.mcp.tools._helpers import set_default_wiki_dir
 
@@ -38,6 +66,10 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="wiki_compile")(compile_wiki)
     srv.tool(name="wiki_capture")(wiki_capture)
     srv.tool(name="wiki_learn")(wiki_learn)
+    srv.tool(name="wiki_write")(wiki_write)
+    srv.tool(name="wiki_ingest")(wiki_ingest)
+    srv.tool(name="wiki_index")(wiki_index)
+    srv.tool(name="wiki_organize")(wiki_organize)
     srv.tool(name="memory_add")(memory_add)
     srv.tool(name="memory_search")(memory_search)
     srv.tool(name="memory_synthesize")(memory_synthesize)
@@ -48,9 +80,33 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="wiki_list_attachments")(wiki_list_attachments)
     srv.tool(name="wiki_read_attachment")(wiki_read_attachment)
     srv.tool(name="wiki_attachment_info")(wiki_attachment_info)
+    srv.tool(name="attachments_add")(attachments_add)
+    srv.tool(name="attachments_remove")(attachments_remove)
     srv.tool(name="config_get")(config_get)
     srv.tool(name="config_set")(config_set)
+    srv.tool(name="config_list")(config_list)
+    srv.tool(name="config_path")(config_path)
     srv.tool(name="config_check")(config_check)
+    srv.tool(name="sources_list")(sources_list)
+    srv.tool(name="sources_tag")(sources_tag)
+    srv.tool(name="sources_untag")(sources_untag)
+    srv.tool(name="sources_export")(sources_export)
+    srv.tool(name="references_list")(references_list)
+    srv.tool(name="references_export")(references_export)
+    srv.tool(name="references_fetch")(references_fetch)
+    srv.tool(name="lint_run")(lint_run)
+    srv.tool(name="lint_history")(lint_history)
+    srv.tool(name="lint_prune")(lint_prune)
+    srv.tool(name="lint_gaps")(lint_gaps)
+    srv.tool(name="lint_remediate")(lint_remediate)
+    srv.tool(name="lint_format")(lint_format)
+    srv.tool(name="doctor")(doctor)
+    srv.tool(name="review")(review)
+    srv.tool(name="trace")(trace)
+    srv.tool(name="log")(log)
+    srv.tool(name="list_parsers")(list_parsers)
+    srv.tool(name="pack_list")(pack_list)
+    srv.tool(name="pack_install")(pack_install)
 
 
 # Register on the module-level instance.
