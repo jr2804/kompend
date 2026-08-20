@@ -115,7 +115,7 @@ are copied to `wiki/attachments/` for relative links in generated content.
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
 | `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison` |
-| `knox trace [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
+| `knox provenance [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
 | `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
 | `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
 | `knox write <TITLE>` | Create a one-shot wiki page from a title and optional sources | `--source` (repeatable, bare filename searched in sources/), `--frontmatter` |

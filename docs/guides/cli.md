@@ -22,7 +22,7 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox sources tag` | Add a tag to an ingested source file |
 | `knox sources untag` | Remove a tag from an ingested source file |
 | `knox sources export` | Render an ingested source as clean markdown |
-| `knox trace [SLUG]` | List pages with slugs, or trace a page to its sources |
+| `knox provenance [SLUG]` | List pages with slugs, or trace a page to its sources |
 | `knox capture` | LLM-extract knowledge items from free text (`--tag`) |
 | `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`) |
 | `knox distill` | Merge captured notes into wiki pages |

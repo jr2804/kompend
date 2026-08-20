@@ -78,7 +78,7 @@ knox query "How does attention scale with sequence length?"
 | `knox review list/approve/reject`          | Manage the review queue for compiled pages                |
 | `knox capture "..."` / `learn` / `distill` | Capture notes → synthesize into wiki pages                |
 | `knox write "TITLE"`                       | One-shot wiki page from a title + optional sources        |
-| `knox trace [SLUG]`                        | Trace a page to its source files                          |
+| `knox provenance [SLUG]`               | Trace a page to its source files                          |
 | `knox memory add/search/synthesize`        | Manage query memory and context synthesis                 |
 | `knox serve`                               | Start the web UI (`--host`, `--port`, `--open`)           |
 | `knox mcp`                                 | Start the MCP server (stdio, for AI clients)              |
