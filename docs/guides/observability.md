@@ -4,6 +4,9 @@ knox instruments its pydantic-ai agents with OpenTelemetry (OTel) out of the box
 When enabled, every agent run, model request, tool call, and validation retry
 emits structured spans you can inspect in any OTel-compatible backend.
 
+> **Naming:** this is the OpenTelemetry **tracing** feature (agent runs).
+> For the page-to-source provenance command, see [Provenance](provenance.md).
+
 This guide shows the fastest path to local visibility using **Arize Phoenix** — a
 pure-Python OTel collector + UI that runs as a single process (no Docker,
 no external services).

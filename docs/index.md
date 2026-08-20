@@ -95,7 +95,7 @@ knox query "what is the main result?"
 ### Linting & Quality
 
 - [Linting Guide](guides/lint.md) — Structural + LLM-powered rules
-- [Tracing](guides/trace.md) — Trace wiki pages back to their source files
+- [Provenance](guides/provenance.md) — Trace wiki pages back to their source files
 - [Trust & Memory](guides/trust.md) — Provenance, memory lifecycle, decay
 - [Dedup](guides/dedup.md) — Content-level duplicate detection and suppression
 

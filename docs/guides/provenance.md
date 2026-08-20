@@ -1,16 +1,20 @@
-# Tracing Pages to Sources
+# Page Provenance
 
 KNOX tracks which source files and line ranges each wiki page was compiled from.
-The `trace` command traces a compiled page back to its source chunks — so you
-can verify where a claim or concept came from.
+The `provenance` command shows a compiled page's source chunks — so you can
+verify where a claim or concept came from.
+
+> **Naming:** this is called **provenance** (not "trace") to avoid confusion
+> with the OpenTelemetry tracing feature used for agent observability.
+> See [Observability](observability.md) for that one.
 
 ## Listing pages
 
-You need a page's slug to trace it. Run `trace` with no argument to list every
-page in the compiled wiki with its slug and source count:
+You need a page's slug to inspect it. Run `provenance` with no argument to list
+every page in the compiled wiki with its slug and source count:
 
 ```bash
-$ knox trace
+$ knox provenance
 
 3 page(s) in compiled wiki:
 
@@ -19,21 +23,21 @@ $ knox trace
   bert                                     (1 source)   BERT
 ```
 
-Copy any slug from the first column to trace that page.
+Copy any slug from the first column to inspect that page.
 
-## Tracing a page
+## Inspecting a page
 
 ```bash
-knox trace <page-slug>... [--with-content] [--json]
+knox provenance <page-slug>... [--with-content] [--json]
 ```
 
-Pass one slug to trace a single page, or several to trace multiple pages
+Pass one slug to inspect a single page, or several to inspect multiple pages
 at once (useful for agents and batch inspection):
 
 ### Single page
 
 ```bash
-$ knox trace self-attention
+$ knox provenance self-attention
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -44,7 +48,7 @@ $ knox trace self-attention
 ### Multiple pages
 
 ```bash
-$ knox trace self-attention bert
+$ knox provenance self-attention bert
 
 # Self-Attention
   Source: attention.pdf (lines 42-58)
@@ -57,7 +61,7 @@ $ knox trace self-attention bert
 ### With content snippets
 
 ```bash
-$ knox trace self-attention --with-content
+$ knox provenance self-attention --with-content
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -69,7 +73,7 @@ $ knox trace self-attention --with-content
 ### Machine-readable output
 
 ```bash
-$ knox trace self-attention --json
+$ knox provenance self-attention --json
 {
   "page": "Self-Attention",
   "slug": "self-attention",
@@ -83,9 +87,9 @@ $ knox trace self-attention --json
 With multiple slugs, `--json` returns an **array** of objects (one per
 slug); with a single slug it returns a single object for easier parsing.
 
-## How tracing works
+## How provenance works
 
-Trace data comes from `SourceChunk` references tracked during compilation.
+Provenance data comes from `SourceChunk` references tracked during compilation.
 When a chunker splits a document, each chunk carries an ID like:
 
 ```text
@@ -111,7 +115,7 @@ class WikiNode:
     # ["attention.pdf:42-58", "transformer.pdf:123-130"]
 ```
 
-## Integrating tracing in your workflow
+## Integrating provenance in your workflow
 
 ### During development
 
@@ -119,9 +123,9 @@ class WikiNode:
 # Compile with provenance tracking
 knox compile docs/ --provenance
 
-# List pages, then trace any one
-knox trace
-knox trace transformer
+# List pages, then inspect any one
+knox provenance
+knox provenance transformer
 ```
 
 ### In scripts
@@ -138,11 +142,20 @@ for node in wiki.nodes:
         print(f"Sources: {', '.join(node.source_chunks or [])}")
 ```
 
+## MCP equivalent
+
+The same functionality is exposed via the MCP tool `provenance` (not `trace`)
+with the same arguments:
+
+```text
+provenance(wiki_dir=None, page_slugs=[...], with_content=False, json_output=False)
+```
+
 ## Limitations
 
-- Tracing is only as granular as chunking allows. Without line-number
+- Provenance is only as granular as chunking allows. Without line-number
   tracking (Q16, future), chunk IDs may point to whole-file ranges.
 - The `--provenance` flag must be passed to `compile` — it is off by default
   to reduce metadata size.
 - External parser output (JSON protocol) must include the `source` field for
-  tracing to work.
+  provenance to work.
