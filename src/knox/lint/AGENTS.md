@@ -19,10 +19,10 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 |--------|----------|
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution |
-| ``structural.py`` | ``STRUCTURAL_RULES`` — programmatic rules (image embeds, broken links, etc.) |
+| ``structural.py`` | ``STRUCTURAL_RULES`` — programmatic rules (image embeds, broken links, etc.); ``broken-wikilinks`` lookup is alias-aware (slug/acronym/normalized forms + fuzzy fallback tagged ``alias_of``) |
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
-| ``gap_analysis.py`` | ``GapAnalysisRuleSet`` — coverage gap detection |
+| ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
 | ``_remediation_gaps.py`` | Gap-specific remediation logic |
 | ``history.py`` | ``LintHistoryStore`` — persistent lint result history |
 

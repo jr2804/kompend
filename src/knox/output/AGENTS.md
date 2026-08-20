@@ -38,8 +38,10 @@ builds the wiki index page and serves wiki page previews.
 - OKF is a **compliance spec**, not an output format: there is exactly one
   markdown writer, and it is OKF v0.2-compliant. Never add a second
   markdown variant for flavor/link-syntax reasons.
-- Links are portable, folder-relative markdown paths — no ``[[wikilinks]]``,
-  no leading-slash absolute links.
+- Links are portable, folder-relative markdown paths — resolved
+  ``[[wikilinks]]`` become ``[title](path.md)`` (alias-aware: acronym,
+  bare-prefix, and substring matches count as resolved). Unresolvable
+  wikilinks stay as ``[[target]]`` so broken cross-links remain visible.
 - Footnote definitions are emitted only for ids actually referenced in the
   body, ordered by first reference (MD066/MD067-clean).
 - Importing this package auto-registers all built-in writers via
