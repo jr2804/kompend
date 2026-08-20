@@ -164,8 +164,7 @@ def config_check(
         project_cfg = get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
         if not project_cfg.exists():
             get_console().print(
-                f"[yellow]No config file found at {project_cfg}[/yellow] — "
-                "all values are at built-in defaults.",
+                f"[yellow]No config file found at {project_cfg}[/yellow] — all values are at built-in defaults.",
             )
             raise typer.Exit(code=0)
         paths = [project_cfg]
