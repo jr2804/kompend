@@ -257,3 +257,36 @@ class TestConfigCheckCli:
         assert result.exit_code == 1
         # Two report headers (one per file).
         assert result.output.count("config check") == 2
+
+    def test_no_args_discovers_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`knox config check` with no paths uses the discovered project config."""
+        (tmp_path / "knox.toml").write_text(
+            "[compile]\nworkers = 8\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["config", "check"])
+        assert result.exit_code == 1, result.output
+        assert "MODIFIED" in result.output
+        assert "compile.workers" in result.output
+
+    def test_no_args_empty_vault_reports_defaults(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without a config file the vault is all-defaults — clean exit, no errors."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["config", "check"])
+        assert result.exit_code == 0, result.output
+        assert "No config file found" in result.output
+
+    def test_no_args_with_wiki_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`-w <vault>` with no paths checks that vault's config."""
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (vault / "knox.toml").write_text(
+            "[compile]\nworkers = 8\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["-w", str(vault), "config", "check"])
+        assert result.exit_code == 1, result.output
+        assert "MODIFIED" in result.output
+        assert "compile.workers" in result.output

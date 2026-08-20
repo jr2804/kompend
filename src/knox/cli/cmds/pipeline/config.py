@@ -129,13 +129,13 @@ def config_file(
 
 @config_app.command(
     "check",
-    help="Diff one or more config TOML files against the built-in defaults.",
+    help="Diff config TOML files against the built-in defaults.",
 )
 def config_check(
     ctx: typer.Context,
-    paths: list[Path] = typer.Argument(  # noqa: B008
-        ...,
-        help="One or more TOML files. Multiple files are merged (later wins); pass --no-merge for per-file reports.",
+    paths: list[Path] | None = typer.Argument(  # noqa: B008
+        None,
+        help="TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports.",
     ),
     json_output: JsonOutput = False,
     no_merge: bool = typer.Option(  # noqa: B008
@@ -148,6 +148,7 @@ def config_check(
 
     Examples::
 
+        knox config check                      # uses the discovered project config
         knox config check ./knox.toml
         knox config check ./base.toml ./local.toml         # merged
         knox config check ./base.toml ./local.toml --no-merge
@@ -156,6 +157,19 @@ def config_check(
     1 when only modified keys are present, 0 otherwise. Combine with
     ``--json`` for machine-readable output.
     """
+    if not paths:
+        # No explicit file(s) → use the discovered project config (knox.toml
+        # or .knox/config.toml). A vault with no config file at all is simply
+        # all-defaults, so report that cleanly instead of 157 "file missing" rows.
+        project_cfg = get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
+        if not project_cfg.exists():
+            get_console().print(
+                f"[yellow]No config file found at {project_cfg}[/yellow] — "
+                "all values are at built-in defaults.",
+            )
+            raise typer.Exit(code=0)
+        paths = [project_cfg]
+
     reports = [check_config_file(p) for p in paths] if no_merge or len(paths) == 1 else [check_config_files(paths)]
 
     if json_output:

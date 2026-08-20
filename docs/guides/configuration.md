@@ -123,7 +123,13 @@ that differs from the shipped default plus any unknown keys or
 validation errors.
 
 ```bash
-# Single file — exits 0 clean, 1 if any modified, 2 if any errors.
+# Discover the project config automatically.
+knox config check
+
+# Use a specific vault's config.
+knox -w wiki config check
+
+# Explicit file — exits 0 clean, 1 if any modified, 2 if any errors.
 knox config check ./knox.toml
 
 # Multiple files — merged (later wins); reports one combined diff.
@@ -133,7 +139,7 @@ knox config check ./base.toml ./local.toml
 knox config check ./base.toml ./local.toml --no-merge
 
 # Machine-readable JSON.
-knox config check ./knox.toml --json
+knox config check --json
 ```
 
 Status legend:
