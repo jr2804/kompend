@@ -86,7 +86,8 @@ pandoc = [
 ]
 
 otel = [
-    "opentelemetry-sdk[opentelemetry-exporter-otlp]>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-exporter-otlp>=1.28.0",
 ]
 
 # The original plan was to offer further advanced parser backends as optional dependencies,
