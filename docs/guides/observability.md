@@ -1,0 +1,138 @@
+# Observability with OpenTelemetry
+
+knox instruments its pydantic-ai agents with OpenTelemetry (OTel) out of the box.
+When enabled, every agent run, model request, tool call, and validation retry
+emits structured spans you can inspect in any OTel-compatible backend.
+
+This guide shows the fastest path to local visibility using **Arize Phoenix** — a
+pure-Python OTel collector + UI that runs as a single process (no Docker,
+no external services).
+
+---
+
+## 1. Install the OTel extra
+
+```bash
+# In the knox repo (editable install)
+uv sync --extra otel
+
+# Or in a downstream project
+uv add "knox[otel]"
+```
+
+This pulls in `opentelemetry-sdk` with the OTLP HTTP exporter.
+
+---
+
+## 2. Start Arize Phoenix (local process, no venv pollution)
+
+```bash
+uvx arize-phoenix serve
+```
+
+Phoenix starts two endpoints:
+
+- **OTLP receiver**: `http://localhost:6006` (receives traces from knox)
+- **Web UI**: `http://localhost:6006` (same port — open in your browser)
+
+No Docker, no external services, no auth setup, no venv pollution. The process
+stays running in your terminal (or background it with `&`). To stop, press Ctrl+C.
+
+---
+
+## 3. Enable knox OTel export
+
+```bash
+export KNOX_OTEL_ENABLED=true
+export KNOX_OTEL_ENDPOINT="http://localhost:6006"
+export KNOX_OTEL_SERVICE_NAME="knox"
+# optional, if you later put Phoenix behind a proxy:
+# export KNOX_OTEL_HEADERS="Authorization=Bearer <token>"
+```
+
+Then run any knox command that invokes agents:
+
+```bash
+knox -w wiki compile --tier wicer
+# or
+knox -w wiki lint run
+# or
+knox -w wiki query "your question"
+```
+
+---
+
+## 4. Inspect traces in the Phoenix UI
+
+Open `http://localhost:6006` in your browser. You'll see:
+
+| View | What it shows |
+|------|---------------|
+| **Traces** | One trace per agent invocation (extraction, generation, wicer-evaluate, wicer-probe, lint-rule, etc.) |
+| **Spans** | Hierarchical: Agent Run → Model Request → Tool Call → Retry Loop |
+| **Attributes** | Each span carries `model`, `prompt`, `response`, `tool_name`, `tool_args`, `tool_result`, `validation_error`, `retry_count` |
+| **Filter/Query** | Filter by `service.name = "knox"`, `span.name = "model.request"`, `retry_count > 0`, etc. |
+
+### What to look for (your WiCER vs Graph retry spike)
+
+- **Retry chains**: In the trace waterfall, a failing local model shows as
+  `model.request` → `validation.error` → `model.retry` → … → success/fail.
+  Count the retry spans to quantify the spike.
+- **Tool call details**: `tool_call` spans show the exact arguments sent to
+  the model and the tool's return value — useful when a tool call triggers
+  a validation failure.
+- **Token usage**: `usage` attributes on model spans show prompt/completion
+  tokens; correlate with `retry_count` to see if budget overflow causes failures.
+
+---
+
+## 5. Environment variables reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KNOX_OTEL_ENABLED` | (unset/off) | `true`/`1`/`yes` to enable OTel export |
+| `KNOX_OTEL_ENDPOINT` | `http://localhost:4318` | OTLP HTTP endpoint (Phoenix: `http://localhost:6006`) |
+| `KNOX_OTEL_SERVICE_NAME` | `knox` | Service label in the OTel UI |
+| `KNOX_OTEL_HEADERS` | (unset) | Optional `key=value` HTTP headers for auth |
+
+---
+
+## 6. Other OTLP endpoint providers
+
+The OpenTelemetry instrumentation in knox is powered by the **pydantic-ai** framework,
+which has built-in support for [Logfire](https://pydantic.dev/logfire) (the observability
+platform from the pydantic team). If you prefer a managed SaaS experience,
+Logfire provides a polished UI and requires only:
+
+```bash
+export KNOX_OTEL_ENABLED=true
+export KNOX_OTEL_ENDPOINT="https://logfire-us.pydantic.dev"
+export KNOX_OTEL_HEADERS="Authorization=Bearer <your-write-token>"
+```
+
+For self-hosted or alternative open-source OTel backends (Jaeger, SigNoz,
+OpenObserve, Grafana Tempo, etc.), point `KNOX_OTEL_ENDPOINT` at the
+collector's OTLP HTTP receiver (typically `:4318`). The spans conform to
+standard OTel semantic conventions and will render in any compliant backend.
+
+---
+
+## 7. What gets traced
+
+| Agent type | Span prefix | Notes |
+|------------|-------------|-------|
+| `ExtractionAgent` | `extraction.*` | Concept/entity extraction from source chunks |
+| `GenerationAgent` | `generation.*` | Wiki page generation with structured output |
+| `WiCER` | `wicer.evaluate` / `wicer.probe` | Two-phase refinement; retries visible as child spans |
+| `LintRuleAgent` | `lint.rule.*` | Rule evaluation + remediation spans |
+| `QueryAgent` | `query.*` | Search + synthesis pipeline |
+
+Each agent run produces one root trace. The trace carries `knox.agent_type`
+and `knox.source_id` attributes for filtering.
+
+---
+
+## 8. Disabling
+
+Unset `KNOX_OTEL_ENABLED` or set it to anything other than `true`/`1`/`yes`.
+Zero overhead when disabled — the tracer provider is never constructed.

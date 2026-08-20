@@ -362,8 +362,8 @@ Options:
 - `KNOX_OTEL_ENABLED` — `true`/`1`/`yes` turns tracing on. Unset or any
   other value keeps knox fully uninstrumented (zero overhead). Default off.
 - `KNOX_OTEL_ENDPOINT` — OTLP HTTP endpoint. Default
-  `http://localhost:4318`. For a self-hosted Langfuse
-  (`docker compose up`), use `http://localhost:3000/api/otel`.
+  `http://localhost:4318`. For local observability, use
+  Arize Phoenix: ``http://localhost:6006``.
 - `KNOX_OTEL_SERVICE_NAME` — service label in the OTel UI (default `knox`).
 - `KNOX_OTEL_HEADERS` — optional `key=value` HTTP headers for the endpoint,
   e.g. `Authorization=Bearer <token>`.
