@@ -9,10 +9,6 @@ from knox.agents.instrument import _parse_headers, configure_observability
 from knox.core.env import EnvVar
 
 
-def _flag() -> bool:
-    return instrument._instrumented
-
-
 def test_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """No OTel config when KNOX_OTEL_ENABLED is unset or false."""
     monkeypatch.delenv(EnvVar.OTEL_ENABLED, raising=False)
@@ -142,6 +138,10 @@ def test_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls.count("provider") == 1
     assert calls.count("instrument") == 1
     assert _flag() is True
+
+
+def _flag() -> bool:
+    return instrument._instrumented
 
 
 def test_headers_parse(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -13,11 +13,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-# Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
-# can be normalized to the intended [sources/foo.pdf] inline citation format
-# regardless of LLM compliance with the system prompt.
-_SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
-
 from knox.agents.generation import GenerationAgent
 from knox.compilation._checkpoints import (
     delete_gen_checkpoint,
@@ -43,6 +38,11 @@ from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
+
+# Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
+# can be normalized to the intended [sources/foo.pdf] inline citation format
+# regardless of LLM compliance with the system prompt.
+_SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 
 logger = get_logger(__name__)
 

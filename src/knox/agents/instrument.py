@@ -41,6 +41,7 @@ _instrumented: bool = False
 
 # ── public API ──────────────────────────────────────────────────────────────
 
+
 def configure_observability() -> None:
     """Configure OpenTelemetry tracing for all pydantic-ai agents.
 
