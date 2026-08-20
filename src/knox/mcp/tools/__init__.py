@@ -6,7 +6,7 @@
 - :mod:`knox.mcp.tools.config` — init, get, set
 """
 
-from knox.mcp.tools.config import config_get, config_set, init_wiki
+from knox.mcp.tools.config import config_check, config_get, config_set, init_wiki
 from knox.mcp.tools.knowledge import (
     compile_wiki,
     parse_document,
@@ -22,6 +22,7 @@ from knox.mcp.tools.query import query_wiki, wiki_status
 
 __all__ = [
     "compile_wiki",
+    "config_check",
     "config_get",
     "config_set",
     "init_wiki",

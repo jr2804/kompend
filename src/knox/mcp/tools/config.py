@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.config import (
+    check_config_file,
+    check_config_files,
     coerce_config_value,
     get_global_config_file,
     get_project_config_file,
@@ -78,3 +80,36 @@ def config_set(
         return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}
     except (OSError, ValueError) as exc:
         return {"status": "error", "message": f"Failed to write {config_file}: {exc}"}
+
+
+def config_check(
+    paths: list[str],
+    merge: bool = True,
+) -> dict[str, Any]:
+    """Diff one or more config TOML files against the built-in schema defaults.
+
+    Returns a dict with ``ok`` / ``modified`` / ``error`` counts and an
+    ``entries`` list (each entry has ``key``, ``status``, ``default``,
+    and where applicable ``current`` and ``message``).
+    """
+    file_paths = [Path(p) for p in paths]
+    try:
+        if merge and len(file_paths) > 1:
+            report = check_config_files(file_paths)
+            payload = [report.to_dict()]
+        else:
+            payload = [check_config_file(p).to_dict() for p in file_paths]
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+    totals = {"ok": 0, "modified": 0, "error": 0}
+    for report in payload:
+        totals["ok"] += report["ok"]
+        totals["modified"] += report["modified"]
+        totals["error"] += report["error"]
+
+    return {
+        "status": "ok" if totals["error"] == 0 else "error",
+        "totals": totals,
+        "reports": payload,
+    }

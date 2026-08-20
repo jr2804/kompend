@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from knox.mcp.tools import (
     compile_wiki,
+    config_check,
     config_get,
     config_set,
     init_wiki,
@@ -49,6 +50,7 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="wiki_attachment_info")(wiki_attachment_info)
     srv.tool(name="config_get")(config_get)
     srv.tool(name="config_set")(config_set)
+    srv.tool(name="config_check")(config_check)
 
 
 # Register on the module-level instance.
