@@ -63,6 +63,10 @@ class GenerationDeps:
         source_id: Provenance / log label for the batch.
         pinned_facts: Facts that must appear in the output (WiCER
             refinement input). Empty list when unused.
+        known_titles: Canonical page titles the LLM should use verbatim in
+            ``[[wikilinks]]`` (all merged concept names plus canonicals
+            learned from the previous compile's alias map). Empty list when
+            unknown.
         timeout: Per-call timeout in seconds.
     """
 
@@ -71,6 +75,7 @@ class GenerationDeps:
     source_id: str
     pinned_facts: list[str] = field(default_factory=list)
     categories: str = ""  # rendered extra-category instructions ("- \"name\" — desc" lines)
+    known_titles: list[str] = field(default_factory=list)
     timeout: float = 120.0
 
 

@@ -206,6 +206,7 @@ class MetadataField(StrEnum):
     CONTEXT_WINDOW = "context_window"
     PINNED_FACTS_COUNT = "pinned_facts_count"
     RELATED = "related"
+    WIKILINK_ALIASES = "wikilink_aliases"
 
 
 class StructuredField(StrEnum):

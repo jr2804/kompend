@@ -8,6 +8,8 @@ variables:
     required: false
   - name: categories
     required: false
+  - name: known_titles
+    required: false
 role: compile.generate
 response_format: json_object
 ---
@@ -40,6 +42,17 @@ Each page must declare its category ("kind") from this list:
 {% if categories|default("") %}
 Configured extra categories:
 {{ categories }}
+{% endif %}
+
+{% if known_titles %}
+
+KNOWN PAGE TITLES (canonical, from this compile and learned from previous compiles):
+When emitting [[wikilinks]], use one of these exact titles — verbatim, including
+any parenthetical qualifiers. Do NOT invent short forms or standard numbers.
+
+{% for title in known_titles %}
+- {{ title }}
+{% endfor %}
 {% endif %}
 
 Concepts to generate pages for:

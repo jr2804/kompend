@@ -32,10 +32,12 @@ from knox.compilation._two_phase_core import (
 )
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
 from knox.core.config.keys import MANDATORY_KINDS
-from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode
+from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
+from knox.lint.base import LintRuleOutcome
+from knox.lint.structural import BrokenWikilinksRule
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
 
@@ -78,6 +80,7 @@ def run_generation(
     source_segments = prepare_source_segments(compiler, chunks)
     pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
     generation_system = _loader.get_body("compilation/generation_system.md.j2")
+    known_titles = build_known_titles(compiler, concepts)
 
     num_concepts = len(concepts)
     gen_total = ((num_concepts + compiler._budget.concepts_per_batch - 1) // compiler._budget.concepts_per_batch) * len(source_segments)
@@ -91,6 +94,7 @@ def run_generation(
         generation_system,
         all_images,
         pinned_clean,
+        known_titles=known_titles,
     )
 
     return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
@@ -166,6 +170,8 @@ def run_generation_with_checkpoint(
     generation_system: str,
     all_images: list[ImageRef],
     pinned_clean: list[str],
+    *,
+    known_titles: list[str] | None = None,
 ) -> tuple[list[WikiNode], dict[str, int]]:
     """Run generation with checkpoint support, returning nodes and slug map."""
     checkpoint = load_gen_checkpoint(compiler._config, compiler._active_gen_deps)
@@ -189,6 +195,7 @@ def run_generation_with_checkpoint(
         initial_nodes=ck_nodes,
         initial_slug_to_idx=ck_slug_to_idx,
         completed_batches=ck_completed,
+        known_titles=known_titles,
     )
     delete_gen_checkpoint(compiler._config, compiler._active_gen_deps)
     return nodes, slug_to_idx
@@ -205,6 +212,7 @@ def generate_all_pages(
     initial_nodes: list[WikiNode] | None = None,
     initial_slug_to_idx: dict[str, int] | None = None,
     completed_batches: set[int] | None = None,
+    known_titles: list[str] | None = None,
 ) -> tuple[list[WikiNode], dict[str, int]]:
     """Generate (or fallback-generate) one node per concept/segment pair."""
     nodes: list[WikiNode] = list(initial_nodes or [])
@@ -265,6 +273,7 @@ def generate_all_pages(
                 source_id=seg_label,
                 pinned_facts=pinned_facts,
                 categories=_categories_block(compiler._config.extraction_categories),
+                known_titles=known_titles,
                 timeout=compiler._timeout,
             )
             debug_file = getattr(agent, "_last_debug_file", None)
@@ -438,6 +447,9 @@ def assemble_wiki(
     edges = build_edges(nodes, extractions, min_title_len=compiler._config.budget.edge_min_title_len)
     quality = compute_quality_score(nodes, edges)
     toc: list[TocEntry] = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
+    aliases = learn_wikilink_aliases(nodes)
+    if aliases:
+        logger.info("TwoPhase: learned %d wikilink alias(es), e.g. %s", len(aliases), list(aliases.items())[:5])
     return CompiledWiki(
         nodes=nodes,
         edges=edges,
@@ -451,8 +463,68 @@ def assemble_wiki(
             MetadataField.CONCEPTS_MERGED: len(concepts),
             MetadataField.CONTEXT_WINDOW: cw.max_input,
             MetadataField.PINNED_FACTS_COUNT: len(pinned_clean),
+            MetadataField.WIKILINK_ALIASES: aliases,
         },
     )
+
+
+def build_known_titles(compiler: TwoPhaseRuntime, concepts: list[dict[str, Any]]) -> list[str]:
+    """Canonical page titles the generation LLM should link to verbatim.
+
+    Combines the merged concept names from this compile with the canonical
+    titles learned by the *previous* compile (its
+    ``MetadataField.WIKILINK_ALIASES`` map, read from the on-disk wiki cache
+    — still the previous compile's output at generation time, since the
+    cache is written after generation). Deduplicated, order-preserving.
+    """
+    titles: list[str] = []
+    seen: set[str] = set()
+
+    def _add(title: str) -> None:
+        if title and title not in seen:
+            seen.add(title)
+            titles.append(title)
+
+    for c in concepts:
+        _add(str(c.get(ExtractionField.NAME, "")))
+
+    try:
+        previous = load_cached_wiki(compiler._config.paths.base_dir)
+    except Exception:  # noqa: BLE001 — cache read is best-effort; never fail compile
+        previous = None
+    if previous is not None:
+        learned = previous.metadata.get(MetadataField.WIKILINK_ALIASES) or {}
+        if isinstance(learned, dict):
+            for canonical in learned.values():
+                _add(str(canonical))
+
+    return titles
+
+
+def learn_wikilink_aliases(nodes: list[WikiNode]) -> dict[str, str]:
+    """Learn an alias → canonical-title map from wikilinks in *nodes*.
+
+    Runs :class:`BrokenWikilinksRule` over the freshly generated pages and
+    collects every failure the rule tagged ``alias_of`` (a fuzzy/substring
+    match against an existing page). The result persists in
+    ``wiki.metadata[MetadataField.WIKILINK_ALIASES]`` and feeds
+    :func:`build_known_titles` on the next compile, so the LLM is nudged
+    toward canonical titles while the renderer resolves leftovers.
+    """
+    if not nodes:
+        return {}
+    wiki = CompiledWiki(nodes=nodes, edges=[], toc=[])
+    id_to_title = {n.id: n.title for n in nodes}
+    aliases: dict[str, str] = {}
+    for result in BrokenWikilinksRule().check(wiki):
+        if result.outcome != LintRuleOutcome.FAIL:
+            continue
+        alias_of = result.details.get("alias_of")
+        canonical = id_to_title.get(str(alias_of))
+        if canonical:
+            aliases.setdefault(result.details.get("target", ""), canonical)
+    aliases.pop("", None)
+    return aliases
 
 
 def gen_cache_deps(

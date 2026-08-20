@@ -411,6 +411,7 @@ def try_pydanticai_generation(
     source_id: str,
     pinned_facts: list[str] | None = None,
     categories: str = "",
+    known_titles: list[str] | None = None,
     timeout: float = 120.0,
 ) -> GenerationOutput | None:
     """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
@@ -426,6 +427,8 @@ def try_pydanticai_generation(
         pinned_facts: Facts that must appear in the output.
         categories: Rendered extra-category instructions for the prompt (empty
             when no `compile.extraction.categories` are configured).
+        known_titles: Canonical page titles for wikilink emission (empty when
+            unknown — see ``GenerationDeps.known_titles``).
         timeout: Per-call timeout in seconds.
 
     Returns:
@@ -439,6 +442,7 @@ def try_pydanticai_generation(
             source_id=source_id,
             pinned_facts=pinned_facts or [],
             categories=categories,
+            known_titles=known_titles or [],
             timeout=timeout,
         )
         return agent.run(deps)
