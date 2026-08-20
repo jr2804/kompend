@@ -85,6 +85,7 @@ nav:
     - Lint: guides/lint.md
     - LLM Configuration: guides/llm-config.md
     - Model Context Adaptation: guides/model-context.md
+    - Observability: guides/observability.md
     - Output: guides/output.md
     - Provenance: guides/provenance.md
     - Review: guides/review.md
