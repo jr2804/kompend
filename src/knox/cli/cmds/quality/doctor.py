@@ -326,8 +326,8 @@ def _check_git_repo() -> CheckResult:
     # Traverse up from cwd looking for a .git directory.
     # Pure-Path check avoids subprocess entirely (no S603 false positive).
     try:
-        current = Path.cwd().resolve()
-        for parent in [current, *current.parents]:
+        current_dir = Path.cwd().resolve()
+        for parent in [current_dir, *current_dir.parents]:
             if (parent / ".git").is_dir():
                 return CheckResult(name, True, "Inside a git repository")
         return CheckResult(name, True, "Not a git repository — OK")

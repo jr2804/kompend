@@ -122,10 +122,10 @@ def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:
 
 def _shorten(source: str, sources_dir: Path) -> str:
     """Shorten an absolute source path to relative-POSIX or basename form."""
-    p = Path(source)
-    if not p.is_absolute():
+    source_path = Path(source)
+    if not source_path.is_absolute():
         return source
     try:
-        return p.relative_to(sources_dir).as_posix()
+        return source_path.relative_to(sources_dir).as_posix()
     except ValueError:
-        return p.name
+        return source_path.name

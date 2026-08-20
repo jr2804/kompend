@@ -302,13 +302,13 @@ def _render_image(el: DocumentElement, state: _RenderState) -> str:
         if placeholder:
             # No pixel data (parser fallback) — keep the placeholder as text.
             return f"*{content}*"
-        path = Path(content)
-        if not path.is_absolute():
-            path = state.base_dir / path
-        if not path.is_file():
+        content_path = Path(content)
+        if not content_path.is_absolute():
+            content_path = state.base_dir / content_path
+        if not content_path.is_file():
             logger.warning("Image missing during export: %s", content)
             return f"*{content}*"
-        target = _as_data_uri(path) if state.inline else _copy_asset(path, state)
+        target = _as_data_uri(content_path) if state.inline else _copy_asset(content_path, state)
     return f"![{caption}]({target})" if caption else f"![]({target})"
 
 
@@ -440,7 +440,7 @@ def _render_attachments(base_dir: Path, data: dict[str, Any]) -> str:
         return ""
     lines = ["## Attachments", "", "| File | Ingestible | Link |", "|---|---|---|"]
     for att in atts:
-        rel = Path(att.path)
+        rel_path = Path(att.path)
         ingestible = "yes" if att.ingestible else "no"
-        lines.append(f"| {rel.name} | {ingestible} | [{rel.name}]({rel.as_posix()}) |")
+        lines.append(f"| {rel_path.name} | {ingestible} | [{rel_path.name}]({rel_path.as_posix()}) |")
     return "\n".join(lines)

@@ -124,13 +124,13 @@ def _agents_use(task_str: str, name: str) -> None:
 
 def _agents_validate(file: str) -> None:
     """Validate a TOML agent definition file."""
-    path = Path(file)
-    if not path.exists():
+    source_path = Path(file)
+    if not source_path.exists():
         get_console().print(f"[red]File not found: {file}[/red]")
         raise typer.Exit(1)
 
     try:
-        agent = AgentDefinition.from_toml(path)
+        agent = AgentDefinition.from_toml(source_path)
         get_console().print("[green]✓ Valid agent definition[/green]")
         get_console().print(f"  name: {agent.name}")
         get_console().print(f"  task: {agent.task.value}")
@@ -148,13 +148,13 @@ def _agents_validate(file: str) -> None:
 
 def _agents_install(file: str) -> None:
     """Install an agent TOML file into the vault."""
-    src = Path(file)
-    if not src.exists():
+    agent_file = Path(file)
+    if not agent_file.exists():
         get_console().print(f"[red]File not found: {file}[/red]")
         raise typer.Exit(1)
 
     try:
-        agent = AgentDefinition.from_toml(src)
+        agent = AgentDefinition.from_toml(agent_file)
     except Exception as exc:
         get_console().print(f"[red]Invalid agent definition: {exc}[/red]")
         raise typer.Exit(1) from exc
@@ -167,7 +167,7 @@ def _agents_install(file: str) -> None:
     if dest.exists():
         get_console().print(f"[yellow]Overwriting existing agent: {agent.name}[/yellow]")
 
-    shutil.copy2(src, dest)
+    shutil.copy2(agent_file, dest)
     get_console().print(f"[green]Installed agent: {agent.name} ({agent.task.value})[/green]")
 
 

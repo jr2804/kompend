@@ -29,10 +29,10 @@ def resolve_rumdl_config(
     Returns ``None`` only when the shipped default cannot be located.
     """
     if configured:
-        path = Path(configured)
-        if not path.is_absolute():
-            path = base_dir / path
-        return path
+        configured_path = Path(configured)
+        if not configured_path.is_absolute():
+            configured_path = base_dir / configured_path
+        return configured_path
 
     target = base_dir / RUMDL_CONFIG_FILE
     if target.exists():

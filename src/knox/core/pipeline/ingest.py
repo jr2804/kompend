@@ -255,11 +255,11 @@ def relativize_image_paths(doc: ParsedDocument, base_dir: Path) -> None:
     """
     for el in doc.elements:
         if el.type is ElementType.IMAGE and isinstance(el.content, str):
-            path = Path(el.content)
-            if path.is_absolute():
+            image_path = Path(el.content)
+            if image_path.is_absolute():
                 # Outside the vault: leave as-is. Within it: relativize.
                 with suppress(ValueError):
-                    el.content = path.relative_to(base_dir).as_posix()
+                    el.content = image_path.relative_to(base_dir).as_posix()
 
 
 def parse_cache_name(source_file: Path) -> str:

@@ -165,9 +165,9 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     stay in the vault and are listed at the end with links.
     """
     vp = vault_paths_from_ctx(ctx)
-    out = Path(output)
-    if out.suffix.lower() != ".md":
-        get_console().print(f"[red]Output file must end in .md, got '{escape(out.suffix or '<none>')}'[/]")
+    output_file = Path(output)
+    if output_file.suffix.lower() != ".md":
+        get_console().print(f"[red]Output file must end in .md, got '{escape(output_file.suffix or '<none>')}'[/]")
         raise typer.Exit(1)
 
     cli_set: dict[str, Any] = {}
@@ -185,7 +185,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
             base_dir=vp.base_dir,
             cache_dir=vp.cache_dir,
             source_id=source_id,
-            out_path=out,
+            out_path=output_file,
             inline=inline,
             annotations=cfg.get(EXPORT_ANNOTATIONS),
             summary=cfg.get(EXPORT_SUMMARY),
@@ -193,7 +193,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     except FileNotFoundError as exc:
         get_console().print(f"[red]{escape(str(exc))}[/]")
         raise typer.Exit(1) from exc
-    get_console().print(f"[green]Exported {escape(source_id)} -> {escape(str(out))}[/]")
+    get_console().print(f"[green]Exported {escape(source_id)} -> {escape(str(output_file))}[/]")
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────

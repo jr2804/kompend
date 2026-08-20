@@ -300,10 +300,10 @@ class WikiPipeline:
 
     def abs_file(self, file_str: str) -> Path:
         """Reconstruct absolute path from potentially relative string."""
-        p = Path(file_str) if file_str else Path()
-        if p != Path() and not p.is_absolute():
-            return self.base_directory / p
-        return p
+        resolved_path = Path(file_str) if file_str else Path()
+        if resolved_path != Path() and not resolved_path.is_absolute():
+            return self.base_directory / resolved_path
+        return resolved_path
 
     def normalize_metadata_paths(self, metadata: dict[str, MetadataValue]) -> dict[str, MetadataValue]:
         """Convert known absolute path values in metadata to relative."""
