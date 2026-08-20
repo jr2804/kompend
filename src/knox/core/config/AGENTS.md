@@ -34,6 +34,7 @@ through this package — no other module reads config files or env vars directly
   - `_overlay.py` — Config overlay merging
   - `_precedence.py` — Precedence ordering and final resolution
   - `_schema.py` — Config schema validation
+  - `_check.py` — Config file diff vs schema defaults (backing ``knox config check``)
   - `__init__.py` — Public re-exports for the engine
 - `AGENTS.md` — This file
 
@@ -116,6 +117,13 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
   `if value is not None`.
 - **`knox.toml.example` is the schema contract** — it must always reflect the
   current keys, defaults, and valid options. Treat it like a living spec.
+- **`_check.py` walks the live pydantic model, not `DEFAULTS`** — optional
+  nested models (e.g. `compile.llm.rlm`) store `None` in the `DEFAULTS` dump,
+  so `flat_keys(DEFAULTS)` silently misses their leaves. `_schema_leaf_keys()`
+  / `_schema_defaults()` recurse `KnoxConfig` field types to surface them.
+  Only report a nested-model leaf when the user actually wrote its parent
+  section (`_parent_key_present`), so an untouched optional model contributes
+  no rows.
 - **`paths.py` is a leaf module** — never import `knox.core.config` from it.
   Dependency direction is one-way: `config` imports path constants and
   `VaultPaths` from `paths`; `paths` imports nothing from config. Config-driven

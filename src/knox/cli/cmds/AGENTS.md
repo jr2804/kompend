@@ -98,6 +98,10 @@ def get(key: str) -> None: ...
 def set(key: str, value: str) -> None: ...
 
 
+@config_app.command()
+def check(paths: list[Path]) -> None: ...
+
+
 app.add_typer(config_app, name="config")
 ```
 

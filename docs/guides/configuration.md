@@ -115,6 +115,38 @@ knox config path           # project config path
 knox config path --global  # global config path
 ```
 
+### `knox config check`
+
+Diff a TOML config file against the built-in schema defaults. Useful when
+upgrading knox or migrating between versions — the report lists every key
+that differs from the shipped default plus any unknown keys or
+validation errors.
+
+```bash
+# Single file — exits 0 clean, 1 if any modified, 2 if any errors.
+knox config check ./knox.toml
+
+# Multiple files — merged (later wins); reports one combined diff.
+knox config check ./base.toml ./local.toml
+
+# Independent per-file reports.
+knox config check ./base.toml ./local.toml --no-merge
+
+# Machine-readable JSON.
+knox config check ./knox.toml --json
+```
+
+Status legend:
+
+| Status | Meaning |
+|--------|---------|
+| `ok`       | Value matches the schema default. |
+| `modified` | User value differs from the default (expected for any customised key). |
+| `error`    | Unknown key, or wrong type/value (pydantic validation failed). |
+
+The exit code is `0` (clean), `1` (only modified), or `2` (errors), so
+this command plugs straight into CI to catch typos in checked-in config.
+
 ## Configuration Reference
 
 The main configuration sections:

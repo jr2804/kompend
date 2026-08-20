@@ -94,6 +94,7 @@ knox config COMMAND [OPTIONS]
 | `set <key> <value>` | Write a key to project config (or `--global` for global config) |
 | `list` | Print all resolved config keys with provenance |
 | `path` | Print the config file path (or `--global`) |
+| `check [FILES]` | Diff config files against defaults (see [Configuration](./configuration.md)) |
 
 `set` validates keys against the schema, coerces types, writes atomically, and creates a `.bak` backup.
 

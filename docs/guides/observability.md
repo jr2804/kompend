@@ -73,16 +73,22 @@ Open `http://localhost:6006` in your browser. You'll see:
 | **Attributes** | Each span carries `model`, `prompt`, `response`, `tool_name`, `tool_args`, `tool_result`, `validation_error`, `retry_count` |
 | **Filter/Query** | Filter by `service.name = "knox"`, `span.name = "model.request"`, `retry_count > 0`, etc. |
 
-### What to look for (your WiCER vs Graph retry spike)
+### What to look for
 
-- **Retry chains**: In the trace waterfall, a failing local model shows as
+When you see unusual agent behavior — retries that shouldn't fire, long
+latencies, validation failures, or budget blow-up — the trace view is the
+cheapest place to start:
+
+- **Retry chains**: A failing model run shows up as
   `model.request` → `validation.error` → `model.retry` → … → success/fail.
-  Count the retry spans to quantify the spike.
-- **Tool call details**: `tool_call` spans show the exact arguments sent to
-  the model and the tool's return value — useful when a tool call triggers
-  a validation failure.
-- **Token usage**: `usage` attributes on model spans show prompt/completion
-  tokens; correlate with `retry_count` to see if budget overflow causes failures.
+  Counting the retry spans answers “how often is this happening?” without
+  parsing logs.
+- **Tool call details**: `tool_call` spans record the exact arguments sent
+  to the model and the tool's return value — useful when a tool call is
+  what triggers a validation failure downstream.
+- **Token usage**: `usage` attributes on model spans carry prompt and
+  completion tokens; correlate with `retry_count` to see whether a budget
+  cap is the actual failure cause.
 
 ---
 
