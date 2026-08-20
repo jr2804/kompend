@@ -51,6 +51,16 @@ _IMAGE_EMBED_RE = re.compile(
     re.IGNORECASE,
 )
 
+
+#: Minimum token-Jaccard score to flag a broken wikilink as an alias of an
+#: existing page (vs. a genuinely missing topic). Conservative default:
+#: 0.5 means at least half the target's tokens overlap with the candidate.
+_WIKILINK_ALIAS_MIN_JACCARD = 0.5
+#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
+#: Above :data:`_WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
+#: below 1.0 so a higher Jaccard can still override.
+_WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
+
 logger = get_logger(__name__)
 
 
@@ -868,23 +878,11 @@ def _nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
         # ``full-scale-database-p-863-evaluation`` (slug).
         if len(target_no_punct) >= 4:
             key_normalized = key.replace("-", "").replace(".", "").replace(" ", "")
-            if (
-                target_no_punct in key_normalized
-            ) and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
+            if (target_no_punct in key_normalized) and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
                 best_score = _WIKILINK_ALIAS_SUBSTRING_SCORE
                 best_id = page_id
 
     return best_id
-
-
-#: Minimum token-Jaccard score to flag a broken wikilink as an alias of an
-#: existing page (vs. a genuinely missing topic). Conservative default:
-#: 0.5 means at least half the target's tokens overlap with the candidate.
-_WIKILINK_ALIAS_MIN_JACCARD = 0.5
-#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
-#: Above :data:`_WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
-#: below 1.0 so a higher Jaccard can still override.
-_WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
 
 
 def _batched(items: list[str], size: int) -> list[list[str]]:

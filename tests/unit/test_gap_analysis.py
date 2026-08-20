@@ -11,20 +11,6 @@ from knox.lint.gap_analysis import (
 )
 
 
-def _lr(target: str, alias_of: str | None = None) -> LintReportResult:
-    """Build a failing broken-wikilinks LintReportResult."""
-    details: dict[str, str] = {"target": target}
-    if alias_of is not None:
-        details["alias_of"] = alias_of
-    return LintReportResult(
-        rule="broken-wikilinks",
-        outcome="fail",
-        page_id="n1",
-        message=f"Broken wikilink [[{target}]]",
-        details=details,
-    )
-
-
 def test_alias_mismatch_yields_alias_resolution() -> None:
     """When the broken-wikilinks rule tagged the target with ``alias_of``,
     the gap recommendation says so and points at the existing page.
@@ -103,3 +89,17 @@ def test_priority_field_is_high_for_broken_wikilinks() -> None:
     results = [_lr("P.863", alias_of="polqa-..."), _lr("Other")]
     recs = _analyze_broken_wikilinks(results)
     assert all(r.priority == GapPriority.HIGH for r in recs)
+
+
+def _lr(target: str, alias_of: str | None = None) -> LintReportResult:
+    """Build a failing broken-wikilinks LintReportResult."""
+    details: dict[str, str] = {"target": target}
+    if alias_of is not None:
+        details["alias_of"] = alias_of
+    return LintReportResult(
+        rule="broken-wikilinks",
+        outcome="fail",
+        page_id="n1",
+        message=f"Broken wikilink [[{target}]]",
+        details=details,
+    )
