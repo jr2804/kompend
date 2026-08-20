@@ -31,13 +31,13 @@ PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 # when the backend's optional dependency is not installed. Each entry maps to
 # a human-readable description shown in error messages.
 KNOWN_BACKENDS: dict[str, str] = {
-    "docling": "high-accuracy PDF/EPUB/HTML parser (install: uv sync --group docling)",
-    "glm-ocr": "GLM-OCR image-based OCR for PNG/JPG/TIFF/BMP (install: uv sync --group glm-ocr)",
-    "liteparse": "fast PDF/office parser (install: uv sync --group default)",
-    "marker": "Marker high-accuracy PDF parser (install: uv sync --group marker)",
-    "mineru": "layout-aware PDF/Office parser with OCR (install: uv sync --group mineru)",
-    "pandoc": "legacy text formats — RST, LaTeX, ODT (install: uv sync --group pandoc)",
-    "web": "trafilatura HTML parser for web pages (install: uv sync --group web)",
+    "docling": "high-accuracy PDF/EPUB/HTML parser (install: uv sync --extra docling)",
+    "glm-ocr": "GLM-OCR image-based OCR for PNG/JPG/TIFF/BMP (install: uv pip install glmocr — conflicts with marker on pillow)",
+    "liteparse": "fast PDF/office parser (installed by default)",
+    "marker": "Marker high-accuracy PDF parser (install: uv pip install marker-pdf — conflicts with glmocr on pillow)",
+    "mineru": "layout-aware PDF/Office parser with OCR (install: uv pip install mineru)",
+    "pandoc": "legacy text formats — RST, LaTeX, ODT (install: uv sync --extra pandoc)",
+    "web": "trafilatura HTML parser for web pages (installed by default)",
 }
 
 # Backend name → module path. The backend module's ``register_backend`` call

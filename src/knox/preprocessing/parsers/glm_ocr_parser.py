@@ -13,9 +13,10 @@ Two execution modes:
 * **Self-hosted**: set ``mode="selfhosted"`` and point ``api_url`` at a vLLM /
   SGLang / Ollama endpoint serving the GLM-OCR model.
 
-The ``glmocr`` package is an optional dependency — install with::
+The ``glmocr`` package is an optional dependency — install manually
+(it conflicts with marker on pillow, so it cannot be a locked extra)::
 
-    uv sync --group glm-ocr
+    uv pip install glmocr
 
 GLM-OCR does no internal captioning, so ``figure_enrichment`` is ``False`` and
 every extracted figure still flows through ``VLMEnricher``.

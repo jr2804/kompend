@@ -10,9 +10,10 @@ Two conversion modes:
   layout + tables; block-OCRs only garbled/empty content.
 * **``balanced``** (default on CUDA GPU): full VLM layout model + full-page OCR.
 
-The ``marker-pdf`` package is an optional dependency — install with::
+The ``marker-pdf`` package is an optional dependency — install manually
+(it conflicts with glmocr on pillow, so it cannot be a locked extra)::
 
-    uv sync --group marker
+    uv pip install marker-pdf
 
 Marker has no internal figure captioning (the ``LLMImageDescriptionProcessor``
 is opt-in via ``use_llm=True`` and requires a configured LLM service), so
