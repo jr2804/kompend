@@ -1,4 +1,4 @@
-"""Quality & diagnostics MCP tools (lint, doctor, review, trace, log, list-parsers)."""
+"""Quality & diagnostics MCP tools (lint, doctor, review, provenance, log, list-parsers)."""
 
 import time
 from collections import Counter

@@ -30,7 +30,7 @@ are subpackages:
 | `serve.py` | MCP + web server | `/knox mcp`, `/knox serve` |
 | `knowledge/` | Capture, query, memory, organize, pack, attachments, references | `/knox capture`, `/knox learn`, `/knox distill`, `/knox write`, `/knox query`, `/knox memory`, `/knox organize`, `/knox pack-list`, `/knox pack-install`, `/knox attachments`, `/knox references` |
 | `pipeline/` | Parse, compile, ingest, index, config, sources | `/knox parse`, `/knox compile`, `/knox ingest`, `/knox index`, `/knox config`, `/knox sources` |
-| `quality/` | Doctor, lint, review, log, status, trace, list-parsers | `/knox doctor`, `/knox lint`, `/knox review`, `/knox log`, `/knox status`, `/knox trace`, `/knox list-parsers` |
+| `quality/` | Doctor, lint, review, log, status, provenance, list-parsers | `/knox doctor`, `/knox lint`, `/knox review`, `/knox log`, `/knox status`, `/knox provenance`, `/knox list-parsers` |
 
 ### Command function patterns
 

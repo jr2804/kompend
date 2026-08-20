@@ -444,16 +444,16 @@ if (-not $Preview) {
     & $StatusArgs[0] $StatusArgs[1..($StatusArgs.Length - 1)]
 }
 
-$TraceArgs = @(
+$ProvenanceArgs = @(
     "uv", "run", "knox",
     "--wiki-dir", $OutputPath,
-    "trace"
+    "provenance"
 )
 Write-Host ""
-Write-Host ($TraceArgs -join " ") -ForegroundColor DarkGray
+Write-Host ($ProvenanceArgs -join " ") -ForegroundColor DarkGray
 Write-Host ""
 if (-not $Preview) {
-    & $TraceArgs[0] $TraceArgs[1..($TraceArgs.Length - 1)]
+    & $ProvenanceArgs[0] $ProvenanceArgs[1..($ProvenanceArgs.Length - 1)]
 }
 
 # ------ Stage 12: Organize (dry-run source categorisation) ------------------------------------------------------
