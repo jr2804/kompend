@@ -103,10 +103,38 @@ cheapest place to start:
 
 ---
 
-## 6. Other OTLP endpoint providers
+## 6. Other OTel-compatible backends
 
-The OpenTelemetry instrumentation in knox is powered by the **pydantic-ai** framework,
-which has built-in support for [Logfire](https://pydantic.dev/logfire) (the observability
+The instrumentation is backend-agnostic — spans conform to standard OTel
+semantic conventions, so you can point `KNOX_OTEL_ENDPOINT` at any OTLP HTTP
+receiver (typically `:4318`):
+
+- **Jaeger** — `http://localhost:4318`
+- **SigNoz** — `http://localhost:4318`
+- **OpenObserve** — `http://localhost:5081/api/default`
+- **Grafana Tempo** — `http://localhost:4318`
+- **collector + downstream** — any OTLP HTTP endpoint
+
+### High-volume runs: enable sampling
+
+A long compile (`--tier wicer`) can emit thousands of spans. `BatchSpanProcessor`
+exports everything by default. For high-volume runs, enable ratio-based sampling:
+
+```bash
+export OTEL_TRACES_SAMPLER=traceidratio
+# keep 10% of traces
+# (this is an OpenTelemetry env var, read by the SDK — no knox prefix)
+export OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+To validate later, set `OTEL_TRACES_SAMPLER=always_on` to capture everything.
+
+---
+
+## 7. Managed SaaS: Logfire
+
+The instrumentation is powered by the **pydantic-ai** framework, which has
+built-in support for [Logfire](https://pydantic.dev/logfire) (the observability
 platform from the pydantic team). If you prefer a managed SaaS experience,
 Logfire provides a polished UI and requires only:
 
@@ -116,14 +144,9 @@ export KNOX_OTEL_ENDPOINT="https://logfire-us.pydantic.dev"
 export KNOX_OTEL_HEADERS="Authorization=Bearer <your-write-token>"
 ```
 
-For self-hosted or alternative open-source OTel backends (Jaeger, SigNoz,
-OpenObserve, Grafana Tempo, etc.), point `KNOX_OTEL_ENDPOINT` at the
-collector's OTLP HTTP receiver (typically `:4318`). The spans conform to
-standard OTel semantic conventions and will render in any compliant backend.
-
 ---
 
-## 7. What gets traced
+## 8. What gets traced
 
 | Agent type | Span prefix | Notes |
 |------------|-------------|-------|
@@ -138,7 +161,7 @@ and `knox.source_id` attributes for filtering.
 
 ---
 
-## 8. Disabling
+## 9. Disabling
 
 Unset `KNOX_OTEL_ENABLED` or set it to anything other than `true`/`1`/`yes`.
 Zero overhead when disabled — the tracer provider is never constructed.

@@ -144,6 +144,29 @@ def _flag() -> bool:
     return instrument._instrumented
 
 
+def test_disabled_leaves_no_global_tracer_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When KNOX_OTEL_ENABLED is false/unset, configure_observability must not
+    install a global tracer provider. Smoke check for the off-path."""
+    monkeypatch.delenv(EnvVar.OTEL_ENABLED, raising=False)
+    monkeypatch.setattr("knox.agents.instrument._instrumented", False)
+
+    calls: list[object] = []
+    monkeypatch.setattr(
+        "knox.agents.instrument.trace",
+        type("T", (), {"set_tracer_provider": staticmethod(lambda p: calls.append(p))})(),
+    )
+    monkeypatch.setattr(
+        "knox.agents.instrument.Agent",
+        type("A", (), {"instrument_all": staticmethod(lambda: calls.append("instrument"))})(),
+    )
+
+    configure_observability()
+
+    # No tracer provider installed, no instrumentation, flag stays False
+    assert calls == []
+    assert _flag() is False
+
+
 def test_headers_parse(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _parse_headers("") == {}
     assert _parse_headers("Authorization=Bearer tok") == {"Authorization": "Bearer tok"}

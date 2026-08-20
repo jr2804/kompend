@@ -11,11 +11,12 @@ Example::
     export KNOX_OTEL_HEADERS="Authorization=Bearer token"
     knox compile
 
-The OpenTelemetry SDKs are imported at module level: they are guaranteed
-present because ``logfire`` (a runtime dependency) pulls in
-``opentelemetry-sdk`` and the OTLP HTTP exporter, which we also pin
-explicitly in the optional ``otel`` extra. No ``try/except ImportError``
-guard is needed.
+OpenTelemetry SDKs are optional and only required when the feature is
+enabled. Install with ``uv sync --extra otel`` or ``uv add "knox[otel]"``.
+When disabled, this module has zero overhead — the tracer provider is never
+constructed.
+
+See ``docs/guides/observability.md`` for the full guide.
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def configure_observability() -> None:
     - ``KNOX_OTEL_SERVICE_NAME`` — service name in the OTel UI (default: ``knox``).
     - ``KNOX_OTEL_HEADERS`` — optional HTTP headers for the OTLP endpoint
       (``key=value`` format, used for auth tokens).
-    """
+    """  # see docs/guides/observability.md
     global _instrumented  # noqa: PLW0603
 
     if _instrumented:
