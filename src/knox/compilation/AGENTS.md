@@ -27,7 +27,7 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/`                | Flow-based compilation building blocks                                   |
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction.py`   | Extraction flow                                                          |
-| `flows/generation.py`   | Generation flow                                                          |
+| `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks), `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`) |
 | `flows/references.py`   | Reference-extraction flow (pre-extraction pass)                          |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
 
