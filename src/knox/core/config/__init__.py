@@ -29,8 +29,15 @@ from knox.core.config._configs import (
 )
 from knox.core.config._core import (
     DEFAULTS,
+    STATUS_ERROR,
+    STATUS_MODIFIED,
+    STATUS_OK,
+    ConfigCheckEntry,
+    ConfigCheckReport,
     ConfigSource,
     ResolvedConfig,
+    check_config_file,
+    check_config_files,
     coerce_config_value,
     find_all_project_configs,
     find_global_config,
@@ -45,7 +52,12 @@ from knox.core.config.generate import generate_scaffold_config
 
 __all__ = [
     "DEFAULTS",
+    "STATUS_ERROR",
+    "STATUS_MODIFIED",
+    "STATUS_OK",
     "BudgetConfig",
+    "ConfigCheckEntry",
+    "ConfigCheckReport",
     "ConfigSource",
     "DisplayConfig",
     "EmbeddingConfig",
@@ -60,6 +72,8 @@ __all__ = [
     "PdfConfig",
     "ResolvedConfig",
     "RlmConfig",
+    "check_config_file",
+    "check_config_files",
     "coerce_config_value",
     "find_all_project_configs",
     "find_global_config",

@@ -13,6 +13,15 @@ Sub-modules (load in dependency order):
 # → _precedence needs _schema, _env, _loading → _overlay needs _loading, _schema
 #
 # Generic dict helpers live in knox.core.utils.dicts.
+from knox.core.config.engine._check import (
+    STATUS_ERROR,
+    STATUS_MODIFIED,
+    STATUS_OK,
+    ConfigCheckEntry,
+    ConfigCheckReport,
+    check_config_file,
+    check_config_files,
+)
 from knox.core.config.engine._env import read_env_vars
 from knox.core.config.engine._loading import (
     find_all_project_configs,
@@ -37,8 +46,15 @@ from knox.core.utils.dicts import deep_merge, flat_keys, get_dot, set_dot
 
 __all__ = [
     "DEFAULTS",
+    "STATUS_ERROR",
+    "STATUS_MODIFIED",
+    "STATUS_OK",
+    "ConfigCheckEntry",
+    "ConfigCheckReport",
     "ConfigSource",
     "ResolvedConfig",
+    "check_config_file",
+    "check_config_files",
     "coerce_config_value",
     "deep_merge",
     "find_all_project_configs",

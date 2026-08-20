@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import re
+import sys
+from pathlib import Path
 
 import typer
 
 from knox.cli._shared import vault_paths_from_ctx
 from knox.cli.app import app
+from knox.cli.args.common import JsonOutput
 from knox.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 from knox.core.config import (
+    STATUS_ERROR,
+    STATUS_MODIFIED,
+    STATUS_OK,
+    ConfigCheckEntry,
+    ConfigCheckReport,
+    check_config_file,
+    check_config_files,
     coerce_config_value,
     get_global_config_file,
     get_project_config_file,
@@ -114,6 +125,127 @@ def config_file(
     """Print the path to the project or global config file."""
     path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
     get_console().print(str(path), soft_wrap=True)
+
+
+@config_app.command(
+    "check",
+    help="Diff one or more config TOML files against the built-in defaults.",
+)
+def config_check(
+    ctx: typer.Context,
+    paths: list[Path] = typer.Argument(  # noqa: B008
+        ...,
+        help="One or more TOML files. Multiple files are merged (later wins); pass --no-merge for per-file reports.",
+    ),
+    json_output: JsonOutput = False,
+    no_merge: bool = typer.Option(  # noqa: B008
+        False,
+        "--no-merge",
+        help="Report on each file independently instead of merging them.",
+    ),
+) -> None:
+    """Show which keys are defaults, modified, or invalid for each file.
+
+    Examples::
+
+        knox config check ./knox.toml
+        knox config check ./base.toml ./local.toml         # merged
+        knox config check ./base.toml ./local.toml --no-merge
+
+    Exit code is 2 when any error (unknown key, validation failure) is found,
+    1 when only modified keys are present, 0 otherwise. Combine with
+    ``--json`` for machine-readable output.
+    """
+    reports = [check_config_file(p) for p in paths] if no_merge or len(paths) == 1 else [check_config_files(paths)]
+
+    if json_output:
+        # Bypass Rich's line wrapping so JSON output is always valid even when
+        # a Windows path string exceeds the terminal width.
+        json.dump(
+            [_report_payload(r) for r in reports],
+            sys.stdout,
+            indent=2,
+            ensure_ascii=False,
+        )
+        sys.stdout.write("\n")
+    else:
+        for r in reports:
+            _render_report_text(r)
+
+    raise typer.Exit(code=_exit_code_for(reports))
+
+
+def _report_payload(report: ConfigCheckReport) -> dict[str, JSON]:
+    """Shape a report for JSON/agent consumption."""
+    return report.to_dict()
+
+
+def _render_report_text(report: ConfigCheckReport) -> None:
+    """Render one report to the console as a status-keyed table."""
+    console = get_console()
+    if report.path is not None:
+        console.print(f"[bold]config check[/bold] {report.path}")
+    else:
+        joined = ", ".join(str(p) for p in report.files_scanned)
+        console.print(f"[bold]config check[/bold] (merged: {joined})")
+    summary = f"  ok: [green]{report.ok_count}[/green]  modified: [yellow]{report.modified_count}[/yellow]  error: [red]{report.error_count}[/red]"
+    console.print(summary)
+    console.print()
+
+    # Show modified and error rows (skip ok rows to keep output compact).
+    interesting = [e for e in report.entries if e.status != STATUS_OK]
+    if not interesting:
+        console.print("  (no modifications or errors)")
+        return
+
+    by_status: dict[str, list] = {
+        STATUS_ERROR: [e for e in interesting if e.status == STATUS_ERROR],
+        STATUS_MODIFIED: [e for e in interesting if e.status == STATUS_MODIFIED],
+    }
+    for label, entries in by_status.items():
+        if not entries:
+            continue
+        color = "red" if label == STATUS_ERROR else "yellow"
+        console.print(f"  [{color}]{label}[/{color}]:")
+        for entry in entries:
+            line = _format_entry_line(entry)
+            console.print(f"    {line}")
+
+
+def _format_entry_line(entry: ConfigCheckEntry) -> str:
+    """Build one rendered line for a non-ok report entry."""
+    if entry.status == STATUS_ERROR:
+        msg = f"  ({entry.message})" if entry.message else ""
+        current = _render_value(entry.current)
+        return f"[red]ERROR[/red]   {entry.key}  current={current}{msg}"
+    # modified
+    current = _render_value(entry.current)
+    default = _render_value(entry.default)
+    return f"[yellow]MODIFIED[/yellow] {entry.key}  current={current}  default={default}"
+
+
+def _render_value(value: JSON) -> str:
+    """Format a value compactly for one-line display."""
+    if value is None:
+        return "<default>"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "[" + ", ".join(_render_value(v) for v in value) + "]"
+    if isinstance(value, (dict,)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _exit_code_for(reports: list[ConfigCheckReport]) -> int:
+    """Map a set of reports to a CLI exit code (0 clean, 1 modified, 2 error)."""
+    has_error = any(r.has_errors for r in reports)
+    has_modified = any(r.modified_count > 0 for r in reports)
+    if has_error:
+        return 2
+    if has_modified:
+        return 1
+    return 0
 
 
 def _format_value(value: JSON) -> str:
