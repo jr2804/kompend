@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knox.capture import TIMESTAMP_FORMAT
-from knox.capture._utils import make_slug
+from knox.capture._utils import format_sources_markdown, make_slug
 from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.utils.time import display_local
 from knox.logging import get_logger
@@ -39,4 +39,5 @@ source: manual
 """
     filepath.write_text(frontmatter, encoding="utf-8")
     logger.info("Learned fact -> %s", filepath)
+    format_sources_markdown(sources_dir)
     return filepath

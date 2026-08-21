@@ -16,7 +16,7 @@ import yaml
 from knox.agents.deps import DistillDeps
 from knox.agents.distill import DistillAgent
 from knox.capture import TIMESTAMP_FORMAT
-from knox.capture._utils import make_slug, make_title
+from knox.capture._utils import format_sources_markdown, make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
 from knox.core.utils.time import display_local
 from knox.logging import get_logger
@@ -76,6 +76,7 @@ def distill(
         logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
 
+    format_sources_markdown(sources_dir)
     return written
 
 

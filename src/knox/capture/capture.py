@@ -6,7 +6,7 @@ from pathlib import Path
 from knox.agents.capture import CaptureAgent
 from knox.agents.deps import PipelineAgentDeps
 from knox.capture import TIMESTAMP_FORMAT
-from knox.capture._utils import make_slug, make_title
+from knox.capture._utils import format_sources_markdown, make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR
 from knox.core.utils.time import display_local
 from knox.logging import get_logger
@@ -65,6 +65,7 @@ source: capture
         logger.info("Captured %s -> %s", item.kind, filepath)
         paths.append(filepath)
 
+    format_sources_markdown(sources_dir)
     return paths
 
 
