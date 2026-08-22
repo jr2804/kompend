@@ -47,6 +47,7 @@ dependencies = [
     "pydantic-ai-rlm>=0.1.2",
     "python-slugify[unidecode]>=8.0.4",
     "tomli-w>=1.2.0",
+    "pyyaml>=6.0",
     "binaryornot>=0.6.0",
     "datasketch>=1.10.0",
     "mail-parser>=4.4.0",
