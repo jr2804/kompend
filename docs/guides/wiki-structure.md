@@ -116,22 +116,54 @@ After a full compile+synth, your output directory looks like:
 
 ```text
 project/
-├── sources/                 # Raw + captured + distilled sources
-│   ├── _captured/           # capture/learn output
-│   └── _distilled/          # distill output
-├── wiki/                    # Compiled wiki (default: wiki/, resolved from --wiki-dir)
-│   ├── index.md             # TOC + stats (regenerated each compile)
-│   ├── log.md               # Activity journal (appended, never overwritten)
-│   ├── overview.md          # LLM summary (if --synthesize)
-│   ├── wiki.md              # Full compiled wiki
-│   └── *.md                 # Individual wiki pages
-└── .knox/                   # Internal metadata (in base_dir, i.e. project root)
-    ├── compile_state.json   # Tier checkpoints per source
-    ├── last_wiki.json       # Cached CompiledWiki for query/lint/status
-    ├── search.db            # FTS5 index (if compile.index on — default)
-    ├── memory.json          # Memory lifecycle state
-    └── vectors/             # Vector store sidecar (if compile.index on — default)
+├── index.md               # Vault-root hub → wiki catalog (portable entry point)
+├── sources/               # Raw + captured + distilled sources (user-owned)
+│   ├── _captured/         # capture/learn output
+│   └── _distilled/        # distill output
+├── attachments/           # Durable media — per-source attachments + images
+│                          # copied out of .knox for wiki page embeds
+├── wiki/                  # Compiled wiki (default: wiki/, resolved from --wiki-dir)
+│   ├── index.md           # Portable catalog — links EVERYTHING the wiki generates
+│   ├── log.md             # Activity journal (appended, never overwritten)
+│   ├── overview.md        # LLM summary (if --synthesize)
+│   ├── references.md      # Bibliography, anchored by stable id (if references extracted)
+│   ├── quality.md         # Claim verification summary (if a WiCER pass ran)
+│   ├── summaries/         # One page per ingested source (assets, citations, backlinks)
+│   ├── concepts/…         # Individual wiki pages, routed by kind
+│   └── *.md               # Root-level pages (overview, procedures, sections)
+├── exported/              # Full-source markdown exports — `knox sources export`
+│                          # without OUTPUT lands here (on demand, reference only)
+└── .knox/                 # Derived state ONLY — never required to read the wiki
+    ├── cache/             # Parse cache + extracted images (regenerable)
+    ├── assets.json        # Separated tables/figures working store
+    ├── references.json    # Bibliographic reference store (CSL-aligned)
+    ├── verification.json  # WiCER per-claim results (exported to wiki/quality.md)
+    ├── compile_state.json # Tier checkpoints per source
+    ├── last_wiki.json     # Cached CompiledWiki (maintenance accelerator)
+    ├── search.db          # FTS5 index (if compile.index on — default)
+    ├── memory.json        # Memory lifecycle state
+    └── vectors/           # Vector store sidecar (if compile.index on — default)
 ```
+
+### Markdown-only invariant
+
+**The wiki is complete in its generated pages; `.knox/` is derived state.**
+
+Every fact an LLM needs is reachable by following markdown links from
+`wiki/index.md` (concepts, references, summaries, quality). Deleting
+`.knox/` loses only accelerators — the wiki still reads, renders, and
+answers queries:
+
+- `knox query` / `wiki_query` (MCP) build the wiki from the generated
+  `wiki/*.md` files; no `.knox/` state is required.
+- Without the optional vector sidecar, query falls back to keyword search
+  over the same pages — same corpus, lower recall on paraphrase.
+- Wiki pages never reference `.knox/` (a structural lint rule enforces
+  this); embedded images are copied into `attachments/` at write time.
+
+`exported/` holds on-demand full-source dumps (`knox sources export`,
+default target when OUTPUT is omitted). They are reference material,
+linked from the per-source summary page — never part of the compiled wiki.
 
 ### Input vs output: where files land
 

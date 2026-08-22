@@ -56,17 +56,45 @@ uv tool install --git https://codeberg.org/jr2804/knox
 
 ```text
 .                       ← wiki project root
+├── index.md            ← vault-root hub → wiki catalog (portable entry point)
 ├── knox.toml           ← project config (optional, overriden by .knox/config.toml)
-├── .knox/              ← internal state (cache, vectors, search db, memory)
-├── sources/            ← source documents (PDF, DOCX, markdown, URLs)
+├── .knox/              ← derived state ONLY (cache, vectors, search db, memory) — never required to read the wiki
+├── sources/            ← source documents (PDF, DOCX, markdown, URLs) — user-owned
 │   ├── _captured/      ← knowledge items extracted from conversation
-│   ├── _distilled/     ← LLM-synthesized wiki pages
-│   └── _memory/        ← system context (auto-generated from memory)
-└── wiki/               ← compiled output
-    ├── wiki.md         ← main wiki document (first compile)
-    ├── index.md        ← table of contents page (re-compile)
-    └── pages/          ← individual page files (when output flavor is "pages")
+│   └── _distilled/     ← LLM-synthesized wiki pages
+├── attachments/        ← durable media (per-source attachments + wiki-embedded images)
+├── exported/           ← full-source markdown exports (`knox sources export` without OUTPUT; on demand)
+└── wiki/               ← compiled output — the product
+    ├── index.md        ← portable catalog: links EVERYTHING the wiki generates
+    ├── log.md          ← append-only activity journal
+    ├── overview.md     ← LLM thematic summary (if --synthesize)
+    ├── references.md   ← bibliography, anchored by stable id (if references extracted)
+    ├── quality.md      ← claim verification summary (if a WiCER verify pass ran)
+    ├── summaries/      ← one page per ingested source (asset inventory, citations, backlinks)
+    └── concepts/       ← concept/entity/comparison/summary pages routed by kind
 ```
+
+**Markdown-only invariant:** the wiki is complete in its generated pages;
+`.knox/` is regenerable derived state. Wiki pages never reference `.knox/`.
+
+## Vault without knox
+
+For agents consuming a vault with no knox CLI/MCP (or a vault shared
+without `.knox/` — e.g. a git repo excluding config and caches):
+
+1. Start at `wiki/index.md` — the portable catalog links every generated
+   surface (concepts, `references.md`, `summaries/`, `quality.md`, `log.md`).
+2. Concept pages carry Related links, source-file provenance
+   (`source_files` frontmatter), and per-claim footnotes.
+3. `wiki/summaries/<source>.md` gives per-source detail: assets, extracted
+   citations, backlinks to fed concepts.
+4. `wiki/quality.md` + per-page `verified_claims`/`quality_score`
+   frontmatter carry trust information.
+5. Image embeds resolve into `attachments/` — render in any markdown viewer.
+
+Everything reachable from `wiki/index.md` is the complete knowledge
+surface. Use plain grep/file reads to answer questions; no special tooling
+required.
 
 ## CLI Reference
 
@@ -86,6 +114,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 | Command | Purpose | Key Flags |
 |---------|---------|------------|
 | `knox sources list` | List ingested source files with their tags | `--tags <group>` (repeatable; comma-separated AND within a group, multiple values OR across groups) |
+| `knox sources export <id> [OUTPUT]` | Render an ingested source as clean markdown | OUTPUT optional — defaults to `<vault>/exported/<stem>.md`; annotations/summary default inline |
 | `knox sources tag <file> <tag>` | Add a tag to an already-ingested source | `--config <toml>` |
 | `knox sources untag <file> <tag>` | Remove a tag from an ingested source | `--config <toml>` |
 
@@ -114,7 +143,7 @@ are copied to `wiki/attachments/` for relative links in generated content.
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox query <text>` | Natural language query against compiled wiki | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison` |
+| `knox query <text>` | Natural language query against compiled wiki (markdown-first: works from `wiki/*.md` alone; vector sidecar optional, keyword fallback without it) | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison` |
 | `knox provenance [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
 | `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
 | `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
@@ -240,7 +269,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 |------|---------|----------------|
 | `init_wiki` | Scaffold a new wiki project | `target: str` (directory path), `bare: bool = False`, `git: bool = True` |
 | `compile_wiki` | Compile sources into wiki | `sources_dir: str`, `output: str = "./output"`, `output_format: str = "markdown"`, `compiler: str = "graph"`, `urls: list[str] \| None`, `vlm_model: str = ""`, `image_mode: str = "file"` |
-| `query_wiki` | Ask a question against the wiki | `query: str`, `wiki_dir: str = "."`, `remember: bool = False`, `search_mode: str = "hybrid"`, `top_k: int = 10` |
+| `query_wiki` | Ask a question against the wiki (markdown-first — no `.knox/` required; vectors optional) | `query: str`, `wiki_dir: str = "."`, `remember: bool = False`, `search_mode: str = "hybrid"`, `top_k: int = 10` |
 | `wiki_status` | Show wiki statistics | `wiki_dir: str = "."` |
 | `wiki_capture` | Extract knowledge from conversation | `text: str`, `sources_dir: str`, `tags: list[str] \| None` |
 | `wiki_learn` | Store a fact verbatim | `text: str`, `sources_dir: str` |
@@ -413,6 +442,6 @@ knox config set compile.provenance true
 |---------|-------------|-----|
 | "No parser for X" | Unsupported file format | Check file extension. Supported: pdf, docx, pptx, html, md, epub, tex, doc, odt, rst, rtf, txt, png, jpg, csv, xlsx, adoc |
 | Compilation fails with LLM error | Model not available / wrong name | Set `compile.llm.default_model` to a model litellm supports. Check connectivity. |
-| query returns empty results | Wiki not compiled, or no matching content | Run `compile` first. Try `--search-mode hybrid`. Lower `search.cache.threshold`. |
+| query returns empty results | Wiki not compiled, or no matching content | Run `compile` first. Try `--search-mode hybrid`. Lower `search.cache.threshold`. Without a vector sidecar recall is keyword-only — check `compile.embedding.model` if paraphrase queries miss. |
 | "Sources directory not found" | Wrong working directory | Run from project root, or pass --wiki-dir |
 | Memory not working | memory disabled or no embedding model | Set `compile.memory_enabled=true` and `compile.embedding.model` |

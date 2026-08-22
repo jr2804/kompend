@@ -48,6 +48,9 @@ any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 | `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log |
 | `MEMORY_STORE_FILE` | `"memory.json"` | Memory JSON export |
 | `PROVENANCE_DIR` | `"provenance"` | Provenance trace directory |
+| `SUMMARIES_SUBDIR` | `"summaries"` | Per-source summary pages (`wiki/summaries/`) |
+| `EXPORTED_DIR_NAME` | `"exported"` | Full-source markdown exports (top-level, on demand) |
+| `QUALITY_FILE` | `"quality.md"` | Verification summary page (`wiki/quality.md`) |
 | `VERIFICATION_FILE` | `"verification.json"` | Verification results |
 | `PRIVATE_FILE` | `"private.json"` | Private page manifest |
 | `COMPILE_STATE_FILE` | `"compile_state.json"` | Tier state checkpoint |

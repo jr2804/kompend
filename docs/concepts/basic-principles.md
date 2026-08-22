@@ -247,6 +247,18 @@ while enabling hierarchical zoom for retrieval.
 
 See [`chunk-tree.md`](../architecture/chunk-tree.md) for details.
 
+### 9. Markdown-Only Vault
+
+The wiki is complete in its generated pages; `.knox/` is derived state.
+Everything an LLM needs is reachable by following markdown links from
+`wiki/index.md` — concepts, references, per-source summaries, quality.
+Query builds the wiki from the `wiki/*.md` files themselves, so a vault
+shared without `.knox/` (e.g. a git repo excluding config and caches)
+still answers questions; the vector sidecar only adds recall.
+
+See [`wiki-structure.md`](../guides/wiki-structure.md#markdown-only-invariant)
+for the layout and the portability guarantee.
+
 ## Further Reading
 
 | Document | Purpose |
