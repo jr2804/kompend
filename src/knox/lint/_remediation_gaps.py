@@ -19,7 +19,7 @@ from knox.core.templates import get_template_loader
 from knox.lint.base import LintReportResult, RemediationAction, RemediationStatus
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
-from knox.output.renderer import render_frontmatter
+from knox.output.markdown import MarkdownWriter
 
 logger = get_logger(__name__)
 
@@ -61,8 +61,10 @@ def remediate_coverage_gaps(
     existing_titles = {n.title.lower().strip() for n in real_nodes}
     if output_dir is not None and output_dir.is_dir():
         existing_ids |= {f.stem for f in output_dir.glob("*.md")}
+        existing_ids |= {f.stem for f in (output_dir / "concepts").glob("*.md")}
     node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
     actions: list[RemediationAction] = []
+    generated = 0
 
     token_index = _build_token_index(concept_lookup)
     for gap in gap_concepts:
@@ -117,7 +119,7 @@ def remediate_coverage_gaps(
             wiki.nodes.append(node)
         existing_ids.add(page_id)
         existing_titles.add(concept_name.lower().strip())
-        _write_concept_page(output_dir, page_id, concept_name, content)
+        generated += 1
 
         actions.append(
             RemediationAction(
@@ -127,6 +129,11 @@ def remediate_coverage_gaps(
                 details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
             )
         )
+
+    if generated and output_dir is not None:
+        # Route through the standard vault writer so new pages land in
+        # concepts/ with canonical OKF frontmatter and index.md picks them up.
+        MarkdownWriter(vault_mode=True).write(wiki, output_dir)
 
     return actions
 
@@ -165,15 +172,6 @@ def _build_concept_lookup(
         bucket["summaries"] = bucket_summaries
 
     return concept_lookup
-
-
-def _write_concept_page(output_dir: Path | None, page_id: str, title: str, content: str) -> None:
-    """Write a generated concept page as a ``.md`` file next to compiled output."""
-    if output_dir is None:
-        return
-    output_dir.mkdir(parents=True, exist_ok=True)
-    body = render_frontmatter({"title": title}) + content
-    (output_dir / f"{page_id}.md").write_text(body, encoding="utf-8")
 
 
 def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]) -> str | None:

@@ -78,3 +78,68 @@ def normalize_concept_key(name: str) -> str:
         elif last.endswith("s") and not last.endswith("ss"):
             words[-1] = last[:-1]
     return " ".join(words).strip()
+
+
+# ── Wikilink alias resolution ─────────────────────────────────────────
+
+WIKILINK_ALIAS_MIN_JACCARD = 0.5
+#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
+#: Above :data:`WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
+#: below 1.0 so a higher Jaccard can still override.
+WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
+
+def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
+    """Return the page id most likely intended by *target*.
+
+    Only triggered when *target* has no exact match in *alias_index*. Uses
+    token-overlap (Jaccard) against known titles to flag "the LLM meant
+    this page but used the wrong short alias" cases. Conservative by
+    design — returns ``None`` (not an alias) unless the match is clear.
+
+    Special case: short identifiers like ``"P.863"`` rarely overlap with
+    long titles on tokens alone. We also accept matches where the target
+    is a **contiguous substring** of the candidate title (case-insensitive)
+    with a length ≥4 chars — this catches ``P.863`` → ``Full-scale
+    database (P.863 evaluation)``, ``ITU-T P.863`` → ``ITU-T P.800.1``
+    prefix matches, etc., without false-positiving on trivial substrings.
+
+    Returns the matched ``node.id``, or ``None`` when no alias candidate
+    is strong enough.
+    """
+    target_norm = normalize_concept_key(target)
+    if not target_norm:
+        return None
+    # Compare against period-stripped forms so ``p.863`` (short alias) matches
+    # ``p 863`` (slug-normalized, period replaced by hyphen-then-space).
+    target_no_punct = target_norm.replace(".", "")
+    target_norm_tokens = {t for t in target_norm.split() if len(t) > 2}
+
+    best_id: str | None = None
+    best_score = WIKILINK_ALIAS_MIN_JACCARD
+
+    for key, page_id in alias_index.items():
+        if len(key) <= 2:
+            continue
+        key_tokens = set(key.split())
+        if not key_tokens:
+            continue
+        # Token Jaccard (catches MOS-LQO ↔ MOS-LQO Fullband).
+        if target_norm_tokens:
+            overlap = len(target_norm_tokens & key_tokens)
+            if overlap:
+                union = target_norm_tokens | key_tokens
+                score = overlap / len(union)
+                if score > best_score:
+                    best_score = score
+                    best_id = page_id
+        # Substring containment for short references like "P.863".
+        # Compare against the key with hyphens, periods, and spaces
+        # collapsed — so ``p.863`` (short alias) matches
+        # ``full-scale-database-p-863-evaluation`` (slug).
+        if len(target_no_punct) >= 4:
+            key_normalized = key.replace("-", "").replace(".", "").replace(" ", "")
+            if (target_no_punct in key_normalized) and best_score < WIKILINK_ALIAS_SUBSTRING_SCORE:
+                best_score = WIKILINK_ALIAS_SUBSTRING_SCORE
+                best_id = page_id
+
+    return best_id

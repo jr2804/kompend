@@ -23,7 +23,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
-| ``_remediation_gaps.py`` | Gap-specific remediation logic |
+| ``_remediation_gaps.py`` | Gap-specific remediation logic; generated pages route through ``MarkdownWriter`` (→ ``concepts/`` + index regen) |
 | ``history.py`` | ``LintHistoryStore`` — persistent lint result history |
 
 ## Rules

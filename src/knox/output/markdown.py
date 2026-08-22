@@ -44,13 +44,12 @@ import re
 from pathlib import Path
 from typing import Any, ClassVar, override
 
-from knox.compilation.concept_keys import normalize_concept_key
+from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
 from knox.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
-from knox.lint.structural import _nearest_alias
 from knox.output.models import Document, OkfSource
 from knox.output.pages.log import append_log_entry
 from knox.output.reference_links import format_bibliography_entry
@@ -367,10 +366,10 @@ def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
         # 1. Direct lookup (slug or long title)
         path = alias_index.get(target)
         # 2. Alias-aware nearest-match (short forms like P.863).
-        # _nearest_alias returns the value at the best-scoring key — which
+        # nearest_alias returns the value at the best-scoring key — which
         # here is the path itself, so we can use it directly.
         if path is None:
-            path = _nearest_alias(target, alias_index)
+            path = nearest_alias(target, alias_index)
         if path is not None:
             return f"[{alias}]({path})"
         # 3. Unknown — leave as Obsidian wikilink so the user sees it.

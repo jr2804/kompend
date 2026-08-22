@@ -971,7 +971,7 @@ class TestCoverageGapRemediation:
         assert len(applied) == 1
 
     def test_remediate_writes_md_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """Generated concept pages are written as .md into output_dir."""
+        """Generated concept pages land in concepts/ with OKF frontmatter."""
         monkeypatch.setattr(
             gaps_module,
             "load_all_extractions",
@@ -986,9 +986,30 @@ class TestCoverageGapRemediation:
             output_dir=output_dir,
             agent=_mock_remediate_llm(),
         )
-        md = output_dir / "active-noise-control.md"
+        md = output_dir / "concepts" / "active-noise-control.md"
         assert md.exists()
-        assert "title: Active Noise Control" in md.read_text(encoding="utf-8")
+        text = md.read_text(encoding="utf-8")
+        assert "title: Active Noise Control" in text
+        assert "type: Concept" in text
+
+    def test_remediate_updates_index(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """index.md links the generated concept page after remediation."""
+        monkeypatch.setattr(
+            gaps_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Active Noise Control", definition="Noise reduction technique")])},
+        )
+        output_dir = tmp_path / "wiki"
+        wiki = _make_wiki()
+        remediate(
+            wiki,
+            LintReport(results=[_gap_result("Active Noise Control")]),
+            base_dir=tmp_path,
+            output_dir=output_dir,
+            agent=_mock_remediate_llm(),
+        )
+        index = (output_dir / "index.md").read_text(encoding="utf-8")
+        assert "active-noise-control" in index
 
     def test_ghost_node_regenerated_not_skipped(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """A lint-remediation ghost node (no .md) is regenerated, not silently skipped."""
@@ -1012,7 +1033,7 @@ class TestCoverageGapRemediation:
         polqa_nodes = [n for n in wiki.nodes if n.id == "polqa"]
         assert len(polqa_nodes) == 1
         assert polqa_nodes[0].content == "fresh content"
-        assert (output_dir / "polqa.md").exists()
+        assert (output_dir / "concepts" / "polqa.md").exists()
 
 
 class TestCoverageGapRuleDedup:

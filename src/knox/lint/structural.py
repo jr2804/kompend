@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from knox.compilation.concept_keys import normalize_concept_key
+from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import KNOX_DIR, REFERENCES_FILE, VaultPaths
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
@@ -55,12 +55,6 @@ _IMAGE_EMBED_RE = re.compile(
 #: Minimum token-Jaccard score to flag a broken wikilink as an alias of an
 #: existing page (vs. a genuinely missing topic). Conservative default:
 #: 0.5 means at least half the target's tokens overlap with the candidate.
-_WIKILINK_ALIAS_MIN_JACCARD = 0.5
-#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
-#: Above :data:`_WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
-#: below 1.0 so a higher Jaccard can still override.
-_WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
-
 
 # ── Rule: knox-reference ───────────────────────────────────────────────
 #: Markdown link or embed target pointing into the ``.knox/`` state dir
@@ -98,7 +92,7 @@ class BrokenWikilinksRule(BaseLintRule):
                     # "alias of existing page" when the LLM likely meant a
                     # known page but used the wrong short form. This lets
                     # the gap-analysis layer recommend the right fix.
-                    alias_of = _nearest_alias(target_title, alias_index)
+                    alias_of = nearest_alias(target_title, alias_index)
                     details: dict[str, Any] = {"target": target_title}
                     if alias_of:
                         details["alias_of"] = alias_of
@@ -878,63 +872,6 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
         if title_before_paren and title_before_paren != n.title.lower():
             alias_index.setdefault(title_before_paren, n.id)
     return alias_index, slug_to_id
-
-
-def _nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
-    """Return the page id most likely intended by *target*.
-
-    Only triggered when *target* has no exact match in *alias_index*. Uses
-    token-overlap (Jaccard) against known titles to flag "the LLM meant
-    this page but used the wrong short alias" cases. Conservative by
-    design — returns ``None`` (not an alias) unless the match is clear.
-
-    Special case: short identifiers like ``"P.863"`` rarely overlap with
-    long titles on tokens alone. We also accept matches where the target
-    is a **contiguous substring** of the candidate title (case-insensitive)
-    with a length ≥4 chars — this catches ``P.863`` → ``Full-scale
-    database (P.863 evaluation)``, ``ITU-T P.863`` → ``ITU-T P.800.1``
-    prefix matches, etc., without false-positiving on trivial substrings.
-
-    Returns the matched ``node.id``, or ``None`` when no alias candidate
-    is strong enough.
-    """
-    target_norm = normalize_concept_key(target)
-    if not target_norm:
-        return None
-    # Compare against period-stripped forms so ``p.863`` (short alias) matches
-    # ``p 863`` (slug-normalized, period replaced by hyphen-then-space).
-    target_no_punct = target_norm.replace(".", "")
-    target_norm_tokens = {t for t in target_norm.split() if len(t) > 2}
-
-    best_id: str | None = None
-    best_score = _WIKILINK_ALIAS_MIN_JACCARD
-
-    for key, page_id in alias_index.items():
-        if len(key) <= 2:
-            continue
-        key_tokens = set(key.split())
-        if not key_tokens:
-            continue
-        # Token Jaccard (catches MOS-LQO ↔ MOS-LQO Fullband).
-        if target_norm_tokens:
-            overlap = len(target_norm_tokens & key_tokens)
-            if overlap:
-                union = target_norm_tokens | key_tokens
-                score = overlap / len(union)
-                if score > best_score:
-                    best_score = score
-                    best_id = page_id
-        # Substring containment for short references like "P.863".
-        # Compare against the key with hyphens, periods, and spaces
-        # collapsed — so ``p.863`` (short alias) matches
-        # ``full-scale-database-p-863-evaluation`` (slug).
-        if len(target_no_punct) >= 4:
-            key_normalized = key.replace("-", "").replace(".", "").replace(" ", "")
-            if (target_no_punct in key_normalized) and best_score < _WIKILINK_ALIAS_SUBSTRING_SCORE:
-                best_score = _WIKILINK_ALIAS_SUBSTRING_SCORE
-                best_id = page_id
-
-    return best_id
 
 
 def _batched(items: list[str], size: int) -> list[list[str]]:
