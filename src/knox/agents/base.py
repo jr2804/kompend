@@ -637,6 +637,31 @@ def _set_response_text(response: ModelResponse, data: str) -> None:
     response.parts = [*response.parts, TextPart(content=data)]
 
 
+def _check_field(
+    parsed: dict,
+    field_name: str,
+    field_info: Any,
+    issues: list[str],
+) -> None:
+    """Compare one parsed output field against its schema declaration."""
+    if field_name not in parsed:
+        issues.append(f"- missing field '{field_name}'")
+        return
+    value = parsed[field_name]
+    # Check if the value is a list with type errors
+    if not hasattr(field_info, "annotation"):
+        return
+    inner_type = _get_list_inner_type(field_info.annotation)
+    if not (inner_type and isinstance(value, list)):
+        return
+    expected = _format_schema_fields(inner_type)
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            issues.append(
+                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})"
+            )
+
+
 def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None:
     """Build a delta-retry message describing what needs fixing.
 
@@ -654,20 +679,7 @@ def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None
     if isinstance(parsed, dict):
         # Check each field against the schema
         for field_name, field_info in schema.model_fields.items():
-            if field_name not in parsed:
-                issues.append(f"- missing field '{field_name}'")
-                continue
-            value = parsed[field_name]
-            # Check if the value is a list with type errors
-            if hasattr(field_info, "annotation"):
-                inner_type = _get_list_inner_type(field_info.annotation)
-                if inner_type and isinstance(value, list):
-                    for i, item in enumerate(value):
-                        if not isinstance(item, dict):
-                            expected = _format_schema_fields(inner_type)
-                            issues.append(
-                                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})"
-                            )
+            _check_field(parsed, field_name, field_info, issues)
 
     if not issues:
         return None
