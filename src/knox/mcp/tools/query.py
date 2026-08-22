@@ -6,11 +6,11 @@ from typing import Any
 from knox.cli.args.query import SearchMode
 from knox.cli.cmds.pipeline.status import collect_stats
 from knox.core.config import RlmConfig, resolve_config
-from knox.core.models import load_cached_wiki
+from knox.core.models import load_wiki_from_files
 from knox.core.paths import VECTORS_DIR, vault_paths
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
-from knox.search.retriever import HybridRetriever
+from knox.search.retriever import HybridRetriever, KeywordRetriever
 
 logger = get_logger(__name__)
 
@@ -22,17 +22,23 @@ def query_wiki(
     raw: bool = False,
     search_mode: SearchMode = SearchMode.HYBRID,
 ) -> dict[str, Any]:
-    """Ask a natural language question against the compiled wiki."""
+    """Ask a natural language question against the compiled wiki.
+
+    Markdown-first: the wiki is built from the generated ``.md`` files
+    (``load_wiki_from_files``) — ``.knox/`` state is never required. The
+    zvec vector sidecar (``.knox/vectors/``), when present, upgrades the
+    retriever from keyword to semantic; without it ``KeywordRetriever``
+    searches the same pages.
+    """
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
     state_dir = vp.knox_dir
-    base_dir = vp.base_dir
 
-    wiki = load_cached_wiki(base_dir)
+    wiki = load_wiki_from_files(output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     vector_store: ZvecWikiStore | None = None
     if state_dir and (state_dir / VECTORS_DIR).exists():
@@ -43,10 +49,7 @@ def query_wiki(
             vector_store = None
 
     try:
-        retriever = HybridRetriever(
-            wiki,
-            vector_store=vector_store,
-        )
+        retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 

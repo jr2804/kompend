@@ -15,8 +15,8 @@ from knox.cli.cmds.quality.doctor import run_doctor
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.models import CompiledWiki, MetadataField, load_cached_wiki
-from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, REVIEW_DIR, vault_paths
+from knox.core.models import CompiledWiki, MetadataField, load_wiki_from_files
+from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, REVIEW_DIR, VaultPaths, vault_paths
 from knox.core.reporting.log import build_log_report
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
@@ -62,9 +62,9 @@ def lint_run(
     state_dir = vp.knox_dir
     sources_dir_str = str(sources_dir) if sources_dir.exists() else None
 
-    wiki = load_cached_wiki(vp.base_dir)
+    wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     default_model = cfg.knox.compile.llm.default_model
     lint_agent = (
@@ -280,9 +280,9 @@ def lint_remediate(
     report_dict = entries[-1].get("report", {})
     report = _to_lint_report(report_dict)
 
-    wiki = load_cached_wiki(base_dir)
+    wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     default_model = cfg.knox.compile.llm.default_model
     agent = RemediationAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
@@ -481,9 +481,9 @@ def provenance(
     sources_dir = vp.sources_dir
     base_dir = vp.base_dir
 
-    wiki = load_cached_wiki(base_dir)
+    wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
-        return {"status": "error", "message": "No compiled wiki found. Run 'wiki_compile' first."}
+        return {"status": "error", "message": "No wiki pages found. Run 'wiki_compile' first."}
 
     slugs = page_slugs or []
 

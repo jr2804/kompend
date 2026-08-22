@@ -64,6 +64,12 @@ INDEX_FILE: Final[str] = "index.md"
 
 # ── Review queue ────────────────────────────────────────────────────────
 REVIEW_DIR: Final[str] = "review"
+# ── Per-source summary pages (wiki/summaries/) ─────────────────────────
+SUMMARIES_SUBDIR: Final[str] = "summaries"
+# ── Full-source exports (exported/) ──────────────────────────────
+EXPORTED_DIR_NAME: Final[str] = "exported"
+# ── Verification summary page (wiki/quality.md) ─────────────────────────────
+QUALITY_FILE: Final[str] = "quality.md"
 
 # ── Vector store ────────────────────────────────────────────────────────
 VECTORS_DIR: Final[str] = "vectors"
@@ -164,7 +170,9 @@ class VaultPaths:
     │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── attachments/            ← attachments_dir (per-source)
+        ├── exported/               ← full-source markdown exports (on demand)
         ├── wiki/                   ← output_dir
+        │   ├── summaries/          ← per-source summary pages
         │   └── index.md            ← index_file
     """
 

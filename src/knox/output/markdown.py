@@ -44,11 +44,9 @@ import re
 from pathlib import Path
 from typing import Any, ClassVar, override
 
-import yaml
-
 from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
-from knox.core.paths import INDEX_FILE, LOG_FILE
+from knox.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
@@ -58,6 +56,7 @@ from knox.output.pages.log import append_log_entry
 from knox.output.reference_links import format_bibliography_entry
 from knox.output.renderer import DocumentRenderer
 from knox.output.vault import OKF_VERSION, VaultWriter
+from knox.output.vault import okf_frontmatter_yaml as _okf_frontmatter
 
 # Regex to find [[wikilinks]] or [[wikilinks|alias]] in body text.
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
@@ -73,13 +72,8 @@ _CITATION_RE = re.compile(r"\[sources/[^\]\n]+\]")
 _FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]]+)\]")
 
 
-# Custom YAML Dumper that never emits anchors/aliases (avoids &id001/*id001
-# for repeated list values, which is valid YAML but confuses some consumers).
-class _NoAliasDumper(yaml.Dumper):
-    """YAML Dumper that disables anchor/alias emission."""
-
-    def ignore_aliases(self, data: object) -> bool:  # noqa: PLR6301
-        return True
+# _NoAliasDumper + okf_frontmatter_yaml live in vault.py (shared with the
+# per-source summary writer); markdown imports them below.
 
 
 class MarkdownWriter(VaultWriter):
@@ -102,11 +96,15 @@ class MarkdownWriter(VaultWriter):
         max_related_links: int = 15,
         references_file: Path | None = None,
         assets_file: Path | None = None,
+        base_dir: Path | None = None,
+        output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME,
     ) -> None:
         super().__init__(
             max_related_links=max_related_links,
             references_file=references_file,
             assets_file=assets_file,
+            base_dir=base_dir,
+            output_dir_name=output_dir_name,
             flavor=flavor,
         )
         self.frontmatter_defaults = frontmatter_defaults or {}
@@ -143,6 +141,7 @@ class MarkdownWriter(VaultWriter):
         compiled_at = iso_local()
         ref_store = self._load_ref_store()
         verified = wiki.metadata.get("verified")
+        verification = self._load_verification()
 
         for node in wiki.nodes:
             sources = _provenance_sources(node, ref_store)
@@ -153,10 +152,22 @@ class MarkdownWriter(VaultWriter):
                 sources=sources or None,
                 verified=verified,
             )
+            # Per-page verification outcome (machine-readable, no body noise).
+            if verification is not None:
+                quality = VaultWriter.node_quality(verification, node.id)
+                if quality:
+                    frontmatter["verified_claims"] = f"{quality['supported']}/{quality['claims']}"
+                    frontmatter["quality_score"] = quality["quality_score"]
 
             body = node.content or ""
             images = node.metadata.get("images", [])
             if images:
+                folder = self._folder_for_kind(node.node_type)
+                images = self.portablize_images(
+                    images,
+                    node.metadata.get(MetadataField.PROVENANCE) or [],
+                    folder,
+                )
                 body = self._embed_images(body, images)
 
             docs.append(
@@ -233,8 +244,8 @@ class MarkdownWriter(VaultWriter):
     def _write_references_page(self, store: ReferenceStore, output_dir: Path) -> None:
         """Write ``references.md`` as a ``type: Reference`` concept (§4.1).
 
-        Includes all references across all sources, sorted alphabetically by
-        short label. Each entry carries a numbered prefix for legacy readers.
+        Bibliography anchored by content-hash id (stable); no sequence numbers.
+        Sorted alphabetically by short label.
         """
         all_refs = store.all_references()
         if not all_refs:
@@ -252,8 +263,8 @@ class MarkdownWriter(VaultWriter):
             "# References",
             "",
         ]
-        for i, ref in enumerate(all_refs, 1):
-            lines.append(format_bibliography_entry(ref, number=i))
+        for ref in all_refs:
+            lines.append(format_bibliography_entry(ref))
 
         (output_dir / "references.md").write_text("\n".join(lines), encoding="utf-8")
 
@@ -288,6 +299,27 @@ class MarkdownWriter(VaultWriter):
                 lines.append(f"{entry} - {description}" if description else entry)
             lines.append("")
 
+        # Generated surfaces beyond concept pages: summaries + references +
+        # quality. Complete-catalog invariant: everything the wiki generates
+        # is reachable from this index.
+        summaries = sorted((output_dir / SUMMARIES_SUBDIR).glob("*.md")) if (output_dir / SUMMARIES_SUBDIR).is_dir() else []
+        if summaries:
+            lines.append("## Sources\n")
+            lines.extend(f"- [{p.stem}](summaries/{p.name})" for p in summaries)
+            lines.append("")
+        surfaces: list[tuple[str, str]] = [("references.md", "Bibliography — all extracted citations, anchored by id")]
+        if (output_dir / QUALITY_FILE).exists():
+            surfaces.append((QUALITY_FILE, "Claim verification summary (WiCER pass)"))
+        if (output_dir / "overview.md").exists():
+            surfaces.append(("overview.md", "Thematic overview of the corpus"))
+        if (output_dir / LOG_FILE).exists():
+            surfaces.append((LOG_FILE, "Append-only activity journal"))
+        if surfaces:
+            lines.append("## References & surfaces\n")
+            for name, desc in surfaces:
+                lines.append(f"- [{name}]({name}) — {desc}")
+            lines.append("")
+
         (output_dir / INDEX_FILE).write_text("\n".join(lines), encoding="utf-8")
 
     @override
@@ -309,18 +341,6 @@ def _relativize(bundle_path: str, folder: str) -> str:
     """Rebase a bundle-relative path onto the current page's folder."""
     rel = os.path.relpath(bundle_path, folder)
     return rel.replace("\\", "/")
-
-
-def _okf_frontmatter(frontmatter: dict[str, Any]) -> str:
-    """Render frontmatter as YAML without anchors/aliases."""
-    yaml_str = yaml.dump(
-        frontmatter,
-        Dumper=_NoAliasDumper,
-        default_flow_style=False,
-        allow_unicode=True,
-        sort_keys=True,
-    ).strip()
-    return f"---\n{yaml_str}\n---\n\n"
 
 
 def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:

@@ -10,6 +10,7 @@ from knox.cli.app import register_all_commands
 from knox.mcp.server import compile_wiki, parse_document
 from knox.mcp.server import server as mcp_server
 from knox.mcp.tools.config import config_check
+from knox.mcp.tools.query import query_wiki
 
 # ---------------------------------------------------------------------------
 # CLI ↔ MCP parity
@@ -145,3 +146,26 @@ def _normalize_cli(name: str) -> str:
 
 def _normalize_mcp(name: str) -> str:
     return name[len("wiki_") :] if name.startswith("wiki_") else name
+
+
+def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
+    """wiki_query builds the wiki from markdown files alone — no .knox/ needed."""
+    vault = tmp_path / "vault"
+    (vault / "wiki" / "concepts").mkdir(parents=True)
+    (vault / "wiki" / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
+    (vault / "wiki" / "concepts" / "transformers.md").write_text(
+        "---\ntype: Concept\ntitle: Transformers\n---\n\nTransformers use self-attention mechanisms for language modeling.\n",
+        encoding="utf-8",
+    )
+
+    result = query_wiki("transformers attention", wiki_dir=str(vault))
+
+    assert result["status"] == "ok"
+    assert result["results"], "keyword search must return hits without .knox/ state"
+    assert any("transformers" in str(r.get("article_id", "")).lower() for r in result["results"])
+
+
+def test_query_wiki_errors_when_no_pages(tmp_path: Path) -> None:
+
+    result = query_wiki("anything", wiki_dir=str(tmp_path / "empty"))
+    assert result["status"] == "error"

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from knox.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
+from knox.core.pipeline.references import ReferenceStore
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
@@ -429,6 +430,264 @@ class TestTypstWriter:
         writer = TypstWriter()
         result_file = writer.write(sample_wiki, tmp_path / "nested" / "path")
         assert result_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# Copy-on-embed: wiki pages never reference .knox/ (WP3)
+# ---------------------------------------------------------------------------
+class TestPortableImages:
+    def test_knox_image_copied_to_attachments(self, tmp_path: Path) -> None:
+        base = tmp_path / "vault"
+        img_dir = base / ".knox" / "cache" / "images"
+        img_dir.mkdir(parents=True)
+        img_file = img_dir / "report_img_1.png"
+        img_file.write_bytes(b"png-bytes")
+
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="concept-1",
+                    title="Core Concepts",
+                    content="Understanding the fundamental ideas.",
+                    node_type="concept",
+                    source_chunks=["chunk-3"],
+                    metadata={
+                        "provenance": ["sources/report.pdf"],
+                        "images": [{"path": ".knox/cache/images/report_img_1.png", "caption": "A figure", "element_type": "image"}],
+                    },
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+
+        page = (base / "wiki" / "concepts" / "concept-1.md").read_text(encoding="utf-8")
+        copied = base / "attachments" / "report" / "report_img_1.png"
+        assert copied.read_bytes() == b"png-bytes"
+        assert "](../../attachments/report/report_img_1.png)" in page
+        assert ".knox" not in page
+
+    def test_external_image_and_data_uri_pass_through(self, tmp_path: Path) -> None:
+        base = tmp_path / "vault"
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="concept-1",
+                    title="Core Concepts",
+                    content="Body.",
+                    node_type="concept",
+                    metadata={
+                        "provenance": ["sources/report.pdf"],
+                        "images": [
+                            {"path": "attachments/report/keep.png", "caption": "", "element_type": "image"},
+                            {"path": "data:image/png;base64,AAAA", "caption": "inline", "element_type": "image"},
+                        ],
+                    },
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer.write(wiki, base / "wiki")
+        page = (base / "wiki" / "concepts" / "concept-1.md").read_text(encoding="utf-8")
+        assert "](attachments/report/keep.png)" in page or "](../../attachments/report/keep.png)" in page
+        assert "data:image/png;base64,AAAA" in page
+
+    def test_no_base_dir_no_rewrite(self, tmp_path: Path) -> None:
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="concept-1",
+                    title="Core Concepts",
+                    content="Body.",
+                    node_type="concept",
+                    metadata={
+                        "provenance": ["sources/report.pdf"],
+                        "images": [{"path": ".knox/cache/images/x.png", "caption": "", "element_type": "image"}],
+                    },
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True)
+        docs = writer._wiki_to_documents(wiki)
+        assert ".knox/cache/images/x.png" in docs[0].body
+
+
+# ---------------------------------------------------------------------------
+# WP2: per-source summary pages (wiki/summaries/)
+# ---------------------------------------------------------------------------
+class TestSourceSummaries:
+    def test_summary_page_written(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="concept-1",
+                    title="Core Concepts",
+                    content="Body.",
+                    node_type="concept",
+                    metadata={"provenance": ["sources/report.pdf"]},
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+
+        summary = base / "wiki" / "summaries" / "report.md"
+        assert summary.exists()
+        text = summary.read_text(encoding="utf-8")
+        assert "type: Source" in text
+        assert "sources/report.pdf" in text
+        assert "Core Concepts" in text  # backlink to feeding concept
+
+    def test_stale_summaries_pruned(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        summaries = base / "wiki" / "summaries"
+        summaries.mkdir(parents=True)
+        (summaries / "gone.md").write_text("stale", encoding="utf-8")
+
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+        assert not (summaries / "gone.md").exists()
+
+    def test_no_base_dir_no_summaries(self, tmp_path: Path) -> None:
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        writer = MarkdownWriter(vault_mode=True)
+        out = tmp_path / "wiki"
+        writer.write(wiki, out)
+        assert not (out / "summaries").exists()
+
+    def test_index_links_summaries_and_references(self, tmp_path: Path) -> None:
+        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file.parent.mkdir(parents=True)
+        store = ReferenceStore(ref_file)
+        store.save()
+        base = self._vault(tmp_path)
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="concept-1",
+                    title="Core Concepts",
+                    content="Body.",
+                    node_type="concept",
+                    metadata={"provenance": ["sources/report.pdf"]},
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(
+            vault_mode=True,
+            base_dir=base,
+            references_file=ref_file,
+        )
+        writer.write(wiki, base / "wiki")
+
+        index = (base / "wiki" / "index.md").read_text(encoding="utf-8")
+        assert "## Sources" in index
+        assert "(summaries/report.md)" in index
+
+    def test_summary_links_existing_export(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        (base / "exported").mkdir()
+        (base / "exported" / "report.md").write_text("# full export", encoding="utf-8")
+
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+
+        text = (base / "wiki" / "summaries" / "report.md").read_text(encoding="utf-8")
+        assert "## Full export" in text
+        assert "(../../exported/report.md)" in text
+
+    def _vault(self, tmp_path: Path) -> Path:
+        base = tmp_path / "vault"
+        (base / "sources").mkdir(parents=True)
+        (base / "sources" / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+        return base
+
+
+# ---------------------------------------------------------------------------
+# WP5: quality page (wiki/quality.md) + per-page verification frontmatter
+# ---------------------------------------------------------------------------
+class TestQualityPage:
+    def test_quality_page_written(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        self._verification(base)
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="concept-1", title="Alpha", content="A.", node_type="concept"),
+                WikiNode(id="concept-2", title="Beta", content="B.", node_type="concept"),
+            ],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+
+        quality = base / "wiki" / "quality.md"
+        assert quality.exists()
+        text = quality.read_text(encoding="utf-8")
+        assert "type: Quality" in text
+        assert "Claims checked: **3**" in text
+        assert "| Alpha | 2 | 1 |" in text
+        # Index links it.
+        index = (base / "wiki" / "index.md").read_text(encoding="utf-8")
+        assert "(quality.md)" in index
+
+    def test_no_verification_no_page(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+        assert not (base / "wiki" / "quality.md").exists()
+
+    def test_frontmatter_quality_keys(self, tmp_path: Path) -> None:
+        base = self._vault(tmp_path)
+        self._verification(base)
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="concept-1", title="Alpha", content="A.", node_type="concept")],
+            edges=[],
+            toc=[],
+        )
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        docs = writer._wiki_to_documents(wiki)
+        fm = docs[0].frontmatter
+        assert fm["verified_claims"] == "1/2"
+        assert fm["quality_score"] == 0.55
+
+    def _vault(self, tmp_path: Path) -> Path:
+        base = tmp_path / "vault"
+        (base / "sources").mkdir(parents=True)
+        return base
+
+    def _verification(self, base: Path) -> None:
+        vf = base / ".knox" / "verification.json"
+        vf.parent.mkdir(exist_ok=True)
+        vf.write_text(
+            json.dumps(
+                {
+                    "total": 3,
+                    "verified": 2,
+                    "unsupported": 1,
+                    "average_confidence": 0.7,
+                    "claims": [
+                        {"node_id": "concept-1", "verdict": "supported", "confidence": 0.9},
+                        {"node_id": "concept-1", "verdict": "unsupported", "confidence": 0.2},
+                        {"node_id": "concept-2", "verdict": "supported", "confidence": 1.0},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 # ---------------------------------------------------------------------------

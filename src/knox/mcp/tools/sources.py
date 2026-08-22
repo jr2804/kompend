@@ -8,7 +8,7 @@ from knox.cli._shared import build_cli_overrides
 from knox.core.config import resolve_config
 from knox.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from knox.core.models import MetadataField
-from knox.core.paths import vault_paths
+from knox.core.paths import EXPORTED_DIR_NAME, vault_paths
 from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.logging import get_logger
@@ -91,9 +91,20 @@ def sources_export(
     summary: bool | None = None,
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    """Render an ingested source as clean markdown."""
+    """Render an ingested source as clean markdown.
+
+    OUTPUT is optional — omit it to write to the vault's ``exported/``
+    directory (reference material, outside wiki/); pass a path to export
+    to any arbitrary file.
+    """
     vp = vault_paths(wiki_dir)
-    output_file = Path(output)
+    if output:
+        output_file = Path(output)
+    else:
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        stem = Path(source_id).stem or "source"
+        output_file = exported_dir / f"{stem}.md"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
     if output_file.suffix.lower() != ".md":
         return {"status": "error", "message": f"Output file must end in .md, got '{output_file.suffix or '<none>'}'"}
 

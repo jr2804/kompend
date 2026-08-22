@@ -7,7 +7,7 @@ from pathlib import Path
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
-from knox.core.paths import INDEX_FILE
+from knox.core.paths import INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
 from knox.core.utils.time import display_local
 from knox.output.vault import VaultWriter
 
@@ -86,15 +86,33 @@ def generate_index(
         desc = VaultWriter.okf_description(node)
         entry = f"{i}. [{node.title}]({link})"
         lines.append(f"{entry} - {desc}" if desc else entry)
+    lines.append("")
+
+    # Generated surfaces — complete-catalog invariant: everything the wiki
+    # generates is reachable from this index.
+    surfaces: list[tuple[str, str]] = []
+    if output_dir is not None:
+        if (output_dir / SUMMARIES_SUBDIR).is_dir() and any((output_dir / SUMMARIES_SUBDIR).glob("*.md")):
+            surfaces.append((f"{prefix}/{SUMMARIES_SUBDIR}/", "Per-source overview pages (assets, citations, backlinks)"))
+        if (output_dir / "references.md").exists():
+            surfaces.append((f"{prefix}/references.md", "Bibliography — all extracted citations, anchored by id"))
+        if (output_dir / QUALITY_FILE).exists():
+            surfaces.append((f"{prefix}/{QUALITY_FILE}", "Claim verification summary (WiCER pass)"))
+        if (output_dir / "overview.md").exists():
+            surfaces.append((f"{prefix}/overview.md", "Thematic overview of the corpus"))
+        if (output_dir / LOG_FILE).exists():
+            surfaces.append((f"{prefix}/{LOG_FILE}", "Append-only activity journal"))
+    if surfaces:
+        lines.append("## Wiki surfaces\n")
+        for target, desc in surfaces:
+            name = target.rsplit("/", 1)[-1] or target
+            lines.append(f"- [{name}]({target}) — {desc}")
 
     return "\n".join(lines)
 
 
 def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:
     """Portable path prefix from the index location to the bundle pages."""
-    if output_dir is not None and base_dir is not None:
-        try:
-            return output_dir.relative_to(base_dir).as_posix()
-        except ValueError:
-            pass
+    if output_dir is not None and base_dir is not None and output_dir.is_relative_to(base_dir):
+        return output_dir.relative_to(base_dir).as_posix()
     return output_dir.name if output_dir is not None else "wiki"

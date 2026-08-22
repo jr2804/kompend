@@ -18,7 +18,7 @@ from knox.cli._post_compile import write_wiki_cache
 from knox.cli._shared import build_cli_overrides
 from knox.cli._sources import resolve_files
 from knox.core.config import resolve_config
-from knox.core.models import MetadataField, WikiField, load_cached_wiki
+from knox.core.models import MetadataField, WikiField, load_wiki_from_files
 from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.ingest import extract_text_from_cached, ingest_documents, parse_cache_glob
 from knox.core.templates import get_template_loader
@@ -132,9 +132,9 @@ def wiki_index(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file)
     output_dir = vp.output_dir
 
-    wiki = load_cached_wiki(vp.base_dir)
+    wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No compiled wiki found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     resolved_model = embed_model or cfg.knox.compile.embedding.model
     if not resolved_model:

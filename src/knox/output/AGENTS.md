@@ -20,6 +20,7 @@ builds the wiki index page and serves wiki page previews.
 | ``base.py`` | ``BaseOutputWriter`` ABC with plugin registry (``register`` / ``get``) |
 | ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering via rumdl; ``format_output`` — post-write ``rumdl fmt`` pass over generated output |
 | ``markdown.py`` | ``MarkdownWriter`` — the single markdown writer (OKF v0.2-compliant bundle, portable relative links, §5.1 footnote attribution) |
+| ``vault.py`` | ``VaultWriter`` — shared vault algorithm: page routing, stale-clearing, citation rewriting, references/index/log orchestration, per-source summaries (``wiki/summaries/``), copy-on-embed image portability |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
 | ``typst.py`` | ``TypstWriter`` — Typst output |
 | ``wiki_index.py`` | Wiki index page construction |

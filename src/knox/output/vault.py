@@ -21,15 +21,36 @@ Subclasses fill in the rendering hooks that differ by format:
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
+import yaml
+
 from knox import __version__ as _KNOX_VERSION
 from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
-from knox.core.paths import INDEX_FILE, LOG_FILE
+from knox.core.paths import (
+    ATTACHMENTS_DIR_NAME,
+    DEFAULT_OUTPUT_DIR_NAME,
+    DEFAULT_SOURCES_DIR_NAME,
+    EXPORTED_DIR_NAME,
+    INDEX_FILE,
+    KNOX_DIR,
+    LOG_FILE,
+    QUALITY_FILE,
+    SUMMARIES_SUBDIR,
+    VaultPaths,
+    attachment_slug,
+    is_protected_source,
+)
+from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
+from knox.core.utils.time import iso_local
+from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document, OkfSource, TrustEvent
 from knox.output.reference_links import rewrite_source_references
@@ -57,6 +78,15 @@ DEFAULT_TYPE = "Concept"
 # Regex to find ``[[wikilinks]]`` or ``[[wikilinks|alias]]`` in body text.
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 
+logger = get_logger(__name__)
+
+
+class _NoAliasDumper(yaml.Dumper):
+    """YAML Dumper that disables anchor/alias emission."""
+
+    def ignore_aliases(self, data: object) -> bool:  # noqa: PLR6301
+        return True
+
 
 class VaultWriter(BaseOutputWriter):
     """Base class for writers that emit a vault of ``.md`` files.
@@ -82,17 +112,73 @@ class VaultWriter(BaseOutputWriter):
         max_related_links: int = 15,
         references_file: Path | None = None,
         assets_file: Path | None = None,
+        base_dir: Path | None = None,
+        output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.max_related_links = max_related_links
         self._references_file = references_file
         self._assets_file = assets_file
+        self._base_dir = base_dir
+        self._output_dir_name = output_dir_name
 
     def write(self, wiki: CompiledWiki, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         docs = self._wiki_to_documents(wiki)
         return self._write_vault(docs, wiki, output_dir)
+
+    def portablize_images(
+        self,
+        images: list[ImageRef],
+        provenance: list[str],
+        folder: str,
+    ) -> list[ImageRef]:
+        """Copy ``.knox/``-internal images into ``attachments/`` and rewrite paths.
+
+        Markdown-only invariant: wiki pages must never reference ``.knox/``
+        (the cache is derived state and may be absent). Any embedded image
+        living under ``.knox/`` is copied to
+        ``attachments/<source-slug>/<filename>`` (existing per-source layout)
+        and the reference rewritten to a link relative to the page's
+        *folder*. Images outside ``.knox/`` and data URIs pass through
+        unchanged. Requires ``base_dir``; without it nothing is rewritten.
+        """
+        if self._base_dir is None or not images:
+            return images
+        # Provenance entries may be bare stems ("report") or source-relative
+        # paths ("sources/report.pdf"); the attachment flow slugs the source
+        # name without the sources/ prefix, so strip it first.
+        prov = provenance[0] if provenance else ""
+        prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+        if prov.startswith(prefix):
+            prov = prov[len(prefix) :]
+        slug = attachment_slug(prov) if prov else ""
+        if not slug:
+            return images
+        out: list[ImageRef] = []
+        for img in images:
+            raw = img.get("path", "")
+            rel = self._knox_relative(raw)
+            if rel is None:
+                out.append(img)
+                continue
+            src_file = self._base_dir / rel
+            if not src_file.is_file():
+                out.append(img)
+                continue
+            dest = self._base_dir / ATTACHMENTS_DIR_NAME / slug / src_file.name
+            if not dest.exists() or dest.read_bytes() != src_file.read_bytes():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dest)
+            link = os.path.relpath(
+                dest.relative_to(self._base_dir),
+                f"{self._output_dir_name}/{folder}" if folder else self._output_dir_name,
+            ).replace("\\", "/")
+            new_img = dict(img)
+            new_img["path"] = link
+            out.append(new_img)
+        return out
 
     # ── Canonical OKF frontmatter ────────────────────────────────────────
     # This is the single, unique frontmatter schema every vault writer
@@ -200,6 +286,23 @@ class VaultWriter(BaseOutputWriter):
 
         return frontmatter
 
+    @staticmethod
+    def node_quality(verification: dict[str, Any], node_id: str) -> dict[str, Any]:
+        """Aggregate verification claims for *node_id* into a stats dict.
+
+        Returns ``{}`` when no claim was verified for the node.
+        """
+        claims = [c for c in verification.get("claims", []) if isinstance(c, dict) and c.get("node_id") == node_id]
+        if not claims:
+            return {}
+        supported = sum(1 for c in claims if c.get("verdict") == "supported")
+        confidences = [float(c.get("confidence", 0.0)) for c in claims]
+        return {
+            "claims": len(claims),
+            "supported": supported,
+            "quality_score": round(sum(confidences) / len(confidences), 2),
+        }
+
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
         """Write each document as a separate ``.md`` file, plus index/log pages."""
         # Clear stale compile output so the on-disk vault exactly reflects the
@@ -258,10 +361,180 @@ class VaultWriter(BaseOutputWriter):
         # Generate references page if store has entries.
         if ref_store is not None and ref_store.total_count() > 0:
             self._write_references_page(ref_store, output_dir)
+        # Per-source summary pages (markdown-only invariant: per-source asset
+        # inventory + citation mapping live in the wiki, not only in .knox/).
+        self._write_source_summaries(wiki, output_dir)
+        # Verification summary (WiCER) — per-page claim table from
+        # .knox/verification.json; stays internal when no pass ran.
+        self._write_quality_page(wiki, output_dir)
 
         self._write_index(docs, output_dir, wiki)
         self._write_log(output_dir, wiki)
         return output_dir / INDEX_FILE
+
+    def _write_source_summaries(self, wiki: CompiledWiki, output_dir: Path) -> None:
+        """Write ``summaries/<slug>.md`` — one page per ingested source.
+
+        Backlinks to concepts the source feeds, asset inventory (ids +
+        one-line summaries from ``assets.json``), citations extracted from
+        this source. Cache-only reads; no LLM calls. Skipped without
+        ``base_dir`` (non-vault writers).
+        """
+        if self._base_dir is None:
+            return
+        vp = VaultPaths(self._base_dir)
+        sources_dir = vp.sources_dir
+        if not sources_dir.is_dir():
+            return
+        source_keys = sorted(
+            f"{DEFAULT_SOURCES_DIR_NAME}/{p.relative_to(sources_dir).as_posix()}"
+            for p in sources_dir.rglob("*")
+            if p.is_file() and not is_protected_source(p, sources_dir)
+        )
+        if not source_keys:
+            return
+
+        ref_store: ReferenceStore | None = None
+        if self._references_file and self._references_file.exists():
+            ref_store = ReferenceStore(self._references_file)
+        asset_store = AssetStore(vp.assets_file) if vp.assets_file.exists() else None
+
+        # Backlink index: stem -> concept titles fed by this source.
+        feeds: dict[str, list[str]] = {}
+        for node in wiki.nodes:
+            for stem in node.metadata.get(MetadataField.PROVENANCE) or []:
+                feeds.setdefault(Path(str(stem)).stem, []).append(node.title or node.id)
+
+        summaries_dir = output_dir / SUMMARIES_SUBDIR
+        summaries_dir.mkdir(parents=True, exist_ok=True)
+        existing = {p.stem for p in summaries_dir.glob("*.md")}
+        sources_prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+        for key in source_keys:
+            # Slug from the source name without the sources/ prefix —
+            # consistent with the attachments flow ("report", not "sources_report").
+            name = key[len(sources_prefix) :] if key.startswith(sources_prefix) else key
+            slug = attachment_slug(name)
+            stem = Path(key).stem
+            title = f"Source: {stem}"
+            lines = [
+                okf_frontmatter_yaml(
+                    {
+                        "type": "Source",
+                        "title": title,
+                        "description": f"Per-source overview of {key}",
+                        "generated": {"by": _GENERATED_BY, "at": iso_local()},
+                        "status": "stable",
+                        "kind": "source",
+                        "source_files": [key],
+                    }
+                ).rstrip(),
+                "",
+                f"# {title}",
+                "",
+                f"**File:** `{key}`",
+                "",
+            ]
+
+            # Backlinks: concepts this source feeds.
+            fed = sorted(set(feeds.get(stem, [])))
+            if fed:
+                lines.append("## Feeds concepts\n")
+                lines.extend(f"- {t}" for t in fed)
+                lines.append("")
+
+            # Asset inventory (ids + one-line summaries from assets.json).
+            if asset_store is not None:
+                items = [rec for rec in asset_store if Path(rec.source).stem == stem]
+                if items:
+                    lines.append("## Assets\n")
+                    lines.extend(f"- `{rec.id}` ({rec.kind.value}): {rec.summary or '(no summary)'}" for rec in sorted(items, key=lambda r: r.id))
+                    lines.append("")
+
+            # Citations extracted from this source.
+            if ref_store is not None:
+                refs = ref_store.get_source(key) or ref_store.get_source(stem) or []
+                if refs:
+                    lines.append("## References extracted\n")
+                    lines.extend(f"- {r.short_label()} — {r.title}" for r in refs)
+                    lines.append("")
+
+            # Link the full-source export when one exists (on-demand only —
+            # exports are reference dumps, never generated by compile).
+            export_file = self._base_dir / EXPORTED_DIR_NAME / f"{stem}.md"
+            if export_file.is_file():
+                lines.append("## Full export\n")
+                lines.append(f"- [Full source as markdown](../../{EXPORTED_DIR_NAME}/{export_file.name})")
+                lines.append("")
+
+            existing.discard(slug)
+            (summaries_dir / f"{slug}.md").write_text("\n".join(lines), encoding="utf-8")
+
+        # Prune stale summaries (sources removed / reorganized).
+        for stale_slug in existing:
+            (summaries_dir / f"{stale_slug}.md").unlink(missing_ok=True)
+
+    def _load_verification(self) -> dict[str, Any] | None:
+        """Read ``.knox/verification.json`` if present (per-claim records)."""
+        if self._base_dir is None:
+            return None
+        vf = VaultPaths(self._base_dir).verification_file
+        if not vf.is_file():
+            return None
+        try:
+            data = json.loads(vf.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Verification report corrupt — skipping quality page: %s", vf)
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _write_quality_page(self, wiki: CompiledWiki, output_dir: Path) -> None:
+        """Write ``quality.md`` — WiCER verification summary (per-page table)."""
+        verification = self._load_verification()
+        if verification is None:
+            return
+
+        # Node title lookup for readable table rows.
+        titles = {n.id: (n.title or n.id) for n in wiki.nodes}
+        per_node: dict[str, dict[str, Any]] = {}
+        for claim in verification.get("claims", []):
+            if isinstance(claim, dict) and claim.get("node_id"):
+                nid = str(claim["node_id"])
+                per_node.setdefault(nid, {"claims": 0, "supported": 0, "conf": []})
+                per_node[nid]["claims"] += 1
+                if claim.get("verdict") == "supported":
+                    per_node[nid]["supported"] += 1
+                per_node[nid]["conf"].append(float(claim.get("confidence", 0.0)))
+        if not per_node:
+            return
+
+        lines = [
+            okf_frontmatter_yaml(
+                {
+                    "type": "Quality",
+                    "title": "Quality",
+                    "description": "Claim verification summary (WiCER pass)",
+                    "generated": {"by": _GENERATED_BY, "at": iso_local()},
+                    "status": "stable",
+                    "kind": "quality",
+                }
+            ).rstrip(),
+            "",
+            "# Quality",
+            "",
+            f"Claims checked: **{verification.get('total', 0)}** — "
+            f"supported: **{verification.get('verified', 0)}** — "
+            f"unsupported: **{verification.get('unsupported', 0)}** — "
+            f"avg confidence: **{verification.get('average_confidence', 0.0):.2f}**",
+            "",
+            "| Page | Claims | Supported | Score |",
+            "|------|--------|-----------|-------|",
+        ]
+        for nid, stats in sorted(per_node.items(), key=lambda kv: kv[1]["supported"] / kv[1]["claims"]):
+            score = sum(stats["conf"]) / len(stats["conf"])
+            lines.append(f"| {titles.get(nid, nid)} | {stats['claims']} | {stats['supported']} | {score:.2f} |")
+        lines.append("")
+
+        (output_dir / QUALITY_FILE).write_text("\n".join(lines), encoding="utf-8")
 
     # --- Format-specific hooks (overridden by subclasses) -----------------
 
@@ -287,6 +560,17 @@ class VaultWriter(BaseOutputWriter):
     @abstractmethod
     def _write_log(self, output_dir: Path, wiki: CompiledWiki) -> None:
         """Write the bundle log page (no-op for the wikilink variant)."""
+
+    def _knox_relative(self, raw: str) -> Path | None:
+        """Return *raw* as a base_dir-relative path if it lives under ``.knox/``."""
+        if not raw or raw.startswith("data:"):
+            return None
+        p = Path(raw)
+        try:
+            rel = p.relative_to(self._base_dir) if p.is_absolute() else p
+        except ValueError:
+            return None
+        return rel if rel.parts and rel.parts[0] == KNOX_DIR else None
 
     @classmethod
     def _folder_for_kind(cls, node_type: str) -> str:
@@ -387,3 +671,15 @@ class VaultWriter(BaseOutputWriter):
             lines.append("")
 
         return "\n".join(lines)
+
+
+def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
+    """Render frontmatter as YAML without anchors/aliases."""
+    yaml_str = yaml.dump(
+        frontmatter,
+        Dumper=_NoAliasDumper,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=True,
+    ).strip()
+    return f"---\n{yaml_str}\n---\n\n"

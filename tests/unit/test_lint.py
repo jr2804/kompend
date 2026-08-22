@@ -33,6 +33,7 @@ from knox.lint.structural import (
     EmptyPageRule,
     HeadingSkipRule,
     ImageEmbedRule,
+    KnoxReferenceRule,
     MissingFrontmatterRule,
     OrphanPageRule,
     RumdlRule,
@@ -201,6 +202,33 @@ class TestImageEmbedRule:
         results = rule.check(wiki)
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
         assert "![[ok.png]]" in node.content
+
+
+class TestKnoxReferenceRule:
+    def test_detects_knox_links(self) -> None:
+        node = _make_node("n1", "Alpha", "See ![fig](.knox/cache/images/f.png) and [x](../../.knox/cache/y.json)")
+        wiki = _make_wiki([node])
+        rule = KnoxReferenceRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 2
+        assert all(r.rule == "knox-reference" for r in failures)
+
+    def test_detects_knox_image_metadata(self) -> None:
+        node = _make_node("n1", "Alpha", "Body")
+        node.metadata["images"] = [{"path": ".knox/cache/images/f.png", "caption": "", "element_type": "image"}]
+        wiki = _make_wiki([node])
+        rule = KnoxReferenceRule()
+        failures = [r for r in rule.check(wiki) if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details["target"].endswith("f.png")
+
+    def test_portable_links_pass(self) -> None:
+        node = _make_node("n1", "Alpha", "![fig](../attachments/report/f.png) and [ Concepts](concepts/c.md)")
+        wiki = _make_wiki([node])
+        rule = KnoxReferenceRule()
+        results = rule.check(wiki)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
 
 
 # ── Rule 2: missing-frontmatter ─────────────────────────────────────────
@@ -689,17 +717,18 @@ class TestEdgeCases:
         assert len(failures) == 0
 
     def test_structural_rules_registry_complete(self) -> None:
-        """All 11 structural rules should be registered.
+        """All 12 structural rules should be registered.
 
         ``RumdlRule`` and ``DuplicateReferencesRule`` are NOT singletons —
         they are instantiated by ``LintRunner._resolve_rules`` with config
-        values. The singleton list has 9 entries; ``RULE_BY_NAME`` maps all
-        11 names.
+        values. The singleton list has 10 entries; ``RULE_BY_NAME`` maps all
+        12 names.
         """
-        assert len(STRUCTURAL_RULES) == 9
+        assert len(STRUCTURAL_RULES) == 10
         expected = {
             "image-embed",
             "broken-wikilinks",
+            "knox-reference",
             "missing-frontmatter",
             "orphan-page",
             "duplicate-title",

@@ -142,9 +142,10 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
 def load_wiki_from_files(output_dir: Path) -> CompiledWiki | None:
     """Load a compiled wiki from the generated markdown files alone.
 
-    Portable fallback for :func:`load_cached_wiki` — builds nodes from the
-    ``.md`` files on disk (frontmatter + body + links), with no ``.knox/``
-    state and no LLM. Returns ``None`` when *output_dir* has no pages.
+    **Primary loader** for query/read paths — the markdown bundle is the
+    source of truth (markdown-only invariant), with no ``.knox/`` state
+    and no LLM. Builds nodes from the ``.md`` files on disk (frontmatter +
+    body + links). Returns ``None`` when *output_dir* has no pages.
     """
     if not output_dir.is_dir():
         return None

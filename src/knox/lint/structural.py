@@ -11,12 +11,12 @@ import json
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
-from knox.core.paths import REFERENCES_FILE, VaultPaths
+from knox.core.paths import KNOX_DIR, REFERENCES_FILE, VaultPaths
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -60,6 +60,12 @@ _WIKILINK_ALIAS_MIN_JACCARD = 0.5
 #: Above :data:`_WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
 #: below 1.0 so a higher Jaccard can still override.
 _WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
+
+
+# ── Rule: knox-reference ───────────────────────────────────────────────
+#: Markdown link or embed target pointing into the ``.knox/`` state dir
+#: (``.knox/…``, ``./.knox/…``, ``../.knox/…``, ``/.knox/…``).
+_KNOX_PATH_RE = re.compile(rf"\]\(((?:\.\./)*(?:\./)?/?{re.escape(KNOX_DIR)}/[^)\s]+)\)")
 
 logger = get_logger(__name__)
 
@@ -171,6 +177,52 @@ class ImageEmbedRule(BaseLintRule):
                 if r.page_id == node.id and r.outcome == LintRuleOutcome.FAIL:
                     r.fix_applied = True
         return fixed
+
+
+class KnoxReferenceRule(BaseLintRule):
+    """Detect page links/embeds that resolve into ``.knox/``.
+
+    Markdown-only invariant: ``.knox/`` is derived state and may be absent
+    from a shared vault — a page referencing it breaks portability.
+    """
+
+    name = "knox-reference"
+    description = "Links or embeds resolving into the .knox/ state directory"
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        results: list[LintResult] = []
+        for node in wiki.nodes:
+            content = node.content or ""
+            for target in _KNOX_PATH_RE.findall(content):
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.FAIL,
+                        severity=Severity.ERROR,
+                        message=(f"Page '{node.title}' references '{target}' inside {KNOX_DIR}/ — copy the file into attachments/ and link relatively"),
+                        page_id=node.id,
+                        details={"target": target},
+                    )
+                )
+            for img in node.metadata.get("images") or []:
+                path = str(img.get("path", "")) if isinstance(img, dict) else ""
+                if path and KNOX_DIR in PurePosixPath(path).parts:
+                    results.append(
+                        LintResult(
+                            rule=self.name,
+                            outcome=LintRuleOutcome.FAIL,
+                            severity=Severity.ERROR,
+                            message=(
+                                f"Page '{node.title}' embeds image '{path}' from inside {KNOX_DIR}/ — "
+                                "the writer must copy it into attachments/ (portablize_images)"
+                            ),
+                            page_id=node.id,
+                            details={"target": path},
+                        )
+                    )
+        if not results:
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message=f"No page references {KNOX_DIR}/"))
+        return results
 
 
 # ── Rule 3: missing-frontmatter ─────────────────────────────────────────
@@ -895,6 +947,7 @@ def _batched(items: list[str], size: int) -> list[list[str]]:
 STRUCTURAL_RULES: list[BaseLintRule] = [
     ImageEmbedRule(),
     BrokenWikilinksRule(),
+    KnoxReferenceRule(),
     MissingFrontmatterRule(),
     OrphanPageRule(),
     DuplicateTitleRule(),

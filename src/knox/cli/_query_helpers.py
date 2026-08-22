@@ -41,18 +41,28 @@ _SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
 logger = get_logger(__name__)
 
 
-def open_vector_store(knox_dir: Path, wiki: CompiledWiki) -> ZvecWikiStore | None:
-    """Open the zvec sidecar index built during compile, if it exists."""
+def open_vector_store(
+    knox_dir: Path,
+    wiki: CompiledWiki,
+    *,
+    embed_model: str | None = None,
+) -> ZvecWikiStore | None:
+    """Open the zvec sidecar index built during compile, if it exists.
+
+    The embedding model comes from wiki metadata when available (cache
+    path) or falls back to *embed_model* (config value) — a files-loaded
+    wiki carries no embedding metadata of its own.
+    """
     db_file = knox_dir / VECTORS_DIR
     if not db_file.exists():
         return None
 
-    embed_model = wiki.metadata.get(str(MetadataField.EMBEDDING_MODEL))
-    if not embed_model:
-        logger.debug("No embedding model recorded in wiki metadata; skipping vector store")
+    model = wiki.metadata.get(str(MetadataField.EMBEDDING_MODEL)) or embed_model
+    if not model:
+        logger.debug("No embedding model available; skipping vector store")
         return None
     try:
-        return ZvecWikiStore.open(db_file, embedding_model=embed_model)
+        return ZvecWikiStore.open(db_file, embedding_model=model)
     except Exception as exc:
         logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=True)
         return None

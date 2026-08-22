@@ -127,6 +127,8 @@ def build_pipeline(
             max_related_links=config.output.max_related_links,
             references_file=config.paths.references_file,
             assets_file=config.paths.assets_file,
+            base_dir=config.paths.base_dir,
+            output_dir_name=config.paths.output_dir_name,
         ),
         summarizer=NodeSummarizer(
             cache_store=CacheStore(config.paths.cache_dir),

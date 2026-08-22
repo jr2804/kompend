@@ -33,6 +33,7 @@ from knox.cli.args.other import (
 from knox.core.config import resolve_config
 from knox.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from knox.core.models import MetadataField
+from knox.core.paths import EXPORTED_DIR_NAME
 from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.logging import get_console, get_logger
@@ -151,7 +152,7 @@ def sources_untag(
 def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     ctx: typer.Context,
     source_id: str,
-    output: str,
+    output: str = "",
     inline: ExportInline = False,
     annotations: ExportAnnotations = None,
     summary: ExportSummary = None,
@@ -163,9 +164,20 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     not from the original file. Figures are copied to an assets directory next
     to the output file (or embedded as data URIs with --inline); attachments
     stay in the vault and are listed at the end with links.
+
+    OUTPUT is optional — omit it to write to the vault's ``exported/``
+    directory (reference material, outside wiki/); pass a path to export to
+    any arbitrary file.
     """
     vp = vault_paths_from_ctx(ctx)
-    output_file = Path(output)
+    if output:
+        output_file = Path(output)
+    else:
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        stem = Path(source_id).stem or "source"
+        output_file = exported_dir / f"{stem}.md"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        get_console().print(f"No OUTPUT given — writing to {output_file}")
     if output_file.suffix.lower() != ".md":
         get_console().print(f"[red]Output file must end in .md, got '{escape(output_file.suffix or '<none>')}'[/]")
         raise typer.Exit(1)

@@ -49,7 +49,7 @@ from knox.core.config._configs import LlmDataFormat
 from knox.core.config.keys import (
     EnvVar,
 )
-from knox.core.models import load_cached_wiki, load_wiki_from_files
+from knox.core.models import load_wiki_from_files
 from knox.core.paths import vault_paths
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_console, get_err_console, get_logger
@@ -105,21 +105,16 @@ def query_cmd(
 
     tag_groups = _parse_tag_groups(tags)
 
-    wiki = load_cached_wiki(vp.base_dir)
-    portable = wiki is None
-    if portable:
-        # No .knox cache — build the wiki from the generated markdown files
-        # (portable mode: the wiki folder alone is the source of truth).
-        wiki = load_wiki_from_files(vp.output_dir)
+    # Markdown-first invariant: the wiki files are the source of truth;
+    # .knox/last_wiki.json is a compile artifact for maintenance paths only.
+    wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
         get_err_console().print(
-            f"No compiled wiki found in {output_dir}. Run 'knox compile' first.",
+            f"No wiki pages found in {output_dir}. Run 'knox compile' first.",
         )
         raise typer.Exit(1)
 
-    vector_store = open_vector_store(state_dir, wiki) if not portable else None
-    if portable:
-        get_console().print("Portable mode: no .knox cache — searching the wiki files directly.")
+    vector_store = open_vector_store(state_dir, wiki, embed_model=cfg.knox.compile.embedding.model)
     model = cfg.knox.compile.llm.default_model
     llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
     cw = discover_context_window(model, llm_config=llm_cfg) if model else None
@@ -177,8 +172,8 @@ def _execute_search(
 ) -> tuple[list[Any], bool, bool]:
     """Dispatch query search; returns (results, raw, has_enhanced).
 
-    Without a vector store (portable mode — no ``.knox/`` state), falls back
-    to keyword search over the wiki pages.
+    Without a vector store (no ``.knox/vectors/`` sidecar), falls back to
+    keyword search over the wiki pages — same corpus, keyword recall only.
     """
     if vector_store is None:
         retriever: HybridRetriever | KeywordRetriever = KeywordRetriever(wiki)
