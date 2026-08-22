@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from knox.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
+from knox.core.models.assets import AssetRecord
+from knox.core.models.enums import AssetKind
+from knox.core.models.structured import StructuredFigure, StructuredTable
+from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
@@ -546,6 +550,39 @@ class TestSourceSummaries:
         assert "type: Source" in text
         assert "sources/report.pdf" in text
         assert "Core Concepts" in text  # backlink to feeding concept
+
+    def test_summary_assets_grouped_title_pretty(self, tmp_path: Path) -> None:
+        """Assets render as kind counts (+ figure captions); title is readable."""
+        base = self._vault(tmp_path)
+        store = AssetStore(base / ".knox" / "assets.json")
+        store.put(
+            AssetRecord(
+                id="tab-aaa",
+                kind=AssetKind.TABLE,
+                source="sources/report.pdf",
+                data=StructuredTable(columns=["a"], rows=[{"a": "1"}]),
+                summary="1 cols x 1 rows",
+            )
+        )
+        store.put(
+            AssetRecord(
+                id="fig-bbb",
+                kind=AssetKind.FIGURE,
+                source="sources/report.pdf",
+                data=StructuredFigure(caption="SNR curve"),
+            )
+        )
+        store.save()
+
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        MarkdownWriter(vault_mode=True, base_dir=base).write(wiki, base / "wiki")
+
+        text = (base / "wiki" / "summaries" / "report.md").read_text(encoding="utf-8")
+        assert "# Source: report" in text
+        assert "**Tables:** 1" in text
+        assert "**Figures:** 1" in text
+        assert "SNR curve" in text
+        assert "`tab-aaa" not in text  # no raw asset-id dump
 
     def test_stale_summaries_pruned(self, tmp_path: Path) -> None:
         base = self._vault(tmp_path)

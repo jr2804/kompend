@@ -33,6 +33,8 @@ import yaml
 
 from knox import __version__ as _KNOX_VERSION
 from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
+from knox.core.models.assets import AssetRecord
+from knox.core.models.enums import AssetKind
 from knox.core.paths import (
     ATTACHMENTS_DIR_NAME,
     DEFAULT_OUTPUT_DIR_NAME,
@@ -415,7 +417,10 @@ class VaultWriter(BaseOutputWriter):
             name = key[len(sources_prefix) :] if key.startswith(sources_prefix) else key
             slug = attachment_slug(name)
             stem = Path(key).stem
-            title = f"Source: {stem}"
+            # Display title: collapse underscore runs so raw filenames like
+            # ``ITU-T_P_863__03_2018_`` read as text; the slug stays stable.
+            display = re.sub(r"[_\s]+", " ", stem).strip(" .-")
+            title = f"Source: {display}"
             lines = [
                 okf_frontmatter_yaml(
                     {
@@ -442,13 +447,10 @@ class VaultWriter(BaseOutputWriter):
                 lines.extend(f"- {t}" for t in fed)
                 lines.append("")
 
-            # Asset inventory (ids + one-line summaries from assets.json).
+            # Tables/equations render inline on concept pages; ids live in
+            # .knox/assets.json and mean nothing to a wiki reader.
             if asset_store is not None:
-                items = [rec for rec in asset_store if Path(rec.source).stem == stem]
-                if items:
-                    lines.append("## Assets\n")
-                    lines.extend(f"- `{rec.id}` ({rec.kind.value}): {rec.summary or '(no summary)'}" for rec in sorted(items, key=lambda r: r.id))
-                    lines.append("")
+                _asset_lines(lines, [rec for rec in asset_store if Path(rec.source).stem == stem])
 
             # Citations extracted from this source.
             if ref_store is not None:
@@ -683,3 +685,18 @@ def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
         sort_keys=True,
     ).strip()
     return f"---\n{yaml_str}\n---\n\n"
+
+
+def _asset_lines(lines: list[str], items: list[AssetRecord]) -> None:
+    """Append the per-source asset inventory grouped by kind."""
+    if not items:
+        return
+    lines.append("## Assets\n")
+    for kind in sorted({rec.kind for rec in items}, key=str):
+        kind_items = [r for r in items if r.kind == kind]
+        lines.append(f"- **{kind.value.capitalize()}s:** {len(kind_items)}")
+        if kind == AssetKind.FIGURE:
+            lines.extend(
+                f"  - {getattr(r.data, 'caption', '') or r.summary or r.id}".rstrip() for r in kind_items
+            )
+    lines.append("")

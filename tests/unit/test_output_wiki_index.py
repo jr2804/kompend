@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.output.pages.index import generate_index, write_index
+from knox.output.pages.index import _full_catalog, generate_index, write_index
 from knox.output.wiki_index import (
     append_log_entry,
     generate_log_entry,
@@ -261,29 +261,27 @@ class TestGenerateOverviewProgress:
 class TestGenerateIndexPortable:
     """Root index: unindented list, relative links, summaries, bundle link."""
 
-    def test_entries_unindented_with_relative_links(self, tmp_path: Path) -> None:
+    def test_entries_unindented_with_relative_links(self) -> None:
 
-        wiki = self._wiki()
-        output_dir = tmp_path / "wiki"
-        write_index(wiki, output_dir, base_dir=tmp_path)
+        catalog = _full_catalog(self._wiki(), Path("wiki"), "wiki")
+        assert "\n  1." not in catalog  # no indented list (MD005)
+        assert "\n1. [Concept A](wiki/concepts/concept-a.md)" in catalog
+        assert "\n2. [Introduction](wiki/intro.md)" in catalog
 
-        index = (tmp_path / "index.md").read_text(encoding="utf-8")
-        assert "\n  1." not in index  # no indented list (MD005)
-        assert "\n1. [Concept A](wiki/concepts/concept-a.md)" in index
-        assert "\n2. [Introduction](wiki/intro.md)" in index
+    def test_entries_carry_one_line_summaries(self) -> None:
 
-    def test_entries_carry_one_line_summaries(self, tmp_path: Path) -> None:
-
-        write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
-        index = (tmp_path / "index.md").read_text(encoding="utf-8")
-        assert "Concept A" in index
-        assert "First line of concept A." in index
+        catalog = _full_catalog(self._wiki(), Path("wiki"), "wiki")
+        assert "Concept A" in catalog
+        assert "First line of concept A." in catalog
 
     def test_links_to_bundle_index(self, tmp_path: Path) -> None:
+        """Nested layout: root index is a thin hub pointing at the catalog."""
 
         write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
         index = (tmp_path / "index.md").read_text(encoding="utf-8")
-        assert "- **Bundle:** [wiki/index.md](wiki/index.md)" in index
+        assert "[wiki/index.md](wiki/index.md)" in index
+        # De-duplication: the root hub must NOT carry the full TOC.
+        assert "## Table of Contents" not in index
 
     def test_no_obsidian_shortlinks(self, tmp_path: Path) -> None:
 

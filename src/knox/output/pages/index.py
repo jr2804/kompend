@@ -42,31 +42,72 @@ def generate_index(
     output_dir: Path | None = None,
     base_dir: Path | None = None,
 ) -> str:
-    """Generate ``index.md`` — TOC + stats for the compiled wiki.
+    """Generate ``index.md`` for the vault root.
 
-    TOC entries use portable relative links with one-line descriptions
-    (catalog style per the LLM-wiki design); no Obsidian-only syntax.
+    When the compiled bundle lives in a subdirectory of the vault root
+    (``prefix`` non-empty), this is a **thin hub**: quick facts plus a
+    pointer to the portable catalog at ``<prefix>/index.md`` — not a second
+    full TOC duplicating it. In flat layouts (bundle == vault root) the full
+    catalog is generated here instead, since it is then the only index.
     """
     prefix = _bundle_prefix(output_dir, base_dir)
-    lines: list[str] = ["# Wiki Index\n"]
+    nested = output_dir is not None and base_dir is not None and output_dir != base_dir
+    if nested:
+        return _hub_index(wiki, prefix)
+    return _full_catalog(wiki, output_dir, prefix)
 
-    # Stats summary
+
+def _hub_index(wiki: CompiledWiki, prefix: str) -> str:
+    """Thin vault-root hub pointing into the wiki bundle."""
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
-    article_count = len(wiki.nodes)
-    total_words = sum(len(n.content.split()) for n in wiki.nodes)
-    last_compile = display_local("%Y-%m-%d %H:%M")
-    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
+    lines: list[str] = [
+        "# Wiki Index\n",
+        "This vault's knowledge bundle lives in the "
+        f"[{prefix}/]({prefix}/) directory. Start at the portable catalog:",
+        "",
+        f"→ **[{prefix}/index.md]({prefix}/index.md)**\n",
+        "## Quick facts\n",
+        f"- **Sources:** {source_count}",
+        f"- **Pages:** {len(wiki.nodes)}",
+        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
+        "- **Media:** [attachments/](attachments/) — figures extracted from sources",
+        "",
+    ]
+    return "\n".join(lines)
 
-    lines.append("## Summary\n")
-    lines.append(f"- **Sources:** {source_count}")
-    lines.append(f"- **Articles:** {article_count}")
-    lines.append(f"- **Total words:** {total_words:,}")
-    lines.append(f"- **Last compile:** {last_compile}")
+
+def _stats_lines(wiki: CompiledWiki, prefix: str) -> list[str]:
+    """Summary bullet list for the catalog index."""
+    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
+    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
+    lines = [
+        f"- **Sources:** {source_count}",
+        f"- **Articles:** {len(wiki.nodes)}",
+        f"- **Total words:** {sum(len(n.content.split()) for n in wiki.nodes):,}",
+        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
+    ]
     if duration is not None:
         lines.append(f"- **Duration:** {duration:.1f}s")
     if wiki.quality_score:
         lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
-    lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
+    att_target = "attachments/"
+    if prefix:
+        lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
+        att_target = f"{prefix}/../attachments/"
+    lines.append(f"- **Media:** [attachments/]({att_target}) — figures extracted from sources")
+    return lines
+
+
+def _full_catalog(
+    wiki: CompiledWiki,
+    output_dir: Path | None,
+    prefix: str,
+) -> str:
+    """Full catalog: stats, topics, per-page TOC, generated surfaces."""
+    lines: list[str] = ["# Wiki Index\n"]
+
+    lines.append("## Summary\n")
+    lines.extend(_stats_lines(wiki, prefix))
     lines.append("")
 
     # Topic / concept cloud (from edges metadata)
@@ -89,7 +130,7 @@ def generate_index(
     lines.append("")
 
     # Generated surfaces — complete-catalog invariant: everything the wiki
-    # generates is reachable from this index.
+    # generates plus durable media is reachable from this index.
     surfaces: list[tuple[str, str]] = []
     if output_dir is not None:
         if (output_dir / SUMMARIES_SUBDIR).is_dir() and any((output_dir / SUMMARIES_SUBDIR).glob("*.md")):
@@ -102,10 +143,11 @@ def generate_index(
             surfaces.append((f"{prefix}/overview.md", "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((f"{prefix}/{LOG_FILE}", "Append-only activity journal"))
+    surfaces.append(("attachments/" if not prefix else f"{prefix}/../attachments/", "Media & figures extracted from sources"))
     if surfaces:
         lines.append("## Wiki surfaces\n")
         for target, desc in surfaces:
-            name = target.rsplit("/", 1)[-1] or target
+            name = target.rstrip("/").rsplit("/", 1)[-1]
             lines.append(f"- [{name}]({target}) — {desc}")
 
     return "\n".join(lines)
@@ -114,5 +156,6 @@ def generate_index(
 def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:
     """Portable path prefix from the index location to the bundle pages."""
     if output_dir is not None and base_dir is not None and output_dir.is_relative_to(base_dir):
-        return output_dir.relative_to(base_dir).as_posix()
+        rel = output_dir.relative_to(base_dir).as_posix()
+        return rel if rel != "." else ""
     return output_dir.name if output_dir is not None else "wiki"

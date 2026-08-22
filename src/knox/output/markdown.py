@@ -313,6 +313,7 @@ class MarkdownWriter(VaultWriter):
             surfaces.append(("overview.md", "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((LOG_FILE, "Append-only activity journal"))
+        surfaces.append(("../attachments/", "Media & figures extracted from sources"))
         if surfaces:
             lines.append("## References & surfaces\n")
             for name, desc in surfaces:
