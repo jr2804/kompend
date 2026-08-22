@@ -123,11 +123,7 @@ class HybridRetriever:
         node_id = str(hit.get("id", ""))
         node = self._node_by_id.get(node_id)
         title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-        snippet = (
-            extract_snippet(node.content, query_tokens)
-            if node and node.content
-            else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
-        )
+        snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
         source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
         if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
             source_file = str(node.metadata[MetadataField.SOURCE])

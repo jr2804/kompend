@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 
 from knox.core.models import (
+    ChunkNode,
     ChunkTree,
     CrossReferenceIssue,
     CrossReferenceResult,
@@ -90,19 +91,7 @@ class CrossReferenceChecker:
             for node in tree.walk():
                 if not node.chunk or not node.chunk.text:
                     continue
-                heading_chain = "/".join(node.heading_chain)
-                for ref_type, pattern in _REF_PATTERNS:
-                    for match in pattern.finditer(node.chunk.text):
-                        ref_id = match.group(1)
-                        if ref_id not in valid_targets.get(ref_type, set()):
-                            issues.append(
-                                CrossReferenceIssue(
-                                    issue_type="unresolved",
-                                    description=(f"Reference to {ref_type} {ref_id} does not match any {ref_type} in the document"),
-                                    entity=f"{ref_type}:{ref_id}",
-                                    locations=[f"{source_file}:{heading_chain}"],
-                                )
-                            )
+                issues.extend(self._scan_node_refs(node, valid_targets, source_file))
         return issues
 
     def check_table_consistency(self, trees: list[ChunkTree]) -> list[CrossReferenceIssue]:
@@ -120,31 +109,68 @@ class CrossReferenceChecker:
 
         for i, (meta_a, table_a) in enumerate(all_tables):
             for meta_b, table_b in all_tables[i + 1 :]:
-                shared_cols = set(table_a.columns) & set(table_b.columns)
-                if len(shared_cols) < 2:
+                issues.extend(self._compare_tables(meta_a, table_a, meta_b, table_b))
+        return issues
+
+    @staticmethod
+    def _scan_node_refs(
+        node: ChunkNode,
+        valid_targets: dict[str, set[str]],
+        source_file: str,
+    ) -> list[CrossReferenceIssue]:
+        """Flag unresolved reference patterns in one chunk's text."""
+        issues: list[CrossReferenceIssue] = []
+        heading_chain = "/".join(node.heading_chain)
+        location = f"{source_file}:{heading_chain}"
+        for ref_type, pattern in _REF_PATTERNS:
+            for match in pattern.finditer(node.chunk.text or ""):
+                ref_id = match.group(1)
+                if ref_id in valid_targets.get(ref_type, set()):
                     continue
-                key_col = sorted(shared_cols)[0]
-                val_cols = sorted(shared_cols)[1:]
+                issues.append(
+                    CrossReferenceIssue(
+                        issue_type="unresolved",
+                        description=(f"Reference to {ref_type} {ref_id} does not match any {ref_type} in the document"),
+                        entity=f"{ref_type}:{ref_id}",
+                        locations=[location],
+                    )
+                )
+        return issues
 
-                map_a = {row.get(key_col, ""): row for row in table_a.rows}
-                map_b = {row.get(key_col, ""): row for row in table_b.rows}
+    @staticmethod
+    def _compare_tables(
+        meta_a: str,
+        table_a: StructuredTable,
+        meta_b: str,
+        table_b: StructuredTable,
+    ) -> list[CrossReferenceIssue]:
+        """Flag contradicting values in tables sharing at least a key + value column."""
+        shared_cols = set(table_a.columns) & set(table_b.columns)
+        if len(shared_cols) < 2:
+            return []
+        key_col = sorted(shared_cols)[0]
+        val_cols = sorted(shared_cols)[1:]
 
-                for key_val, row_a in map_a.items():
-                    if not key_val or key_val not in map_b:
-                        continue
-                    row_b = map_b[key_val]
-                    for val_col in val_cols:
-                        val_a = str(row_a.get(val_col, "")).strip()
-                        val_b = str(row_b.get(val_col, "")).strip()
-                        if val_a and val_b and val_a.lower() != val_b.lower():
-                            issues.append(
-                                CrossReferenceIssue(
-                                    issue_type="contradiction",
-                                    description=(f'Entity "{key_val}" has "{val_col}"="{val_a}" in one table but "{val_b}" in another'),
-                                    entity=key_val,
-                                    locations=[meta_a, meta_b],
-                                )
-                            )
+        map_a = {row.get(key_col, ""): row for row in table_a.rows}
+        map_b = {row.get(key_col, ""): row for row in table_b.rows}
+
+        issues: list[CrossReferenceIssue] = []
+        for key_val, row_a in map_a.items():
+            if not key_val or key_val not in map_b:
+                continue
+            row_b = map_b[key_val]
+            for val_col in val_cols:
+                val_a = str(row_a.get(val_col, "")).strip()
+                val_b = str(row_b.get(val_col, "")).strip()
+                if val_a and val_b and val_a.lower() != val_b.lower():
+                    issues.append(
+                        CrossReferenceIssue(
+                            issue_type="contradiction",
+                            description=(f'Entity "{key_val}" has "{val_col}"="{val_a}" in one table but "{val_b}" in another'),
+                            entity=key_val,
+                            locations=[meta_a, meta_b],
+                        )
+                    )
         return issues
 
     # ── Internal helpers ────────────────────────────────────────────
@@ -159,9 +185,12 @@ class CrossReferenceChecker:
             "equation": set(),
             "chapter": set(),
         }
-        table_idx = 0
-        figure_idx = 0
-        equation_idx = 0
+        numbered_kinds: tuple[tuple[type, str], ...] = (
+            (StructuredTable, "table"),
+            (StructuredFigure, "figure"),
+            (StructuredEquation, "equation"),
+        )
+        counters: dict[str, int] = {"table": 0, "figure": 0, "equation": 0}
 
         def _add_numbered(key: str, idx: int, caption: str | None) -> None:
             targets[key].add(str(idx))
@@ -177,16 +206,11 @@ class CrossReferenceChecker:
                     if section_num:
                         targets["section"].add(section_num)
 
-                if node.structured:
-                    if isinstance(node.structured, StructuredTable):
-                        table_idx += 1
-                        _add_numbered("table", table_idx, node.structured.caption)
-                    elif isinstance(node.structured, StructuredFigure):
-                        figure_idx += 1
-                        _add_numbered("figure", figure_idx, node.structured.caption)
-                    elif isinstance(node.structured, StructuredEquation):
-                        equation_idx += 1
-                        _add_numbered("equation", equation_idx, node.structured.caption)
+                kind = next((k for t, k in numbered_kinds if isinstance(node.structured, t)), None)
+                if kind is None:
+                    continue
+                counters[kind] += 1
+                _add_numbered(kind, counters[kind], getattr(node.structured, "caption", None))
 
         return targets
 

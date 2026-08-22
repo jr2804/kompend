@@ -176,6 +176,29 @@ class DoclingParser(BaseParser):
             metadata={"parser": "docling", "chunked": True},
         )
 
+    def _table_element(self, item: Any, class_name: str, page_no: int | None, reading_order: int) -> DocumentElement:
+        return DocumentElement(
+            type=ElementType.TABLE,
+            content=self._extract_table(item),
+            page=page_no,
+            reading_order=reading_order,
+            metadata={"docling_type": class_name},
+        )
+
+    def _image_meta(self, item: Any, content: str) -> dict[str, Any]:
+        img_meta: dict[str, Any] = {
+            "docling_type": type(item).__name__,
+            "image_mode": self.image_mode,
+        }
+        if self.image_mode == "file" and content and not content.startswith("["):
+            img_meta[MetadataField.IMAGE_FILE] = content
+        elif self.image_mode == "base64" and content.startswith("data:"):
+            img_meta[MetadataField.IMAGE_BASE64] = content
+        captions = getattr(item, "captions", [])
+        if captions:
+            img_meta["caption"] = str(captions[0])
+        return img_meta
+
     def _extract_elements(
         self,
         doc: DoclingDocument,
@@ -199,80 +222,26 @@ class DoclingParser(BaseParser):
             page_no = self._extract_page(item)
 
             if element_type == ElementType.HEADING:
-                level = getattr(item, "level", None) or (1 if class_name == "TitleItem" else 2)
-                content = getattr(item, "text", "")
-                elements.append(
-                    DocumentElement(
-                        type=element_type,
-                        content=content,
-                        page=page_no,
-                        reading_order=reading_order,
-                        heading_level=level,
-                        metadata={"docling_type": class_name},
-                    )
-                )
-
+                elem = self._heading_element(item, class_name, page_no, reading_order)
             elif element_type == ElementType.TABLE:
-                table_data = self._extract_table(item)
-                elements.append(
-                    DocumentElement(
-                        type=element_type,
-                        content=table_data,
-                        page=page_no,
-                        reading_order=reading_order,
-                        metadata={"docling_type": class_name},
-                    )
-                )
-
+                elem = self._table_element(item, class_name, page_no, reading_order)
             elif element_type == ElementType.IMAGE:
                 content = self._extract_image(item, source_file, reading_order)
-                img_meta: dict[str, Any] = {
-                    "docling_type": class_name,
-                    "image_mode": self.image_mode,
-                }
-                if self.image_mode == "file" and content and not content.startswith("["):
-                    img_meta[MetadataField.IMAGE_FILE] = content
-                elif self.image_mode == "base64" and content.startswith("data:"):
-                    img_meta[MetadataField.IMAGE_BASE64] = content
-                captions = getattr(item, "captions", [])
-                if captions:
-                    img_meta["caption"] = str(captions[0])
-                elements.append(
-                    DocumentElement(
-                        type=element_type,
-                        content=content,
-                        page=page_no,
-                        reading_order=reading_order,
-                        metadata=img_meta,
-                    )
+                elem = DocumentElement(
+                    type=element_type,
+                    content=content,
+                    page=page_no,
+                    reading_order=reading_order,
+                    metadata=self._image_meta(item, content),
                 )
-
             elif element_type == ElementType.FORMULA:
-                text = getattr(item, "text", "")
-                elements.append(
-                    DocumentElement(
-                        type=element_type,
-                        content=text,
-                        page=page_no,
-                        reading_order=reading_order,
-                        metadata={"docling_type": class_name},
-                    )
-                )
-
+                elem = self._plain_element(item, element_type, class_name, page_no, reading_order, skip_empty=False)
             else:
-                text = getattr(item, "text", "")
-                if not text.strip():
+                elem = self._plain_element(item, element_type, class_name, page_no, reading_order, skip_empty=True)
+                if elem is None:
                     continue
-                elements.append(
-                    DocumentElement(
-                        type=element_type,
-                        content=text,
-                        page=page_no,
-                        reading_order=reading_order,
-                        metadata={"docling_type": class_name},
-                    )
-                )
 
+            elements.append(elem)
             reading_order += 1
 
         return elements, reading_order
@@ -328,6 +297,40 @@ class DoclingParser(BaseParser):
             return f"[Image: {caption_text if caption_text else 'figure'}]"
 
         return f"[Image #{idx}]"
+
+    @staticmethod
+    def _heading_element(item: Any, class_name: str, page_no: int | None, reading_order: int) -> DocumentElement:
+        level = getattr(item, "level", None) or (1 if class_name == "TitleItem" else 2)
+        return DocumentElement(
+            type=ElementType.HEADING,
+            content=getattr(item, "text", ""),
+            page=page_no,
+            reading_order=reading_order,
+            heading_level=level,
+            metadata={"docling_type": class_name},
+        )
+
+    @staticmethod
+    def _plain_element(
+        item: Any,
+        element_type: ElementType,
+        class_name: str,
+        page_no: int | None,
+        reading_order: int,
+        *,
+        skip_empty: bool,
+    ) -> DocumentElement | None:
+        """Text-ish element (FORMULA keeps empties; TEXT skips them)."""
+        text = getattr(item, "text", "")
+        if skip_empty and not text.strip():
+            return None
+        return DocumentElement(
+            type=element_type,
+            content=text,
+            page=page_no,
+            reading_order=reading_order,
+            metadata={"docling_type": class_name},
+        )
 
     @staticmethod
     def _count_pdf_pages(source_file: Path) -> int:
