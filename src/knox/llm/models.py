@@ -85,14 +85,16 @@ def build_model(model_string: str) -> Model:
     # 1. Native pydantic-ai provider?
     try:
         return _build_native(provider_id, model_name)
-    except _NotNativeProvider:
-        pass
+    except _NotNativeProvider as exc:
+        # Fall through to (2) models-dev catalog.
+        logger.debug("provider %r not native (%s); trying models-dev catalog", provider_id, exc)
 
     # 2. models-dev catalog (OpenAI-compatible custom provider)?
     try:
         return _build_catalog(provider_id, model_name)
-    except _NotInCatalog:
-        pass
+    except _NotInCatalog as exc:
+        # Fall through to (3) user-defined [providers] from knox.toml.
+        logger.debug("provider %r not in catalog (%s); trying user-defined providers", provider_id, exc)
 
     # 3. User-defined provider (from [providers] in knox.toml)?
     if provider_id in _user_providers:
