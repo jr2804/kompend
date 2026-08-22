@@ -116,6 +116,30 @@ class HybridRetriever:
             rlm=rlm,
         )
 
+    def _hit_to_result(self, hit: dict[str, object], query_tokens: set[str]) -> SearchResult:
+        """Convert one vector-store hit into a SearchResult, enriching from
+        the compiled node when the id resolves.
+        """
+        node_id = str(hit.get("id", ""))
+        node = self._node_by_id.get(node_id)
+        title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
+        snippet = (
+            extract_snippet(node.content, query_tokens)
+            if node and node.content
+            else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+        )
+        source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
+        if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
+            source_file = str(node.metadata[MetadataField.SOURCE])
+        return SearchResult(
+            article_id=node_id,
+            title=title,
+            snippet=snippet,
+            score=float(hit.get("score", 0.0)),
+            source_file=source_file,
+            tags=_node_tags(node),
+        )
+
     def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
         if self._vector_store is None or not self._vector_store.available:
             return []
@@ -125,31 +149,7 @@ class HybridRetriever:
             logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
         query_tokens = set(tokenize(query))
-        results: list[SearchResult] = []
-        for hit in hits:
-            node_id = hit.get("id", "")
-            node = self._node_by_id.get(node_id)
-            title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-            snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
-            source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
-            if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
-                source_file = str(node.metadata[MetadataField.SOURCE])
-            node_tags: set[str] = set()
-            if node and node.metadata:
-                raw_tags = node.metadata.get(MetadataField.TAGS)
-                if raw_tags:
-                    node_tags = {str(t) for t in raw_tags} if isinstance(raw_tags, list) else set()
-            results.append(
-                SearchResult(
-                    article_id=node_id,
-                    title=title,
-                    snippet=snippet,
-                    score=float(hit.get("score", 0.0)),
-                    source_file=source_file,
-                    tags=node_tags,
-                )
-            )
-        return results
+        return [self._hit_to_result(hit, query_tokens) for hit in hits]
 
     def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
         """Expand search results by following typed relations in the wiki graph."""
@@ -158,34 +158,33 @@ class HybridRetriever:
 
         expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
         decay_factor = 0.5
+        max_chars = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
+
+        def add_neighbor(neighbor_id: str, seed_score: float) -> None:
+            if neighbor_id in expanded:
+                return
+            node = self._node_by_id.get(neighbor_id)
+            if node is None:
+                return
+            expanded[neighbor_id] = SearchResult(
+                article_id=neighbor_id,
+                title=node.title,
+                snippet=node.content[:max_chars] + "..." if node.content else "",
+                score=seed_score * decay_factor,
+                source_file=str(node.metadata.get(MetadataField.SOURCE)) if node.metadata and node.metadata.get(MetadataField.SOURCE) else None,
+                tags=_node_tags(node),
+            )
 
         for result in initial_results:
             for edge in self._wiki.edges:
                 source_id = edge.get("source")
                 target_id = edge.get("target")
-                if isinstance(source_id, str) and isinstance(target_id, str):
-                    if source_id == result.article_id and target_id not in expanded:
-                        node = self._node_by_id.get(target_id)
-                        if node:
-                            expanded[target_id] = SearchResult(
-                                article_id=target_id,
-                                title=node.title,
-                                snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
-                                score=result.score * decay_factor,
-                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
-                                tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
-                            )
-                    elif target_id == result.article_id and source_id not in expanded:
-                        node = self._node_by_id.get(source_id)
-                        if node:
-                            expanded[source_id] = SearchResult(
-                                article_id=source_id,
-                                title=node.title,
-                                snippet=node.content[: DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)] + "..." if node.content else "",
-                                score=result.score * decay_factor,
-                                source_file=str(node.metadata.get("source")) if node.metadata and node.metadata.get("source") else None,
-                                tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
-                            )
+                if not (isinstance(source_id, str) and isinstance(target_id, str)):
+                    continue
+                if source_id == result.article_id:
+                    add_neighbor(target_id, result.score)
+                elif target_id == result.article_id:
+                    add_neighbor(source_id, result.score)
 
         sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
         return sorted_results[:top_k]
