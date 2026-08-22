@@ -86,3 +86,4 @@ mcporter.json
 # repowise API keys (local)
 .repowise/
 .repowise/.env
+tmp/
