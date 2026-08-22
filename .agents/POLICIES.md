@@ -144,6 +144,10 @@ approach. Mention caveats.
 - NEVER suppress `PLC0415` (inline imports), `ANN001` (missing return type),
   or `ANN202` (missing return type on public method). These are hard errors —
   no `# noqa` permitted. Refactor the code instead.
+- For non-ruff scanner false positives (vibecheck, sloppylint, aislop), use
+  that tool's inline directive (e.g. `# vibecheck-disable-line <rule>`), not
+  `# noqa` — each suppression names the scanner it targets and stays visible
+  to the others.
 - NEVER use `from typing import TYPE_CHECKING` or wrap imports in
   `if TYPE_CHECKING:` blocks. This idiom diverges runtime from type-checker
   behavior, hides module-boundary problems, and adds cognitive overhead.
