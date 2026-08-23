@@ -78,7 +78,7 @@ def extract_agentic(
         CacheDeps.STAGE: "agentic",
     }
     if not compiler._config.no_cache:
-        cached = compiler._cache_store.get("extract", cache_deps)
+        cached = compiler._cache_store.get_dict("extract", cache_deps)
         if cached is not None:
             logger.info("TwoPhase: agentic extraction cache hit for '%s'", source)
             return Extraction.from_dict(cached)

@@ -19,7 +19,6 @@ from knox.core.models import CompiledWiki
 from knox.core.templates import get_template_loader
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
-from knox.types import AgentResult
 
 logger = get_logger(__name__)
 
@@ -92,11 +91,11 @@ class LlmLintRule(BaseLintRule):
         self._agent = agent
         self.lint_page_budget = lint_page_budget
 
-    def _call_agent(self, template_name: str, *, result_type: type | None = None, **kwargs: Any) -> AgentResult:
+    def _call_agent[T: BaseModel](self, template_name: str, *, result_type: type[T], **kwargs: Any) -> T | None:
         """Call the LintRuleAgent with a rendered template.
 
-        Returns the structured pydantic model instance directly when
-        *result_type* is provided, or the raw string result otherwise.
+        Returns the structured pydantic model instance for *result_type*,
+        or ``None`` when no agent is configured or the call failed.
         """
         if self._agent is None:
             return None

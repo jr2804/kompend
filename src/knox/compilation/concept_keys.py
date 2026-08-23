@@ -39,6 +39,15 @@ _STRUCTURAL_CONCEPT_RE = re.compile(
 )
 
 
+# ── Wikilink alias resolution ─────────────────────────────────────────
+
+WIKILINK_ALIAS_MIN_JACCARD = 0.5
+#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
+#: Above :data:`WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
+#: below 1.0 so a higher Jaccard can still override.
+WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
+
+
 def is_structural_concept(name: str) -> bool:
     """Return True if *name* is a table/spreadsheet structural artifact.
 
@@ -50,43 +59,6 @@ def is_structural_concept(name: str) -> bool:
     key = normalize_concept_key(name)
     return bool(_STRUCTURAL_CONCEPT_RE.match(key))
 
-
-def normalize_concept_key(name: str) -> str:
-    """Normalize a concept name for merge-key deduplication.
-
-    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
-    and collapses English plurals on the last word (heuristic).
-
-    Examples::
-
-        "Deep Neural Networks (DNNs)"  → "deep neural network"
-        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
-        "Deep neural network"  → "deep neural network"
-        "Phoneme posteriorgrams" → "phoneme posteriorgram"
-    """
-    text = _ACRONYM_RE.sub("", name)
-    text = text.replace("-", " ").lower().strip()
-    if not text:
-        return ""
-    words = text.split()
-    last = words[-1]
-    if len(last) > 3:
-        if last.endswith("ies"):
-            words[-1] = last[:-3] + "y"
-        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
-            words[-1] = last[:-2]
-        elif last.endswith("s") and not last.endswith("ss"):
-            words[-1] = last[:-1]
-    return " ".join(words).strip()
-
-
-# ── Wikilink alias resolution ─────────────────────────────────────────
-
-WIKILINK_ALIAS_MIN_JACCARD = 0.5
-#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
-#: Above :data:`WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
-#: below 1.0 so a higher Jaccard can still override.
-WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
 
 def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
     """Return the page id most likely intended by *target*.
@@ -143,3 +115,32 @@ def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
                 best_id = page_id
 
     return best_id
+
+
+def normalize_concept_key(name: str) -> str:
+    """Normalize a concept name for merge-key deduplication.
+
+    Strips parenthetical acronyms, normalizes case/hyphens/whitespace,
+    and collapses English plurals on the last word (heuristic).
+
+    Examples::
+
+        "Deep Neural Networks (DNNs)"  → "deep neural network"
+        "Short-Time Objective Intelligibility (STOI)" → "short time objective intelligibility"
+        "Deep neural network"  → "deep neural network"
+        "Phoneme posteriorgrams" → "phoneme posteriorgram"
+    """
+    text = _ACRONYM_RE.sub("", name)
+    text = text.replace("-", " ").lower().strip()
+    if not text:
+        return ""
+    words = text.split()
+    last = words[-1]
+    if len(last) > 3:
+        if last.endswith("ies"):
+            words[-1] = last[:-3] + "y"
+        elif last.endswith(("ches", "shes", "xes", "zes", "oes")):
+            words[-1] = last[:-2]
+        elif last.endswith("s") and not last.endswith("ss"):
+            words[-1] = last[:-1]
+    return " ".join(words).strip()

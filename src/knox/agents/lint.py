@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import field
 from typing import Any, ClassVar
 
+from pydantic import BaseModel
 from pydantic_ai.agent import Agent
 from pydantic_ai.messages import ModelMessage
 
@@ -13,7 +14,7 @@ from knox.agents.deps import PipelineAgentDeps
 from knox.types import AgentResult
 
 
-class LintRuleAgent(KnoxAgentBase[str, PipelineAgentDeps]):
+class LintRuleAgent(KnoxAgentBase[BaseModel | str, PipelineAgentDeps]):
     """PydanticAI agent for LLM-powered lint rules.
 
     Each rule (factual-consistency, clarity-score, coverage-gap,

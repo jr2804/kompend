@@ -230,7 +230,7 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
         CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
     }
     if not compiler._config.no_cache:
-        cached = compiler._cache_store.get("extract", extract_deps)
+        cached = compiler._cache_store.get_dict("extract", extract_deps)
         if cached is not None:
             logger.info("TwoPhase: extraction cache hit for '%s'", source)
             return Extraction.from_dict(cached)
@@ -331,15 +331,15 @@ def extract_incremental(
             CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
         }
         if not compiler._config.no_cache:
-            cached = compiler._cache_store.get("extract", extract_deps)
+            cached = compiler._cache_store.get_dict("extract", extract_deps)
             if cached is not None:
                 logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
-                cached = Extraction.from_dict(cached)
-                results.append(cached)
+                extraction = Extraction.from_dict(cached)
+                results.append(extraction)
                 # Inject a synthetic summary of the cached result so the
                 # next uncached batch sees coherent cross-batch context
                 # (otherwise the agent loses the document thread).
-                history.append(_synthetic_history_response(cached))
+                history.append(_synthetic_history_response(extraction))
                 _compact_history_inplace(history, compaction_threshold)
                 continue
             logger.info(
@@ -481,7 +481,7 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
         CacheDeps.STAGE: "reduce",
     }
     if not compiler._config.no_cache:
-        cached = compiler._cache_store.get("extract", reduce_deps_key)
+        cached = compiler._cache_store.get_dict("extract", reduce_deps_key)
         if cached is not None:
             return Extraction.from_dict(cached)
 

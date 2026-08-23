@@ -238,8 +238,9 @@ class DoclingParser(BaseParser):
                 elem = self._plain_element(item, element_type, class_name, page_no, reading_order, skip_empty=False)
             else:
                 elem = self._plain_element(item, element_type, class_name, page_no, reading_order, skip_empty=True)
-                if elem is None:
-                    continue
+
+            if elem is None:
+                continue
 
             elements.append(elem)
             reading_order += 1

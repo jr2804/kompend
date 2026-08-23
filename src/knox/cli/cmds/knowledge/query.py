@@ -168,7 +168,7 @@ def _execute_search(
     tag_groups: list[list[str]] | None,
     adaptive: bool,
     cfg: Any,
-    model: str,
+    model: str | None,
 ) -> tuple[list[Any], bool, bool]:
     """Dispatch query search; returns (results, raw, has_enhanced).
 
@@ -182,7 +182,9 @@ def _execute_search(
     if adaptive:
         results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
         return results, raw, False
-    enhanced_result = handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups)
+    enhanced_result = (
+        handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups) if model is not None else None
+    )
     if enhanced_result is not None:
         return enhanced_result, False, True
     retriever = HybridRetriever(wiki, vector_store=vector_store)

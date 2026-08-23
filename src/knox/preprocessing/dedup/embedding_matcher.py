@@ -9,13 +9,14 @@ from __future__ import annotations
 import math
 
 from knox.logging import get_logger
-from knox.preprocessing.dedup.base import ContentMatcher
+from knox.preprocessing.dedup.base import ContentMatcher, require_json_number
 from knox.rag.zvec_store import EmbeddingProvider
+from knox.types import JSONValue
 
 logger = get_logger(__name__)
 
 
-class EmbeddingMatcher(ContentMatcher):
+class EmbeddingMatcher(ContentMatcher[list[float]]):
     """Matcher that uses embedding vectors + cosine similarity.
 
     Long documents are chunked and mean-pooled into a single vector.
@@ -25,6 +26,8 @@ class EmbeddingMatcher(ContentMatcher):
     """
 
     name = "embedding"
+
+    fp_type = list  # fingerprints are list[float]; list is the closest runtime check
 
     def __init__(
         self,
@@ -74,11 +77,11 @@ class EmbeddingMatcher(ContentMatcher):
             return 0.0
         return float(dot / (norm_a * norm_b))
 
-    def serialize(self, fingerprint: list[float]) -> list:  # noqa: PLR6301 — overrides ABC
+    def serialize(self, fingerprint: list[float]) -> list[float]:  # noqa: PLR6301 — overrides ABC
         return fingerprint
 
-    def deserialize(self, data: list) -> list[float]:  # noqa: PLR6301 — overrides ABC
-        return [float(v) for v in data]
+    def deserialize(self, data: list[JSONValue]) -> list[float]:  # noqa: PLR6301 — overrides ABC
+        return [require_json_number(v) for v in data]
 
     def __repr__(self) -> str:
         return f"EmbeddingMatcher(model={self._model_name!r}, dim={self._dim})"

@@ -15,20 +15,28 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any
+
+from datasketch import MinHash
 
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
-from knox.preprocessing.dedup.store import DedupStore
+from knox.preprocessing.dedup.store import DedupStore, StoreEntry
 from knox.rag.zvec_store import make_provider
-from knox.types import CacheValue
+from knox.types import JSONDict
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)
 
 logger = get_logger(__name__)
+
+
+# Matcher-specific fingerprint values crossing the orchestrator's dynamic
+# name-based pairing (see ContentMatcher.score_for for the runtime contract).
+Fingerprint = list[float] | MinHash
+AnyMatcher = ContentMatcher[list[float]] | ContentMatcher[MinHash]
 
 
 @dataclass
@@ -41,19 +49,6 @@ class DedupResult:
     closest_method: str
     embedding_score: float | None = None
     minhash_score: float | None = None
-
-
-class StoreEntry(TypedDict):
-    """Schema for one slug entry in the persistent dedup store (JSON)."""
-
-    verdict: str
-    closest_match: str | None
-    closest_score: float
-    closest_method: str
-    embedding_score: float | None
-    minhash_score: float | None
-    embedding: list | None
-    minhash: list[int] | None
 
 
 class DedupOrchestrator:
@@ -70,7 +65,7 @@ class DedupOrchestrator:
     def __init__(
         self,
         base_dir: Path,
-        config: dict[str, Any] | None = None,
+        config: JSONDict | None = None,
     ) -> None:
         self._base_dir = base_dir
         self._config = config or {}
@@ -87,7 +82,7 @@ class DedupOrchestrator:
     def store(self) -> DedupStore:
         return self._store
 
-    def fingerprint(self, slug: str, text: str) -> dict[str, CacheValue]:
+    def fingerprint(self, slug: str, text: str) -> dict[str, Fingerprint]:
         """Compute all configured fingerprints for a single document.
 
         Call this **during extraction** (per-document). Embedding network
@@ -105,14 +100,14 @@ class DedupOrchestrator:
         """
         if not self.enabled:
             return {}
-        fps: dict[str, CacheValue] = {}
+        fps: dict[str, Fingerprint] = {}
         for matcher in self._matchers:
             fps[matcher.name] = matcher.fingerprint(text)
         return fps
 
     def compare(  # noqa: PLR0915 — multi-phase comparison flow
         self,
-        fingerprints: dict[str, dict[str, CacheValue]],
+        fingerprints: dict[str, dict[str, Fingerprint]],
         progress_fn: ProgressFn | None = None,
     ) -> dict[str, DedupResult]:
         """Compare pre-computed fingerprints and produce verdicts.
@@ -172,7 +167,7 @@ class DedupOrchestrator:
                     fp_a = fps.get(matcher.name)
                     fp_b = self._get_fingerprint(candidate_slug, matcher.name, fingerprints, matcher)
                     if fp_a is not None and fp_b is not None:
-                        matcher_scores[matcher.name] = matcher.score(fp_a, fp_b)
+                        matcher_scores[matcher.name] = matcher.score_for(fp_a, fp_b)
 
                 combined = sum(matcher_scores.values()) / len(matcher_scores) if matcher_scores else 0.0
                 if combined > best_score:
@@ -189,8 +184,8 @@ class DedupOrchestrator:
 
             verdict = classify_score(
                 best_score,
-                threshold_identical=float(self._config.get("dedup.threshold_identical", 0.95)),
-                threshold_similar=float(self._config.get("dedup.threshold_similar", 0.80)),
+                threshold_identical=_cfg_float(self._config, "dedup.threshold_identical", 0.95),
+                threshold_similar=_cfg_float(self._config, "dedup.threshold_similar", 0.80),
             )
 
             result = DedupResult(
@@ -212,14 +207,12 @@ class DedupOrchestrator:
                 "embedding_score": scores.get("embedding"),
                 "minhash_score": scores.get("minhash"),
                 "embedding": (
-                    self._matcher_by_name["embedding"].serialize(fps.get("embedding"))
-                    if fps.get("embedding") is not None and "embedding" in self._matcher_by_name
+                    self._matcher_by_name["embedding"].serialize_checked(fps.get("embedding"))
+                    if "embedding" in self._matcher_by_name and "embedding" in fps
                     else None
                 ),
                 "minhash": (
-                    self._matcher_by_name["minhash"].serialize(fps.get("minhash"))
-                    if fps.get("minhash") is not None and "minhash" in self._matcher_by_name
-                    else None
+                    self._matcher_by_name["minhash"].serialize_checked(fps.get("minhash")) if "minhash" in self._matcher_by_name and "minhash" in fps else None
                 ),
             }
             self._store[slug] = entry
@@ -263,17 +256,20 @@ class DedupOrchestrator:
         store_dir = paths.dedup_dir / "fingerprints.json"
         return DedupStore(store_dir, config=self._config)
 
-    def _build_matchers(self) -> tuple[list[ContentMatcher], dict[str, ContentMatcher]]:
-        matchers_str = self._config.get("dedup.matchers", "embedding,minhash")
-        names = [m.strip() for m in matchers_str.split(",") if m.strip()]
-        matchers: list[ContentMatcher] = []
-        by_name: dict[str, ContentMatcher] = {}
+    def _build_matchers(self) -> tuple[list[AnyMatcher], dict[str, AnyMatcher]]:
+        matchers_cfg = self._config.get("dedup.matchers", "embedding,minhash")
+        if not isinstance(matchers_cfg, str):
+            raise TypeError(f"Config key 'dedup.matchers' must be a string, got {type(matchers_cfg).__name__}")
+        names = [m.strip() for m in matchers_cfg.split(",") if m.strip()]
+        matchers: list[AnyMatcher] = []
+        by_name: dict[str, AnyMatcher] = {}
 
         # Resolve the effective embedding model.
         # Empty string "" and None are both treated as "not set" (falsy),
         # so `or` chains the fallback: dedup.model → compile.embedding.model → built-in.
-        model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "")
-        lsh_threshold = float(self._config.get("dedup.minhash_lsh_threshold", 0.8))
+        raw_model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "")
+        model = raw_model if isinstance(raw_model, str) else ""
+        lsh_threshold = _cfg_float(self._config, "dedup.minhash_lsh_threshold", 0.8)
 
         for name in names:
             if name == "embedding":
@@ -304,9 +300,9 @@ class DedupOrchestrator:
         self,
         slug: str,
         matcher_name: str,
-        slug_to_fp: dict[str, dict[str, CacheValue]],
-        matcher: ContentMatcher,
-    ) -> CacheValue:
+        slug_to_fp: dict[str, dict[str, Fingerprint]],
+        matcher: AnyMatcher,
+    ) -> Fingerprint | None:
         """Get a fingerprint for *slug* — from batch cache or persistent store."""
         # First check the current batch (incoming docs)
         incoming = slug_to_fp.get(slug, {})
@@ -325,9 +321,10 @@ class DedupOrchestrator:
                     logger.exception("Failed to deserialize %s fingerprint for %s", matcher_name, slug)
         return None
 
-    @staticmethod
-    def _serialize_fp(fps: dict[str, Any], name: str) -> list | None:
-        fp = fps.get(name)
-        if fp is not None:
-            return fp  # embedding vectors are already lists; MinHash handled by caller
-        return None
+
+def _cfg_float(config: JSONDict, key: str, default: float) -> float:
+    """Read a numeric config value, accepting int/float/numeric string."""
+    raw = config.get(key, default)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        raise TypeError(f"Config key {key!r} must be numeric, got {type(raw).__name__}")
+    return float(raw)

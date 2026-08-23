@@ -10,7 +10,7 @@ from pathlib import Path
 from binaryornot.check import is_binary
 
 from knox.core.models import ParsedDocument
-from knox.types import ParsedResult
+from knox.types import JSONValue
 
 # Parser-layer image-resolution defaults. Lives here (the neutral parser base)
 # so both individual parsers and the registry's build-options share one source.
@@ -123,15 +123,23 @@ def scrub_document(doc: ParsedDocument) -> ParsedDocument:
     """Scrub surrogates from all text carried by a parsed document (in place)."""
     doc.title = _scrub_text(doc.title)
     doc.author = _scrub_text(doc.author)
-    doc.metadata = _scrub_value(doc.metadata)
+    doc.metadata = _scrub_metadata(doc.metadata)
     for element in doc.elements:
-        if isinstance(element.content, str | list):
-            element.content = _scrub_value(element.content)
-        element.metadata = _scrub_value(element.metadata)
+        content = element.content
+        if isinstance(content, str):
+            element.content = _scrub_text(content)
+        elif isinstance(content, list):
+            element.content = [[_scrub_text(cell) for cell in row] for row in content]
+        element.metadata = _scrub_metadata(element.metadata)
     return doc
 
 
-def _scrub_value(value: ParsedResult) -> ParsedResult:
+def _scrub_metadata(value: dict[str, JSONValue]) -> dict[str, JSONValue]:
+    """Scrub strings inside a metadata mapping."""
+    return {k: _scrub_value(v) for k, v in value.items()}
+
+
+def _scrub_value(value: JSONValue) -> JSONValue:
     """Recursively scrub strings inside common container types."""
     if isinstance(value, str):
         return _scrub_text(value)

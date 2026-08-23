@@ -27,6 +27,7 @@ The base class handles:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import typing
 from abc import ABC
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
@@ -63,7 +65,7 @@ from knox.llm.format import salvage_json
 from knox.llm.models import build_model
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
-from knox.types import AgentResult
+from knox.types import JSONDict, JSONValue
 
 #: Per-stage timeout floor. Agents in KNOX are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
@@ -162,7 +164,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     _agent: Agent[DepsT, ResultT] | None = field(default=None, init=False, repr=False)
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
-    _delta_retry_state: dict[int, AgentResult] = field(default_factory=dict, init=False, repr=False)
+    _delta_retry_state: dict[int, JSONValue] = field(default_factory=dict, init=False, repr=False)
     _last_debug_file: Path | None = field(default=None, init=False, repr=False)
     _rlm_usage_limits: UsageLimits | None = field(default=None, init=False, repr=False)
 
@@ -460,7 +462,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 validated = schema.model_validate(parsed)
             except Exception:
                 # Validation failed — build a delta message
-                step = ctx.run_step if hasattr(ctx, "run_step") else 0
+                step = ctx.run_step
                 delta_msg = _build_delta_message(parsed, schema)
                 if delta_msg:
                     # Store the partial data for potential merge on retry
@@ -477,9 +479,9 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 _set_response_text(response, corrected_json)
 
             # Merge with any accumulated state from previous retries
-            step = ctx.run_step if hasattr(ctx, "run_step") else 0
+            step = ctx.run_step
             if step in state:
-                merged = _merge_valid_data(state[step], validated, schema)
+                merged = _merge_valid_data(state[step], validated.model_dump(mode="json"), schema)
                 if merged is not None:
                     _set_response_text(response, json.dumps(merged, ensure_ascii=False, default=str))
                 del state[step]
@@ -610,10 +612,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             logger.warning("Context compression skipped (history preserved)")
 
     @staticmethod
-    def _deps_to_template_vars(deps: DepsT) -> dict[str, Any]:
-        """Convert a Deps instance to a dict for Jinja2 rendering."""
-        if hasattr(deps, "__dict__"):
-            return {k: v for k, v in deps.__dict__.items() if not k.startswith("_")}
+    def _deps_to_template_vars(deps: DepsT) -> dict[str, object]:
+        """Convert a Deps dataclass instance to a dict for Jinja2 rendering."""
+        if dataclasses.is_dataclass(deps) and not isinstance(deps, type):
+            return {f.name: getattr(deps, f.name) for f in dataclasses.fields(deps) if not f.name.startswith("_")}
         return {}
 
 
@@ -637,32 +639,7 @@ def _set_response_text(response: ModelResponse, data: str) -> None:
     response.parts = [*response.parts, TextPart(content=data)]
 
 
-def _check_field(
-    parsed: dict,
-    field_name: str,
-    field_info: Any,
-    issues: list[str],
-) -> None:
-    """Compare one parsed output field against its schema declaration."""
-    if field_name not in parsed:
-        issues.append(f"- missing field '{field_name}'")
-        return
-    value = parsed[field_name]
-    # Check if the value is a list with type errors
-    if not hasattr(field_info, "annotation"):
-        return
-    inner_type = _get_list_inner_type(field_info.annotation)
-    if not (inner_type and isinstance(value, list)):
-        return
-    expected = _format_schema_fields(inner_type)
-    for i, item in enumerate(value):
-        if not isinstance(item, dict):
-            issues.append(
-                f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})"
-            )
-
-
-def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None:
+def _build_delta_message(parsed: JSONValue, schema: type[BaseModel]) -> str | None:
     """Build a delta-retry message describing what needs fixing.
 
     Examines the parsed (but invalid) output against the schema and
@@ -672,7 +649,7 @@ def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None
     issues: list[str] = []
 
     # Check if the model returned a list when the schema expects an object.
-    if isinstance(parsed, list) and hasattr(schema, "model_fields"):
+    if isinstance(parsed, list):
         expected = _format_schema_fields(schema)
         issues.append(f"- You returned a JSON array, but the expected output is a single JSON object with fields {expected}. Return one object, not a list.")
 
@@ -698,30 +675,53 @@ def _build_delta_message(parsed: ModelResponse, schema: type[Any]) -> str | None
     )
 
 
-def _get_list_inner_type(annotation: Any) -> type[Any] | None:
-    """Extract the inner type from a ``list[X]`` annotation."""
+def _check_field(
+    parsed: dict[str, JSONValue],
+    field_name: str,
+    field_info: FieldInfo,
+    issues: list[str],
+) -> None:
+    """Compare one parsed output field against its schema declaration."""
+    if field_name not in parsed:
+        issues.append(f"- missing field '{field_name}'")
+        return
+    value = parsed[field_name]
+    inner_type = _get_list_inner_type(field_info.annotation)
+    if not (inner_type and isinstance(value, list)):
+        return
+    expected = _format_schema_fields(inner_type)
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            issues.append(f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})")
+
+
+def _get_list_inner_type(annotation: Any) -> type[BaseModel] | None:
+    """Extract the inner pydantic-model type from a ``list[X]`` annotation."""
     origin = typing.get_origin(annotation)
     if origin is not list:
         return None
     args = typing.get_args(annotation)
-    return args[0] if args else None
+    inner = args[0] if args else None
+    if isinstance(inner, type) and issubclass(inner, BaseModel):
+        return inner
+    return None
 
 
-def _format_schema_fields(model: type[Any]) -> str:
+def _format_schema_fields(model: object) -> str:
     """Format the field names of a Pydantic model for display."""
-    if hasattr(model, "model_fields"):
-        return "{" + ", ".join(model.model_fields.keys()) + "}"
+    if isinstance(model, type) and issubclass(model, BaseModel):
+        return "{" + ", ".join(model.model_fields) + "}"
     return "{...}"
 
 
-def _merge_valid_data(previous: AgentResult, current: AgentResult, schema: type[Any]) -> AgentResult | None:
+def _merge_valid_data(previous: JSONValue, current: JSONDict, schema: type[BaseModel]) -> JSONDict | None:
     """Merge valid data from a previous retry attempt with the current one.
 
     When the model returns fewer items on retry (e.g., only the corrected
     pages), merge them with the previously valid items by replacing the
     tail of the previous list with the new items.
     """
-    if not isinstance(previous, dict) or not isinstance(current, dict):
+    if not isinstance(previous, dict):
         return None
 
     merged = dict(current)

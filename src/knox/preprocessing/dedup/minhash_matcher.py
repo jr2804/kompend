@@ -14,7 +14,8 @@ from typing import Any
 from datasketch import MinHash, MinHashLSH
 
 from knox.logging import get_logger
-from knox.preprocessing.dedup.base import ContentMatcher
+from knox.preprocessing.dedup.base import ContentMatcher, require_json_int
+from knox.types import JSONValue
 
 # Default number of permutation hash functions for MinHash.
 # 128 gives a good balance of accuracy vs. storage for corpus sizes
@@ -27,7 +28,7 @@ _DEFAULT_NGRAM = 5
 logger = get_logger(__name__)
 
 
-class MinhashMatcher(ContentMatcher):
+class MinhashMatcher(ContentMatcher[MinHash]):
     """Matcher that uses datasketch MinHash signatures + LSH indexing.
 
     Documents are tokenised into word-level n-grams and hashed into a
@@ -36,6 +37,8 @@ class MinhashMatcher(ContentMatcher):
     """
 
     name = "minhash"
+
+    fp_type = MinHash
 
     def __init__(
         self,
@@ -111,10 +114,10 @@ class MinhashMatcher(ContentMatcher):
         """Export a MinHash signature as a list of hash values."""
         return [int(h) for h in fingerprint.hashvalues]
 
-    def deserialize(self, data: list) -> MinHash:
+    def deserialize(self, data: list[JSONValue]) -> MinHash:
         """Restore a MinHash signature from a serialised list."""
         m = MinHash(num_perm=self._num_perm)
-        m.hashvalues = [self._to_uint64(v) for v in data]
+        m.hashvalues = [self._to_uint64(require_json_int(v)) for v in data]
         return m
 
     def __repr__(self) -> str:

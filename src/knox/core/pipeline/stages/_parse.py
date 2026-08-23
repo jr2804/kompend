@@ -32,7 +32,6 @@ from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive
-from knox.types import ParsedResult
 
 logger = get_logger(__name__)
 
@@ -176,7 +175,7 @@ def apply_privacy_filter(elements: list[DocumentElement]) -> None:
             el.content = [[filter_sensitive(cell)[0] for cell in row] for row in el.content]
 
 
-def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedResult | None:
+def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: str, content_hash: str, use_cache: bool) -> ParsedDocument | None:
     """Try to load a parsed document from cache. Returns *None* on miss."""
     if not use_cache:
         return None
@@ -191,7 +190,7 @@ def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: s
     return None
 
 
-def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool, content_hash: str) -> ParsedResult | None:
+def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool, content_hash: str) -> ParsedDocument | None:
     """Parse a source file via the router and optionally cache the result."""
     if pipeline.router is None:
         return None

@@ -27,7 +27,7 @@ from base64 import b64decode, b64encode
 from dataclasses import fields, is_dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from knox.core.models import (
     Chunk,
@@ -40,7 +40,7 @@ from knox.core.models import (
 )
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
-from knox.types import JSON, CacheValue
+from knox.types import CacheValue, JSONDict, JSONValue
 
 # ponytail: registry-boundary (C2) — cache round-trips known dataclasses via
 # JSON tags. Add new cacheable types here, or store to_dict() payloads instead.
@@ -100,19 +100,50 @@ class CacheStore:
             return None
 
         try:
-            entry: dict[str, Any] = decode_json(json.loads(path.read_text(encoding="utf-8")))
+            decoded = decode_json(json.loads(path.read_text(encoding="utf-8")))
+            if not isinstance(decoded, dict):
+                raise ValueError(f"Cache entry at {path} is not a JSON object")
         except Exception:
             logger.debug("Cache read error for %s - treating as miss", path, exc_info=True)
             return None
+        entry = cast("JSONDict", decoded)
 
         # Validate every stored dependency against the caller's current deps.
-        stored_deps = entry.get("deps", {})
+        stored_deps = entry.get("deps")
+        if not isinstance(stored_deps, dict):
+            raise ValueError(f"Cache entry at {path} has missing or malformed deps block")
         for dep_name, stored_hash in stored_deps.items():
             if deps.get(dep_name) != stored_hash:
                 logger.debug("Cache dep mismatch %s/%s: %s changed", layer, key, dep_name)
                 return None
 
         return entry.get("value")
+
+    def get_dict(self, layer: str, deps: dict[str, str]) -> JSONDict | None:
+        """Cached JSON-object payload, or ``None`` on miss.
+
+        Raises ValueError when an entry exists but its payload is not a
+        JSON object — that is a corrupt cache, not a miss.
+        """
+        value = self.get(layer, deps)
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(f"Corrupt cache entry {layer}: payload is {type(value).__name__}, expected object")
+        return cast("JSONDict", value)
+
+    def get_as[T: object](self, layer: str, deps: dict[str, str], expected: type[T]) -> T | None:
+        """Cached value validated against *expected*, or ``None`` on miss.
+
+        Raises ValueError when an entry exists but holds a different type —
+        that is a corrupt cache, not a miss.
+        """
+        value = self.get(layer, deps)
+        if value is None:
+            return None
+        if not isinstance(value, expected):
+            raise ValueError(f"Corrupt cache entry {layer}: payload is {type(value).__name__}, expected {expected.__name__}")
+        return value
 
     def set(self, layer: str, deps: dict[str, str], value: CacheValue) -> None:
         """Store a value with its dependency hashes.
@@ -187,7 +218,7 @@ class CacheStore:
         return self._cache_dir / layer / f"{key}.json"
 
 
-def encode_json(obj: object) -> CacheValue:  # noqa: PLR0911
+def encode_json(obj: object) -> JSONValue:  # noqa: PLR0911
     """Recursively encode cache values for JSON serialization.
 
     Dataclasses, ``Path``, ``StrEnum``, ``bytes`` and tuples are tagged so
@@ -206,13 +237,20 @@ def encode_json(obj: object) -> CacheValue:  # noqa: PLR0911
     if isinstance(obj, tuple):
         return {"__tuple__": [encode_json(v) for v in obj]}
     if isinstance(obj, dict):
-        return {k: encode_json(v) for k, v in obj.items()}
+        encoded: JSONDict = {}
+        for k, v in obj.items():
+            if not isinstance(k, str):
+                raise TypeError(f"Cannot encode cache dict with {type(k).__name__} key")
+            encoded[k] = encode_json(v)
+        return encoded
     if isinstance(obj, list):
         return [encode_json(v) for v in obj]
-    return obj
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    raise TypeError(f"Cannot encode cache value of type {type(obj).__name__}")
 
 
-def decode_json(obj: JSON) -> CacheValue:  # noqa: PLR0911
+def decode_json(obj: JSONValue) -> CacheValue:  # noqa: PLR0911
     """Recursively decode JSON values produced by ``_encode_json``."""
     if isinstance(obj, dict):
         if "__dataclass__" in obj:
@@ -221,7 +259,9 @@ def decode_json(obj: JSON) -> CacheValue:  # noqa: PLR0911
             if cls is None:
                 raise ValueError(f"Unknown dataclass tag: {cls_name}")
             decoded = {k: decode_json(v) for k, v in obj.items()}
-            return cls(**decoded)
+            # Dataclass instances are first-class cache values by design; the
+            # registry lookup erases the concrete type at the boundary.
+            return cast("CacheValue", cls(**decoded))
         if "__path__" in obj:
             return Path(obj["__path__"])
         if "__enum__" in obj:

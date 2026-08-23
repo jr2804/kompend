@@ -223,6 +223,8 @@ class TwoPhaseCompiler(BaseCompiler):
         if not self._config.no_cache:
             cached = self._cache_store.get("generate", gen_deps)
             if cached is not None:
+                if not isinstance(cached, CompiledWiki):
+                    raise ValueError("Corrupt generation cache entry: payload is not a compiled wiki")
                 logger.info(
                     "TwoPhase: generation cache hit (%d nodes, %d edges) — took %.1fs total",
                     len(cached.nodes),

@@ -11,7 +11,7 @@ from knox.preprocessing.dedup.base import DedupVerdict, classify_score
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
-from knox.preprocessing.dedup.store import DedupStore
+from knox.preprocessing.dedup.store import DedupStore, StoreEntry
 from knox.rag.zvec_store import PydanticAIEmbeddingProvider
 from tests.conftest import DeterministicTestEmbeddingProvider
 
@@ -88,7 +88,7 @@ class TestContentStore:
         store = DedupStore(db_file)
         store.load()
         assert len(store) == 0
-        assert store._data == {}
+        assert store.slugs == []
 
 
 # ---------------------------------------------------------------------------
@@ -349,13 +349,24 @@ class TestDedupOrchestrator:
         store.load()
         assert store.slugs == []
 
-        store["doc-1"] = {"closest_match": None, "closest_score": 0.0}
+        store["doc-1"] = StoreEntry(
+            verdict="",
+            closest_match=None,
+            closest_score=0.0,
+            closest_method="",
+            embedding_score=None,
+            minhash_score=None,
+            embedding=None,
+            minhash=None,
+        )
         store.save()
 
         store2 = DedupStore(tmp_path / "fingerprints.json")
         store2.load()
         assert "doc-1" in store2
-        assert store2.get("doc-1", {}).get("closest_score") == 0.0
+        entry = store2.get("doc-1")
+        assert entry is not None
+        assert entry["closest_score"] == 0.0
 
     # ── fingerprint() + compare() incremental API ───────────────────
 

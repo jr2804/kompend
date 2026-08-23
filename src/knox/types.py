@@ -1,49 +1,64 @@
-"""Type aliases for common patterns to reduce typing.Any usage."""
+"""Shared structural types for KNOX.
 
-from typing import Any, TypeVar
+The JSON types are precise recursive unions — NOT ``Any`` aliases. Data
+read from LLM output, config files, caches, and stores is JSON-shaped and
+unknown at compile time; these unions let ``ty`` force every consumer to
+narrow before use instead of silently propagating ``Any``.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 from jinja2 import ChoiceLoader, Environment
+from pydantic import BaseModel
 
-# JSON-related types
-JSON = Any  # Unparsed JSON string or parsed JSON structure (dict/list/primitives)
+# ── JSON types ────────────────────────────────────────────────────────
+# Recursive JSON value: every JSON payload in KNOX narrows to this.
+# (3.11-compatible spelling; PEP 695 ``type`` statements need 3.12)
+JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
+
+JSON = JSONValue  # Unparsed-structure values flowing through agents/stores
 
 TypeT = TypeVar("TypeT")
 TypeType = type[TypeT] | None  # Type object or None
-JSONDict = dict[str, JSON]  # JSON object (dictionary)
-JSONList = list[JSON]  # JSON array (list)
-JSONValue = JSON  # Any JSON value (string, number, boolean, null, object, array)
 
-# Wiki and page types
-Page = JSONDict  # Wiki page structure
-Pages = list[Page]  # List of wiki pages
+JSONDict = dict[str, JSONValue]  # JSON object (dictionary)
+JSONList = list[JSONValue]  # JSON array (list)
+
+# Wiki page aliases were deleted: use WikiNode / ParsedDocument directly.
 
 # Metadata types
 MetadataValue = str | bool | int | float | list["MetadataValue"] | dict[str, "MetadataValue"]  # Value stored in WikiNode.metadata / provenance dicts
 
 # Configuration types
-ConfigDict = dict[str, JSON]  # Configuration dictionary
-ConfigValue = JSON  # Configuration value (can be any JSON type)
+ConfigDict = dict[str, JSONValue]  # Configuration dictionary
+ConfigValue = JSONValue  # Configuration value (a concrete JSON type)
+
 
 # Cache types
-CacheValue = JSON  # Cached value (can be any JSON-serializable type)
+# Decoded cache values: JSON round-trip plus the tagged runtime types
+# reconstructed by knox.core.cache.store.decode_json.
+@runtime_checkable
+class DataclassInstance(Protocol):
+    """Structural type for any ``@dataclass`` instance."""
+
+    __dataclass_fields__: ClassVar[dict[str, Any]]
+
+
+CacheValue = JSONValue | Path | bytes | tuple["CacheValue", ...] | DataclassInstance
 
 # Template types
-TemplateContext = dict[str, JSON]  # Template rendering context
+TemplateContext = dict[str, JSONValue]  # Template rendering context
 Jinja2Env = Environment  # Jinja2 template environment
 Jinja2Loader = ChoiceLoader  # Jinja2 template loader
 
 # Agent types
-AgentResult = JSON  # Result from agent execution (can be any structure)
+AgentResult = BaseModel | str  # Structured pydantic output or raw text response
 
-# Parser types
-ParsedResult = JSON  # Result from document parsing (can be any structure)
+# Parser results are ParsedDocument (see knox.core.models) — no alias needed.
 
 # External library types
-try:
-    import zvec
-
-    ZvecCollection = zvec.Collection
-    ZvecDoc = zvec.Doc
-except ImportError:
-    ZvecCollection = Any  # Type alias for zvec.Collection object
-    ZvecDoc = Any  # Type alias for zvec.Doc object
+ZvecCollection = Any  # ponytail: optional-dep type unavailable when zvec missing; revisit if zvec ships stubs
+ZvecDoc = Any

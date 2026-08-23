@@ -54,14 +54,17 @@ def capture_cmd(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     sources_dir = vp.sources_dir
 
-    try:
-        capture_agent = CaptureAgent(
-            cfg.knox.compile.llm.default_model,
-            timeout=float(cfg.knox.compile.llm.timeout),
-            retries=cfg.knox.compile.llm.output_retries,
-        )
-    except Exception:
-        capture_agent = None
+    default_model = cfg.knox.compile.llm.default_model
+    capture_agent = None
+    if default_model:
+        try:
+            capture_agent = CaptureAgent(
+                default_model,
+                timeout=float(cfg.knox.compile.llm.timeout),
+                retries=cfg.knox.compile.llm.output_retries,
+            )
+        except Exception:
+            capture_agent = None
 
     paths = capture(text, sources_dir=sources_dir, capture_agent=capture_agent, tags=tag)
     get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / CAPTURED_SUBDIR}")
@@ -110,14 +113,17 @@ def distill_cmd(
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
-    try:
-        distill_agent = DistillAgent(
-            cfg.knox.compile.llm.default_model,
-            timeout=float(cfg.knox.compile.llm.timeout),
-            retries=cfg.knox.compile.llm.output_retries,
-        )
-    except Exception:
-        distill_agent = None
+    default_model = cfg.knox.compile.llm.default_model
+    distill_agent = None
+    if default_model:
+        try:
+            distill_agent = DistillAgent(
+                default_model,
+                timeout=float(cfg.knox.compile.llm.timeout),
+                retries=cfg.knox.compile.llm.output_retries,
+            )
+        except Exception:
+            distill_agent = None
 
     paths = distill(vp.sources_dir, distill_agent=distill_agent)
     if not paths:
@@ -240,7 +246,7 @@ def _synthesize_write_page(
     page_title: str,
     source_texts: list[tuple[str, str]],
     related_titles: list[str],
-    model: str,
+    model: str | None,
     timeout: float,
     source_char_max: int = 4000,
 ) -> str:
