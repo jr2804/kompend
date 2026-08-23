@@ -145,7 +145,16 @@ class HybridRetriever:
             logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
         query_tokens = set(tokenize(query))
-        return [self._hit_to_result(hit, query_tokens) for hit in hits]
+        results: list[SearchResult] = []
+        for hit in hits:
+            node_id = str(hit.get("id", ""))
+            if node_id not in self._node_by_id:
+                # Markdown-only invariant: the loaded wiki is authoritative; a
+                # hit whose id resolves to no page is stale store state.
+                logger.debug("Skipping stale vector hit — %r not in loaded wiki", node_id)
+                continue
+            results.append(self._hit_to_result(hit, query_tokens))
+        return results
 
     def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
         """Expand search results by following typed relations in the wiki graph."""

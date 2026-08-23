@@ -73,16 +73,15 @@ class TestHybridRetriever:
         retriever = HybridRetriever(wiki)
         assert retriever.search_wiki("", top_k=5) == []
 
-    def test_search_wiki_stale_vector_id_does_not_crash(self) -> None:
-        """Issue #24: a vector hit whose id is absent from the wiki graph
-        (stale index after recompile/rename) must not crash _node_tags."""
+    def test_search_wiki_stale_vector_hit_skipped(self) -> None:
+        """Issue #24 follow-up: a vector hit whose id is absent from the wiki
+        (stale index after recompile/rename) is skipped — the loaded wiki
+        is authoritative, stale store state never surfaces."""
         wiki = self._make_wiki()
-        fake = _FakeVectorStore(hits=[{"id": "removed-page", "score": 0.9}])
+        fake = _FakeVectorStore(hits=[{"id": "removed-page", "score": 0.9}, {"id": "beta", "score": 0.8}])
         retriever = HybridRetriever(wiki, vector_store=fake)
         results = retriever.search_wiki("anything", top_k=5)
-        assert len(results) == 1
-        assert results[0].article_id == "removed-page"
-        assert results[0].tags == set()
+        assert [r.article_id for r in results] == ["beta"]
 
     def test_search_hybrid_vector_only(self) -> None:
         """Verify hybrid search returns vector results."""

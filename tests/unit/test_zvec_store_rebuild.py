@@ -72,3 +72,30 @@ def _wiki(dim: int) -> CompiledWiki:
         edges=[],
         toc=[],
     )
+
+
+def test_wiki_store_prunes_stale_ids(tmp_path: Path) -> None:
+    """Follow-up to #24: renaming/removing a page must not leave its
+    old id in the vector store after a rebuild."""
+    db = tmp_path / "vectors"
+
+    store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
+    assert store.build_index(_wiki_ids(4, "alpha", "beta")) == 2
+    assert store.search("q", top_k=10)  # sanity: hits exist
+    store.close()
+
+    store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
+    # "beta" renamed to "gamma" — old "beta" hits must disappear.
+    assert store.build_index(_wiki_ids(4, "alpha", "gamma")) == 2
+    ids = {hit["id"] for hit in store.search("q", top_k=10)}
+    assert "beta" not in ids
+    assert "alpha" in ids and "gamma" in ids
+    store.close()
+
+
+def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[WikiNode(id=i, title=i, content=f"c-{i}", node_type="concept") for i in ids],
+        edges=[],
+        toc=[],
+    )

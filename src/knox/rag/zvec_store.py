@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import os
 import shutil
 from abc import ABC, abstractmethod
@@ -160,7 +161,9 @@ class ZvecWikiStore:
             self._provider = make_provider(embedding_model)
 
         self._collection = self._create_collection()
-        return self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
+        count = self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
+        self._prune_orphans(self._collection, wiki.nodes)
+        return count
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity."""
@@ -288,17 +291,48 @@ class ZvecWikiStore:
             docs_batch.append(doc)
 
             if len(docs_batch) >= batch_size:
-                collection.insert(docs_batch)
+                collection.upsert(docs_batch)
                 indexed_count += len(docs_batch)
                 logger.info("Indexed %d/%d nodes in zvec store", indexed_count, total_nodes)
                 docs_batch = []
 
         if docs_batch:
-            collection.insert(docs_batch)
+            collection.upsert(docs_batch)
             indexed_count += len(docs_batch)
 
         logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_file)
         return indexed_count
+
+    def _manifest_file(self) -> Path:
+        """Id manifest from the last successful build, next to the store."""
+        return self.db_file.with_name(self.db_file.name + ".manifest.json")
+
+    def _prune_orphans(self, collection: ZvecCollection, nodes: list[WikiNode]) -> int:
+        """Delete store docs whose id is absent from *nodes* (renamed/removed pages).
+
+        The zvec API cannot enumerate stored pks, so the previous build's ids
+        are tracked in a manifest file beside the store. Upsert keeps changed
+        pages fresh; this removes ids the current wiki no longer has.
+        """
+        manifest = self._manifest_file()
+        old_ids: set[str] = set()
+        if manifest.is_file():
+            try:
+                raw = json.loads(manifest.read_text(encoding="utf-8"))
+                if isinstance(raw, list):
+                    old_ids = {str(i) for i in raw}
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Vector manifest corrupt — skipping prune: %s", manifest)
+        keep = {_safe_id(n.id) for n in nodes}
+        orphans = old_ids - keep
+        if orphans:
+            collection.delete(sorted(orphans))
+            logger.info("Pruned %d stale vector(s) from %s", len(orphans), self.db_file)
+        try:
+            manifest.write_text(json.dumps(sorted(keep)), encoding="utf-8")
+        except OSError as exc:  # pragma: no cover — filesystem-dependent
+            logger.warning("Could not write vector manifest (%s): %s", manifest, exc)
+        return len(orphans)
 
 
 def _safe_id(node_id: str) -> str:
