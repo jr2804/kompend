@@ -20,7 +20,7 @@ from knox.core.paths import rel_to_vault
 
 def _load_scanner() -> Any:
     """Import the check script as a module (it's not on the package path)."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "check_persisted_paths.py"
+    script = Path(__file__).resolve().parents[2] / "scripts" / "checks" / "check_persisted_paths.py"
     spec = importlib.util.spec_from_file_location("check_persisted_paths", script)
     assert spec is not None
     mod = importlib.util.module_from_spec(spec)
