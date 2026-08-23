@@ -361,9 +361,13 @@ def tokenize(text: str) -> list[str]:
     return [t for t in TOKEN_SPLIT_RE.split(text.lower()) if t]
 
 
-def _node_tags(node: WikiNode) -> set[str]:
-    """Tags from node metadata, guarded against missing/non-list shapes."""
-    if not node.metadata:
+def _node_tags(node: WikiNode | None) -> set[str]:
+    """Tags from node metadata, guarded against missing node/non-list shapes.
+
+    ``node`` is ``None`` when a vector-store hit references an id absent
+    from the loaded wiki (stale index after recompile/rename).
+    """
+    if node is None or not node.metadata:
         return set()
     raw = node.metadata.get(MetadataField.TAGS)
     if isinstance(raw, list):
