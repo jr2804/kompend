@@ -145,6 +145,45 @@ class ExtractionSet:
                     out[name].append(ext.source)
         return dict(out)
 
+    def entity_pages(self) -> list[dict[str, Any]]:
+        """Return merged entity page specs, keyed like :meth:`concept_pages`.
+
+        Output schema: ``{name, kind: "entity", type, sources, definitions}``.
+        Entities whose ``normalize_concept_key`` collides are merged; the
+        canonical name is the longest variant. These become mandatory
+        generated pages (Karpathy-style entity pages) unless the same key
+        already exists as a concept.
+        """
+        merged: dict[str, dict[str, Any]] = {}
+        for ext in self.extractions:
+            for ent in ext.entities:
+                name = ent.name.strip()
+                if not name or name.startswith("vlm_"):
+                    continue
+                key = normalize_concept_key(name)
+                if not key:
+                    continue
+                if key not in merged:
+                    merged[key] = {
+                        "name": name,
+                        "kind": "entity",
+                        "type": ent.type,
+                        "sources": [],
+                        "definitions": [],
+                    }
+                else:
+                    bucket = merged[key]
+                    if ent.type and not bucket["type"]:
+                        bucket["type"] = ent.type
+                    if len(name) > len(bucket["name"]):
+                        bucket["name"] = name
+                entry = merged[key]
+                if ext.source not in entry["sources"]:
+                    entry["sources"].append(ext.source)
+                if ent.context and ent.context not in entry["definitions"]:
+                    entry["definitions"].append(ent.context)
+        return list(merged.values())
+
 
 class BatchFailureTracker:
     """Counts successful/failed batches; signals an unsuitable model.

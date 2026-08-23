@@ -30,7 +30,9 @@ from knox.compilation._two_phase_core import (
     try_pydanticai_generation,
     upsert_node,
 )
+from knox.compilation.concept_keys import normalize_concept_key
 from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
+from knox.compilation.schema import GenerationPage
 from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
@@ -101,7 +103,12 @@ def run_generation(
 
 
 def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> list[dict[str, Any]]:
-    """Merge and validate concepts from extractions. Returns empty list if none."""
+    """Merge and validate concepts and entities from extractions.
+
+    Entities become mandatory pages (kind ``entity``); entity specs whose
+    normalized key already exists as a concept are dropped so no page is
+    duplicated. Returns empty list if neither yielded anything.
+    """
     concepts = extractions.concept_pages()
     embed_model = compiler._config.embedding.model
     budget = compiler._config.budget
@@ -112,6 +119,7 @@ def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> l
         string_threshold=budget.concept_string_merge_threshold,
         jaccard_min_token_len=budget.jaccard_min_token_len,
     )
+    concepts = _with_entity_pages(compiler, extractions, concepts)
     if concepts:
         sample_limit = compiler._config.display.concept_names
         logger.info(
@@ -128,6 +136,20 @@ def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> l
             "TwoPhase: concept_pages() empty — extraction concept keys: %s",
             sorted(sample_keys) or "(no concepts returned)",
         )
+    return concepts
+
+
+def _with_entity_pages(
+    compiler: TwoPhaseRuntime,
+    extractions: ExtractionSet,
+    concepts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Append mandatory entity pages not already covered by a concept."""
+    concept_keys = {normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) for c in concepts}
+    entities = [e for e in extractions.entity_pages() if normalize_concept_key(str(e.get("name", ""))) not in concept_keys]
+    if entities:
+        logger.info("TwoPhase: %d entity page(s) queued for generation", len(entities))
+        concepts.extend(entities)
     return concepts
 
 
@@ -338,7 +360,7 @@ def generate_all_pages(
 
             for idx, page in enumerate(valid_pages):
                 node_id = slugify(page.title or f"concept-{batch_start + idx}", max_length=compiler._config.llm.slug_max_length)
-                kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
+                kind = _page_kind(page, batch, compiler._config.extraction_categories)
                 # Strip double brackets around source citations so [[sources/x.pdf]]
                 # becomes [sources/x.pdf] — matches the renderer’s _CITATION_RE and
                 # keeps provenance out of broken-wikilinks lint findings.
@@ -379,6 +401,17 @@ def generate_all_pages(
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx
+
+
+def _page_kind(page: GenerationPage, batch: list[dict[str, Any]], extras: dict[str, str]) -> str:
+    """Resolve a generated page's kind.
+
+    A pre-assigned kind on the batch entry (entity pages) wins over the
+    LLM's label — entity coverage is mandatory, not left to model discretion.
+    """
+    fixed = {normalize_concept_key(str(b.get("name", ""))): str(b.get("kind")) for b in batch if b.get("kind")}
+    expected = fixed.get(normalize_concept_key(page.title or ""))
+    return _allowed_kind(expected or page.kind, extras)
 
 
 def _allowed_kind(kind: str, extras: dict[str, str]) -> str:

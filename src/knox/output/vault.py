@@ -55,7 +55,7 @@ from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
 from knox.output.models import Document, OkfSource, TrustEvent
-from knox.output.reference_links import rewrite_source_references
+from knox.output.reference_links import format_bibliography_entry, rewrite_source_references
 
 # OKF spec version every vault writer targets.
 OKF_VERSION = "0.2"
@@ -104,7 +104,7 @@ class VaultWriter(BaseOutputWriter):
     _KIND_FOLDERS: ClassVar[dict[str, str]] = {
         "concept": "concepts",
         "comparison": "concepts",
-        "entity": "concepts",
+        "entity": "entities",
         "summary": "concepts",
     }
 
@@ -197,14 +197,33 @@ class VaultWriter(BaseOutputWriter):
     def okf_description(node: WikiNode) -> str:
         """Extract a one-line description from a wiki node.
 
-        Uses the first non-empty line of content, with ``[[wikilinks]]``
-        reduced to plain text.
+        Uses the first sentence of the first non-empty content line, with
+        ``[[wikilinks]]`` reduced to plain text. Generated pages open with a
+        full paragraph; without sentence truncation the index duplicates the
+        whole page body (Karpathy's index spec is link + one-line summary).
         """
         content = (node.content or "").strip()
         if not content:
             return ""
         first_line = content.split("\n")[0].strip()
-        return WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
+        text = WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
+        # ponytail: heuristic sentence split — a boundary needs ". " +
+        # capitalized/paren continuation, and pseudo-boundaries inside
+        # identifiers like "Rec. P.863" are skipped when the next word itself
+        # contains a period. Swap for a tokenizer if this ever misfires.
+        desc = text
+        for m in re.finditer(r"^(.+?[.!?])\s+(?=[A-Z(])", text):
+            next_word = text[m.end() :].split(" ", 1)[0]
+            if "." in next_word.rstrip(".,;:"):
+                continue
+            desc = m.group(1)
+            break
+        else:
+            tail = re.match(r"^(.+?[.!?])\s*$", text)
+            desc = tail.group(1) if tail else text
+        if len(desc) > 200:
+            desc = desc[:200].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+        return desc
 
     @staticmethod
     def okf_frontmatter(
@@ -360,9 +379,9 @@ class VaultWriter(BaseOutputWriter):
             rendered = self._render_document(doc, body, related_edges.get(doc.page_slug, []), wiki, slug_targets)
             (target_dir / filename).write_text(rendered, encoding="utf-8")
 
-        # Generate references page if store has entries.
-        if ref_store is not None and ref_store.total_count() > 0:
-            self._write_references_page(ref_store, output_dir)
+        # References page is always generated — an empty bibliography is
+        # information too (signals reference extraction found nothing).
+        self._write_references_page(ref_store, output_dir, wiki)
         # Per-source summary pages (markdown-only invariant: per-source asset
         # inventory + citation mapping live in the wiki, not only in .knox/).
         self._write_source_summaries(wiki, output_dir)
@@ -553,8 +572,82 @@ class VaultWriter(BaseOutputWriter):
         slug_targets: dict[str, str],
     ) -> str: ...
 
-    @abstractmethod
-    def _write_references_page(self, store: ReferenceStore, output_dir: Path) -> None: ...
+    def _write_references_page(
+        self,
+        store: ReferenceStore | None,
+        output_dir: Path,
+        wiki: CompiledWiki,
+    ) -> None:
+        """Write ``references.md`` — always, even when empty (§4.1).
+
+        Two sections: the corpus sources themselves (linked to their summary
+        pages) and bibliographic entries extracted from the sources'
+        reference sections. The latter are mostly works NOT in the corpus —
+        reading that section is the gap list for sources worth adding.
+        """
+        all_refs = sorted(store.all_references(), key=lambda r: r.short_label().lower()) if store else []
+
+        # Corpus sources: same enumeration as _write_source_summaries.
+        corpus: list[tuple[str, str]] = []  # (display key, summary slug or "")
+        summaries_dir = output_dir / SUMMARIES_SUBDIR
+        existing_slugs = {p.stem for p in summaries_dir.glob("*.md")} if summaries_dir.is_dir() else set()
+        vp = VaultPaths(self._base_dir) if self._base_dir else None
+        if vp and vp.sources_dir.is_dir():
+            sources_prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+            for p in sorted(vp.sources_dir.rglob("*")):
+                if not p.is_file() or is_protected_source(p, vp.sources_dir):
+                    continue
+                key = f"{DEFAULT_SOURCES_DIR_NAME}/{p.relative_to(vp.sources_dir).as_posix()}"
+                name = key[len(sources_prefix) :]
+                slug = attachment_slug(name)
+                corpus.append((key, slug if slug in existing_slugs else ""))
+        else:
+            # No vault context — derive from node provenance.
+            seen: set[str] = set()
+            for node in wiki.nodes:
+                for stem in node.metadata.get(MetadataField.PROVENANCE) or []:
+                    key = str(stem)
+                    if key not in seen:
+                        seen.add(key)
+                        corpus.append((key, attachment_slug(key)))
+
+        lines = [
+            okf_frontmatter_yaml(
+                {
+                    "type": "Reference",
+                    "title": "References",
+                    "description": "Corpus sources and bibliographic entries cited by them",
+                    "generated": {"by": _GENERATED_BY, "at": iso_local()},
+                    "status": "stable",
+                    "kind": "reference",
+                }
+            ).rstrip(),
+            "",
+            "# References",
+            "",
+            "## Corpus sources",
+            "",
+        ]
+        if corpus:
+            lines.extend(f"- [{key}]({SUMMARIES_SUBDIR}/{slug}.md)" if slug and slug in existing_slugs else f"- {key}" for key, slug in sorted(corpus))
+        else:
+            lines.append("_(no corpus sources)_")
+        lines.extend(
+            [
+                "",
+                "## Cited works not in corpus",
+                "",
+                "Bibliographic entries extracted from the sources' reference sections.",
+                "Candidates for additional sources to ingest.",
+                "",
+            ]
+        )
+        if all_refs:
+            lines.extend(format_bibliography_entry(ref) for ref in all_refs)
+        else:
+            lines.append("_(none extracted yet)_")
+
+        (output_dir / "references.md").write_text("\n".join(lines), encoding="utf-8")
 
     @abstractmethod
     def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None: ...
@@ -696,7 +789,5 @@ def _asset_lines(lines: list[str], items: list[AssetRecord]) -> None:
         kind_items = [r for r in items if r.kind == kind]
         lines.append(f"- **{kind.value.capitalize()}s:** {len(kind_items)}")
         if kind == AssetKind.FIGURE:
-            lines.extend(
-                f"  - {getattr(r.data, 'caption', '') or r.summary or r.id}".rstrip() for r in kind_items
-            )
+            lines.extend(f"  - {getattr(r.data, 'caption', '') or r.summary or r.id}".rstrip() for r in kind_items)
     lines.append("")

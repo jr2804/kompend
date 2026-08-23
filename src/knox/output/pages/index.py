@@ -62,8 +62,7 @@ def _hub_index(wiki: CompiledWiki, prefix: str) -> str:
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     lines: list[str] = [
         "# Wiki Index\n",
-        "This vault's knowledge bundle lives in the "
-        f"[{prefix}/]({prefix}/) directory. Start at the portable catalog:",
+        f"This vault's knowledge bundle lives in the [{prefix}/]({prefix}/) directory. Start at the portable catalog:",
         "",
         f"→ **[{prefix}/index.md]({prefix}/index.md)**\n",
         "## Quick facts\n",
@@ -74,28 +73,6 @@ def _hub_index(wiki: CompiledWiki, prefix: str) -> str:
         "",
     ]
     return "\n".join(lines)
-
-
-def _stats_lines(wiki: CompiledWiki, prefix: str) -> list[str]:
-    """Summary bullet list for the catalog index."""
-    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
-    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
-    lines = [
-        f"- **Sources:** {source_count}",
-        f"- **Articles:** {len(wiki.nodes)}",
-        f"- **Total words:** {sum(len(n.content.split()) for n in wiki.nodes):,}",
-        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
-    ]
-    if duration is not None:
-        lines.append(f"- **Duration:** {duration:.1f}s")
-    if wiki.quality_score:
-        lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
-    att_target = "attachments/"
-    if prefix:
-        lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
-        att_target = f"{prefix}/../attachments/"
-    lines.append(f"- **Media:** [attachments/]({att_target}) — figures extracted from sources")
-    return lines
 
 
 def _full_catalog(
@@ -136,7 +113,7 @@ def _full_catalog(
         if (output_dir / SUMMARIES_SUBDIR).is_dir() and any((output_dir / SUMMARIES_SUBDIR).glob("*.md")):
             surfaces.append((f"{prefix}/{SUMMARIES_SUBDIR}/", "Per-source overview pages (assets, citations, backlinks)"))
         if (output_dir / "references.md").exists():
-            surfaces.append((f"{prefix}/references.md", "Bibliography — all extracted citations, anchored by id"))
+            surfaces.append((f"{prefix}/references.md", "Corpus sources + cited works not in corpus"))
         if (output_dir / QUALITY_FILE).exists():
             surfaces.append((f"{prefix}/{QUALITY_FILE}", "Claim verification summary (WiCER pass)"))
         if (output_dir / "overview.md").exists():
@@ -151,6 +128,28 @@ def _full_catalog(
             lines.append(f"- [{name}]({target}) — {desc}")
 
     return "\n".join(lines)
+
+
+def _stats_lines(wiki: CompiledWiki, prefix: str) -> list[str]:
+    """Summary bullet list for the catalog index."""
+    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
+    duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
+    lines = [
+        f"- **Sources:** {source_count}",
+        f"- **Articles:** {len(wiki.nodes)}",
+        f"- **Total words:** {sum(len(n.content.split()) for n in wiki.nodes):,}",
+        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
+    ]
+    if duration is not None:
+        lines.append(f"- **Duration:** {duration:.1f}s")
+    if wiki.quality_score:
+        lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
+    att_target = "attachments/"
+    if prefix:
+        lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
+        att_target = f"{prefix}/../attachments/"
+    lines.append(f"- **Media:** [attachments/]({att_target}) — figures extracted from sources")
+    return lines
 
 
 def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:

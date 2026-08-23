@@ -276,7 +276,6 @@ class TestGenerateIndexPortable:
 
     def test_links_to_bundle_index(self, tmp_path: Path) -> None:
         """Nested layout: root index is a thin hub pointing at the catalog."""
-
         write_index(self._wiki(), tmp_path / "wiki", base_dir=tmp_path)
         index = (tmp_path / "index.md").read_text(encoding="utf-8")
         assert "[wiki/index.md](wiki/index.md)" in index

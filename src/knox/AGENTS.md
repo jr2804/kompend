@@ -231,6 +231,8 @@ v0.2-compliant), `json`, `typst`.
    `summary`, `comparison` — `MANDATORY_KINDS` in `core/config/keys.py`)
    plus `compile.extraction.categories` extras; the LLM assigns `kind` per
    page, unknown values fall back to `concept` (see `compilation/AGENTS.md`).
+   Extracted entities become mandatory generated pages (`kind: entity`,
+   routed to `entities/`) unless a concept page with the same key exists.
 7. **Per-claim attribution** uses markdown footnotes `[^id]` keyed to
    `sources[].id` (§5.1) — NOT a v0.1 body `# Citations` numbered list. Inline
    `[sources/x.pdf]` citations are rewritten to `[^id]` refs; definitions are

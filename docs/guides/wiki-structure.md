@@ -126,10 +126,11 @@ project/
 │   ├── index.md           # Portable catalog — links EVERYTHING the wiki generates
 │   ├── log.md             # Activity journal (appended, never overwritten)
 │   ├── overview.md        # LLM summary (if --synthesize)
-│   ├── references.md      # Bibliography, anchored by stable id (if references extracted)
+│   ├── references.md      # Corpus sources + cited works not in corpus (always present)
 │   ├── quality.md         # Claim verification summary (if a WiCER pass ran)
 │   ├── summaries/         # One page per ingested source (assets, citations, backlinks)
-│   ├── concepts/…         # Individual wiki pages, routed by kind
+│   ├── concepts/…         # Concept/comparison pages, routed by kind
+│   ├── entities/…         # Entity pages (standards, orgs, products, people)
 │   └── *.md               # Root-level pages (overview, procedures, sections)
 ├── exported/              # Full-source markdown exports — `knox sources export`
 │                          # without OUTPUT lands here (on demand, reference only)

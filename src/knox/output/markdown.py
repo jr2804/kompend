@@ -52,7 +52,6 @@ from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
 from knox.output.models import Document, OkfSource
 from knox.output.pages.log import append_log_entry
-from knox.output.reference_links import format_bibliography_entry
 from knox.output.renderer import DocumentRenderer
 from knox.output.vault import OKF_VERSION, VaultWriter
 from knox.output.vault import okf_frontmatter_yaml as _okf_frontmatter
@@ -240,34 +239,6 @@ class MarkdownWriter(VaultWriter):
         return rendered
 
     @override
-    def _write_references_page(self, store: ReferenceStore, output_dir: Path) -> None:
-        """Write ``references.md`` as a ``type: Reference`` concept (§4.1).
-
-        Bibliography anchored by content-hash id (stable); no sequence numbers.
-        Sorted alphabetically by short label.
-        """
-        all_refs = store.all_references()
-        if not all_refs:
-            return
-        all_refs.sort(key=lambda r: r.short_label().lower())
-
-        frontmatter = {
-            "okf_version": OKF_VERSION,
-            "type": "Reference",
-            "title": "References",
-        }
-        lines = [
-            _okf_frontmatter(frontmatter).rstrip(),
-            "",
-            "# References",
-            "",
-        ]
-        for ref in all_refs:
-            lines.append(format_bibliography_entry(ref))
-
-        (output_dir / "references.md").write_text("\n".join(lines), encoding="utf-8")
-
-    @override
     def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None:
         """Write ``index.md`` per §8: grouped sections with descriptions.
 
@@ -306,7 +277,7 @@ class MarkdownWriter(VaultWriter):
             lines.append("## Sources\n")
             lines.extend(f"- [{p.stem}](summaries/{p.name})" for p in summaries)
             lines.append("")
-        surfaces: list[tuple[str, str]] = [("references.md", "Bibliography — all extracted citations, anchored by id")]
+        surfaces: list[tuple[str, str]] = [("references.md", "Corpus sources + cited works not in corpus")]
         if (output_dir / QUALITY_FILE).exists():
             surfaces.append((QUALITY_FILE, "Claim verification summary (WiCER pass)"))
         if (output_dir / "overview.md").exists():

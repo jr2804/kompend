@@ -157,7 +157,7 @@ def test_type_maps_from_node_type(tmp_path: Path) -> None:
     writer.write(wiki, tmp_path)
 
     concept_fm = _parse_frontmatter((tmp_path / "concepts" / "c.md").read_text())
-    entity_fm = _parse_frontmatter((tmp_path / "concepts" / "e.md").read_text())
+    entity_fm = _parse_frontmatter((tmp_path / "entities" / "e.md").read_text())
     overview_fm = _parse_frontmatter((tmp_path / "o.md").read_text())
 
     assert concept_fm is not None

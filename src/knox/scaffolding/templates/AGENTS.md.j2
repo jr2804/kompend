@@ -52,10 +52,11 @@ slash commands. See `knox agent --help` for details.
 └── wiki/               ← compiled output (OKF v0.2 bundle)
     ├── index.md        ← portable catalog — links EVERYTHING the wiki generates
     ├── log.md          ← change log
-    ├── references.md   ← bibliography, anchored by stable id
+    ├── references.md   ← corpus sources + cited works not in corpus (always present)
     ├── quality.md      ← claim verification summary (if a verify pass ran)
     ├── summaries/      ← one page per ingested source (assets, citations, backlinks)
-    └── concepts/       ← concept/entity/comparison pages
+    ├── entities/       ← entity pages (standards, organizations, products, people)
+    └── concepts/       ← concept/comparison pages
 ```
 
 ## No knox available? Navigate the wiki yourself
@@ -68,7 +69,8 @@ complete in its markdown pages:
    generated page group plus `references.md`, `summaries/`, `quality.md`,
    `log.md`.
 2. **Concepts:** `wiki/concepts/*.md` — one page per topic, with Related
-   sections, source-file provenance, and per-claim footnotes.
+   sections, source-file provenance, and per-claim footnotes. Entity pages
+   live in `wiki/entities/*.md`.
 3. **Per-source detail:** `wiki/summaries/<source>.md` — asset inventory,
    extracted citations, and backlinks to the concepts a source feeds.
 4. **Trust:** `wiki/quality.md` (when present) — per-page claim verification

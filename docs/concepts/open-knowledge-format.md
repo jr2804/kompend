@@ -47,11 +47,12 @@ A KNOX wiki compiled with the default markdown output produces an OKF v0.2 bundl
 wiki/
 ├── index.md              ← table of contents with grouped sections
 ├── log.md                ← change log with ISO date headings
-├── references.md         ← formatted bibliography (type: Reference)
-├── concepts/             ← concept/entity/comparison pages
+├── references.md         ← corpus sources + cited works not in corpus (always present)
+├── concepts/             ← concept/comparison pages
 │   ├── audio-processing.md
 │   ├── python-fundamentals.md
 │   └── ...
+├── entities/             ← entity pages (standards, organizations, products, people)
 └── write/                ← one-shot pages (knox write)
     └── my-notes.md
 ```

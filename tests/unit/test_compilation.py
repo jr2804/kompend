@@ -1095,6 +1095,34 @@ class TestTwoPhaseConceptSalvage:
         assert "Phoneme Posteriorgram" in names
         assert all(p.get("definitions") for p in pages)
 
+    def test_entity_pages_merge_and_dedup(self) -> None:
+        """Entities merge by normalized key with kind='entity' pre-assigned."""
+        ext_set = ExtractionSet()
+        ext_set.add(
+            Extraction(
+                source="a.pdf",
+                entities=[
+                    Entity(name="ITU-T", type="Organization", context="Published P.863."),
+                    Entity(name="itu-t", type="Organization"),
+                    Entity(name="", type="Organization"),
+                ],
+            )
+        )
+        ext_set.add(
+            Extraction(
+                source="b.pdf",
+                entities=[Entity(name="ITU-T", type="", context="Standards body.")],
+            )
+        )
+        pages = ext_set.entity_pages()
+        assert len(pages) == 1
+        page = pages[0]
+        assert page["kind"] == "entity"
+        assert page["name"] == "ITU-T"
+        assert page["type"] == "Organization"
+        assert sorted(page["sources"]) == ["a.pdf", "b.pdf"]
+        assert page["definitions"] == ["Published P.863.", "Standards body."]
+
     def test_generation_failure_raises(self) -> None:
         """When generation LLM calls all fail, compile raises LLMOutputError — no silent empty wiki."""
         config = PipelineConfig(

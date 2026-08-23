@@ -31,7 +31,7 @@ Return a JSON object with exactly one key "pages", whose value is a list of obje
   - "content": the full wiki page markdown (150–400 words, with ## subheadings and provenance)
   - "provenance": list of source filenames cited
   - "related": list of other concept titles this page links to
-  - "kind": the category from the list below (e.g. "concept", "entity", "comparison"; default "concept")
+  - "kind": the category from the list below (e.g. "concept", "entity", "comparison"; default "concept"). If the concept entry itself carries a "kind" field, you MUST copy it verbatim — do not re-categorize.
 
 Each page must declare its category ("kind") from this list:
 

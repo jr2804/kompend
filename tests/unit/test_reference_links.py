@@ -232,22 +232,31 @@ class TestMarkdownWriterReferencesPage:
         assert "Smith" in content
         assert "Deep Learning" in content
 
-    def test_no_references_no_page(self, tmp_path: Path) -> None:
-        """No references.md when store is empty."""
+    def test_no_references_page_written_with_placeholder(self, tmp_path: Path) -> None:
+        """references.md is always generated — an empty store yields the
+        two-section skeleton with placeholders, not a missing file.
+        """
         ref_file = tmp_path / ".knox" / "references.json"
         wiki = _make_wiki()
         output_dir = tmp_path / "wiki"
         writer = MarkdownWriter(vault_mode=True, references_file=ref_file)
         writer.write(wiki, output_dir)
-        assert not (output_dir / "references.md").exists()
+        page = output_dir / "references.md"
+        assert page.exists()
+        content = page.read_text(encoding="utf-8")
+        assert "## Corpus sources" in content
+        assert "## Cited works not in corpus" in content
+        assert "_(none extracted yet)_" in content
 
-    def test_no_ref_file_no_page(self, tmp_path: Path) -> None:
-        """No references.md when no references_file configured."""
+    def test_no_ref_file_page_still_written(self, tmp_path: Path) -> None:
+        """references.md is always generated, even with no references_file."""
         wiki = _make_wiki()
         output_dir = tmp_path / "wiki"
         writer = MarkdownWriter(vault_mode=True)
         writer.write(wiki, output_dir)
-        assert not (output_dir / "references.md").exists()
+        page = output_dir / "references.md"
+        assert page.exists()
+        assert "_(none extracted yet)_" in page.read_text(encoding="utf-8")
 
 
 class TestOkfWriterReferencesPage:

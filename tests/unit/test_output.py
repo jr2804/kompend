@@ -10,12 +10,15 @@ import pytest
 from knox.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
+from knox.core.models.references import Reference
 from knox.core.models.structured import StructuredFigure, StructuredTable
+from knox.core.paths import attachment_slug
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
+from knox.output.vault import VaultWriter
 
 # ---------------------------------------------------------------------------
 # MarkdownWriter Tests
@@ -193,7 +196,7 @@ class TestSubfolderLayout:
         MarkdownWriter(vault_mode=True).write(wiki, tmp_path)
         assert (tmp_path / "concepts" / "c1.md").exists()
         assert (tmp_path / "concepts" / "c2.md").exists()
-        assert (tmp_path / "concepts" / "c3.md").exists()
+        assert (tmp_path / "entities" / "c3.md").exists()
 
     def test_overview_and_unknown_kinds_stay_at_root(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(
@@ -725,6 +728,84 @@ class TestQualityPage:
             ),
             encoding="utf-8",
         )
+
+
+class TestReferencesPage:
+    """references.md is always generated — an empty bibliography is information too."""
+
+    def test_written_even_without_store(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        writer = MarkdownWriter(vault_mode=True, base_dir=tmp_path)
+        writer.write(sample_wiki, tmp_path)
+        page = tmp_path / "references.md"
+        assert page.exists()
+        content = page.read_text(encoding="utf-8")
+        assert "## Corpus sources" in content
+        assert "## Cited works not in corpus" in content
+        assert "_(none extracted yet)_" in content
+
+    def test_lists_corpus_sources_and_cited_works(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "a.pdf").write_bytes(b"%PDF-")
+        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file.parent.mkdir()
+        store = ReferenceStore(ref_file)
+        store.add_source(
+            "sources/a.pdf",
+            [Reference(id="smith2020", title="On Speech Quality", raw="Smith (2020) On Speech Quality.")],
+        )
+        store.save()
+        writer = MarkdownWriter(vault_mode=True, base_dir=tmp_path, references_file=ref_file)
+        writer.write(sample_wiki, tmp_path)
+        content = (tmp_path / "references.md").read_text(encoding="utf-8")
+        assert "- sources/a.pdf" in content
+        assert "smith2020" in content
+
+    def test_corpus_link_when_summary_page_exists(self, sample_wiki: CompiledWiki, tmp_path: Path) -> None:
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "a.pdf").write_bytes(b"%PDF-")
+        summaries = tmp_path / "summaries"
+        summaries.mkdir()
+        slug = attachment_slug("a.pdf")
+        (summaries / f"{slug}.md").write_text("# Source: A")
+        writer = MarkdownWriter(vault_mode=True, base_dir=tmp_path)
+        writer.write(sample_wiki, tmp_path)
+        content = (tmp_path / "references.md").read_text(encoding="utf-8")
+        assert f"[sources/a.pdf](summaries/{slug}.md)" in content
+
+
+class TestOkfDescription:
+    """okf_description truncates to the first sentence.
+
+    Index entries are link + one-line summary, not a duplicate of the page
+    body.
+    """
+
+    def test_first_sentence_only(self) -> None:
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="The Bark scale is non-linear. It models frequency resolution.",
+            node_type="concept",
+        )
+        assert VaultWriter.okf_description(node) == "The Bark scale is non-linear."
+
+    def test_abbreviation_not_split(self) -> None:
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="Defined in ITU-T Rec. P.863 for speech quality.",
+            node_type="concept",
+        )
+        # ". 8" is not a sentence boundary; whole line returned.
+        assert VaultWriter.okf_description(node) == "Defined in ITU-T Rec. P.863 for speech quality."
+
+    def test_long_line_capped(self) -> None:
+        node = WikiNode(id="x", title="X", content="word " * 80, node_type="concept")
+        desc = VaultWriter.okf_description(node)
+        assert len(desc) <= 201
+        assert desc.endswith("…")
 
 
 # ---------------------------------------------------------------------------
