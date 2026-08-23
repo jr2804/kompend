@@ -65,7 +65,7 @@ dependencies = [
     "summarization-pydantic-ai>=0.1.10",
     "aenum>=3.1.17",
     "lazy-loader",
-    "liteparse>=2.4.0",
+    "liteparse>=2.4.0,<2.13",  # 2.13.0 shipped no cp313+ wheels and no sdist; relax when fixed
     "trafilatura>=2.0.0",
 ]
 
