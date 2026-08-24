@@ -69,7 +69,7 @@ def wiki_ingest(
     all_input_files = resolve_compile_inputs(
         files or [],
         online_urls,
-        url_file,
+        Path(url_file) if url_file else None,
         sources_dir,
         recursive,
         ignore,
@@ -313,7 +313,7 @@ def _synthesize_write_page(
     page_title: str,
     source_texts: list[tuple[str, str]],
     related_titles: list[str],
-    model: str,
+    model: str | None,
     timeout: float,
     source_char_max: int = 4000,
 ) -> str:

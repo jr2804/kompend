@@ -11,6 +11,7 @@ from knox.core.models import MetadataField
 from knox.core.paths import EXPORTED_DIR_NAME, vault_paths
 from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
+from knox.core.utils.dicts import as_str
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -126,8 +127,8 @@ def sources_export(
             source_id=source_id,
             out_path=output_file,
             inline=inline,
-            annotations=cfg.get(EXPORT_ANNOTATIONS),
-            summary=cfg.get(EXPORT_SUMMARY),
+            annotations=as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off",
+            summary=as_str(cfg.get(EXPORT_SUMMARY)) or "off",
         )
     except FileNotFoundError as exc:
         return {"status": "error", "message": str(exc)}

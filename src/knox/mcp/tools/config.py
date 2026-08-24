@@ -14,6 +14,7 @@ from knox.core.config import (
     validate_config_key,
 )
 from knox.core.config.keys import PATHS_WIKI_DIR
+from knox.core.utils.dicts import as_int
 from knox.logging import get_logger
 from knox.scaffolding import ScaffoldError, scaffold_project
 
@@ -105,11 +106,13 @@ def config_check(
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
-    totals = {"ok": 0, "modified": 0, "error": 0}
+    totals: dict[str, int] = {"ok": 0, "modified": 0, "error": 0}
     for report in payload:
-        totals["ok"] += report["ok"]
-        totals["modified"] += report["modified"]
-        totals["error"] += report["error"]
+        for key in ("ok", "modified", "error"):
+            value = as_int(report[key])
+            if value is None:
+                raise ValueError(f"Config check report is missing the {key!r} count")
+            totals[key] += value
 
     return {
         "status": "ok" if totals["error"] == 0 else "error",

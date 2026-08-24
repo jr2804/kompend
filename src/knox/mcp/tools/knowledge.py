@@ -23,6 +23,7 @@ from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import vault_paths
 from knox.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
+from knox.core.utils.dicts import as_int
 from knox.logging import get_logger
 from knox.preprocessing.parsers import ParserBuildOptions, ParserRouter, get_backend
 
@@ -158,7 +159,7 @@ def wiki_capture(
     try:
         cfg = resolve_config()
         model = cfg.knox.compile.llm.default_model
-        capture_agent = CaptureAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
+        capture_agent = CaptureAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
     except Exception:
         capture_agent = None
 
@@ -206,7 +207,7 @@ def wiki_distill(
 
         try:
             model = cfg.knox.compile.llm.default_model
-            distill_agent = DistillAgent(model, timeout=120, retries=cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) if model else None
+            distill_agent = DistillAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
         except Exception:
             distill_agent = None
 

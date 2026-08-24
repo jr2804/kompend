@@ -39,7 +39,7 @@ def write_overview(
         "overview_budget": str(overview_budget),
     }
     cached = cache_store.get("overview", overview_deps)
-    if cached is not None:
+    if isinstance(cached, str):
         overview_file = base_dir / "overview.md"
         overview_file.write_text(cached, encoding="utf-8")
         return overview_file

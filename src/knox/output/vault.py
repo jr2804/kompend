@@ -177,7 +177,7 @@ class VaultWriter(BaseOutputWriter):
                 dest.relative_to(self._base_dir),
                 f"{self._output_dir_name}/{folder}" if folder else self._output_dir_name,
             ).replace("\\", "/")
-            new_img = dict(img)
+            new_img = img.copy()
             new_img["path"] = link
             out.append(new_img)
         return out
@@ -658,7 +658,7 @@ class VaultWriter(BaseOutputWriter):
 
     def _knox_relative(self, raw: str) -> Path | None:
         """Return *raw* as a base_dir-relative path if it lives under ``.knox/``."""
-        if not raw or raw.startswith("data:"):
+        if not raw or raw.startswith("data:") or self._base_dir is None:
             return None
         p = Path(raw)
         try:
@@ -787,7 +787,7 @@ def _asset_lines(lines: list[str], items: list[AssetRecord]) -> None:
     lines.append("## Assets\n")
     for kind in sorted({rec.kind for rec in items}, key=str):
         kind_items = [r for r in items if r.kind == kind]
-        lines.append(f"- **{kind.value.capitalize()}s:** {len(kind_items)}")
+        lines.append(f"- **{kind.name.lower().capitalize()}s:** {len(kind_items)}")
         if kind == AssetKind.FIGURE:
             lines.extend(f"  - {getattr(r.data, 'caption', '') or r.summary or r.id}".rstrip() for r in kind_items)
     lines.append("")

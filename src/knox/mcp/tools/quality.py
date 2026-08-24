@@ -18,6 +18,7 @@ from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, MetadataField, load_wiki_from_files
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, REVIEW_DIR, VaultPaths, vault_paths
 from knox.core.reporting.log import build_log_report
+from knox.core.utils.dicts import as_str
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
@@ -381,9 +382,9 @@ def doctor(
     results = run_doctor(
         sources_dir=sources_dir,
         output_dir=output_dir,
-        default_model=cfg.get("compile.llm.default_model"),
-        vlm_model=cfg.get("compile.llm.vlm_model"),
-        embed_model=cfg.get("compile.embedding.model"),
+        default_model=as_str(cfg.get("compile.llm.default_model")),
+        vlm_model=as_str(cfg.get("compile.llm.vlm_model")),
+        embed_model=as_str(cfg.get("compile.embedding.model")),
         cfg=cfg.raw,
         verbose=verbose,
     )
