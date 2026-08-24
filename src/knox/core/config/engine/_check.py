@@ -33,6 +33,7 @@ from knox.core.config.engine._loading import load_toml
 from knox.core.config.engine._schema import DEFAULTS
 from knox.core.utils.dicts import flat_keys, get_dot
 from knox.logging import get_logger
+from knox.types import JSONDict, JSONValue
 
 # ── Status kind ─────────────────────────────────────────────────────────────
 
@@ -54,8 +55,8 @@ class ConfigCheckEntry:
 
     key: str
     status: str  # one of STATUS_OK / STATUS_MODIFIED / STATUS_ERROR
-    current: object  # None when not set in user TOML
-    default: object  # value in DEFAULTS (None for keys unknown to schema)
+    current: JSONValue  # None when not set in user TOML
+    default: JSONValue  # value in DEFAULTS (None for keys unknown to schema)
     set_in_toml: bool = False  # False → "not set; default resolves here"
     message: str | None = None  # populated only for error rows
 
@@ -96,8 +97,8 @@ class ConfigCheckReport:
     def has_errors(self) -> bool:
         return self.error_count > 0
 
-    def to_dict(self) -> dict[str, object]:
-        out: dict[str, object] = {
+    def to_dict(self) -> JSONDict:
+        out: JSONDict = {
             "ok": self.ok_count,
             "modified": self.modified_count,
             "error": self.error_count,
@@ -274,7 +275,7 @@ def _schema_leaf_keys() -> set[str]:
         out: set[str] = set()
         for name, info in cls.model_fields.items():
             dotted = f"{prefix}.{name}" if prefix else name
-            nested = _nested_model_type(info)
+            nested = _nested_model_type(info, name)
             if nested is not None:
                 out.update(_walk(nested, dotted))
             else:
@@ -300,7 +301,7 @@ def _schema_defaults() -> dict[str, Any]:
         out: dict[str, Any] = {}
         for name, info in cls.model_fields.items():
             dotted = f"{prefix}.{name}" if prefix else name
-            nested = _nested_model_type(info)
+            nested = _nested_model_type(info, name)
             if nested is not None:
                 out.update(_walk(nested, dotted))
             else:
@@ -316,8 +317,8 @@ def _schema_defaults() -> dict[str, Any]:
     return _walk(KnoxConfig, "")
 
 
-def _nested_model_type(info: FieldInfo) -> type | None:
-    """Return the nested model class for a FieldInfo, if any.
+def _nested_model_type(info: FieldInfo, name: str) -> type[BaseModel] | None:
+    """Return the nested model class for *info* (field *name*), if any.
 
     Unwraps ``Optional[Model]``, ``Model | None``, and direct ``Model``
     annotations. Other unions and concrete scalars return ``None``.
@@ -329,7 +330,7 @@ def _nested_model_type(info: FieldInfo) -> type | None:
     if isinstance(ann, str):
         try:
             ann = typing.get_type_hints(KnoxConfig, include_extras=True).get(
-                info.name,
+                name,
                 ann,
             )
         except Exception:  # pragma: no cover — defensive
@@ -337,7 +338,7 @@ def _nested_model_type(info: FieldInfo) -> type | None:
     origin = typing.get_origin(ann)
     # Unwrap ``Optional[Model]`` (``Union``), ``Model | None`` (PEP 604), or
     # direct ``Model``. ``X | None`` uses ``types.UnionType`` on Python 3.10+.
-    if origin is typing.Union or (hasattr(types, "UnionType") and origin is types.UnionType):
+    if origin is typing.Union or origin is types.UnionType:
         args = [a for a in typing.get_args(ann) if a is not type(None)]
         for arg in args:
             if isinstance(arg, type) and issubclass(arg, BaseModel):
@@ -406,7 +407,7 @@ def _safe_dump_defaults() -> dict[str, Any]:
             return str(v)
         return v
 
-    return _walk(DEFAULTS)  # type: ignore[return-value]
+    return _walk(DEFAULTS)
 
 
 def _values_equal(a: Any, b: Any) -> bool:

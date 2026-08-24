@@ -70,7 +70,7 @@ def collect_stats(
     state_dir_exists = bool(state_dir and state_dir.exists())
     tier_state = None
     error = ""
-    if state_dir_exists:
+    if state_dir is not None and state_dir.exists():
         state_file = state_dir / COMPILE_STATE_FILE
         store = TierStateStore(state_file)
         try:

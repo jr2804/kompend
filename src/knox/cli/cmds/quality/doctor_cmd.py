@@ -16,6 +16,7 @@ from knox.core.config.keys import (
     EnvVar,
 )
 from knox.core.paths import vault_paths
+from knox.core.utils.dicts import as_str
 from knox.logging import get_err_console
 
 
@@ -55,9 +56,9 @@ def doctor_cmd(
     results = run_doctor(
         sources_dir=sources_dir,
         output_dir=output_dir,
-        default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
-        vlm_model=cfg.get(COMPILE_LLM_VLM_MODEL),
-        embed_model=cfg.get(COMPILE_EMBEDDING_MODEL),
+        default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
+        vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
+        embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
         cfg=cfg.raw,
         verbose=verbose,
     )

@@ -237,6 +237,9 @@ class PipelineConfig:
             base_dir = Path(wiki_dir) if wiki_dir else output_dir.parent
             notes_file = base_dir / notes_file_name
 
+        providers_raw = cfg.get("providers", {})
+        providers = providers_raw if isinstance(providers_raw, dict) else {}
+
         return cls(
             source_dir=source_dir,
             output_dir=output_dir,
@@ -270,7 +273,7 @@ class PipelineConfig:
             skills={name: skill.instructions for name, skill in knox.compile.skills.items()},
             extraction_categories=dict(knox.compile.extraction.categories),
             source_tags=list(knox.compile.source_tags),
-            providers=cfg.get("providers", {}),
+            providers=providers,
         )
 
     # Sub-configs (additive for backward compatibility)

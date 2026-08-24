@@ -9,6 +9,7 @@ from knox.core.config.keys import COMPILE_EMBEDDING_MODEL
 from knox.core.paths import set_default_wiki_dir as _set_default_wiki_dir
 from knox.core.paths import vault_paths
 from knox.core.trust.actor import resolve_actor
+from knox.core.utils.dicts import as_str
 from knox.logging import get_logger
 from knox.memory import MemoryStore
 
@@ -34,5 +35,5 @@ def set_default_wiki_dir(path: str) -> None:
 def make_memory_store(wiki_dir: str) -> tuple[MemoryStore, str]:
     """Create a MemoryStore and resolve the acting user from config."""
     cfg = resolve_config(base_dir=wiki_dir)
-    embed_model = cfg.get(COMPILE_EMBEDDING_MODEL)
+    embed_model = as_str(cfg.get(COMPILE_EMBEDDING_MODEL))
     return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model), resolve_actor(cfg)

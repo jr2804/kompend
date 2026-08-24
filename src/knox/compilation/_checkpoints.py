@@ -44,7 +44,9 @@ def load_gen_checkpoint(
         logger.debug("Generation checkpoint deps mismatch -- ignoring")
         return None
     try:
-        nodes: list[WikiNode] = [decode_json(n) for n in raw.get("nodes", [])]  # nocheck: checkpoint format, not wiki metadata
+        nodes: list[WikiNode] = [
+            n for n in (decode_json(n) for n in raw.get("nodes", [])) if isinstance(n, WikiNode)
+        ]  # guard: checkpoint format is untrusted JSON
     except Exception:
         logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)
         return None

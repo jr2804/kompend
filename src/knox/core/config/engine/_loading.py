@@ -11,7 +11,7 @@ from typing import Any
 from knox.core.config.keys import PATHS_WIKI_DIR, EnvVar
 from knox.core.paths import CONFIG_FILE, KNOX_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from knox.logging import get_logger
-from knox.types import ConfigValue
+from knox.types import JSONDict, JSONValue
 
 # ── File paths ───────────────────────────────────────────────────────────
 
@@ -36,15 +36,19 @@ def load_toml(toml_file: Path) -> dict[str, Any]:
         return {}
 
 
-def _expand_env_vars_recursive(data: ConfigValue) -> ConfigValue:
-    """Recursively expand env vars in all string values."""
-    if isinstance(data, str):
-        return _expand_env_vars(data)
-    if isinstance(data, dict):
-        return {k: _expand_env_vars_recursive(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [_expand_env_vars_recursive(v) for v in data]
-    return data
+def _expand_env_vars_recursive(data: JSONDict) -> JSONDict:
+    """Recursively expand env vars in all string values of a config table."""
+
+    def walk(value: JSONValue) -> JSONValue:
+        if isinstance(value, str):
+            return _expand_env_vars(value)
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        return value
+
+    return {k: walk(v) for k, v in data.items()}
 
 
 # ── Env var expansion ───────────────────────────────────────────────────
@@ -60,15 +64,19 @@ def _expand_env_vars(value: str) -> str:
     return re.sub(r"\$(\w+)|\$\{(\w+)\}", _replace, value)
 
 
-def _strip_strings_recursive(data: ConfigValue) -> ConfigValue:
+def _strip_strings_recursive(data: JSONDict) -> JSONDict:
     """Recursively strip leading/trailing whitespace from all string values."""
-    if isinstance(data, str):
-        return data.strip()
-    if isinstance(data, dict):
-        return {k: _strip_strings_recursive(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [_strip_strings_recursive(v) for v in data]
-    return data
+
+    def walk(value: JSONValue) -> JSONValue:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        return value
+
+    return {k: walk(v) for k, v in data.items()}
 
 
 def find_all_project_configs(start_dir: Path | None = None) -> list[Path]:

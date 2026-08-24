@@ -58,14 +58,22 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
         deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}
-        cached = pipeline.cache_store.get("resolve", deps)
+        cached = pipeline.cache_store.get_dict("resolve", deps)
         if cached is not None:
+            entities_raw = cached.get("entities", [])
+            entities = entities_raw if isinstance(entities_raw, list) else []
+            relations_raw = cached.get("relations", [])
+            relations = relations_raw if isinstance(relations_raw, list) else []
+            refs_raw = cached.get("resolved_references", [])
+            resolved_references = refs_raw if isinstance(refs_raw, list) else []
+            meta_raw = cached.get("metadata", {})
+            metadata = meta_raw if isinstance(meta_raw, dict) else {}
             return ResolvedChunk(
                 chunk=chunk,
-                entities=cached.get("entities", []),
-                relations=cached.get("relations", []),
-                resolved_references=cached.get("resolved_references", []),
-                metadata=cached.get("metadata", {}),
+                entities=entities,
+                relations=relations,
+                resolved_references=resolved_references,
+                metadata=metadata,
             )
         if pipeline.resolver is None:
             raise RuntimeError("Resolver not initialized")

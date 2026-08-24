@@ -236,7 +236,7 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
         "source": content_hash,
         "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
     }
-    cached = pipeline.cache_store.get("chunk", chunk_deps)
+    cached = pipeline.cache_store.get_dict("chunk", chunk_deps)
     if cached is None:
         return None
     stem = source_file.stem

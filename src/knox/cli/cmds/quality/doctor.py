@@ -15,6 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel as _BM
 from pydantic_ai import Agent as _Agent
+from pydantic_ai.settings import ModelSettings
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
@@ -299,7 +300,7 @@ def _check_structured_output(
             build_model(model),
             output_type=_CapabilityCheck,
             retries=retries or 1,
-            model_settings={"timeout": timeout, "max_tokens": 128},
+            model_settings=ModelSettings(timeout=timeout, max_tokens=128),
         )
         start = monotonic()
         result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")

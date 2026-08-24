@@ -99,7 +99,10 @@ def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
     """
     cli_overrides = {PATHS_WIKI_DIR: wiki_dir} if wiki_dir else {}
     cfg = resolve_config(cli_overrides=cli_overrides)
-    state_dir = Path(cfg.get(PATHS_STATE_DIR))
+    raw = cfg.get(PATHS_STATE_DIR)
+    if raw is None:
+        return None
+    state_dir = Path(str(raw))
     if state_dir.is_dir() and (state_dir / CONFIG_FILE).is_file():
         return state_dir
     return None
