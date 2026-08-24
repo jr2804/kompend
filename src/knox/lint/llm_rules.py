@@ -102,7 +102,16 @@ class LlmLintRule(BaseLintRule):
         prompt = _loader.render(template_name, **kwargs)
         deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
         try:
-            return self._agent.run(deps, result_type=result_type)
+            result = self._agent.run(deps, result_type=result_type)
+            if isinstance(result, result_type):
+                return result
+            logger.warning(
+                "%s returned unexpected type (expected %s, got %s)",
+                self.name,
+                result_type.__name__,
+                type(result).__name__,
+            )
+            return None
         except Exception as exc:
             logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
             return None

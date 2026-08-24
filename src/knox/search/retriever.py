@@ -55,9 +55,6 @@ class Citation(TypedDict):
     score: float
 
 
-# ── HybridRetriever (vector-only) ──────────────────────────────────────
-
-
 class HybridRetriever:
     """Semantic search over compiled wikis via zvec vector store.
 
@@ -122,16 +119,16 @@ class HybridRetriever:
         """
         node_id = str(hit.get("id", ""))
         node = self._node_by_id.get(node_id)
-        title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-        snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
-        source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
+        title = _hit_str(hit, ZvecField.TITLE) or (node.title if node else node_id)
+        snippet = extract_snippet(node.content, query_tokens) if node and node.content else _hit_str(hit, ZvecField.CONTENT_PREVIEW) or title
+        source_file = _hit_opt_str(hit, ZvecField.SOURCE_FILE)
         if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
             source_file = str(node.metadata[MetadataField.SOURCE])
         return SearchResult(
             article_id=node_id,
             title=title,
             snippet=snippet,
-            score=float(hit.get("score", 0.0)),
+            score=_hit_float(hit, "score"),
             source_file=source_file,
             tags=_node_tags(node),
         )
@@ -252,6 +249,27 @@ class KeywordRetriever:
     ) -> list[SearchResult]:
         """Alias of :meth:`search` — no raw-source fallback in portable mode."""
         return self.search(query, top_k=top_k)
+
+
+# ── HybridRetriever (vector-only) ──────────────────────────────────────
+
+
+def _hit_str(hit: dict[str, object], key: str, default: str = "") -> str:
+    """Read a string field from a vector-store hit, falling back to *default*."""
+    value = hit.get(key)
+    return value if isinstance(value, str) else default
+
+
+def _hit_opt_str(hit: dict[str, object], key: str) -> str | None:
+    """Read an optional string field from a vector-store hit."""
+    value = hit.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _hit_float(hit: dict[str, object], key: str, default: float = 0.0) -> float:
+    """Read a float field from a vector-store hit."""
+    value = hit.get(key)
+    return value if isinstance(value, int | float) else default
 
 
 # ── Synthesis (context formatting + LLM call) ──────────────────────────

@@ -12,7 +12,7 @@ import logging
 import httpx
 import tenacity
 from tenacity import (
-    before_sleep_log,
+    RetryCallState,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
@@ -50,11 +50,26 @@ def _retryable_error(exc: BaseException) -> bool:
 
 # -- tenacity retry config -----------------------------------------------------
 
+
+def _log_retry_wait(retry_state: RetryCallState) -> None:
+    """Log the upcoming backoff sleep before a retry (replaces before_sleep_log,
+    whose LoggerProtocol stubs don't accept stdlib logging.Logger).
+    """
+    sleep = retry_state.next_action.sleep if retry_state.next_action else 0.0
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    logger.warning(
+        "Retrying LLM request in %.1fs (attempt %d): %r",
+        sleep,
+        retry_state.attempt_number,
+        exc,
+    )
+
+
 _tenacity_retry = tenacity.AsyncRetrying(
     stop=stop_after_attempt(DEFAULT_MAX_ATTEMPTS),
     wait=wait_exponential(multiplier=1, min=1, max=30),
     retry=retry_if_exception(_retryable_error),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
+    before_sleep=_log_retry_wait,
     reraise=True,
 )
 
@@ -92,7 +107,7 @@ class AsyncTenacityTransport(httpx.AsyncBaseTransport):
                 stop=stop_after_attempt(max_attempts),
                 wait=wait_exponential(multiplier=1, min=1, max=30),
                 retry=retry_if_exception(_retryable_error),
-                before_sleep=before_sleep_log(logger, logging.WARNING),
+                before_sleep=_log_retry_wait,
                 reraise=True,
             )
         else:

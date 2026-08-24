@@ -115,6 +115,8 @@ def salvage_json(
         try:
             parsed = json_repair.loads(content, schema=schema, schema_repair_mode="salvage")
             if parsed != "":
+                if not isinstance(parsed, dict | list):
+                    raise ValueError(f"schema-mode salvage returned non-object payload ({type(parsed).__name__})")
                 return _coerce_nulls_for_schema(_strip_empty_strings(parsed), schema)
         except (json.JSONDecodeError, ValueError, RecursionError):
             logging.getLogger(__name__).debug("salvage_json schema-mode failed", exc_info=True)
@@ -142,9 +144,13 @@ def salvage_json(
     # Small models frequently wrap JSON objects in an array:
     # [{"score": 5, "feedback": "..."}] instead of {"score": 5, ...}.
     if unwrap_list and isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-        return _coerce_nulls_for_schema(_strip_empty_strings(parsed[0]), schema) if schema is not None else _strip_empty_strings(parsed[0])
+        first = parsed[0]
+        return _coerce_nulls_for_schema(_strip_empty_strings(first), schema) if schema is not None else _strip_empty_strings(first)
 
-    return _coerce_nulls_for_schema(_strip_empty_strings(parsed), schema) if schema is not None else _strip_empty_strings(parsed)
+    if not isinstance(parsed, dict | list | str | int | float | bool) or parsed is None:
+        return None  # non-JSON payload from the repairer
+    cleaned = _strip_empty_strings(parsed) if isinstance(parsed, dict | list) else parsed
+    return _coerce_nulls_for_schema(cleaned, schema) if schema is not None else cleaned
 
 
 # ── JSON salvage (json_repair is the single source of truth) ─────────────
@@ -248,7 +254,7 @@ def _coerce_list_to_object(items: list[JSON], schema: type[BaseModel] | dict[str
         expected_fields = set(schema.model_fields.keys())
     elif isinstance(schema, dict):
         props = schema.get("properties")
-        expected_fields = set(props.keys()) if isinstance(props, dict) else None
+        expected_fields = {str(k) for k in props} if isinstance(props, dict) else None
 
     if expected_fields is None:
         return None  # Can't determine schema shape
