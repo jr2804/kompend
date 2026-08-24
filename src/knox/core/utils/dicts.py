@@ -16,12 +16,46 @@ from typing import Any
 from knox.types import ConfigValue
 
 __all__ = [
+    "as_float",
+    "as_int",
+    "as_str",
     "deep_merge",
     "flat_keys",
     "get_dot",
     "nest_flat",
     "set_dot",
 ]
+
+
+def as_str(value: ConfigValue) -> str | None:
+    """Narrow an optional JSON/config value to ``str``.
+
+    Raises TypeError on non-string values so misconfiguration fails fast
+    instead of silently flowing into string-typed APIs.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError(f"Expected a string value, got {type(value).__name__}: {value!r}")
+
+
+def as_int(value: ConfigValue) -> int | None:
+    """Narrow an optional JSON/config value to ``int`` (bools rejected)."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"Expected an integer value, got {type(value).__name__}: {value!r}")
+    return value
+
+
+def as_float(value: ConfigValue) -> float | None:
+    """Narrow an optional JSON/config value to ``float`` (bools rejected)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise TypeError(f"Expected a numeric value, got bool: {value!r}")
+    if isinstance(value, int | float):
+        return float(value)
+    raise TypeError(f"Expected a numeric value, got {type(value).__name__}: {value!r}")
 
 
 def get_dot(
