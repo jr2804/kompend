@@ -35,6 +35,7 @@ import os
 import pkgutil
 import re
 
+import ollama
 import pydantic_ai.providers
 from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
@@ -43,6 +44,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 
 # ── public API ─────────────────────────────────────────────────────────
 from knox.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
@@ -189,10 +191,19 @@ def _build_ollama(model_name: str) -> OllamaModel:
     ``OLLAMA_BASE_URL`` (the env var pydantic-ai reads) wins when set;
     otherwise we fall back to the local default ``http://127.0.0.1:11434``
     so a stock local install works without any configuration.
+
+    The model's context window is passed per-request via ``options.num_ctx``
+    (Ollama's OpenAI-compatible endpoint honors it). Without this, Ollama
+    runs at its server default (~4096) and silently truncates long prompts
+    from the middle — the model sees prompt head/tail but not the content.
     """
     base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
     provider = OllamaProvider(base_url=base_url)
-    return OllamaModel(model_name, provider=provider)
+    ctx = _query_ollama_num_ctx(model_name)
+    if ctx is None:
+        return OllamaModel(model_name, provider=provider)
+    settings: ModelSettings = ModelSettings(extra_body={"options": {"num_ctx": ctx}})
+    return OllamaModel(model_name, provider=provider, settings=settings)
 
 
 def _build_catalog(provider_id: str, model_name: str) -> Model:
@@ -269,3 +280,58 @@ def _resolve_env_ref(value: str) -> str:
         return os.environ.get(var, m.group(0))
 
     return re.sub(r"\$\{(\w+)\}", _replace, value)
+
+
+def _query_ollama_num_ctx(model_name: str) -> int | None:
+    """Query Ollama for the model's context window via ``ollama.show()``.
+
+    Priority (most restrictive wins when multiple are set):
+    1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
+    2. ``parameters.num_ctx`` from ``ollama.show()`` - Modelfile override
+       (what Ollama is actually configured to enforce at runtime).
+    3. ``modelinfo`` from ``ollama.show()`` - native GGUF metadata.
+       Prefers ``original_context_length`` (base context before RoPE scaling)
+       over the scaled ``context_length`` when both are present.
+
+    Returns ``None`` if none are available or ``ollama.show()`` fails.
+    """
+    # 1. Global env var.
+    env_ctx: int | None = None
+    env_val = os.environ.get("OLLAMA_NUM_CTX")
+    if env_val:
+        try:
+            env_ctx = int(env_val)
+            if env_ctx <= 0:
+                env_ctx = None
+        except ValueError:
+            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
+    # 2. Modelfile parameters from ollama.show() - what Ollama enforces.
+    param_ctx: int | None = None
+    # 3. Native GGUF metadata from ollama.show().
+    native_ctx: int | None = None
+    try:
+        resp = ollama.show(model_name)
+        # 2a. Parse parameters string for num_ctx (Modelfile override).
+        params_str: str = resp.parameters or ""
+        for line in params_str.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("num_ctx") and stripped[len("num_ctx") :].strip().isdigit():
+                param_ctx = int(stripped[len("num_ctx") :].strip())
+                break
+        # 3a. Native GGUF metadata.
+        model_info = resp.modelinfo or {}
+        # First pass: look for original_context_length (base context before RoPE)
+        for key, val in model_info.items():
+            if key.endswith(".original_context_length") and isinstance(val, int) and val > 0:
+                native_ctx = val
+                break
+        # Second pass: fall back to scaled context_length
+        if native_ctx is None:
+            for key, val in model_info.items():
+                if key.endswith(".context_length") and isinstance(val, int) and val > 0:
+                    native_ctx = val
+                    break
+    except Exception:
+        logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
+    candidates = [c for c in (env_ctx, param_ctx, native_ctx) if c is not None]
+    return min(candidates) if candidates else None

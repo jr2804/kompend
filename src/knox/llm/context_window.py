@@ -6,14 +6,11 @@ accept and generate. It is used by the agent layer and the doctor command.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from enum import StrEnum
 
-import ollama
-
 from knox.core.config import LLMConfig
-from knox.llm.models import _user_providers, resolve_model_limits
+from knox.llm.models import _query_ollama_num_ctx, _user_providers, resolve_model_limits
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -147,65 +144,6 @@ def discover_context_window(  # noqa: PLR0915
         max_output = min(max_output, cap)
 
     return ContextWindow(max_input=max_input, max_output=max_output, source=source)
-
-
-def _query_ollama_num_ctx(model_name: str) -> int | None:
-    """Query Ollama for the model's context window via ``ollama.show()``.
-
-    Priority (most restrictive wins when multiple are set):
-    1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
-    2. ``parameters.num_ctx`` from ``ollama.show()`` — Modelfile override
-       (what Ollama is actually configured to enforce at runtime).
-    3. ``modelinfo`` from ``ollama.show()`` — native GGUF metadata.
-       Prefers ``original_context_length`` (base context before RoPE scaling)
-       over the scaled ``context_length`` when both are present.
-
-    Returns ``None`` if none are available or ``ollama.show()`` fails.
-    """
-    # 1. Global env var.
-    env_ctx: int | None = None
-    env_val = os.environ.get("OLLAMA_NUM_CTX")
-    if env_val:
-        try:
-            env_ctx = int(env_val)
-            if env_ctx <= 0:
-                env_ctx = None
-        except ValueError:
-            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
-
-    # 2. Modelfile parameters from ollama.show() — what Ollama enforces.
-    param_ctx: int | None = None
-    # 3. Native GGUF metadata from ollama.show().
-    native_ctx: int | None = None
-    try:
-        resp = ollama.show(model_name)
-
-        # 2a. Parse parameters string for num_ctx (Modelfile override).
-        params_str: str = resp.parameters or ""
-        for line in params_str.split("\n"):
-            stripped = line.strip()
-            if stripped.startswith("num_ctx") and stripped[len("num_ctx") :].strip().isdigit():
-                param_ctx = int(stripped[len("num_ctx") :].strip())
-                break
-
-        # 3a. Native GGUF metadata.
-        model_info = resp.modelinfo or {}
-        # First pass: look for original_context_length (base context before RoPE)
-        for key, val in model_info.items():
-            if key.endswith(".original_context_length") and isinstance(val, int) and val > 0:
-                native_ctx = val
-                break
-        # Second pass: fall back to scaled context_length
-        if native_ctx is None:
-            for key, val in model_info.items():
-                if key.endswith(".context_length") and isinstance(val, int) and val > 0:
-                    native_ctx = val
-                    break
-    except Exception:
-        logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
-
-    candidates = [c for c in (env_ctx, param_ctx, native_ctx) if c is not None]
-    return min(candidates) if candidates else None
 
 
 def _coerce_context_window_cap(value: int | str | None) -> int | None:
