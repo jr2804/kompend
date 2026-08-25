@@ -61,7 +61,7 @@ logger = get_logger(__name__)
 
 
 @app.command(name="query")
-def query_cmd(
+def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
     ctx: typer.Context,
     query: QueryText,
     wiki_dir: str | None = typer.Option(
@@ -118,6 +118,16 @@ def query_cmd(
     model = cfg.knox.compile.llm.default_model
     llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
     cw = discover_context_window(model, llm_config=llm_cfg) if model else None
+    if not model and not raw:
+        # Keyword/vector search only feeds LLM synthesis — without a model the
+        # query cannot produce an answer. Fail fast instead of degrading to raw
+        # scored results that mask the missing configuration.
+        get_err_console().print(
+            "error: No LLM model configured (compile.llm.default_model)."
+            " Query requires a model to synthesize an answer from the wiki."
+            " Use --raw for retrieval-only output."
+        )
+        raise typer.Exit(1)
 
     try:
         results, raw, has_enhanced = _execute_search(
@@ -143,13 +153,8 @@ def query_cmd(
         get_console().print("No relevant content found.")
         raise typer.Exit(0)
 
-    if raw:
+    if raw or model is None:
         print_raw_results(results, format)
-        return
-
-    if not model:
-        get_err_console().print("Warning: No LLM configured. Showing raw context instead.")
-        print_raw_results(results, LlmDataFormat.MARKDOWN)
         return
 
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None

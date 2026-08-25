@@ -24,11 +24,10 @@ def query_wiki(
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki.
 
-    Markdown-first: the wiki is built from the generated ``.md`` files
-    (``load_wiki_from_files``) — ``.knox/`` state is never required. The
-    zvec vector sidecar (``.knox/vectors/``), when present, upgrades the
-    retriever from keyword to semantic; without it ``KeywordRetriever``
-    searches the same pages.
+    Markdown-first: the wiki is built from the generated ``.md`` files.
+    Vector embeddings (``.knox/vectors/``) upgrade retrieval to semantic;
+    without them, keyword-only results feed LLM synthesis but cannot produce
+    a useful answer on their own — a model is required.
     """
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir)
@@ -57,7 +56,7 @@ def query_wiki(
             if not sources_dir.exists():
                 return {"status": "error", "message": "No sources directory found for raw search."}
             results = retriever.search(query, top_k=top_k)
-            return {"status": "ok", "results": results, "synthesis": None, "raw": True}
+            raw = True
         elif mode == SearchMode.HYBRID:
             results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
         else:
@@ -66,8 +65,8 @@ def query_wiki(
         if vector_store is not None:
             vector_store.close()
 
+    result_dicts = [dataclasses.asdict(r) for r in results] if results else []
     if not results:
-        result_dicts = [dataclasses.asdict(r) for r in results] if results else []
         return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
     try:
@@ -75,7 +74,19 @@ def query_wiki(
     except Exception:
         model = ""
 
-    if model:
+    # No model to synthesize an answer — only vector-store results are meaningful
+    # enough to surface raw. Keyword-only results without synthesis don't produce
+    # a useful answer.
+    if not model and not raw:
+        return {
+            "status": "error",
+            "message": "No LLM model configured (compile.llm.default_model)."
+            " Query requires a model to synthesize an answer."
+            " Use --raw for retrieval-only output, or configure an embedding model"
+            " (compile.embedding.model) for raw semantic search.",
+        }
+
+    if model and not raw:
         try:
             synthesizer = HybridRetriever(wiki)
             synthesis = synthesizer.synthesize(
@@ -84,7 +95,6 @@ def query_wiki(
                 model=model,
                 rlm=RlmConfig.model_validate(cfg.knox.compile.llm.rlm or {}),
             )
-            result_dicts = [dataclasses.asdict(r) for r in results]
             return {
                 "status": "ok",
                 "results": result_dicts,
@@ -97,7 +107,6 @@ def query_wiki(
         except Exception:
             logger.warning("LLM synthesis failed for query", exc_info=True)
 
-    result_dicts = [dataclasses.asdict(r) for r in results]
     return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
 
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from knox.cli.app import app as cli_app
 from knox.cli.app import register_all_commands
 from knox.mcp.server import compile_wiki, parse_document
@@ -149,8 +151,10 @@ def _normalize_mcp(name: str) -> str:
 
 
 def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
-    """wiki_query builds the wiki from markdown files alone — no .knox/ needed."""
+    """wiki_query searches markdown without a vector index — vault root required."""
     vault = tmp_path / "vault"
+    (vault / ".knox").mkdir(parents=True)
+    (vault / ".knox" / "config.toml").write_text("", encoding="utf-8")
     (vault / "wiki" / "concepts").mkdir(parents=True)
     (vault / "wiki" / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
     (vault / "wiki" / "concepts" / "transformers.md").write_text(
@@ -158,7 +162,9 @@ def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = query_wiki("transformers attention", wiki_dir=str(vault))
+    # raw=True to skip the model requirement — this test validates that markup
+    # files can be loaded and searched without .knox/ vector state.
+    result = query_wiki("transformers attention", wiki_dir=str(vault), raw=True)
 
     assert result["status"] == "ok"
     assert result["results"], "keyword search must return hits without .knox/ state"
@@ -166,6 +172,6 @@ def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
 
 
 def test_query_wiki_errors_when_no_pages(tmp_path: Path) -> None:
-
-    result = query_wiki("anything", wiki_dir=str(tmp_path / "empty"))
-    assert result["status"] == "error"
+    """Querying a non-vault dir fails fast (LookupError) before page loading."""
+    with pytest.raises(LookupError, match="not a KNOX vault root"):
+        query_wiki("anything", wiki_dir=str(tmp_path / "empty"))
