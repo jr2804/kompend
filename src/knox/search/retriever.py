@@ -26,6 +26,9 @@ from knox.rag.zvec_store import VectorStoreLike, ZvecField
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
 
+
+_SOURCE_MARKER_RE = re.compile(r"\[sources/[^\]]+\]|\[\^[^\]]+\]")
+
 logger = get_logger(__name__)
 
 
@@ -37,6 +40,7 @@ class SearchResult:
     score: float
     source_file: str | None = None
     tags: set[str] = field(default_factory=set)
+    content: str = ""  # full page body for LLM synthesis; snippet is display-only
 
 
 @dataclass
@@ -131,6 +135,7 @@ class HybridRetriever:
             score=_hit_float(hit, "score"),
             source_file=source_file,
             tags=_node_tags(node),
+            content=node.content if node else "",
         )
 
     def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
@@ -151,6 +156,9 @@ class HybridRetriever:
                 logger.debug("Skipping stale vector hit — %r not in loaded wiki", node_id)
                 continue
             results.append(self._hit_to_result(hit, query_tokens))
+        if not results:
+            logger.warning("Vector index returned no matching pages (stale after recompile?). Falling back to keyword search over the wiki.")
+            return KeywordRetriever(self._wiki).search(query, top_k=top_k)
         return results
 
     def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
@@ -175,6 +183,7 @@ class HybridRetriever:
                 score=seed_score * decay_factor,
                 source_file=str(node.metadata.get(MetadataField.SOURCE)) if node.metadata and node.metadata.get(MetadataField.SOURCE) else None,
                 tags=_node_tags(node),
+                content=node.content or "",
             )
 
         for result in initial_results:
@@ -232,6 +241,7 @@ class KeywordRetriever:
                     score=score,
                     source_file=source_file,
                     tags=_node_tags(node),
+                    content=node.content or "",
                 )
             )
         return results
@@ -313,7 +323,14 @@ def synthesize_results(
         context_lines.append(f"[{i}] {r.title}")
         if r.source_file:
             context_lines.append(f"    Source: {r.source_file}")
-        context_lines.append(f"    {r.snippet}")
+        # Full page body when available — the snippet window (~300 chars)
+        # is display-only and usually misses the passage that answers the
+        # query. Fall back to the snippet for graph-expansion-only results.
+        body = r.content.strip() or r.snippet
+        # Strip inline source markers ([sources/foo.pdf]) — small models
+        # mine them and emit citation arrays instead of prose.
+        body = _SOURCE_MARKER_RE.sub("", body)
+        context_lines.append(f"    {body}")
         context_lines.append("")
 
     context_text: str = "\n".join(context_lines)

@@ -172,6 +172,11 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # Resolve result_type / deps_type from the generic type params.
         self._resolve_type_params()
         self._template_loader = get_template_loader()
+        # Normalize RLM: a disabled RlmConfig must not be truthy — prompt
+        # rendering checks ``if self.rlm:`` to swap the context for the
+        # RLM placeholder, and a Pydantic model is always truthy.
+        if isinstance(self.rlm, RlmConfig) and not self.rlm.enable:
+            self.rlm = None
 
     @property
     def stage(self) -> str:
