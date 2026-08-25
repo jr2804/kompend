@@ -112,14 +112,16 @@ class TestDoctorWikiContext:
         runner = CliRunner()
         result = runner.invoke(app, ["doctor"])
         assert result.exit_code == 1
-        assert "No wiki found" in result.output
+        assert isinstance(result.exception, LookupError)
 
     def test_works_with_explicit_wiki_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Doctor runs (bypasses wiki-context gate) when --wiki-dir is set."""
+        (tmp_path / ".knox").mkdir()
+        (tmp_path / ".knox" / "config.toml").write_text("", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(app, ["--wiki-dir", str(tmp_path), "doctor"])
-        assert "No wiki found" not in result.output
+        assert "not a KNOX vault root" not in result.output
         assert "checks passed" in result.output
 
 

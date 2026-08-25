@@ -19,7 +19,7 @@ import typer
 
 from knox.core.config.keys import EnvVar
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
-from knox.logging import configure_logging, get_console
+from knox.logging import configure_logging, get_console, get_err_console
 
 # ── Lazy command registry ─────────────────────────────────────────────
 #
@@ -132,6 +132,13 @@ def main() -> None:
     handle: RunHandle | None = None
     try:
         app()
+    except LookupError as exc:
+        # Fail-fast vault validation (vault_paths): render cleanly instead of
+        # dumping a traceback.
+        handle = _extract_handle()
+        get_err_console().print(f"error: {exc}")
+        log_run_end(handle, status="error", error=repr(exc))
+        raise SystemExit(1) from exc
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         handle = _extract_handle()

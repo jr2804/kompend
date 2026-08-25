@@ -181,6 +181,9 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     sources = tmp_path / "sources"
     sources.mkdir()
     (sources / "note.md").write_text("# Test\ncontent")
+    knox_dir = tmp_path / ".knox"
+    knox_dir.mkdir()
+    (knox_dir / "config.toml").write_text("", encoding="utf-8")
 
     class _BoomPipeline:
         def run(self, progress_callback: object | None = None) -> None:

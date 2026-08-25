@@ -49,6 +49,9 @@ PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, DI
 CONFIG_FILE: Final[str] = "config.toml"
 KNOX_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/{CONFIG_FILE}"
 PROJECT_CONFIG_FILE: Final[str] = "knox.toml"
+#: Files that mark a directory as a KNOX vault root. Used by
+# :func:`vault_paths` to fail fast when pointed at a non-vault directory.
+VAULT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KNOX_CONFIG_FILE)
 RUMDL_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/rumdl.toml"
 
 # ── Cache ───────────────────────────────────────────────────────────────
@@ -485,21 +488,39 @@ def set_default_wiki_dir(path: str) -> None:
     _default_wiki_dir().set(path)
 
 
-def vault_paths(wiki_dir: str | Path | None = None) -> VaultPaths:
+def vault_paths(wiki_dir: str | Path | None = None, *, require_vault: bool = True) -> VaultPaths:
     """Resolve VaultPaths from the most specific source.
 
     Priority: explicit arg > server default (set by MCP) >
     ``KNOX_WIKI_DIR`` env var > current working directory.
-
     This is the single source of truth for resolving vault paths across
     all code paths (CLI, MCP, API).
+
+    Args:
+        wiki_dir: explicit vault root, or ``None`` for env/CWD resolution.
+        require_vault: fail fast when the resolved directory is not a KNOX
+            vault root. Only config-introspection paths (``knox config get``)
+            may opt out — they read defaults, not vault data.
+
+    Raises:
+        LookupError: when ``require_vault`` is set and the resolved directory
+            has no ``knox.toml`` / ``.knox/config.toml``. Silent operation on
+            arbitrary directories masks misconfiguration — config, vector
+            index, and LLM would all silently degrade.
     """
     if wiki_dir is None:
         default = _default_wiki_dir().get()
         # KNOX_WIKI_DIR is defined in the config-map (keys.PATHS_WIKI_DIR); read
         # directly here because vault resolution predates config discovery.
         wiki_dir = default if default is not None else os.environ.get(EnvVar.WIKI_DIR, ".")
-    return VaultPaths(Path(wiki_dir).resolve())
+    base_dir = Path(wiki_dir).expanduser().resolve()
+    if require_vault and not any((base_dir / marker).exists() for marker in VAULT_MARKERS):
+        raise LookupError(
+            f"{base_dir} is not a KNOX vault root: no {VAULT_MARKERS[0]} or "
+            f"{VAULT_MARKERS[1]} found. Run 'knox init' to create a vault, or "
+            "point --wiki-dir at the directory containing .knox/."
+        )
+    return VaultPaths(base_dir)
 
 
 @cache

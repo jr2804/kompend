@@ -139,6 +139,16 @@ not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a
 vault with a chosen config at creation time via `knox init <dir> --config <toml>`
 (the file is copied verbatim into the vault).
 
+### Fail-fast vault validation
+
+Every CLI/MCP entry point resolves paths through `vault_paths()`
+(`core/paths.py`), which **raises LookupError** when the resolved directory has
+no vault marker (`knox.toml` / `.knox/config.toml`). Silent operation on
+arbitrary directories masks misconfiguration (config, vectors, and LLM would
+all degrade invisibly). Only config-introspection commands (`knox config
+get/list/path/check/set`) opt out via `require_vault=False` — they read
+defaults, not vault data.
+
 ### Progress bars
 
 **Recurring trap:** a progress bar looks "stuck," gets

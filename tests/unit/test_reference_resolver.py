@@ -124,6 +124,7 @@ class TestFetchCli:
     def project(self, tmp_path: Path) -> tuple[Path, ReferenceStore]:
         knox_dir = tmp_path / ".knox"
         knox_dir.mkdir(parents=True, exist_ok=True)
+        (knox_dir / "config.toml").write_text("", encoding="utf-8")
         (tmp_path / "sources").mkdir(exist_ok=True)
         (tmp_path / "wiki").mkdir(exist_ok=True)
         store = ReferenceStore(knox_dir / "references.json")
@@ -140,6 +141,7 @@ class TestFetchCli:
     def test_no_references(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         knox_dir = tmp_path / ".knox"
         knox_dir.mkdir(parents=True, exist_ok=True)
+        (knox_dir / "config.toml").write_text("", encoding="utf-8")
         (tmp_path / "sources").mkdir(exist_ok=True)
         (tmp_path / "wiki").mkdir(exist_ok=True)
         monkeypatch.chdir(tmp_path)

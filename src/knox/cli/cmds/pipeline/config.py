@@ -55,7 +55,7 @@ def config_get(
         raise typer.Exit(code=1)
 
     overrides = {}
-    wiki_dir = vault_paths_from_ctx(ctx).base_dir
+    wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
     if wiki_dir:
         overrides[PATHS_WIKI_DIR] = str(wiki_dir)
 
@@ -85,7 +85,7 @@ def config_set(
     if global_:
         path = get_global_config_file(create=True)
     else:
-        wiki_dir = vault_paths_from_ctx(ctx).base_dir
+        wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
         path = get_project_config_file(start_dir=wiki_dir)
         if not path.exists():
             get_err_console().print("error: not in a KNOX vault — run `knox init` first or use `--global`")
@@ -107,7 +107,7 @@ def config_list(
 ) -> None:
     """Print every resolved config key, value, and source."""
     overrides = {}
-    wiki_dir = vault_paths_from_ctx(ctx).base_dir
+    wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
     if wiki_dir:
         overrides[PATHS_WIKI_DIR] = str(wiki_dir)
 
@@ -123,7 +123,7 @@ def config_file(
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
+    path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(ctx, require_vault=False).base_dir)
     get_console().print(str(path), soft_wrap=True)
 
 
@@ -161,7 +161,7 @@ def config_check(
         # No explicit file(s) → use the discovered project config (knox.toml
         # or .knox/config.toml). A vault with no config file at all is simply
         # all-defaults, so report that cleanly instead of 157 "file missing" rows.
-        project_cfg = get_project_config_file(start_dir=vault_paths_from_ctx(ctx).base_dir)
+        project_cfg = get_project_config_file(start_dir=vault_paths_from_ctx(ctx, require_vault=False).base_dir)
         if not project_cfg.exists():
             get_console().print(
                 f"[yellow]No config file found at {project_cfg}[/yellow] — all values are at built-in defaults.",

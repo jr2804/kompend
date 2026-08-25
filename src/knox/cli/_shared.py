@@ -60,14 +60,15 @@ logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
 
-def vault_paths_from_ctx(ctx: typer.Context | None) -> VaultPaths:
+def vault_paths_from_ctx(ctx: typer.Context | None, *, require_vault: bool = True) -> VaultPaths:
     """Resolve VaultPaths from a Typer CLI context.
 
     Extracts ``--wiki-dir`` from the callback context and delegates to
-    :func:`knox.core.paths.vault_paths`.
+    :func:`knox.core.paths.vault_paths`. ``require_vault=False`` is for
+    config-introspection commands only (see :func:`vault_paths`).
     """
     wiki_dir = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
-    return vault_paths(wiki_dir)
+    return vault_paths(wiki_dir, require_vault=require_vault)
 
 
 def build_cli_overrides(

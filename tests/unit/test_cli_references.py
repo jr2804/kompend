@@ -126,6 +126,7 @@ def project_with_refs(tmp_path: Path) -> Path:
     """Create a minimal project directory with a references.json."""
     knox_dir = tmp_path / ".knox"
     knox_dir.mkdir(parents=True, exist_ok=True)
+    (knox_dir / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sources").mkdir(exist_ok=True)
     (tmp_path / "wiki").mkdir(exist_ok=True)
 
@@ -167,6 +168,7 @@ def empty_project(tmp_path: Path) -> Path:
     """Create a project dir without references.json."""
     knox_dir = tmp_path / ".knox"
     knox_dir.mkdir(parents=True, exist_ok=True)
+    (knox_dir / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sources").mkdir(exist_ok=True)
     (tmp_path / "wiki").mkdir(exist_ok=True)
     return tmp_path
