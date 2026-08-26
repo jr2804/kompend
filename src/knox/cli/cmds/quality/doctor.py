@@ -7,7 +7,6 @@ import os
 import shutil
 import sys
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from time import monotonic
@@ -352,11 +351,11 @@ def _check_custom_providers(cfg: dict[str, Any] | None) -> CheckResult:
             continue
         # Quick connectivity check — try to reach the base URL
         try:
-            parsed = urllib.parse.urlparse(base_url)
-            if parsed.scheme == "https":
-                conn = urllib.request.urlopen(base_url.rstrip("/") + "/models", timeout=5)  # noqa: S310 — doctor check, user-configured URL
-            else:
-                conn = urllib.request.urlopen(base_url.rstrip("/") + "/models", timeout=5)  # noqa: S310 — doctor check, user-configured URL
+            req = urllib.request.Request(base_url.rstrip("/") + "/models")  # noqa: S310 — doctor check, user-configured URL
+            api_key = prov_cfg.get("api_key", "") if isinstance(prov_cfg, dict) else ""
+            if api_key:
+                req.add_header("Authorization", f"Bearer {api_key}")
+            conn = urllib.request.urlopen(req, timeout=5)  # noqa: S310 — doctor check, user-configured URL
             conn.close()
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 404):
