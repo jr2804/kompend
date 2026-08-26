@@ -43,6 +43,7 @@ dependencies = [
     "rumdl>=0.2.9",
     "mcp>=1.27.2",
     "pydantic>=2.13.4",
+    "wenmode>=0.14.1",
     "pydantic-ai[sentence-transformers]>=2.8.0",
     "pydantic-ai-rlm>=0.1.2",
     "python-slugify[unidecode]>=8.0.4",
