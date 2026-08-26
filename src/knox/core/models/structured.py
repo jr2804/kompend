@@ -9,7 +9,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
+from wenmode import MarkdownRenderer
+from wenmode.nodes import Paragraph, Root, Strong, Text
+from wenmode.nodes import Table as WTable
+from wenmode.nodes import TableCell as WCell
+from wenmode.nodes import TableRow as WRow
+
 from knox.core.models.enums import StructuredField
+
+# Reusable renderer for table AST -> Markdown conversion.
+# Module-level to avoid allocating one per call.
+_MARKDOWN_RENDERER = MarkdownRenderer()
 
 
 @dataclass
@@ -153,12 +163,37 @@ def structured_to_text(s: StructuredData) -> str:
     Lives here (not in ``knox.chunking.summarizer``) because both the chunking
     and compilation tiers consume it — importing it from the chunker pulls in
     the agent stack and creates a circular import.
+
+    Tables are rendered through wenmode's AST pipeline for consistent
+    GFM-format pipe tables. Equations and figures remain text-based.
     """
     if isinstance(s, StructuredTable):
-        header = " | ".join(s.columns)
-        rows = [" | ".join(row.get(col, "") for col in s.columns) for row in s.rows]
-        caption = f" — {s.caption}" if s.caption else ""
-        return f"Table{caption}\n{header}\n" + "\n".join(rows)
+        root = Root()
+        if s.caption:
+            caption_para = Paragraph()
+            caption_para.children.append(Strong(children=[Text(value=s.caption)]))
+            root.children.append(caption_para)
+
+        # Build header row with dashes
+        tbl = WTable(align=[None] * len(s.columns))
+        hdr = WRow()
+        for col in s.columns:
+            cell = WCell()
+            cell.children.append(Text(value=col))
+            hdr.children.append(cell)
+        tbl.children.append(hdr)
+
+        # Data rows
+        for row_dict in s.rows:
+            row = WRow()
+            for col in s.columns:
+                cell = WCell()
+                cell.children.append(Text(value=row_dict.get(col, "")))
+                row.children.append(cell)
+            tbl.children.append(row)
+
+        root.children.append(tbl)
+        return _MARKDOWN_RENDERER.render(root).rstrip()
     if isinstance(s, StructuredEquation):
         parts = [s.latex]
         if s.variables:

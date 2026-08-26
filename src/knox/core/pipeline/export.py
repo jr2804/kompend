@@ -37,6 +37,7 @@ from knox.core.models import (
 )
 from knox.core.models.enums import AssetKind
 from knox.core.models.structured import structured_to_dict
+from knox.core.page_builder import PageBuilder, link
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.ingest import parse_cache_glob
@@ -279,15 +280,11 @@ def _render_element(el: DocumentElement, state: _RenderState) -> str:  # noqa: P
 
 def _render_table(grid: list[list[str]]) -> str:
     """GFM pipe table; the first row is always the header."""
-    rows = [[str(c).replace("|", "\\|").replace("\n", " ") for c in row] for row in grid]
-    if not rows:
+    if not grid:
         return ""
-    lines = [
-        "| " + " | ".join(rows[0]) + " |",
-        "| " + " | ".join(["---"] * len(rows[0])) + " |",
-    ]
-    lines += ["| " + " | ".join(row) + " |" for row in rows[1:]]
-    return "\n".join(lines)
+    b = PageBuilder()
+    b.table(headers=grid[0], rows=grid[1:])
+    return b.render().rstrip()
 
 
 def _render_image(el: DocumentElement, state: _RenderState) -> str:
@@ -438,9 +435,10 @@ def _render_attachments(base_dir: Path, data: dict[str, Any]) -> str:
     atts = AttachmentManifest(vp.attachments_manifest_file).read_for_source(stem)
     if not atts:
         return ""
-    lines = ["## Attachments", "", "| File | Ingestible | Link |", "|---|---|---|"]
-    for att in atts:
-        rel_path = Path(att.path)
-        ingestible = "yes" if att.ingestible else "no"
-        lines.append(f"| {rel_path.name} | {ingestible} | [{rel_path.name}]({rel_path.as_posix()}) |")
-    return "\n".join(lines)
+    b = PageBuilder()
+    b.heading(2, "Attachments")
+    b.table(
+        headers=["File", "Ingestible", "Link"],
+        rows=[[rel.name, "yes" if a.ingestible else "no", link(rel.as_posix(), rel.name)] for a, rel in ((a, Path(a.path)) for a in atts)],
+    )
+    return b.render().rstrip()

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.pages.index import _full_catalog, generate_index, write_index
 from knox.output.wiki_index import (
+    LogStage,
     append_log_entry,
     generate_log_entry,
     generate_overview,
@@ -38,14 +39,14 @@ class TestGenerateIndex:
 class TestGenerateLogEntry:
     def test_basic(self) -> None:
         wiki = _make_wiki()
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         assert "[20" in entry  # ISO date
         assert "2 page(s)" in entry
         assert "concept" in entry  # node_type breakdown
 
     def test_source_names(self) -> None:
         wiki = _make_wiki()
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         assert "a.pdf" in entry
         assert "b.pdf" in entry
 
@@ -78,7 +79,7 @@ class TestGenerateLogEntry:
                 ],
             }
         )
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         assert "**Extraction:**" in entry
         assert "a.pdf" in entry
         assert "12.3s" in entry
@@ -101,7 +102,7 @@ class TestGenerateLogEntry:
                 ],
             }
         )
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         assert "paper_a.pdf" in entry
         assert "paper_b.pdf" in entry
         # full paths must NOT appear
@@ -128,7 +129,7 @@ class TestGenerateLogEntry:
                 ],
             }
         )
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         assert "Deep learning for NLP tasks." in entry
 
     def test_source_list_title_from_extraction(self) -> None:
@@ -151,7 +152,7 @@ class TestGenerateLogEntry:
                 ],
             }
         )
-        entry = generate_log_entry(wiki)
+        entry = generate_log_entry(wiki, stage=LogStage.COMPILE)
         # >5 sources triggers table format with Title column
         assert "| Title |" in entry
         assert "Alpha paper." in entry

@@ -44,8 +44,11 @@ import re
 from pathlib import Path
 from typing import Any, ClassVar, override
 
+from wenmode.nodes import Node, Paragraph, Text
+
 from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
+from knox.core.page_builder import PageBuilder, link
 from knox.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
@@ -250,33 +253,34 @@ class MarkdownWriter(VaultWriter):
             okf_type = doc.frontmatter.get("type", "Concept")
             by_type.setdefault(okf_type, []).append(doc)
 
-        lines: list[str] = [
-            "---",
-            f'okf_version: "{OKF_VERSION}"',
-            "---",
-            "",
-            f"# {wiki.metadata.get('title', 'Knowledge Bundle')}\n",
-        ]
+        fm = f'---\nokf_version: "{OKF_VERSION}"\n---'
+        b = PageBuilder()
+        b.heading(1, wiki.metadata.get("title", "Knowledge Bundle"))
 
         for type_name in sorted(by_type):
             group = by_type[type_name]
-            lines.append(f"## {type_name}\n")
+            b.heading(2, type_name)
+            entries: list[str | Node] = []
             for doc in sorted(group, key=lambda d: d.title):
                 folder = self._folder_for_kind(doc.node_type)
                 relative = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
                 description = doc.frontmatter.get("description", "")
-                entry = f"- [{doc.title}]({relative})"
-                lines.append(f"{entry} - {description}" if description else entry)
-            lines.append("")
+                if description:
+                    item = Paragraph()
+                    item.children.append(link(relative, doc.title))
+                    item.children.append(Text(value=f" — {description}"))
+                    entries.append(item)
+                else:
+                    entries.append(link(relative, doc.title))
+            b.bullet_list(entries)
 
         # Generated surfaces beyond concept pages: summaries + references +
         # quality. Complete-catalog invariant: everything the wiki generates
         # is reachable from this index.
         summaries = sorted((output_dir / SUMMARIES_SUBDIR).glob("*.md")) if (output_dir / SUMMARIES_SUBDIR).is_dir() else []
         if summaries:
-            lines.append("## Sources\n")
-            lines.extend(f"- [{p.stem}](summaries/{p.name})" for p in summaries)
-            lines.append("")
+            b.heading(2, "Sources")
+            b.bullet_list([link(f"summaries/{p.name}", p.stem) for p in summaries])
         surfaces: list[tuple[str, str]] = [("references.md", "Corpus sources + cited works not in corpus")]
         if (output_dir / QUALITY_FILE).exists():
             surfaces.append((QUALITY_FILE, "Claim verification summary (WiCER pass)"))
@@ -286,12 +290,10 @@ class MarkdownWriter(VaultWriter):
             surfaces.append((LOG_FILE, "Append-only activity journal"))
         surfaces.append(("../attachments/", "Media & figures extracted from sources"))
         if surfaces:
-            lines.append("## References & surfaces\n")
-            for name, desc in surfaces:
-                lines.append(f"- [{name}]({name}) — {desc}")
-            lines.append("")
+            b.heading(2, "References & surfaces")
+            b.bullet_list([Paragraph(children=[link(name, name), Text(value=f" — {desc}")]) for name, desc in surfaces])
 
-        (output_dir / INDEX_FILE).write_text("\n".join(lines), encoding="utf-8")
+        (output_dir / INDEX_FILE).write_text(fm + "\n\n" + b.render() + "\n", encoding="utf-8")
 
     @override
     def _write_log(self, output_dir: Path, wiki: CompiledWiki) -> None:

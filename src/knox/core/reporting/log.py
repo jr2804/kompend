@@ -21,11 +21,12 @@ import json
 from pathlib import Path
 
 from knox.core.models import load_cached_wiki
+from knox.core.page_builder import PageBuilder, code_span, em
 from knox.core.paths import VaultPaths
 from knox.core.reporting.runlog import RunEvent
 from knox.lint.history import history_to_text, load_lint_history
 from knox.logging import get_logger
-from knox.output.wiki_index import generate_log_entry
+from knox.output.wiki_index import LogStage, generate_log_entry
 
 logger = get_logger(__name__)
 
@@ -65,7 +66,7 @@ def _compile_section(base_dir: Path) -> list[str]:
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         return []
-    entry = generate_log_entry(wiki, stage="compile").strip()
+    entry = generate_log_entry(wiki, stage=LogStage.COMPILE).strip()
     if not entry:
         return []
     return ["## Last Compile", "", entry, ""]
@@ -80,24 +81,32 @@ def _runs_section(runs_dir: Path, *, last_n: int) -> list[str]:
     ended = [r for r in runs if r.get("event") == "end"]
     recent = ended[-last_n:]
     if not recent:
-        return ["## Command Timeline", "", "_Commands started but none finished yet._", ""]
-    lines = ["## Command Timeline", "", "| When | Command | Status | Duration |", "|------|---------|--------|---------:|"]
-    for r in recent:
-        ts = _short_ts(r.get("ts", ""))
-        cmd = str(r.get("cmd", ""))
-        status = str(r.get("status", ""))
-        dur = r.get("duration_s")
-        dur_str = f"{dur:.1f}s" if isinstance(dur, int | float) else "—"
-        marker = "✓" if status == "ok" else "✗"
-        lines.append(f"| {ts} | `{cmd}` | {marker} {status} | {dur_str} |")
+        b = PageBuilder()
+        b.heading(2, "Command Timeline")
+        b.paragraph(em("Commands started but none finished yet."))
+        return [b.render().rstrip(), ""]
+    b = PageBuilder()
+    b.heading(2, "Command Timeline")
+    b.table(
+        headers=["When", "Command", "Status", "Duration"],
+        rows=[
+            [
+                _short_ts(r.get("ts", "")),
+                code_span(str(r.get("cmd", ""))),
+                ("✓" if r.get("status") == "ok" else "✗") + f" {r.get('status', '')}",
+                f"{r['duration_s']:.1f}s" if isinstance(r.get("duration_s"), int | float) else "—",
+            ]
+            for r in recent
+        ],
+        aligns=[None, None, None, "right"],
+    )
+    lines = [b.render().rstrip()]
     # Flag any start with no matching end (killed / hung).
-    started_ids = {r["run_id"] for r in runs if r.get("event") == "start"}
     ended_ids = {r["run_id"] for r in runs if r.get("event") == "end"}
     dangling = [r for r in runs if r.get("event") == "start" and r["run_id"] not in ended_ids]
     if dangling:
         lines.append("")
         lines.append(f"_Note: {len(dangling)} command(s) started but never finished (killed or hung)._")
-    _ = started_ids  # kept for clarity / future use
     return [*lines, ""]
 
 

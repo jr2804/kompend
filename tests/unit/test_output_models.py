@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
-from typing import Any, Never
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 from knox.output.renderer import (
     DocumentRenderer,
-    _check_rumdl,
     detect_flavor,
     render_frontmatter,
 )
@@ -142,38 +138,6 @@ class TestDetectFlavorFromDir:
         """Auto-detect quarto from .qmd files."""
         (tmp_path / "index.qmd").write_text("---\ntitle: Test\n---")
         assert detect_flavor(output_dir=tmp_path) == "quarto"
-
-
-class TestMissingRumdlFallback:
-    """Tests that DocumentRenderer gracefully handles missing rumdl."""
-
-    def test_fallback_on_import_error(self, monkeypatch: Any) -> None:
-        """When rumdl is not on PATH, render should return raw markdown."""
-        original = shutil.which
-        monkeypatch.setattr(shutil, "which", lambda cmd: None if cmd == "rumdl" else original(cmd))
-        assert not _check_rumdl()
-
-        renderer = DocumentRenderer(flavor="obsidian")
-        assert not renderer._rumdl_available
-
-        doc = Document(title="Test", body="Some **bold** content")
-        result = renderer.render(doc)
-        assert "# Test" in result
-        assert "Some **bold** content" in result
-
-    def test_fallback_on_subprocess_error(self, monkeypatch: Any) -> None:
-        """When rumdl crashes, render should return raw markdown."""
-
-        def _fake_run(*args, **kwargs) -> Never:
-            raise subprocess.TimeoutExpired(cmd=["rumdl"], timeout=30, output="")
-
-        monkeypatch.setattr(subprocess, "run", _fake_run)
-
-        renderer = DocumentRenderer(flavor="obsidian")
-        doc = Document(title="Test", body="Content")
-        result = renderer.render(doc)
-        assert "# Test" in result
-        assert "Content" in result
 
 
 class TestMarkdownWriterRegression:

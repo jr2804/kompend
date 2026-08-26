@@ -35,6 +35,7 @@ from knox import __version__ as _KNOX_VERSION
 from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
+from knox.core.page_builder import PageBuilder, link, strong
 from knox.core.paths import (
     ATTACHMENTS_DIR_NAME,
     DEFAULT_OUTPUT_DIR_NAME,
@@ -528,7 +529,35 @@ class VaultWriter(BaseOutputWriter):
         if not per_node:
             return
 
-        lines = [
+        b = PageBuilder()
+        b.heading(1, "Quality")
+        b.paragraph(
+            "Claims checked: ",
+            strong(str(verification.get("total", 0))),
+            " — ",
+            "supported: ",
+            strong(str(verification.get("verified", 0))),
+            " — ",
+            "unsupported: ",
+            strong(str(verification.get("unsupported", 0))),
+            " — ",
+            "avg confidence: ",
+            strong(f"{verification.get('average_confidence', 0.0):.2f}"),
+        )
+        b.table(
+            headers=["Page", "Claims", "Supported", "Score"],
+            rows=[
+                [
+                    titles.get(nid, nid),
+                    str(stats["claims"]),
+                    str(stats["supported"]),
+                    f"{sum(stats['conf']) / len(stats['conf']):.2f}",
+                ]
+                for nid, stats in sorted(per_node.items(), key=lambda kv: kv[1]["supported"] / kv[1]["claims"])
+            ],
+            aligns=[None, "right", "right", "right"],
+        )
+        (output_dir / QUALITY_FILE).write_text(
             okf_frontmatter_yaml(
                 {
                     "type": "Quality",
@@ -538,24 +567,11 @@ class VaultWriter(BaseOutputWriter):
                     "status": "stable",
                     "kind": "quality",
                 }
-            ).rstrip(),
-            "",
-            "# Quality",
-            "",
-            f"Claims checked: **{verification.get('total', 0)}** — "
-            f"supported: **{verification.get('verified', 0)}** — "
-            f"unsupported: **{verification.get('unsupported', 0)}** — "
-            f"avg confidence: **{verification.get('average_confidence', 0.0):.2f}**",
-            "",
-            "| Page | Claims | Supported | Score |",
-            "|------|--------|-----------|-------|",
-        ]
-        for nid, stats in sorted(per_node.items(), key=lambda kv: kv[1]["supported"] / kv[1]["claims"]):
-            score = sum(stats["conf"]) / len(stats["conf"])
-            lines.append(f"| {titles.get(nid, nid)} | {stats['claims']} | {stats['supported']} | {score:.2f} |")
-        lines.append("")
-
-        (output_dir / QUALITY_FILE).write_text("\n".join(lines), encoding="utf-8")
+            ).rstrip()
+            + "\n\n"
+            + b.render(),
+            encoding="utf-8",
+        )
 
     # --- Format-specific hooks (overridden by subclasses) -----------------
 
@@ -611,43 +627,35 @@ class VaultWriter(BaseOutputWriter):
                         seen.add(key)
                         corpus.append((key, attachment_slug(key)))
 
-        lines = [
-            okf_frontmatter_yaml(
-                {
-                    "type": "Reference",
-                    "title": "References",
-                    "description": "Corpus sources and bibliographic entries cited by them",
-                    "generated": {"by": _GENERATED_BY, "at": iso_local()},
-                    "status": "stable",
-                    "kind": "reference",
-                }
-            ).rstrip(),
-            "",
-            "# References",
-            "",
-            "## Corpus sources",
-            "",
-        ]
-        if corpus:
-            lines.extend(f"- [{key}]({SUMMARIES_SUBDIR}/{slug}.md)" if slug and slug in existing_slugs else f"- {key}" for key, slug in sorted(corpus))
-        else:
-            lines.append("_(no corpus sources)_")
-        lines.extend(
-            [
-                "",
-                "## Cited works not in corpus",
-                "",
-                "Bibliographic entries extracted from the sources' reference sections.",
-                "Candidates for additional sources to ingest.",
-                "",
-            ]
-        )
-        if all_refs:
-            lines.extend(format_bibliography_entry(ref) for ref in all_refs)
-        else:
-            lines.append("_(none extracted yet)_")
+        fm = okf_frontmatter_yaml(
+            {
+                "type": "Reference",
+                "title": "References",
+                "description": "Corpus sources and bibliographic entries cited by them",
+                "generated": {"by": _GENERATED_BY, "at": iso_local()},
+                "status": "stable",
+                "kind": "reference",
+            }
+        ).rstrip()
 
-        (output_dir / "references.md").write_text("\n".join(lines), encoding="utf-8")
+        b = PageBuilder()
+        b.heading(1, "References")
+        b.heading(2, "Corpus sources")
+        if corpus:
+            b.bullet_list([link(f"{SUMMARIES_SUBDIR}/{slug}.md", key) if slug and slug in existing_slugs else key for key, slug in sorted(corpus)])
+        else:
+            b.bullet_list(["_(no corpus sources)_"])
+        b.heading(2, "Cited works not in corpus")
+        b.paragraph("Bibliographic entries extracted from the sources' reference sections.")
+        b.paragraph("Candidates for additional sources to ingest.")
+
+        parts = [fm, "", b.render()]
+        if all_refs:
+            parts.extend(format_bibliography_entry(ref) for ref in all_refs)
+        else:
+            parts.append("_(none extracted yet)_")
+
+        (output_dir / "references.md").write_text("\n\n".join(parts) + "\n", encoding="utf-8")
 
     @abstractmethod
     def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None: ...

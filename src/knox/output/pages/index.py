@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from wenmode.nodes import Paragraph, Text
+
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
-from knox.core.paths import INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
+from knox.core.page_builder import PageBuilder, link, strong
+from knox.core.paths import INDEX_FILE, LOG_FILE, SUMMARIES_SUBDIR
 from knox.core.utils.time import display_local
 from knox.output.vault import VaultWriter
 
@@ -58,21 +61,12 @@ def generate_index(
 
 
 def _hub_index(wiki: CompiledWiki, prefix: str) -> str:
-    """Thin vault-root hub pointing into the wiki bundle."""
-    source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
-    lines: list[str] = [
-        "# Wiki Index\n",
-        f"This vault's knowledge bundle lives in the [{prefix}/]({prefix}/) directory. Start at the portable catalog:",
-        "",
-        f"→ **[{prefix}/index.md]({prefix}/index.md)**\n",
-        "## Quick facts\n",
-        f"- **Sources:** {source_count}",
-        f"- **Pages:** {len(wiki.nodes)}",
-        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
-        "- **Media:** [attachments/](attachments/) — figures extracted from sources",
-        "",
-    ]
-    return "\n".join(lines)
+    """Thin hub: quick facts + pointer to the portable catalog."""
+    b = PageBuilder()
+    b.heading(1, "Wiki Index")
+    _emit_stat_paragraphs(b, wiki, prefix)
+    b.paragraph("The full catalog lives at ", link(f"{prefix}/index.md", f"{prefix}/index.md"), ".")
+    return b.render()
 
 
 def _full_catalog(
@@ -81,30 +75,34 @@ def _full_catalog(
     prefix: str,
 ) -> str:
     """Full catalog: stats, topics, per-page TOC, generated surfaces."""
-    lines: list[str] = ["# Wiki Index\n"]
+    b = PageBuilder()
+    b.heading(1, "Wiki Index")
 
-    lines.append("## Summary\n")
-    lines.extend(_stats_lines(wiki, prefix))
-    lines.append("")
+    b.heading(2, "Summary")
+    _emit_stat_paragraphs(b, wiki, prefix)
 
     # Topic / concept cloud (from edges metadata)
     topics = wiki.metadata.get("topics", [])
     if topics:
         topics_limit = DEFAULTS.get(DISPLAY_WIKI_TOPICS, 30)
-        lines.append("## Topics\n")
-        lines.append(" ".join(f"`{t}`" for t in sorted(topics)[:topics_limit]))
-        lines.append("")
+        b.heading(2, "Topics")
+        b.paragraph(" ".join(f"`{t}`" for t in sorted(topics)[:topics_limit]))
 
     # Full TOC — catalog entries: link + one-line description.
-    lines.append("## Table of Contents\n")
-    for i, node in enumerate(wiki.nodes, 1):
+    b.heading(2, "Table of Contents")
+    toc_items: list[Paragraph] = []
+    for _i, node in enumerate(wiki.nodes, 1):
         slug = node.id
-        folder = VaultWriter._KIND_FOLDERS.get(node.node_type or "", "")
-        link = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
+        folder = VaultWriter._folder_for_kind(node.node_type or "")
+        link_target = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
         desc = VaultWriter.okf_description(node)
-        entry = f"{i}. [{node.title}]({link})"
-        lines.append(f"{entry} - {desc}" if desc else entry)
-    lines.append("")
+        entry = Paragraph()
+        entry.children.append(link(link_target, node.title))
+        if desc:
+            entry.children.append(Text(value=f" - {desc}"))
+        toc_items.append(entry)
+    if toc_items:
+        b.numbered_list(toc_items)
 
     # Generated surfaces — complete-catalog invariant: everything the wiki
     # generates plus durable media is reachable from this index.
@@ -113,48 +111,64 @@ def _full_catalog(
         if (output_dir / SUMMARIES_SUBDIR).is_dir() and any((output_dir / SUMMARIES_SUBDIR).glob("*.md")):
             surfaces.append((f"{prefix}/{SUMMARIES_SUBDIR}/", "Per-source overview pages (assets, citations, backlinks)"))
         if (output_dir / "references.md").exists():
-            surfaces.append((f"{prefix}/references.md", "Corpus sources + cited works not in corpus"))
-        if (output_dir / QUALITY_FILE).exists():
-            surfaces.append((f"{prefix}/{QUALITY_FILE}", "Claim verification summary (WiCER pass)"))
+            surfaces.append((f"{prefix}/references.md", "Corpus sources + bibliography"))
         if (output_dir / "overview.md").exists():
             surfaces.append((f"{prefix}/overview.md", "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((f"{prefix}/{LOG_FILE}", "Append-only activity journal"))
     surfaces.append(("attachments/" if not prefix else f"{prefix}/../attachments/", "Media & figures extracted from sources"))
-    if surfaces:
-        lines.append("## Wiki surfaces\n")
-        for target, desc in surfaces:
-            name = target.rstrip("/").rsplit("/", 1)[-1]
-            lines.append(f"- [{name}]({target}) — {desc}")
+    b.heading(2, "Wiki surfaces")
+    surface_items: list[Paragraph] = []
+    for target, desc in surfaces:
+        name = target.rstrip("/").rsplit("/", 1)[-1]
+        entry = Paragraph()
+        entry.children.append(link(target, name))
+        entry.children.append(Text(value=f" — {desc}"))
+        surface_items.append(entry)
+    b.bullet_list(surface_items)
 
-    return "\n".join(lines)
+    return b.render()
 
 
-def _stats_lines(wiki: CompiledWiki, prefix: str) -> list[str]:
-    """Summary bullet list for the catalog index."""
+def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> None:
+    """Emit the quick-facts block: one paragraph per stat."""
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
-    lines = [
-        f"- **Sources:** {source_count}",
-        f"- **Articles:** {len(wiki.nodes)}",
-        f"- **Total words:** {sum(len(n.content.split()) for n in wiki.nodes):,}",
-        f"- **Last compile:** {display_local('%Y-%m-%d %H:%M')}",
+
+    stats: list[tuple[str, str]] = [
+        ("Sources", str(source_count)),
+        ("Articles", str(len(wiki.nodes))),
+        ("Total words", f"{sum(len(n.content.split()) for n in wiki.nodes):,}"),
+        ("Last compile", display_local("%Y-%m-%d %H:%M")),
     ]
     if duration is not None:
-        lines.append(f"- **Duration:** {duration:.1f}s")
+        stats.append(("Duration", f"{duration:.1f}s"))
     if wiki.quality_score:
-        lines.append(f"- **Health score:** {wiki.quality_score:.0f}/100")
-    att_target = "attachments/"
-    if prefix:
-        lines.append(f"- **Bundle:** [{prefix}/index.md]({prefix}/index.md)")
-        att_target = f"{prefix}/../attachments/"
-    lines.append(f"- **Media:** [attachments/]({att_target}) — figures extracted from sources")
-    return lines
+        stats.append(("Health score", f"{wiki.quality_score:.0f}/100"))
+
+    att_target = f"{prefix}/../attachments/" if prefix else "attachments/"
+    b.paragraph(strong("Sources:"), f" {source_count}")
+    b.paragraph(strong("Articles:"), f" {len(wiki.nodes)}")
+    b.paragraph(strong("Total words:"), f" {sum(len(n.content.split()) for n in wiki.nodes):,}")
+    b.paragraph(strong("Last compile:"), f" {display_local('%Y-%m-%d %H:%M')}")
+    if duration is not None:
+        b.paragraph(strong("Duration:"), f" {duration:.1f}s")
+    if wiki.quality_score:
+        b.paragraph(strong("Health score:"), f" {wiki.quality_score:.0f}/100")
+    b.paragraph(
+        strong("Media:"),
+        " ",
+        link(att_target, "attachments/"),
+        " — figures extracted from sources",
+    )
 
 
 def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:
-    """Portable path prefix from the index location to the bundle pages."""
-    if output_dir is not None and base_dir is not None and output_dir.is_relative_to(base_dir):
-        rel = output_dir.relative_to(base_dir).as_posix()
-        return rel if rel != "." else ""
-    return output_dir.name if output_dir is not None else "wiki"
+    """Relative path from *base_dir* to *output_dir*; ``""`` when flat/unknown."""
+    if output_dir is None or base_dir is None or output_dir == base_dir:
+        return ""
+    try:
+        rel = output_dir.relative_to(base_dir)
+    except ValueError:
+        return ""
+    return rel.as_posix()
