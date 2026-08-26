@@ -181,6 +181,14 @@ SourceTags = Annotated[
     ),
 ]
 
+SourceAttrs = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--attr",
+        help=("Source attributes as KEY=VALUE (repeatable). Multiple --attr flags are AND — each sets one key=value pair on the source."),
+    ),
+]
+
 IngestTarget = Annotated[
     str,
     typer.Argument(

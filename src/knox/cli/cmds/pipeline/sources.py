@@ -146,6 +146,43 @@ def sources_untag(
     _mutate_tags(vp.cache_dir, file, tag, add=False)
 
 
+# ── Sub-command: attr / attr-rm ─────────────────────────────────────────
+
+
+@sources_app.command("attr", help="Set a key=value attribute on an ingested source file.")
+def sources_attr(
+    ctx: typer.Context,
+    file: str,
+    key_value: str,
+    config: str | None = None,
+) -> None:
+    """Set a key=value attribute on an ingested source file.
+
+    The attribute is persisted in the parse cache and will propagate to
+    wiki nodes on the next compile. Use KEY=VALUE format.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    resolve_config(base_dir=vp.base_dir, config_file=config)
+    _mutate_attributes(vp.cache_dir, file, key_value, add=True)
+
+
+@sources_app.command("attr-rm", help="Remove an attribute key from an ingested source file.")
+def sources_attr_rm(
+    ctx: typer.Context,
+    file: str,
+    key: str,
+    config: str | None = None,
+) -> None:
+    """Remove an attribute key from an ingested source file.
+
+    The attribute is removed from the parse cache. Wiki nodes will need
+    to be recompiled to reflect the change.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    resolve_config(base_dir=vp.base_dir, config_file=config)
+    _mutate_attributes(vp.cache_dir, file, key, add=False)
+
+
 # ── Sub-command: export ─────────────────────────────────────────────────
 
 
@@ -271,6 +308,57 @@ def _mutate_tags(cache_dir: Path, file: str, tag: str, add: bool) -> None:
         raise typer.Exit(1)
 
     get_console().print(f"[green]{action} tag '{escape(tag)}' on {escape(file)}[/]")
+
+
+def _get_source_attributes(file: str, cache_data: dict[str, Any]) -> dict[str, str]:
+    """Extract key=value attributes for a source file from parse cache."""
+    entry = cache_data.get(file, {})
+    meta = entry.get("metadata", {})
+    return meta.get("attributes", {})  # nocheck: source metadata, not wiki metadata
+
+
+def _mutate_attributes(cache_dir: Path, file: str, key_value: str, add: bool) -> None:
+    """Add or remove a key=value attribute on a source file's cache entry."""
+    cache_file = _find_cache_file(cache_dir, file)
+    if cache_file is None:
+        get_console().print(f"[red]No cache entry found for '{escape(file)}'. Run 'knox ingest' first.[/]")
+        raise typer.Exit(1)
+
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        get_console().print(f"[red]Could not read cache entry: {exc}[/]")
+        raise typer.Exit(1)
+
+    meta = data.setdefault("metadata", {})
+    existing: dict[str, str] = meta.get("attributes", {})  # nocheck: source metadata, not wiki metadata
+
+    if add:
+        if "=" not in key_value:
+            get_console().print(f"[red]Use KEY=VALUE format for attributes, got: '{escape(key_value)}'[/]")
+            raise typer.Exit(1)
+        key, value = key_value.split("=", 1)
+        if existing.get(key) == value:
+            get_console().print(f"[yellow]Attribute '{escape(key)}={escape(value)}' already present on {escape(file)}[/]")
+            return
+        existing[key] = value
+        action = f"Set {key}={value}"
+    else:
+        if key_value not in existing:
+            get_console().print(f"[yellow]Attribute key '{escape(key_value)}' not found on {escape(file)}[/]")
+            return
+        del existing[key_value]
+        action = f"Removed {key_value}"
+
+    meta["attributes"] = existing  # nocheck: source metadata, not wiki metadata
+
+    try:
+        cache_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError as exc:
+        get_console().print(f"[red]Could not write cache entry: {exc}[/]")
+        raise typer.Exit(1)
+
+    get_console().print(f"[green]{action} on {escape(file)}[/]")
 
 
 def _find_cache_file(cache_dir: Path, file: str) -> Path | None:

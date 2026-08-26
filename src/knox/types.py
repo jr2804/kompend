@@ -35,6 +35,7 @@ MetadataValue = str | bool | int | float | list["MetadataValue"] | dict[str, "Me
 # Configuration types
 ConfigDict = dict[str, JSONValue]  # Configuration dictionary
 ConfigValue = JSONValue  # Configuration value (a concrete JSON type)
+Attributes = dict[str, str]  # Source-level key=value pairs (labels)
 
 
 # Cache types

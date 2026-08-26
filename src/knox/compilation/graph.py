@@ -162,6 +162,7 @@ class GraphCompiler(BaseCompiler):
                     WikiField.CHUNK_COUNT: len(group_chunks),
                     "frontmatter": {"kind": kind},
                     MetadataField.TAGS: list({tag for rc in group_chunks for tag in (rc.chunk.metadata.get(MetadataField.TAGS) or [])}),
+                    MetadataField.ATTRIBUTES: _collect_attributes(group_chunks),
                 },
             )
             nodes.append(node)
@@ -482,3 +483,17 @@ class GraphCompiler(BaseCompiler):
     # Internal names injected by VLMEnricher for bookkeeping. These must
     # never become concept pages or cross-reference edges in the output.
     _RESERVED_ENTITY_NAMES: ClassVar[frozenset[str]] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
+
+
+def _collect_attributes(group_chunks: list[ResolvedChunk]) -> dict[str, list[str]]:
+    """Aggregate attributes from a chunk group, preserving per-key values."""
+    attr_values: dict[str, list[str]] = {}
+    for rc in group_chunks:
+        attrs = rc.chunk.metadata.get(MetadataField.ATTRIBUTES) if hasattr(rc, "chunk") else None
+        if not attrs:
+            continue
+        for key, val in attrs.items():
+            seen = attr_values.setdefault(key, [])
+            if val not in seen:
+                seen.append(val)
+    return attr_values

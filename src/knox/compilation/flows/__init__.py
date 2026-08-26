@@ -7,6 +7,7 @@
 """
 
 from knox.compilation.flows.assembly import (
+    attach_attributes_to_nodes,
     attach_tags_to_nodes,
     build_edges,
     build_tree_texts,
@@ -14,6 +15,7 @@ from knox.compilation.flows.assembly import (
 )
 
 __all__ = [
+    "attach_attributes_to_nodes",
     "attach_tags_to_nodes",
     "build_edges",
     "build_tree_texts",

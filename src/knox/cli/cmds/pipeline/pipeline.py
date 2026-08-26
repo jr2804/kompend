@@ -54,6 +54,7 @@ from knox.cli.args import (
     Progress,
     Provenance,
     ReviewMode,
+    SourceAttrs,
     SourceTags,
     StartAtTier,
     SynthesizeFlag,
@@ -308,6 +309,7 @@ def ingest_cmd(
     parser: Parser = None,
     cli_set: CliSet = None,
     tags: SourceTags = None,
+    attrs: SourceAttrs = None,
 ) -> None:
     """Ingest documents into the knowledge graph without compiling a wiki.
 
@@ -385,6 +387,7 @@ def ingest_cmd(
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
             tags=tags,
+            attributes=_parse_attrs(attrs),
         )
         time.monotonic() - ingest_start
     finally:
@@ -492,4 +495,17 @@ def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
             result[key] = coerce_config_value(val, key)
         except ValueError as exc:
             raise typer.BadParameter(f"--set {key}: {exc}") from exc
+    return result
+
+
+def _parse_attrs(items: list[str] | None) -> dict[str, str]:
+    """Parse repeated ``--attr key=value`` items into a plain string dict."""
+    result: dict[str, str] = {}
+    if not items:
+        return result
+    for item in items:
+        if "=" not in item:
+            raise typer.BadParameter(f"--attr expects key=value, got: {item!r}")
+        key, _, val = item.partition("=")
+        result[key.strip()] = val
     return result

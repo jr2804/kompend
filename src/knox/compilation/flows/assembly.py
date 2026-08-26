@@ -279,6 +279,38 @@ def attach_tags_to_nodes(nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> 
             node.metadata[MetadataField.TAGS] = unique_tags
 
 
+def attach_attributes_to_nodes(nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> None:
+    """Attach key=value attributes from source chunks to wiki nodes.
+
+    Each node gets a dict mapping attribute key → list of distinct values
+    seen across all chunks that contributed to that node. This preserves
+    per-source semantics: if source A has ``version=1`` and source B has
+    ``version=2``, a node built from both has ``{"version": ["1", "2"]}``.
+    """
+    chunk_by_id: dict[str, ResolvedChunk] = {}
+    for rc in chunks:
+        if hasattr(rc, "chunk") and rc.chunk and rc.chunk.id:
+            chunk_by_id[rc.chunk.id] = rc
+
+    for node in nodes:
+        attr_values: dict[str, list[str]] = {}
+        if not node.source_chunks:
+            continue
+        for cid in node.source_chunks:
+            rc = chunk_by_id.get(cid)
+            if rc is None:
+                continue
+            attrs = rc.chunk.metadata.get(MetadataField.ATTRIBUTES) if hasattr(rc, "chunk") else None
+            if not attrs:
+                continue
+            for key, val in attrs.items():
+                seen = attr_values.setdefault(key, [])
+                if val not in seen:
+                    seen.append(val)
+        if attr_values:
+            node.metadata[MetadataField.ATTRIBUTES] = attr_values
+
+
 # ── Edge building ───────────────────────────────────────────────────────
 
 

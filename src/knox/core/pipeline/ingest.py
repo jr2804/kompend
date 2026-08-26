@@ -75,6 +75,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     config: dict[str, Any] | None = None,
     ingested_by: str = "",
     tags: list[str] | None = None,
+    attributes: dict[str, str] | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -117,6 +118,9 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             (``compile_state.json``). Empty string records no identity.
         tags: Optional list of source tags to attach to each parsed document's
             metadata (stored under ``MetadataField.TAGS``).
+        attributes: Optional key=value source attributes to attach to each
+            parsed document's metadata (stored under
+            ``MetadataField.ATTRIBUTES``).
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -180,6 +184,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             if doc.metadata is None:
                 doc.metadata = {}
             doc.metadata["tags"] = tags  # nocheck: chunk metadata, not wiki metadata
+        if attributes:
+            if doc.metadata is None:
+                doc.metadata = {}
+            merged = dict(doc.metadata.get("attributes") or {})  # nocheck: chunk metadata
+            merged.update(attributes)
+            doc.metadata["attributes"] = merged  # nocheck: chunk metadata
 
         # Portable cache: image paths relative to the vault, like source_file.
         relativize_image_paths(doc, base_dir)

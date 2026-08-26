@@ -31,7 +31,12 @@ from knox.compilation._two_phase_core import (
     upsert_node,
 )
 from knox.compilation.concept_keys import normalize_concept_key
-from knox.compilation.flows.assembly import attach_tags_to_nodes, build_edges, merge_similar_concepts
+from knox.compilation.flows.assembly import (
+    attach_attributes_to_nodes,
+    attach_tags_to_nodes,
+    build_edges,
+    merge_similar_concepts,
+)
 from knox.compilation.schema import GenerationPage
 from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
@@ -477,6 +482,7 @@ def assemble_wiki(
 
     nodes = compiler.dedup_content_duplicate_nodes(nodes)
     attach_tags_to_nodes(nodes, chunks)
+    attach_attributes_to_nodes(nodes, chunks)
     edges = build_edges(nodes, extractions, min_title_len=compiler._config.budget.edge_min_title_len)
     quality = compute_quality_score(nodes, edges)
     toc: list[TocEntry] = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
