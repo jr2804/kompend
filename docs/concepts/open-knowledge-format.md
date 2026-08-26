@@ -71,6 +71,7 @@ wiki/
 | ``sources`` | — | Structured provenance objects ``{id, resource, title, author}`` (§5.1) |
 | ``kind`` | — | KNOX extension: original KNOX node type |
 | ``source_files`` | — | KNOX extension: provenance filename stems |
+| ``attributes`` | — | KNOX extension: per-source key=value facts (``{version: "2", status: draft}``); values collected per contributing source, so a key may hold a list |
 
 !!! note "``tags`` vs ``source_files`` vs ``sources``"
     These are deliberately distinct to avoid the v0.1 overload:

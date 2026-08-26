@@ -104,7 +104,7 @@ required.
 |---------|---------|-----------|
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
 | `knox compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
-| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--set key=val` |
+| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
 | `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `search.embed_attachments`) |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
@@ -117,10 +117,20 @@ required.
 | `knox sources export <id> [OUTPUT]` | Render an ingested source as clean markdown | OUTPUT optional — defaults to `<vault>/exported/<stem>.md`; annotations/summary default inline |
 | `knox sources tag <file> <tag>` | Add a tag to an already-ingested source | `--config <toml>` |
 | `knox sources untag <file> <tag>` | Remove a tag from an ingested source | `--config <toml>` |
+| `knox sources attr <file> KEY=VALUE` | Set a key=value attribute on an ingested source (e.g. `version=2`) | `--config <toml>` |
+| `knox sources attr-rm <file> KEY` | Remove an attribute key from an ingested source | `--config <toml>` |
 
 Tags are the same `metadata.tags` field written by `ingest`/`compile --tag`;
 they persist in the per-source parse cache and propagate to wiki nodes on the
 next `knox compile`. No re-ingest required.
+
+**Tags vs attributes**: tags are flat strings for hierarchy-style structuring
+(`ml/transformers`, `paper`). Attributes are `KEY=VALUE` facts per source
+(`version=2`, `status=draft`) that support exact-value filtering at query
+time (`--attr version=2`, or bare `--attr version` for key presence). When a
+wiki page is built from multiple sources, attribute values are collected
+per-source: a page from sources with `version=1` and `version=2` carries
+`{version: ["1", "2"]}` and matches either filter value.
 
 ### Attachments
 
@@ -143,7 +153,7 @@ are copied to `wiki/attachments/` for relative links in generated content.
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox query <text>` | Natural language query against compiled wiki (markdown-first: works from `wiki/*.md` alone; vector sidecar optional, keyword fallback without it) | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison` |
+| `knox query <text>` | Natural language query against compiled wiki (markdown-first: works from `wiki/*.md` alone; vector sidecar optional, keyword fallback without it) | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison`, `--tags <group>` (repeatable; comma=AND within, multiple flags OR), `--attr key=value` or `--attr key` (repeatable, AND'd) |
 | `knox provenance [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
 | `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
 | `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
@@ -269,7 +279,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 |------|---------|----------------|
 | `init_wiki` | Scaffold a new wiki project | `target: str` (directory path), `bare: bool = False`, `git: bool = True` |
 | `compile_wiki` | Compile sources into wiki | `sources_dir: str`, `output: str = "./output"`, `output_format: str = "markdown"`, `compiler: str = "graph"`, `urls: list[str] \| None`, `vlm_model: str = ""`, `image_mode: str = "file"` |
-| `query_wiki` | Ask a question against the wiki (markdown-first — no `.knox/` required; vectors optional) | `query: str`, `wiki_dir: str = "."`, `remember: bool = False`, `search_mode: str = "hybrid"`, `top_k: int = 10` |
+| `query_wiki` | Ask a question against the wiki (markdown-first — no `.knox/` required; vectors optional) | `query: str`, `wiki_dir: str = "."`, `remember: bool = False`, `search_mode: str = "hybrid"`, `top_k: int = 10`, `attributes: list[str] \| None` (KEY=VALUE or bare KEY filters, AND'd) |
 | `wiki_status` | Show wiki statistics | `wiki_dir: str = "."` |
 | `wiki_capture` | Extract knowledge from conversation | `text: str`, `sources_dir: str`, `tags: list[str] \| None` |
 | `wiki_learn` | Store a fact verbatim | `text: str`, `sources_dir: str` |
@@ -351,6 +361,9 @@ timestamp: "2026-07-10T12:00:00"
 kind: concept  # KNOX extension
 compiled_at: "2026-07-10"  # KNOX extension
 sources: [source-file-1.pdf]  # KNOX extension
+attributes:  # KNOX extension — per-source key=value facts (single value scalar, multiple values list)
+  version: "2"
+  status: draft
 ---
 Content in standard Markdown...
 ```

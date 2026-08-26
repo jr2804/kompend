@@ -314,6 +314,8 @@ knox query [OPTIONS] QUESTION
 | `--raw` | — | Return raw context chunks without LLM synthesis |
 | `--no-classify` | — | Skip intent classification |
 | `--verbosity` | `standard` | Answer verbosity: `brief`, `standard`, or `comprehensive` |
+| `--tags <group>` | — | Filter results by tag. Comma-separated values within one flag are AND'd; multiple `--tags` flags are OR'd (e.g. `--tags audio,paper --tags video`) |
+| `--attr KEY=VALUE` | — | Filter results by source attribute. Repeatable; multiple flags are AND'd. Bare `KEY` matches any value for that key (e.g. `--attr version=2 --attr status`) |
 
 ## `knox capture` and `knox learn`
 
@@ -406,11 +408,18 @@ extraction summary are left in place at the top level.
 
 ## `knox sources`
 
-Manage ingested source files: list them, tag them, and export them as clean
+Manage ingested source files: list them, tag them, set attributes, and export them as clean
 markdown. Tags are the same
 `metadata.tags` field written by `--tag` at ingestion time; changes here are
 persisted in the per-file parse cache under `.knox/cache/` and propagate to
 wiki nodes on the next `knox compile`.
+
+Attributes are `KEY=VALUE` facts per source (`version=2`, `status=draft`) —
+same parse-cache persistence and compile propagation as tags. Unlike tags,
+attribute values are collected **per source**: a page built from sources with
+`version=1` and `version=2` carries `{version: ["1", "2"]}` in its frontmatter
+and matches either value in a query filter. Tags stay flat strings for
+hierarchy-style structuring (`ml/transformers`).
 
 ```bash
 # List every ingested source with its tags
@@ -422,6 +431,9 @@ knox sources list --tags paper,attention --tags transformer
 # Add / remove a tag on an already-ingested source (no re-ingest needed)
 knox sources tag sources/paper.pdf attention
 knox sources untag sources/paper.pdf attention
+# Set / remove a key=value attribute on an ingested source
+knox sources attr sources/paper.pdf version=2
+knox sources attr-rm sources/paper.pdf version
 
 # Export a source as clean markdown, reconstructed from the parse cache
 # ("as ingested" — not from the original file)
