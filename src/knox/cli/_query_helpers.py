@@ -68,13 +68,14 @@ def open_vector_store(
         return None
 
 
-def execute_query_search(
+def execute_query_search(  # noqa: PLR0917
     retriever: HybridRetriever | KeywordRetriever,
     query: str,
     search_mode: str,
     sources_dir: Path | None,
     top_k: int,
     tag_groups: list[list[str]] | None = None,
+    attr_filters: list[tuple[str, str | None]] | None = None,
 ) -> tuple[list[SearchResult], bool]:
     """Dispatch to the requested search mode and return results + raw flag."""
     raw = False
@@ -94,10 +95,12 @@ def execute_query_search(
 
     if tag_groups:
         results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+    if attr_filters:
+        results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
     return results, raw
 
 
-def handle_adaptive_search(
+def handle_adaptive_search(  # noqa: PLR0917
     query: str,
     top_k: int,
     search_mode: str,
@@ -106,6 +109,7 @@ def handle_adaptive_search(
     wiki: CompiledWiki,
     state_dir: Path,
     tag_groups: list[list[str]] | None = None,
+    attr_filters: list[tuple[str, str | None]] | None = None,
 ) -> tuple[list[SearchResult], bool]:
     """Search using adaptive retriever."""
     retriever = AdaptiveRetriever(wiki, vector_store=vector_store)
@@ -113,10 +117,12 @@ def handle_adaptive_search(
     results = retriever.search(query, top_k=top_k, mode=mode)
     if tag_groups:
         results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+    if attr_filters:
+        results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
     return results, False
 
 
-def handle_enhanced_search(
+def handle_enhanced_search(  # noqa: PLR0917
     query: str,
     top_k: int,
     search_mode: str,
@@ -127,6 +133,7 @@ def handle_enhanced_search(
     cfg: ResolvedConfig,
     model: str,
     tag_groups: list[list[str]] | None = None,
+    attr_filters: list[tuple[str, str | None]] | None = None,
 ) -> list[SearchResult] | None:
     """Search using enhanced retriever with RAG features. Returns results or None."""
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
@@ -138,6 +145,8 @@ def handle_enhanced_search(
         results = enhanced.search(query, top_k=top_k, expand_graph=expand_graph)
         if tag_groups:
             results = [r for r in results if matches_tag_filter(getattr(r, "tags", set()), tag_groups)]
+        if attr_filters:
+            results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
         return results
 
     return None
@@ -148,6 +157,26 @@ def matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool
     if not tag_groups:
         return True
     return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
+
+
+def matches_attr_filter(
+    node_attrs: dict[str, list[str]],
+    attr_filters: list[tuple[str, str | None]],
+) -> bool:
+    """Check if node attributes satisfy all filters (AND of key/value checks).
+
+    Each filter is ``(key, value)``: *value* is ``None`` when only key presence
+    is required; otherwise the node's value list must contain the exact value.
+    """
+    if not attr_filters:
+        return True
+    for key, value in attr_filters:
+        values = node_attrs.get(key)
+        if values is None:
+            return False
+        if value is not None and value not in values:
+            return False
+    return True
 
 
 def build_enhanced_retriever(
@@ -179,7 +208,7 @@ def build_enhanced_retriever(
     )
 
 
-def synthesize_and_output(
+def synthesize_and_output(  # noqa: PLR0917
     query: str,
     results: list[SearchResult],
     format: LlmDataFormat,

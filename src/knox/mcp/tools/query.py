@@ -3,7 +3,9 @@
 import dataclasses
 from typing import Any
 
+from knox.cli._query_helpers import matches_attr_filter
 from knox.cli.args.query import SearchMode
+from knox.cli.cmds.knowledge.query import _parse_attr_filters
 from knox.cli.cmds.pipeline.status import collect_stats
 from knox.core.config import RlmConfig, resolve_config
 from knox.core.models import load_wiki_from_files
@@ -21,6 +23,7 @@ def query_wiki(
     top_k: int = 5,
     raw: bool = False,
     search_mode: SearchMode = SearchMode.HYBRID,
+    attributes: list[str] | None = None,
 ) -> dict[str, Any]:
     """Ask a natural language question against the compiled wiki.
 
@@ -28,6 +31,8 @@ def query_wiki(
     Vector embeddings (``.knox/vectors/``) upgrade retrieval to semantic;
     without them, keyword-only results feed LLM synthesis but cannot produce
     a useful answer on their own — a model is required.
+
+    *attributes*: optional ``KEY=VALUE`` or bare ``KEY`` filters (AND'd).
     """
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir)
@@ -64,6 +69,10 @@ def query_wiki(
     finally:
         if vector_store is not None:
             vector_store.close()
+
+    if attributes:
+        attr_filters = _parse_attr_filters(attributes)
+        results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
 
     result_dicts = [dataclasses.asdict(r) for r in results] if results else []
     if not results:

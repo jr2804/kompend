@@ -54,6 +54,8 @@ from knox.mcp.tools.references import (
     references_list,
 )
 from knox.mcp.tools.sources import (
+    sources_attr,
+    sources_attr_rm,
     sources_export,
     sources_list,
     sources_tag,
@@ -91,6 +93,8 @@ __all__ = [
     "references_fetch",
     "references_list",
     "review",
+    "sources_attr",
+    "sources_attr_rm",
     "sources_export",
     "sources_list",
     "sources_tag",

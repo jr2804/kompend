@@ -83,6 +83,32 @@ def sources_untag(
     return _mutate_tags(vp.cache_dir, file, tag, add=False)
 
 
+def sources_attr(
+    wiki_dir: str | None = None,
+    file: str = "",
+    key_value: str = "",
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    """Set a key=value attribute on an ingested source file."""
+    vp = vault_paths(wiki_dir)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file)
+    _mutate_attributes(vp.cache_dir, file, key_value, add=True)
+    return {"status": "ok"}
+
+
+def sources_attr_rm(
+    wiki_dir: str | None = None,
+    file: str = "",
+    key: str = "",
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    """Remove an attribute key from an ingested source file."""
+    vp = vault_paths(wiki_dir)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file)
+    _mutate_attributes(vp.cache_dir, file, key, add=False)
+    return {"status": "ok"}
+
+
 def sources_export(
     wiki_dir: str | None = None,
     source_id: str = "",
@@ -189,6 +215,44 @@ def _mutate_tags(cache_dir: Path, file: str, tag: str, add: bool) -> dict[str, A
         return {"status": "error", "message": f"Could not write cache entry: {exc}"}
 
     return {"status": "ok", "message": f"{action} tag '{tag}' on {file}", "changed": True}
+
+
+def _mutate_attributes(cache_dir: Path, file: str, key_value: str, add: bool) -> dict[str, Any]:
+    """Add or remove a key=value attribute on a source file's cache entry."""
+    cache_file = _find_cache_file(cache_dir, file)
+    if cache_file is None:
+        return {"status": "error", "message": f"No cache entry found for '{file}'. Run 'wiki_ingest' first."}
+
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"status": "error", "message": f"Could not read cache entry: {exc}"}
+
+    meta = data.setdefault("metadata", {})
+    existing: dict[str, str] = meta.get("attributes", {})
+
+    if add:
+        if "=" not in key_value:
+            return {"status": "error", "message": f"Use KEY=VALUE format for attributes, got: '{key_value}'"}
+        key, value = key_value.split("=", 1)
+        if existing.get(key) == value:
+            return {"status": "ok", "message": f"Attribute '{key}={value}' already present on {file}", "changed": False}
+        existing[key] = value
+        action = f"Set {key}={value}"
+    else:
+        if key_value not in existing:
+            return {"status": "ok", "message": f"Attribute key '{key_value}' not found on {file}", "changed": False}
+        del existing[key_value]
+        action = f"Removed {key_value}"
+
+    meta["attributes"] = existing
+
+    try:
+        cache_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "message": f"Could not write cache entry: {exc}"}
+
+    return {"status": "ok", "message": action, "changed": True}
 
 
 def _find_cache_file(cache_dir: Path, file: str) -> Path | None:

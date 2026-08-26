@@ -57,6 +57,7 @@ class ZvecField(StrEnum):
     SOURCE_FILE = "source_file"
     CONTENT_PREVIEW = "content_preview"
     TAGS = "tags"
+    ATTRIBUTES = "attributes"
     EMBEDDING = "embedding"
 
 
@@ -229,6 +230,7 @@ class ZvecWikiStore:
                 _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
                 _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
                 _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
+                _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
             ],
             vectors=_zvec.VectorSchema(
                 ZvecField.EMBEDDING,
@@ -286,6 +288,7 @@ class ZvecWikiStore:
                     ZvecField.SOURCE_FILE: source_file,
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
                     ZvecField.TAGS: ",".join(node.metadata.get(MetadataField.TAGS, [])) if node.metadata.get(MetadataField.TAGS) else "",
+                    ZvecField.ATTRIBUTES: _serialize_attributes(node.metadata.get(MetadataField.ATTRIBUTES) or {}),
                 },
             )
             docs_batch.append(doc)
@@ -341,6 +344,15 @@ def _safe_id(node_id: str) -> str:
         return node_id
     suffix = hashlib.md5(node_id.encode()).hexdigest()[:8]  # noqa: S324
     return f"{node_id[: _ZVEC_MAX_ID_LEN - 9]}-{suffix}"
+
+
+def _serialize_attributes(attrs: dict[str, list[str]]) -> str:
+    """Serialize attribute dict to a filterable string like ``key1=val1,key2=val2``."""
+    parts: list[str] = []
+    for key, values in attrs.items():
+        for v in values:
+            parts.append(f"{key}={v}")
+    return ",".join(parts)
 
 
 # ── Embedding provider interface ────────────────────────────────────────

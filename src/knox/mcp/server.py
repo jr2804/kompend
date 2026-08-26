@@ -38,6 +38,8 @@ from knox.mcp.tools import (
     references_fetch,
     references_list,
     review,
+    sources_attr,
+    sources_attr_rm,
     sources_export,
     sources_list,
     sources_tag,
@@ -90,6 +92,8 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="sources_list")(sources_list)
     srv.tool(name="sources_tag")(sources_tag)
     srv.tool(name="sources_untag")(sources_untag)
+    srv.tool(name="sources_attr")(sources_attr)
+    srv.tool(name="sources_attr_rm")(sources_attr_rm)
     srv.tool(name="sources_export")(sources_export)
     srv.tool(name="references_list")(references_list)
     srv.tool(name="references_export")(references_export)

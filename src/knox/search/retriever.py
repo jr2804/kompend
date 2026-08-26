@@ -40,6 +40,7 @@ class SearchResult:
     score: float
     source_file: str | None = None
     tags: set[str] = field(default_factory=set)
+    attributes: dict[str, list[str]] = field(default_factory=dict)
     content: str = ""  # full page body for LLM synthesis; snippet is display-only
 
 
@@ -135,6 +136,7 @@ class HybridRetriever:
             score=_hit_float(hit, "score"),
             source_file=source_file,
             tags=_node_tags(node),
+            attributes=_node_attributes(node),
             content=node.content if node else "",
         )
 
@@ -183,6 +185,7 @@ class HybridRetriever:
                 score=seed_score * decay_factor,
                 source_file=str(node.metadata.get(MetadataField.SOURCE)) if node.metadata and node.metadata.get(MetadataField.SOURCE) else None,
                 tags=_node_tags(node),
+                attributes=_node_attributes(node),
                 content=node.content or "",
             )
 
@@ -241,6 +244,7 @@ class KeywordRetriever:
                     score=score,
                     source_file=source_file,
                     tags=_node_tags(node),
+                    attributes=_node_attributes(node),
                     content=node.content or "",
                 )
             )
@@ -417,6 +421,16 @@ def _node_tags(node: WikiNode | None) -> set[str]:
     if isinstance(raw, list):
         return {str(t) for t in raw}
     return set()
+
+
+def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
+    """Attributes from node metadata, guarded against missing node."""
+    if node is None or not node.metadata:
+        return {}
+    raw = node.metadata.get(MetadataField.ATTRIBUTES)
+    if isinstance(raw, dict):
+        return {k: list(v) if isinstance(v, list) else [str(v)] for k, v in raw.items()}
+    return {}
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:

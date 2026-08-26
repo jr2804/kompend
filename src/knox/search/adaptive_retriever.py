@@ -152,6 +152,7 @@ class AdaptiveRetriever:
                     score=float(hit.get("score", 0.0)),
                     source_file=source_file,
                     tags=set(node.metadata.get(MetadataField.TAGS, [])) if node and node.metadata else set(),
+                    attributes=dict(node.metadata.get(MetadataField.ATTRIBUTES) or {}) if node and node.metadata else {},
                 )
             )
         return results

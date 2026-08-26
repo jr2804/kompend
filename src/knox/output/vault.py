@@ -287,6 +287,12 @@ class VaultWriter(BaseOutputWriter):
         if node_tags:
             merged_tags = sorted(set(frontmatter.get("tags", [])) | {str(t) for t in node_tags})  # nocheck: OKF frontmatter key, not wiki metadata
             frontmatter["tags"] = merged_tags  # nocheck: OKF frontmatter key, not wiki metadata
+        node_attrs = node.metadata.get(MetadataField.ATTRIBUTES) or {}
+        if node_attrs and "attributes" not in frontmatter:
+            serialized: dict[str, str | list[str]] = {}
+            for k, v in node_attrs.items():
+                serialized[k] = v[0] if len(v) == 1 else v
+            frontmatter["attributes"] = serialized
 
         # OKF trust (§5.2): ``generated`` records how/when content was produced.
         # Supersedes the v0.1 ``timestamp`` field (§13.1).

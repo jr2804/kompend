@@ -239,6 +239,7 @@ class EnhancedRetriever:
                         score=round(score, 6),
                         source_file=r.source_file,
                         tags=r.tags,
+                        attributes=r.attributes,
                     )
                 )
             logger.debug(
@@ -318,6 +319,7 @@ class EnhancedRetriever:
                     score=round(score, 6),
                     source_file=r.source_file,
                     tags=r.tags,
+                    attributes=r.attributes,
                 )
             )
         fused.sort(key=lambda x: x.score, reverse=True)

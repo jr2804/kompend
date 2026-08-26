@@ -19,6 +19,7 @@ from knox.cli._query_helpers import (  # noqa: F401  # re-exported for backward 
     handle_adaptive_search,
     handle_enhanced_search,
     is_captured_source,
+    matches_attr_filter,
     matches_tag_filter,
     node_type_index,
     open_vector_store,
@@ -41,6 +42,7 @@ from knox.cli.args import (
     QueryText,
     QueryTopK,
     QueryVerbosity,
+    SourceAttrs,
     SourceTags,
 )
 from knox.cli.args.query import SearchMode
@@ -81,6 +83,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
     remember: QueryRemember = False,
     verbosity: QueryVerbosity = None,
     tags: SourceTags = None,
+    attr: SourceAttrs = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki."""
     vp = vault_paths_from_ctx(ctx)
@@ -104,6 +107,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         return
 
     tag_groups = _parse_tag_groups(tags)
+    attr_groups = _parse_attr_filters(attr)
 
     # Markdown-first invariant: the wiki files are the source of truth;
     # .knox/last_wiki.json is a compile artifact for maintenance paths only.
@@ -139,6 +143,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
             state_dir=state_dir,
             vector_store=vector_store,
             tag_groups=tag_groups,
+            attr_filters=attr_groups,
             adaptive=adaptive,
             cfg=cfg,
             model=model,
@@ -171,6 +176,7 @@ def _execute_search(
     state_dir: Path,
     vector_store: Any,
     tag_groups: list[list[str]] | None,
+    attr_filters: list[tuple[str, str | None]] | None,
     adaptive: bool,
     cfg: Any,
     model: str | None,
@@ -182,18 +188,20 @@ def _execute_search(
     """
     if vector_store is None:
         retriever: HybridRetriever | KeywordRetriever = KeywordRetriever(wiki)
-        results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
+        results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups, attr_filters)
         return results, raw, False
     if adaptive:
-        results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups)
+        results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups, attr_filters)
         return results, raw, False
     enhanced_result = (
-        handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups) if model is not None else None
+        handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups, attr_filters)
+        if model is not None
+        else None
     )
     if enhanced_result is not None:
         return enhanced_result, False, True
     retriever = HybridRetriever(wiki, vector_store=vector_store)
-    results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups)
+    results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups, attr_filters)
     return results, raw, False
 
 
@@ -212,6 +220,31 @@ def _parse_tag_groups(tags: list[str] | None) -> list[list[str]]:
         if group:
             groups.append(group)
     return groups
+
+
+def _parse_attr_filters(attrs: list[str] | None) -> list[tuple[str, str | None]]:
+    """Parse --attr values into (key, value) filters.
+
+    ``key=value`` requires the exact value; bare ``key`` requires only that
+    the attribute exists. Multiple --attr flags are AND'd together.
+    Raises ValueError on malformed entries (missing key or empty key part).
+    """
+    if not attrs:
+        return []
+    filters: list[tuple[str, str | None]] = []
+    for raw in attrs:
+        entry = raw.strip()
+        if not entry:
+            continue
+        if "=" in entry:
+            key, _, value = entry.partition("=")
+            if not key.strip():
+                msg = f"Invalid --attr {raw!r}: empty key."
+                raise ValueError(msg)
+            filters.append((key.strip(), value.strip()))
+        else:
+            filters.append((entry, None))
+    return filters
 
 
 def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bool:
