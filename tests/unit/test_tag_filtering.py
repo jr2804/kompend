@@ -5,7 +5,7 @@ Verifies AND/OR boolean logic for tag-based filtering of search results.
 
 from __future__ import annotations
 
-from knox.cli.cmds.knowledge.query import matches_tag_filter
+from knox.cli.cmds.knowledge.query import _parse_attr_filters, matches_attr_filter, matches_tag_filter
 
 
 class TestMatchesTagFilter:
@@ -63,3 +63,54 @@ class TestMatchesTagFilter:
         """An empty group in an OR chain is simply not matched."""
         assert matches_tag_filter({"audio"}, [["audio"], []]) is True
         assert matches_tag_filter({"video"}, [["audio"], []]) is False
+
+
+class TestMatchesAttrFilter:
+    """Key/value attribute matching logic (AND of key checks)."""
+
+    def test_no_filter_returns_all(self) -> None:
+        """Empty attr_filters matches all nodes."""
+        assert matches_attr_filter({"version": ["1"]}, []) is True
+        assert matches_attr_filter({}, []) is True
+
+    def test_key_presence_only(self) -> None:
+        """Bare key filter (value=None) requires only that the key exists."""
+        assert matches_attr_filter({"version": ["1"]}, [("version", None)]) is True
+        assert matches_attr_filter({"status": ["draft"]}, [("version", None)]) is False
+
+    def test_exact_value_match(self) -> None:
+        """key=value requires the exact value in the node's value list."""
+        assert matches_attr_filter({"version": ["1"]}, [("version", "1")]) is True
+        assert matches_attr_filter({"version": ["2"]}, [("version", "1")]) is False
+        assert matches_attr_filter({"version": ["1", "2"]}, [("version", "2")]) is True
+
+    def test_multiple_filters_are_anded(self) -> None:
+        """Multiple --attr flags are AND'd — all must match."""
+        attrs = {"version": ["1"], "status": ["draft"]}
+        assert matches_attr_filter(attrs, [("version", "1"), ("status", "draft")]) is True
+        assert matches_attr_filter(attrs, [("version", "1"), ("status", "final")]) is False
+
+    def test_missing_key_fails(self) -> None:
+        """A missing key fails the filter even with a value check."""
+        assert matches_attr_filter({}, [("missing", "x")]) is False
+
+
+class TestParseAttrFilters:
+    """Parsing of --attr KEY=VALUE / --attr KEY CLI values."""
+
+    def test_none_and_empty(self) -> None:
+        assert _parse_attr_filters(None) == []
+        assert _parse_attr_filters([]) == []
+
+    def test_key_value(self) -> None:
+        assert _parse_attr_filters(["version=1"]) == [("version", "1")]
+
+    def test_bare_key(self) -> None:
+        assert _parse_attr_filters(["status"]) == [("status", None)]
+
+    def test_mixed(self) -> None:
+        assert _parse_attr_filters(["a=1", "b"]) == [("a", "1"), ("b", None)]
+
+    def test_value_with_equals(self) -> None:
+        """Only the first '=' splits — value may contain '='."""
+        assert _parse_attr_filters(["k=a=b"]) == [("k", "a=b")]
