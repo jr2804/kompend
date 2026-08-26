@@ -858,14 +858,14 @@ class TestTwoPhaseCompiler:
         stats = compiler._extraction_stats
         assert len(stats) == 1
         s = stats[0]
-        assert s["source"] == "a.pdf"
-        assert s["duration_s"] >= 0.0
-        assert s["summary_words"] == 4
-        assert s["summary_chars"] == len("one two three four")
-        assert s["entity_count"] == 1
-        assert s["concept_count"] == 1
-        assert s["tag_count"] == 1
-        assert s["batches"] == 1
+        assert s.source == "a.pdf"
+        assert s.duration_s >= 0.0
+        assert s.summary_words == 4
+        assert s.summary_chars == len("one two three four")
+        assert s.entity_count == 1
+        assert s.concept_count == 1
+        assert s.tag_count == 1
+        assert s.batches == 1
 
     def test_compile_writes_extraction_stats_to_metadata(self) -> None:
         config = PipelineConfig(

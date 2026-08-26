@@ -31,7 +31,7 @@ from knox.compilation.flows.agentic import extract_agentic
 from knox.compilation.flows.assembly import build_tree_texts
 from knox.compilation.schema import ExtractionOutput
 from knox.core.config._configs import ExtractionStrategy
-from knox.core.models import ChunkTree, ResolvedChunk
+from knox.core.models import ChunkTree, ExtractionStats, ResolvedChunk
 from knox.core.models.enums import CacheDeps
 from knox.core.paths import rel_to_vault
 from knox.core.templates import get_template_loader
@@ -122,19 +122,7 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             empty_ext = Extraction(source=source)
             _rewrite_extraction_mentions(empty_ext, id_map)
             extractions.add(empty_ext)
-            compiler._extraction_stats.append(
-                {
-                    "source": source,
-                    "summary": "",
-                    "duration_s": 0.0,
-                    "summary_chars": 0,
-                    "summary_words": 0,
-                    "entity_count": 0,
-                    "concept_count": 0,
-                    "tag_count": 0,
-                    "batches": 0,
-                }
-            )
+            compiler._extraction_stats.append(ExtractionStats(source=source))
             continue
 
         batches_list = batch_texts(texts, extract_char_budget)
@@ -150,17 +138,17 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
                 _rewrite_extraction_mentions(agentic_result, id_map)
                 extractions.add(agentic_result)
             compiler._extraction_stats.append(
-                {
-                    "source": source,
-                    "summary": agentic_result.summary if agentic_result else "",
-                    "duration_s": round(time.monotonic() - src_start, 1),
-                    "summary_chars": len(agentic_result.summary) if agentic_result else 0,
-                    "summary_words": len(agentic_result.summary.split()) if agentic_result else 0,
-                    "entity_count": len(agentic_result.entities) if agentic_result else 0,
-                    "concept_count": len(agentic_result.concepts) if agentic_result else 0,
-                    "tag_count": len(agentic_result.tags) if agentic_result else 0,
-                    "batches": len(texts),
-                }
+                ExtractionStats(
+                    source=source,
+                    summary=agentic_result.summary if agentic_result else "",
+                    duration_s=round(time.monotonic() - src_start, 1),
+                    summary_chars=len(agentic_result.summary) if agentic_result else 0,
+                    summary_words=len(agentic_result.summary.split()) if agentic_result else 0,
+                    entity_count=len(agentic_result.entities) if agentic_result else 0,
+                    concept_count=len(agentic_result.concepts) if agentic_result else 0,
+                    tag_count=len(agentic_result.tags) if agentic_result else 0,
+                    batches=len(texts),
+                )
             )
             if compiler._batch_tracker.should_stop():
                 break
@@ -181,17 +169,17 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         _rewrite_extraction_mentions(merged, id_map)
         extractions.add(merged)
         compiler._extraction_stats.append(
-            {
-                "source": source,
-                "summary": merged.summary,
-                "duration_s": round(time.monotonic() - src_start, 1),
-                "summary_chars": len(merged.summary),
-                "summary_words": len(merged.summary.split()),
-                "entity_count": len(merged.entities),
-                "concept_count": len(merged.concepts),
-                "tag_count": len(merged.tags),
-                "batches": len(batch_extractions),
-            }
+            ExtractionStats(
+                source=source,
+                summary=merged.summary,
+                duration_s=round(time.monotonic() - src_start, 1),
+                summary_chars=len(merged.summary),
+                summary_words=len(merged.summary.split()),
+                entity_count=len(merged.entities),
+                concept_count=len(merged.concepts),
+                tag_count=len(merged.tags),
+                batches=len(batch_extractions),
+            )
         )
         if compiler._batch_tracker.should_stop():
             logger.error(

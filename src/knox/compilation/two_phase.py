@@ -20,7 +20,6 @@ Implementation split into :mod:`knox.compilation.flows` submodules:
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from knox.compilation._checkpoints import delete_gen_checkpoint
 from knox.compilation._two_phase_core import (
@@ -50,7 +49,7 @@ from knox.compilation.flows.generation import (
 from knox.compilation.flows.references import run_reference_extraction
 from knox.compilation.graph import GraphCompiler
 from knox.core.cache.store import CacheStore
-from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
+from knox.core.models import ChunkTree, CompiledWiki, ExtractionStats, MetadataField, ResolvedChunk, WikiField
 from knox.core.paths import rel_to_vault
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
@@ -104,7 +103,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._timeout = config.llm.timeout
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
-        self._extraction_stats: list[dict[str, Any]] = []
+        self._extraction_stats: list[ExtractionStats] = []
         self._asset_store: AssetStore | None = None
         self._asset_id_maps: dict[str, AssetIdMap] = {}
         self._batch_tracker = BatchFailureTracker(
@@ -207,7 +206,7 @@ class TwoPhaseCompiler(BaseCompiler):
         extract_elapsed = time.monotonic() - extract_start
 
         if self._extraction_stats:
-            src_times = [s["duration_s"] for s in self._extraction_stats if "duration_s" in s]
+            src_times = [s.duration_s for s in self._extraction_stats]
             avg_src = sum(src_times) / len(src_times) if src_times else 0.0
             logger.info(
                 "TwoPhase: extract phase done — %d source(s) in %.1fs (avg %.1fs), %d LLM call(s), %d prompt + %d completion tokens",
@@ -231,8 +230,21 @@ class TwoPhaseCompiler(BaseCompiler):
                     len(cached.edges),
                     time.monotonic() - compile_start,
                 )
-                if getattr(self, "_extraction_stats", None):
-                    cached.metadata["extraction_stats"] = self._extraction_stats
+                if self._extraction_stats:
+                    cached.metadata["extraction_stats"] = [
+                        {
+                            "source": s.source,
+                            "summary": s.summary,
+                            "duration_s": s.duration_s,
+                            "summary_chars": s.summary_chars,
+                            "summary_words": s.summary_words,
+                            "entity_count": s.entity_count,
+                            "concept_count": s.concept_count,
+                            "tag_count": s.tag_count,
+                            "batches": s.batches,
+                        }
+                        for s in self._extraction_stats
+                    ]
                 cached.metadata["llm_calls"] = len(self._llm_stats)
                 return cached
 
@@ -253,8 +265,21 @@ class TwoPhaseCompiler(BaseCompiler):
         else:
             delete_gen_checkpoint(self._config, gen_deps)
 
-        if getattr(self, "_extraction_stats", None):
-            wiki.metadata["extraction_stats"] = self._extraction_stats
+        if self._extraction_stats:
+            wiki.metadata["extraction_stats"] = [
+                {
+                    "source": s.source,
+                    "summary": s.summary,
+                    "duration_s": s.duration_s,
+                    "summary_chars": s.summary_chars,
+                    "summary_words": s.summary_words,
+                    "entity_count": s.entity_count,
+                    "concept_count": s.concept_count,
+                    "tag_count": s.tag_count,
+                    "batches": s.batches,
+                }
+                for s in self._extraction_stats
+            ]
 
         total_prompt = sum(pt for pt, _ in self._llm_stats)
         total_comp = sum(ct for _, ct in self._llm_stats)

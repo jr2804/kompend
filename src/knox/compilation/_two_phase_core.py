@@ -23,7 +23,7 @@ from knox.compilation.concept_keys import (
 from knox.compilation.schema import Concept, Entity, ExtractionOutput, GenerationOutput, LLMOutputError
 from knox.core.cache.store import CacheStore
 from knox.core.config import BudgetConfig
-from knox.core.models import ElementType, GraphEdge, ImageRef, ResolvedChunk, WikiNode
+from knox.core.models import ElementType, ExtractionStats, GraphEdge, ImageRef, ResolvedChunk, WikiNode
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
@@ -243,7 +243,7 @@ class TwoPhaseRuntime(Protocol):
     _cache_store: CacheStore
     _context_window: ContextWindow
     _batch_tracker: BatchFailureTracker
-    _extraction_stats: list[dict[str, Any]]
+    _extraction_stats: list[ExtractionStats]
     _asset_store: AssetStore | None
     _active_gen_deps: dict[str, str]
     _extract_system_tokens: int

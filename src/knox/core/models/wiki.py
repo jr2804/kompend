@@ -61,6 +61,21 @@ class CrossReferenceResult:
 
 
 @dataclass
+class ExtractionStats:
+    """Per-source extraction timing and counts metadata."""
+
+    source: str = ""
+    summary: str = ""
+    duration_s: float = 0.0
+    summary_chars: int = 0
+    summary_words: int = 0
+    entity_count: int = 0
+    concept_count: int = 0
+    tag_count: int = 0
+    batches: int = 0
+
+
+@dataclass
 class WikiNode:
     """A node in the compiled knowledge graph."""
 

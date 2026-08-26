@@ -18,7 +18,7 @@ defined here. Import from the package root: `from knox.core.models import Chunk`
 | `chunks.py`     | `Chunk`, `ResolvedChunk` (Tier 2–3 output)                                                                                                                                |
 | `structured.py` | `EquationVariable`, `StructuredTable`, `StructuredEquation`, `StructuredFigure`, `StructuredData`, serialization helpers                                                  |
 | `trees.py`      | `ChunkNode`, `ChunkTree`, `CHUNK_TREE_CACHE_VERSION`                                                                                                                      |
-| `wiki.py`       | `WikiNode`, `CompiledWiki`, `CrossReferenceIssue`, `CrossReferenceResult`, `load_cached_wiki` (Tier 4 output)                                                             |
+| `wiki.py`       | `WikiNode`, `CompiledWiki`, `CrossReferenceIssue`, `CrossReferenceResult`, `ExtractionStats`, `load_cached_wiki` (Tier 4 output)                                             |
 | `citations.py`  | `Citation`, `extract_citations`, `merge_duplicate_citations`, `LIFECYCLE_*` constants                                                                                     |
 | `references.py` | `Reference`, `Author`, `ReferenceExtractionOutput` — bibliographic refs (CSL JSON-aligned)                                                                                |
 | `__init__.py`   | Public re-exports — import from here, not from submodules                                                                                                                 |
