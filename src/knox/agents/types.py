@@ -7,8 +7,7 @@ between the agents package and the compilation pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-from knox.compilation.concept_broker import ConceptBroker
+from typing import Any, Protocol
 
 
 @dataclass
@@ -83,4 +82,17 @@ class ToolGenerationDeps(BaseGenerationDeps):
 
     source_content: str = ""
     categories: str = ""  # rendered extra-category instructions
-    concept_broker: ConceptBroker | None = None
+    concept_broker: ConceptBrokerProtocol | None = None
+
+
+class ConceptBrokerProtocol(Protocol):
+    """Minimal broker surface used by the agentic generation tools.
+
+    Declared locally (instead of importing the concrete
+    :class:`knox.compilation.concept_broker.ConceptBroker`) so this leaf
+    module keeps zero ``knox.compilation`` imports — importing any
+    submodule of that package triggers ``compilation/__init__``, which
+    pulls in ``agents.base`` and re-enters the import cycle.
+    """
+
+    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
