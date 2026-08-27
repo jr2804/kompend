@@ -62,6 +62,7 @@ COMPILE_LLM_ROLE_MODELS: Final[str] = "compile.llm.role_models"
 COMPILE_LLM_FALLBACK_MAX_RETRIES: Final[str] = "compile.llm.fallback_max_retries"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
+COMPILE_LLM_AGENTIC_OUTPUT_RETRIES: Final[str] = "compile.llm.agentic_output_retries"
 
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"

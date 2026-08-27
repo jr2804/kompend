@@ -194,6 +194,15 @@ class LLMConfig(_KnoxBaseModel):
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
     output_retries_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_OUTPUT_RETRIES_ENABLED)
+    #: Per-turn output-validation retry budget for tool-based (agentic) agents.
+    #: Defaults higher than ``output_retries`` because agentic agents run
+    #: multi-turn loops (fetch concepts → read segment → generate) where each
+    #: turn can be invalidated; 2 retries is too tight for the typical
+    #: small-model interaction.  Does NOT govern tool-call retries — those
+    #: share the legacy ``output_retries`` budget via pydantic-ai's
+    #: ``AgentRetries`` TypedDict (tool failures 4× in a row are a real bug;
+    #: output validation 4× in a row is a small-model normal occurrence).
+    agentic_output_retries: int = Field(default=4, validation_alias=EnvVar.LLM_AGENTIC_OUTPUT_RETRIES)
     delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)
     batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_RATIO)
     batch_failure_threshold_min: int = Field(default=5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_MIN)

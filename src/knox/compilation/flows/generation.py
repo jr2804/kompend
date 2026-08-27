@@ -455,6 +455,7 @@ def generate_all_pages_agentic(
             max_tokens=compiler._budget.gen_output_max,
             skills=compiler._config.skills,
             retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+            output_retries=compiler._config.llm.agentic_output_retries if compiler._config.llm.output_retries_enabled else 0,
             delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
             reasoning_effort=compiler._config.llm.reasoning_effort,
             context_manager=compiler._config.llm.context_manager,

@@ -38,6 +38,7 @@ from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
+from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
@@ -130,7 +131,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     model_string: str
     timeout: float = _DEFAULT_TIMEOUT_SECONDS
-    retries: int = _DEFAULT_RETRIES
+    retries: int | AgentRetries = _DEFAULT_RETRIES
     max_tokens: int | None = None
     skills: dict[str, str] = field(default_factory=dict)
     usage_tracker: UsageTracker | None = None

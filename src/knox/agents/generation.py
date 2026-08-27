@@ -31,6 +31,7 @@ import re
 from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
+from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
 from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
 from pydantic_ai_harness.memory import InMemoryStore, Memory
@@ -106,6 +107,7 @@ def make_agentic_generation_agent(
     max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
     retries: int = 0,
+    output_retries: int | None = None,
     delta_retry_enabled: bool = True,
     reasoning_effort: str | None = None,
     context_manager: str | bool | None = None,
@@ -117,6 +119,13 @@ def make_agentic_generation_agent(
     Injects ``Memory`` (InMemoryStore), ``SlidingWindowCompaction``, and
     ``ClampOversizedMessages`` as extra capabilities, and registers the
     ``read_segment()`` / ``fetch_concepts()`` tools.
+
+    Retry budgets are passed as a pydantic-ai ``AgentRetries`` dict so output
+    validation and tool calls get independent ceilings. ``retries`` is the
+    tool-call retry budget (default = legacy ``compile.llm.output_retries``);
+    ``output_retries`` is the output-validation retry budget for agentic
+    agents (default = ``compile.llm.agentic_output_retries``, higher because
+    agentic turns invalidate more often on small models).
     """
     # Derive compaction thresholds from the model's context window.
     # SlidingWindowCompaction uses max_fraction so the harness resolves
@@ -129,12 +138,13 @@ def make_agentic_generation_agent(
         SlidingWindowCompaction(max_fraction=0.6, context_window=context_window),
         ClampOversizedMessages(max_part_tokens=_ctx // 4),
     ]
+    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,
         max_tokens=max_tokens,
         skills=skills or {},
-        retries=retries,
+        retries=agent_retries,
         delta_retry_enabled=delta_retry_enabled,
         reasoning_effort=reasoning_effort,
         context_manager=context_manager if context_manager is not None else False,

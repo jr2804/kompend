@@ -309,6 +309,13 @@ timeout = 120.0
 # PydanticAI output retries (retries when LLM output fails schema validation)
 output_retries = 2
 
+# Output-validation retry budget for tool-based (agentic) agents. Defaults
+# higher than output_retries because agentic agents run multi-turn loops
+# (fetch concepts, read segment, generate) where each turn can be
+# invalidated; small models routinely need more than 2 output retries there.
+# Tool-call retries keep using output_retries via pydantic-ai's AgentRetries.
+agentic_output_retries = 4
+
 # Enable/disable output retries. When disabled, the agent gives up immediately
 # on schema validation failure rather than retrying with a correction prompt.
 # Disabling can help small models (<3B params) that spin on retry loops.
