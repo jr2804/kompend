@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.deps import GenerationDeps
 from knox.agents.generation import GenerationAgent
+from knox.agents.types import GenerationDeps
 from knox.compilation.flows.generation import _allowed_kind, _categories_block
 from knox.compilation.schema import GenerationOutput, GenerationPage
 
@@ -38,7 +38,7 @@ class TestGenerationAgentRun:
         agent, _ = self._make_agent_and_mock()
         deps = GenerationDeps(
             concepts_json='[{"name": "Foo"}]',
-            content="### doc1\nSome text.",
+            content="A page about Foo.",
             source_id="batch-1",
         )
         result = agent.run(deps)
@@ -51,7 +51,7 @@ class TestGenerationAgentRun:
         agent, mock_sync = self._make_agent_and_mock()
         deps = GenerationDeps(
             concepts_json='[{"name": "PAYLOAD-CONCEPT"}]',
-            content="### doc1\nPAYLOAD-CONTENT",
+            content="PAYLOAD-CONTENT",
             source_id="batch-1",
         )
         agent.run(deps)
@@ -67,7 +67,7 @@ class TestGenerationAgentRun:
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
         deps = GenerationDeps(
-            concepts_json="[]",
+            concepts_json="x",
             content="x",
             source_id="batch-1",
         )
@@ -100,24 +100,24 @@ class TestGenerationAgentRun:
 class TestGenerationDeps:
     def test_default_pinned_facts_empty(self) -> None:
         deps = GenerationDeps(
-            concepts_json="[]",
-            content="x",
+            concepts_json="x",
+            content="y",
             source_id="y",
         )
         assert deps.pinned_facts == []
 
     def test_default_timeout(self) -> None:
         deps = GenerationDeps(
-            concepts_json="[]",
-            content="x",
+            concepts_json="x",
+            content="y",
             source_id="y",
         )
         assert deps.timeout == 120.0
 
     def test_custom_pinned_facts(self) -> None:
         deps = GenerationDeps(
-            concepts_json="[]",
-            content="x",
+            concepts_json="x",
+            content="y",
             source_id="y",
             pinned_facts=["fact1", "fact2"],
         )

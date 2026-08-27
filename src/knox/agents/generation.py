@@ -10,13 +10,13 @@ internally.
 Usage::
 
     from knox.agents.generation import GenerationAgent
-    from knox.agents.deps import GenerationDeps
+    from knox.agents.types import GenerationDeps
 
     agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
     result = agent.run(
         GenerationDeps(
-            concepts_json="[...]",
-            content="### src\\n...",
+            concepts_json="{}",
+            content="### content",
             source_id="batch-1",
             pinned_facts=[],
         )
@@ -31,10 +31,15 @@ import re
 from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
+from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
+from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
+from pydantic_ai_harness.memory import InMemoryStore, Memory
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import GenerationDeps
+from knox.agents.types import GenerationDeps, ToolGenerationDeps
+from knox.compilation.gen_tools import build_gen_tools
 from knox.compilation.schema import GenerationOutput, GenerationPage
+from knox.core.config._configs import RlmConfig
 
 
 class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
@@ -63,6 +68,81 @@ class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
 
         _fix_slugs_locally(output.pages)
         return output
+
+
+class AgenticGenerationAgent(KnoxAgentBase[GenerationOutput, ToolGenerationDeps]):
+    """PydanticAI agent for tool-based agentic generation.
+
+    Unlike :class:`GenerationAgent` (which receives concepts + content as
+    static prompt variables), this agent discovers concepts via
+    ``fetch_concepts()`` and source content via ``read_segment()`` tools.
+    It uses :class:`~knox.agents.deps.ToolGenerationDeps` and the
+    ``generation_agentic_*`` template pair.
+
+    The agent is equipped with:
+    - ``Memory`` (InMemoryStore) — cross-segment judgment notes
+    - ``SlidingWindowCompaction`` — keeps history bounded
+    - ``ClampOversizedMessages`` — prevents runaway tool outputs
+    """
+
+    template_name: ClassVar[str] = "generation_agentic_prompt.md.j2"
+    system_template_name: ClassVar[str] = "generation_agentic_system.md.j2"
+    use_delta_retry: bool = True
+
+    def validate_output(  # noqa: PLR6301
+        self, ctx: RunContext[ToolGenerationDeps], output: GenerationOutput
+    ) -> GenerationOutput:
+        """Validate generation output for the agentic flow."""
+        if not output.pages:
+            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
+        _fix_slugs_locally(output.pages)
+        return output
+
+
+def make_agentic_generation_agent(
+    *,
+    model_string: str,
+    timeout: float = 120.0,
+    max_tokens: int | None = None,
+    skills: dict[str, str] | None = None,
+    retries: int = 0,
+    delta_retry_enabled: bool = True,
+    reasoning_effort: str | None = None,
+    context_manager: str | bool | None = None,
+    context_window: int | None = None,
+    rlm: RlmConfig | None = None,
+) -> AgenticGenerationAgent:
+    """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
+
+    Injects ``Memory`` (InMemoryStore), ``SlidingWindowCompaction``, and
+    ``ClampOversizedMessages`` as extra capabilities, and registers the
+    ``read_segment()`` / ``fetch_concepts()`` tools.
+    """
+    # Derive compaction thresholds from the model's context window.
+    # SlidingWindowCompaction uses max_fraction so the harness resolves
+    # the real window per-request from the model's pricing entry.
+    # ClampOversizedMessages needs an absolute token cap, so we
+    # compute it from the known window (or the conservative default).
+    _ctx = context_window or DEFAULT_CONTEXT_WINDOW
+    capabilities = [
+        Memory(store=InMemoryStore(), agent_name="generation"),
+        SlidingWindowCompaction(max_fraction=0.6, context_window=context_window),
+        ClampOversizedMessages(max_part_tokens=_ctx // 4),
+    ]
+    return AgenticGenerationAgent(
+        model_string=model_string,
+        timeout=timeout,
+        max_tokens=max_tokens,
+        skills=skills or {},
+        retries=retries,
+        delta_retry_enabled=delta_retry_enabled,
+        reasoning_effort=reasoning_effort,
+        context_manager=context_manager if context_manager is not None else False,
+        context_window=context_window,
+        rlm=rlm,
+        tools=build_gen_tools(),  # type: ignore[arg-type]
+        extra_capabilities=capabilities,
+    )
 
 
 def _fix_slugs_locally(pages: list[GenerationPage]) -> None:

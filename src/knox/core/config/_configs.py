@@ -224,7 +224,6 @@ class BudgetConfig(_KnoxBaseModel):
       implemented and has been removed.
     """
 
-    concepts_per_batch: int = Field(default=8, validation_alias=EnvVar.BUDGET_CONCEPTS_PER_BATCH)
     verify_min_ngram: int = 3
     wicer_max_iterations: int = Field(default=3, validation_alias=EnvVar.BUDGET_WICER_MAX_ITERATIONS)
     min_content_length: int = Field(default=50, validation_alias=EnvVar.BUDGET_MIN_CONTENT_LENGTH)

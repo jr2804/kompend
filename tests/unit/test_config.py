@@ -758,7 +758,6 @@ class TestGenerateScaffoldConfig:
     def test_budget_keys_present(self) -> None:
         data = tomllib.loads(generate_scaffold_config())
         budget = data["compile"]["budget"]
-        assert budget["concepts_per_batch"] == 8
         assert budget["extract_output_max"] == 8192
 
 

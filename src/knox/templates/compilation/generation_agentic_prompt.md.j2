@@ -1,0 +1,46 @@
+---
+variables:
+  - name: pinned_facts
+    required: false
+  - name: categories
+    required: false
+  - name: known_titles
+    required: false
+role: compile.generate
+response_format: json_object
+---
+
+Generate wiki pages for the concepts in this source segment.
+
+Use the **read_segment()** tool to load the source content, then
+use **fetch_concepts()** to retrieve concept batches.
+
+{% if pinned_facts %}
+MUST-PRESERVE FACTS (hard constraint, WiCER refinement input):
+The following facts were dropped by a prior compilation pass and MUST appear, verbatim or paraphrased without loss of meaning, in the wiki page of the most relevant concept. Allocate prose budget to these BEFORE general coverage. Cite their source as you would any other claim.
+
+{% for fact in pinned_facts %}
+- {{ fact }}
+{% endfor %}
+{% endif %}
+
+Return a JSON object with exactly one key "pages", whose value is a list of objects each with:
+  - "title": concept name (title-case noun phrase)
+  - "slug": lowercase hyphenated identifier (e.g. "listening-effort")
+  - "content": the full wiki page markdown (150–400 words, with ## subheadings and provenance)
+  - "provenance": list of source filenames cited
+  - "related": list of other concept titles this page links to
+  - "kind": the category from the list below (e.g. "concept", "entity", "comparison"; default "concept"). If the concept entry itself carries a "kind" field, you MUST copy it verbatim — do not re-categorize.
+
+Each page must declare its category ("kind") from this list:
+
+- "concept" — a topic, idea, or approach (default when no other kind fits)
+- "entity" — a named thing: standard (e.g. P.863), body (ITU-T), organization, product, person. Give the canonical definition, aliases, and its role in the sources.
+- "summary" — a digest of what one significant source contributes: its key claims and how they relate to other pages.
+- "comparison" — evaluates alternatives ("X vs Y", "A versus B"): dimensions of comparison, criteria, outcomes, and sources.
+
+{% if categories %}{{ categories }}{% endif %}
+{% if known_titles %}
+Known page titles (link ONLY to these, verbatim):
+{% for t in known_titles %}- {{ t }}{% endfor %}
+{% endif %}

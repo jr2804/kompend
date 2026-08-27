@@ -6,12 +6,12 @@ import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
-from knox.compilation.schema import Concept, Entity
+from knox.compilation.schema import Concept, Entity, GenerationOutput
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -874,6 +874,7 @@ class TestTwoPhaseCompiler:
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
+        config.no_cache = True
         compiler = TwoPhaseCompiler(config=config)
         chunks = [
             ResolvedChunk(
@@ -887,15 +888,18 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        shared_side_effect = _validated_side_effect(
+        extract_side_effect = _validated_side_effect(
             [
-                # First call (extract) returns a summary; generation returns a page.
                 {
                     "summary": "a summary",
                     "entities": [],
                     "concepts": [{"name": "attention", "definition": "y"}],
                     "tags": [],
                 },
+            ]
+        )
+        gen_side_effect = _validated_side_effect(
+            [
                 {
                     "pages": [
                         {
@@ -910,9 +914,23 @@ class TestTwoPhaseCompiler:
                 },
             ]
         )
+
+        # The agentic generation path builds a real agent per segment; patch the
+        # factory to return a stub whose run() validates the side-effect dict
+        # against GenerationOutput (mirrors the old try_pydanticai_generation seam).
+        def _fake_agent_factory(**kwargs: object) -> object:
+            agent = MagicMock()
+            agent.result_type = GenerationOutput
+
+            def _run(_deps: object) -> object:
+                return gen_side_effect(agent, _deps)
+
+            agent.run = _run
+            return agent
+
         with (
-            patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=shared_side_effect),
-            patch("knox.compilation.flows.generation.try_pydanticai_generation", side_effect=shared_side_effect),
+            patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=extract_side_effect),
+            patch("knox.compilation.flows.generation.make_agentic_generation_agent", side_effect=_fake_agent_factory),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata

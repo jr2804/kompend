@@ -73,7 +73,6 @@ class CacheDeps(StrEnum):
     CHUNK_SIZE_MAX = "chunk_size_max"
     EXTRACTIONS = "extractions"
     MODEL = "model"
-    CONCEPTS_PER_BATCH = "concepts_per_batch"
     PINNED_FACTS = "pinned_facts"
     STAGE = "stage"
 

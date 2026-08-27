@@ -13,7 +13,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from knox.agents.generation import GenerationAgent
+from knox.agents.generation import GenerationAgent, make_agentic_generation_agent
+from knox.agents.types import ToolGenerationDeps
 from knox.compilation._checkpoints import (
     delete_gen_checkpoint,
     load_gen_checkpoint,
@@ -30,6 +31,7 @@ from knox.compilation._two_phase_core import (
     try_pydanticai_generation,
     upsert_node,
 )
+from knox.compilation.concept_broker import ConceptBroker
 from knox.compilation.concept_keys import normalize_concept_key
 from knox.compilation.flows.assembly import (
     attach_attributes_to_nodes,
@@ -86,21 +88,15 @@ def run_generation(
     all_images = extract_images_from_chunks(chunks)
     source_segments = prepare_source_segments(compiler, chunks)
     pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
-    generation_system = _loader.get_body("compilation/generation_system.md.j2")
+    _loader.get_body("compilation/generation_system.md.j2")
     known_titles = build_known_titles(compiler, concepts)
 
-    num_concepts = len(concepts)
-    gen_total = ((num_concepts + compiler._budget.concepts_per_batch - 1) // compiler._budget.concepts_per_batch) * len(source_segments)
-    if gen_total > 0:
-        compiler._report(0, gen_total, f"generating wiki ({num_concepts} concepts, {len(source_segments)} segments)")
-
-    nodes, slug_to_idx = run_generation_with_checkpoint(
+    nodes, slug_to_idx = generate_all_pages_agentic(
         compiler,
         concepts,
         source_segments,
-        generation_system,
         all_images,
-        pinned_clean,
+        pinned_facts=pinned_clean,
         known_titles=known_titles,
     )
 
@@ -248,7 +244,10 @@ def generate_all_pages(
 
     num_concepts = len(concepts)
     num_segments = len(source_segments)
-    batch_size = compiler._budget.concepts_per_batch
+    # The legacy non-agentic loop uses a fixed batch size.
+    # Since we've removed concepts_per_batch from BudgetConfig,
+    # we use a reasonable fallback default (8).
+    batch_size = 8
     logger.info(
         "TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d, pinned=%d)",
         num_concepts,
@@ -353,8 +352,7 @@ def generate_all_pages(
                 names = ", ".join(p.title or "(untitled)" for p in empty_pages)
                 debug_hint = f" (debug: {debug_file})" if debug_file else ""
                 logger.warning(
-                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]).%s "
-                    "Consider reducing compile.budget.concepts_per_batch for this model.",
+                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]).%s",
                     batch_start,
                     batch_start + len(batch) - 1,
                     len(empty_pages),
@@ -405,6 +403,134 @@ def generate_all_pages(
         )
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
+    return nodes, slug_to_idx
+
+
+def generate_all_pages_agentic(
+    compiler: TwoPhaseRuntime,
+    concepts: list[dict[str, Any]],
+    source_segments: list[list[tuple[str, str]]],
+    all_images: list[ImageRef],
+    *,
+    pinned_facts: list[str],
+    known_titles: list[str] | None = None,
+) -> tuple[list[WikiNode], dict[str, int]]:
+    """Generate wiki pages using per-segment agentic tool loop.
+
+    Replaces the nested ``for batch × for segment`` loop with per-segment
+    agent runs.  Each agent discovers concepts via ``fetch_concepts()`` and
+    loads source content via ``read_segment()`` tools, deciding batch size
+    and coverage strategy itself.
+
+    Uses :class:`ConceptBroker` for server-side concept assignment and
+    ``Memory`` + ``SlidingWindowCompaction`` + ``ClampOversizedMessages``
+    as agent capabilities for cross-segment judgment.
+    """
+    nodes: list[WikiNode] = []
+    slug_to_idx: dict[str, int] = {}
+    num_segments = len(source_segments)
+    num_concepts = len(concepts)
+
+    broker = ConceptBroker(concepts, num_callers=num_segments)
+    categories = _categories_block(compiler._config.extraction_categories)
+
+    logger.info(
+        "TwoPhase: agentic generation — %d concept(s), %d segment(s)",
+        num_concepts,
+        num_segments,
+    )
+    if num_segments > 0:
+        compiler._report(0, num_segments, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
+
+    for seg_idx, segment in enumerate(source_segments):
+        seg_label = f"segment {seg_idx + 1}/{num_segments}"
+        compiler._report(seg_idx, num_segments, f"generating [{seg_label}]")
+        logger.info("TwoPhase: agentic %s", seg_label)
+
+        content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
+
+        agent = make_agentic_generation_agent(
+            model_string=compiler._model or "",
+            timeout=compiler._timeout,
+            max_tokens=compiler._budget.gen_output_max,
+            skills=compiler._config.skills,
+            retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+            delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
+            reasoning_effort=compiler._config.llm.reasoning_effort,
+            context_manager=compiler._config.llm.context_manager,
+            context_window=compiler._context_window.max_input,
+            rlm=compiler._config.llm.rlm,
+        )
+
+        deps = ToolGenerationDeps(
+            source_content=content_block,
+            source_id=f"seg-{seg_idx}",
+            pinned_facts=pinned_facts,
+            categories=categories,
+            known_titles=known_titles or [],
+            concept_broker=broker,
+            timeout=compiler._timeout,
+        )
+
+        try:
+            gen_output = agent.run(deps)
+        except LLMOutputError as exc:
+            logger.warning("Agentic generation failed for '%s': %s", f"seg-{seg_idx}", exc)
+            gen_output = None
+        except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
+            logger.warning("Agentic generation unexpected error for '%s': %s", f"seg-{seg_idx}", exc)
+            gen_output = None
+        debug_file = getattr(agent, "_last_debug_file", None)
+
+        compiler._batch_tracker.record(failed=gen_output is None)
+
+        if gen_output is None:
+            logger.warning(
+                "TwoPhase: agentic %s failed — skipping (debug: %s)",
+                seg_label,
+                debug_file or "(none)",
+            )
+            continue
+
+        empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]
+        valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
+        if empty_pages:
+            names = ", ".join(p.title or "(untitled)" for p in empty_pages)
+            debug_hint = f" (debug: {debug_file})" if debug_file else ""
+            logger.warning(
+                "TwoPhase: agentic %s: %d/%d pages have empty content — filtered out ([%s]).%s",
+                seg_label,
+                len(empty_pages),
+                len(gen_output.pages),
+                names,
+                debug_hint,
+            )
+
+        for idx, page in enumerate(valid_pages):
+            node_id = slugify(page.title or f"concept-{seg_idx}-{idx}", max_length=compiler._config.llm.slug_max_length)
+            kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
+            page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
+            upsert_node(
+                WikiNode(
+                    id=node_id,
+                    title=page.title or f"Concept {idx}",
+                    content=page_content,
+                    node_type=kind,
+                    metadata={
+                        MetadataField.PROVENANCE: page.provenance,
+                        MetadataField.RELATED: page.related,
+                        MetadataField.TWO_PHASE: True,
+                        "images": all_images,
+                        "frontmatter": {
+                            "title": page.title or f"Concept {idx}",
+                        },
+                    },
+                ),
+                nodes,
+                slug_to_idx,
+            )
+
+    compiler._report(num_segments, num_segments, "generating complete")
     return nodes, slug_to_idx
 
 
@@ -583,6 +709,5 @@ def gen_cache_deps(
     deps[CacheDeps.MODEL] = compiler._model or ""
     deps[CacheDeps.CHUNK_SIZE_MIN] = str(budget.chunk_size_min or "")
     deps[CacheDeps.CHUNK_SIZE_MAX] = str(budget.chunk_size_max or "")
-    deps[CacheDeps.CONCEPTS_PER_BATCH] = str(budget.concepts_per_batch or "")
     deps[CacheDeps.PINNED_FACTS] = pin_hash or ""
     return deps
