@@ -51,13 +51,13 @@ from pydantic_ai_summarization import (
     SlidingWindowCapability,
 )
 
-from knox.agents.deps import PipelineAgentDeps
 from knox.agents.instrument import configure_observability
 from knox.agents.knox_model import KnoxModel
 from knox.agents.rlm import (
     _DEFAULT_NODE_BUDGET,
     RLMCapability,
 )
+from knox.agents.types import PipelineAgentDeps
 from knox.core.config._configs import RlmConfig
 from knox.core.templates import TemplateLoader, get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
@@ -141,6 +141,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     context_window: int | None = None
     delta_retry_enabled: bool = True
     tools: list[Tool] = field(default_factory=list)
+    extra_capabilities: list[AbstractCapability[DepsT]] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
     #: RLM configuration from the ``compile.llm.rlm`` group
@@ -388,6 +389,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 # retries can double a turn. Derive from max_tool_calls.
                 request_limit=rlm_capability.max_tool_calls * 2 + 5,
             )
+        capabilities.extend(self.extra_capabilities)
         agent = cast(
             "Agent[DepsT, ResultT]",
             Agent(

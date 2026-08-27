@@ -10,7 +10,7 @@ from pydantic_ai.agent import Agent
 from pydantic_ai.messages import ModelMessage
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.types import PipelineAgentDeps
 from knox.types import AgentResult
 
 

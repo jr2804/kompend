@@ -6,7 +6,7 @@ from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.capture_models import CaptureOutput
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.types import PipelineAgentDeps
 
 
 class CaptureAgent(KnoxAgentBase[CaptureOutput, PipelineAgentDeps]):

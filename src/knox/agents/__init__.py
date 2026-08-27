@@ -27,8 +27,6 @@ opt into PydanticAI via a config flag.
 
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import (
-    GenerationDeps,
-    PipelineAgentDeps,
     QueryDeps,
     WicerDiagnoseDeps,
     WicerEvaluateDeps,
@@ -39,6 +37,10 @@ from knox.agents.extraction import ExtractionAgent
 from knox.agents.extraction_reduce import ExtractionReduceAgent
 from knox.agents.generation import GenerationAgent
 from knox.agents.query import QueryAgent
+from knox.agents.types import (
+    PipelineAgentDeps,
+    ToolGenerationDeps,
+)
 from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 
 __all__ = [
@@ -47,11 +49,11 @@ __all__ = [
     "ExtractionAgent",
     "ExtractionReduceAgent",
     "GenerationAgent",
-    "GenerationDeps",
     "KnoxAgentBase",
     "PipelineAgentDeps",
     "QueryAgent",
     "QueryDeps",
+    "ToolGenerationDeps",
     "WicerDiagnoseAgent",
     "WicerDiagnoseDeps",
     "WicerEvaluateAgent",

@@ -1,0 +1,86 @@
+"""Leaf-node dependency types for KNOX PydanticAI agents.
+
+These types are kept in a separate module to break circular imports
+between the agents package and the compilation pipeline.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from knox.compilation.concept_broker import ConceptBroker
+
+
+@dataclass
+class PipelineAgentDeps:
+    """Runtime context shared by all pipeline agents.
+
+    Attributes:
+        text: The source content the agent is operating on. For
+            extraction this is the raw chunk text; for generation it
+            would be the concept batch; etc. Each agent decides how
+            to use it.
+        source_id: Stable identifier for the source (file path stem,
+            URL, etc.) used for provenance and logging. Does not need
+            to be a Path — plain string is fine.
+        timeout: Per-call timeout in seconds. Forwarded to
+            PydanticAI's model settings so a single slow call doesn't
+            stall the pipeline.
+        extra_context: Optional structured context string injected
+            as a system message before the user prompt (used by the
+            AGENTIC extraction strategy to inject the memory digest).
+            Empty by default; ignored by non-agentic strategies.
+    """
+
+    text: str
+    source_id: str
+    timeout: float = 120.0
+    extra_context: str = ""
+
+
+@dataclass
+class BaseGenerationDeps:
+    """Shared base for all generation-stage runtime contexts.
+
+    Attributes:
+        source_id: Provenance / log label for the batch.
+        pinned_facts: Facts that must appear in the output (WiCER
+            refinement input). Empty list when unused.
+        known_titles: Canonical page titles the LLM should use verbatim in
+            ``[[wikilinks]]``. Empty list when unknown.
+        timeout: Per-call timeout in seconds.
+    """
+
+    source_id: str
+    timeout: float = 120.0
+    pinned_facts: list[str] = field(default_factory=list)
+    known_titles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class GenerationDeps(BaseGenerationDeps):
+    """Runtime context for the static generation stage.
+
+    Expects concepts_json and content as static prompt variables.
+    """
+
+    concepts_json: str = ""
+    content: str = ""
+    categories: str = ""  # rendered extra-category instructions
+
+
+@dataclass
+class ToolGenerationDeps(BaseGenerationDeps):
+    """Runtime context for the agentic generation stage.
+
+    Supports tool-based generation: the agent calls ``fetch_concepts()``
+    and ``read_segment()`` tools to discover its work queue.
+
+    Attributes:
+        source_content: Full source segment content, loaded via
+            the ``read_segment()`` tool on demand.
+    """
+
+    source_content: str = ""
+    categories: str = ""  # rendered extra-category instructions
+    concept_broker: ConceptBroker | None = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import PipelineAgentDeps
+from knox.agents.types import PipelineAgentDeps
 
 
 class ContextChunkAgent(KnoxAgentBase[str, PipelineAgentDeps]):
