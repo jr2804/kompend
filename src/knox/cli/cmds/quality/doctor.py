@@ -106,7 +106,8 @@ def run_doctor(
     results.append(_ping_embed_model(embed_model))
     results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
     results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
-    results.append(_check_custom_providers(cfg))
+    referenced_providers = {provider_id for model in (default_model, vlm_model, embed_model) if model and (provider_id := _provider_id_of(model)) is not None}
+    results.append(_check_custom_providers(cfg, referenced_providers))
 
     return results
 
@@ -335,16 +336,34 @@ def _check_git_repo() -> CheckResult:
         return CheckResult(name, True, f"Git check failed ({exc}) — OK")
 
 
-def _check_custom_providers(cfg: dict[str, Any] | None) -> CheckResult:
-    """Validate custom providers from [providers.*] sections."""
+def _provider_id_of(model_string: str) -> str | None:
+    """Extract the provider prefix from a ``provider/model`` string."""
+    if "/" in model_string:
+        return model_string.split("/", 1)[0]
+    if ":" in model_string:
+        return model_string.split(":", 1)[0]
+    return None
+
+
+def _check_custom_providers(cfg: dict[str, Any] | None, referenced_providers: set[str] | None = None) -> CheckResult:
+    """Validate custom providers from [providers.*] sections.
+
+    Only providers actually referenced by a configured model string are
+    checked — configured-but-unused providers are skipped (their host may
+    legitimately be down).
+    """
     name = "Custom providers"
     if not cfg:
         return CheckResult(name, True, "No config — skipping")
     providers = cfg.get("providers", {})
     if not providers:
         return CheckResult(name, True, "No custom providers configured")
+    checked: list[str] = []
     failures: list[str] = []
     for prov_name, prov_cfg in providers.items():
+        if referenced_providers is not None and prov_name not in referenced_providers:
+            continue
+        checked.append(prov_name)
         base_url = prov_cfg.get("base_url", "") if isinstance(prov_cfg, dict) else ""
         if not base_url:
             failures.append(f"{prov_name}: missing base_url")
@@ -366,7 +385,9 @@ def _check_custom_providers(cfg: dict[str, Any] | None) -> CheckResult:
             failures.append(f"{prov_name}: unreachable ({exc})")
     if failures:
         return CheckResult(name, False, "; ".join(failures))
-    return CheckResult(name, True, f"{len(providers)} provider(s) OK")
+    if not checked:
+        return CheckResult(name, True, "No custom providers in use — skipping")
+    return CheckResult(name, True, f"{len(checked)} provider(s) in use OK")
 
 
 def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
