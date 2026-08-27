@@ -18,6 +18,7 @@ from knox.core.config.engine import (  # noqa: F401
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
+    STATUS_REMOVED,
     ConfigCheckEntry,
     ConfigCheckReport,
     ConfigSource,

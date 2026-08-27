@@ -15,7 +15,7 @@ from knox.core.config.engine._loading import (
     find_all_project_configs,
     find_global_config,
 )
-from knox.core.config.engine._schema import DEFAULTS, flat_keys
+from knox.core.config.engine._schema import DEFAULTS, REMOVED_KEYS, flat_keys
 from knox.core.paths import VaultPaths
 from knox.core.config.keys import (
     COMPILE_OUTPUT_DIR,
@@ -81,7 +81,7 @@ class ResolvedConfig:
         validation), so editing the returned object's nested fields is safe
         and does not corrupt future lookups.
         """
-        return KnoxConfig.model_validate(_coerce_paths_to_str(self.raw))
+        return KnoxConfig.model_validate(_coerce_paths_to_str(_strip_removed_keys(self.raw)))
 
     def flat(self) -> dict[str, Any]:
         """Return a flat dotted-key dict of all values."""
@@ -177,6 +177,28 @@ def resolve_config(
         project_config_paths=project_configs,
         global_config_file=global_file,
     )
+
+
+def _strip_removed_keys(obj: dict[str, Any]) -> dict[str, Any]:
+    """Remove known-deprecated keys from the raw config dict.
+
+    Logs a warning for each stripped key so users can clean up their
+    ``.knox/config.toml`` at their convenience. The canonical registry is
+    ``REMOVED_KEYS`` in ``_schema.py``.
+    """
+    for path, keys in REMOVED_KEYS.items():
+        section = get_dot(obj, path)
+        if not isinstance(section, dict):
+            continue
+        for key in keys:
+            if key in section:
+                logger.warning(
+                    "Config key '%s.%s' has been removed and will be ignored. Please remove it from your .knox/config.toml.",
+                    path,
+                    key,
+                )
+                del section[key]
+    return obj
 
 
 def _coerce_paths_to_str(obj: Any) -> Any:

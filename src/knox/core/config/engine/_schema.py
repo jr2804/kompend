@@ -64,6 +64,13 @@ DEFAULTS: dict[str, Any] = _build_defaults()
 
 ENV_MAP: dict[str, str] = _build_env_map()
 
+# Keys removed from the schema but still present in older vault configs.
+# Stripped (with a warning) before validation so old vaults don't crash on
+# upgrade; ``knox config check`` reports them as deprecations.
+REMOVED_KEYS: dict[str, list[str]] = {
+    "compile.budget": ["concepts_per_batch"],
+}
+
 
 def validate_config_key(key: str) -> bool:
     """Return ``True`` if *key* is a known leaf config key."""

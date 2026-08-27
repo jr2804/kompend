@@ -30,7 +30,7 @@ from pydantic_core import PydanticUndefined
 
 from knox.core.config._configs import KnoxConfig
 from knox.core.config.engine._loading import load_toml
-from knox.core.config.engine._schema import DEFAULTS
+from knox.core.config.engine._schema import DEFAULTS, REMOVED_KEYS
 from knox.core.utils.dicts import flat_keys, get_dot
 from knox.logging import get_logger
 from knox.types import JSONDict, JSONValue
@@ -40,6 +40,7 @@ from knox.types import JSONDict, JSONValue
 STATUS_OK = "ok"
 STATUS_MODIFIED = "modified"
 STATUS_ERROR = "error"
+STATUS_REMOVED = "removed"  # key present in TOML but removed from schema
 
 logger = get_logger(__name__)
 
@@ -94,6 +95,10 @@ class ConfigCheckReport:
         return sum(1 for e in self.entries if e.status == STATUS_ERROR)
 
     @property
+    def removed_count(self) -> int:
+        return sum(1 for e in self.entries if e.status == STATUS_REMOVED)
+
+    @property
     def has_errors(self) -> bool:
         return self.error_count > 0
 
@@ -102,6 +107,7 @@ class ConfigCheckReport:
             "ok": self.ok_count,
             "modified": self.modified_count,
             "error": self.error_count,
+            "removed": self.removed_count,
             "entries": [e.to_dict() for e in self.entries],
         }
         if self.path is not None:
@@ -174,7 +180,9 @@ def _check_loaded(
     schema_keys = _schema_leaf_keys()
     schema_default_values = _schema_defaults()
     user_keys = set(flat_keys(raw))
-    unknown_keys = sorted(user_keys - schema_keys)
+    removed_leaf_keys = _removed_leaf_keys()
+    unknown_keys = sorted((user_keys - schema_keys) - removed_leaf_keys)
+    removed_keys = sorted(user_keys & removed_leaf_keys)
 
     # Validation pass via pydantic to surface type/value errors.
     merged: dict[str, Any] = _overlay_merge(_safe_dump_defaults(), raw)
@@ -251,11 +259,32 @@ def _check_loaded(
             ),
         )
 
+    # Add deprecation rows for keys removed from the schema (older vaults).
+    for key in sorted(removed_keys):
+        entries.append(
+            ConfigCheckEntry(
+                key=key,
+                status=STATUS_REMOVED,
+                current=get_dot(raw, key),
+                default=None,
+                set_in_toml=True,
+                message="key removed from schema; value is ignored at runtime — please delete it from your config",
+            ),
+        )
+
     return ConfigCheckReport(
         path=path,
         entries=tuple(entries),
         files_scanned=files_scanned,
     )
+
+
+def _removed_leaf_keys() -> set[str]:
+    """Flatten ``REMOVED_KEYS`` (section -> keys) into full dotted leaf keys."""
+    out: set[str] = set()
+    for section, keys in REMOVED_KEYS.items():
+        out.update(f"{section}.{k}" for k in keys)
+    return out
 
 
 # ── Internals ───────────────────────────────────────────────────────────────

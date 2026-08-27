@@ -17,6 +17,7 @@ from knox.core.config import (
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
+    STATUS_REMOVED,
     ConfigCheckEntry,
     ConfigCheckReport,
     check_config_file,
@@ -201,7 +202,10 @@ def _render_report_text(report: ConfigCheckReport) -> None:
     else:
         joined = ", ".join(str(p) for p in report.files_scanned)
         console.print(f"[bold]config check[/bold] (merged: {joined})")
-    summary = f"  ok: [green]{report.ok_count}[/green]  modified: [yellow]{report.modified_count}[/yellow]  error: [red]{report.error_count}[/red]"
+    summary = f"  ok: [green]{report.ok_count}[/green]  modified: [yellow]{report.modified_count}[/yellow]"
+    if report.removed_count:
+        summary += f"  removed: [yellow]{report.removed_count}[/yellow]"
+    summary += f"  error: [red]{report.error_count}[/red]"
     console.print(summary)
     console.print()
 
@@ -213,12 +217,14 @@ def _render_report_text(report: ConfigCheckReport) -> None:
 
     by_status: dict[str, list] = {
         STATUS_ERROR: [e for e in interesting if e.status == STATUS_ERROR],
+        STATUS_REMOVED: [e for e in interesting if e.status == STATUS_REMOVED],
         STATUS_MODIFIED: [e for e in interesting if e.status == STATUS_MODIFIED],
     }
+    colors = {STATUS_ERROR: "red", STATUS_REMOVED: "yellow", STATUS_MODIFIED: "yellow"}
     for label, entries in by_status.items():
         if not entries:
             continue
-        color = "red" if label == STATUS_ERROR else "yellow"
+        color = colors[label]
         console.print(f"  [{color}]{label}[/{color}]:")
         for entry in entries:
             line = _format_entry_line(entry)
@@ -231,6 +237,10 @@ def _format_entry_line(entry: ConfigCheckEntry) -> str:
         msg = f"  ({entry.message})" if entry.message else ""
         current = _render_value(entry.current)
         return f"[red]ERROR[/red]   {entry.key}  current={current}{msg}"
+    if entry.status == STATUS_REMOVED:
+        msg = f"  ({entry.message})" if entry.message else ""
+        current = _render_value(entry.current)
+        return f"[yellow]REMOVED[/yellow] {entry.key}  current={current}{msg}"
     # modified
     current = _render_value(entry.current)
     default = _render_value(entry.default)
@@ -251,12 +261,13 @@ def _render_value(value: JSON) -> str:
 
 
 def _exit_code_for(reports: list[ConfigCheckReport]) -> int:
-    """Map a set of reports to a CLI exit code (0 clean, 1 modified, 2 error)."""
+    """Map a set of reports to a CLI exit code (0 clean, 1 modified/removed, 2 error)."""
     has_error = any(r.has_errors for r in reports)
     has_modified = any(r.modified_count > 0 for r in reports)
+    has_removed = any(e.status == STATUS_REMOVED for r in reports for e in r.entries)
     if has_error:
         return 2
-    if has_modified:
+    if has_modified or has_removed:
         return 1
     return 0
 
