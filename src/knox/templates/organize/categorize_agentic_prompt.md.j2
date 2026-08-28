@@ -1,0 +1,24 @@
+---
+variables:
+  - name: max_depth
+    required: true
+  - name: min_subcategories
+    required: true
+  - name: min_files_per_category
+    required: true
+role: organize.categorize.agentic
+response_format: json_object
+---
+
+Build a hierarchical category tree from the files provided via tools.
+You have access to:
+- get_file_batch(start, count): get a batch of files as JSON
+- add_category(path, files): record a category with its files
+
+Constraints:
+- max_depth: {{ max_depth }}
+- min_subcategories: {{ min_subcategories }}(minimum child categories per parent)
+- min_files_per_category: {{ min_files_per_category }}(minimum files per category)
+
+Process all files efficiently and build the complete tree.
+Reply with "done" when finished.

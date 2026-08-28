@@ -295,3 +295,25 @@ class ExtractionAgentDeps:
     timeout: float = 120.0
     current_section: str | None = None
 
+@dataclass
+class CategorizeAgentDeps:
+    """Runtime context for the agentic categorize agent.
+
+    The agent iterates over source file batches and builds a category tree.
+
+    Attributes:
+        files: List of file dicts (filename, summary, tags).
+        categories: Collected category-tree JSON built incrementally.
+        source_id: Identifier for the organize run.
+        timeout: Per-call timeout in seconds.
+    """
+
+    files: list[dict[str, Any]]  # each: {"filename": str, "summary": str, "tags": list}
+    categories: list[dict[str, Any]] = field(default_factory=list)
+    unfiled: list[str] = field(default_factory=list)
+    source_id: str = "categorize"
+    timeout: float = 120.0
+    max_depth: int = 3
+    min_subcategories: int = 2
+    min_files_per_category: int = 2
+
