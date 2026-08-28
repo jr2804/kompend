@@ -317,3 +317,40 @@ class CategorizeAgentDeps:
     min_subcategories: int = 2
     min_files_per_category: int = 2
 
+@dataclass
+class CaptureAgentDeps:
+    """Runtime context for the agentic capture agent.
+
+    The agent processes multiple text inputs, extracting items from each.
+
+    Attributes:
+        inputs: List of text strings to process.
+        items: Collected CapturedItem JSON strings keyed by input index.
+        source_id: Identifier for tracking.
+        timeout: Per-call timeout in seconds.
+    """
+
+    inputs: list[str]
+    items: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
+    source_id: str = "capture"
+    timeout: float = 120.0
+    current_input: str | None = None
+
+@dataclass
+class DistillAgentDeps:
+    """Runtime context for the agentic distill agent.
+
+    The agent processes multiple tag groups, distilling each into a page.
+
+    Attributes:
+        groups: List of group dicts (tag, notes).
+        pages: Collected DistillOutput JSON strings keyed by group tag.
+        source_id: Identifier for tracking.
+        timeout: Per-call timeout in seconds.
+    """
+
+    groups: list[dict[str, Any]]  # each: {"tag": str, "notes": list[dict]}
+    pages: dict[str, dict[str, Any]] = field(default_factory=dict)
+    source_id: str = "distill"
+    timeout: float = 120.0
+    current_group: dict[str, Any] | None = None

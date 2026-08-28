@@ -30,7 +30,7 @@ def make_agentic_summarizer_agent(
     model_string: str,
     *,
     timeout: float = 120.0,
-    skills: list[str] | None = None,
+    skills: dict[str, str] | None = None,
     retries: int = 2,
     output_retries: int | None = None,
     context_window: int | None = None,
@@ -42,9 +42,9 @@ def make_agentic_summarizer_agent(
     if output_retries is not None:
         agent_retries = AgentRetries(tools=retries, output=output_retries)
     return AgenticSummarizerAgent(
-        model=model_string,
+        model_string=model_string,
         timeout=timeout,
-        skills=skills,
+        skills=skills or {},
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
