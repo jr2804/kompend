@@ -151,9 +151,3 @@ skip = "*.git,*.svg,*.lock,*.min.js,*.min.css"
 check-hidden = true
 ignore-words-list = "crate,ser,fpr,nd,fo,ba,te"
 ignore-regex = "https?://|\b[A-Z]+\b"
-
-[tool.undersort]
-# Method visibility ordering: public (no underscore), protected (single underscore), private (double underscore)
-order = ["public", "protected", "private"]
-# Method type ordering within each visibility level
-method_type_order = ["instance", "class", "static"]
