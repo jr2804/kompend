@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 
 from knox.agents.lint import LintRuleAgent
-from knox.agents.remediate import RemediationAgent
+from knox.agents.remediate import make_agentic_remediation_agent
 from knox.cli._post_compile import write_wiki_cache
 from knox.cli._shared import build_cli_overrides
 from knox.cli.cmds.quality.doctor import run_doctor
@@ -286,7 +286,7 @@ def lint_remediate(
         return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     default_model = cfg.knox.compile.llm.default_model
-    agent = RemediationAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
+    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
 
     actions = remediate(
         wiki,

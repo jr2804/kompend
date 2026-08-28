@@ -85,6 +85,41 @@ class ToolGenerationDeps(BaseGenerationDeps):
     concept_broker: ConceptBrokerProtocol | None = None
 
 
+@dataclass
+class RemediationPageResult:
+    """A generated wiki page returned by the agentic remediation agent.
+
+    Submitted via ``deps.pages.append()`` by the ``save_page`` tool.
+    """
+
+    name: str
+    content: str
+
+
+@dataclass
+class RemediationDeps:
+    """Runtime context for the agentic remediation agent.
+
+    The agent discovers its work queue via the ``fetch_gaps()`` tool and
+    submits finished pages via ``save_page()`` (collected on ``pages``)
+    or declines a gap via ``mark_unfixable(name, reason)``.
+
+    Attributes:
+        gaps: Broker over coverage-gap concepts matched to cached
+            extraction buckets.
+        timeout: Per-call timeout in seconds.
+        dry_run: When ``True``, the caller records would-be actions
+            instead of writing nodes.
+        pages: Pages submitted via ``save_page()`` — populated by the
+            tools during the run; the caller applies them afterwards.
+    """
+
+    gaps: GapBrokerProtocol
+    timeout: float = 120.0
+    dry_run: bool = False
+    pages: list[RemediationPageResult] = field(default_factory=list)
+
+
 class ConceptBrokerProtocol(Protocol):
     """Minimal broker surface used by the agentic generation tools.
 
@@ -96,3 +131,17 @@ class ConceptBrokerProtocol(Protocol):
     """
 
     def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+
+class GapBrokerProtocol(Protocol):
+    """Minimal broker surface used by the agentic remediation tools.
+
+    Mirrors :class:`ConceptBrokerProtocol`'s local-Protocol approach so
+    ``agents.types`` stays a zero-``knox.lint``-import leaf module.
+    """
+
+    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+    def mark_done(self, name: str) -> None: ...
+
+    def mark_unfixable(self, name: str, reason: str) -> None: ...

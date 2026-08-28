@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from knox.agents.types import GenerationDeps, PipelineAgentDeps, ToolGenerationDeps
+from knox.agents.types import GenerationDeps, PipelineAgentDeps, RemediationDeps, ToolGenerationDeps
 
 __all__ = [
     "CategorizeDeps",
@@ -26,6 +26,7 @@ __all__ = [
     "GenerationDeps",
     "PipelineAgentDeps",
     "QueryDeps",
+    "RemediationDeps",
     "ToolGenerationDeps",
     "WicerDiagnoseDeps",
     "WicerEvaluateDeps",

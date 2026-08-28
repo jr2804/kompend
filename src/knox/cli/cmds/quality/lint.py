@@ -23,7 +23,7 @@ import yaml
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from knox.agents.lint import LintRuleAgent
-from knox.agents.remediate import RemediationAgent
+from knox.agents.remediate import make_agentic_remediation_agent
 from knox.cli._pipeline_helpers import write_wiki_cache
 from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
@@ -429,7 +429,7 @@ def lint_remediate(
         raise typer.Exit(1)
 
     default_model = cfg.knox.compile.llm.default_model
-    agent = RemediationAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
+    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.knox.compile.llm.timeout)) if default_model else None
 
     actions = remediate(
         wiki,

@@ -12,11 +12,13 @@ from typing import Any
 from slugify import slugify
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.remediate import RemediationAgent
+from knox.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from knox.agents.types import RemediationDeps
 from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
 from knox.lint.base import LintReportResult, RemediationAction, RemediationStatus
+from knox.lint.gap_broker import GapBroker
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
 from knox.output.markdown import MarkdownWriter
@@ -29,11 +31,16 @@ def remediate_coverage_gaps(
     results: list[LintReportResult],
     *,
     base_dir: Path,
-    agent: RemediationAgent,
+    agent: RemediationAgent | AgenticRemediationAgent,
     output_dir: Path | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
-    """Generate concept pages for coverage gaps using cached extractions."""
+    """Generate concept pages for coverage gaps using cached extractions.
+
+    When *agent* is an :class:`AgenticRemediationAgent`, the agent runs
+    once over all matched gaps via a :class:`GapBroker` — collapsing N
+    per-gap calls into a single multi-turn session.
+    """
     gap_concepts: list[str] = []
     for r in results:
         if r.rule != "coverage-gap" or r.outcome != "fail":
@@ -62,22 +69,22 @@ def remediate_coverage_gaps(
     if output_dir is not None and output_dir.is_dir():
         existing_ids |= {f.stem for f in output_dir.glob("*.md")}
         existing_ids |= {f.stem for f in (output_dir / "concepts").glob("*.md")}
-    node_index = {n.id: i for i, n in enumerate(wiki.nodes)}
-    actions: list[RemediationAction] = []
-    generated = 0
+    node_index: dict[str, int] = {n.id: i for i, n in enumerate(wiki.nodes)}
 
+    # Deterministic pre-filtering: fuzzy-match + existence check.
     token_index = _build_token_index(concept_lookup)
+    matched_buckets: list[dict[str, Any]] = []
+    actions: list[RemediationAction] = []
+
     for gap in gap_concepts:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup, token_index)
         if not matched:
             logger.info("'%s' not found in cached extractions; see 'knox lint gaps' for recommendations", gap)
             continue
-
         concept_name = matched.get("name", gap)
         page_id = slugify(concept_name)
         if page_id in existing_ids or concept_name.lower().strip() in existing_titles:
             continue
-
         if dry_run:
             actions.append(
                 RemediationAction(
@@ -88,7 +95,65 @@ def remediate_coverage_gaps(
                 )
             )
             continue
+        matched_buckets.append(matched)
 
+    if not matched_buckets:
+        return actions
+
+    # --- Agentic path: single agent session over all matched gaps ----
+    if isinstance(agent, AgenticRemediationAgent):
+        broker = GapBroker(matched_buckets)
+        deps = RemediationDeps(gaps=broker, dry_run=dry_run)
+        try:
+            agent.run(deps)
+        except Exception as exc:
+            logger.warning("Agentic remediation failed: %s", exc)
+
+        for page_result in deps.pages:
+            concept_name = page_result.name
+            page_id = slugify(concept_name)
+            new_node = WikiNode(
+                id=page_id,
+                title=concept_name,
+                content=page_result.content,
+                node_type="concept",
+                metadata={"source": "lint-remediation"},
+            )
+            # In-place replace ghost nodes, otherwise append.
+            if page_id in node_index:
+                wiki.nodes[node_index[page_id]] = new_node
+            else:
+                node_index[page_id] = len(wiki.nodes)
+                wiki.nodes.append(new_node)
+            existing_ids.add(page_id)
+            existing_titles.add(concept_name.lower().strip())
+            actions.append(
+                RemediationAction(
+                    category="Coverage gap",
+                    description=f"Generated concept page for '{concept_name}'",
+                    status=RemediationStatus.APPLIED,
+                    details={"concept": concept_name, "id": page_id},
+                )
+            )
+
+        for gap_name, reason in broker.unfixable.items():
+            actions.append(
+                RemediationAction(
+                    category="Coverage gap (unfixable)",
+                    description=f"Cannot generate page for '{gap_name}': {reason}",
+                    status=RemediationStatus.SKIPPED,
+                    details={"concept": gap_name, "reason": reason},
+                )
+            )
+
+        if output_dir is not None and deps.pages:
+            MarkdownWriter(vault_mode=True).write(wiki, output_dir)
+
+        return actions
+
+    # --- Legacy single-shot path: one LLM call per gap ----------------
+    for matched in matched_buckets:
+        concept_name = matched.get("name", "")
         content = _generate_concept_page(agent, matched)
         if content is None:
             actions.append(
@@ -101,7 +166,8 @@ def remediate_coverage_gaps(
             )
             continue
 
-        node = WikiNode(
+        page_id = slugify(concept_name)
+        new_node = WikiNode(
             id=page_id,
             title=concept_name,
             content=content,
@@ -111,16 +177,13 @@ def remediate_coverage_gaps(
                 "generated_from": matched.get("sources", []),
             },
         )
-        # Replace a same-id ghost node in place; otherwise append.
         if page_id in node_index:
-            wiki.nodes[node_index[page_id]] = node
+            wiki.nodes[node_index[page_id]] = new_node
         else:
             node_index[page_id] = len(wiki.nodes)
-            wiki.nodes.append(node)
+            wiki.nodes.append(new_node)
         existing_ids.add(page_id)
         existing_titles.add(concept_name.lower().strip())
-        generated += 1
-
         actions.append(
             RemediationAction(
                 category="Coverage gap",
@@ -130,9 +193,7 @@ def remediate_coverage_gaps(
             )
         )
 
-    if generated and output_dir is not None:
-        # Route through the standard vault writer so new pages land in
-        # concepts/ with canonical OKF frontmatter and index.md picks them up.
+    if output_dir is not None:
         MarkdownWriter(vault_mode=True).write(wiki, output_dir)
 
     return actions
@@ -211,9 +272,4 @@ def _fuzzy_match_concept(
         for token in gap_tokens:
             for key in token_index.get(token, []):
                 return lookup[key]
-        return None
-    # Fallback: linear scan (no index available).
-    for key, data in lookup.items():
-        if normalized in key or key in normalized:
-            return data
     return None

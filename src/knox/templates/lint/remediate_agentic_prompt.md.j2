@@ -1,0 +1,16 @@
+---
+variables:
+  - name: dry_run
+    required: false
+role: lint.remediate-agentic
+response_format: json_object
+---
+
+Generate wiki pages for the coverage-gap concepts in the queue.
+Use fetch_gaps() to retrieve batches of concepts with their source material.
+Submit each generated page via save_page(name, content).
+
+{% if dry_run %}
+DRY RUN — do NOT call save_page(). Only call fetch_gaps() and
+mark_unfixable() to report what you would generate.
+{% endif %}
