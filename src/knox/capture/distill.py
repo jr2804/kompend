@@ -15,6 +15,8 @@ import yaml
 
 from knox.agents.deps import DistillDeps
 from knox.agents.distill import DistillAgent
+from knox.agents.distill_agentic import AgenticDistillAgent
+from knox.agents.types import DistillAgentDeps
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import format_sources_markdown, make_slug, make_title
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
@@ -38,7 +40,7 @@ class CapturedNote:
 def distill(
     sources_dir: Path,
     *,
-    distill_agent: DistillAgent | None = None,
+    distill_agent: DistillAgent | AgenticDistillAgent | None = None,
 ) -> list[Path]:
     """Distill all captured notes into synthesized wiki pages.
 
@@ -67,14 +69,17 @@ def distill(
     timestamp = display_local(TIMESTAMP_FORMAT)
     written: list[Path] = []
 
-    for tag, group_notes in groups.items():
-        page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
-        slug = make_slug(page["title"])
-        source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
-        _write_page(filepath, page, source_files, timestamp)
-        logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
-        written.append(filepath)
+    if distill_agent is not None and isinstance(distill_agent, AgenticDistillAgent):
+        written = _distill_agentic(groups, notes, distill_agent, timestamp, output_dir)
+    else:
+        for tag, group_notes in groups.items():
+            page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
+            slug = make_slug(page["title"])
+            source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
+            filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+            _write_page(filepath, page, source_files, timestamp)
+            logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
+            written.append(filepath)
 
     format_sources_markdown(sources_dir)
     return written
@@ -182,6 +187,64 @@ def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
         "content": body.strip(),
         "tags": [tag],  # nocheck: frontmatter dict, not wiki metadata
     }
+
+
+def _distill_agentic(
+    groups: dict[str, list[CapturedNote]],
+    notes: list[CapturedNote],
+    distill_agent: AgenticDistillAgent,
+    timestamp: str,
+    output_dir: Path,
+) -> list[Path]:
+    """Distill all groups in a single agentic session."""
+    groups_data = [
+        {"tag": tag, "notes": [{"title": n.title, "content": n.content, "source": n.source_file.name if n.source_file else "unknown"} for n in note_list]}
+        for tag, note_list in groups.items()
+    ]
+    deps = DistillAgentDeps(groups=groups_data, source_id="distill-all", timeout=distill_agent.timeout)
+
+    try:
+        distill_agent.run(deps)
+    except Exception as exc:
+        logger.warning("AgenticDistillAgent failed: %s, falling back to per-group", exc)
+        return _distill_fallback_per_group(groups, distill_agent, timestamp, output_dir)
+
+    written = []
+    for tag, note_list in groups.items():
+        page_data = deps.pages.get(tag)
+        if page_data is None:
+            page = _synthesize_fallback(tag, note_list)
+        else:
+            page = {
+                "title": page_data.get("title") or tag.replace("-", " ").replace("_", " ").title(),
+                "content": page_data.get("content") or "",
+                "tags": page_data.get("tags") or [tag],
+            }
+        slug = make_slug(page["title"])
+        source_files = [n.source_file.name if n.source_file else "" for n in note_list]
+        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+        _write_page(filepath, page, source_files, timestamp)
+        logger.info("Distilled %d notes -> %s", len(note_list), filepath)
+        written.append(filepath)
+    return written
+
+
+def _distill_fallback_per_group(
+    groups: dict[str, list[CapturedNote]],
+    distill_agent: AgenticDistillAgent,
+    timestamp: str,
+    output_dir: Path,
+) -> list[Path]:
+    written: list[Path] = []
+    for tag, group_notes in groups.items():
+        page = _synthesize_with_agent(tag, group_notes, distill_agent)
+        slug = make_slug(page["title"])
+        source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
+        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+        _write_page(filepath, page, source_files, timestamp)
+        logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
+        written.append(filepath)
+    return written
 
 
 # ── Output ──────────────────────────────────────────────────────────────

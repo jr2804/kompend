@@ -10,6 +10,7 @@ import typer
 
 from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
+from knox.agents.distill_agentic import AgenticDistillAgent
 from knox.agents.types import WriteDeps
 from knox.agents.write import make_agentic_write_agent
 from knox.capture.capture import capture
@@ -116,13 +117,20 @@ def distill_cmd(
     distill_agent = None
     if default_model:
         try:
-            distill_agent = DistillAgent(
+            distill_agent = AgenticDistillAgent(
                 default_model,
                 timeout=float(cfg.knox.compile.llm.timeout),
                 retries=cfg.knox.compile.llm.output_retries,
             )
         except Exception:
-            distill_agent = None
+            try:
+                distill_agent = DistillAgent(
+                    default_model,
+                    timeout=float(cfg.knox.compile.llm.timeout),
+                    retries=cfg.knox.compile.llm.output_retries,
+                )
+            except Exception:
+                distill_agent = None
 
     paths = distill(vp.sources_dir, distill_agent=distill_agent)
     if not paths:
