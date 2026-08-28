@@ -54,9 +54,7 @@ def make_agentic_write_agent(
     rlm: RlmConfig | None = None,
 ) -> AgenticWriteAgent:
     """Build an :class:`AgenticWriteAgent` with the standard agentic capabilities."""
-    agent_retries: int | AgentRetries = (
-        {"tools": retries, "output": output_retries} if output_retries is not None else retries
-    )
+    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
     harness = AgenticHarness(context_window=context_window, memory_agent_name="write")
     return AgenticWriteAgent(
         model_string=model_string,

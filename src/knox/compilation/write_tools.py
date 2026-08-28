@@ -20,6 +20,11 @@ from knox.agents.types import WriteDeps
 from knox.llm.format import LlmDataFormat, encode_for_llm
 
 
+def build_write_tools() -> list[Any]:
+    """Return the full toolset for the agentic write agent."""
+    return [read_source, list_sources, read_related, save_page]
+
+
 async def read_source(ctx: RunContext[WriteDeps], stem: str) -> str:
     """Return the full text of the source identified by *stem*."""
     for src_stem, text in ctx.deps.source_texts:
@@ -43,8 +48,3 @@ async def save_page(ctx: RunContext[WriteDeps], content: str) -> str:
     """Submit the final markdown page content."""
     ctx.deps.page_content = content
     return "Page saved."
-
-
-def build_write_tools() -> list[Any]:
-    """Return the full toolset for the agentic write agent."""
-    return [read_source, list_sources, read_related, save_page]

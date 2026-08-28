@@ -23,6 +23,18 @@ from pydantic_ai import RunContext, Tool
 from knox.agents.types import VerificationDeps, VerificationVerdict
 
 
+def build_verification_tools() -> list[Tool[VerificationDeps]]:
+    """Return the PydanticAI toolset for the agentic verification agent."""
+    return [
+        Tool(get_claim),
+        Tool(search_sources),
+        Tool(read_page),
+        Tool(mark_verified),
+        Tool(mark_contradicted),
+        Tool(mark_unverifiable),
+    ]
+
+
 async def get_claim(ctx: RunContext[VerificationDeps], claim_id: int) -> str:
     """Return the claim text for *claim_id*."""
     for claim in ctx.deps.claims:
@@ -36,9 +48,7 @@ async def search_sources(ctx: RunContext[VerificationDeps], query: str, k: int =
     hits = [s for s in ctx.deps.sources if query.lower() in s["text"].lower()][:k]
     if not hits:
         return "(no matching sources found)"
-    return "\n".join(
-        f"- [{s['slug']}] {s['text'][:200]}" for s in hits
-    )
+    return "\n".join(f"- [{s['slug']}] {s['text'][:200]}" for s in hits)
 
 
 async def read_page(ctx: RunContext[VerificationDeps], slug: str) -> str:
@@ -49,41 +59,19 @@ async def read_page(ctx: RunContext[VerificationDeps], slug: str) -> str:
     return f"Unknown page: {slug}"
 
 
-async def mark_verified(
-    ctx: RunContext[VerificationDeps], claim_id: int, evidence: str, sources: list[str]
-) -> str:
+async def mark_verified(ctx: RunContext[VerificationDeps], claim_id: int, evidence: str, sources: list[str]) -> str:
     """Record a verified verdict for *claim_id*."""
-    ctx.deps.results.append(
-        VerificationVerdict(claim_id=claim_id, verdict="supported", evidence=evidence, sources=sources)
-    )
+    ctx.deps.results.append(VerificationVerdict(claim_id=claim_id, verdict="supported", evidence=evidence, sources=sources))
     return f"Claim {claim_id} marked supported."
 
 
-async def mark_contradicted(
-    ctx: RunContext[VerificationDeps], claim_id: int, evidence: str, sources: list[str]
-) -> str:
+async def mark_contradicted(ctx: RunContext[VerificationDeps], claim_id: int, evidence: str, sources: list[str]) -> str:
     """Record a contradicted verdict for *claim_id*."""
-    ctx.deps.results.append(
-        VerificationVerdict(claim_id=claim_id, verdict="contradicted", evidence=evidence, sources=sources)
-    )
+    ctx.deps.results.append(VerificationVerdict(claim_id=claim_id, verdict="contradicted", evidence=evidence, sources=sources))
     return f"Claim {claim_id} marked contradicted."
 
 
 async def mark_unverifiable(ctx: RunContext[VerificationDeps], claim_id: int, reason: str) -> str:
     """Record an unverifiable verdict for *claim_id*."""
-    ctx.deps.results.append(
-        VerificationVerdict(claim_id=claim_id, verdict="unverifiable", evidence=reason, sources=[])
-    )
+    ctx.deps.results.append(VerificationVerdict(claim_id=claim_id, verdict="unverifiable", evidence=reason, sources=[]))
     return f"Claim {claim_id} marked unverifiable: {reason}"
-
-
-def build_verification_tools() -> list[Tool[VerificationDeps]]:
-    """Return the PydanticAI toolset for the agentic verification agent."""
-    return [
-        Tool(get_claim),
-        Tool(search_sources),
-        Tool(read_page),
-        Tool(mark_verified),
-        Tool(mark_contradicted),
-        Tool(mark_unverifiable),
-    ]

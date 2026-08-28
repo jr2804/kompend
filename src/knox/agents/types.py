@@ -120,33 +120,6 @@ class RemediationDeps:
     pages: list[RemediationPageResult] = field(default_factory=list)
 
 
-class ConceptBrokerProtocol(Protocol):
-    """Minimal broker surface used by the agentic generation tools.
-
-    Declared locally (instead of importing the concrete
-    :class:`knox.compilation.concept_broker.ConceptBroker`) so this leaf
-    module keeps zero ``knox.compilation`` imports — importing any
-    submodule of that package triggers ``compilation/__init__``, which
-    pulls in ``agents.base`` and re-enters the import cycle.
-    """
-
-    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
-
-
-class GapBrokerProtocol(Protocol):
-    """Minimal broker surface used by the agentic remediation tools.
-
-    Mirrors :class:`ConceptBrokerProtocol`'s local-Protocol approach so
-    ``agents.types`` stays a zero-``knox.lint``-import leaf module.
-    """
-
-    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
-
-    def mark_done(self, name: str) -> None: ...
-
-    def mark_unfixable(self, name: str, reason: str) -> None: ...
-
-
 @dataclass
 class OverviewDeps:
     """Runtime context for the agentic overview-synthesis agent.
@@ -255,6 +228,7 @@ class ContextChunkDeps:
     timeout: float = 120.0
     current_chunk: dict[str, Any] | None = None
 
+
 @dataclass
 class SummarizerDeps:
     """Runtime context for the agentic summarizer agent.
@@ -273,6 +247,7 @@ class SummarizerDeps:
     source_id: str = "summarizer"
     timeout: float = 120.0
     current_node: dict[str, Any] | None = None
+
 
 @dataclass
 class ExtractionAgentDeps:
@@ -294,6 +269,7 @@ class ExtractionAgentDeps:
     source_id: str = "extraction"
     timeout: float = 120.0
     current_section: str | None = None
+
 
 @dataclass
 class CategorizeAgentDeps:
@@ -317,6 +293,7 @@ class CategorizeAgentDeps:
     min_subcategories: int = 2
     min_files_per_category: int = 2
 
+
 @dataclass
 class CaptureAgentDeps:
     """Runtime context for the agentic capture agent.
@@ -336,6 +313,7 @@ class CaptureAgentDeps:
     timeout: float = 120.0
     current_input: str | None = None
 
+
 @dataclass
 class DistillAgentDeps:
     """Runtime context for the agentic distill agent.
@@ -354,6 +332,7 @@ class DistillAgentDeps:
     source_id: str = "distill"
     timeout: float = 120.0
     current_group: dict[str, Any] | None = None
+
 
 @dataclass
 class QueryAgentDeps:
@@ -376,3 +355,29 @@ class QueryAgentDeps:
     timeout: float = 120.0
     current_sub_question: str | None = None
 
+
+class ConceptBrokerProtocol(Protocol):
+    """Minimal broker surface used by the agentic generation tools.
+
+    Declared locally (instead of importing the concrete
+    :class:`knox.compilation.concept_broker.ConceptBroker`) so this leaf
+    module keeps zero ``knox.compilation`` imports — importing any
+    submodule of that package triggers ``compilation/__init__``, which
+    pulls in ``agents.base`` and re-enters the import cycle.
+    """
+
+    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+
+class GapBrokerProtocol(Protocol):
+    """Minimal broker surface used by the agentic remediation tools.
+
+    Mirrors :class:`ConceptBrokerProtocol`'s local-Protocol approach so
+    ``agents.types`` stays a zero-``knox.lint``-import leaf module.
+    """
+
+    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+    def mark_done(self, name: str) -> None: ...
+
+    def mark_unfixable(self, name: str, reason: str) -> None: ...

@@ -20,6 +20,15 @@ from pydantic_ai import RunContext, Tool
 from knox.agents.types import OverviewDeps
 
 
+def build_overview_tools() -> list[Tool[OverviewDeps]]:
+    """Return the PydanticAI toolset for the agentic overview agent."""
+    return [
+        Tool(list_pages),
+        Tool(read_page),
+        Tool(save_overview),
+    ]
+
+
 async def list_pages(ctx: RunContext[OverviewDeps], filter: str | None = None) -> str:
     """List the wiki pages available for the overview.
 
@@ -68,12 +77,3 @@ async def save_overview(ctx: RunContext[OverviewDeps], content: str) -> str:
     """
     ctx.deps.overview = content
     return "Overview saved."
-
-
-def build_overview_tools() -> list[Tool[OverviewDeps]]:
-    """Return the PydanticAI toolset for the agentic overview agent."""
-    return [
-        Tool(list_pages),
-        Tool(read_page),
-        Tool(save_overview),
-    ]

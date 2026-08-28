@@ -51,11 +51,7 @@ def make_agentic_context_chunk_agent(
     rlm: RlmConfig | None = None,
 ) -> AgenticContextChunkAgent:
     """Build an :class:`AgenticContextChunkAgent` with standard agentic capabilities."""
-    agent_retries: int | AgentRetries = (
-        {"tools": retries, "output": output_retries}
-        if output_retries is not None
-        else retries
-    )
+    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
     harness = AgenticHarness(context_window=context_window, memory_agent_name="context_chunk")
     return AgenticContextChunkAgent(
         model_string=model_string,

@@ -137,58 +137,6 @@ def _group_by_tag(notes: list[CapturedNote]) -> dict[str, list[CapturedNote]]:
     return groups
 
 
-# ── Synthesis ───────────────────────────────────────────────────────────
-
-
-def _synthesize_with_agent(
-    tag: str,
-    notes: list[CapturedNote],
-    distill_agent: DistillAgent,
-) -> dict:
-    """Use the DistillAgent to synthesize a group of notes into a single page."""
-    notes_data = [
-        {
-            "title": n.title,
-            "content": n.content,
-            "source": n.source_file.name if n.source_file else "unknown",
-        }
-        for n in notes
-    ]
-    user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
-    deps = DistillDeps(
-        notes=notes_data,
-        group_tag=tag,
-        text=user_prompt,
-        source_id=f"distill-{tag}",
-        timeout=distill_agent.timeout,
-    )
-
-    try:
-        result = distill_agent.run(deps)
-    except Exception:
-        logger.warning("DistillAgent failed for tag '%s', using fallback", tag)
-        return _synthesize_fallback(tag, notes)
-
-    return {
-        "title": result.title or tag.replace("-", " ").replace("_", " ").title(),
-        "content": result.content or "",
-        "tags": result.tags or [tag],  # nocheck: frontmatter dict, not wiki metadata
-    }
-
-
-def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
-    """Deterministically merge notes without an LLM call."""
-    sections = []
-    for note in notes:
-        sections.append(f"## {note.title}\n\n{note.content}\n")
-    body = "\n".join(sections)
-    return {
-        "title": tag.replace("-", " ").replace("_", " ").title(),
-        "content": body.strip(),
-        "tags": [tag],  # nocheck: frontmatter dict, not wiki metadata
-    }
-
-
 def _distill_agentic(
     groups: dict[str, list[CapturedNote]],
     notes: list[CapturedNote],
@@ -245,6 +193,58 @@ def _distill_fallback_per_group(
         logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
     return written
+
+
+# ── Synthesis ───────────────────────────────────────────────────────────
+
+
+def _synthesize_with_agent(
+    tag: str,
+    notes: list[CapturedNote],
+    distill_agent: DistillAgent,
+) -> dict:
+    """Use the DistillAgent to synthesize a group of notes into a single page."""
+    notes_data = [
+        {
+            "title": n.title,
+            "content": n.content,
+            "source": n.source_file.name if n.source_file else "unknown",
+        }
+        for n in notes
+    ]
+    user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
+    deps = DistillDeps(
+        notes=notes_data,
+        group_tag=tag,
+        text=user_prompt,
+        source_id=f"distill-{tag}",
+        timeout=distill_agent.timeout,
+    )
+
+    try:
+        result = distill_agent.run(deps)
+    except Exception:
+        logger.warning("DistillAgent failed for tag '%s', using fallback", tag)
+        return _synthesize_fallback(tag, notes)
+
+    return {
+        "title": result.title or tag.replace("-", " ").replace("_", " ").title(),
+        "content": result.content or "",
+        "tags": result.tags or [tag],  # nocheck: frontmatter dict, not wiki metadata
+    }
+
+
+def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
+    """Deterministically merge notes without an LLM call."""
+    sections = []
+    for note in notes:
+        sections.append(f"## {note.title}\n\n{note.content}\n")
+    body = "\n".join(sections)
+    return {
+        "title": tag.replace("-", " ").replace("_", " ").title(),
+        "content": body.strip(),
+        "tags": [tag],  # nocheck: frontmatter dict, not wiki metadata
+    }
 
 
 # ── Output ──────────────────────────────────────────────────────────────

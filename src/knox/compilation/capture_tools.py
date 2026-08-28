@@ -18,6 +18,14 @@ from pydantic_ai import RunContext, Tool
 from knox.agents.types import CaptureAgentDeps
 
 
+def build_capture_tools() -> list[Any]:
+    """Return the full toolset for the agentic capture agent."""
+    return [
+        Tool(get_input, takes_ctx=True),
+        Tool(save_item, takes_ctx=True),
+    ]
+
+
 async def get_input(ctx: RunContext[CaptureAgentDeps], index: int) -> str:
     """Return a text input by its index for processing."""
     inputs = ctx.deps.inputs
@@ -32,11 +40,3 @@ async def save_item(ctx: RunContext[CaptureAgentDeps], index: int, items: list[d
     ctx.deps.items[index] = items
     ctx.deps.current_input = None
     return f"Saved {len(items)} items for input {index}."
-
-
-def build_capture_tools() -> list[Any]:
-    """Return the full toolset for the agentic capture agent."""
-    return [
-        Tool(get_input, takes_ctx=True),
-        Tool(save_item, takes_ctx=True),
-    ]

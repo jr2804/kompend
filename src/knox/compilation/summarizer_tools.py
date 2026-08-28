@@ -18,6 +18,11 @@ from pydantic_ai import RunContext
 from knox.agents.types import SummarizerDeps
 
 
+def build_summarizer_tools() -> list[Any]:
+    """Return the full toolset for the agentic summarizer agent."""
+    return [next_node, summarize_node]
+
+
 async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     """Return the next node that still needs a summary."""
     processed = set(ctx.deps.results.keys())
@@ -36,8 +41,3 @@ async def summarize_node(ctx: RunContext[SummarizerDeps], node_id: str, summary:
     ctx.deps.results[node_id] = summary.strip()
     ctx.deps.current_node = None
     return f"Summary recorded for node {node_id}."
-
-
-def build_summarizer_tools() -> list[Any]:
-    """Return the full toolset for the agentic summarizer agent."""
-    return [next_node, summarize_node]

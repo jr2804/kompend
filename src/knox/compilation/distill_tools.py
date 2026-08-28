@@ -19,6 +19,14 @@ from pydantic_ai import RunContext, Tool
 from knox.agents.types import DistillAgentDeps
 
 
+def build_distill_tools() -> list[Any]:
+    """Return the full toolset for the agentic distill agent."""
+    return [
+        Tool(get_group, takes_ctx=True),
+        Tool(save_page, takes_ctx=True),
+    ]
+
+
 async def get_group(ctx: RunContext[DistillAgentDeps], tag: str) -> str:
     """Return the notes belonging to a tag group."""
     for g in ctx.deps.groups:
@@ -34,11 +42,3 @@ async def save_page(ctx: RunContext[DistillAgentDeps], tag: str, page: dict[str,
     ctx.deps.pages[tag] = page
     ctx.deps.current_group = None
     return f"Page saved for group '{tag}'."
-
-
-def build_distill_tools() -> list[Any]:
-    """Return the full toolset for the agentic distill agent."""
-    return [
-        Tool(get_group, takes_ctx=True),
-        Tool(save_page, takes_ctx=True),
-    ]

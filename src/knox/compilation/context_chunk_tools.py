@@ -18,6 +18,11 @@ from pydantic_ai import RunContext
 from knox.agents.types import ContextChunkDeps
 
 
+def build_context_chunk_tools() -> list[Any]:
+    """Return the full toolset for the agentic context chunk agent."""
+    return [next_chunk, situate_chunk]
+
+
 async def next_chunk(ctx: RunContext[ContextChunkDeps]) -> str:
     """Return the next chunk that still needs situating context."""
     processed = set(ctx.deps.results.keys())
@@ -37,8 +42,3 @@ async def situate_chunk(ctx: RunContext[ContextChunkDeps], chunk_id: int, conten
     ctx.deps.results[chunk_id] = content.strip()
     ctx.deps.current_chunk = None
     return f"Context recorded for chunk {chunk_id}."
-
-
-def build_context_chunk_tools() -> list[Any]:
-    """Return the full toolset for the agentic context chunk agent."""
-    return [next_chunk, situate_chunk]

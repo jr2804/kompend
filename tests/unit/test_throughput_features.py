@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from knox.agents.types import VerificationDeps, VerificationVerdict
+from knox.agents.verification import AgenticVerificationAgent
 from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
 from knox.compilation.schema import Concept, Entity, GenerationOutput
-from knox.agents.verification import AgenticVerificationAgent
-from knox.agents.types import VerificationDeps, VerificationVerdict
 from knox.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -1212,18 +1212,6 @@ class TestVerificationUnavailable:
 class TestAgenticVerification:
     """Agentic verification: one multi-turn session over all claims."""
 
-    def _fake_agentic_client(self, verdicts: dict[int, str]) -> MagicMock:
-        agent = MagicMock(spec=AgenticVerificationAgent)
-
-        def _run(deps: VerificationDeps) -> None:
-            for cid, v in verdicts.items():
-                deps.results.append(
-                    VerificationVerdict(claim_id=cid, verdict=v, evidence="test evidence", sources=[])
-                )
-
-        agent.run.side_effect = _run
-        return agent
-
     def test_single_session_all_claims(self, tmp_path: Path) -> None:
         wiki = _wiki(
             nodes=[
@@ -1239,14 +1227,22 @@ class TestAgenticVerification:
         assert result.total == 10
 
     def test_agentic_failure_returns_unverified(self, tmp_path: Path) -> None:
-        wiki = _wiki(
-            nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type="section")]
-        )
+        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type="section")])
         agent = MagicMock(spec=AgenticVerificationAgent)
         agent.run.side_effect = RuntimeError("LLM failed")
         result = verify_wiki(wiki, tmp_path, agent=agent)
         assert result.total >= 1
         assert all(c.verdict == "unverified" for c in result.claims)
+
+    def _fake_agentic_client(self, verdicts: dict[int, str]) -> MagicMock:
+        agent = MagicMock(spec=AgenticVerificationAgent)
+
+        def _run(deps: VerificationDeps) -> None:
+            for cid, v in verdicts.items():
+                deps.results.append(VerificationVerdict(claim_id=cid, verdict=v, evidence="test evidence", sources=[]))
+
+        agent.run.side_effect = _run
+        return agent
 
 
 # ── helpers ─────────────────────────────────────────────────────────────

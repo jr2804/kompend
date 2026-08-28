@@ -18,6 +18,11 @@ from pydantic_ai import RunContext
 from knox.agents.types import ExtractionAgentDeps
 
 
+def build_extraction_tools() -> list[Any]:
+    """Return the full toolset for the agentic extraction agent."""
+    return [get_section, save_extraction]
+
+
 async def get_section(ctx: RunContext[ExtractionAgentDeps], section_id: int) -> str:
     """Return the text of a source section by its index."""
     sections = ctx.deps.sections
@@ -32,8 +37,3 @@ async def save_extraction(ctx: RunContext[ExtractionAgentDeps], section_id: int,
     ctx.deps.extractions[section_id] = data.strip()
     ctx.deps.current_section = None
     return f"Extraction saved for section {section_id}."
-
-
-def build_extraction_tools() -> list[Any]:
-    """Return the full toolset for the agentic extraction agent."""
-    return [get_section, save_extraction]

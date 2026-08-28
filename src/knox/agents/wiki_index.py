@@ -51,9 +51,7 @@ def make_agentic_overview_agent(
     ClampOversizedMessages. Retry budgets are split: ``retries`` governs
     tool-call retries; ``output_retries`` governs output-validation.
     """
-    agent_retries: int | AgentRetries = (
-        {"tools": retries, "output": output_retries} if output_retries is not None else retries
-    )
+    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
     harness = AgenticHarness(context_window=context_window, memory_agent_name="overview")
     return AgenticOverviewAgent(
         model_string=model_string,

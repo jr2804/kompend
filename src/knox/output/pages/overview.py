@@ -46,16 +46,10 @@ def write_overview(
         return overview_file
 
     if isinstance(agent, AgenticOverviewAgent):
-        pages = [
-            OverviewPage(slug=n.id, title=n.title, content=n.content)
-            for n in wiki.nodes
-            if n.content
-        ]
+        pages = [OverviewPage(slug=n.id, title=n.title, content=n.content) for n in wiki.nodes if n.content]
         content = generate_overview_agentic(pages, agent, progress_callback=progress_callback)
     else:
-        content = generate_overview(
-            source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback
-        )
+        content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
     if not content:
         return None
 

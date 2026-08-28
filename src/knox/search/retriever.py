@@ -346,13 +346,13 @@ def synthesize_results(
             agent = query_agent
         else:
             agent = QueryAgent(
-            model_string=model,
-            timeout=120.0,
-            skills=skills or {},
-            reasoning_effort=reasoning_effort,
-            rlm=rlm,
-            rlm_context_field="context",
-        )
+                model_string=model,
+                timeout=120.0,
+                skills=skills or {},
+                reasoning_effort=reasoning_effort,
+                rlm=rlm,
+                rlm_context_field="context",
+            )
         deps = QueryDeps(
             question=query,
             context=context_text,

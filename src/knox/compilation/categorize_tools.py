@@ -19,13 +19,18 @@ from pydantic_ai import RunContext
 from knox.agents.types import CategorizeAgentDeps
 
 
+def build_categorize_tools() -> list[Any]:
+    """Return the full toolset for the agentic categorize agent."""
+    return [get_file_batch, add_category]
+
+
 async def get_file_batch(ctx: RunContext[CategorizeAgentDeps], start: int, count: int = 10) -> str:
     """Return a batch of files for categorization as JSON."""
-    files = ctx.deps.files[start:start+count]
+    files = ctx.deps.files[start : start + count]
     if not files:
         return f"No more files. Total categorized: {len(ctx.deps.categories)}."
     batch_json = json.dumps({"files": files, "position": start, "total": len(ctx.deps.files)})
-    return f"Files {start}-{start+len(files)} of {len(ctx.deps.files)}:\n{batch_json}"
+    return f"Files {start}-{start + len(files)} of {len(ctx.deps.files)}:\n{batch_json}"
 
 
 async def add_category(ctx: RunContext[CategorizeAgentDeps], path: str, files: list[str]) -> str:
@@ -36,8 +41,3 @@ async def add_category(ctx: RunContext[CategorizeAgentDeps], path: str, files: l
         if f not in ctx.deps.unfiled or f in ctx.deps.unfiled:
             ctx.deps.unfiled = [u for u in ctx.deps.unfiled if u != f]
     return f"Category '{path}' added with {len(files)} files."
-
-
-def build_categorize_tools() -> list[Any]:
-    """Return the full toolset for the agentic categorize agent."""
-    return [get_file_batch, add_category]

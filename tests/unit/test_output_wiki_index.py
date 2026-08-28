@@ -258,17 +258,6 @@ class TestGenerateOverviewProgress:
 
         assert result is not None
 
-# ── Agentic overview ────────────────────────────────────────────────────
-
-def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
-    agent = MagicMock(spec=AgenticOverviewAgent)
-
-    def _run(deps: OverviewDeps) -> None:
-        deps.overview = content
-
-    agent.run.side_effect = _run
-    return agent
-
 
 class TestAgenticOverview:
     """Agentic overview synthesis: one multi-turn session for all pages."""
@@ -288,9 +277,7 @@ class TestAgenticOverview:
         agent = MagicMock(spec=AgenticOverviewAgent)
         agent.run.side_effect = RuntimeError("LLM failed")
 
-        result = generate_overview_agentic(
-            [OverviewPage(slug="a", title="Alpha", content="x")], agent=agent
-        )
+        result = generate_overview_agentic([OverviewPage(slug="a", title="Alpha", content="x")], agent=agent)
         assert result is None
 
     def test_empty_pages_returns_none(self) -> None:
@@ -339,6 +326,19 @@ class TestGenerateIndexPortable:
             edges=[],
             toc=[],
         )
+
+
+# ── Agentic overview ────────────────────────────────────────────────────
+
+
+def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
+    agent = MagicMock(spec=AgenticOverviewAgent)
+
+    def _run(deps: OverviewDeps) -> None:
+        deps.overview = content
+
+    agent.run.side_effect = _run
+    return agent
 
 
 def _make_wiki(**overrides: object) -> CompiledWiki:

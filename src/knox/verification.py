@@ -70,7 +70,6 @@ def verify_wiki(
         for node in wiki.nodes:
             result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
 
-
     result.total = len(result.claims)
     result.verified = sum(1 for c in result.claims if c.verdict == "supported")
     result.unsupported = sum(1 for c in result.claims if c.is_unsupported())
@@ -83,9 +82,7 @@ def verify_wiki(
     return result
 
 
-def _verify_wiki_agentic(
-    wiki: CompiledWiki, sources_dir: Path, agent: AgenticVerificationAgent
-) -> list[ClaimVerification]:
+def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVerificationAgent) -> list[ClaimVerification]:
     """Run a single agentic verification session over all claims.
 
     Builds claim/source/page lists from the wiki, runs the agent once,
@@ -127,9 +124,7 @@ def _verify_wiki_agentic(
             results.append(ClaimVerification(node_id, "", citation, "unverified", 0.0, "no verdict"))
         else:
             confidence = 0.9 if verdict.verdict == "supported" else 0.5 if verdict.verdict == "contradicted" else 0.1
-            results.append(ClaimVerification(
-                node_id, "", citation, verdict.verdict, confidence, verdict.evidence
-            ))
+            results.append(ClaimVerification(node_id, "", citation, verdict.verdict, confidence, verdict.evidence))
     return results
 
 
