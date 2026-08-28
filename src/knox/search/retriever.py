@@ -15,6 +15,7 @@ from typing import Final, TypedDict
 
 from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
+from knox.agents.query_agentic import AgenticQueryAgent
 from knox.agents.search import QueryExpansionAgent
 from knox.core.config import DEFAULTS, RlmConfig
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
@@ -299,6 +300,7 @@ def synthesize_results(
     skills: dict[str, str] | None = None,
     reasoning_effort: str | None = None,
     rlm: RlmConfig | None = None,
+    query_agent: QueryAgent | AgenticQueryAgent | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
@@ -340,7 +342,10 @@ def synthesize_results(
     context_text: str = "\n".join(context_lines)
 
     try:
-        agent = QueryAgent(
+        if query_agent is not None:
+            agent = query_agent
+        else:
+            agent = QueryAgent(
             model_string=model,
             timeout=120.0,
             skills=skills or {},
