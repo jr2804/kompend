@@ -7,7 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.wiki_index import WikiIndexAgent
+from knox.agents.types import OverviewDeps, OverviewPage
+from knox.agents.wiki_index import AgenticOverviewAgent, WikiIndexAgent
 from knox.core.cache.store import CacheStore
 from knox.core.models import CompiledWiki
 from knox.core.paths import VaultPaths
@@ -22,7 +23,7 @@ _loader = get_template_loader()
 def write_overview(
     wiki: CompiledWiki,
     base_dir: Path,
-    agent: WikiIndexAgent,
+    agent: WikiIndexAgent | AgenticOverviewAgent,
     *,
     overview_budget: int,
     progress_callback: Callable[[int, int], None] | None = None,
@@ -44,7 +45,17 @@ def write_overview(
         overview_file.write_text(cached, encoding="utf-8")
         return overview_file
 
-    content = generate_overview(source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback)
+    if isinstance(agent, AgenticOverviewAgent):
+        pages = [
+            OverviewPage(slug=n.id, title=n.title, content=n.content)
+            for n in wiki.nodes
+            if n.content
+        ]
+        content = generate_overview_agentic(pages, agent, progress_callback=progress_callback)
+    else:
+        content = generate_overview(
+            source_texts, agent, overview_budget=overview_budget, progress_callback=progress_callback
+        )
     if not content:
         return None
 
@@ -55,6 +66,33 @@ def write_overview(
     return overview_file
 
 
+def generate_overview_agentic(
+    pages: list[OverviewPage],
+    agent: AgenticOverviewAgent,
+    *,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> str | None:
+    """Generate an overview via a single agentic multi-turn session.
+
+    The agent discovers pages via ``list_pages()``, reads full content via
+    ``read_page()``, and submits the final overview via ``save_overview()``.
+    Returns the overview Markdown, or ``None`` on failure.
+    """
+    if not pages:
+        return None
+    if progress_callback:
+        progress_callback(0, 1)
+    deps = OverviewDeps(pages=pages, timeout=agent.timeout)
+    try:
+        agent.run(deps)
+    except Exception as exc:
+        logger.warning("Agentic overview synthesis failed: %s", exc)
+        return None
+    if progress_callback:
+        progress_callback(1, 1)
+    return deps.overview or None
+
+
 def generate_overview(
     source_texts: list[str],
     agent: WikiIndexAgent,
@@ -62,7 +100,7 @@ def generate_overview(
     overview_budget: int,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> str | None:
-    """Generate an overview of the wiki from node content.
+    """Generate an overview of the wiki from node content (legacy map-reduce).
 
     All *source_texts* are processed — no content is dropped.  If the total
     exceeds ``overview_budget`` chars, texts are batched and each batch

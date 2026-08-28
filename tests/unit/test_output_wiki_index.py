@@ -6,8 +6,11 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from knox.agents.types import OverviewDeps, OverviewPage
+from knox.agents.wiki_index import AgenticOverviewAgent
 from knox.core.models import CompiledWiki, WikiNode
 from knox.output.pages.index import _full_catalog, generate_index, write_index
+from knox.output.pages.overview import generate_overview_agentic
 from knox.output.wiki_index import (
     LogStage,
     append_log_entry,
@@ -254,6 +257,45 @@ class TestGenerateOverviewProgress:
         result = generate_overview(["short text"], agent=mock_agent, overview_budget=10000)
 
         assert result is not None
+
+# ── Agentic overview ────────────────────────────────────────────────────
+
+def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
+    agent = MagicMock(spec=AgenticOverviewAgent)
+
+    def _run(deps: OverviewDeps) -> None:
+        deps.overview = content
+
+    agent.run.side_effect = _run
+    return agent
+
+
+class TestAgenticOverview:
+    """Agentic overview synthesis: one multi-turn session for all pages."""
+
+    def test_one_session_reads_pages_and_saves(self) -> None:
+        """Agent runs once, reads every page, submits the overview via save_overview()."""
+        agent = _mock_agentic_overview("Thematic overview text")
+        pages = [
+            OverviewPage(slug="a", title="Alpha", content="Alpha content"),
+            OverviewPage(slug="b", title="Beta", content="Beta content"),
+        ]
+        result = generate_overview_agentic(pages, agent=agent)
+        assert result == "Thematic overview text"
+        assert agent.run.call_count == 1
+
+    def test_failure_returns_none(self) -> None:
+        agent = MagicMock(spec=AgenticOverviewAgent)
+        agent.run.side_effect = RuntimeError("LLM failed")
+
+        result = generate_overview_agentic(
+            [OverviewPage(slug="a", title="Alpha", content="x")], agent=agent
+        )
+        assert result is None
+
+    def test_empty_pages_returns_none(self) -> None:
+        agent = _mock_agentic_overview()
+        assert generate_overview_agentic([], agent=agent) is None
 
 
 # ── generate_index (portable catalog) ────────────────────────────────────

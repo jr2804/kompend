@@ -145,3 +145,31 @@ class GapBrokerProtocol(Protocol):
     def mark_done(self, name: str) -> None: ...
 
     def mark_unfixable(self, name: str, reason: str) -> None: ...
+
+
+@dataclass
+class OverviewDeps:
+    """Runtime context for the agentic overview-synthesis agent.
+
+    The agent lists pages via ``list_pages()``, reads full content via
+    ``read_page()``, and submits the final overview via ``save_overview()``.
+
+    Attributes:
+        pages: Ordered list of page summaries (slug, title, content).
+        timeout: Per-call timeout in seconds.
+        overview: The submitted overview text, populated by the
+            ``save_overview`` tool.
+    """
+
+    pages: list[OverviewPage]
+    timeout: float = 120.0
+    overview: str = ""
+
+
+@dataclass
+class OverviewPage:
+    """A single wiki page available to the overview agent."""
+
+    slug: str
+    title: str
+    content: str
