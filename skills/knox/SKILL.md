@@ -340,6 +340,30 @@ Use the wicer compiler for documents where you need exhaustive extraction:
 compile_wiki(sources_dir="./sources", output="./output", compiler="wicer")
 ```
 
+### Agentic Multi-Turn Workflows (0iv2)
+
+KNOX provides agentic variants of all major LLM-powered operations. Instead
+of a single-shot LLM call per item, agentic workflows decompose work into
+multiple turns with tool use — fetching data on demand, iterating over
+batches, and synthesizing across sources in one session.
+
+The agentic agents are opt-in: they activate when `compile.llm.default_model`
+is configured and the agentic factory is used by the CLI/MCP layer.
+
+| Agent | Single-shot mode | Agentic mode | Tools |
+|---|---|---|---|
+| Verification | Per-claim LLM call | One session, iterate claims | `search_sources`, `read_page`, `mark_verified` |
+| Capture | Per-text LLM call | One session, iterate inputs | `get_input`, `save_item` |
+| Distill | Per-group LLM call | One session, iterate groups | `get_group`, `write_page` |
+| Query | Single synthesize call | Decompose into sub-questions | `search_wiki`, `read_page`, `add_finding` |
+| Context chunk | Per-chunk LLM call | One session, iterate chunks | `get_chunk`, `situate_chunk` |
+| Summarizer | Per-node LLM call | One session, iterate nodes | `get_node`, `save_summary` |
+| Extraction | Per-source LLM call | One session, iterate sections | `get_section`, `save_extraction` |
+
+All agentic agents use the `AgenticHarness` helper for shared capabilities
+(sliding window compaction, clamp oversized messages, memory).
+See [agentic migration epic](https://codeberg.org/jr2804/knox/issues?q=is%3Aissue+label%3Aknox-0iv2) for implementation status.
+
 ## Output Format
 
 KNOX produces **OKF v0.1** (Open Knowledge Format) bundles by default — an open,

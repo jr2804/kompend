@@ -479,3 +479,25 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys.
 | `KNOX_NOTES_FILE` | `notes.file` | User notes filename |
 | `KNOX_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |
 | `KNOX_RELATION_CONFIDENCE_THRESHOLD` | `compile.relation_confidence_threshold` | Minimum confidence for relations |
+| `KNOX_LLM_AGENTIC_OUTPUT_RETRIES` | `compile.llm.agentic_output_retries` | Output retry budget for agentic agents (default 4) |
+
+## Agentic Mode
+
+KNOX uses **agentic multi-turn workflows** for all major LLM-powered operations.
+Instead of single-shot LLM calls, agentic agents run one session per task and
+iterate via tools — fetching data on demand, batching work, and synthesizing
+across sources in a single context.
+
+Agentic mode activates automatically when `compile.llm.default_model` is set
+and the operation routes through the agentic factory. The agentic variant
+of each operation is the default for the affected CLI commands and MCP tools:
+
+- `knox distill` → `AgenticDistillAgent` (one session over all tag groups)
+- `knox write` → `AgenticWriteAgent` (loads sources on demand)
+- `knox lint verify` → `AgenticVerificationAgent` (one session over claims)
+- `knox query` → `AgenticQueryAgent` (decomposes into sub-questions)
+- `knox capture` (batch) → `AgenticCaptureAgent` (one session over inputs)
+
+The `compile.llm.agentic_output_retries` config key controls the output
+retry budget for agentic agents separately from tool retries (see
+`compile.llm.output_retries`).
