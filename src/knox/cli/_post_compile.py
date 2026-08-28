@@ -14,8 +14,8 @@ from typing import Any
 import typer
 
 from knox import __version__ as _KNOX_VERSION
-from knox.agents.verification import VerificationAgent
-from knox.agents.wiki_index import WikiIndexAgent, make_agentic_overview_agent
+from knox.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
+from knox.agents.wiki_index import make_agentic_overview_agent
 from knox.cli._progress import PipelineProgress
 from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
@@ -86,11 +86,11 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             verify_claims(
                 opts.wiki,
                 base_dir,
-                agent=VerificationAgent(
-                    model,
+                agent=make_agentic_verification_agent(
+                    model_string=model,
                     timeout=opts.pipeline_config.llm.timeout,
                     retries=opts.pipeline_config.llm.output_retries,
-                    reasoning_effort=opts.pipeline_config.llm.reasoning_effort,
+                    output_retries=opts.pipeline_config.llm.agentic_output_retries if opts.pipeline_config.llm.output_retries_enabled else None,
                 ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
             )
@@ -183,7 +183,7 @@ def verify_claims(
     wiki: CompiledWiki,
     base_dir: Path,
     *,
-    agent: VerificationAgent,
+    agent: VerificationAgent | AgenticVerificationAgent,
     verify_budget: int = 3000,
 ) -> None:
     """Run grounding verification over wiki claims.

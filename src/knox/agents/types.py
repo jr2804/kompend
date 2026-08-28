@@ -173,3 +173,36 @@ class OverviewPage:
     slug: str
     title: str
     content: str
+
+
+@dataclass
+class VerificationVerdict:
+    """A single verdict recorded by the agentic verification agent."""
+
+    claim_id: int
+    verdict: str  # "supported" | "contradicted" | "unverifiable"
+    evidence: str
+    sources: list[str] = field(default_factory=list)
+
+
+@dataclass
+class VerificationDeps:
+    """Runtime context for the agentic verification agent.
+
+    The agent fetches claims via ``get_claim()``, searches sources via
+    ``search_sources()`` and ``read_page()``, and records verdicts via
+    ``mark_verified()`` / ``mark_contradicted()`` / ``mark_unverifiable()``.
+
+    Attributes:
+        claims: List of claim dicts (id + text).
+        sources: List of source snippet dicts (slug + text).
+        pages: List of wiki page dicts (slug + content).
+        results: Collected verdicts, populated by the mark_* tools.
+    """
+
+    claims: list[dict[str, Any]]  # each: {"id": int, "text": str}
+    sources: list[dict[str, Any]] = field(default_factory=list)  # each: {"slug", "text"}
+    pages: list[dict[str, Any]] = field(default_factory=list)  # each: {"slug", "content"}
+    results: list[VerificationVerdict] = field(default_factory=list)
+    source_id: str = "verification"
+    timeout: float = 120.0

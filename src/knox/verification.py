@@ -11,9 +11,11 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from knox.agents.deps import PipelineAgentDeps
-from knox.agents.verification import VerificationAgent
+from knox.agents.types import VerificationDeps
+from knox.agents.verification import AgenticVerificationAgent, VerificationAgent
 from knox.core.config._core import DEFAULTS
 from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
 from knox.core.paths import VaultPaths
@@ -53,7 +55,7 @@ def verify_wiki(
     wiki: CompiledWiki,
     base_dir: Path,
     *,
-    agent: VerificationAgent,
+    agent: VerificationAgent | AgenticVerificationAgent,
     verify_budget: int = 3000,
     min_ngram: int = 3,
 ) -> VerificationResult:
@@ -62,8 +64,12 @@ def verify_wiki(
         sources_dir = base_dir
 
     result = VerificationResult()
-    for node in wiki.nodes:
-        result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
+    if isinstance(agent, AgenticVerificationAgent):
+        result.claims.extend(_verify_wiki_agentic(wiki, sources_dir, agent))
+    else:
+        for node in wiki.nodes:
+            result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
+
 
     result.total = len(result.claims)
     result.verified = sum(1 for c in result.claims if c.verdict == "supported")
@@ -75,6 +81,56 @@ def verify_wiki(
     report_file.parent.mkdir(parents=True, exist_ok=True)
     report_file.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
     return result
+
+
+def _verify_wiki_agentic(
+    wiki: CompiledWiki, sources_dir: Path, agent: AgenticVerificationAgent
+) -> list[ClaimVerification]:
+    """Run a single agentic verification session over all claims.
+
+    Builds claim/source/page lists from the wiki, runs the agent once,
+    then maps the collected verdicts back to ``ClaimVerification`` rows.
+    Claims with no citation or unfound sources are still emitted as
+    ``unsupported`` so the result table stays complete.
+    """
+    claim_dicts: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    pages: list[dict[str, Any]] = []
+    claim_to_node: dict[int, tuple[str, Citation | None]] = {}
+
+    claim_id = 0
+    for node in wiki.nodes:
+        for claim_text in _split_claims(node.content or ""):
+            citations = extract_citations(node.content or "")
+            citation = citations[0] if citations else None
+            claim_dicts.append({"id": claim_id, "text": claim_text})
+            claim_to_node[claim_id] = (node.id, citation)
+            if citation:
+                excerpt = _load_excerpt(citation.source, sources_dir)
+                if excerpt:
+                    sources.append({"slug": citation.source, "text": excerpt[:5000]})
+            pages.append({"slug": node.id, "content": node.content or ""})
+            claim_id += 1
+
+    deps = VerificationDeps(claims=claim_dicts, sources=sources, pages=pages)
+    try:
+        agent.run(deps)
+    except Exception:
+        logger.debug("Agentic verification failed", exc_info=True)
+    verdicts = {v.claim_id: v for v in deps.results}
+
+    results: list[ClaimVerification] = []
+    for cid in range(claim_id):
+        node_id, citation = claim_to_node.get(cid, ("unknown", None))
+        verdict = verdicts.get(cid)
+        if verdict is None:
+            results.append(ClaimVerification(node_id, "", citation, "unverified", 0.0, "no verdict"))
+        else:
+            confidence = 0.9 if verdict.verdict == "supported" else 0.5 if verdict.verdict == "contradicted" else 0.1
+            results.append(ClaimVerification(
+                node_id, "", citation, verdict.verdict, confidence, verdict.evidence
+            ))
+    return results
 
 
 def verify_node(
