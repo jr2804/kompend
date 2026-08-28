@@ -229,3 +229,28 @@ class WriteDeps:
     page_content: str = ""
     source_id: str = "write"
     timeout: float = 120.0
+
+
+@dataclass
+class ContextChunkDeps:
+    """Runtime context for the agentic context-chunk enrichment agent.
+
+    The agent iterates over chunks and enriches each with situating context.
+    Final context strings are collected in ``results`` keyed by chunk_id.
+
+    Attributes:
+        doc_title: The document title.
+        doc_summary: Brief summary of the document (for context injection).
+        chunks: List of chunk dicts (id, heading_chain, text).
+        results: Collected context strings keyed by chunk_id.
+        source_id: Identifier for the document being chunked.
+        timeout: Per-call timeout in seconds.
+    """
+
+    doc_title: str
+    doc_summary: str
+    chunks: list[dict[str, Any]]  # each: {"id": int, "heading_chain": list[str], "text": str}
+    results: dict[int, str] = field(default_factory=dict)
+    source_id: str = "context_chunk"
+    timeout: float = 120.0
+    current_chunk: dict[str, Any] | None = None

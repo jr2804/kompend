@@ -16,8 +16,12 @@ Config keys (under ``[search.contextual]``):
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from knox.agents.context_chunk import ContextChunkAgent
+from knox.agents.context_chunk_agentic import AgenticContextChunkAgent
 from knox.agents.deps import PipelineAgentDeps
+from knox.agents.types import ContextChunkDeps
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_DOC_HEADINGS, DISPLAY_EXCERPT_CHARS
 from knox.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
@@ -36,7 +40,10 @@ class ContextualEnricher:
     carries the document narrative rather than just a fragment.
     """
 
-    def __init__(self, agent: ContextChunkAgent | None = None) -> None:
+    def __init__(
+        self,
+        agent: ContextChunkAgent | AgenticContextChunkAgent | None = None,
+    ) -> None:
         self._agent = agent
         self._template_loader: TemplateLoader = get_template_loader()
 
@@ -64,12 +71,60 @@ class ContextualEnricher:
         doc_title = doc.title or doc.source_file.stem
         doc_summary = self._summarize_document(doc)
 
+        if isinstance(self._agent, AgenticContextChunkAgent):
+            return self._enrich_tree_agentic(tree, leaves, doc_title, doc_summary)
+
         for leaf in leaves:
             context = self._build_context(leaf, doc_title, doc_summary)
             leaf.contextual_context = context
 
         logger.debug(
             "Contextual enricher: enriched %d leaves for %s",
+            len(leaves),
+            doc_title,
+        )
+        return tree
+
+    def _enrich_tree_agentic(
+        self,
+        tree: ChunkTree,
+        leaves: list[ChunkNode],
+        doc_title: str,
+        doc_summary: str,
+    ) -> ChunkTree:
+        """Enrich all leaves in a single agentic session."""
+        if not isinstance(self._agent, AgenticContextChunkAgent):
+            raise TypeError("AgenticContextChunkAgent expected")
+        chunks: list[dict[str, Any]] = []
+        for leaf in leaves:
+            heading_chain = " > ".join(h for h in (leaf.heading_chain or []) if h) or "document root"
+            excerpt_limit = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
+            text = ""
+            if leaf.chunk:
+                text = leaf.chunk.text[:excerpt_limit]
+            elif leaf.structured:
+                text = str(leaf.structured)[:excerpt_limit]
+            chunks.append({"id": id(leaf), "heading_chain": heading_chain, "text": text})
+
+        deps = ContextChunkDeps(
+            doc_title=doc_title,
+            doc_summary=doc_summary,
+            chunks=chunks,
+            source_id=doc_title,
+            timeout=120,
+        )
+        try:
+            self._agent.run(deps)
+        except Exception as exc:
+            logger.debug("Agentic contextual enrichment failed for %s: %s", doc_title, exc)
+
+        for leaf in leaves:
+            context = deps.results.get(id(leaf))
+            if context:
+                leaf.contextual_context = context
+
+        logger.debug(
+            "Contextual enricher (agentic): enriched %d leaves for %s",
             len(leaves),
             doc_title,
         )
@@ -107,7 +162,8 @@ class ContextualEnricher:
             deps = PipelineAgentDeps(text=rendered, source_id=heading_chain, timeout=120)
             if self._agent is None:
                 raise RuntimeError("ContextChunkAgent not initialized")
-            result = self._agent.run(deps)
+            agent = cast("ContextChunkAgent", self._agent)
+            result = agent.run(deps)
             context = result.strip()
             if context:
                 return context
