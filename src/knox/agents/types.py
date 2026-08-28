@@ -254,3 +254,23 @@ class ContextChunkDeps:
     source_id: str = "context_chunk"
     timeout: float = 120.0
     current_chunk: dict[str, Any] | None = None
+
+@dataclass
+class SummarizerDeps:
+    """Runtime context for the agentic summarizer agent.
+
+    The agent iterates over internal chunk nodes and writes a summary for each.
+
+    Attributes:
+        nodes: List of node dicts (id, heading_chain, content).
+        results: Collected summaries keyed by node id.
+        source_id: Identifier for the tree being summarized.
+        timeout: Per-call timeout in seconds.
+    """
+
+    nodes: list[dict[str, Any]]  # each: {"id": str, "heading_chain": str, "content": str}
+    results: dict[str, str] = field(default_factory=dict)
+    source_id: str = "summarizer"
+    timeout: float = 120.0
+    current_node: dict[str, Any] | None = None
+

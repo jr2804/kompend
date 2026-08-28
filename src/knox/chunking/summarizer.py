@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Any
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.summarizer import SummarizerAgent
+from knox.agents.summarizer_agentic import AgenticSummarizerAgent
+from knox.agents.types import SummarizerDeps
 from knox.core.cache.store import CacheStore
 from knox.core.models import ChunkNode, ChunkStrategy, ChunkTree
 from knox.core.models.structured import structured_to_text
@@ -85,6 +88,9 @@ class NodeSummarizer:
         if tree.strategy == ChunkStrategy.SINGLE_PASS:
             return tree
 
+        if isinstance(self._agent, AgenticSummarizerAgent):
+            return self._summarize_agentic(tree)
+
         for node in reversed(list(tree.walk())):
             if node.chunk is not None:
                 continue
@@ -99,6 +105,62 @@ class NodeSummarizer:
                 continue
             node.summary = self._summarize_node(tree, node)
 
+        return tree
+
+    def _summarize_agentic(self, tree: ChunkTree) -> ChunkTree:
+        """Summarize all eligible internal nodes in a single agentic session."""
+        if not isinstance(self._agent, AgenticSummarizerAgent):
+            raise TypeError("AgenticSummarizerAgent expected")
+        eligible: list[ChunkNode] = []
+        for node in reversed(list(tree.walk())):
+            if node.chunk is not None or node.structured is not None:
+                continue
+            if self._skip_single_child and len(node.children_ids) <= 1:
+                if len(node.children_ids) == 0:
+                    continue
+                child = tree.nodes.get(node.children_ids[0])
+                if child is not None:
+                    node.summary = child.summary or ""
+                continue
+            eligible.append(node)
+
+        if not eligible:
+            return tree
+
+        nodes_payload: list[dict[str, Any]] = []
+        for node in eligible:
+            parts: list[str] = []
+            for child_id in node.children_ids:
+                child = tree.nodes.get(child_id)
+                if child is None:
+                    continue
+                text = self._child_content(tree, child)
+                if text:
+                    parts.append(text)
+            content = "\n\n".join(parts)
+            if len(content) > self._max_content_chars:
+                content = content[: self._max_content_chars]
+            heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
+            cached = self._cache_lookup(content, heading_chain)
+            if cached is not None:
+                node.summary = cached
+                continue
+            nodes_payload.append({"id": node.id, "heading_chain": heading_chain, "content": content})
+
+        if nodes_payload:
+            deps = SummarizerDeps(nodes=nodes_payload, source_id=tree.root_id, timeout=120.0)
+            try:
+                self._agent.run(deps)
+            except Exception as exc:
+                logger.warning("Agentic summarizer failed: %s", exc)
+            for node in eligible:
+                summary = deps.results.get(node.id)
+                if summary:
+                    node.summary = summary
+                    heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
+                    content = next((n["content"] for n in nodes_payload if n["id"] == node.id), "")
+                    if content:
+                        self._cache_store(content, heading_chain, summary)
         return tree
 
     def _summarize_node(self, tree: ChunkTree, node: ChunkNode) -> str:
