@@ -10,7 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from knox.agents.lint import LintRuleAgent
-from knox.agents.remediate import RemediationAgent
+from knox.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from knox.agents.types import RemediationDeps, RemediationPageResult
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.schema import Concept, Entity
 from knox.core.config.rumdl import resolve_rumdl_config
@@ -1036,6 +1037,96 @@ class TestCoverageGapRemediation:
         assert (output_dir / "concepts" / "polqa.md").exists()
 
 
+class TestAgenticRemediation:
+    """Agentic remediation agent: one multi-turn session for all gaps."""
+
+    def test_agentic_one_session_for_all_gaps(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A single agent.run() call should cover every matched gap."""
+        monkeypatch.setattr(
+            gaps_module,
+            "load_all_extractions",
+            lambda b, s: {
+                "doc1": Extraction(
+                    source="doc1",
+                    concepts=[
+                        Concept(name="Active Noise Control", definition="ANC"),
+                        Concept(name="POLQA", definition="Speech quality"),
+                    ],
+                )
+            },
+        )
+        agent = _mock_agentic_remediation(
+            pages=[
+                ("Active Noise Control", "# ANC\n..."),
+                ("POLQA", "# POLQA\n..."),
+            ]
+        )
+        wiki = _make_wiki([])
+        output_dir = tmp_path / "wiki"
+        actions = remediate(
+            wiki,
+            LintReport(
+                results=[
+                    _gap_result("Active Noise Control"),
+                    _gap_result("POLQA"),
+                ]
+            ),
+            base_dir=tmp_path,
+            output_dir=output_dir,
+            agent=agent,
+        )
+        # ONE call to agent.run() covers BOTH gaps (collapses N→1).
+        assert agent.run.call_count == 1
+        applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
+        assert {a.details["concept"] for a in applied} == {"Active Noise Control", "POLQA"}
+        assert {n.id for n in wiki.nodes} == {"active-noise-control", "polqa"}
+        assert (output_dir / "concepts" / "active-noise-control.md").exists()
+        assert (output_dir / "concepts" / "polqa.md").exists()
+
+    def test_agentic_records_unfixable(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Gaps the agent declines land as SKIPPED with the agent's reason."""
+        monkeypatch.setattr(
+            gaps_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Active Noise Control", definition="ANC")])},
+        )
+        agent = MagicMock(spec=AgenticRemediationAgent)
+
+        def _run(deps: RemediationDeps) -> None:
+            deps.gaps.mark_unfixable("Active Noise Control", "no usable source material")
+
+        agent.run.side_effect = _run
+        actions = remediate(
+            _make_wiki([]),
+            LintReport(results=[_gap_result("Active Noise Control")]),
+            base_dir=tmp_path,
+            agent=agent,
+        )
+        skipped = [a for a in actions if a.status == RemediationStatus.SKIPPED]
+        assert len(skipped) == 1
+        assert skipped[0].details["concept"] == "Active Noise Control"
+        assert skipped[0].details["reason"] == "no usable source material"
+        assert "unfixable" in skipped[0].category
+
+    def test_agentic_run_failure_does_not_raise(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """An exception inside the agent is caught and surfaced as SKIPPED, not propagated."""
+        monkeypatch.setattr(
+            gaps_module,
+            "load_all_extractions",
+            lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="POLQA", definition="Speech quality")])},
+        )
+        agent = MagicMock(spec=AgenticRemediationAgent)
+        agent.run.side_effect = RuntimeError("boom")
+        actions = remediate(
+            _make_wiki([]),
+            LintReport(results=[_gap_result("POLQA")]),
+            base_dir=tmp_path,
+            agent=agent,
+        )
+        # No exception propagated; no applied actions either.
+        assert [a for a in actions if a.status == RemediationStatus.APPLIED] == []
+
+
 class TestCoverageGapRuleDedup:
     """Cross-batch dedup of semantically equivalent coverage gaps."""
 
@@ -1143,9 +1234,22 @@ class TestRumdlConfigResolution:
         assert resolve_rumdl_config(tmp_path, ".knox/rumdl.toml") == tmp_path / ".knox" / "rumdl.toml"
 
 
+def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:
+    """Mock AgenticRemediationAgent whose ``run`` populates ``deps.pages``."""
+    agent = MagicMock(spec=AgenticRemediationAgent)
+    pages = pages or []
+
+    def _run(deps: object) -> None:
+        for name, content in pages:
+            deps.pages.append(RemediationPageResult(name=name, content=content))  # type: ignore[union-attr]
+
+    agent.run.side_effect = _run
+    return agent
+
+
 def _make_wiki(nodes: list[WikiNode] | None = None, **kwargs: Any) -> CompiledWiki:
     return CompiledWiki(
-        nodes=nodes or [_make_node()],
+        nodes=list(nodes or []),
         edges=kwargs.get("edges", []),
         toc=kwargs.get("toc", []),
         metadata=kwargs.get("metadata", {}),
