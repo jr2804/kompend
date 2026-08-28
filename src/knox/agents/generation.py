@@ -32,10 +32,8 @@ from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.agent.abstract import AgentRetries
-from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
-from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
-from pydantic_ai_harness.memory import InMemoryStore, Memory
 
+from knox.agents.agentic_harness import AgenticHarness
 from knox.agents.base import KnoxAgentBase
 from knox.agents.types import GenerationDeps, ToolGenerationDeps
 from knox.compilation.gen_tools import build_gen_tools
@@ -116,9 +114,9 @@ def make_agentic_generation_agent(
 ) -> AgenticGenerationAgent:
     """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
 
-    Injects ``Memory`` (InMemoryStore), ``SlidingWindowCompaction``, and
-    ``ClampOversizedMessages`` as extra capabilities, and registers the
-    ``read_segment()`` / ``fetch_concepts()`` tools.
+    Injects standard agentic capabilities via :class:`AgenticHarness`
+    (``Memory`` + ``SlidingWindowCompaction`` + ``ClampOversizedMessages``)
+    and registers the ``read_segment()`` / ``fetch_concepts()`` tools.
 
     Retry budgets are passed as a pydantic-ai ``AgentRetries`` dict so output
     validation and tool calls get independent ceilings. ``retries`` is the
@@ -127,18 +125,8 @@ def make_agentic_generation_agent(
     agents (default = ``compile.llm.agentic_output_retries``, higher because
     agentic turns invalidate more often on small models).
     """
-    # Derive compaction thresholds from the model's context window.
-    # SlidingWindowCompaction uses max_fraction so the harness resolves
-    # the real window per-request from the model's pricing entry.
-    # ClampOversizedMessages needs an absolute token cap, so we
-    # compute it from the known window (or the conservative default).
-    _ctx = context_window or DEFAULT_CONTEXT_WINDOW
-    capabilities = [
-        Memory(store=InMemoryStore(), agent_name="generation"),
-        SlidingWindowCompaction(max_fraction=0.6, context_window=context_window),
-        ClampOversizedMessages(max_part_tokens=_ctx // 4),
-    ]
     agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation")
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,
@@ -151,7 +139,7 @@ def make_agentic_generation_agent(
         context_window=context_window,
         rlm=rlm,
         tools=build_gen_tools(),  # type: ignore[arg-type]
-        extra_capabilities=capabilities,
+        extra_capabilities=harness.build_capabilities(),
     )
 
 
