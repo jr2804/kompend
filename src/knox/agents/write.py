@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from pydantic_ai.agent.abstract import AgentRetries
+
+from knox.agents.agentic_harness import AgenticHarness
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
+from knox.agents.types import WriteDeps
+from knox.compilation.write_tools import build_write_tools
+from knox.core.config._configs import RlmConfig
 
 
 class WriteAgent(KnoxAgentBase[str, PipelineAgentDeps]):
@@ -23,3 +29,42 @@ class WriteAgent(KnoxAgentBase[str, PipelineAgentDeps]):
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
         """Return the pre-rendered prompt from deps.text."""
         return deps.text
+
+
+class AgenticWriteAgent(KnoxAgentBase[str, WriteDeps]):
+    """Agentic write agent — sources loaded on demand via tools."""
+
+    template_name: ClassVar[str] = "write_agentic_prompt.md.j2"
+    system_template_name: ClassVar[str] = "write_agentic_system.md.j2"
+    template_prefix: ClassVar[str] = "capture/"
+
+    def render_user_prompt(self, deps: WriteDeps) -> str:  # noqa: PLR6301
+        """Return the page title as a one-line task description."""
+        return f"Write the wiki page titled: {deps.page_title}"
+
+
+def make_agentic_write_agent(
+    model_string: str,
+    *,
+    timeout: float = 120.0,
+    skills: dict[str, str] | None = None,
+    retries: int = 2,
+    output_retries: int | None = None,
+    context_window: int | None = None,
+    rlm: RlmConfig | None = None,
+) -> AgenticWriteAgent:
+    """Build an :class:`AgenticWriteAgent` with the standard agentic capabilities."""
+    agent_retries: int | AgentRetries = (
+        {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    )
+    harness = AgenticHarness(context_window=context_window, memory_agent_name="write")
+    return AgenticWriteAgent(
+        model_string=model_string,
+        timeout=timeout,
+        skills=skills or {},
+        retries=agent_retries,
+        context_window=context_window,
+        rlm=rlm,
+        tools=build_write_tools(),
+        extra_capabilities=harness.build_capabilities(),  # type: ignore[arg-type]
+    )

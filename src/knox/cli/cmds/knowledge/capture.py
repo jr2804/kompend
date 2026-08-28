@@ -9,9 +9,9 @@ from typing import Any
 import typer
 
 from knox.agents.capture import CaptureAgent
-from knox.agents.deps import PipelineAgentDeps
 from knox.agents.distill import DistillAgent
-from knox.agents.write import WriteAgent
+from knox.agents.types import WriteDeps
+from knox.agents.write import make_agentic_write_agent
 from knox.capture.capture import capture
 from knox.capture.distill import distill
 from knox.capture.learn import learn
@@ -23,7 +23,6 @@ from knox.core.config import resolve_config
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
-from knox.core.templates import get_template_loader
 from knox.core.utils.time import iso_local
 from knox.llm.format import strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
@@ -261,26 +260,21 @@ def _synthesize_write_page(
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
 
-    agent = WriteAgent(
-        model,
+    agent = make_agentic_write_agent(
+        model_string=model,
         timeout=timeout,
-        retries=2,
     )
-    source_block = "\n\n".join(f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts)
-    loader = get_template_loader()
-    prompt = loader.render(
-        "capture/write_prompt.md.j2",
+    source_texts_tuples = [(stem, text[:source_char_max]) for stem, text in source_texts]
+    deps = WriteDeps(
         page_title=page_title,
-        source_block=source_block,
-    )
-    deps = PipelineAgentDeps(
-        text=prompt,
+        source_texts=source_texts_tuples,
+        related_titles=related_titles,
         source_id="write",
         timeout=timeout,
     )
     try:
         content = agent.run(deps)
-        content = strip_reasoning(content)
+        content = strip_reasoning(content) if isinstance(content, str) else content
         if content.strip():
             return content.strip() + "\n\n" + references_section
         raise RuntimeError("LLM returned empty content for write page")

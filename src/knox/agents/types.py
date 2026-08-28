@@ -206,3 +206,26 @@ class VerificationDeps:
     results: list[VerificationVerdict] = field(default_factory=list)
     source_id: str = "verification"
     timeout: float = 120.0
+
+
+@dataclass
+class WriteDeps:
+    """Runtime context for the agentic write agent.
+
+    The agent pulls source texts on demand via ``read_source()`` /
+    ``list_sources()``, retrieves related titles via ``read_related()``,
+    and submits the final page via ``save_page()``.
+
+    Attributes:
+        page_title: The page title to write.
+        source_texts: List of (stem, text) tuples.
+        related_titles: List of related wiki page titles.
+        page_content: The agent's submitted page content.
+    """
+
+    page_title: str
+    source_texts: list[tuple[str, str]]  # (stem, text)
+    related_titles: list[str] = field(default_factory=list)
+    page_content: str = ""
+    source_id: str = "write"
+    timeout: float = 120.0
