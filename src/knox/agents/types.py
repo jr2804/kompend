@@ -354,3 +354,25 @@ class DistillAgentDeps:
     source_id: str = "distill"
     timeout: float = 120.0
     current_group: dict[str, Any] | None = None
+
+@dataclass
+class QueryAgentDeps:
+    """Runtime context for the agentic query agent.
+
+    The agent iterates over sub-questions and pages to synthesize an answer.
+
+    Attributes:
+        question: The original question to answer.
+        sub_questions: List of sub-questions to investigate.
+        results: Collected answer fragments keyed by sub-question index.
+        source_id: Identifier for tracking.
+        timeout: Per-call timeout in seconds.
+    """
+
+    question: str
+    sub_questions: list[str]
+    results: dict[int, str] = field(default_factory=dict)
+    source_id: str = "query"
+    timeout: float = 120.0
+    current_sub_question: str | None = None
+
