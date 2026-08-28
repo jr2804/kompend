@@ -274,3 +274,24 @@ class SummarizerDeps:
     timeout: float = 120.0
     current_node: dict[str, Any] | None = None
 
+@dataclass
+class ExtractionAgentDeps:
+    """Runtime context for the agentic extraction agent.
+
+    The agent iterates over source sections and extracts data from each.
+
+    Attributes:
+        source: Identifier for the source being extracted.
+        sections: List of section text strings.
+        extractions: Collected extraction JSON keyed by section index.
+        source_id: Identifier for logging/tracking.
+        timeout: Per-call timeout in seconds.
+    """
+
+    source: str
+    sections: list[str]
+    extractions: dict[int, str] = field(default_factory=dict)
+    source_id: str = "extraction"
+    timeout: float = 120.0
+    current_section: str | None = None
+

@@ -1,0 +1,16 @@
+---
+variables:
+  - name: source
+    required: true
+  - name: num_sections
+    required: true
+role: compile.extract.agentic
+response_format: json_object
+---
+
+Extract structured knowledge from the source "{{ source }}".
+The source is divided into {{ num_sections }} sections.
+Use get_section(section_id) to load a section's text, then
+save_extraction(section_id, data) to record your extraction as JSON.
+
+Process all sections in order. When done, reply "done".
