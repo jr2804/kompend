@@ -83,13 +83,19 @@ def _configure_logfire() -> None:
     """Enable Logfire instrumentation once per process (called from main())."""
     if os.environ.get(EnvVar.LOGFIRE_DISABLED, "").strip().lower() in ("1", "true", "yes"):
         return
-    # logfire fans traces out to a standard OTLP exporter when the ambient
-    # OTEL_EXPORTER_OTLP_ENDPOINT env var is set (logfire config.py:1469). A
-    # stale collector endpoint from unrelated shell tooling (e.g. Copilot's
-    # local collector) then receives knox spans and retries against a dead
-    # port. knox has its own collector path (agents/instrument.py, gated on
-    # KNOX_OTEL_ENABLED), so ambient OTel vars must not divert logfire traces.
+    # logfire fans telemetry out to standard OTLP exporters when the ambient
+    # OTEL_EXPORTER_OTLP_ENDPOINT env var is set (logfire config.py:1469).
+    # Each signal (traces/metrics/logs) has its own switch, all defaulting to
+    # enabled. A stale collector endpoint from unrelated shell tooling
+    # (e.g. Copilot's local collector, injected per-window into VS Code
+    # terminals — never on disk) then receives knox telemetry and retries
+    # against a dead port. knox has its own collector path
+    # (agents/instrument.py, gated on KNOX_OTEL_ENABLED), so ambient OTel vars
+    # must not divert logfire telemetry. setdefault keeps the escape hatch:
+    # OTEL_TRACES_EXPORTER=otlp (etc.) explicitly re-enables fan-through.
     os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
+    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
+    os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
     logfire.configure(
         service_name="knox",
         environment="staging",
