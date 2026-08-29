@@ -323,7 +323,7 @@ def _make_rlm_query(
             guard=guard,
             source_id=f"{source_id}#rlm{guard.nodes_used}",
         )
-        child_agent = Agent(main_model, output_type=str, capabilities=[child])
+        child_agent = Agent(main_model, output_type=str, capabilities=[child], name="rlm-child-agent")
         deps = PipelineAgentDeps(text=ctx, source_id=child._source_id)
         result = child_agent.run_sync(prompt, deps=deps)
         return str(result.output)

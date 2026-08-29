@@ -32,6 +32,7 @@ def build_knox_agent() -> Agent[None, str]:
     return Agent(
         "noop",
         instructions="You are a KNOX knowledge base assistant.",
+        name="acp-session-agent",
     )
 
 

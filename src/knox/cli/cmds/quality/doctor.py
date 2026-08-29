@@ -301,6 +301,7 @@ def _check_structured_output(
             output_type=_CapabilityCheck,
             retries=retries or 1,
             model_settings=ModelSettings(timeout=timeout, max_tokens=128),
+            name=f"doctor-structured-output-{label}",
         )
         start = monotonic()
         result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")

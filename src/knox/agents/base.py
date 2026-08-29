@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import typing
 from abc import ABC
 from dataclasses import dataclass, field
@@ -400,6 +401,10 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 model_settings=model_settings,
                 retries=self.retries,
                 capabilities=capabilities or None,
+                # Descriptive agent name for observability (gen_ai.agent.name):
+                # kebab-cased subclass name, e.g. AgenticGenerationAgent ->
+                # "agentic-generation-agent".
+                name=_agent_name(type(self).__name__),
             ),
         )
         if type(self).validate_output is not KnoxAgentBase.validate_output:
@@ -625,6 +630,19 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if dataclasses.is_dataclass(deps) and not isinstance(deps, type):
             return {f.name: getattr(deps, f.name) for f in dataclasses.fields(deps) if not f.name.startswith("_")}
         return {}
+
+
+# ── Agent naming ───────────────────────────────────────────────────────
+
+
+def _agent_name(class_name: str) -> str:
+    """Derive a descriptive observability name from the agent class name.
+
+    CamelCase -> kebab-case: ``AgenticGenerationAgent`` ->
+    ``agentic-generation-agent``. Feeds pydantic-ai's ``Agent(name=...)`` so
+    Logfire's ``gen_ai.agent.name`` attribute identifies each agent.
+    """
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", class_name).lower()
 
 
 # ── Delta-retry helpers ────────────────────────────────────────────────
