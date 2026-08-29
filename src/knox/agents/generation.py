@@ -126,7 +126,7 @@ def make_agentic_generation_agent(
     agentic turns invalidate more often on small models).
     """
     agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation")
+    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation", memory=False)
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,
