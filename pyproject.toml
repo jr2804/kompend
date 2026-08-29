@@ -59,7 +59,7 @@ dependencies = [
     "unrar2-cffi>=0.5.0",
     "json-repair[schema]>=0.61.2",
     "tenacity>=9.0.0",
-    "logfire>=4.37.0",
+    "logfire[system-metrics]>=4.37.0",
     "pydantic-ai-harness[acp]>=0.7.0",
     "models-dev>=1.0.398",
     "ollama>=0.6.2",
@@ -109,6 +109,7 @@ otel = [
 [dependency-groups]
 
 dev = [
+    "logfire[system-metrics]>=4.41.0",
     "mkdocs-material>=9.7.6",
     "pytest>=8.0.0",
     "pytest-asyncio>=1.4.0",

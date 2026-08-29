@@ -15,6 +15,7 @@ import os
 import sys
 from importlib.metadata import version
 
+import logfire
 import typer
 
 from knox.core.config.keys import EnvVar
@@ -75,11 +76,23 @@ app = typer.Typer(
 )
 
 
+# Logfire instrumentation: configure() must run before instrument_pydantic_ai().
+# We point at "knox" + "staging" so traces land in the starter project on
+# logfire-eu. Respects KNOX_LOGFIRE_DISABLED and LOGFIRE_TOKEN.
+def _configure_logfire() -> None:
+    """Enable Logfire instrumentation once per process (called from main())."""
+    if os.environ.get(EnvVar.LOGFIRE_DISABLED, "").strip().lower() in ("1", "true", "yes"):
+        return
+    logfire.configure(
+        service_name="knox",
+        environment="staging",
+        send_to_logfire="if-token-present",
+    )
+    logfire.instrument_pydantic_ai()
+
+
 #: Module-level holder for the run handle, written by :func:`_callback`
 #: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
-_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
-
-
 _run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
 
 
@@ -126,6 +139,7 @@ def _get_version() -> str:
 
 def main() -> None:
     """Entry point for the CLI application."""
+    _configure_logfire()
     configure_logging()
     _configure_streams_utf8()
     _register_for_argv(sys.argv[1:])

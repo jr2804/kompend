@@ -138,8 +138,21 @@ To validate later, set `OTEL_TRACES_SAMPLER=always_on` to capture everything.
 
 The instrumentation is powered by the **pydantic-ai** framework, which has
 built-in support for [Logfire](https://pydantic.dev/logfire) (the observability
-platform from the pydantic team). If you prefer a managed SaaS experience,
-Logfire provides a polished UI and requires only:
+platform from the pydantic team). Logfire is the recommended observability
+backend for knox — it captures agent runs, tool calls, and LLM request/response
+spans out of the box with no extra configuration.
+
+Enable it by setting `KNOX_LOGFIRE_ENABLED=true` (or installing the `logfire`
+package and running `logfire auth`). knox auto-configures Logfire at startup:
+
+```bash
+export KNOX_LOGFIRE_ENABLED=true
+```
+
+To disable Logfire for a specific invocation, set `KNOX_LOGFIRE_DISABLED=true`
+or pass `--no-logfire` to the CLI.
+
+For existing OTel users, Logfire also accepts OTLP endpoints:
 
 ```bash
 export KNOX_OTEL_ENABLED=true
