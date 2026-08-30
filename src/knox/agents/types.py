@@ -107,6 +107,7 @@ class RemediationDeps:
     Attributes:
         gaps: Broker over coverage-gap concepts matched to cached
             extraction buckets.
+        source_id: Provenance / log label for the remediation run.
         timeout: Per-call timeout in seconds.
         dry_run: When ``True``, the caller records would-be actions
             instead of writing nodes.
@@ -115,6 +116,7 @@ class RemediationDeps:
     """
 
     gaps: GapBrokerProtocol
+    source_id: str = "remediation"
     timeout: float = 120.0
     dry_run: bool = False
     pages: list[RemediationPageResult] = field(default_factory=list)
@@ -129,12 +131,14 @@ class OverviewDeps:
 
     Attributes:
         pages: Ordered list of page summaries (slug, title, content).
+        source_id: Provenance / log label for the overview run.
         timeout: Per-call timeout in seconds.
         overview: The submitted overview text, populated by the
             ``save_overview`` tool.
     """
 
     pages: list[OverviewPage]
+    source_id: str = "overview"
     timeout: float = 120.0
     overview: str = ""
 
