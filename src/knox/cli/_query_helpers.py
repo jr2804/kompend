@@ -23,6 +23,7 @@ from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
 from knox.memory import MemoryStore
 from knox.output.vault import VaultWriter
+from knox.rag import build_vector_index
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
@@ -61,6 +62,26 @@ def open_vector_store(
     if not model:
         logger.debug("No embedding model available; skipping vector store")
         return None
+
+    # Sidecar index can go stale when a wiki is recompiled (new/changed pages)
+    # without a matching re-index. Detect via the build-time id manifest and
+    # rebuild transparently so queries never silently fall back to keyword.
+    if ZvecWikiStore(db_file=db_file).is_stale(wiki):
+        logger.info("Vector index stale (wiki changed) — rebuilding with %s", model)
+        try:
+            build_vector_index(
+                wiki,
+                knox_dir,
+                embed_model=model,
+                base_dir=knox_dir.parent,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not rebuild stale vector index (%s); queries may fall back to keyword search: %s",
+                db_file,
+                exc,
+                exc_info=True,
+            )
     try:
         return ZvecWikiStore.open(db_file, embedding_model=model)
     except Exception as exc:

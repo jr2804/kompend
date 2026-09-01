@@ -191,6 +191,28 @@ class ZvecWikiStore:
                 self._collection.flush()
             self._collection = None
 
+    def is_stale(self, wiki: CompiledWiki) -> bool:
+        """Return True when the store's last build doesn't match ``wiki``.
+
+        Compares the set of indexed node ids (from the build-time manifest)
+        against the current wiki's node set. A missing manifest, a corrupt
+        manifest, or any id set mismatch means the sidecar index is stale and
+        must be rebuilt before it can serve the loaded wiki.
+        """
+        expected = {_safe_id(n.id) for n in wiki.nodes}
+        if not expected:
+            return True
+        manifest = self._manifest_file()
+        if not manifest.is_file():
+            return True
+        try:
+            raw = json.loads(manifest.read_text(encoding="utf-8"))
+            stored = {str(i) for i in raw}
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Vector manifest corrupt — treating store as stale: %s", manifest)
+            return True
+        return stored != expected
+
     @classmethod
     def open(
         cls,
