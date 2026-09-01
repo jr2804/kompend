@@ -77,6 +77,9 @@ nul
 plan*.md
 mcporter.json
 .mcp.json
+opencode.jsonc
+opencode.jsonl
+opencode.json
 
 # Pandoc installer (downloaded by build script, not tracked)
 *.msi

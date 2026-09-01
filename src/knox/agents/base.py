@@ -112,6 +112,18 @@ class AgentDeps(Protocol):
     timeout: float
 
 
+def _context_usage_str(tracker: UsageTracker | None) -> str:
+    """Format the last-known context-window utilization for failure logs.
+
+    Returns an empty string when no context snapshot was recorded (capability
+    disabled or no request reached ``before_model_request``).
+    """
+    if tracker is None or tracker.context_budget <= 0:
+        return ""
+    pct = 100 * tracker.context_tokens / tracker.context_budget
+    return f" (context: {tracker.context_tokens}/{tracker.context_budget} tokens, {pct:.0f}%)"
+
+
 DepsT = TypeVar("DepsT", bound=AgentDeps)
 
 
@@ -271,12 +283,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
+            ctx_info = _context_usage_str(self.usage_tracker)
             logger.warning(
-                "Agent '%s' failed on '%s': %s%s",
+                "Agent '%s' failed on '%s': %s%s%s",
                 type(self).__name__,
                 deps.source_id,
                 exc,
                 debug_hint,
+                ctx_info,
             )
             raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output
@@ -308,12 +322,14 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
+            ctx_info = _context_usage_str(self.usage_tracker)
             logger.warning(
-                "Agent '%s' failed on '%s': %s%s",
+                "Agent '%s' failed on '%s': %s%s%s",
                 type(self).__name__,
                 deps.source_id,
                 exc,
                 debug_hint,
+                ctx_info,
             )
             raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output, result.new_messages()
