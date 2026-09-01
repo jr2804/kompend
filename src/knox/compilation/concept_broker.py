@@ -66,6 +66,11 @@ class ConceptBroker:
     def all_consumed(self) -> bool:
         return sum(self.remaining(k) for k in self._per_caller) == 0
 
+    @classmethod
+    def caller_id(cls, segment_index: int) -> str:
+        """Canonical caller key for a segment index (single source of truth)."""
+        return _caller_id(segment_index)
+
 
 def _caller_id(segment_index: int) -> str:
     return f"seg_{segment_index}"

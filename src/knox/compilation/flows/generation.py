@@ -465,7 +465,7 @@ def generate_all_pages_agentic(
 
         deps = ToolGenerationDeps(
             source_content=content_block,
-            source_id=f"seg-{seg_idx}",
+            source_id=ConceptBroker.caller_id(seg_idx),
             pinned_facts=pinned_facts,
             categories=categories,
             known_titles=known_titles or [],
@@ -473,62 +473,83 @@ def generate_all_pages_agentic(
             timeout=compiler._timeout,
         )
 
-        try:
-            gen_output = agent.run(deps)
-        except LLMOutputError as exc:
-            logger.warning("Agentic generation failed for '%s': %s", f"seg-{seg_idx}", exc)
-            gen_output = None
-        except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
-            logger.warning("Agentic generation unexpected error for '%s': %s", f"seg-{seg_idx}", exc)
-            gen_output = None
-        debug_file = getattr(agent, "_last_debug_file", None)
+        # Force full concept coverage: small models often stop after the first
+        # fetch_concepts batch instead of looping until the broker is drained.
+        # Re-run the segment agent until its assigned concepts are exhausted,
+        # bounded by a hard cap (one pass per concept maximum).
+        seg_id = ConceptBroker.caller_id(seg_idx)
+        start_remaining = broker.remaining(seg_id)
+        cap = start_remaining + 1
+        passes = 0
+        gen_output = None
+        while broker.remaining(seg_id) > 0 and passes < cap:
+            passes += 1
+            try:
+                gen_output = agent.run(deps)
+            except LLMOutputError as exc:
+                logger.warning("Agentic generation failed for '%s': %s", seg_id, exc)
+                gen_output = None
+            except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
+                logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
+                gen_output = None
+            debug_file = getattr(agent, "_last_debug_file", None)
 
-        compiler._batch_tracker.record(failed=gen_output is None)
+            compiler._batch_tracker.record(failed=gen_output is None)
 
-        if gen_output is None:
-            logger.warning(
-                "TwoPhase: agentic %s failed — skipping (debug: %s)",
-                seg_label,
-                debug_file or "(none)",
-            )
-            continue
+            if gen_output is None:
+                logger.warning(
+                    "TwoPhase: agentic %s failed — skipping (debug: %s)",
+                    seg_label,
+                    debug_file or "(none)",
+                )
+                break
 
-        empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]
-        valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
-        if empty_pages:
-            names = ", ".join(p.title or "(untitled)" for p in empty_pages)
-            debug_hint = f" (debug: {debug_file})" if debug_file else ""
-            logger.warning(
-                "TwoPhase: agentic %s: %d/%d pages have empty content — filtered out ([%s]).%s",
-                seg_label,
-                len(empty_pages),
-                len(gen_output.pages),
-                names,
-                debug_hint,
-            )
+            empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]
+            valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
+            if empty_pages:
+                names = ", ".join(p.title or "(untitled)" for p in empty_pages)
+                debug_hint = f" (debug: {debug_file})" if debug_file else ""
+                logger.warning(
+                    "TwoPhase: agentic %s: %d/%d pages have empty content — filtered out ([%s]).%s",
+                    seg_label,
+                    len(empty_pages),
+                    len(gen_output.pages),
+                    names,
+                    debug_hint,
+                )
 
-        for idx, page in enumerate(valid_pages):
-            node_id = slugify(page.title or f"concept-{seg_idx}-{idx}", max_length=compiler._config.llm.slug_max_length)
-            kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
-            page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
-            upsert_node(
-                WikiNode(
-                    id=node_id,
-                    title=page.title or f"Concept {idx}",
-                    content=page_content,
-                    node_type=kind,
-                    metadata={
-                        MetadataField.PROVENANCE: page.provenance,
-                        MetadataField.RELATED: page.related,
-                        MetadataField.TWO_PHASE: True,
-                        "images": all_images,
-                        "frontmatter": {
-                            "title": page.title or f"Concept {idx}",
+            for idx, page in enumerate(valid_pages):
+                node_id = slugify(page.title or f"concept-{seg_idx}-{idx}", max_length=compiler._config.llm.slug_max_length)
+                kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
+                page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
+                upsert_node(
+                    WikiNode(
+                        id=node_id,
+                        title=page.title or f"Concept {idx}",
+                        content=page_content,
+                        node_type=kind,
+                        metadata={
+                            MetadataField.PROVENANCE: page.provenance,
+                            MetadataField.RELATED: page.related,
+                            MetadataField.TWO_PHASE: True,
+                            "images": all_images,
+                            "frontmatter": {
+                                "title": page.title or f"Concept {idx}",
+                            },
                         },
-                    },
-                ),
-                nodes,
-                slug_to_idx,
+                    ),
+                    nodes,
+                    slug_to_idx,
+                )
+
+        uncovered = broker.remaining(seg_id)
+        if uncovered > 0:
+            logger.warning(
+                "TwoPhase: agentic %s ended with %d concept(s) still uncovered (passes=%d, cap=%d) — these will have no page.",
+                seg_label,
+                uncovered,
+                passes,
+                cap,
             )
 
     compiler._report(num_segments, num_segments, "generating complete")
