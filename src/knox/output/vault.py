@@ -433,6 +433,16 @@ class VaultWriter(BaseOutputWriter):
             for stem in node.metadata.get(MetadataField.PROVENANCE) or []:
                 feeds.setdefault(Path(str(stem)).stem, []).append(node.title or node.id)
 
+        # LLM extraction summary text per source (keyed by vault-relative
+        # path), so each summary page carries the semantic extract instead of
+        # frontmatter + asset counts alone. Skipped when unavailable (e.g.
+        # non-extractive caches).
+        summary_by_key = {
+            str(s.get("source", "")): str(s.get("summary", "")).strip()
+            for s in wiki.metadata.get("extraction_stats") or []
+            if str(s.get("summary", "")).strip()
+        }
+
         summaries_dir = output_dir / SUMMARIES_SUBDIR
         summaries_dir.mkdir(parents=True, exist_ok=True)
         existing = {p.stem for p in summaries_dir.glob("*.md")}
@@ -465,6 +475,12 @@ class VaultWriter(BaseOutputWriter):
                 f"**File:** `{key}`",
                 "",
             ]
+
+            summary = summary_by_key.get(key)
+            if summary:
+                lines.append("## Summary\n")
+                lines.append(summary)
+                lines.append("")
 
             # Backlinks: concepts this source feeds.
             fed = sorted(set(feeds.get(stem, [])))
