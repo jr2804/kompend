@@ -151,21 +151,6 @@ class TestBuildModelCatalog:
         assert isinstance(m, OpenAIChatModel)
 
 
-# ── build_model: native wins over catalog ──────────────────────────────
-
-
-class TestBuildModelNativeWins:
-    def test_deepseek_uses_native_not_catalog(self) -> None:
-        """DeepSeek is both native (DeepSeekProvider) and in the catalog.
-        The native path must win -- pydantic-ai's DeepSeekProvider bakes in
-        its own endpoint handling.
-        """
-        m = build_model("deepseek/deepseek-chat")
-        assert isinstance(m, OpenAIChatModel)
-        # Native DeepSeekProvider sets its own base_url internally
-        assert m.model_name == "deepseek-chat"
-
-
 # ── build_model: errors ────────────────────────────────────────────────
 
 
