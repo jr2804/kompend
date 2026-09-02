@@ -598,6 +598,26 @@ class TestSourceSummaries:
         writer.write(wiki, base / "wiki")
         assert not (summaries / "gone.md").exists()
 
+    def test_same_stem_sources_get_distinct_slugs(self, tmp_path: Path) -> None:
+        """Same-stem sources (foo.doc vs foo.docx) must not overwrite each other."""
+        base = tmp_path / "vault"
+        (base / "sources").mkdir(parents=True)
+        (base / "sources" / "foo.doc").write_bytes(b"fake")
+        (base / "sources" / "foo.docx").write_bytes(b"fake")
+
+        wiki = CompiledWiki(nodes=[], edges=[], toc=[])
+        writer = MarkdownWriter(vault_mode=True, base_dir=base)
+        writer.write(wiki, base / "wiki")
+
+        summaries = base / "wiki" / "summaries"
+        files = {p.name for p in summaries.glob("*.md")}
+        assert "foo-doc.md" in files
+        assert "foo-docx.md" in files
+        assert "foo.md" not in files
+        # Each page names its own source file.
+        assert "sources/foo.doc" in (summaries / "foo-doc.md").read_text(encoding="utf-8")
+        assert "sources/foo.docx" in (summaries / "foo-docx.md").read_text(encoding="utf-8")
+
     def test_no_base_dir_no_summaries(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(nodes=[], edges=[], toc=[])
         writer = MarkdownWriter(vault_mode=True)

@@ -140,7 +140,7 @@ def compile_cmd(  # noqa: PLR0915
     verify: Verify = None,
     synthesize: SynthesizeFlag = None,
     index_store: IndexStore = None,
-    compile_lint: CompileLint = None,
+    compile_lint: CompileLint = True,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,

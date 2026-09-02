@@ -76,10 +76,11 @@ SynthesizeFlag = Annotated[
 # ── N1 compile --lint integration ───────────────────────────────────────
 
 CompileLint = Annotated[
-    bool | None,
+    bool,
     typer.Option(
         "--lint/--no-lint",
-        help="Run lint after compilation and report quality issues. Default: off.",
+        help="Run lint after compilation and report quality issues. Default: on (override with KNOX_COMPILE_LINT).",
         rich_help_panel="Output",
+        envvar="KNOX_COMPILE_LINT",
     ),
 ]

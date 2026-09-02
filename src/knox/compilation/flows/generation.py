@@ -439,12 +439,14 @@ def generate_all_pages_agentic(
         num_concepts,
         num_segments,
     )
+    gen_progress_total = num_concepts
+    pages_done = 0
     if num_segments > 0:
-        compiler._report(0, num_segments, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
+        compiler._report(0, gen_progress_total, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
 
     for seg_idx, segment in enumerate(source_segments):
         seg_label = f"segment {seg_idx + 1}/{num_segments}"
-        compiler._report(seg_idx, num_segments, f"generating [{seg_label}]")
+        compiler._report(pages_done, gen_progress_total, f"generating [{pages_done}/{gen_progress_total}] {seg_label}")
         logger.info("TwoPhase: agentic %s", seg_label)
 
         content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
@@ -542,6 +544,17 @@ def generate_all_pages_agentic(
                     slug_to_idx,
                 )
 
+            # Report page-based progress: concepts consumed from this
+            # segment's broker pool, plus all prior segments' pools.
+            done_in_seg = start_remaining - broker.remaining(seg_id)
+            compiler._report(
+                pages_done + done_in_seg,
+                gen_progress_total,
+                f"generating [{pages_done + done_in_seg}/{gen_progress_total}] {seg_label}",
+            )
+
+        pages_done += start_remaining
+
         uncovered = broker.remaining(seg_id)
         if uncovered > 0:
             logger.warning(
@@ -552,7 +565,7 @@ def generate_all_pages_agentic(
                 cap,
             )
 
-    compiler._report(num_segments, num_segments, "generating complete")
+    compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx
 
 

@@ -447,11 +447,37 @@ class VaultWriter(BaseOutputWriter):
         summaries_dir.mkdir(parents=True, exist_ok=True)
         existing = {p.stem for p in summaries_dir.glob("*.md")}
         sources_prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+
+        def _source_name(key: str) -> str:
+            return key[len(sources_prefix) :] if key.startswith(sources_prefix) else key
+
+        # Disambiguate same-stem collisions (e.g. ``foo.doc`` vs ``foo.docx``
+        # both slug to ``foo``) by appending the extension so each source gets
+        # its own page instead of silently overwriting the previous one.
+        slug_assignments: dict[str, str] = {}
+        by_base: dict[str, list[str]] = {}
+        for key in source_keys:
+            by_base.setdefault(attachment_slug(_source_name(key)), []).append(key)
+        for base, keys in by_base.items():
+            if len(keys) == 1:
+                slug_assignments[keys[0]] = base
+                continue
+            used: set[str] = set()
+            for key in keys:
+                ext = Path(_source_name(key)).suffix.lstrip(".").lower()
+                slug = f"{base}-{ext}" if ext else base
+                n = 2
+                while slug in used:
+                    slug = f"{base}-{ext}-{n}" if ext else f"{base}-{n}"
+                    n += 1
+                used.add(slug)
+                slug_assignments[key] = slug
+
         for key in source_keys:
             # Slug from the source name without the sources/ prefix —
             # consistent with the attachments flow ("report", not "sources_report").
-            name = key[len(sources_prefix) :] if key.startswith(sources_prefix) else key
-            slug = attachment_slug(name)
+            _source_name(key)
+            slug = slug_assignments[key]
             stem = Path(key).stem
             # Display title: collapse underscore runs so raw filenames like
             # ``ITU-T_P_863__03_2018_`` read as text; the slug stays stable.
