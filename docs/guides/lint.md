@@ -138,10 +138,13 @@ knox lint prune --keep-last 50 --max-age-days 90
 
 ### `knox compile --lint`
 
-Run lint automatically after compilation:
+Lint runs automatically after every compile (on by default). Disable it
+per-run with `--no-lint`, or set `KNOX_COMPILE_LINT=0` in the environment:
 
 ```bash
-knox compile ./sources --lint
+knox compile ./sources          # lint runs automatically
+knox compile ./sources --no-lint
+KNOX_COMPILE_LINT=0 knox compile ./sources
 ```
 
 ## Structural Rules (10)
