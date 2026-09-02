@@ -484,6 +484,7 @@ def generate_all_pages_agentic(
         cap = start_remaining + 1
         passes = 0
         gen_output = None
+        seg_start_nodes = len(nodes)
         while broker.remaining(seg_id) > 0 and passes < cap:
             passes += 1
             try:
@@ -557,13 +558,37 @@ def generate_all_pages_agentic(
 
         uncovered = broker.remaining(seg_id)
         if uncovered > 0:
-            logger.warning(
-                "TwoPhase: agentic %s ended with %d concept(s) still uncovered (passes=%d, cap=%d) — these will have no page.",
-                seg_label,
-                uncovered,
-                passes,
-                cap,
-            )
+            seg_pages = len(nodes) - seg_start_nodes
+            never_fetched = uncovered == start_remaining
+            names = [str(c.get(ExtractionField.NAME, "?")) for c in broker.remaining_concepts(seg_id)]
+            sample = ", ".join(names[:10]) + ("…" if len(names) > 10 else "")
+            debug_hint = f" (debug: {debug_file})" if debug_file else ""
+            if never_fetched:
+                logger.warning(
+                    "TwoPhase: agentic %s never fetched any of its %d assigned concept(s) — "
+                    "the model generated %d page(s) without consulting the concept list, so all "
+                    "%d concept(s) have no page (passes=%d, cap=%d). Uncovered: [%s].%s",
+                    seg_label,
+                    start_remaining,
+                    seg_pages,
+                    uncovered,
+                    passes,
+                    cap,
+                    sample,
+                    debug_hint,
+                )
+            else:
+                logger.warning(
+                    "TwoPhase: agentic %s ended with %d/%d concept(s) still uncovered "
+                    "(passes=%d, cap=%d) — these will have no page. Uncovered: [%s].%s",
+                    seg_label,
+                    uncovered,
+                    start_remaining,
+                    passes,
+                    cap,
+                    sample,
+                    debug_hint,
+                )
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx

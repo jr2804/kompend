@@ -58,6 +58,12 @@ class ConceptBroker:
         cursor = self._cursors.get(caller_id, 0)
         return max(0, len(pool) - cursor)
 
+    def remaining_concepts(self, caller_id: str) -> list[dict[str, Any]]:
+        """Unassigned concept dicts remaining for *caller_id* (for diagnostics)."""
+        pool = self._per_caller.get(caller_id, [])
+        cursor = self._cursors.get(caller_id, 0)
+        return list(pool[cursor:])
+
     @property
     def total_concepts(self) -> int:
         return len(self._concepts)
