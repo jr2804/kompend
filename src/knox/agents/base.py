@@ -416,6 +416,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 output_type=output_type,
                 model_settings=model_settings,
                 retries=self.retries,
+                tools=self.tools,
                 capabilities=capabilities or None,
                 # Descriptive agent name for observability (gen_ai.agent.name):
                 # kebab-cased subclass name, e.g. AgenticGenerationAgent ->

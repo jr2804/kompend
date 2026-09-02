@@ -564,18 +564,12 @@ def generate_all_pages_agentic(
             sample = ", ".join(names[:10]) + ("…" if len(names) > 10 else "")
             debug_hint = f" (debug: {debug_file})" if debug_file else ""
             if never_fetched:
-                logger.warning(
-                    "TwoPhase: agentic %s never fetched any of its %d assigned concept(s) — "
-                    "the model generated %d page(s) without consulting the concept list, so all "
-                    "%d concept(s) have no page (passes=%d, cap=%d). Uncovered: [%s].%s",
-                    seg_label,
-                    start_remaining,
-                    seg_pages,
-                    uncovered,
-                    passes,
-                    cap,
-                    sample,
-                    debug_hint,
+                raise LLMOutputError(
+                    f"Agentic generation for {seg_label} never fetched any of its "
+                    f"{start_remaining} assigned concept(s) — the model generated {seg_pages} "
+                    f"page(s) without consulting the concept list, so all {uncovered} concept(s) "
+                    f"have no page (passes={passes}, cap={cap}). Uncovered: [{sample}].{debug_hint} "
+                    f"The model is not using the fetch_concepts tool; check its tool-calling support."
                 )
             else:
                 logger.warning(

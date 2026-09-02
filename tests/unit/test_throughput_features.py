@@ -925,6 +925,11 @@ class TestTwoPhaseCompiler:
             agent.result_type = GenerationOutput
 
             def _run(_deps: object) -> object:
+                # Drain the broker so the coverage loop terminates normally
+                # (the real agent would call fetch_concepts).
+                broker = getattr(_deps, "concept_broker", None)
+                if broker is not None:
+                    broker.fetch(getattr(_deps, "source_id", ""), limit=10)
                 return gen_side_effect(agent, _deps)
 
             agent.run = _run

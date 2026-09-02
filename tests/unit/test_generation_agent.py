@@ -17,6 +17,7 @@ from knox.agents.generation import GenerationAgent
 from knox.agents.types import GenerationDeps
 from knox.compilation.flows.generation import _allowed_kind, _categories_block
 from knox.compilation.schema import GenerationOutput, GenerationPage
+from knox.agents.generation import make_agentic_generation_agent
 
 
 class TestGenerationAgentConstruction:
@@ -31,6 +32,19 @@ class TestGenerationAgentConstruction:
     def test_constructs_with_model_string(self) -> None:
         agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
         assert agent.model_string == "ollama/gpt-oss:20b"
+
+    def test_agentic_agent_registers_gen_tools(self) -> None:
+        """The agentic generation agent must expose read_segment/fetch_concepts.
+
+        Regression: the ``tools`` field was never passed to the pydantic-ai
+        ``Agent`` constructor, so the model had no tools and generated pages
+        from memory instead of fetching the concept list (leaving every
+        assigned concept uncovered).
+        """
+
+        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
+        built = agent._build_agent()
+        assert sorted(built._function_toolset.tools.keys()) == ["fetch_concepts", "read_segment"]
 
 
 class TestGenerationAgentRun:
