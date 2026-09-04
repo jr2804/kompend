@@ -573,8 +573,7 @@ def generate_all_pages_agentic(
                 )
             else:
                 logger.warning(
-                    "TwoPhase: agentic %s ended with %d/%d concept(s) still uncovered "
-                    "(passes=%d, cap=%d) — these will have no page. Uncovered: [%s].%s",
+                    "TwoPhase: agentic %s ended with %d/%d concept(s) still uncovered (passes=%d, cap=%d) — these will have no page. Uncovered: [%s].%s",
                     seg_label,
                     uncovered,
                     start_remaining,

@@ -11,9 +11,8 @@ from knox.core.models.attachments import (
     TEXT_EXTENSIONS,
     Attachment,
     AttachmentManifest,
+    adopt_orphan_attachments,
 )
-from knox.core.models.attachments import adopt_orphan_attachments
-from knox.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
 
 # ── Attachment model ────────────────────────────────────────────────────
 
@@ -208,7 +207,6 @@ def test_manifest_blank_lines_skipped(tmp_path: Path) -> None:
 
 def test_adopt_registers_orphaned_files(tmp_path: Path) -> None:
     """Files under attachments/<live-slug>/ without manifest entry get adopted."""
-
     base = _make_vault(tmp_path)
     slug_dir = base / "attachments" / "report"
     slug_dir.mkdir()
@@ -227,7 +225,6 @@ def test_adopt_registers_orphaned_files(tmp_path: Path) -> None:
 
 def test_adopt_skips_binary_and_unknown_slug(tmp_path: Path) -> None:
     """Binaries are non-ingestible; slugs with no live source are not adopted."""
-
     base = _make_vault(tmp_path)
     report_dir = base / "attachments" / "report"
     report_dir.mkdir()
@@ -243,7 +240,6 @@ def test_adopt_skips_binary_and_unknown_slug(tmp_path: Path) -> None:
 
 def test_adopt_idempotent_and_respects_tombstone(tmp_path: Path) -> None:
     """Already-registered paths are skipped; tombstoned paths never return."""
-
     base = _make_vault(tmp_path)
     slug_dir = base / "attachments" / "report"
     slug_dir.mkdir()
@@ -279,7 +275,6 @@ def _make_vault(tmp_path: Path) -> Path:
 
 def test_adopt_no_attachments_dir(tmp_path: Path) -> None:
     """Missing attachments dir is a no-op."""
-
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
     assert adopt_orphan_attachments(base) == []

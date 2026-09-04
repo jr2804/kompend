@@ -13,11 +13,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.generation import GenerationAgent
+from knox.agents.generation import GenerationAgent, make_agentic_generation_agent
 from knox.agents.types import GenerationDeps
 from knox.compilation.flows.generation import _allowed_kind, _categories_block
 from knox.compilation.schema import GenerationOutput, GenerationPage
-from knox.agents.generation import make_agentic_generation_agent
 
 
 class TestGenerationAgentConstruction:
@@ -41,7 +40,6 @@ class TestGenerationAgentConstruction:
         from memory instead of fetching the concept list (leaving every
         assigned concept uncovered).
         """
-
         agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["fetch_concepts", "read_segment"]

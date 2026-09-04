@@ -1237,7 +1237,6 @@ class TestRumdlConfigResolution:
 
 
 class TestOrphanAttachmentsRule:
-
     def test_skip_without_compile_state(self, tmp_path: Any) -> None:
         base = tmp_path / "vault"
         (base / "sources").mkdir(parents=True)
@@ -1280,6 +1279,7 @@ class TestOrphanAttachmentsRule:
         report = runner.run(_make_wiki([]))
         failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
+
     def _vault(self, tmp_path: Any) -> tuple[Path, str]:
         """Vault with one source + compile state; returns (base, sources_dir)."""
         base = tmp_path / "vault"
