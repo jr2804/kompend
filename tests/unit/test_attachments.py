@@ -13,6 +13,7 @@ from knox.core.models.attachments import (
     AttachmentManifest,
     adopt_orphan_attachments,
 )
+from knox.core.models.attachments import adopt_orphan_attachments
 
 # ── Attachment model ────────────────────────────────────────────────────
 
@@ -261,18 +262,6 @@ def test_adopt_idempotent_and_respects_tombstone(tmp_path: Path) -> None:
     assert {a.path for a in adopted} == {"report/notes.txt", "report/removed.txt"}
 
 
-# ── Auto-adoption of orphaned attachments ───────────────────────────────
-
-
-def _make_vault(tmp_path: Path) -> Path:
-    """Vault with one source and an attachments dir."""
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
-    (base / "attachments").mkdir()
-    return base
-
-
 def test_adopt_no_attachments_dir(tmp_path: Path) -> None:
     """Missing attachments dir is a no-op."""
     base = tmp_path / "vault"
@@ -290,3 +279,28 @@ def test_manifest_deleted_paths(tmp_path: Path) -> None:
     # Re-registration clears the tombstone.
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
     assert manifest.deleted_paths() == set()
+
+
+def test_adopt_ingest_adopted_flag_gates_ingestible(tmp_path: Path) -> None:
+    """ingest_adopted=False registers files without making them ingestible."""
+
+    base = _make_vault(tmp_path)
+    slug_dir = base / "attachments" / "report"
+    slug_dir.mkdir()
+    (slug_dir / "notes.txt").write_text("hello")
+
+    adopted = adopt_orphan_attachments(base, ingest_adopted=False)
+    assert [a.path for a in adopted] == ["report/notes.txt"]
+    assert adopted[0].ingestible is False
+
+
+# ── Auto-adoption of orphaned attachments ───────────────────────────────
+
+
+def _make_vault(tmp_path: Path) -> Path:
+    """Vault with one source and an attachments dir."""
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
+    (base / "attachments").mkdir()
+    return base

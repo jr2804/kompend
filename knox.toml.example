@@ -571,6 +571,17 @@ history_size = 20
 # Enhanced retrieval pipeline features. All default to disabled.
 # Each is an optional plug-in step — enable only what you need.
 
+# ── Attachment settings ──────────────────────────────────────────────
+# Auto-adoption: files dropped into attachments/<slug>/ without a manifest
+# entry are registered at compile start. With ingest_adopted = true (default)
+# text/image files also become ingestible (parsed at compile); false =
+# register only. embed includes attachment content in the vector index
+# (replaces the deprecated search.embed_attachments).
+
+[attachments]
+# ingest_adopted = true
+# embed = false
+
 [search]
 
 # Multi-query expansion (RAG-Fusion): generate N query variants via LLM,
@@ -610,7 +621,7 @@ history_size = 20
 # Whether ingestible attachments (text/image captions) are included in
 # the vector index. When false, attachment content is parsed and compiled
 # but not embedded. Per-attachment overrides via `knox attachments add --embed/--no-embed`.
-# embed_attachments = false
+# embed_attachments = false  # DEPRECATED — use attachments.embed
 # synthesis.tokens.brief = 300
 # synthesis.tokens.standard = 800
 # synthesis.tokens.comprehensive = 2000

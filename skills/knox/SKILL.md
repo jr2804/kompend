@@ -105,7 +105,7 @@ required.
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
 | `knox compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
 | `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
-| `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `search.embed_attachments`) |
+| `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `attachments.embed`) |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
 
@@ -140,19 +140,20 @@ and tracked by an append-only manifest (`.knox/attachments.jsonl`).
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `knox attachments add <source> <file>` | Register an attachment for a source (alias: `knox att add`) | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `search.embed_attachments`) |
+| `knox attachments add <source> <file>` | Register an attachment for a source (alias: `knox att add`) | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `attachments.embed`) |
 | `knox attachments list` | List registered attachments (alias: `knox att list`) | `--source <stem>` (filter), `--all` (include deleted) |
 | `knox attachments remove <path>` | Remove an attachment (tombstone in manifest, keeps file) | — |
 
 Only attachments marked `--ingest` are processed during compile; PNG/JPG
-require a configured VLM (`compile.llm.vlm_model`). Set `search.embed_attachments =
+require a configured VLM (`compile.llm.vlm_model`). Set `attachments.embed =
 true` to include attachment content in the vector index. Registered attachments
 are copied to `wiki/attachments/` for relative links in generated content.
 
 **Auto-adoption**: at compile start, files under `attachments/<slug>/` without
-a manifest entry are registered automatically (ingestible by file type, embed
-from global config; explicit `remove` tombstones are never re-adopted). The
-`orphan-attachments` lint rule flags files whose slug matches no source.
+a manifest entry are registered automatically (`attachments.ingest_adopted`
+controls whether they become ingestible; embed inherits `attachments.embed`;
+explicit `remove` tombstones are never re-adopted). The `orphan-attachments`
+lint rule flags files whose slug matches no source.
 
 ### Query & Retrieval
 

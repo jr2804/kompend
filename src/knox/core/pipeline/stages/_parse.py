@@ -58,7 +58,10 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     # no manifest entry — recovery after manifest loss, or files dropped in
     # manually). Flags derive from extension classes + global embed config.
     try:
-        adopted = adopt_orphan_attachments(Path(pipeline.base_directory))
+        adopted = adopt_orphan_attachments(
+            Path(pipeline.base_directory),
+            ingest_adopted=pipeline.config.attachments_ingest_adopted,
+        )
         if adopted:
             logger.info("Adopted %d orphaned attachment(s): %s", len(adopted), [a.path for a in adopted])
     except OSError as exc:

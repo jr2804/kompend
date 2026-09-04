@@ -381,6 +381,21 @@ class SearchSynthesisConfig(_KnoxBaseModel):
     tokens: SearchSynthesisTokensConfig = Field(default_factory=SearchSynthesisTokensConfig)
 
 
+class AttachmentsConfig(_KnoxBaseModel):
+    """Attachment lifecycle configuration (auto-adoption, vector indexing)."""
+
+    ingest_adopted: bool = Field(
+        default=True,
+        validation_alias=EnvVar.ATTACHMENTS_INGEST_ADOPTED,
+        description="Auto-adopted attachments (files under attachments/<slug>/ without a manifest entry) become ingestible — parsed at compile. When False, adoption only registers them.",
+    )
+    embed: bool = Field(
+        default=False,
+        validation_alias=EnvVar.ATTACHMENTS_EMBED,
+        description="Whether ingestible attachments (text/image captions) are included in the vector index. Replaces the deprecated search.embed_attachments.",
+    )
+
+
 class SearchConfig(_KnoxBaseModel):
     expansion: SearchExpansionConfig = Field(default_factory=SearchExpansionConfig)
     crag: SearchCragConfig = Field(default_factory=SearchCragConfig)
@@ -390,7 +405,7 @@ class SearchConfig(_KnoxBaseModel):
     synthesis: SearchSynthesisConfig = Field(default_factory=SearchSynthesisConfig)
     embed_attachments: bool = Field(
         default=False,
-        description="Whether ingestible attachments (text/image captions) are included in the vector index.",
+        description="DEPRECATED — use attachments.embed. Whether ingestible attachments are included in the vector index.",
     )
 
 
@@ -576,6 +591,7 @@ class KnoxConfig(_KnoxBaseModel):
     trust: TrustConfig = Field(default_factory=TrustConfig)
     query: QueryConfig = Field(default_factory=QueryConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    attachments: AttachmentsConfig = Field(default_factory=AttachmentsConfig)
     organize: OrganizeConfig = Field(default_factory=OrganizeConfig)
     ignore: IgnoreConfig = Field(default_factory=IgnoreConfig)
     hooks: dict[str, Any] = Field(default_factory=dict)

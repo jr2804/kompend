@@ -276,15 +276,17 @@ class AttachmentManifest:
         return {p for p, deleted in last_deleted.items() if deleted}
 
 
-def adopt_orphan_attachments(base_dir: Path) -> list[Attachment]:
+def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> list[Attachment]:
     """Register orphaned attachment files found on disk (auto-adoption).
 
     Scans ``attachments/<slug>/`` for files without a manifest entry and
     registers them, deriving the flags from the current setup:
 
-    - ``ingestible`` — text/image extensions are ingestible (text via the
-      parser router, images via VLM at compile); binaries are not.
-    - ``embed`` — ``None`` (inherits the global ``search.embed_attachments``).
+    - ``ingestible`` — with *ingest_adopted* set (config key
+      ``attachments.ingest_adopted``), text/image extensions are ingestible
+      (text via the parser router, images via VLM at compile); binaries are
+      never ingestible. Without it, adoption only registers the file.
+    - ``embed`` — ``None`` (inherits the global ``attachments.embed``).
 
     Only subdirectories whose slug matches a live source in ``sources/``
     are adopted. Tombstoned paths (explicit ``knox attachments remove``)
@@ -321,7 +323,11 @@ def adopt_orphan_attachments(base_dir: Path) -> list[Attachment]:
             rel = f.relative_to(attachments_root).as_posix()
             if rel in known or rel in tombstoned:
                 continue
-            att = Attachment(path=rel, source=slug_dir.name, ingestible=f.suffix.lower() in INGESTIBLE_EXTENSIONS)
+            att = Attachment(
+                path=rel,
+                source=slug_dir.name,
+                ingestible=ingest_adopted and f.suffix.lower() in INGESTIBLE_EXTENSIONS,
+            )
             manifest.append(att)
             known.add(rel)
             adopted.append(att)

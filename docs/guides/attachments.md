@@ -65,15 +65,28 @@ re-adding the same path creates a new active entry (latest wins).
 At compile start, KNOX scans `attachments/<slug>/` for files that have no
 manifest entry and registers them automatically:
 
-- `ingestible` is derived from the file type — text and image extensions
-  are ingestible, binaries are registered only.
-- `embed` inherits the global `search.embed_attachments` setting.
+- `ingestible` depends on `attachments.ingest_adopted` (default `true`):
+  text and image extensions become ingestible, binaries are registered
+  only. With `false`, adoption only registers the file.
+- `embed` inherits the global `attachments.embed` setting.
 - Tombstoned paths (explicit `attachments remove`) are never re-adopted.
 - Subdirectories whose slug matches no source in `sources/` are skipped —
   the `orphan-attachments` lint rule flags them instead.
 
 This makes recovery from a deleted `.knox/` lossless for attachments: the
 files under `attachments/` are re-registered on the next compile.
+
+## Configuration
+
+```toml
+[attachments]
+ingest_adopted = true   # adopted text/image files are parsed at compile
+embed = false           # include attachment content in the vector index
+```
+
+`search.embed_attachments` is **deprecated** — existing configs still work
+(the value migrates to `attachments.embed` with a warning), but new configs
+should use `[attachments] embed`.
 
 ## Ingestion rules
 

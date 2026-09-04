@@ -268,7 +268,7 @@ def compile_cmd(  # noqa: PLR0915
                 embed_model=embed_model,
                 show_progress=show_progress,
                 lint_config=lint_config,
-                embed_attachments=bool(cfg.knox.search.embed_attachments),
+                embed_attachments=bool(cfg.knox.attachments.embed or cfg.knox.search.embed_attachments),
             )
         )
 
@@ -421,7 +421,7 @@ def index_cmd(
     the index automatically via post-compile actions.
 
     Use it when the index is missing, stale, or you changed the embedding
-    model (``compile.embedding.model``) or the ``search.embed_attachments``
+    model (``compile.embedding.model``) or the ``attachments.embed``
     setting and want to re-embed without a full LLM recompile.
 
     It does **not** re-ingest attachments or recompile the wiki. To ingest
@@ -449,7 +449,7 @@ def index_cmd(
         )
         raise typer.Exit(1)
 
-    embed_attachments = bool(cfg.knox.search.embed_attachments)
+    embed_attachments = bool(cfg.knox.attachments.embed or cfg.knox.search.embed_attachments)
 
     try:
         count = build_vector_index(

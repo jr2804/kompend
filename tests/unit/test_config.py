@@ -267,6 +267,29 @@ class TestResolveConfig:
         cfg = resolve_config(cli_overrides={"compile.budget.chunk_size_min": 32})
         assert cfg.get("compile.budget.chunk_size_min") == 32
 
+    def test_attachments_config_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("attachments.ingest_adopted") is True
+        assert cfg.get("attachments.embed") is False
+
+    def test_deprecated_embed_attachments_migrates(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Old search.embed_attachments migrates to attachments.embed with deprecation provenance."""
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[search]\nembed_attachments = true\n")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("attachments.embed") is True
+        assert "deprecated search.embed_attachments" in cfg.source_of("attachments.embed").location
+
+    def test_new_embed_key_wins_over_old(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Explicit attachments.embed is canonical — the old key does not override it."""
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[search]\nembed_attachments = true\n[attachments]\nembed = false\n")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("attachments.embed") is False
+
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
         config_file.write_text(

@@ -140,7 +140,7 @@ def wiki_index(
     if not resolved_model:
         return {"status": "error", "message": "No embedding model configured. Set compile.embedding.model or pass embed_model."}
 
-    embed_attachments = bool(cfg.knox.search.embed_attachments)
+    embed_attachments = bool(cfg.knox.attachments.embed or cfg.knox.search.embed_attachments)
 
     try:
         count = build_vector_index(

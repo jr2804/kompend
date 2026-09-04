@@ -167,6 +167,7 @@ def resolve_config(
         result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
 
     _resolve_paths(result, provenance)
+    _resolve_deprecated_aliases(result, provenance)
 
     set_user_providers(result.get("providers", {}))
 
@@ -247,6 +248,37 @@ def _merge_project_configs(
             prov[key] = ConfigSource("project", str(config_file))
         merged = deep_merge(merged, file_data)
     return merged, prov
+
+
+def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, ConfigSource]) -> None:
+    """Migrate deprecated config keys to their canonical replacements.
+
+    A deprecated key that is explicitly set (non-default) migrates its value
+    to the canonical key when the canonical key is still at its default, and
+    the provenance records the deprecation so ``knox config check`` and the
+    resolved-config listing surface it.
+    """
+    for old_key, new_key, old_default in (
+        ("search.embed_attachments", "attachments.embed", False),
+    ):
+        old_val = get_dot(result, old_key)
+        # Only migrate when the canonical key is still at its default layer —
+        # an explicitly set value (even the default value) always wins.
+        if (
+            old_val is not None
+            and old_val != old_default
+            and provenance.get(new_key, ConfigSource("default")).path == "default"
+        ):
+            set_dot(result, new_key, old_val)
+            provenance[new_key] = ConfigSource(
+                provenance.get(old_key, ConfigSource("project")).path,
+                f"deprecated {old_key}",
+            )
+            logger.warning(
+                "Config key '%s' is deprecated — use '%s' instead. The value has been migrated; please update your config.",
+                old_key,
+                new_key,
+            )
 
 
 def _resolve_paths(
