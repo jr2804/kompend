@@ -149,6 +149,11 @@ require a configured VLM (`compile.llm.vlm_model`). Set `search.embed_attachment
 true` to include attachment content in the vector index. Registered attachments
 are copied to `wiki/attachments/` for relative links in generated content.
 
+**Auto-adoption**: at compile start, files under `attachments/<slug>/` without
+a manifest entry are registered automatically (ingestible by file type, embed
+from global config; explicit `remove` tombstones are never re-adopted). The
+`orphan-attachments` lint rule flags files whose slug matches no source.
+
 ### Query & Retrieval
 
 | Command | Purpose | Key Flags |
