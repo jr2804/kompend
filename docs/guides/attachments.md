@@ -60,6 +60,21 @@ knox attachments remove report/photo.jpg
 The manifest is append-only JSONL. Removing an attachment appends a tombstone entry;
 re-adding the same path creates a new active entry (latest wins).
 
+## Auto-adoption
+
+At compile start, KNOX scans `attachments/<slug>/` for files that have no
+manifest entry and registers them automatically:
+
+- `ingestible` is derived from the file type — text and image extensions
+  are ingestible, binaries are registered only.
+- `embed` inherits the global `search.embed_attachments` setting.
+- Tombstoned paths (explicit `attachments remove`) are never re-adopted.
+- Subdirectories whose slug matches no source in `sources/` are skipped —
+  the `orphan-attachments` lint rule flags them instead.
+
+This makes recovery from a deleted `.knox/` lossless for attachments: the
+files under `attachments/` are re-registered on the next compile.
+
 ## Ingestion rules
 
 | Type | Extensions | Ingestible via |

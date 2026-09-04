@@ -16,7 +16,7 @@ from typing import Any
 
 from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
-from knox.core.paths import KNOX_DIR, REFERENCES_FILE, VaultPaths
+from knox.core.paths import KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, is_protected_source
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -550,6 +550,72 @@ class SourceNotFoundRule(BaseLintRule):
         return results
 
 
+# ── Rule: orphan-attachments ─────────────────────────────────────────────
+
+
+class OrphanAttachmentsRule(BaseLintRule):
+    """Detect attachment files whose slug matches no source in the vault.
+
+    Files under ``attachments/<slug>/`` whose slug is derivable from a live
+    source are auto-adopted at compile start (manifest entry created, flags
+    derived from config). Files whose slug matches NO source cannot be
+    recovered by that pass — the parent source is gone or was renamed — so
+    they are flagged here for manual intervention.
+    """
+
+    name = "orphan-attachments"
+    description = "Attachment files with no matching source (unrecoverable by auto-adoption)"
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        results: list[LintResult] = []
+        if sources_dir is None:
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
+            return results
+
+        base_dir = Path(sources_dir).parent
+        vp = VaultPaths(base_dir)
+        attachments_root = vp.attachments_dir
+        if not attachments_root.is_dir():
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No attachments directory"))
+            return results
+
+        # A compile must have run at least once — before that, orphan state
+        # is meaningless (nothing was ever adoptable).
+        if not vp.compile_state_file.exists():
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No compile state — run compile first"))
+            return results
+
+        sources_root = Path(sources_dir)
+        live_slugs: set[str] = set()
+        if sources_root.is_dir():
+            for p in sources_root.rglob("*"):
+                if p.is_file() and not is_protected_source(p, sources_root):
+                    live_slugs.add(attachment_slug(p.relative_to(sources_root).as_posix()))
+
+        orphans: list[str] = []
+        for slug_dir in sorted(attachments_root.iterdir()):
+            if not slug_dir.is_dir() or slug_dir.name in live_slugs:
+                continue
+            for f in sorted(slug_dir.rglob("*")):
+                if f.is_file():
+                    orphans.append(f.relative_to(base_dir).as_posix())
+
+        if orphans:
+            for rel in orphans:
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.FAIL,
+                        severity=Severity.WARNING,
+                        message=f"Orphaned attachment '{rel}' — slug matches no source in sources/ (re-add the source, move the file under the correct slug, or delete it)",
+                        details={"path": rel},
+                    )
+                )
+        else:
+            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No orphaned attachments"))
+        return results
+
+
 # ── Rule 9: duplicate-references ────────────────────────────────────────
 
 
@@ -892,6 +958,7 @@ STRUCTURAL_RULES: list[BaseLintRule] = [
     HeadingSkipRule(),
     StalePageRule(),
     SourceNotFoundRule(),
+    OrphanAttachmentsRule(),
 ]
 
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}

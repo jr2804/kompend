@@ -147,7 +147,7 @@ knox compile ./sources --no-lint
 KNOX_COMPILE_LINT=0 knox compile ./sources
 ```
 
-## Structural Rules (10)
+## Structural Rules (11)
 
 These rules are deterministic. Nine run entirely in-process; `rumdl` shells
 out to the bundled rumdl binary.
@@ -163,6 +163,7 @@ out to the bundled rumdl binary.
 | `heading-skip` | WARNING | ❌ | Heading level jumps (e.g. h1 → h3 without h2) |
 | `stale-page` | WARNING | ❌ | Pages whose source files changed since last compile |
 | `source-not-found` | ERROR | ❌ | Pages referencing source files that don't exist on disk |
+| `orphan-attachments` | WARNING | ❌ | Attachment files whose slug matches no source (unrecoverable by compile-time auto-adoption) |
 | `rumdl` | WARNING | ✅ | Markdown style issues on all vault folders except `sources/` (MD024 duplicate headings, MD013 line length, …) |
 
 ### Auto-fix behavior

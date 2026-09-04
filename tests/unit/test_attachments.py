@@ -12,6 +12,8 @@ from knox.core.models.attachments import (
     Attachment,
     AttachmentManifest,
 )
+from knox.core.models.attachments import adopt_orphan_attachments
+from knox.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
 
 # ── Attachment model ────────────────────────────────────────────────────
 
@@ -202,3 +204,94 @@ def test_manifest_blank_lines_skipped(tmp_path: Path) -> None:
     )
     manifest = AttachmentManifest(f)
     assert len(manifest.read_all()) == 1
+
+
+def test_adopt_registers_orphaned_files(tmp_path: Path) -> None:
+    """Files under attachments/<live-slug>/ without manifest entry get adopted."""
+
+    base = _make_vault(tmp_path)
+    slug_dir = base / "attachments" / "report"
+    slug_dir.mkdir()
+    (slug_dir / "notes.txt").write_text("hello")
+    (slug_dir / "diagram.png").write_bytes(b"\x89PNG")
+
+    adopted = adopt_orphan_attachments(base)
+    assert {a.path for a in adopted} == {"report/notes.txt", "report/diagram.png"}
+    # Text and image extensions are ingestible.
+    by_path = {a.path: a for a in adopted}
+    assert by_path["report/notes.txt"].ingestible is True
+    assert by_path["report/diagram.png"].ingestible is True
+    # embed inherits global config.
+    assert all(a.embed is None for a in adopted)
+
+
+def test_adopt_skips_binary_and_unknown_slug(tmp_path: Path) -> None:
+    """Binaries are non-ingestible; slugs with no live source are not adopted."""
+
+    base = _make_vault(tmp_path)
+    report_dir = base / "attachments" / "report"
+    report_dir.mkdir()
+    (report_dir / "data.bin").write_bytes(b"\x00\x01")
+    ghost = base / "attachments" / "ghost-source"
+    ghost.mkdir()
+    (ghost / "x.txt").write_text("no matching source")
+
+    adopted = adopt_orphan_attachments(base)
+    assert [a.path for a in adopted] == ["report/data.bin"]
+    assert adopted[0].ingestible is False
+
+
+def test_adopt_idempotent_and_respects_tombstone(tmp_path: Path) -> None:
+    """Already-registered paths are skipped; tombstoned paths never return."""
+
+    base = _make_vault(tmp_path)
+    slug_dir = base / "attachments" / "report"
+    slug_dir.mkdir()
+    (slug_dir / "notes.txt").write_text("hello")
+    (slug_dir / "removed.txt").write_text("gone")
+
+    manifest = AttachmentManifest(base / ".knox" / "attachments.jsonl")
+    manifest.append(Attachment(path="report/notes.txt", source="report", ingestible=True))
+    manifest.append(Attachment(path="report/removed.txt", source="report"))
+    manifest.remove("report/removed.txt")
+
+    adopted = adopt_orphan_attachments(base)
+    assert adopted == []
+
+    # Recovery scenario: manifest deleted entirely — tombstone knowledge is
+    # gone with it, so both files are re-adopted.
+    (base / ".knox" / "attachments.jsonl").unlink()
+    adopted = adopt_orphan_attachments(base)
+    assert {a.path for a in adopted} == {"report/notes.txt", "report/removed.txt"}
+
+
+# ── Auto-adoption of orphaned attachments ───────────────────────────────
+
+
+def _make_vault(tmp_path: Path) -> Path:
+    """Vault with one source and an attachments dir."""
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
+    (base / "attachments").mkdir()
+    return base
+
+
+def test_adopt_no_attachments_dir(tmp_path: Path) -> None:
+    """Missing attachments dir is a no-op."""
+
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    assert adopt_orphan_attachments(base) == []
+
+
+def test_manifest_deleted_paths(tmp_path: Path) -> None:
+    """deleted_paths returns tombstoned paths minus later re-registrations."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="r/a.txt", source="r"))
+    manifest.remove("r/a.txt")
+    assert manifest.deleted_paths() == {"r/a.txt"}
+
+    # Re-registration clears the tombstone.
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
+    assert manifest.deleted_paths() == set()

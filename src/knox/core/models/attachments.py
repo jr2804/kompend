@@ -17,7 +17,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-__all__ = ["Attachment", "AttachmentManifest"]
+from knox.core.paths import VaultPaths, attachment_slug, is_protected_source
+
+__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments"]
 
 # ── Ingestible file types ────────────────────────────────────────────────
 
@@ -249,3 +251,78 @@ class AttachmentManifest:
     def list_sources(self) -> list[str]:
         """List all unique source stems with registered attachments."""
         return sorted({a.source for a in self.read_all().values()})
+
+    def deleted_paths(self) -> set[str]:
+        """Paths whose latest manifest entry is a tombstone.
+
+        Auto-adoption must skip these: a tombstone is an explicit user
+        removal, and re-adopting the file would silently undo it.
+        """
+        if not self._path.exists():
+            return set()
+        last_deleted: dict[str, bool] = {}
+        for raw_line in self._path.read_text(encoding="utf-8").splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                d = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            p = str(d.get("path", ""))
+            if not p:
+                continue
+            last_deleted[p] = bool(d.get("deleted"))
+        return {p for p, deleted in last_deleted.items() if deleted}
+
+
+def adopt_orphan_attachments(base_dir: Path) -> list[Attachment]:
+    """Register orphaned attachment files found on disk (auto-adoption).
+
+    Scans ``attachments/<slug>/`` for files without a manifest entry and
+    registers them, deriving the flags from the current setup:
+
+    - ``ingestible`` — text/image extensions are ingestible (text via the
+      parser router, images via VLM at compile); binaries are not.
+    - ``embed`` — ``None`` (inherits the global ``search.embed_attachments``).
+
+    Only subdirectories whose slug matches a live source in ``sources/``
+    are adopted. Tombstoned paths (explicit ``knox attachments remove``)
+    are never re-adopted. Runs at compile start so recovery scenarios
+    (deleted manifest) and manually dropped files are picked up without
+    re-ingest.
+
+    Returns the list of newly registered attachments (empty when nothing
+    was adopted).
+    """
+    vp = VaultPaths(base_dir)
+    attachments_root = vp.attachments_dir
+    if not attachments_root.is_dir():
+        return []
+
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    known = set(manifest.read_all())
+    tombstoned = manifest.deleted_paths()
+
+    sources_dir = vp.sources_dir
+    live_slugs: set[str] = set()
+    if sources_dir.is_dir():
+        for p in sources_dir.rglob("*"):
+            if p.is_file() and not is_protected_source(p, sources_dir):
+                live_slugs.add(attachment_slug(p.relative_to(sources_dir).as_posix()))
+
+    adopted: list[Attachment] = []
+    for slug_dir in sorted(attachments_root.iterdir()):
+        if not slug_dir.is_dir() or slug_dir.name not in live_slugs:
+            continue
+        for f in sorted(slug_dir.rglob("*")):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(attachments_root).as_posix()
+            if rel in known or rel in tombstoned:
+                continue
+            att = Attachment(path=rel, source=slug_dir.name, ingestible=f.suffix.lower() in INGESTIBLE_EXTENSIONS)
+            manifest.append(att)
+            known.add(rel)
+            adopted.append(att)
+    return adopted

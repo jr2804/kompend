@@ -36,6 +36,7 @@ from knox.lint.structural import (
     ImageEmbedRule,
     KnoxReferenceRule,
     MissingFrontmatterRule,
+    OrphanAttachmentsRule,
     OrphanPageRule,
     RumdlRule,
     SourceNotFoundRule,
@@ -718,14 +719,14 @@ class TestEdgeCases:
         assert len(failures) == 0
 
     def test_structural_rules_registry_complete(self) -> None:
-        """All 12 structural rules should be registered.
+        """All structural rules should be registered.
 
         ``RumdlRule`` and ``DuplicateReferencesRule`` are NOT singletons —
         they are instantiated by ``LintRunner._resolve_rules`` with config
-        values. The singleton list has 10 entries; ``RULE_BY_NAME`` maps all
-        12 names.
+        values. The singleton list has 11 entries; ``RULE_BY_NAME`` maps all
+        13 names.
         """
-        assert len(STRUCTURAL_RULES) == 10
+        assert len(STRUCTURAL_RULES) == 11
         expected = {
             "image-embed",
             "broken-wikilinks",
@@ -737,6 +738,7 @@ class TestEdgeCases:
             "heading-skip",
             "stale-page",
             "source-not-found",
+            "orphan-attachments",
             "rumdl",
             "duplicate-references",
         }
@@ -1232,6 +1234,60 @@ class TestRumdlConfigResolution:
     def test_relative_explicit_config_resolves_against_base_dir(self, tmp_path: Path) -> None:
 
         assert resolve_rumdl_config(tmp_path, ".knox/rumdl.toml") == tmp_path / ".knox" / "rumdl.toml"
+
+
+class TestOrphanAttachmentsRule:
+
+    def test_skip_without_compile_state(self, tmp_path: Any) -> None:
+        base = tmp_path / "vault"
+        (base / "sources").mkdir(parents=True)
+        rule = OrphanAttachmentsRule()
+        results = rule.check(_make_wiki([]), sources_dir=str(base / "sources"))
+        assert results[0].outcome == LintRuleOutcome.SKIP
+
+    def test_orphan_slug_flagged(self, tmp_path: Any) -> None:
+        base, sources_dir = self._vault(tmp_path)
+        ghost = base / "attachments" / "ghost-source"
+        ghost.mkdir(parents=True)
+        (ghost / "x.txt").write_text("data")
+        rule = OrphanAttachmentsRule()
+        results = rule.check(_make_wiki([]), sources_dir=sources_dir)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert "ghost-source/x.txt" in failures[0].message
+
+    def test_live_slug_passes(self, tmp_path: Any) -> None:
+        base, sources_dir = self._vault(tmp_path)
+        slug_dir = base / "attachments" / "report"
+        slug_dir.mkdir(parents=True)
+        (slug_dir / "notes.txt").write_text("data")
+        rule = OrphanAttachmentsRule()
+        results = rule.check(_make_wiki([]), sources_dir=sources_dir)
+        assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_no_attachments_dir_skips(self, tmp_path: Any) -> None:
+        base, sources_dir = self._vault(tmp_path)
+        rule = OrphanAttachmentsRule()
+        results = rule.check(_make_wiki([]), sources_dir=sources_dir)
+        assert results[0].outcome == LintRuleOutcome.SKIP
+
+    def test_runner_includes_rule(self, tmp_path: Any) -> None:
+        base, sources_dir = self._vault(tmp_path)
+        ghost = base / "attachments" / "ghost-source"
+        ghost.mkdir(parents=True)
+        (ghost / "x.txt").write_text("data")
+        runner = LintRunner(sources_dir=sources_dir, rules=["orphan-attachments"])
+        report = runner.run(_make_wiki([]))
+        failures = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+    def _vault(self, tmp_path: Any) -> tuple[Path, str]:
+        """Vault with one source + compile state; returns (base, sources_dir)."""
+        base = tmp_path / "vault"
+        (base / "sources").mkdir(parents=True)
+        (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
+        (base / ".knox").mkdir()
+        (base / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        return base, str(base / "sources")
 
 
 def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:

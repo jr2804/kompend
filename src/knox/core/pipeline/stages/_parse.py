@@ -16,7 +16,7 @@ from knox.core.models import (
     ParsedDocument,
     WikiField,
 )
-from knox.core.models.attachments import AttachmentManifest
+from knox.core.models.attachments import AttachmentManifest, adopt_orphan_attachments
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.attachments import (
     ingest_attachment,
@@ -53,6 +53,16 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         return []
 
     pipeline.emit("parse", 0, len(source_files), "starting")
+
+    # Auto-adopt orphaned attachments (files under attachments/<slug>/ with
+    # no manifest entry — recovery after manifest loss, or files dropped in
+    # manually). Flags derive from extension classes + global embed config.
+    try:
+        adopted = adopt_orphan_attachments(Path(pipeline.base_directory))
+        if adopted:
+            logger.info("Adopted %d orphaned attachment(s): %s", len(adopted), [a.path for a in adopted])
+    except OSError as exc:
+        logger.warning("Attachment adoption failed — continuing: %s", exc)
 
     dedup_skip, dedup_similar = _load_dedup_state(pipeline)
     if dedup_skip:
