@@ -255,6 +255,23 @@ class TestBuildModelUserProvider:
         with pytest.raises(pydantic.ValidationError):
             ProviderEndpoint(base_url="http://x/v1", api_type="grpc")
 
+    def test_user_provider_beats_catalog_for_known_id(self) -> None:
+        """A user-defined provider shadows a models.dev catalog entry with the same id.
+
+        Regression: 'minimax' exists in the catalog, so a user redefining it
+        (e.g. an anthropic-protocol proxy) got the catalog's OpenAI chat model
+        against the wrong endpoint — 404s on every request.
+        """
+        set_user_providers(
+            {"minimax": {"base_url": "https://api.minimax.io/anthropic", "api_key": "k", "api_type": "anthropic"}}
+        )
+        try:
+            m = build_model("minimax/MiniMax-M2.7-highspeed")
+            assert isinstance(m, AnthropicModel)
+            assert str(m.base_url).rstrip("/") == "https://api.minimax.io/anthropic"
+        finally:
+            set_user_providers({})
+
 
 # ── resolve_model_limits ───────────────────────────────────────────────
 

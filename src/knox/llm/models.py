@@ -90,19 +90,22 @@ def build_model(model_string: str) -> Model:
     try:
         return _build_native(provider_id, model_name)
     except _NotNativeProvider as exc:
-        # Fall through to (2) models-dev catalog.
-        logger.debug("provider %r not native (%s); trying models-dev catalog", provider_id, exc)
+        # Fall through to (2) user-defined providers.
+        logger.debug("provider %r not native (%s); trying user-defined providers", provider_id, exc)
 
-    # 2. models-dev catalog (OpenAI-compatible custom provider)?
+    # 2. User-defined [providers] from knox.toml — explicit user config beats
+    # the implicit catalog. A user redefining a catalog-known provider id
+    # (e.g. minimax via an anthropic-protocol proxy) must win, otherwise the
+    # catalog shadows their base_url/api_type and requests hit the wrong
+    # endpoint.
+    if provider_id in _user_providers:
+        return _build_user_provider(provider_id, model_name)
+
+    # 3. models-dev catalog (OpenAI-compatible custom provider)?
     try:
         return _build_catalog(provider_id, model_name)
     except _NotInCatalog as exc:
-        # Fall through to (3) user-defined [providers] from knox.toml.
-        logger.debug("provider %r not in catalog (%s); trying user-defined providers", provider_id, exc)
-
-    # 3. User-defined provider (from [providers] in knox.toml)?
-    if provider_id in _user_providers:
-        return _build_user_provider(provider_id, model_name)
+        logger.debug("provider %r not in catalog (%s)", provider_id, exc)
 
     # Build a helpful list of known providers for the error message.
     known = _discover_provider_ids()
