@@ -1,0 +1,60 @@
+"""Hardened context-manager capability for knox agents.
+
+Wraps :class:`~pydantic_ai_summarization.ContextManagerCapability` with a
+summarizer agent that survives tool-hallucinating models.
+
+The library's internal summarizer agent is built with no tools and a retry
+budget of 1. Tool-tuned models (e.g. MiniMax via the anthropic protocol) see
+``final_result`` tool calls in the embedded conversation history and mimic
+the pattern — the hallucinated call burns the retry budget on the first
+attempt, summarization aborts, and compaction silently never happens (the
+processor keeps the original history, so context grows until the segment
+fails). The hardened agent raises the retry budget so the model can
+self-correct after the "Unknown tool name" feedback, and states explicitly
+that no tools exist.
+"""
+
+from __future__ import annotations
+
+from pydantic_ai import Agent
+from pydantic_ai_summarization import ContextManagerCapability, SummarizationProcessor
+
+__all__ = ["KnoxContextManager"]
+
+#: Tool-call retry budget for the summarizer agent. One hallucinated tool
+#: call must not abort summarization — the ModelRetry feedback ("Unknown
+#: tool name") is usually enough for the model to answer in plain text.
+_SUMMARIZER_RETRIES = 3
+
+
+class _HardenedSummarizationProcessor(SummarizationProcessor):
+    """SummarizationProcessor whose agent tolerates hallucinated tool calls."""
+
+    def _get_summarization_agent(self) -> Agent[None, str]:
+        if self._summarization_agent is None:
+            self._summarization_agent = Agent(
+                self.model,
+                instructions=(
+                    "You are a context summarization assistant. "
+                    "Extract the most important information from conversations. "
+                    "Respond with plain text only — you have no tools and must "
+                    "never attempt to call any."
+                ),
+                retries=_SUMMARIZER_RETRIES,
+            )
+        return self._summarization_agent
+
+
+class KnoxContextManager(ContextManagerCapability):
+    """ContextManagerCapability whose summarizer survives tool-hallucinating models."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self._summarization_processor = _HardenedSummarizationProcessor(
+            trigger=("fraction", self.compress_threshold),
+            keep=self.keep,
+            model=self.summarization_model,
+            token_counter=self.token_counter,
+            summary_prompt=self.summary_prompt,
+            max_input_tokens=self._resolved_max_tokens,
+        )

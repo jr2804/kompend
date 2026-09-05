@@ -48,10 +48,11 @@ from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai_summarization import (
-    ContextManagerCapability,
     ContextSize,
     SlidingWindowCapability,
 )
+
+from knox.agents.context_manager import KnoxContextManager
 
 from knox.agents.instrument import configure_observability
 from knox.agents.knox_model import KnoxModel
@@ -553,7 +554,7 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 setting,
             )
             threshold, keep = _CONTEXT_PRESETS["default"]
-        return ContextManagerCapability(
+        return KnoxContextManager(
             max_tokens=self.context_window,
             compress_threshold=threshold,
             keep=keep,
