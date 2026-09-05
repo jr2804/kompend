@@ -18,7 +18,7 @@ from pydantic_ai.settings import ModelSettings
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
-from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
+from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.llm.models import build_model
 from knox.logging import get_console, get_logger
@@ -92,7 +92,9 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
-    context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
+    context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
+    if context_window_cap is None:
+        context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
     if context_window_cap == 0:
         context_window_cap = None
     llm_cfg = LLMConfig(**(cfg or {}).get("compile", {}).get("llm", {}))
@@ -207,7 +209,7 @@ def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None, con
         issues.append(
             f"Input budget ({input_budget} tokens) too small after reserving "
             f"{sys_tokens} system + {gen_max} output tokens in {cw.max_input} context window. "
-            f"Reduce gen_output_max or increase context_window_cap."
+            "Reduce gen_output_max or increase context_window."
         )
 
     if not issues:

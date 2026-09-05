@@ -152,3 +152,32 @@ class TestDiscoverContextWindowUserProvider:
         assert cw.max_input == 64000
         assert cw.max_output == 32000
         assert cw.source == ContextSource.FALLBACK
+
+
+class TestPerModelContextWindow:
+    """Per-model context_window resolution (finest granularity wins)."""
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+
+    def test_per_model_wins_over_provider_level(self) -> None:
+        self._set({"context_window": 32768, "models": {"big": {"context_window": 200000}}})
+        assert discover_context_window("prov/big").max_input == 200000
+        assert discover_context_window("prov/other").max_input == 32768
+
+    def test_per_model_without_provider_level(self) -> None:
+        self._set({"models": {"big": {"context_window": 131072}}})
+        assert discover_context_window("prov/big").max_input == 131072
+        cw = discover_context_window("prov/other", fallback_max_input=4096, fallback_max_output=4096)
+        assert cw.max_input == 4096
+
+    def test_deprecated_provider_cap_still_honored(self) -> None:
+        self._set({"context_window_cap": 16384})
+        assert discover_context_window("prov/any").max_input == 16384
+
+    def test_new_provider_level_wins_over_deprecated(self) -> None:
+        self._set({"context_window": 8192, "context_window_cap": 16384})
+        assert discover_context_window("prov/any").max_input == 8192
+
+    def _set(self, provider_cfg: dict) -> None:
+        set_user_providers({"prov": {"base_url": "http://x/v1", **provider_cfg}})

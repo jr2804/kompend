@@ -11,6 +11,9 @@ from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from knox.core.config._configs import ProviderEndpoint
+import pydantic
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -231,6 +234,26 @@ class TestBuildModelUserProvider:
         """A provider not in _user_providers should still raise the standard error."""
         with pytest.raises(ValueError, match="Unknown provider"):
             build_model("not-registered/some-model")
+
+    def test_api_type_dispatch(self) -> None:
+        """api_type selects the wire protocol model class."""
+
+        set_user_providers(
+            {
+                "chat": {"base_url": "http://x/v1"},
+                "responses": {"base_url": "http://x/v1", "api_type": "openai-responses"},
+                "anthropic": {"base_url": "http://x/v1", "api_type": "anthropic", "api_key": "k"},
+            }
+        )
+        assert isinstance(build_model("chat/m"), OpenAIChatModel)
+        assert isinstance(build_model("responses/m"), OpenAIResponsesModel)
+        assert isinstance(build_model("anthropic/m"), AnthropicModel)
+
+    def test_invalid_api_type_rejected_by_schema(self) -> None:
+        """api_type is a closed Literal — unknown values fail config validation."""
+
+        with pytest.raises(pydantic.ValidationError):
+            ProviderEndpoint(base_url="http://x/v1", api_type="grpc")
 
 
 # ── resolve_model_limits ───────────────────────────────────────────────

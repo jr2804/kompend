@@ -260,6 +260,7 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
     """
     for old_key, new_key, old_default in (
         ("search.embed_attachments", "attachments.embed", False),
+        ("compile.llm.context_window_cap", "compile.llm.context_window", None),
     ):
         old_val = get_dot(result, old_key)
         # Only migrate when the canonical key is still at its default layer —

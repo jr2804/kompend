@@ -89,14 +89,19 @@ def discover_context_window(  # noqa: PLR0915
             source = ContextSource.OLLAMA
 
     # 1b. User-defined provider (from [providers] in knox.toml)?
+    # Resolution: per-model context_window → provider-level context_window
+    # (old key context_window_cap still honored) — finest granularity wins.
     if max_input is None:
-        provider_id, _ = _split_model(model)
+        provider_id, model_name = _split_model(model)
         if provider_id in _user_providers:
             cfg = _user_providers[provider_id]
-            user_cap = cfg.get("context_window_cap")
-            if user_cap is not None:
-                max_input = int(user_cap)
-                max_output = int(user_cap)
+            model_cfg = cfg.get("models", {}).get(model_name, {})
+            per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None
+            provider_level = cfg.get("context_window", cfg.get("context_window_cap"))
+            override = per_model if per_model is not None else provider_level
+            if override is not None:
+                max_input = int(override)
+                max_output = int(override)
                 source = ContextSource.FALLBACK
 
     if max_input is None or max_output is None:
@@ -117,7 +122,8 @@ def discover_context_window(  # noqa: PLR0915
         if fallback_max_output is None:
             fallback_max_output = llm_config.fallback_max_output
         if context_window_cap is None:
-            context_window_cap = llm_config.context_window_cap
+            # New canonical key; fall back to the deprecated context_window_cap.
+            context_window_cap = llm_config.context_window if llm_config.context_window is not None else llm_config.context_window_cap
 
     # Apply explicit fallback from config if provided.
     if max_input is None and fallback_max_input is not None:

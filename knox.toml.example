@@ -99,12 +99,20 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 # pydantic-ai or listed in the models.dev catalog.  Each provider gets a
 # short name that becomes the ``provider/`` prefix in model strings.
 #
+# RECOMMENDED: define providers globally in ~/.config/knox/config.toml —
+# they carry credentials and are usually machine-wide, not per-vault.
+#
 # Example — self-hosted llama.cpp server:
 #
 #   [providers.my-llama]
 #   base_url = "http://localhost:8081/v1"
-#   api_key = "${MY_API_KEY}"          # optional; resolved from env var
-#   context_window_cap = 32768          # optional; overrides auto-discovery
+#   api_key = "${MY_API_KEY}"            # optional; resolved from env var
+#   api_type = "openai-chat"             # openai-chat (default) | openai-responses | anthropic
+#   context_window = 32768               # default context window for all its models
+#
+#   # Per-model context window (finest granularity, wins over provider-level):
+#   [providers.my-llama.models."mistral-nemo"]
+#   context_window = 131072
 #
 # Then use it in [compile.llm]:
 #
@@ -112,8 +120,8 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 #
 # The ``api_key`` value supports ``${VAR_NAME}`` env-var references.
 # If omitted, a placeholder key is sent (works for keyless endpoints).
-# ``context_window_cap`` is optional — if set, it caps the model's
-# context window for both input and output.
+# ``context_window`` overrides auto-discovery; the deprecated
+# ``context_window_cap`` key is still honored when ``context_window`` is unset.
 
 # ── Compile settings ────────────────────────────────────────────────────
 
@@ -286,10 +294,12 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 # num_ctx_min = 2048      # minimum context window to accept
 # num_ctx_max = 131072    # maximum context window to accept
 
-# User-configured cap on discovered context window (tokens).
+# User-configured context window override/cap (tokens).
 # When set, max_input and max_output are capped to this value regardless
 # of what Ollama or models-dev report. Useful for limiting context usage
 # on slower/local models. None = no cap (use full discovered window).
+# context_window = 65536
+# DEPRECATED: context_window_cap — old name, still honored when context_window is unset.
 # context_window_cap = 65536
 
 # Transient-error retries before advancing to next fallback model

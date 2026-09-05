@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -189,7 +189,8 @@ class LLMConfig(_KnoxBaseModel):
     fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
     num_ctx_min: int = Field(default=2048, validation_alias=EnvVar.LLM_NUM_CTX_MIN)
     num_ctx_max: int = Field(default=131072, validation_alias=EnvVar.LLM_NUM_CTX_MAX)
-    context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP)
+    context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP, description="DEPRECATED — use context_window")
+    context_window: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model")
     role_models: dict[str, str] = Field(default_factory=dict)
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
@@ -492,25 +493,43 @@ class ExtractionConfig(_KnoxBaseModel):
         return self
 
 
-class ProviderEndpoint(_KnoxBaseModel):
-    """A user-defined OpenAI-compatible provider endpoint.
+class ProviderModelConfig(_KnoxBaseModel):
+    """Per-model settings within a provider (``[providers.<name>.models."<model>"]``)."""
 
-    Defined under ``[providers.<name>]`` in ``knox.toml``:
+    context_window: int | None = Field(default=None, description="Context window length for this model (finest granularity, wins over provider-level and catalog values)")
+
+
+class ProviderEndpoint(_KnoxBaseModel):
+    """A user-defined provider endpoint.
+
+    Defined under ``[providers.<name>]`` in ``knox.toml`` (recommended:
+    globally in ``~/.config/knox/config.toml``, since providers carry
+    credentials):
 
     .. code-block:: toml
 
         [providers.my-llama]
         base_url = "http://localhost:8081/v1"
         api_key = "${MY_API_KEY}"          # optional; env var reference
-        context_window_cap = 32768           # optional; overrides auto-discovery
+        api_type = "openai-chat"           # openai-chat | openai-responses | anthropic
+        context_window = 32768             # default context window for all its models
+
+        [providers.my-llama.models."mistral-nemo"]
+        context_window = 131072            # per-model override (finest granularity)
 
     The provider name (``my-llama``) becomes the ``provider`` part in
     ``provider/model`` strings, e.g. ``my-llama/mistral-nemo``.
     """
 
-    base_url: str = Field(description="OpenAI-compatible base URL (e.g. http://localhost:8081/v1)")
+    base_url: str = Field(description="Provider base URL (e.g. http://localhost:8081/v1)")
     api_key: str | None = Field(default=None, description="API key or env var reference like ${VAR_NAME}")
-    context_window_cap: int | None = Field(default=None, description="Optional override for context window size")
+    api_type: Literal["openai-chat", "openai-responses", "anthropic"] = Field(
+        default="openai-chat",
+        description="Wire protocol the endpoint speaks: openai-chat (/v1/chat/completions), openai-responses (/v1/responses), or anthropic (/v1/messages)",
+    )
+    context_window: int | None = Field(default=None, description="Default context window length for all models on this provider (overrides auto-discovery; per-model entries win)")
+    context_window_cap: int | None = Field(default=None, description="DEPRECATED — use context_window. Old per-provider override key, still honored when context_window is unset")
+    models: dict[str, ProviderModelConfig] = Field(default_factory=dict, description="Per-model settings keyed by model name")
 
 
 class SkillConfig(_KnoxBaseModel):

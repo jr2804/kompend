@@ -39,9 +39,11 @@ import ollama
 import pydantic_ai.providers
 from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.ollama import OllamaModel
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers import infer_provider_class
+from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
@@ -247,11 +249,14 @@ def _catalog_api_key(catalog: Provider) -> str:
 
 
 def _build_user_provider(provider_id: str, model_name: str) -> Model:
-    """Build an OpenAI-compatible model from a user-defined provider config.
+    """Build a model from a user-defined provider config.
 
     The provider config is registered via :func:`set_user_providers` and
-    must have a ``base_url`` key. Optional ``api_key`` is resolved from
-    env var references (``${VAR_NAME}``).
+    must have a ``base_url`` key. ``api_type`` selects the wire protocol:
+
+    - ``openai-chat`` (default) — ``/v1/chat/completions``
+    - ``openai-responses`` — ``/v1/responses``
+    - ``anthropic`` — ``/v1/messages``
     """
     cfg = _user_providers[provider_id]
     base_url = cfg.get("base_url", "")
@@ -260,8 +265,14 @@ def _build_user_provider(provider_id: str, model_name: str) -> Model:
 
     raw_key = cfg.get("api_key")
     api_key = _resolve_env_ref(raw_key) if raw_key else _NO_KEY_PLACEHOLDER
+    api_type = cfg.get("api_type") or "openai-chat"
 
+    if api_type == "anthropic":
+        provider = AnthropicProvider(base_url=base_url, api_key=api_key)
+        return AnthropicModel(model_name, provider=provider)
     provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+    if api_type == "openai-responses":
+        return OpenAIResponsesModel(model_name, provider=provider)
     return OpenAIChatModel(model_name, provider=provider)
 
 

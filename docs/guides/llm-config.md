@@ -37,37 +37,69 @@ If no path resolves, `build_model()` raises `ValueError`.
 
 Use this when your model host is not a native pydantic-ai provider and not
 in the models-dev catalog — typical cases are a self-hosted `llama.cpp`
-server, vLLM, text-generation-inference, or a private OpenAI-compatible
-mirror.
+server, vLLM, text-generation-inference, an OpenAI-compatible mirror, or
+an API-proxy that exposes multiple protocols.
+
+**Recommended location:** define providers **globally** in
+`~/.config/knox/config.toml` — they carry credentials and are usually
+machine-wide, not per-vault. Per-vault definitions in `.knox/config.toml`
+work too.
 
 ```toml
 [providers.my-llama]
 base_url = "http://localhost:8081/v1"
-api_key = "${MY_API_KEY}"          # optional; resolved from env var
-context_window_cap = 32768          # optional
+api_key = "${MY_API_KEY}"            # optional; resolved from env var
+api_type = "openai-chat"             # openai-chat (default) | openai-responses | anthropic
+context_window = 32768               # default context window for all its models
+
+# Per-model context window — finest granularity, wins over provider-level:
+[providers.my-llama.models."mistral-nemo"]
+context_window = 131072
 
 [compile.llm]
 default_model = "my-llama/mistral-nemo"
 ```
 
 The provider `id` (`my-llama` above) is just the TOML table key. It must
-not collide with a native or catalog provider id. Any OpenAI-compatible
-endpoint can be referenced as `<id>/<model_name>` everywhere `build_model()`
-is used, including `default_model`, `fallback_chain`, and CLI overrides.
+not collide with a native or catalog provider id. The endpoint is
+referenced as `<id>/<model_name>` everywhere `build_model()` is used,
+including `default_model`, `fallback_chain`, and CLI overrides.
 
-| Field                | Required | Notes                                                |
-| -------------------- | -------- | ---------------------------------------------------- |
-| `base_url`           | yes      | Full OpenAI `/v1` URL, without a trailing slash      |
-| `api_key`            | no       | Literal value or `${ENV_VAR}` reference              |
-| `context_window_cap` | no       | Token cap; wins over auto-discovery                  |
+| Field | Required | Notes |
+| ----- | -------- | ---------------------------------------------------- |
+| `base_url` | yes | Provider base URL (e.g. `http://host:8081/v1`) |
+| `api_key` | no | Literal value or `${ENV_VAR}` reference |
+| `api_type` | no | Wire protocol: `openai-chat` (default), `openai-responses`, or `anthropic` |
+| `context_window` | no | Default context window length for all models on this provider |
+| `models."<name>".context_window` | no | Per-model context window (wins over provider-level) |
 
 `api_key` supports the same `${ENV_VAR}` interpolation KNOX uses elsewhere.
 A plain literal works too. Omit `api_key` entirely for keyless endpoints;
 KNOX sends a placeholder token because pydantic-ai/OpenAI SDK require one.
 
-Set `context_window_cap` so KNOX knows the model's token budget — without
-it, KNOX falls back to `fallback_max_input` from `[compile.llm]` (since
+**`api_type`** selects the wire protocol KNOX speaks to the endpoint:
+
+- `openai-chat` — OpenAI Chat Completions (`/v1/chat/completions`); the
+  default and what virtually every OpenAI-compatible server implements.
+- `openai-responses` — OpenAI Responses API (`/v1/responses`).
+- `anthropic` — Anthropic Messages API (`/v1/messages`), for proxies that
+  expose Anthropic's protocol.
+
+**Context window resolution order** (finest wins):
+
+1. `[providers.X.models."<model>"] context_window`
+2. `[providers.X] context_window`
+3. models.dev catalog
+4. `[compile.llm] fallback_max_input` (last resort)
+
+Set `context_window` so KNOX knows the model's token budget — without it,
+KNOX falls back to `fallback_max_input` from `[compile.llm]` (since
 self-hosted endpoints are not in the models.dev catalog).
+
+> **Deprecated:** `context_window_cap` (provider level and
+> `compile.llm.context_window_cap`) are still honored when the new
+> `context_window` key is unset, but new configs should use
+> `context_window`.
 
 ## API key discovery
 
@@ -188,11 +220,11 @@ For best results use a model with **≥ 32 K** context. Set
 fallback_max_input = 32768    # used when auto-detection fails
 ```
 
-Cap an over-large window (e.g. to bound memory) with `context_window_cap`:
+Cap an over-large window (e.g. to bound memory) with `context_window`:
 
 ```toml
 [compile.llm]
-context_window_cap = 65536    # hard ceiling on effective window
+context_window = 65536    # hard ceiling on effective window
 ```
 
 ## Retry and structured output
