@@ -60,6 +60,27 @@ LLM steps (`semantic`, `remediate`) are skipped gracefully with a note when
 no model is configured. The model is `compile.lint.model`, falling back to
 `compile.llm.default_model`.
 
+## Lint during compile
+
+`knox compile` runs lint automatically after the wiki is built. Two
+independent flags control what gets run (both default to on):
+
+| Flag | Env var | Effect |
+|------|---------|--------|
+| `--lint / --no-lint` | `KNOX_COMPILE_LINT` | Deterministic structural lint only |
+| `--lint-all / --no-lint-all` | `KNOX_COMPILE_LINT_ALL` | Full pipeline (deterministic + LLM + remediate); implies `--lint` |
+
+`--no-lint` and `--no-lint-all` are identical — both disable any linting.
+Fixes are always applied when lint runs during compile (no `--no-fix`
+option; compile is meant to leave the wiki in a clean state).
+Disable per-run with `--no-lint-all`, or set `KNOX_COMPILE_LINT_ALL=0`
+in the environment:
+
+```bash
+knox compile ./sources --no-lint-all        # no lint at all
+KNOX_COMPILE_LINT=0 knox compile ./sources  # structural lint only (skips LLM steps)
+```
+
 ### `knox lint history`
 
 ```text
@@ -142,15 +163,17 @@ knox lint prune --max-age-days 90
 knox lint prune --keep-last 50 --max-age-days 90
 ```
 
-### `knox compile --lint`
+### `knox compile --lint` (see [the table above](#lint-during-compile) for the full flag/env-var matrix)
 
-Lint runs automatically after every compile (on by default). Disable it
-per-run with `--no-lint`, or set `KNOX_COMPILE_LINT=0` in the environment:
+The first section above is the canonical reference. This block shows the
+short flags on the `knox compile` command:
 
 ```bash
-knox compile ./sources          # lint runs automatically
-knox compile ./sources --no-lint
-KNOX_COMPILE_LINT=0 knox compile ./sources
+knox compile ./sources                # --lint-all on (default): full pipeline incl. LLM
+knox compile ./sources --lint         # deterministic structural lint only
+knox compile ./sources --no-lint-all  # disable any linting
+KNOX_COMPILE_LINT=0 knox compile ./sources  # deterministic only
+KNOX_COMPILE_LINT_ALL=0 knox compile ./sources  # disable any linting via env
 ```
 
 ## Structural Rules (11)

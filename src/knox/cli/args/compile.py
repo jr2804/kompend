@@ -79,8 +79,18 @@ CompileLint = Annotated[
     bool,
     typer.Option(
         "--lint/--no-lint",
-        help="Run lint after compilation and report quality issues. Default: on (override with KNOX_COMPILE_LINT).",
+        help="Run deterministic structural lint (no LLM) after compile. Default: on (override with KNOX_COMPILE_LINT).",
         rich_help_panel="Output",
         envvar="KNOX_COMPILE_LINT",
+    ),
+]
+
+CompileLintAll = Annotated[
+    bool,
+    typer.Option(
+        "--lint-all/--no-lint-all",
+        help="Run the full lint pipeline (structural + LLM rules + remediate) after compile. Implies --lint. Override with KNOX_COMPILE_LINT_ALL.",
+        rich_help_panel="Output",
+        envvar="KNOX_COMPILE_LINT_ALL",
     ),
 ]

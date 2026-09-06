@@ -29,6 +29,7 @@ from .common import (
 # Compile command
 from .compile import (
     CompileLint,
+    CompileLintAll,
     EmbedModel,
     Frontmatter,
     Ignore,
@@ -127,6 +128,7 @@ __all__ = [
     "CliSet",
     # Compile
     "CompileLint",
+    "CompileLintAll",
     # Config
     "ConfigGlobalOpt",
     "ConfigKeyArg",

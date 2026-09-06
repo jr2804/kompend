@@ -31,6 +31,7 @@ from knox.cli.args import (
     BypassReview,
     CliSet,
     CompileLint,
+    CompileLintAll,
     ConfigPath,
     EmbedModel,
     ForceTier,
@@ -117,7 +118,7 @@ def parse_cmd(
 
 
 @app.command(name="compile")
-def compile_cmd(  # noqa: PLR0915
+def compile_cmd(  # noqa: PLR0915, PLR0917
     ctx: typer.Context,
     wiki_dir: WikiDir = None,
     config: ConfigPath = None,
@@ -141,6 +142,7 @@ def compile_cmd(  # noqa: PLR0915
     synthesize: SynthesizeFlag = None,
     index_store: IndexStore = None,
     compile_lint: CompileLint = True,
+    compile_lint_all: CompileLintAll = True,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
@@ -265,6 +267,7 @@ def compile_cmd(  # noqa: PLR0915
                 synthesize=synthesize,
                 index_store=index_store,
                 compile_lint=compile_lint,
+                compile_lint_all=compile_lint_all,
                 embed_model=embed_model,
                 show_progress=show_progress,
                 lint_config=lint_config,
@@ -291,7 +294,7 @@ def compile_cmd(  # noqa: PLR0915
 
 
 @app.command(name="ingest")
-def ingest_cmd(
+def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     ctx: typer.Context,
     files: Annotated[
         list[str] | None,

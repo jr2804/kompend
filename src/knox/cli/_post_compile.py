@@ -6,7 +6,6 @@ Extracted from :mod:`knox.cli._pipeline_helpers` to reduce module size.
 from __future__ import annotations
 
 import dataclasses
-import json
 import time
 from pathlib import Path
 from typing import Any
@@ -17,11 +16,14 @@ from knox import __version__ as _KNOX_VERSION
 from knox.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
 from knox.agents.wiki_index import make_agentic_overview_agent
 from knox.cli._progress import PipelineProgress
+from knox.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
+from knox.core.config import resolve_config  # noqa: PLC0415
 from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
+from knox.lint.flow import run_full_lint_flow  # noqa: PLC0415
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
@@ -54,6 +56,7 @@ class PostCompileOptions:
     synthesize: bool | None = None
     index_store: bool | None = None
     compile_lint: bool | None = None
+    compile_lint_all: bool | None = None
     embed_model: str | None = None
     show_progress: bool | None = None
     lint_config: LintConfig | None = None
@@ -122,44 +125,12 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
         except Exception as exc:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
-    if opts.compile_lint:
+    if opts.compile_lint_all:
+        run_post_compile_lint_all(opts.wiki, base_dir, pipeline_config=opts.pipeline_config)
+    elif opts.compile_lint:
         run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
 
     write_wiki_cache(opts.wiki, base_dir)
-
-
-def write_wiki_cache(wiki: CompiledWiki, base_dir: Path) -> None:
-    """Serialize the compiled wiki to ``.knox/last_wiki.json``."""
-    paths = VaultPaths(base_dir)
-    cache_file = paths.wiki_cache_file
-    cache_file.parent.mkdir(parents=True, exist_ok=True)
-
-    def _relative(p: str) -> str:
-        try:
-            return str(Path(p).relative_to(base_dir))
-        except ValueError:
-            return p
-
-    nodes_dicts: list[dict[str, Any]] = []
-    for n in wiki.nodes:
-        nd = dataclasses.asdict(n)
-        meta = nd.get("metadata", {})
-        if MetadataField.SOURCE_FILE in meta:
-            meta = dict(meta)
-            meta[MetadataField.SOURCE_FILE] = _relative(meta[MetadataField.SOURCE_FILE])
-            nd["metadata"] = meta
-        nodes_dicts.append(nd)
-
-    data = {
-        WikiField.NODES: nodes_dicts,
-        WikiField.EDGES: list(wiki.edges),
-        WikiField.TOC: list(wiki.toc),
-        WikiField.QUALITY_SCORE: wiki.quality_score,
-        WikiField.ITERATION: wiki.iteration,
-        "metadata": dict(wiki.metadata),
-    }
-    cache_file.write_text(json.dumps(data, default=str, indent=2), encoding="utf-8")
-
 
 def send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
@@ -199,6 +170,18 @@ def verify_claims(
     verified_events = list(wiki.metadata.get("verified") or [])
     verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})  # TrustEvent (output.models)
     wiki.metadata["verified"] = verified_events
+
+def run_post_compile_lint_all(wiki: CompiledWiki, base_dir: Path, *, pipeline_config: PipelineConfig) -> dict[str, Any]:
+
+    paths = VaultPaths(base_dir)
+    cfg = resolve_config(base_dir=base_dir)
+    return run_full_lint_flow(
+        paths,
+        cfg,
+        fix=True,
+        json_output=False,
+        show_progress=False,
+    )
 
 
 def run_post_compile_lint(

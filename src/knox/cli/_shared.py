@@ -18,6 +18,7 @@ from knox.core.config.keys import (
     COMPILE_IN_PLACE_SOURCES,
     COMPILE_INDEX,
     COMPILE_LINT,
+    COMPILE_LINT_ALL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_FALLBACK_MAX_RETRIES,
@@ -87,6 +88,7 @@ def build_cli_overrides(
     synthesize: bool | None = None,
     index_store: bool | None = None,
     compile_lint: bool | None = None,
+    compile_lint_all: bool | None = None,
     ignore: list[str] | None = None,
     llm_default_model: str | None = None,
     vlm_model: str | None = None,
@@ -138,6 +140,7 @@ def build_cli_overrides(
         (COMPILE_SYNTHESIZE, synthesize),
         (COMPILE_INDEX, index_store),
         (COMPILE_LINT, compile_lint),
+        (COMPILE_LINT_ALL, compile_lint_all),
         (COMPILE_MEMORY_ENABLED, memory_enabled),
     ]
     for key, val in _flags:

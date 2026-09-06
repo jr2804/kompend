@@ -1,45 +1,36 @@
 """Quality & diagnostics MCP tools (lint, doctor, review, provenance, log, list-parsers)."""
 
-import time
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from knox.agents.lint import LintRuleAgent
 from knox.agents.remediate import make_agentic_remediation_agent
 from knox.cli._post_compile import write_wiki_cache
 from knox.cli._shared import build_cli_overrides
 from knox.cli.cmds.quality.doctor import run_doctor
+from knox.cli.cmds.quality.lint import CHECK_STEP_RULES, _make_lint_agent, _persist_history
 from knox.core.config import resolve_config
-from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.models import CompiledWiki, MetadataField, load_wiki_from_files
+from knox.core.models import MetadataField, load_wiki_from_files
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, REVIEW_DIR, VaultPaths, vault_paths
 from knox.core.reporting.log import build_log_report
 from knox.core.utils.dicts import as_str
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
+from knox.lint.flow import _persist_lint_fixes, run_full_lint_flow
+from knox.lint.flow import _run_pass as _run_rules_pass
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
-    entry_from_report,
     history_to_json,
     history_to_text,
     load_lint_history,
     prune_lint_history,
-    save_lint_entry,
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
-from knox.lint.runner import LintRunner, report_to_json, report_to_text
+from knox.lint.runner import report_to_text
 from knox.logging import get_logger
-from knox.output.pages.log import log_stage
 from knox.output.renderer import format_output
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 from knox.review import ReviewQueue
-from knox.cli.cmds.quality.lint import run_full_lint_flow
-from knox.cli.cmds.quality.lint import CHECK_STEP_RULES, _run_rules_pass, _persist_lint_fixes, _persist_history
-from knox.cli.cmds.quality.lint import _make_lint_agent, _run_rules_pass, _persist_history
 
 logger = get_logger(__name__)
 
@@ -133,41 +124,7 @@ def lint_semantic(
     }
 
 
-def _uses_llm_rule(rule: list[str] | None) -> bool:
-    if not rule:
-        return False
-    return any(r in LLM_RULE_BY_NAME for r in rule)
-
-
-def _persist_lint_fixes(
-    wiki: CompiledWiki,
-    output_dir: Path,
-    base_dir: Path,
-) -> int:
-    updated = 0
-    for node in wiki.nodes:
-        fm = node.metadata.get("frontmatter", {})
-        if not isinstance(fm, dict) or "title" not in fm:
-            continue
-        md_file = output_dir / f"node_{node.id}.md"
-        if not md_file.exists():
-            continue
-        text = md_file.read_text(encoding="utf-8")
-        normalized = text.replace("\r\n", "\n")
-        if normalized.startswith("---\n"):
-            end_idx = normalized.find("\n---\n", 4)
-            if end_idx < 0:
-                continue
-            old_fm_text = normalized[4:end_idx]
-            body = normalized[end_idx + 5 :]
-            old_fm = yaml.safe_load(old_fm_text) or {}
-            old_fm.update(fm)
-            new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
-            updated += 1
-    write_wiki_cache(wiki, base_dir)
-    return updated
-
+# ── lint_history ───────────────────────────────────────────────────────────────────────────
 
 # ── lint_history ──────────────────────────────────────────────────────────
 
@@ -398,7 +355,7 @@ def doctor(
 # ── review ────────────────────────────────────────────────────────────────
 
 
-def review(
+def review(  # noqa: PLR0917, PLR0911 — MCP tool with many kwargs
     wiki_dir: str | None = None,
     action: str = "list",
     slug: str | None = None,
