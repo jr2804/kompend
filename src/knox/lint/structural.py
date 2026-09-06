@@ -16,7 +16,7 @@ from typing import Any
 
 from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
-from knox.core.paths import KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, is_protected_source
+from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, is_protected_source
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -87,12 +87,14 @@ class BrokenWikilinksRule(BaseLintRule):
                 # Source-file citations (sources/foo.pdf) are provenance, not page links.
                 if target_title.startswith("sources/"):
                     continue
-                if target_title.lower() not in alias_index:
+                # Alias syntax [[Page Title|display text]]: resolve the page ref.
+                page_ref = target_title.split("|", 1)[0].strip()
+                if page_ref.lower() not in alias_index:
                     # No exact match — record as broken, but mark it as an
                     # "alias of existing page" when the LLM likely meant a
                     # known page but used the wrong short form. This lets
                     # the gap-analysis layer recommend the right fix.
-                    alias_of = nearest_alias(target_title, alias_index)
+                    alias_of = nearest_alias(page_ref, alias_index)
                     details: dict[str, Any] = {"target": target_title}
                     if alias_of:
                         details["alias_of"] = alias_of
@@ -111,21 +113,42 @@ class BrokenWikilinksRule(BaseLintRule):
         return results
 
     def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
-        """Remove broken wikilinks from page content."""
-        page_edits: dict[str, list[str]] = {}
+        """Repair broken wikilinks in page content.
+
+        Alias-resolvable links (the LLM used a short form of an existing
+        page's title) are rewritten to real markdown links pointing at the
+        resolved page — matching what the renderer's ``convert_wikilinks``
+        produces. Unresolvable links are stripped to their text.
+        """
+        node_by_id = {n.id: n for n in wiki.nodes}
+        page_edits: dict[str, list[tuple[str, str | None]]] = {}
         for r in results:
-            if r.outcome == LintRuleOutcome.FAIL and r.details.get("target"):
-                page_edits.setdefault(r.page_id, []).append(r.details["target"])
+            if r.outcome != LintRuleOutcome.FAIL or not r.details.get("target"):
+                continue
+            page_edits.setdefault(r.page_id, []).append((r.details["target"], r.details.get("alias_of")))
 
         fixed = list(results)
         for node in wiki.nodes:
-            targets = page_edits.get(node.id)
-            if not targets:
+            edits = page_edits.get(node.id)
+            if not edits:
                 continue
-            for target in targets:
-                # Remove the broken [[target]] but keep surrounding text
-                node.content = node.content.replace(f"[[{target}]]", target)
-            # Mark results as fixed
+            for target, alias_of in edits:
+                inner = target
+                if "|" in inner:
+                    page_ref, alias_text = inner.split("|", 1)
+                else:
+                    page_ref = alias_text = inner
+                replacement: str
+                target_node = node_by_id.get(alias_of or "")
+                if alias_of and target_node is not None:
+                    # Rewrite to the resolved page link (same path the
+                    # renderer's convert_wikilinks produces).
+                    folder = KIND_FOLDERS.get(target_node.node_type, "concepts")
+                    replacement = f"[{alias_text.strip()}]({folder}/{alias_of}.md)"
+                else:
+                    # Genuinely missing target — keep the text, drop the brackets.
+                    replacement = alias_text.strip()
+                node.content = node.content.replace(f"[[{target}]]", replacement)
             for r in fixed:
                 if r.page_id == node.id and r.outcome == LintRuleOutcome.FAIL:
                     r.fix_applied = True

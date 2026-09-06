@@ -93,7 +93,10 @@ def _full_catalog(
     toc_items: list[Paragraph] = []
     for _i, node in enumerate(wiki.nodes, 1):
         slug = node.id
-        folder = VaultWriter._folder_for_kind(node.node_type or "")
+        folder = VaultWriter._folder_for_kind(
+            node.node_type or "",
+            str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if (node.node_type or "") == "entity" else "",
+        )
         link_target = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
         desc = VaultWriter.okf_description(node)
         entry = Paragraph()

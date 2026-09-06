@@ -433,6 +433,13 @@ def generate_all_pages_agentic(
 
     broker = ConceptBroker(concepts, num_callers=num_segments)
     categories = _categories_block(compiler._config.extraction_categories)
+    # Entity sub-type per concept (person/organization/standard/...) — routed
+    # into entities/<type>/ subfolders by the vault writer.
+    entity_types = {
+        normalize_concept_key(str(c.get(ExtractionField.NAME, ""))): _sanitize_entity_type(str(c.get("type", "")))
+        for c in concepts
+        if c.get("kind") == "entity"
+    }
 
     logger.info(
         "TwoPhase: agentic generation — %d concept(s), %d segment(s)",
@@ -485,6 +492,7 @@ def generate_all_pages_agentic(
         passes = 0
         gen_output = None
         seg_start_nodes = len(nodes)
+        seg_titles: set[str] = set()  # normalized page titles produced for this segment
         while broker.remaining(seg_id) > 0 and passes < cap:
             passes += 1
             try:
@@ -522,36 +530,52 @@ def generate_all_pages_agentic(
                 )
 
             for idx, page in enumerate(valid_pages):
+                seg_titles.add(normalize_concept_key(page.title or ""))
                 node_id = slugify(page.title or f"concept-{seg_idx}-{idx}", max_length=compiler._config.llm.slug_max_length)
                 kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
                 page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
+                node_metadata: dict[str, Any] = {
+                    MetadataField.PROVENANCE: page.provenance,
+                    MetadataField.RELATED: page.related,
+                    MetadataField.TWO_PHASE: True,
+                    "images": all_images,
+                    "frontmatter": {
+                        "title": page.title or f"Concept {idx}",
+                    },
+                }
+                if kind == "entity":
+                    node_metadata[MetadataField.ENTITY_TYPE] = entity_types.get(
+                        normalize_concept_key(page.title or ""), "entity"
+                    )
                 upsert_node(
                     WikiNode(
                         id=node_id,
                         title=page.title or f"Concept {idx}",
                         content=page_content,
                         node_type=kind,
-                        metadata={
-                            MetadataField.PROVENANCE: page.provenance,
-                            MetadataField.RELATED: page.related,
-                            MetadataField.TWO_PHASE: True,
-                            "images": all_images,
-                            "frontmatter": {
-                                "title": page.title or f"Concept {idx}",
-                            },
-                        },
+                        metadata=node_metadata,
                     ),
                     nodes,
                     slug_to_idx,
                 )
 
-            # Report page-based progress: concepts consumed from this
-            # segment's broker pool, plus all prior segments' pools.
-            done_in_seg = start_remaining - broker.remaining(seg_id)
+            # Requeue fetched-but-uncovered concepts: the model may fetch a
+            # batch and only produce pages for part of it. Requeued concepts
+            # are handed out again on the next pass (within the same cap).
+            uncovered_fetched = [
+                c
+                for c in broker.consumed(seg_id)
+                if normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) not in seg_titles
+            ]
+            if uncovered_fetched:
+                broker.requeue(seg_id, uncovered_fetched)
+
+            # Report page-based progress: pages produced for this segment,
+            # bounded by its broker share (prior segments count fully).
             compiler._report(
-                pages_done + done_in_seg,
+                pages_done + min(len(seg_titles), start_remaining),
                 gen_progress_total,
-                f"generating [{pages_done + done_in_seg}/{gen_progress_total}] {seg_label}",
+                f"generating [{pages_done + min(len(seg_titles), start_remaining)}/{gen_progress_total}] {seg_label}",
             )
 
         pages_done += start_remaining
@@ -559,16 +583,14 @@ def generate_all_pages_agentic(
         uncovered = broker.remaining(seg_id)
         if uncovered > 0:
             seg_pages = len(nodes) - seg_start_nodes
-            never_fetched = uncovered == start_remaining
             names = [str(c.get(ExtractionField.NAME, "?")) for c in broker.remaining_concepts(seg_id)]
             sample = ", ".join(names[:10]) + ("…" if len(names) > 10 else "")
             debug_hint = f" (debug: {debug_file})" if debug_file else ""
-            if never_fetched:
+            if not seg_titles:
                 raise LLMOutputError(
-                    f"Agentic generation for {seg_label} never fetched any of its "
-                    f"{start_remaining} assigned concept(s) — the model generated {seg_pages} "
-                    f"page(s) without consulting the concept list, so all {uncovered} concept(s) "
-                    f"have no page (passes={passes}, cap={cap}). Uncovered: [{sample}].{debug_hint} "
+                    f"Agentic generation for {seg_label} produced no page(s) for any of its "
+                    f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}). "
+                    f"Uncovered: [{sample}].{debug_hint} "
                     f"The model is not using the fetch_concepts tool; check its tool-calling support."
                 )
             else:
@@ -607,6 +629,12 @@ def _allowed_kind(kind: str, extras: dict[str, str]) -> str:
     if kind in MANDATORY_KINDS or kind in extras:
         return kind
     return "concept"
+
+
+def _sanitize_entity_type(raw: str) -> str:
+    """Normalize an entity type for use as a folder name ("Person" → "person")."""
+    sanitized = slugify(raw or "", max_length=40)
+    return sanitized or "entity"
 
 
 def _categories_block(extras: dict[str, str]) -> str:

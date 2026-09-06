@@ -128,6 +128,16 @@ DEDUP_DIR: Final[str] = "dedup"
 DEFAULT_SOURCES_DIR_NAME: Final[str] = "sources"
 DEFAULT_OUTPUT_DIR_NAME: Final[str] = "wiki"
 
+#: Canonical page-kind → output-subfolder mapping. Single source of truth for
+#: both the vault writers and the lint fixer (which computes the path a
+#: resolved wikilink points at).
+KIND_FOLDERS: Final[dict[str, str]] = {
+    "concept": "concepts",
+    "comparison": "concepts",
+    "entity": "entities",
+    "summary": "concepts",
+}
+
 # ── Attachment slug generation ───────────────────────────────────────────
 _SLUG_INVALID_RE: Final = __import__("re").compile(r"[^a-z0-9_-]+")
 _SLUG_UNDERSCORE_RE: Final = __import__("re").compile(r"_+")

@@ -64,6 +64,29 @@ class ConceptBroker:
         cursor = self._cursors.get(caller_id, 0)
         return list(pool[cursor:])
 
+    def consumed(self, caller_id: str) -> list[dict[str, Any]]:
+        """Concept dicts already handed to *caller_id* (fetched, assigned)."""
+        pool = self._per_caller.get(caller_id, [])
+        cursor = self._cursors.get(caller_id, 0)
+        return list(pool[:cursor])
+
+    def requeue(self, caller_id: str, concepts: list[dict[str, Any]]) -> None:
+        """Put *concepts* back at the front of the caller's remaining pool.
+
+        Used by the coverage loop when the agent fetched concepts but did
+        not produce pages for all of them: requeued concepts are handed out
+        again on the next pass, giving the model a second chance within the
+        same bounded loop. Requeued concepts leave the consumed set.
+        """
+        if not concepts:
+            return
+        pool = self._per_caller.setdefault(caller_id, [])
+        cursor = self._cursors.get(caller_id, 0)
+        requeued_names = {c.get("name") for c in concepts}
+        consumed = [c for c in pool[:cursor] if c.get("name") not in requeued_names]
+        self._per_caller[caller_id] = consumed + concepts + pool[cursor:]
+        self._cursors[caller_id] = len(consumed)
+
     @property
     def total_concepts(self) -> int:
         return len(self._concepts)

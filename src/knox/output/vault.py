@@ -42,6 +42,7 @@ from knox.core.paths import (
     DEFAULT_SOURCES_DIR_NAME,
     EXPORTED_DIR_NAME,
     INDEX_FILE,
+    KIND_FOLDERS,
     KNOX_DIR,
     LOG_FILE,
     QUALITY_FILE,
@@ -102,12 +103,8 @@ class VaultWriter(BaseOutputWriter):
     # node_type -> subfolder under the vault root. Kinds not listed here
     # (overview, procedure, section, unknown) stay at the root so the
     # layout never splits a type the compiler didn't anticipate.
-    _KIND_FOLDERS: ClassVar[dict[str, str]] = {
-        "concept": "concepts",
-        "comparison": "concepts",
-        "entity": "entities",
-        "summary": "concepts",
-    }
+    # Canonical kind→folder map lives in core.paths (shared with the lint fixer).
+    _KIND_FOLDERS: ClassVar[dict[str, str]] = KIND_FOLDERS
 
     def __init__(
         self,
@@ -216,6 +213,11 @@ class VaultWriter(BaseOutputWriter):
         for m in re.finditer(r"^(.+?[.!?])\s+(?=[A-Z(])", text):
             next_word = text[m.end() :].split(" ", 1)[0]
             if "." in next_word.rstrip(".,;:"):
+                continue
+            # Skip boundaries after initials — "John G. Beerends is ..." must
+            # not truncate to "John G." (single-letter word before the dot).
+            preceding = m.group(1).rstrip(".!?")
+            if preceding.split(" ")[-1].strip("(") and len(preceding.split(" ")[-1].strip("(")) == 1:
                 continue
             desc = m.group(1)
             break
@@ -350,7 +352,7 @@ class VaultWriter(BaseOutputWriter):
         # Paths are relative (no leading slash) so links stay portable.
         slug_targets: dict[str, str] = {}
         for doc in docs:
-            folder = self._folder_for_kind(doc.node_type)
+            folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
             path = f"{folder}/{doc.page_slug or 'untitled'}.md" if folder else f"{doc.page_slug or 'untitled'}.md"
             slug_targets[doc.page_slug] = path
             slug_targets[doc.title] = path
@@ -365,7 +367,7 @@ class VaultWriter(BaseOutputWriter):
             ref_store = ReferenceStore(self._references_file)
 
         for doc in docs:
-            folder = self._folder_for_kind(doc.node_type)
+            folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
             target_dir = output_dir / folder if folder else output_dir
             target_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{doc.page_slug or 'untitled'}.md"
@@ -724,9 +726,16 @@ class VaultWriter(BaseOutputWriter):
         return rel if rel.parts and rel.parts[0] == KNOX_DIR else None
 
     @classmethod
-    def _folder_for_kind(cls, node_type: str) -> str:
-        """Return the subfolder for a page kind, or '' to stay at the root."""
-        return cls._KIND_FOLDERS.get(node_type, "")
+    def _folder_for_kind(cls, node_type: str, sub: str = "") -> str:
+        """Return the subfolder for a page kind, or '' to stay at the root.
+
+        Entity pages route into ``entities/<sub>/`` — the sub-type
+        (person/organization/standard/...) from node metadata.
+        """
+        folder = cls._KIND_FOLDERS.get(node_type, "")
+        if folder and sub:
+            return f"{folder}/{sub}"
+        return folder
 
     @staticmethod
     def _build_related_edges(

@@ -1145,7 +1145,7 @@ class TestTwoPhaseConceptSalvage:
         with (
             patch.object(compiler, "extract", return_value=ext_set),
             patch("knox.compilation.flows.generation.try_pydanticai_generation", return_value=None),
-            pytest.raises(LLMOutputError, match=r"never fetched any of its 1 assigned concept\(s\)"),
+            pytest.raises(LLMOutputError, match=r"produced no page\(s\) for any of its 1 assigned concept\(s\)"),
         ):
             compiler.compile(chunks)
 

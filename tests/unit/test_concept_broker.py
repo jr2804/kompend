@@ -36,5 +36,30 @@ def test_remaining_concepts_unknown_caller() -> None:
     assert broker.remaining_concepts("nope") == []
 
 
+def test_requeue_puts_uncovered_back_in_pool() -> None:
+    """Requeued concepts are handed out again on the next fetch."""
+    broker = ConceptBroker(_concepts(4), num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+
+    first = broker.fetch(seg0, limit=2)
+    assert [c["name"] for c in first] == ["concept-0", "concept-1"]
+
+    # Model produced pages only for concept-0 — requeue concept-1.
+    broker.requeue(seg0, [first[1]])
+    assert [c["name"] for c in broker.consumed(seg0)] == ["concept-0"]
+    assert [c["name"] for c in broker.remaining_concepts(seg0)] == ["concept-1", "concept-2", "concept-3"]
+
+    # Next fetch hands the requeued concept out first.
+    second = broker.fetch(seg0, limit=1)
+    assert [c["name"] for c in second] == ["concept-1"]
+
+
+def test_requeue_empty_is_noop() -> None:
+    broker = ConceptBroker(_concepts(2), num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+    broker.requeue(seg0, [])
+    assert broker.remaining(seg0) == 2
+
+
 def _concepts(n: int) -> list[dict[str, str]]:
     return [{"name": f"concept-{i}"} for i in range(n)]

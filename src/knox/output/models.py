@@ -47,6 +47,10 @@ class Document:
     """Compiler-assigned kind (concept/overview/comparison/entity/...).
     Used to route the page into a subfolder in vault mode."""
 
+    entity_subtype: str = ""
+    """Entity sub-type (person/organization/standard/...) for entity pages.
+    Routes entity pages into ``entities/<subtype>/`` subfolders."""
+
 
 class TrustEvent(TypedDict):
     """OKF v0.2 §5.2 trust event (``verified`` frontmatter entry)."""

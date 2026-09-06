@@ -77,6 +77,22 @@ class TestBrokenWikilinksRule:
         assert "[[Missing]]" not in node.content
         assert "Missing" in node.content
 
+    def test_fix_rewrites_alias_link_to_resolved_path(self) -> None:
+        """Alias-resolvable links are rewritten to real markdown links, not stripped."""
+        node = _make_node("n1", "Alpha", "See [[POLQA (Perceptual Objective Listening Quality Analysis)|the standard]] for details")
+        target = _make_node("polqa", "POLQA (Perceptual Objective Listening Quality Assessment)", "Body", metadata={})
+        # Use the actual page id 'polqa' as alias target.
+        wiki = _make_wiki([node, target])
+        rule = BrokenWikilinksRule()
+        results = rule.check(wiki)
+        failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
+        assert len(failures) == 1
+        assert failures[0].details.get("alias_of") == "polqa"
+        fixed = rule.fix(wiki, failures)
+        assert all(r.fix_applied for r in fixed)
+        assert "[[POLQA" not in node.content
+        assert "[the standard](concepts/polqa.md)" in node.content
+
     def test_multiple_broken_links(self) -> None:
         node = _make_node("n1", "Alpha", "[[A]] and [[B]] and [[C]]")
         wiki = _make_wiki([node])

@@ -163,7 +163,7 @@ class MarkdownWriter(VaultWriter):
             body = node.content or ""
             images = node.metadata.get("images", [])
             if images:
-                folder = self._folder_for_kind(node.node_type)
+                folder = self._folder_for_kind(node.node_type, node.metadata.get(MetadataField.ENTITY_TYPE))
                 images = self.portablize_images(
                     images,
                     node.metadata.get(MetadataField.PROVENANCE) or [],
@@ -180,6 +180,9 @@ class MarkdownWriter(VaultWriter):
                     source_chunks=node.source_chunks,
                     page_slug=node.id,
                     node_type=node.node_type,
+                    entity_subtype=(
+                        str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type == "entity" else ""
+                    ),
                 ),
             )
 
@@ -201,7 +204,7 @@ class MarkdownWriter(VaultWriter):
 
         # Link paths must be relative to THIS page's directory (a page inside
         # concepts/ links to ``x.md``, not ``concepts/x.md``).
-        folder = self._folder_for_kind(doc.node_type)
+        folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
         page_targets = {k: _relativize(v, folder) for k, v in slug_targets.items()} if folder else slug_targets
 
         # Convert wikilinks to portable relative markdown links, then rewrite
@@ -262,7 +265,7 @@ class MarkdownWriter(VaultWriter):
             b.heading(2, type_name)
             entries: list[str | Node] = []
             for doc in sorted(group, key=lambda d: d.title):
-                folder = self._folder_for_kind(doc.node_type)
+                folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
                 relative = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
                 description = doc.frontmatter.get("description", "")
                 if description:
