@@ -18,6 +18,10 @@ import re
 # Strips a trailing parenthetical acronym/qualifier, e.g. "Foo (Bar)" → "Foo".
 _ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
 
+#: Parenthetical parts inside a link target, e.g. "MOS Listening Quality
+#: Objective (MOS-LQO)" → "MOS-LQO".
+_PAREN_RE = re.compile(r"\(([^)]+)\)")
+
 
 # Structural artifacts from spreadsheet/table-heavy sources that the LLM
 # frequently mis-extracts as concepts (e.g. "Table Data", "data_id value",
@@ -81,6 +85,14 @@ def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
     target_norm = normalize_concept_key(target)
     if not target_norm:
         return None
+
+    # Parenthetical acronyms in the target ("Full Name (MOS-LQO)") resolve
+    # directly against page ids/titles — the expansion's tokens are too
+    # dissimilar from the acronym page for Jaccard to connect them.
+    for acro in parenthetical_acronyms(target):
+        direct = alias_index.get(acro.lower()) or alias_index.get(normalize_concept_key(acro))
+        if direct is not None:
+            return direct
     # Compare against period-stripped forms so ``p.863`` (short alias) matches
     # ``p 863`` (slug-normalized, period replaced by hyphen-then-space).
     target_no_punct = target_norm.replace(".", "")
@@ -115,6 +127,25 @@ def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
                 best_id = page_id
 
     return best_id
+
+
+def parenthetical_acronyms(target: str) -> list[str]:
+    """Acronym-like parenthetical parts of a wikilink target, in order.
+
+    ``"MOS Listening Quality Objective (MOS-LQO)"`` → ``["MOS-LQO"]``.
+    Lowercase/generic parentheticals (``"Echo (in telephony)"``) are
+    excluded — only uppercase-dominant, short parts qualify as acronyms.
+    """
+    out: list[str] = []
+    for m in _PAREN_RE.finditer(target):
+        part = m.group(1).strip()
+        letters = [c for c in part if c.isalpha()]
+        if not letters or len(part) > 12:
+            continue
+        upper_ratio = sum(c.isupper() for c in letters) / len(letters)
+        if upper_ratio >= 0.6:
+            out.append(part)
+    return out
 
 
 def normalize_concept_key(name: str) -> str:

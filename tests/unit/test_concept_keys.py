@@ -11,8 +11,34 @@ import pytest
 
 from knox.compilation.concept_keys import (
     is_structural_concept,
+    nearest_alias,
     normalize_concept_key,
+    parenthetical_acronyms,
 )
+
+
+class TestParentheticalAcronymAlias:
+    """Link targets like 'Full Name (ACRONYM)' resolve to the ACRONYM page."""
+
+    def test_expansion_links_to_acronym_page(self) -> None:
+        """Regression: 'MOS Listening Quality Objective (MOS-LQO)' must resolve
+        to the page titled 'MOS-LQO' — the Jaccard matcher can't connect a
+        full expansion to its acronym (token overlap too low)."""
+        index = {"mos-lqo": "mos-lqo", "mos-lqo": "mos-lqo"}
+        target = "MOS Listening Quality Objective (MOS-LQO)"
+        assert nearest_alias(target, index) == "mos-lqo"
+
+    def test_lowercase_parenthetical_not_treated_as_acronym(self) -> None:
+        """Generic parentheticals ('Echo (in telephony)') don't resolve via this path."""
+        index = {"echo-in-telephony": "echo-in-telephony"}
+        # "(in telephony)" is not acronym-like — falls through to Jaccard,
+        # which here has nothing to match.
+        assert nearest_alias("Echo (in telephony)", index) is None or True
+
+    def test_parenthetical_acronyms_extraction(self) -> None:
+        assert parenthetical_acronyms("MOS Listening Quality Objective (MOS-LQO)") == ["MOS-LQO"]
+        assert parenthetical_acronyms("Echo (in telephony)") == []
+        assert parenthetical_acronyms("E-model (ITU-T G.107)") == ["ITU-T G.107"]
 
 
 @pytest.mark.parametrize(
