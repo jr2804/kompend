@@ -13,7 +13,6 @@ from knox.core.models.attachments import (
     AttachmentManifest,
     adopt_orphan_attachments,
 )
-from knox.core.models.attachments import adopt_orphan_attachments
 
 # ── Attachment model ────────────────────────────────────────────────────
 
@@ -283,7 +282,6 @@ def test_manifest_deleted_paths(tmp_path: Path) -> None:
 
 def test_adopt_ingest_adopted_flag_gates_ingestible(tmp_path: Path) -> None:
     """ingest_adopted=False registers files without making them ingestible."""
-
     base = _make_vault(tmp_path)
     slug_dir = base / "attachments" / "report"
     slug_dir.mkdir()

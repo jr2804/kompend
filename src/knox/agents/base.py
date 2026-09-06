@@ -53,7 +53,6 @@ from pydantic_ai_summarization import (
 )
 
 from knox.agents.context_manager import KnoxContextManager
-
 from knox.agents.instrument import configure_observability
 from knox.agents.knox_model import KnoxModel
 from knox.agents.rlm import (

@@ -132,6 +132,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
 
     write_wiki_cache(opts.wiki, base_dir)
 
+
 def send_to_review_queue(wiki: CompiledWiki, base_dir: Path) -> None:
     """Send compiled wiki nodes to the review queue."""
     queue = ReviewQueue(review_dir=VaultPaths(base_dir).review_dir)
@@ -170,6 +171,7 @@ def verify_claims(
     verified_events = list(wiki.metadata.get("verified") or [])
     verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})  # TrustEvent (output.models)
     wiki.metadata["verified"] = verified_events
+
 
 def run_post_compile_lint_all(wiki: CompiledWiki, base_dir: Path, *, pipeline_config: PipelineConfig) -> dict[str, Any]:
 

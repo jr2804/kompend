@@ -110,9 +110,7 @@ def lint_semantic(
     if lint_agent is None:
         return {"status": "error", "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
 
-    report, elapsed = _run_rules_pass(
-        wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False
-    )
+    report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = {"model": model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
     _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
     return {

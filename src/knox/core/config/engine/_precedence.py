@@ -265,11 +265,7 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
         old_val = get_dot(result, old_key)
         # Only migrate when the canonical key is still at its default layer —
         # an explicitly set value (even the default value) always wins.
-        if (
-            old_val is not None
-            and old_val != old_default
-            and provenance.get(new_key, ConfigSource("default")).path == "default"
-        ):
+        if old_val is not None and old_val != old_default and provenance.get(new_key, ConfigSource("default")).path == "default":
             set_dot(result, new_key, old_val)
             provenance[new_key] = ConfigSource(
                 provenance.get(old_key, ConfigSource("project")).path,

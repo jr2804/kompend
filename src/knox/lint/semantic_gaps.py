@@ -20,7 +20,6 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
@@ -61,7 +60,6 @@ def verify_topics(
     (no chunks, embedding provider error) degrades to "not covered" for
     all topics — the check is strictly additive signal.
     """
-
     vp_paths = base_dir / ".knox"
     chunk_cache_dir = vp_paths / "cache" / "chunk"
     vector_cache_path = vp_paths / "cache" / _GAP_VECTOR_CACHE
@@ -99,10 +97,10 @@ def verify_topics(
         if dirty:
             _save_vector_cache(vector_cache_path, cache)
 
-    for topic, tvec in zip(topics, topic_vecs):
+    for topic, tvec in zip(topics, topic_vecs, strict=False):
         best_score = 0.0
         best_source = ""
-        for (stem, _text), cvec in zip(chunks, vectors):
+        for (stem, _text), cvec in zip(chunks, vectors, strict=False):
             if cvec is None:
                 continue
             score = _cosine(tvec, cvec)
@@ -165,7 +163,7 @@ def _save_vector_cache(cache_path: Path, cache: dict[str, list[float]]) -> None:
 def _cosine(a: list[float], b: list[float]) -> float:
     if len(a) != len(b) or not a:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0.0 or nb == 0.0:

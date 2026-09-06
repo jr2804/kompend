@@ -87,7 +87,6 @@ DETERMINISTIC_STEP_WEIGHT = 1
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-
 #: Deterministic rules for the `check` step — everything structural except
 #: rumdl (which is the separate `format` step).
 CHECK_STEP_RULES: list[str] = [r.name for r in STRUCTURAL_RULES] + ["duplicate-references"]
@@ -162,9 +161,7 @@ def lint_semantic(
         )
         raise typer.Exit(1)
 
-    report, elapsed = _run_rules_pass(
-        wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False
-    )
+    report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = {"model": model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
     _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
     _print_report(report, json_output, vp)
@@ -424,7 +421,6 @@ def lint_gaps(
     embed_model = cfg.knox.compile.embedding.model
     covered_topics: dict[str, Any] = {}
     if semantic and embed_model:
-
         missing = [r for r in recs if r.resolution == "missing" and r.category == "Missing topic"]
         topics: list[str] = []
         for r in missing:
@@ -451,8 +447,7 @@ def lint_gaps(
 
     if json_output:
         payload: list[dict[str, Any]] = [
-            {"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action, "resolution": r.resolution}
-            for r in recs
+            {"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action, "resolution": r.resolution} for r in recs
         ]
         if covered_topics:
             payload.append({"category": "_semantic_coverage", "topics": covered_topics})

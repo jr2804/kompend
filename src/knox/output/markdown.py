@@ -180,9 +180,7 @@ class MarkdownWriter(VaultWriter):
                     source_chunks=node.source_chunks,
                     page_slug=node.id,
                     node_type=node.node_type,
-                    entity_subtype=(
-                        str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type == "entity" else ""
-                    ),
+                    entity_subtype=(str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type == "entity" else ""),
                 ),
             )
 

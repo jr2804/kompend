@@ -137,7 +137,7 @@ class BrokenWikilinksRule(BaseLintRule):
                 if "|" in inner:
                     page_ref, alias_text = inner.split("|", 1)
                 else:
-                    page_ref = alias_text = inner
+                    alias_text = inner
                 replacement: str
                 target_node = node_by_id.get(alias_of or "")
                 if alias_of and target_node is not None:

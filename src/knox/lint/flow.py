@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 
 
 def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration takes many params
-  # noqa: PLR0915 — pipeline orchestration; the length is intrinsic
+    # noqa: PLR0915 — pipeline orchestration; the length is intrinsic
     vp: VaultPaths,
     cfg: Any,
     *,
@@ -78,15 +78,11 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             if progress is not None and task_id is not None:
                 progress.update(task_id, description=f"lint [{name}]")
             if name == "check":
-                check_report, _ = _run_pass(
-                    wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix
-                )
+                check_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix)
             elif name == "format":
                 _format_output_phase(vp, cfg)
             elif name == "semantic":
-                semantic_report, _ = _run_pass(
-                    wiki, vp, cfg, rules=None, enable_llm=True, lint_agent=lint_agent, fix=False
-                )
+                semantic_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=True, lint_agent=lint_agent, fix=False)
             elif name == "gaps":
                 merged_results = _merge_results(check_report, semantic_report)
                 analyze_gaps(LintReport(results=merged_results), _load_degree_map(vp.base_dir))
@@ -314,7 +310,6 @@ def _plan(vp: VaultPaths, cfg: Any, lint_agent: Any) -> list[dict[str, Any]]:
         steps.append({"name": "remediate", "weight": LLM_STEP_WEIGHT, "items": 0})
     else:
         get_err_console().print(
-            "Note: no LLM configured (compile.lint.model / compile.llm.default_model) "
-            "- skipping semantic and remediate steps.\n",
+            "Note: no LLM configured (compile.lint.model / compile.llm.default_model) - skipping semantic and remediate steps.\n",
         )
     return steps

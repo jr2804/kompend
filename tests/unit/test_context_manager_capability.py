@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from knox.agents.context_manager import (
-    _HardenedSummarizationProcessor,
-    KnoxContextManager,
-)
 from pydantic_ai.models.test import TestModel
+
+from knox.agents.context_manager import (
+    KnoxContextManager,
+    _HardenedSummarizationProcessor,
+)
 
 
 def test_capability_builds_hardened_processor() -> None:
@@ -28,7 +29,6 @@ def test_summarizer_agent_has_tool_retry_budget() -> None:
     library default retry budget of 1, one hallucinated call aborted
     summarization entirely — compaction silently never happened.
     """
-
     proc = _HardenedSummarizationProcessor(model=TestModel())
     agent = proc._get_summarization_agent()
     # No tools registered (plain text output) — the model must not call any.

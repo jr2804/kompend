@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import os
 
+import pydantic
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
-from pydantic_ai.models.openai import OpenAIResponsesModel
 from knox.core.config._configs import ProviderEndpoint
-import pydantic
+from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -237,7 +236,6 @@ class TestBuildModelUserProvider:
 
     def test_api_type_dispatch(self) -> None:
         """api_type selects the wire protocol model class."""
-
         set_user_providers(
             {
                 "chat": {"base_url": "http://x/v1"},
@@ -251,7 +249,6 @@ class TestBuildModelUserProvider:
 
     def test_invalid_api_type_rejected_by_schema(self) -> None:
         """api_type is a closed Literal — unknown values fail config validation."""
-
         with pytest.raises(pydantic.ValidationError):
             ProviderEndpoint(base_url="http://x/v1", api_type="grpc")
 
@@ -262,9 +259,7 @@ class TestBuildModelUserProvider:
         (e.g. an anthropic-protocol proxy) got the catalog's OpenAI chat model
         against the wrong endpoint — 404s on every request.
         """
-        set_user_providers(
-            {"minimax": {"base_url": "https://api.minimax.io/anthropic", "api_key": "k", "api_type": "anthropic"}}
-        )
+        set_user_providers({"minimax": {"base_url": "https://api.minimax.io/anthropic", "api_key": "k", "api_type": "anthropic"}})
         try:
             m = build_model("minimax/MiniMax-M2.7-highspeed")
             assert isinstance(m, AnthropicModel)

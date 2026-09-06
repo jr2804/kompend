@@ -23,8 +23,9 @@ class TestParentheticalAcronymAlias:
     def test_expansion_links_to_acronym_page(self) -> None:
         """Regression: 'MOS Listening Quality Objective (MOS-LQO)' must resolve
         to the page titled 'MOS-LQO' — the Jaccard matcher can't connect a
-        full expansion to its acronym (token overlap too low)."""
-        index = {"mos-lqo": "mos-lqo", "mos-lqo": "mos-lqo"}
+        full expansion to its acronym (token overlap too low).
+        """
+        index = {"mos-lqo": "mos-lqo"}
         target = "MOS Listening Quality Objective (MOS-LQO)"
         assert nearest_alias(target, index) == "mos-lqo"
 

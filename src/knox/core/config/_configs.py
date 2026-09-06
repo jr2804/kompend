@@ -190,7 +190,9 @@ class LLMConfig(_KnoxBaseModel):
     num_ctx_min: int = Field(default=2048, validation_alias=EnvVar.LLM_NUM_CTX_MIN)
     num_ctx_max: int = Field(default=131072, validation_alias=EnvVar.LLM_NUM_CTX_MAX)
     context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP, description="DEPRECATED — use context_window")
-    context_window: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model")
+    context_window: int | None = Field(
+        default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
+    )
     role_models: dict[str, str] = Field(default_factory=dict)
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
@@ -501,7 +503,9 @@ class ExtractionConfig(_KnoxBaseModel):
 class ProviderModelConfig(_KnoxBaseModel):
     """Per-model settings within a provider (``[providers.<name>.models."<model>"]``)."""
 
-    context_window: int | None = Field(default=None, description="Context window length for this model (finest granularity, wins over provider-level and catalog values)")
+    context_window: int | None = Field(
+        default=None, description="Context window length for this model (finest granularity, wins over provider-level and catalog values)"
+    )
 
 
 class ProviderEndpoint(_KnoxBaseModel):
@@ -532,8 +536,12 @@ class ProviderEndpoint(_KnoxBaseModel):
         default="openai-chat",
         description="Wire protocol the endpoint speaks: openai-chat (/v1/chat/completions), openai-responses (/v1/responses), or anthropic (/v1/messages)",
     )
-    context_window: int | None = Field(default=None, description="Default context window length for all models on this provider (overrides auto-discovery; per-model entries win)")
-    context_window_cap: int | None = Field(default=None, description="DEPRECATED — use context_window. Old per-provider override key, still honored when context_window is unset")
+    context_window: int | None = Field(
+        default=None, description="Default context window length for all models on this provider (overrides auto-discovery; per-model entries win)"
+    )
+    context_window_cap: int | None = Field(
+        default=None, description="DEPRECATED — use context_window. Old per-provider override key, still honored when context_window is unset"
+    )
     models: dict[str, ProviderModelConfig] = Field(default_factory=dict, description="Per-model settings keyed by model name")
 
 
