@@ -13,6 +13,7 @@ Sub-commands
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -61,6 +62,7 @@ from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.logging import get_console, get_err_console
 from knox.output.pages.log import log_stage
 from knox.output.renderer import format_output
+from knox.lint.semantic_gaps import verify_topics
 
 lint_app = typer.Typer(
     name="lint",
@@ -340,6 +342,12 @@ def lint_prune(
 def lint_gaps(
     ctx: typer.Context,
     json_output: JsonOutput = False,
+    semantic: bool = typer.Option(
+        True,
+        "--semantic/--no-semantic",
+        help="Verify missing topics against source chunks via the embedding model (needs compile.embedding.model).",
+    ),
+    fix: bool = typer.Option(False, "--fix", help="Generate pages for source-covered missing topics (same as lint remediate)."),
     config: ConfigPath = None,
 ) -> None:
     """Analyze the latest lint run to identify missing knowledge and recommend sources.
@@ -348,12 +356,22 @@ def lint_gaps(
     actionable gap signals: missing topics (broken wikilinks), coverage gaps,
     poor-quality pages, empty pages, orphan topics, and contradictions.
 
+    Missing-topic findings are coverage-weighted: referenced by many pages or
+    by a hub page → HIGH (knowledge-core hole); a single leaf-page reference
+    → LOW (fringe term).
+
+    With the embedding model configured, missing topics are additionally
+    verified against the source chunks: a topic the sources already discuss
+    is reclassified from "add a source" to "covered — generate the page"
+    (run ``knox lint remediate`` or pass ``--fix``).
+
     Examples:
         knox lint gaps              # analyze latest lint run
         knox lint gaps --json       # machine-readable output
+        knox lint gaps --fix        # generate pages for source-covered topics
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(
+    cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
         config_file=config,
@@ -367,21 +385,96 @@ def lint_gaps(
 
     report_dict = entries[-1].get("report", {})
     report = _to_lint_report(report_dict)
-    recs = analyze_gaps(report)
+
+    # Coverage weighting: node degree from the cached wiki graph.
+    degree_map = _load_degree_map(vp.base_dir)
+    recs = analyze_gaps(report, degree_map)
+
+    # Semantic source-coverage verification for missing topics.
+    embed_model = cfg.knox.compile.embedding.model
+    covered_topics: dict[str, Any] = {}
+    if semantic and embed_model:
+
+        missing = [r for r in recs if r.resolution == "missing" and r.category == "Missing topic"]
+        topics: list[str] = []
+        for r in missing:
+            m = re.match(r"'(.+?)'", r.finding)
+            topics.append(m.group(1) if m else r.finding)
+        coverage = verify_topics(topics, vp.base_dir, embed_model)
+        for rec in missing:
+            m = re.match(r"'(.+?)'", rec.finding)
+            topic = m.group(1) if m else rec.finding
+            cov = coverage.get(topic)
+            if cov is not None and cov.covered:
+                covered_topics[topic] = {"score": cov.best_score, "source": cov.best_source}
+                rec.category = "Covered in sources (no page)"
+                rec.resolution = "source-covered"
+                rec.action = (
+                    f"Sources already cover this topic (best match: {cov.best_source}, "
+                    f"score {cov.best_score:.2f}) — run `knox lint remediate` to generate the page."
+                )
+    elif semantic and not embed_model:
+        get_err_console().print("Note: semantic coverage check skipped — no compile.embedding.model configured.\n")
+
+    if fix:
+        _run_remediation_for_gaps(ctx, vp, cfg, report)
 
     if json_output:
-        get_console().print(
-            json.dumps(
-                [{"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action} for r in recs],
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        payload: list[dict[str, Any]] = [
+            {"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action, "resolution": r.resolution}
+            for r in recs
+        ]
+        if covered_topics:
+            payload.append({"category": "_semantic_coverage", "topics": covered_topics})
+        get_console().print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         ts = entries[-1].get("timestamp", "unknown")
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(gaps_to_text(recs))
+
+
+def _load_degree_map(base_dir: Path) -> dict[str, int] | None:
+    """Node id → edge count from the cached compiled wiki (None when absent)."""
+    cache_file = base_dir / ".knox" / "last_wiki.json"
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    degree: dict[str, int] = {}
+    for edge in data.get("edges", []):
+        if isinstance(edge, dict):
+            for endpoint in (edge.get("source"), edge.get("target")):
+                if endpoint:
+                    degree[str(endpoint)] = degree.get(str(endpoint), 0) + 1
+    return degree or None
+
+
+def _run_remediation_for_gaps(ctx: typer.Context, vp: Any, cfg: Any, report: Any) -> None:
+    """Run the remediation flow (same as `knox lint remediate`) after analysis."""
+    wiki = load_cached_wiki(vp.base_dir)
+    if wiki is None:
+        get_err_console().print("--fix: no compiled wiki found — run 'knox compile' first.")
+        return
+    default_model = cfg.knox.compile.llm.default_model
+    if not default_model:
+        get_err_console().print("--fix: no compile.llm.default_model configured — cannot generate pages.")
+        return
+    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.knox.compile.llm.timeout))
+    actions = remediate(
+        wiki,
+        report,
+        base_dir=vp.base_dir,
+        output_dir=vp.output_dir,
+        agent=agent,
+        dry_run=False,
+    )
+    applied = [a for a in actions if a.status == RemediationStatus.APPLIED]
+    if applied:
+        write_wiki_cache(wiki, vp.base_dir)
+    get_console().print(remediation_to_text(actions))
 
 
 # ── Sub-command: remediate ───────────────────────────────────────────────

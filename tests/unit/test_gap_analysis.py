@@ -85,13 +85,36 @@ def test_gaps_to_text_empty_report() -> None:
 
 
 def test_priority_field_is_high_for_broken_wikilinks() -> None:
-    """Alias and missing both surface at HIGH priority — both need attention."""
-    results = [_lr("P.863", alias_of="polqa-..."), _lr("Other")]
+    """Alias surfaces at HIGH; a 2+-referenced missing topic too (weighted)."""
+    results = [_lr("P.863", alias_of="polqa-..."), _lr("Other"), _lr("Other")]
     recs = _analyze_broken_wikilinks(results)
-    assert all(r.priority == GapPriority.HIGH for r in recs)
+    by_finding = {r.finding: r.priority for r in recs}
+    assert all(v == GapPriority.HIGH for k, v in by_finding.items() if k.startswith("'P.863'"))
+    # 2 refs without degree info → conservative MEDIUM.
+    assert by_finding["'Other' (referenced by 2 pages)"] == GapPriority.MEDIUM
 
 
-def _lr(target: str, alias_of: str | None = None) -> LintReportResult:
+def test_missing_topic_weighting() -> None:
+    """Coverage weighting: 3+ refs HIGH, 2 refs MEDIUM, 1 leaf ref LOW; hub ref upgrades."""
+    results = [_lr(f"T{i}") for i in range(3)]  # T0 x1, T1 x1, T2 x1 — need custom counts
+    # Build explicit counts: T0 x3 (HIGH), T1 x2 (MEDIUM), T2 x1 (LOW)
+    results = [_lr("T0"), _lr("T0"), _lr("T0"), _lr("T1"), _lr("T1"), _lr("T2")]
+    recs = {r.finding: r for r in _analyze_broken_wikilinks(results)}
+    assert recs["'T0' (referenced by 3 pages)"].priority == GapPriority.HIGH
+    assert recs["'T1' (referenced by 2 pages)"].priority == GapPriority.MEDIUM
+    assert recs["'T2'"].priority == GapPriority.LOW
+
+
+def test_missing_topic_hub_ref_upgrades_priority() -> None:
+    """A single reference from a hub page (degree above median) is MEDIUM."""
+    degree = {"n1": 20, "n2": 1, "n3": 1, "n4": 2, "n5": 1}
+    results = [_lr("CoreHole", page_id="n1"), _lr("Fringe", page_id="n2")]
+    recs = {r.finding: r for r in _analyze_broken_wikilinks(results, degree)}
+    assert recs["'CoreHole'"].priority == GapPriority.MEDIUM
+    assert recs["'Fringe'"].priority == GapPriority.LOW
+
+
+def _lr(target: str, alias_of: str | None = None, page_id: str = "n1") -> LintReportResult:
     """Build a failing broken-wikilinks LintReportResult."""
     details: dict[str, str] = {"target": target}
     if alias_of is not None:
@@ -99,7 +122,7 @@ def _lr(target: str, alias_of: str | None = None) -> LintReportResult:
     return LintReportResult(
         rule="broken-wikilinks",
         outcome="fail",
-        page_id="n1",
+        page_id=page_id,
         message=f"Broken wikilink [[{target}]]",
         details=details,
     )

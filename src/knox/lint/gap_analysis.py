@@ -62,16 +62,18 @@ class GapRecommendation:
     resolution: str = "missing"
 
 
-def analyze_gaps(report: LintReport) -> list[GapRecommendation]:
+def analyze_gaps(report: LintReport, degree_map: dict[str, int] | None = None) -> list[GapRecommendation]:
     """Extract knowledge-gap recommendations from a typed lint report.
 
     Accepts a :class:`LintReport` (the ``report`` sub-dict as stored in
     ``lint_history.jsonl``, wrapped by :func:`knox.lint.remediation.remediate`).
+    *degree_map* (page id → edge count, from the compiled wiki graph) enables
+    coverage-weighted priority for missing topics.
     """
     results: list[LintReportResult] = report.results
     recs: list[GapRecommendation] = []
 
-    recs.extend(_analyze_broken_wikilinks(results))
+    recs.extend(_analyze_broken_wikilinks(results, degree_map))
     recs.extend(_analyze_coverage_gaps(results))
     recs.extend(_analyze_clarity(results))
     recs.extend(_analyze_empty_pages(results))
@@ -106,21 +108,32 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
 # ── Per-rule analyzers ───────────────────────────────────────────────────
 
 
-def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_broken_wikilinks(
+    results: list[LintReportResult],
+    degree_map: dict[str, int] | None = None,
+) -> list[GapRecommendation]:
     """Broken wikilinks point to topics the wiki doesn't cover yet.
 
     Also distinguishes *alias mismatches* (the LLM used a short form
     like ``[[P.863]]`` that corresponds to an existing page) from
     *genuinely missing* topics, so the action text differs.
+
+    Missing-topic priority is **coverage-weighted**: a topic referenced by
+    many pages, or by a hub page, is a hole in the knowledge core (HIGH);
+    a topic referenced once by a leaf page is a dangling fringe term
+    (LOW/MEDIUM). *degree_map* maps page id → edge count; ``None``
+    degrades to a pure reference-count weighting.
     """
     targets: list[str] = []
     alias_of: dict[str, str] = {}
+    referrers: dict[str, list[str]] = {}
     for r in results:
         if r.rule != "broken-wikilinks" or r.outcome != "fail":
             continue
         target = r.details.get("target", "")
         if target and not _is_source_reference(target):
             targets.append(target)
+            referrers.setdefault(target, []).append(r.page_id)
             if "alias_of" in r.details:
                 alias_of[target] = r.details["alias_of"]
 
@@ -140,10 +153,12 @@ def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecomm
                 )
             )
         else:
-            # Genuinely missing topic.
+            # Genuinely missing topic — weight by reference count and
+            # whether a hub page (knowledge core) references it.
+            priority = _missing_topic_priority(referrers.get(target, []), degree_map)
             recs.append(
                 GapRecommendation(
-                    priority=GapPriority.HIGH,
+                    priority=priority,
                     category="Missing topic",
                     finding=f"'{target}'{pages}",
                     action="Add a source document covering this topic.",
@@ -151,6 +166,31 @@ def _analyze_broken_wikilinks(results: list[LintReportResult]) -> list[GapRecomm
                 )
             )
     return recs
+
+
+def _missing_topic_priority(
+    referrer_ids: list[str],
+    degree_map: dict[str, int] | None,
+) -> GapPriority:
+    """Weight a missing topic by how much it matters to the knowledge core.
+
+    - Referenced by 3+ pages → HIGH (core gap).
+    - Referenced by a hub page (edge count above the corpus median) → one
+      step up: a single reference from the core outranks fringe references.
+    - Single reference from a leaf page → LOW (isolated fringe term).
+    """
+    count = len(referrer_ids)
+    if count >= 3:
+        return GapPriority.HIGH
+    hub_ref = False
+    if degree_map:
+        degrees = sorted(degree_map.values())
+        median = degrees[len(degrees) // 2] if degrees else 0
+        hub_ref = any(degree_map.get(pid, 0) > median for pid in referrer_ids)
+    if count == 2:
+        return GapPriority.HIGH if hub_ref else GapPriority.MEDIUM
+    # count == 1
+    return GapPriority.MEDIUM if hub_ref else GapPriority.LOW
 
 
 def _is_source_reference(target: str) -> bool:
