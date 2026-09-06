@@ -36,6 +36,38 @@ def test_remaining_concepts_unknown_caller() -> None:
     assert broker.remaining_concepts("nope") == []
 
 
+def test_mark_caller_consumed_advances_cursor() -> None:
+    """mark_caller_consumed skips ahead past the named concepts so fetch resumes from after them."""
+    broker = ConceptBroker(_concepts(5), num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+
+    broker.mark_caller_consumed(seg0, ["concept-0", "concept-1", "concept-2"])
+    assert broker.remaining(seg0) == 2
+    assert [c["name"] for c in broker.remaining_concepts(seg0)] == ["concept-3", "concept-4"]
+
+    # fetch returns the next unconsumed concepts.
+    nxt = broker.fetch(seg0, limit=10)
+    assert [c["name"] for c in nxt] == ["concept-3", "concept-4"]
+    assert broker.remaining(seg0) == 0
+
+
+def test_mark_caller_consumed_unknown_names_are_skipped() -> None:
+    """Names not in the caller's pool are ignored (covers checkpoint mismatches)."""
+    broker = ConceptBroker(_concepts(3), num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+
+    broker.mark_caller_consumed(seg0, ["nope", "concept-0"])
+    assert broker.remaining(seg0) == 2
+    assert [c["name"] for c in broker.remaining_concepts(seg0)] == ["concept-1", "concept-2"]
+
+
+def test_mark_caller_consumed_empty_is_noop() -> None:
+    broker = ConceptBroker(_concepts(2), num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+    broker.mark_caller_consumed(seg0, [])
+    assert broker.remaining(seg0) == 2
+
+
 def test_requeue_puts_uncovered_back_in_pool() -> None:
     """Requeued concepts are handed out again on the next fetch."""
     broker = ConceptBroker(_concepts(4), num_callers=1)

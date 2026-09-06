@@ -91,16 +91,30 @@ def run_generation(
     _loader.get_body("compilation/generation_system.md.j2")
     known_titles = build_known_titles(compiler, concepts)
 
-    nodes, slug_to_idx = generate_all_pages_agentic(
-        compiler,
-        concepts,
-        source_segments,
-        all_images,
-        pinned_facts=pinned_clean,
-        known_titles=known_titles,
-    )
+    try:
+        nodes, slug_to_idx, _caller_progress = run_generation_with_checkpoint(
+            compiler,
+            concepts,
+            source_segments,
+            all_images,
+            pinned_clean,
+            known_titles=known_titles,
+        )
+    except LLMOutputError:
+        # Generation produced no pages for at least one segment. The
+        # per-segment checkpoint save inside ``generate_all_pages_agentic``
+        # already preserves progress; do not delete it. Re-raise so the
+        # caller surfaces a clear "re-run to retry" message.
+        logger.warning(
+            "TwoPhase: agentic generation raised — checkpoint preserved. Re-run to retry the failed segment(s) only.",
+        )
+        raise
 
-    return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts, pinned_clean)
+    # Success: delete the checkpoint so the next run starts fresh.
+    if compiler._active_gen_deps:
+        delete_gen_checkpoint(compiler._config, compiler._active_gen_deps)
+
+    return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts=concepts, pinned_clean=pinned_clean)
 
 
 def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> list[dict[str, Any]]:
@@ -190,41 +204,55 @@ def run_generation_with_checkpoint(
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
-    generation_system: str,
     all_images: list[ImageRef],
     pinned_clean: list[str],
     *,
     known_titles: list[str] | None = None,
-) -> tuple[list[WikiNode], dict[str, int]]:
-    """Run generation with checkpoint support, returning nodes and slug map."""
-    checkpoint = load_gen_checkpoint(compiler._config, compiler._active_gen_deps)
-    if checkpoint is not None:
-        ck_nodes, ck_slug_to_idx, ck_completed = checkpoint
-        logger.info(
-            "TwoPhase: generation checkpoint loaded — %d batch(es) already done, %d node(s)",
-            len(ck_completed),
-            len(ck_nodes),
-        )
-    else:
-        ck_nodes, ck_slug_to_idx, ck_completed = [], {}, set()
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+    """Run agentic generation with checkpoint resume.
 
-    nodes, slug_to_idx = generate_all_pages(
+    On entry, loads the per-deps checkpoint (if any) and seeds the
+    agentic loop with the already-produced nodes + broker progress so
+    finished segments are skipped without further LLM calls. On exit
+    (success), the checkpoint is deleted; on ``LLMOutputError`` (a
+    segment produced no pages) the per-segment checkpoint save inside
+    ``generate_all_pages_agentic`` preserves progress so the next run
+    resumes cheaply.
+    """
+    if not compiler._active_gen_deps:
+        # No checkpoint key (e.g. caller forgot to set _active_gen_deps).
+        # Skip resume; the in-loop save will still happen if a key is set.
+        ck_nodes: list[WikiNode] = []
+        ck_slug_to_idx: dict[str, int] = {}
+        ck_caller_progress: dict[str, list[str]] = {}
+    else:
+        checkpoint = load_gen_checkpoint(compiler._config, compiler._active_gen_deps)
+        if checkpoint is not None:
+            ck_nodes, ck_slug_to_idx, _completed_batches, ck_caller_progress = checkpoint
+            resumed_pages = sum(len(v) for v in ck_caller_progress.values())
+            if resumed_pages:
+                logger.info(
+                    "TwoPhase: generation checkpoint loaded — %d segment(s) already done, %d page(s) to resume.",
+                    len(ck_caller_progress),
+                    resumed_pages,
+                )
+        else:
+            ck_nodes, ck_slug_to_idx, ck_caller_progress = [], {}, {}
+
+    return generate_all_pages_agentic(
         compiler,
         concepts,
         source_segments,
-        generation_system,
         all_images,
         pinned_facts=pinned_clean,
+        known_titles=known_titles,
         initial_nodes=ck_nodes,
         initial_slug_to_idx=ck_slug_to_idx,
-        completed_batches=ck_completed,
-        known_titles=known_titles,
+        initial_caller_progress=ck_caller_progress,
     )
-    delete_gen_checkpoint(compiler._config, compiler._active_gen_deps)
-    return nodes, slug_to_idx
 
 
-def generate_all_pages(
+def generate_all_pages(  # noqa: PLR0915 — legacy template path; long by design
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
@@ -406,7 +434,7 @@ def generate_all_pages(
     return nodes, slug_to_idx
 
 
-def generate_all_pages_agentic(
+def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoint save; long by design
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
@@ -414,7 +442,10 @@ def generate_all_pages_agentic(
     *,
     pinned_facts: list[str],
     known_titles: list[str] | None = None,
-) -> tuple[list[WikiNode], dict[str, int]]:
+    initial_nodes: list[WikiNode] | None = None,
+    initial_slug_to_idx: dict[str, int] | None = None,
+    initial_caller_progress: dict[str, list[str]] | None = None,
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
     """Generate wiki pages using per-segment agentic tool loop.
 
     Replaces the nested ``for batch × for segment`` loop with per-segment
@@ -425,13 +456,30 @@ def generate_all_pages_agentic(
     Uses :class:`ConceptBroker` for server-side concept assignment and
     ``Memory`` + ``SlidingWindowCompaction`` + ``ClampOversizedMessages``
     as agent capabilities for cross-segment judgment.
+
+    Returns ``(nodes, slug_to_idx, caller_progress)`` — the caller writes
+    ``caller_progress`` to the generation checkpoint after every segment
+    so an interrupted run resumes cheaply on the next invocation.
     """
-    nodes: list[WikiNode] = []
-    slug_to_idx: dict[str, int] = {}
+    nodes: list[WikiNode] = list(initial_nodes or [])
+    slug_to_idx: dict[str, int] = dict(initial_slug_to_idx or {})
+    caller_progress: dict[str, list[str]] = {str(k): list(v) for k, v in (initial_caller_progress or {}).items()}
     num_segments = len(source_segments)
     num_concepts = len(concepts)
 
     broker = ConceptBroker(concepts, num_callers=num_segments)
+    # Skip segments whose pages are already in the checkpoint: advance the
+    # broker cursor past their consumed concepts so ``fetch`` returns []
+    # immediately for those callers.
+    if initial_caller_progress:
+        for seg_idx in range(num_segments):
+            seg_id = ConceptBroker.caller_id(seg_idx)
+            names = initial_caller_progress.get(seg_id) or []
+            if names:
+                broker.mark_caller_consumed(seg_id, names)
+                # Mirror the consumed set so resumed segments can be
+                # reported as already-done in the progress UI.
+                caller_progress.setdefault(seg_id, list(names))
     categories = _categories_block(compiler._config.extraction_categories)
     # Entity sub-type per concept (person/organization/standard/...) — routed
     # into entities/<type>/ subfolders by the vault writer.
@@ -447,12 +495,29 @@ def generate_all_pages_agentic(
         num_segments,
     )
     gen_progress_total = num_concepts
-    pages_done = 0
+    pages_done = sum(len(initial_caller_progress.get(ConceptBroker.caller_id(i), [])) for i in range(num_segments)) if initial_caller_progress else 0
     if num_segments > 0:
         compiler._report(0, gen_progress_total, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
 
     for seg_idx, segment in enumerate(source_segments):
         seg_label = f"segment {seg_idx + 1}/{num_segments}"
+        seg_id = ConceptBroker.caller_id(seg_idx)
+        # Resume support: skip segments whose pages are already produced and
+        # persisted in the checkpoint (broker cursor advanced past them,
+        # caller_progress records the consumed concept names).
+        if broker.remaining(seg_id) == 0 and seg_id in caller_progress:
+            logger.info(
+                "TwoPhase: agentic %s already complete in checkpoint — skipping (%d page(s)).",
+                seg_label,
+                len(caller_progress[seg_id]),
+            )
+            pages_done += len(caller_progress[seg_id])
+            compiler._report(
+                pages_done,
+                gen_progress_total,
+                f"generating [{pages_done}/{gen_progress_total}] {seg_label} (resumed)",
+            )
+            continue
         compiler._report(pages_done, gen_progress_total, f"generating [{pages_done}/{gen_progress_total}] {seg_label}")
         logger.info("TwoPhase: agentic %s", seg_label)
 
@@ -486,13 +551,13 @@ def generate_all_pages_agentic(
         # fetch_concepts batch instead of looping until the broker is drained.
         # Re-run the segment agent until its assigned concepts are exhausted,
         # bounded by a hard cap (one pass per concept maximum).
-        seg_id = ConceptBroker.caller_id(seg_idx)
         start_remaining = broker.remaining(seg_id)
         cap = start_remaining + 1
         passes = 0
         gen_output = None
         seg_start_nodes = len(nodes)
         seg_titles: set[str] = set()  # normalized page titles produced for this segment
+        seg_consumed_names: list[str] = list(caller_progress.get(seg_id, []))  # accumulate for checkpoint
         while broker.remaining(seg_id) > 0 and passes < cap:
             passes += 1
             try:
@@ -544,9 +609,7 @@ def generate_all_pages_agentic(
                     },
                 }
                 if kind == "entity":
-                    node_metadata[MetadataField.ENTITY_TYPE] = entity_types.get(
-                        normalize_concept_key(page.title or ""), "entity"
-                    )
+                    node_metadata[MetadataField.ENTITY_TYPE] = entity_types.get(normalize_concept_key(page.title or ""), "entity")
                 upsert_node(
                     WikiNode(
                         id=node_id,
@@ -562,11 +625,7 @@ def generate_all_pages_agentic(
             # Requeue fetched-but-uncovered concepts: the model may fetch a
             # batch and only produce pages for part of it. Requeued concepts
             # are handed out again on the next pass (within the same cap).
-            uncovered_fetched = [
-                c
-                for c in broker.consumed(seg_id)
-                if normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) not in seg_titles
-            ]
+            uncovered_fetched = [c for c in broker.consumed(seg_id) if normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) not in seg_titles]
             if uncovered_fetched:
                 broker.requeue(seg_id, uncovered_fetched)
 
@@ -580,13 +639,34 @@ def generate_all_pages_agentic(
 
         pages_done += start_remaining
 
+        # Record every consumed concept (page produced for it) for the
+        # checkpoint so the next run can resume past this segment.
+        produced_names = sorted(seg_titles)
+        seg_consumed_names.extend(produced_names)
+        caller_progress[seg_id] = list(dict.fromkeys(seg_consumed_names))  # dedupe, preserve order
+
+        # Persist checkpoint after every segment so an interrupted or
+        # partially-failed run can resume cheaply without redoing finished
+        # segments.
+        if compiler._active_gen_deps:
+            save_gen_checkpoint(
+                compiler._config,
+                compiler._active_gen_deps,
+                nodes,
+                slug_to_idx,
+                set(),  # legacy template-path field; unused for agentic
+                caller_progress=caller_progress,
+            )
+
         uncovered = broker.remaining(seg_id)
         if uncovered > 0:
-            seg_pages = len(nodes) - seg_start_nodes
+            len(nodes) - seg_start_nodes
             names = [str(c.get(ExtractionField.NAME, "?")) for c in broker.remaining_concepts(seg_id)]
             sample = ", ".join(names[:10]) + ("…" if len(names) > 10 else "")
             debug_hint = f" (debug: {debug_file})" if debug_file else ""
             if not seg_titles:
+                # Hard fail: no pages at all. Preserve checkpoint (already saved
+                # above) so the user can re-run to retry the failed segment.
                 raise LLMOutputError(
                     f"Agentic generation for {seg_label} produced no page(s) for any of its "
                     f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}). "
@@ -606,7 +686,7 @@ def generate_all_pages_agentic(
                 )
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
-    return nodes, slug_to_idx
+    return nodes, slug_to_idx, caller_progress
 
 
 def _page_kind(page: GenerationPage, batch: list[dict[str, Any]], extras: dict[str, str]) -> str:
@@ -648,6 +728,7 @@ def assemble_wiki(
     slug_to_idx: dict[str, int],
     chunks: list[ResolvedChunk],
     extractions: ExtractionSet,
+    *,
     concepts: list[dict[str, Any]],
     pinned_clean: list[str],
 ) -> CompiledWiki:

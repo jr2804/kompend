@@ -70,6 +70,32 @@ class ConceptBroker:
         cursor = self._cursors.get(caller_id, 0)
         return list(pool[:cursor])
 
+    def mark_caller_consumed(self, caller_id: str, names: list[str]) -> None:
+        """Advance *caller_id*'s cursor past the concepts whose *names* are given.
+
+        Used at checkpoint resume to skip already-produced pages: the
+        broker's pre-allocation of concepts to segments is deterministic
+        (segment index → contiguous slice), so advancing the cursor past
+        the already-finished names is sufficient — the next ``fetch`` call
+        hands out only the remaining unconsumed concepts for that segment.
+
+        Concepts not found in the caller's pool are ignored silently
+        (covers checkpoint mismatches across dep versions).
+        """
+        if not names:
+            return
+        pool = self._per_caller.get(caller_id)
+        if pool is None:
+            return
+        target = {str(n) for n in names}
+        cursor = self._cursors.get(caller_id, 0)
+        while cursor < len(pool) and str(pool[cursor].get("name", "")) in target:
+            cursor += 1
+        # Continue past any already-skipped names so callers using a
+        # smaller name set still leave the cursor at the first
+        # unconsumed concept.
+        self._cursors[caller_id] = cursor
+
     def requeue(self, caller_id: str, concepts: list[dict[str, Any]]) -> None:
         """Put *concepts* back at the front of the caller's remaining pool.
 

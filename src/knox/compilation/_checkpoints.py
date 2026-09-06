@@ -23,11 +23,15 @@ logger = get_logger(__name__)
 def load_gen_checkpoint(
     config: PipelineConfig,
     gen_deps: dict[str, str],
-) -> tuple[list[WikiNode], dict[str, int], set[int]] | None:
+) -> tuple[list[WikiNode], dict[str, int], set[int], dict[str, list[str]]] | None:
     """Load a generation checkpoint if it exists and deps match.
 
-    Returns ``(nodes, slug_to_idx, completed_batches)`` or ``None``
-    when the checkpoint is absent, stale, or malformed.
+    Returns ``(nodes, slug_to_idx, completed_batches, caller_progress)``
+    or ``None`` when the checkpoint is absent, stale, or malformed.
+
+    ``caller_progress`` maps ``seg_<idx>`` → list of concept names whose
+    pages were already produced for that segment — used by the agentic
+    path to skip finished segments on resume.
     """
     if getattr(config, "no_cache", False):
         return None
@@ -52,17 +56,24 @@ def load_gen_checkpoint(
         return None
     slug_to_idx: dict[str, int] = dict(raw.get("slug_to_idx", {}))
     completed: set[int] = set(raw.get("completed_batches", []))
-    return nodes, slug_to_idx, completed
+    caller_progress: dict[str, list[str]] = {str(k): list(v) for k, v in (raw.get("caller_progress", {}) or {}).items()}
+    return nodes, slug_to_idx, completed, caller_progress
 
 
-def save_gen_checkpoint(
+def save_gen_checkpoint(  # noqa: PLR0917 — checkpoint signature: model/prompt/deps/version keys
     config: PipelineConfig,
     gen_deps: dict[str, str],
     nodes: list[WikiNode],
     slug_to_idx: dict[str, int],
     completed_batches: set[int],
+    caller_progress: dict[str, list[str]] | None = None,
 ) -> None:
-    """Write generation checkpoint to disk (atomic write-to-temp + rename)."""
+    """Write generation checkpoint to disk (atomic write-to-temp + rename).
+
+    ``caller_progress`` records, per segment caller id (``seg_<idx>``), the
+    list of concept names whose pages have already been produced. The
+    agentic generation path uses it to skip finished segments on resume.
+    """
     if getattr(config, "no_cache", False):
         return
     path = _gen_checkpoint_file(config, gen_deps)
@@ -73,6 +84,7 @@ def save_gen_checkpoint(
         "nodes": [encode_json(_relativize_node(n, base_dir)) for n in nodes],  # nocheck: checkpoint format, not wiki metadata
         "slug_to_idx": slug_to_idx,
         "completed_batches": list(completed_batches),
+        "caller_progress": dict(caller_progress or {}),
     }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
