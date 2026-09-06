@@ -37,108 +37,100 @@ from knox.output.pages.log import log_stage
 from knox.output.renderer import format_output
 from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
 from knox.review import ReviewQueue
+from knox.cli.cmds.quality.lint import run_full_lint_flow
+from knox.cli.cmds.quality.lint import CHECK_STEP_RULES, _run_rules_pass, _persist_lint_fixes, _persist_history
+from knox.cli.cmds.quality.lint import _make_lint_agent, _run_rules_pass, _persist_history
 
 logger = get_logger(__name__)
 
 
-# ── lint_run ──────────────────────────────────────────────────────────────
+# ── lint_all ─────────────────────────────────────────────────────────────
 
 
-def lint_run(
+def lint_all(
     wiki_dir: str | None = None,
-    fix: bool = False,
-    llm: bool = True,
-    rule: list[str] | None = None,
-    json_output: bool = False,
+    fix: bool = True,
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    """Run structural (and optionally LLM-powered) lint rules.
+    """Run the full lint pipeline: check, format, semantic, gaps, remediate.
 
-    Results are appended to .knox/lint_history.jsonl.
+    Deterministic steps weight 1/item, LLM steps weight 100/item on the
+    shared progress flow. LLM steps are skipped gracefully when no model
+    is configured. Results are appended to .knox/lint_history.jsonl.
     """
+    try:
+        vp = vault_paths(wiki_dir)
+        cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
+
+        merged = run_full_lint_flow(vp, cfg, fix=fix)
+    except RuntimeError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:  # noqa: BLE001 — surface any flow failure to the MCP client
+        return {"status": "error", "message": str(exc)}
+    return {
+        "status": "ok",
+        "health_score": merged.get("health_score", 0.0),
+        "passes": merged.get("passes", 0),
+        "failures": merged.get("failures", 0),
+        "skips": merged.get("skips", 0),
+        "report": merged,
+    }
+
+
+def lint_check(
+    wiki_dir: str | None = None,
+    fix: bool = True,
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    """Run deterministic structural lint rules (no LLM)."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
-    sources_dir = vp.sources_dir
-    output_dir = vp.output_dir
-    state_dir = vp.knox_dir
-    sources_dir_str = str(sources_dir) if sources_dir.exists() else None
-
     wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": "error", "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
 
-    default_model = cfg.knox.compile.llm.default_model
-    lint_agent = (
-        LintRuleAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout), retries=cfg.knox.compile.llm.output_retries) if default_model else None
-    )
-    if _uses_llm_rule(rule) and lint_agent is None:
-        return {"status": "error", "message": "LLM-powered lint rules require a model. Set compile.llm.default_model in config."}
-    if llm and lint_agent is None:
-        llm = False
-
-    lint_config = LintConfig(
-        fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold),
-    )
-    runner = LintRunner(
-        rules=list(rule) if rule else None,
-        enable_llm=llm,
-        lint_agent=lint_agent,
-        fix=fix,
-        sources_dir=sources_dir_str,
-        lint_config=lint_config,
-        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),
-    )
-    lint_start = time.monotonic()
-    report = runner.run(wiki)
-    lint_elapsed = time.monotonic() - lint_start
-
+    report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix)
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
-        fixes_applied = _persist_lint_fixes(wiki, output_dir, vp.base_dir)
-
-    outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
-
-    llm_meta = None
-    if lint_agent is not None and lint_agent.usage is not None:
-        llm_meta = {
-            "model": default_model,
-            "usage": lint_agent.usage.to_dict(),
-        }
-
-    options = {
-        "rules": list(rule) if rule else None,
-        "enable_llm": llm,
-        "fix": fix,
-    }
-    entry = entry_from_report(
-        report,
-        duration_seconds=lint_elapsed,
-        options=options,
-        config=cfg.raw,
-        node_count=len(wiki.nodes),
-        llm=llm_meta,
-    )
-    save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
-
-    log_stage(
-        vp,
-        action="Lint",
-        detail=f"Health score {report.health_score:.1f}% ({report.passes}/{report.total_checks} checks passed)",
-    )
-
-    result = {
+        fixes_applied = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
+    _persist_history(report, vp=vp, cfg=cfg, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm_meta=None)
+    return {
         "status": "ok",
         "health_score": report.health_score,
         "passes": report.passes,
         "total_checks": report.total_checks,
-        "outcome_counts": dict(outcome_counts),
         "fixes_applied": fixes_applied,
+        "report_text": report_to_text(report),
     }
-    if json_output:
-        result["report"] = report_to_json(report)
-    else:
-        result["report_text"] = report_to_text(report)
-    return result
+
+
+def lint_semantic(
+    wiki_dir: str | None = None,
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    """Run the LLM-powered lint rules (needs compile.lint.model or compile.llm.default_model)."""
+    vp = vault_paths(wiki_dir)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
+    wiki = load_wiki_from_files(vp.output_dir)
+    if wiki is None:
+        return {"status": "error", "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
+
+    lint_agent, model = _make_lint_agent(cfg)
+    if lint_agent is None:
+        return {"status": "error", "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
+
+    report, elapsed = _run_rules_pass(
+        wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False
+    )
+    llm_meta = {"model": model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
+    _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
+    return {
+        "status": "ok",
+        "health_score": report.health_score,
+        "passes": report.passes,
+        "total_checks": report.total_checks,
+        "report_text": report_to_text(report),
+    }
 
 
 def _uses_llm_rule(rule: list[str] | None) -> bool:
@@ -239,7 +231,7 @@ def lint_gaps(
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
-        return {"status": "error", "message": "No lint history found. Run 'lint_run' or compile with --lint first."}
+        return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_dict = entries[-1].get("report", {})
     report = _to_lint_report(report_dict)
@@ -276,7 +268,7 @@ def lint_remediate(
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
-        return {"status": "error", "message": "No lint history found. Run 'lint_run' or compile with --lint first."}
+        return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_dict = entries[-1].get("report", {})
     report = _to_lint_report(report_dict)

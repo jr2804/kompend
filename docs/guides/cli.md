@@ -12,7 +12,9 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox doctor` | Validate configuration and connectivity |
 | `knox status` | Show per-wiki statistics |
 | `knox list-parsers` | List all registered parsers |
-| `knox lint run` | Run quality linters on the compiled wiki |
+| `knox lint all` | Full lint pipeline: check → format → semantic → gaps → remediate (single weighted progress bar; LLM steps skipped without a model) |
+| `knox lint check` | Deterministic structural rules, auto-fix on |
+| `knox lint semantic` | LLM-powered rules (factual-consistency, clarity, coverage-gap, contradictions) |
 | `knox lint history` | Show past lint runs and score trends |
 | `knox lint gaps` | Analyze lint results for knowledge gaps and source recommendations |
 | `knox lint remediate` | LLM-generate missing pages for lint findings |

@@ -58,7 +58,7 @@ Then run any knox command that invokes agents:
 ```bash
 knox -w wiki compile --tier wicer
 # or
-knox -w wiki lint run
+knox -w wiki lint all
 # or
 knox -w wiki query "your question"
 ```

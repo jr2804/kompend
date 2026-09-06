@@ -6,19 +6,19 @@ KNOX lint checks compiled wikis for structural and semantic quality issues.
 
 ```bash
 # Run all structural + LLM-powered rules (LLM on by default)
-knox lint run
+knox lint all
 
 # Structural rules only (no LLM calls)
-knox lint run --no-llm
+knox lint check            # deterministic rules only
 
 # Auto-fix supported issues
-knox lint run --fix
+knox lint all --fix
 
 # Run only specific rules
-knox lint run --rule broken-wikilinks --rule orphan-page
+knox lint check --rule broken-wikilinks --rule orphan-page
 
 # Machine-readable output for CI
-knox lint run --json
+knox lint all --json
 ```
 
 LLM-powered rules use `compile.llm.default_model`; with no model configured
@@ -26,33 +26,39 @@ they are skipped with a note (structural rules still run).
 
 ## Commands
 
-`knox lint` is a command group with five sub-commands:
+`knox lint` is a command group. Each lint phase is its own sub-command;
+`knox lint all` runs the whole pipeline in one flow with a single weighted
+progress bar (deterministic steps weight 1/page, LLM steps 100/page).
 
-| Sub-command | Description |
-|------------|-------------|
-| `knox lint run` | Run lint rules and save the result to history |
-| `knox lint history` | Query past lint runs (scores, trends, details) |
-| `knox lint gaps` | Analyze lint results for knowledge gaps and source recommendations |
-| `knox lint remediate` | LLM-generate missing pages for lint findings |
-| `knox lint prune` | Remove old history entries |
+| Sub-command | Description | LLM | Fix |
+|------------|-------------|-----|-----|
+| `knox lint all` | Full pipeline: check → format → semantic → gaps → remediate, one progress bar | both | `--fix/--no-fix` (default on) |
+| `knox lint check` | Deterministic structural rules (broken-wikilinks, aliases, frontmatter, orphans, duplicates, stale, orphan-attachments, ...) | no | `--fix/--no-fix` (default on) |
+| `knox lint format` | rumdl formatting pass | no | `--check` for CI (exit 1 when changes needed) |
+| `knox lint semantic` | LLM rules: factual-consistency, clarity-score, coverage-gap, contradiction-detection | yes | report only |
+| `knox lint gaps` | Gap analysis + semantic source-coverage verification + weighted priorities | embeddings | `--fix` runs remediation |
+| `knox lint remediate` | LLM-generate missing pages from cached extractions | yes | writes pages (`--dry-run` to preview) |
+| `knox lint history` | Query past lint runs (scores, trends, details) | — | — |
+| `knox lint prune` | Remove old history entries | — | — |
 
-### `knox lint run`
+### `knox lint check`
 
-```text
-knox lint run [OPTIONS]
-
-Lint a compiled wiki for quality issues. Every run is appended to
-.knox/lint_history.jsonl for later querying.
-
-Options:
-  --fix              Auto-fix structural issues where possible
-  --llm/--no-llm     LLM-powered lint rules (default). --no-llm runs
-                     structural rules only
-  --rule TEXT        Run only specific rule(s) (repeatable)
-  --json             Output in JSON format for machine readability
+```bash
+knox lint check                  # structural rules, fix what's possible
+knox lint check --no-fix         # report only
+knox lint check --rule broken-wikilinks --rule orphan-page
 ```
 
-Wiki paths are resolved from `--wiki-dir` (or `KNOX_WIKI_DIR`). See [Configuration](./configuration.md).
+### `knox lint all`
+
+```bash
+knox lint all                    # check + format + semantic + gaps + remediate
+knox lint all --no-fix           # everything, but write nothing
+```
+
+LLM steps (`semantic`, `remediate`) are skipped gracefully with a note when
+no model is configured. The model is `compile.lint.model`, falling back to
+`compile.llm.default_model`.
 
 ### `knox lint history`
 
@@ -204,19 +210,19 @@ The health score is computed as:
 health_score = 100 × (PASS results) / (total results)
 ```
 
-A perfect wiki scores 100%. `knox lint run` reports the score but does **not**
+A perfect wiki scores 100%. `knox lint all` reports the score but does **not**
 gate on it — the exit code is 0 unless the run itself fails. To fail CI on a
 low score, parse the JSON output:
 
 ```bash
-knox lint run --json > lint-report.json
+knox lint all --json > lint-report.json
 python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
 ## JSON Output
 
 ```bash
-knox lint run --json
+knox lint all --json
 ```
 
 Returns:
@@ -244,7 +250,7 @@ Returns:
 
 ## History
 
-Every `knox lint run` appends a structured entry to `.knox/lint_history.jsonl`. Each entry includes:
+Every `knox lint all` (or any lint sub-command) appends a structured entry to `.knox/lint_history.jsonl`. Each entry includes:
 
 | Field | Content |
 |-------|---------|
@@ -266,7 +272,7 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
 - name: Lint compiled wiki
   run: |
     knox compile ./sources
-    knox lint run --json > lint-report.json
+    knox lint all --json > lint-report.json
     python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
@@ -277,12 +283,12 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
   hooks:
     - id: knox-lint
       name: knox lint
-      entry: knox lint run --json
+      entry: knox lint all --json
       language: system
       pass_filenames: false
 ```
 
-The hook runs lint and writes JSON but, like `knox lint run` itself, exits 0
+The hook runs lint and writes JSON but, like `knox lint all` itself, exits 0
 unless the run fails. To make a pre-commit hook gate on the score, wrap the
 JSON parse (see [Health Score](#health-score)) in a small script and point
 `entry` at it.

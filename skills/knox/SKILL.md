@@ -186,7 +186,8 @@ lint rule flags files whose slug matches no source.
 
 | Command | Purpose |
 |---------|---------|
-| `knox lint` | Structural + LLM-powered lint checks on compiled wiki |
+| `knox lint all` | Full lint pipeline: check → format → semantic → gaps → remediate (single flow; LLM steps skipped without model) |
+| `knox lint check` / `lint semantic` / `lint gaps` / `lint remediate` / `lint format` | Individual lint phases (per-phase help has details) |
 | `knox doctor` | System diagnostics (checks env, dependencies, config) |
 
 ### Servers

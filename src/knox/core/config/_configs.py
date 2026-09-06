@@ -313,6 +313,11 @@ class LintConfig(_KnoxBaseModel):
 
     enabled: list[str] | None = None
     fuzzy_threshold: float = Field(default=0.85, validation_alias=EnvVar.LINT_FUZZY_THRESHOLD)
+    model: str | None = Field(
+        default=None,
+        validation_alias=EnvVar.LINT_MODEL,
+        description="Model override for LLM-powered lint steps (factual-consistency, clarity-score, ...). Falls back to compile.llm.default_model when unset.",
+    )
 
 
 class EvalConfig(_KnoxBaseModel):

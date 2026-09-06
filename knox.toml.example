@@ -552,6 +552,10 @@ enable = false                    # on/off switch
 # Cosine-similarity threshold for reference fuzzy dedup (0.0–1.0).
 # fuzzy_threshold = 0.85
 
+# Model override for LLM-powered lint steps (factual-consistency, clarity-score,
+# coverage-gap, contradiction-detection). Falls back to compile.llm.default_model.
+# model = "openai/gpt-4o-mini"
+
 # ── Eval settings ───────────────────────────────────────────────────────
 
 [eval]

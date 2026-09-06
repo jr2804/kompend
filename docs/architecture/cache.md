@@ -62,7 +62,7 @@ project root — **not** inside `wiki/`.
 | `last_wiki.json` | Full `CompiledWiki` dataclass as JSON | 10 KB – 10 MB | Project-local | Pipeline after compile |
 | `compile_state.json` | Per-file tier progress (parsed, chunked, etc.) | < 50 KB | Project-local | `TierStateStore` |
 | `runs.jsonl` | One JSONL line per knox command (start/end/status/duration) | < 100 KB | Project-local | `RunLogger` middleware |
-| `lint_history.jsonl` | Append-only lint scores for trend tracking | < 100 KB | Project-local | `knox lint run` |
+| `lint_history.jsonl` | Append-only lint scores for trend tracking | < 100 KB | Project-local | `knox lint all` |
 | `search.db` | SQLite FTS5 index over compiled wiki pages | < 10 MB | Project-local | Compile with `--index` (on by default) |
 | `memory.db` | SQLite key-value memory store | < 100 KB | Project-local | `knox memory` commands |
 | `memory.json` | Memory lifecycle: confidence, tiers, supersession | < 100 KB | Project-local | `update_memory_for_compile` |

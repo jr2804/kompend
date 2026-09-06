@@ -14,8 +14,8 @@ from knox.core.config.keys import EnvVar
 LintFix = Annotated[
     bool,
     typer.Option(
-        "--fix",
-        help="Auto-fix structural issues where possible.",
+        "--fix/--no-fix",
+        help="Auto-fix issues where possible (default: on).",
     ),
 ]
 

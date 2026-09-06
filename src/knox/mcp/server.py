@@ -23,7 +23,9 @@ from knox.mcp.tools import (
     lint_history,
     lint_prune,
     lint_remediate,
-    lint_run,
+    lint_all,
+    lint_check,
+    lint_semantic,
     list_parsers,
     log,
     memory_add,
@@ -98,7 +100,9 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="references_list")(references_list)
     srv.tool(name="references_export")(references_export)
     srv.tool(name="references_fetch")(references_fetch)
-    srv.tool(name="lint_run")(lint_run)
+    srv.tool(name="lint_all")(lint_all)
+    srv.tool(name="lint_check")(lint_check)
+    srv.tool(name="lint_semantic")(lint_semantic)
     srv.tool(name="lint_history")(lint_history)
     srv.tool(name="lint_prune")(lint_prune)
     srv.tool(name="lint_gaps")(lint_gaps)

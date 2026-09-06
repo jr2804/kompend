@@ -74,6 +74,7 @@ class EnvVar(StrEnum):
     IMAGE_MODE = "KNOX_IMAGE_MODE"
     INGEST_PARSER = "KNOX_INGEST_PARSER"
     LINT_FUZZY_THRESHOLD = "KNOX_LINT_FUZZY_THRESHOLD"
+    LINT_MODEL = "KNOX_LINT_MODEL"
     LLM_API_BASE = "KNOX_LLM_API_BASE"
     # "KEY"/"TOKEN" here are parts of env-var NAMES; values are never stored
     # in this enum.

@@ -58,6 +58,7 @@ from knox.lint.history import (
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
+from knox.lint.structural import STRUCTURAL_RULES
 from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.logging import get_console, get_err_console
 from knox.output.pages.log import log_stage
@@ -75,137 +76,118 @@ app.add_typer(lint_app)
 # ── Sub-command: run ─────────────────────────────────────────────────────
 
 
-@lint_app.command("run", help="Run lint rules against the compiled wiki.")
-def lint_run(
+LLM_STEP_WEIGHT = 100
+"""Progress weight per item for LLM-backed lint steps (dominates wall-clock)."""
+
+DETERMINISTIC_STEP_WEIGHT = 1
+"""Progress weight per item for deterministic lint steps."""
+
+#: Deterministic rules for the `check` step — everything structural except
+#: rumdl (which is the separate `format` step).
+CHECK_STEP_RULES: list[str] = [r.name for r in STRUCTURAL_RULES] + ["duplicate-references"]
+
+
+@lint_app.command("check", help="Run deterministic structural lint rules (no LLM).")
+def lint_check(
     ctx: typer.Context,
-    fix: LintFix = False,
-    llm: LintLlm = True,
+    fix: LintFix = True,
     rule: LintRule = None,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
 ) -> None:
-    """Run structural (and optionally LLM-powered) lint rules.
+    """Run the deterministic structural rules against the compiled wiki.
 
-    Results are printed and also appended to
-    ``.knox/lint_history.jsonl`` for later querying via
-    ``knox lint history``.
+    Covers: broken-wikilinks, image-embed, knox-reference, missing-frontmatter,
+    orphan-page, duplicate-title, empty-page, heading-skip, stale-page,
+    source-not-found, orphan-attachments, duplicate-references.
+    Formatting (rumdl) is the separate `knox lint format` step.
 
-    LLM-powered rules are on by default; the model comes from
-    ``compile.llm.default_model`` in config. Use ``--no-llm`` for
-    structural rules only. When LLM is on but no model is configured,
-    LLM rules are skipped with a note (structural rules still run).
+    With --fix (default), repairable findings are fixed in place: alias
+    links are rewritten to resolved markdown links, image embeds corrected,
+    missing frontmatter filled.
 
     Examples:
-        knox lint run                       # structural + LLM rules (default)
-        knox lint run --no-llm              # structural rules only
-        knox lint run --fix                 # auto-fix what's possible
-        knox lint run --rule broken-wikilinks --rule orphan-page
+        knox lint check                  # structural rules, fix what's possible
+        knox lint check --no-fix         # report only
+        knox lint check --rule broken-wikilinks
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
-    sources_dir = vp.sources_dir
-    output_dir = vp.output_dir
-    state_dir = vp.knox_dir
-    sources_dir_str = str(sources_dir) if sources_dir.exists() else None
-
     wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
-        get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
+        get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    default_model = cfg.knox.compile.llm.default_model
-    lint_agent = (
-        LintRuleAgent(default_model, timeout=float(cfg.knox.compile.llm.timeout), retries=cfg.knox.compile.llm.output_retries) if default_model else None
-    )
-    if _uses_llm_rule(rule) and lint_agent is None:
-        get_err_console().print(
-            "LLM-powered lint rules require a model. Set compile.llm.default_model in config (e.g. openai/gpt-4o).",
-        )
-        raise typer.Exit(1)
-    if llm and lint_agent is None:
-        get_console().print(
-            "No LLM model configured (compile.llm.default_model); running structural rules only. Use --no-llm to silence this note.",
-        )
-        llm = False
-
-    lint_config = LintConfig(
-        fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold),
-    )
-    runner = LintRunner(
-        rules=list(rule) if rule else None,
-        enable_llm=llm,
-        lint_agent=lint_agent,
-        fix=fix,
-        sources_dir=sources_dir_str,
-        lint_config=lint_config,
-        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),
-    )
-    lint_start = time.monotonic()
-    progress = (
-        Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=None),
-            TextColumn("{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-            console=get_err_console(),
-            transient=False,
-            refresh_per_second=2,
-        )
-        if not json_output
-        else None
-    )
-    if progress is not None:
-        progress.start()
-    lint_task = progress.add_task("linting", total=0) if progress is not None else None
-
-    def _on_rule(rule_name: str, current: int, total: int) -> None:
-        if progress is not None and lint_task is not None:
-            progress.update(
-                lint_task,
-                total=total,
-                completed=current - 1,
-                description=f"linting [{current}/{total}] {rule_name}",
-            )
-
-    report = runner.run(wiki, on_rule=_on_rule)
-    if progress is not None and lint_task is not None:
-        progress.update(lint_task, completed=progress.tasks[lint_task].total or 0, description="linting complete")
-        progress.stop()
-    lint_elapsed = time.monotonic() - lint_start
-
-    fixes_applied = 0
+    report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=rule or CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix)
     if fix and any(r.fix_applied for r in report.results):
-        fixes_applied = _persist_lint_fixes(wiki, output_dir, vp.base_dir)
-        get_console().print(f"Persisted fixes to {fixes_applied} file(s).")
+        updated = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
+        get_console().print(f"Persisted fixes to {updated} file(s).")
 
-    # Rule summary: "<n> fail / <n> pass / <n> skip" aggregated by outcome
-    outcome_counts = Counter(r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome) for r in report.results)
-    " / ".join(f"{count} {label.lower()}" for label, count in sorted(outcome_counts.items()))
+    _persist_history(report, vp=vp, cfg=cfg, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm_meta=None)
+    _print_report(report, json_output, vp)
 
-    # ── Persist to lint history ──────────────────────────────────────────
-    llm_meta: dict | None = None
-    if lint_agent is not None and lint_agent.usage is not None:
-        llm_meta = {
-            "model": default_model,  # nocheck: lint metadata, not wiki metadata
-            "usage": lint_agent.usage.to_dict(),
-        }
 
-    options = {
-        "rules": list(rule) if rule else None,
-        "enable_llm": llm,
-        "fix": fix,
-    }
+@lint_app.command("semantic", help="Run LLM-powered lint rules (factual-consistency, clarity, coverage-gap, contradictions).")
+def lint_semantic(
+    ctx: typer.Context,
+    json_output: JsonOutput = False,
+    config: ConfigPath = None,
+) -> None:
+    """Run the LLM-powered lint rules against the compiled wiki.
+
+    Requires an LLM: compile.lint.model, falling back to
+    compile.llm.default_model. Read-only — findings feed `knox lint gaps`
+    and `knox lint remediate`.
+
+    Examples:
+        knox lint semantic               # LLM rules only
+    """
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
+    wiki = load_cached_wiki(vp.base_dir)
+    if wiki is None:
+        get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
+        raise typer.Exit(1)
+
+    lint_agent, model = _make_lint_agent(cfg)
+    if lint_agent is None:
+        get_err_console().print(
+            "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model in config.",
+        )
+        raise typer.Exit(1)
+
+    report, elapsed = _run_rules_pass(
+        wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False
+    )
+    llm_meta = {"model": model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
+    _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
+    _print_report(report, json_output, vp)
+
+
+def _persist_history(
+    report: LintReport,
+    *,
+    vp: Any,
+    cfg: Any,
+    context: str,
+    elapsed: float,
+    fix: bool,
+    node_count: int,
+    llm_meta: dict[str, Any] | None,
+) -> None:
+    options: dict[str, Any] = {"context": context, "fix": fix}
     entry = entry_from_report(
         report,
-        duration_seconds=lint_elapsed,
+        duration_seconds=elapsed,
         options=options,
         config=cfg.raw,
-        node_count=len(wiki.nodes),
+        node_count=node_count,
         llm=llm_meta,
     )
-    save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
+    save_lint_entry(entry, vp.knox_dir / LINT_HISTORY_FILE)
 
+
+def _print_report(report: LintReport, json_output: bool, vp: Any) -> None:
     if json_output:
         get_console().print(report_to_json(report))
     else:
@@ -215,6 +197,243 @@ def lint_run(
         action="Lint",
         detail=f"Health score {report.health_score:.1f}% ({report.passes}/{report.total_checks} checks passed)",
     )
+
+
+@lint_app.command("all", help="Run the full lint pipeline: check, format, semantic, gaps, remediate.")
+def lint_all(
+    ctx: typer.Context,
+    fix: LintFix = True,
+    json_output: JsonOutput = False,
+    config: ConfigPath = None,
+) -> None:
+    """Run every lint step in one flow with a single weighted progress bar.
+
+    Steps (deterministic steps weight 1/item, LLM steps weight 100/item):
+
+    | Step      | What                                    | LLM |
+    |-----------|-----------------------------------------|-----|
+    | check     | structural rules, auto-fix              | no  |
+    | format    | rumdl formatting                        | no  |
+    | semantic  | factual/clarity/coverage/contradiction  | yes |
+    | gaps      | gap analysis + semantic source check    | no  |
+    | remediate | generate missing pages from extractions | yes |
+
+    LLM steps are skipped gracefully (with a note) when no model is
+    configured (compile.lint.model / compile.llm.default_model).
+
+    Examples:
+        knox lint all                    # everything, auto-fix on
+        knox lint all --no-fix           # report only
+        knox lint all --json
+    """
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
+    merged_dict = run_full_lint_flow(vp, cfg, fix=fix)
+    if json_output:
+        get_console().print(json.dumps(merged_dict, indent=2, ensure_ascii=False))
+    else:
+        get_console().print(
+            f"Lint complete: health {merged_dict.get('health_score', 0.0):.1f}% "
+            f"({merged_dict.get('passes', 0)} pass / {merged_dict.get('failures', 0)} fail / "
+            f"{merged_dict.get('skips', 0)} skip)"
+        )
+        log_stage(
+            vp,
+            action="Lint",
+            detail=f"Health score {merged_dict.get('health_score', 0.0):.1f}% ({merged_dict.get('passes', 0)} checks passed)",
+        )
+
+
+def run_full_lint_flow(vp: Any, cfg: Any, *, fix: bool) -> dict[str, Any]:
+    """Run the full lint pipeline (check, format, semantic, gaps, remediate).
+
+    Shared by the ``knox lint all`` command and the MCP ``lint_all`` tool.
+    Returns the merged report dict (as stored in lint history).
+    """
+    wiki = load_cached_wiki(vp.base_dir)
+    if wiki is None:
+        raise RuntimeError(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
+
+    lint_agent, lint_model = _make_lint_agent(cfg)
+    node_count = len(wiki.nodes)
+
+    # Weighted plan: (name, weight, items). Remediate items are only known
+    # after semantic/gaps — its total is patched in later.
+    fmt_files = sum(1 for _ in vp.output_dir.rglob("*.md"))
+    steps: list[dict[str, Any]] = [
+        {"name": "check", "weight": DETERMINISTIC_STEP_WEIGHT, "items": node_count},
+        {"name": "format", "weight": DETERMINISTIC_STEP_WEIGHT, "items": max(fmt_files, 1)},
+        {"name": "gaps", "weight": DETERMINISTIC_STEP_WEIGHT, "items": 1},
+    ]
+    if lint_agent is not None:
+        steps.insert(2, {"name": "semantic", "weight": LLM_STEP_WEIGHT, "items": node_count})
+        steps.append({"name": "remediate", "weight": LLM_STEP_WEIGHT, "items": 0})
+    else:
+        get_err_console().print(
+            "Note: no LLM configured (compile.lint.model / compile.llm.default_model) "
+            "- skipping semantic and remediate steps.\n",
+        )
+
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=get_err_console(),
+        transient=False,
+        refresh_per_second=2,
+    )
+    grand_total = sum(s["weight"] * s["items"] for s in steps)
+    progress.start()
+    task = progress.add_task("lint", total=grand_total)
+    flow: dict[str, float] = {"completed": 0.0}
+    check_report: LintReport | None = None
+    semantic_report: LintReport | None = None
+    remediate_actions: list[RemediationAction] = []
+    flow_start = time.monotonic()
+
+    try:
+        for step in steps:
+            name = step["name"]
+            weight = int(step["weight"])
+            items = int(step["items"])
+            step_state = {"current": 0.0}
+
+            def _on_rule(rule_name: str, current: int, total: int, _s: dict[str, Any] = step_state, _w: int = weight, _n: int = items) -> None:
+                frac = (current / total) if total else 0.0
+                target = frac * _n * _w
+                flow["completed"] += target - _s["current"]
+                _s["current"] = target
+                progress.update(task, completed=flow["completed"], description=f"lint [{name}] {rule_name}")
+
+            progress.update(task, description=f"lint [{name}]")
+            if name == "check":
+                check_report, _ = _run_rules_pass(
+                    wiki, vp, cfg, rules=CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix, on_rule=_on_rule
+                )
+            elif name == "format":
+                rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config)
+                extra_files = [p for fname in (INDEX_FILE, "overview.md") if (p := vp.base_dir / fname).exists()]
+                format_output(
+                    vp.output_dir,
+                    flavor=cfg.knox.compile.output.flavor,
+                    rumdl_config=rumdl_cfg,
+                    extra_files=extra_files or None,
+                    check_only=False,
+                )
+            elif name == "semantic":
+                semantic_report, _ = _run_rules_pass(
+                    wiki,
+                    vp,
+                    cfg,
+                    rules=list(LLM_RULE_BY_NAME.keys()),
+                    enable_llm=True,
+                    lint_agent=lint_agent,
+                    fix=False,
+                    on_rule=_on_rule,
+                )
+            elif name == "gaps":
+                merged_results = _merge_results(check_report, semantic_report)
+                analyze_gaps(LintReport(results=merged_results), _load_degree_map(vp.base_dir))
+            elif name == "remediate":
+                merged_results = _merge_results(check_report, semantic_report)
+                remediate_actions = remediate(
+                    wiki,
+                    LintReport(results=merged_results),
+                    base_dir=vp.base_dir,
+                    output_dir=vp.output_dir,
+                    agent=lint_agent,
+                    dry_run=not fix,
+                )
+                step["items"] = max(len(remediate_actions), 1)
+                progress.update(task, total=sum(s["weight"] * s["items"] for s in steps))
+                flow["completed"] += weight * step["items"]
+                progress.update(task, completed=flow["completed"])
+                continue
+
+            flow["completed"] += weight * items
+            progress.update(task, completed=flow["completed"], description=f"lint [{name}] done")
+    finally:
+        progress.update(task, completed=progress.tasks[task].total or flow["completed"], description="lint complete")
+        progress.stop()
+
+    if fix and check_report and any(r.fix_applied for r in check_report.results):
+        updated = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
+        get_console().print(f"Persisted fixes to {updated} file(s).")
+    applied_remediations = sum(1 for a in remediate_actions if a.status == RemediationStatus.APPLIED)
+    if applied_remediations:
+        write_wiki_cache(wiki, vp.base_dir)
+
+    # One merged history entry for the whole flow (score = pass ratio over
+    # all findings; the runner's penalty model applies per-pass only).
+    merged_results = _merge_results(check_report, semantic_report)
+    passes = sum(1 for r in merged_results if r.outcome == "pass")
+    total_checks = len(merged_results)
+    merged_dict = report_to_dict(LintReport(results=merged_results))
+    merged_dict["health_score"] = round(100.0 * passes / total_checks, 1) if total_checks else 0.0
+    llm_meta = (
+        {"model": lint_model, "usage": lint_agent.usage.to_dict()} if lint_agent is not None and lint_agent.usage is not None else None
+    )
+    entry = entry_from_report(
+        LintReport(results=merged_results),
+        duration_seconds=time.monotonic() - flow_start,
+        options={"context": "all", "fix": fix},
+        config=cfg.raw,
+        node_count=node_count,
+        llm=llm_meta,
+    )
+    entry["report"] = merged_dict
+    save_lint_entry(entry, vp.knox_dir / LINT_HISTORY_FILE)
+
+    return merged_dict
+
+
+def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:
+    """Lint agent from the lint model override (None when no model configured)."""
+    model = _lint_model(cfg)
+    if not model:
+        return None, None
+    return (
+        LintRuleAgent(model, timeout=float(cfg.knox.compile.llm.timeout), retries=cfg.knox.compile.llm.output_retries),
+        model,
+    )
+
+
+def _lint_model(cfg: Any) -> str | None:
+    """LLM model for lint steps: compile.lint.model override, else default_model."""
+    return cfg.knox.lint.model or cfg.knox.compile.llm.default_model
+
+
+def _run_rules_pass(
+    wiki: CompiledWiki,
+    vp: Any,
+    cfg: Any,
+    *,
+    rules: list[str] | None,
+    enable_llm: bool,
+    lint_agent: LintRuleAgent | None,
+    fix: bool,
+    on_rule: Any = None,
+) -> tuple[LintReport, float]:
+    """Run one LintRunner pass and return (report, elapsed)."""
+    runner = LintRunner(
+        rules=rules,
+        enable_llm=enable_llm,
+        lint_agent=lint_agent,
+        fix=fix,
+        sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
+        lint_config=LintConfig(fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold)),
+        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),
+    )
+    start = time.monotonic()
+    report = runner.run(wiki, on_rule=on_rule)
+    return report, time.monotonic() - start
+
+
+def _merge_results(check_report: LintReport | None, semantic_report: LintReport | None) -> list[LintReportResult]:
+    """Combined findings from the check and semantic passes."""
+    return (check_report.results if check_report else []) + (semantic_report.results if semantic_report else [])
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
