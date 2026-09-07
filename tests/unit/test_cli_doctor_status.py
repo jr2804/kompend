@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
 from knox.cli.cmds.pipeline.status import collect_stats, print_status
+from knox.cli.cmds.quality import doctor
 from knox.cli.cmds.quality.doctor import CheckResult, print_doctor_results, run_doctor
 from knox.core.paths import COMPILE_STATE_FILE
 from knox.core.pipeline.state import SourceState, TierState, TierStateStore
@@ -242,6 +244,78 @@ class TestRunDoctorOrder:
         names = [r.name for r in run_doctor()]
         if "context-window-llm" in names and "budget-consistency" in names:
             assert names.index("context-window-llm") < names.index("budget-consistency")
+
+
+class TestCheckOllamaDevice:
+    """``ollama-device`` doctor check reports GPU offload status per referenced model."""
+
+    def test_skipped_without_ollama_model(self) -> None:
+
+        result = doctor._check_ollama_device(default_model="openai/gpt-4o", vlm_model=None)
+        assert result.passed is True
+        assert result.warning is True
+        assert "skipped" in result.message
+
+    def test_reports_full_gpu_offload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setattr(
+            doctor,
+            "_ollama_ps_lookup",
+            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "x"},
+        )
+        result = doctor._check_ollama_device("ollama/foo", None)
+        assert result.passed is True
+        assert result.warning is False
+        assert "GPU" in result.message
+
+    def test_warns_on_partial_offload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setattr(
+            doctor,
+            "_ollama_ps_lookup",
+            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 30 * 1024 * 1024, "context_length": 65536, "digest": "x"},
+        )
+        result = doctor._check_ollama_device("ollama/foo", None)
+        assert result.passed is True
+        assert result.warning is True
+        assert "partial" in result.message
+
+    def test_warns_on_cpu_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setattr(
+            doctor,
+            "_ollama_ps_lookup",
+            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 0, "context_length": 65536, "digest": "x"},
+        )
+        result = doctor._check_ollama_device("ollama/foo", None)
+        assert result.passed is True
+        assert result.warning is True
+        assert "CPU" in result.message
+
+    def test_reports_not_loaded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setattr(doctor, "_ollama_ps_lookup", lambda name: None)
+        result = doctor._check_ollama_device("ollama/foo", None)
+        assert "not loaded" in result.message
+
+    def test_nvidia_unused_is_flagged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setattr(
+            doctor,
+            "_ollama_ps_lookup",
+            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 0, "context_length": 65536, "digest": "x"},
+        )
+        monkeypatch.setattr(
+            doctor,
+            "_nvidia_smi_probe",
+            lambda: {"name": "RTX 4090", "memory_total_mib": 24576, "memory_used_mib": 0},
+        )
+        result = doctor._check_ollama_device("ollama/foo", None)
+        assert "RTX 4090" in result.message
+        assert "not using it" in result.message
+
+    def _ps(self, models: list) -> object:
+        return SimpleNamespace(models=[SimpleNamespace(**m) for m in models])
 
 
 def test_provenance_no_wiki() -> None:

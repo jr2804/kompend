@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -12,6 +13,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
+import ollama
 from pydantic import BaseModel as _BM
 from pydantic_ai import Agent as _Agent
 from pydantic_ai.settings import ModelSettings
@@ -25,6 +27,11 @@ from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 from knox.types import JSON
+
+#: Models whose Ollama offload ratio is below this are treated as CPU/partial
+#: — typically iGPU-only or VRAM overflow. Below this, inference is slow and
+#: the user almost certainly wants to know.
+_OLLAMA_GPU_OFFLOAD_MIN = 0.9
 
 logger = get_logger(__name__)
 
@@ -113,6 +120,7 @@ def run_doctor(
     results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
     referenced_providers = {provider_id for model in (default_model, vlm_model, embed_model) if model and (provider_id := _provider_id_of(model)) is not None}
     results.append(_check_custom_providers(cfg, referenced_providers))
+    results.append(_check_ollama_device(default_model, vlm_model))
 
     return results
 
@@ -342,15 +350,6 @@ def _check_git_repo() -> CheckResult:
         return CheckResult(name, True, f"Git check failed ({exc}) — OK")
 
 
-def _provider_id_of(model_string: str) -> str | None:
-    """Extract the provider prefix from a ``provider/model`` string."""
-    if "/" in model_string:
-        return model_string.split("/", 1)[0]
-    if ":" in model_string:
-        return model_string.split(":", 1)[0]
-    return None
-
-
 def _check_custom_providers(cfg: dict[str, Any] | None, referenced_providers: set[str] | None = None) -> CheckResult:
     """Validate custom providers from [providers.*] sections.
 
@@ -408,6 +407,135 @@ def _check_disk_space(sources_dir: Path | None = None) -> CheckResult:
         return CheckResult(name, True, f"{free_mb:.0f} MB free")
     except Exception as exc:
         return CheckResult(name, True, f"Could not check disk space ({exc}) — skipped")
+
+
+def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> CheckResult:
+    """Report where Ollama loaded each referenced model (GPU / partial / CPU).
+
+    Ollama exposes only ``size_vram`` vs ``size`` — there's no per-engine field.
+    The ratio is a reliable proxy: full offload means a real GPU is in use;
+    partial typically means iGPU/overflow (slow).
+    """
+    name = "ollama-device"
+    targets = [("llm", default_model), ("vlm", vlm_model)]
+    targets = [(label, m) for label, m in targets if m and _provider_id_of(m) == "ollama"]
+    if not targets:
+        return CheckResult(name, True, "No ollama/ models configured — skipped", warning=True)
+
+    parts: list[str] = []
+    any_warn = False
+    for label, model in targets:
+        bare = model.split("/", 1)[1] if "/" in model else model
+        entry = _ollama_ps_lookup(bare)
+        if entry is None:
+            parts.append(f"{label}: not loaded")
+            continue
+        ratio = entry["size_vram"] / entry["size"] if entry["size"] else 0.0
+        kind = _classify_ollama_offload(entry["size"], entry["size_vram"])
+        vram_mib = entry["size_vram"] / (1024 * 1024)
+        size_mib = entry["size"] / (1024 * 1024)
+        parts.append(f"{label}: {kind} ({vram_mib:.0f}/{size_mib:.0f} MiB VRAM, {ratio:.0%})")
+        if kind != "GPU":
+            any_warn = True
+
+    nvidia = _nvidia_smi_probe()
+    if nvidia and any_warn:
+        used = nvidia["memory_used_mib"]
+        total = nvidia["memory_total_mib"]
+        free = total - used
+        parts.append(
+            f"NVIDIA {nvidia['name']} detected ({free}/{total} MiB free) but Ollama is "
+            f"not using it — check OLLAMA_NUM_GPU / drivers / model fits in VRAM"
+        )
+    elif nvidia and not any_warn:
+        parts.append(f"NVIDIA {nvidia['name']} ({nvidia['memory_total_mib']} MiB) — Ollama is using it")
+
+    msg = "; ".join(parts)
+    if any_warn:
+        return CheckResult(name, True, msg, warning=True)
+    return CheckResult(name, True, msg)
+
+
+def _provider_id_of(model_string: str) -> str | None:
+    """Extract the provider prefix from a ``provider/model`` string."""
+    if "/" in model_string:
+        return model_string.split("/", 1)[0]
+    if ":" in model_string:
+        return model_string.split(":", 1)[0]
+    return None
+
+
+def _ollama_ps_lookup(model_name: str) -> dict[str, Any] | None:
+    """Find ``model_name`` (with or without ``:tag``) in ``ollama.ps()`` output.
+
+    Returns a plain dict with ``size``, ``size_vram``, ``context_length``,
+    ``digest`` so the result is JSON-serializable.
+    """
+    try:
+        ps_models = ollama.ps().models
+    except Exception:
+        logger.debug("ollama.ps() failed for device check", exc_info=True)
+        return None
+    base = model_name.split(":", 1)[0]
+    for m in ps_models:
+        for ps_id in (m.model, m.name):
+            if not ps_id:
+                continue
+            if ps_id == model_name or ps_id.split(":", 1)[0] == base:
+                size = int(m.size or 0)
+                size_vram = int(m.size_vram or 0)
+                return {
+                    "size": size,
+                    "size_vram": size_vram,
+                    "context_length": int(m.context_length or 0),
+                    "digest": m.digest,
+                }
+    return None
+
+
+def _classify_ollama_offload(size: int, size_vram: int) -> str:
+    """Return a one-word label for the offload ratio."""
+    if size <= 0:
+        return "unknown"
+    ratio = size_vram / size
+    if ratio >= 0.99:
+        return "GPU"
+    if ratio >= _OLLAMA_GPU_OFFLOAD_MIN:
+        return "GPU"  # marginal — still mostly on VRAM
+    if ratio > 0.0:
+        return "partial"  # split across VRAM and system RAM (iGPU / overflow)
+    return "CPU"  # 0% offload — CPU only
+
+
+def _nvidia_smi_probe() -> dict[str, Any] | None:
+    """Return a short NVIDIA GPU report from ``nvidia-smi``, or None.
+
+    Used to flag the case where Ollama didn't offload to VRAM despite an
+    NVIDIA GPU being present (driver mismatch, OLLAMA_NUM_GPU unset, etc.).
+    """
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        out = subprocess.run(  # noqa: S603 — args are hardcoded, smi path from shutil.which
+            [smi, "--query-gpu=name,memory.total,memory.used", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    line = out.stdout.strip().splitlines()[0]
+    parts = [p.strip() for p in line.split(",")]
+    if len(parts) != 3:
+        return None
+    try:
+        return {"name": parts[0], "memory_total_mib": int(parts[1]), "memory_used_mib": int(parts[2])}
+    except ValueError:
+        return None
 
 
 def print_doctor_results(results: list[CheckResult], json_output: bool = False) -> int:
