@@ -227,6 +227,23 @@ class TestCollectStats:
         assert stats["compile_status"]["error"]
 
 
+class TestRunDoctorOrder:
+    """Connectivity pings must run before context-window discovery so /api/ps reports the served context (not GGUF metadata)."""
+
+    def test_connectivity_precedes_context_window(self) -> None:
+        names = [r.name for r in run_doctor()]
+        if "connectivity-llm" in names and "context-window-llm" in names:
+            assert names.index("connectivity-llm") < names.index("context-window-llm")
+        if "connectivity-vlm" in names and "context-window-vlm" in names:
+            assert names.index("connectivity-vlm") < names.index("context-window-vlm")
+
+    def test_budget_consistency_after_context_window(self) -> None:
+        """budget-consistency uses the discovered context window, so it must follow."""
+        names = [r.name for r in run_doctor()]
+        if "context-window-llm" in names and "budget-consistency" in names:
+            assert names.index("context-window-llm") < names.index("budget-consistency")
+
+
 def test_provenance_no_wiki() -> None:
     """Knox provenance without compiled wiki should exit with error."""
     runner = CliRunner()

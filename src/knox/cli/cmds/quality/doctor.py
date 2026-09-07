@@ -92,6 +92,14 @@ def run_doctor(
     results.append(_check_parsers())
     results.append(_check_git_repo())
     results.append(_check_disk_space(sources_dir))
+    llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
+    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
+    # Connectivity pings BEFORE context-window discovery: they load the model
+    # into Ollama so /api/ps returns the context the server actually serves
+    # (often memory-capped below the GGUF-metadata value).
+    results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    results.append(_ping_embed_model(embed_model))
     context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
     if context_window_cap is None:
         context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
@@ -101,11 +109,6 @@ def run_doctor(
     results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
     results.append(_check_context_window(vlm_model, "vlm", context_window_cap, llm_cfg))
     results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
-    llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
-    _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
-    results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_ping_embed_model(embed_model))
     results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
     results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
     referenced_providers = {provider_id for model in (default_model, vlm_model, embed_model) if model and (provider_id := _provider_id_of(model)) is not None}
