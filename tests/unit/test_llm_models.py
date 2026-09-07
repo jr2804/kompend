@@ -300,9 +300,7 @@ class TestResolveModelLimits:
 class TestQueryOllamaNumCtx:
     """``_query_ollama_num_ctx`` prefers the context the server actually loaded."""
 
-    def test_loaded_context_from_ps_wins_over_metadata(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_loaded_context_from_ps_wins_over_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A memory-capped slot (ps) beats the aspirational GGUF metadata."""
         monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
         monkeypatch.setattr(mod.ollama, "ps", lambda: SimpleNamespaceLike(models=self._ps_models(65536)))
