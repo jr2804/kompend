@@ -444,8 +444,7 @@ def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> Ch
         total = nvidia["memory_total_mib"]
         free = total - used
         parts.append(
-            f"NVIDIA {nvidia['name']} detected ({free}/{total} MiB free) but Ollama is "
-            f"not using it — check OLLAMA_NUM_GPU / drivers / model fits in VRAM"
+            f"NVIDIA {nvidia['name']} detected ({free}/{total} MiB free) but Ollama is not using it — check OLLAMA_NUM_GPU / drivers / model fits in VRAM"
         )
     elif nvidia and not any_warn:
         parts.append(f"NVIDIA {nvidia['name']} ({nvidia['memory_total_mib']} MiB) — Ollama is using it")
