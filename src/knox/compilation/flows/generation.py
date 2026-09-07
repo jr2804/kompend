@@ -511,7 +511,9 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 seg_label,
                 len(caller_progress[seg_id]),
             )
-            pages_done += len(caller_progress[seg_id])
+            # Cap to total — checkpoint names can exceed the broker share if
+            # the model produced duplicate titles across passes.
+            pages_done = min(pages_done + len(caller_progress[seg_id]), gen_progress_total)
             compiler._report(
                 pages_done,
                 gen_progress_total,
@@ -631,13 +633,21 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
 
             # Report page-based progress: pages produced for this segment,
             # bounded by its broker share (prior segments count fully).
+            # pages_done itself must NEVER exceed gen_progress_total, so
+            # we cap the running value to avoid the bar overflowing
+            # ``[N/338]`` when the model under-produces for a segment.
+            seg_progress = min(len(seg_titles), start_remaining)
+            running = min(pages_done + seg_progress, gen_progress_total)
             compiler._report(
-                pages_done + min(len(seg_titles), start_remaining),
+                running,
                 gen_progress_total,
-                f"generating [{pages_done + min(len(seg_titles), start_remaining)}/{gen_progress_total}] {seg_label}",
+                f"generating [{running}/{gen_progress_total}] {seg_label}",
             )
 
-        pages_done += start_remaining
+        # Credit the segment with the pages actually produced, not the
+        # broker share (which assumes full coverage and would over-credit
+        # when the model fails to page every fetched concept).
+        pages_done = min(pages_done + len(seg_titles), gen_progress_total)
 
         # Record every consumed concept (page produced for it) for the
         # checkpoint so the next run can resume past this segment.
