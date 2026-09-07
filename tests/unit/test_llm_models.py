@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
 import pydantic
 import pytest
@@ -11,6 +12,7 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
+import knox.llm.models as mod
 from knox.core.config._configs import ProviderEndpoint
 from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
 
@@ -293,6 +295,56 @@ class TestResolveModelLimits:
         max_input, max_output = resolve_model_limits("openai:gpt-4o")
         assert max_input == 128000
         assert max_output == 16384
+
+
+class TestQueryOllamaNumCtx:
+    """``_query_ollama_num_ctx`` prefers the context the server actually loaded."""
+
+    def test_loaded_context_from_ps_wins_over_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A memory-capped slot (ps) beats the aspirational GGUF metadata."""
+        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+        monkeypatch.setattr(mod.ollama, "ps", lambda: SimpleNamespaceLike(models=self._ps_models(65536)))
+        monkeypatch.setattr(
+            mod.ollama,
+            "show",
+            lambda name: SimpleNamespaceLike(parameters="", modelinfo={"qwen3.context_length": 262144}),
+        )
+        assert mod._query_ollama_num_ctx("m") == 65536
+
+    def test_env_override_beats_ps(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "32768")
+        monkeypatch.setattr(mod.ollama, "ps", lambda: SimpleNamespaceLike(models=self._ps_models(65536)))
+        monkeypatch.setattr(mod.ollama, "show", lambda name: SimpleNamespaceLike(parameters="", modelinfo={}))
+        assert mod._query_ollama_num_ctx("m") == 32768
+
+    def test_ps_failure_falls_back_to_show(self, monkeypatch: pytest.MonkeyPatch) -> None:
+
+        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+
+        def _boom() -> object:
+            raise RuntimeError("server down")
+
+        monkeypatch.setattr(mod.ollama, "ps", _boom)
+        monkeypatch.setattr(
+            mod.ollama,
+            "show",
+            lambda name: SimpleNamespaceLike(parameters="num_ctx 8192", modelinfo={}),
+        )
+        assert mod._query_ollama_num_ctx("m") == 8192
+
+    def _ps_models(self, ctx: int) -> list:
+        """Build a minimal ``ollama.ps()``-shaped model list."""
+        return [SimpleNamespace(name="m", model="m", context_length=ctx)]
+
+
+class SimpleNamespaceLike:
+    """Attribute container used by the num_ctx tests."""
+
+    def __init__(self, **kw: object) -> None:
+        self.__dict__.update(kw)
 
 
 # ── build_model: native pydantic-ai providers ──────────────────────────

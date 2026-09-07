@@ -301,13 +301,21 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
 
     Priority (most restrictive wins when multiple are set):
     1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
-    2. ``parameters.num_ctx`` from ``ollama.show()`` - Modelfile override
+    2. ``context_length`` from ``ollama.ps()`` — the context the server
+       actually loaded the model with. GGUF metadata is aspirational;
+       Ollama caps the slot by available KV memory at load time. Without
+       this step knox sizes prompts against e.g. 262144 while the server
+       serves 65536 — oversized prompts then get message-truncated
+       server-side (dropping the user turn), which breaks chat templates
+       that require a user message ("No user query found in messages",
+       HTTP 500).
+    3. ``parameters.num_ctx`` from ``ollama.show()`` - Modelfile override
        (what Ollama is actually configured to enforce at runtime).
-    3. ``modelinfo`` from ``ollama.show()`` - native GGUF metadata.
+    4. ``modelinfo`` from ``ollama.show()`` - native GGUF metadata.
        Prefers ``original_context_length`` (base context before RoPE scaling)
        over the scaled ``context_length`` when both are present.
 
-    Returns ``None`` if none are available or ``ollama.show()`` fails.
+    Returns ``None`` if none are available or the Ollama queries fail.
     """
     # 1. Global env var.
     env_ctx: int | None = None
@@ -319,10 +327,19 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
                 env_ctx = None
         except ValueError:
             logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
-    # 2. Modelfile parameters from ollama.show() - what Ollama enforces.
+    # 2. Context the server actually loaded the model with (ollama.ps()).
+    loaded_ctx: int | None = None
+    # 3. Modelfile parameters from ollama.show() - what Ollama enforces.
     param_ctx: int | None = None
-    # 3. Native GGUF metadata from ollama.show().
+    # 4. Native GGUF metadata from ollama.show().
     native_ctx: int | None = None
+    try:
+        for model in ollama.ps().models:
+            if model_name in (model.model, model.name):
+                loaded_ctx = model.context_length
+                break
+    except Exception:
+        logger.debug("ollama.ps() failed for %s", model_name, exc_info=True)
     try:
         resp = ollama.show(model_name)
         # 2a. Parse parameters string for num_ctx (Modelfile override).
@@ -347,5 +364,5 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
                     break
     except Exception:
         logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
-    candidates = [c for c in (env_ctx, param_ctx, native_ctx) if c is not None]
+    candidates = [c for c in (env_ctx, loaded_ctx, param_ctx, native_ctx) if c is not None]
     return min(candidates) if candidates else None
