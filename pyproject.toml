@@ -68,6 +68,7 @@ dependencies = [
     "lazy-loader",
     "liteparse>=2.4.0,<2.13",  # 2.13.0 shipped no cp313+ wheels and no sdist; relax when fixed
     "trafilatura>=2.0.0",
+    "rapidfuzz>=3.14.6",
 ]
 
 [project.scripts]

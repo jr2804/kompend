@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import TypeVar
 
 from knox.compilation._two_phase_core import _merge_node
-from knox.compilation.flows.assembly import cosine_similarity
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
+from knox.core.text.matching import cosine as cosine_similarity
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 

@@ -17,11 +17,16 @@ from knox.agents.types import RemediationDeps
 from knox.compilation.two_phase import Extraction, ExtractionSet
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
+from knox.core.text.matching import best_match
 from knox.lint.base import LintReportResult, RemediationAction, RemediationStatus
 from knox.lint.gap_broker import GapBroker
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
 from knox.output.markdown import MarkdownWriter
+
+#: rapidfuzz-scale (0–100) acceptance threshold for gap-name → concept
+#: matching. Mirrors the legacy 0.85 fuzzy_threshold on the new scale.
+_REMEDIATION_MATCH_THRESHOLD = 85.0
 
 logger = get_logger(__name__)
 
@@ -72,12 +77,11 @@ def remediate_coverage_gaps(
     node_index: dict[str, int] = {n.id: i for i, n in enumerate(wiki.nodes)}
 
     # Deterministic pre-filtering: fuzzy-match + existence check.
-    token_index = _build_token_index(concept_lookup)
     matched_buckets: list[dict[str, Any]] = []
     actions: list[RemediationAction] = []
 
     for gap in gap_concepts:
-        matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup, token_index)
+        matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
         if not matched:
             logger.info("'%s' not found in cached extractions; see 'knox lint gaps' for recommendations", gap)
             continue
@@ -250,26 +254,20 @@ def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]
     return result if result else None
 
 
-def _build_token_index(lookup: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
-    """Build an inverted index from tokens to concept keys."""
-    index: dict[str, list[str]] = {}
-    for key in lookup:
-        for token in key.lower().split():
-            index.setdefault(token, []).append(key)
-    return index
-
-
 def _fuzzy_match_concept(
     normalized: str,
     lookup: dict[str, dict[str, Any]],
     token_index: dict[str, list[str]] | None = None,
 ) -> dict[str, Any] | None:
-    """Find the best matching concept for a normalized gap name."""
+    """Find the best matching concept for a normalized gap name.
+
+    Exact key first, then rapidfuzz similarity over the lookup keys
+    (:func:`knox.core.text.matching.best_match` — the single source of
+    truth for string matching). *token_index* is accepted for call-site
+    compatibility but no longer used: token-ratio matching subsumes the
+    shared-token heuristic.
+    """
     if normalized in lookup:
         return lookup[normalized]
-    if token_index is not None:
-        gap_tokens = set(normalized.split())
-        for token in gap_tokens:
-            for key in token_index.get(token, []):
-                return lookup[key]
-    return None
+    matched = best_match(normalized, set(lookup), threshold=_REMEDIATION_MATCH_THRESHOLD)
+    return lookup[matched[0]] if matched else None

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import re
 
+from knox.core.text.matching import best_match
+
 # Strips a trailing parenthetical acronym/qualifier, e.g. "Foo (Bar)" → "Foo".
 _ACRONYM_RE = re.compile(r"\s*\([^)\d][^)]*\)\s*$")
 
@@ -45,11 +47,10 @@ _STRUCTURAL_CONCEPT_RE = re.compile(
 
 # ── Wikilink alias resolution ─────────────────────────────────────────
 
-WIKILINK_ALIAS_MIN_JACCARD = 0.5
-#: Score assigned to substring matches (e.g. ``P.863`` ⊆ candidate title).
-#: Above :data:`WIKILINK_ALIAS_MIN_JACCARD` so substring wins on ties, but
-#: below 1.0 so a higher Jaccard can still override.
-WIKILINK_ALIAS_SUBSTRING_SCORE = 0.75
+#: Acceptance threshold for the rapidfuzz similarity behind alias
+#: resolution (same 0–100 scale as
+#: :data:`knox.core.text.matching.DEFAULT_SIMILARITY_THRESHOLD`).
+WIKILINK_ALIAS_MIN_SIMILARITY = 85.0
 
 
 def is_structural_concept(name: str) -> bool:
@@ -67,17 +68,16 @@ def is_structural_concept(name: str) -> bool:
 def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
     """Return the page id most likely intended by *target*.
 
-    Only triggered when *target* has no exact match in *alias_index*. Uses
-    token-overlap (Jaccard) against known titles to flag "the LLM meant
-    this page but used the wrong short alias" cases. Conservative by
-    design — returns ``None`` (not an alias) unless the match is clear.
+    Only triggered when *target* has no exact match in *alias_index*.
+    Scoring routes through :func:`knox.core.text.matching.similarity`
+    (rapidfuzz — the single source of truth for string similarity), so
+    token order, punctuation variants (``P.10/G.100`` ≡ ``P 10 G 100``),
+    and parenthetical extras all match without bespoke logic.
 
-    Special case: short identifiers like ``"P.863"`` rarely overlap with
-    long titles on tokens alone. We also accept matches where the target
-    is a **contiguous substring** of the candidate title (case-insensitive)
-    with a length ≥4 chars — this catches ``P.863`` → ``Full-scale
-    database (P.863 evaluation)``, ``ITU-T P.863`` → ``ITU-T P.800.1``
-    prefix matches, etc., without false-positiving on trivial substrings.
+    Special case kept here (domain logic, not similarity math):
+    parenthetical acronyms in the target ("Full Name (MOS-LQO)") resolve
+    directly against page ids/titles — the expansion's tokens are too
+    dissimilar from the acronym page for token similarity to connect.
 
     Returns the matched ``node.id``, or ``None`` when no alias candidate
     is strong enough.
@@ -86,47 +86,13 @@ def nearest_alias(target: str, alias_index: dict[str, str]) -> str | None:
     if not target_norm:
         return None
 
-    # Parenthetical acronyms in the target ("Full Name (MOS-LQO)") resolve
-    # directly against page ids/titles — the expansion's tokens are too
-    # dissimilar from the acronym page for Jaccard to connect them.
     for acro in parenthetical_acronyms(target):
         direct = alias_index.get(acro.lower()) or alias_index.get(normalize_concept_key(acro))
         if direct is not None:
             return direct
-    # Compare against period-stripped forms so ``p.863`` (short alias) matches
-    # ``p 863`` (slug-normalized, period replaced by hyphen-then-space).
-    target_no_punct = target_norm.replace(".", "")
-    target_norm_tokens = {t for t in target_norm.split() if len(t) > 2}
 
-    best_id: str | None = None
-    best_score = WIKILINK_ALIAS_MIN_JACCARD
-
-    for key, page_id in alias_index.items():
-        if len(key) <= 2:
-            continue
-        key_tokens = set(key.split())
-        if not key_tokens:
-            continue
-        # Token Jaccard (catches MOS-LQO ↔ MOS-LQO Fullband).
-        if target_norm_tokens:
-            overlap = len(target_norm_tokens & key_tokens)
-            if overlap:
-                union = target_norm_tokens | key_tokens
-                score = overlap / len(union)
-                if score > best_score:
-                    best_score = score
-                    best_id = page_id
-        # Substring containment for short references like "P.863".
-        # Compare against the key with hyphens, periods, and spaces
-        # collapsed — so ``p.863`` (short alias) matches
-        # ``full-scale-database-p-863-evaluation`` (slug).
-        if len(target_no_punct) >= 4:
-            key_normalized = key.replace("-", "").replace(".", "").replace(" ", "")
-            if (target_no_punct in key_normalized) and best_score < WIKILINK_ALIAS_SUBSTRING_SCORE:
-                best_score = WIKILINK_ALIAS_SUBSTRING_SCORE
-                best_id = page_id
-
-    return best_id
+    matched = best_match(target_norm, set(alias_index), threshold=WIKILINK_ALIAS_MIN_SIMILARITY)
+    return alias_index[matched[0]] if matched else None
 
 
 def parenthetical_acronyms(target: str) -> list[str]:

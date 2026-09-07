@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models.references import Reference
+from knox.core.text.matching import cosine
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -351,7 +352,7 @@ def _fuzzy_dedup_references(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if _cosine_similarity(vecs[i], vecs[j]) >= threshold:
+            if cosine(vecs[i], vecs[j]) >= threshold:
                 _union(i, j)
 
     groups: dict[int, list[int]] = {}
@@ -373,16 +374,6 @@ def _fuzzy_dedup_references(
 
 
 # ── Standalone functions ────────────────────────────────────────────────
-
-
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors (no numpy needed)."""
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(y * y for y in b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
 
 
 def _ref_embedding_text(ref: Reference) -> str:

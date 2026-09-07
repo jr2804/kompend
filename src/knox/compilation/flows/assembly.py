@@ -15,6 +15,7 @@ from knox.compilation.asset_summarizer import summarize_asset
 from knox.core.models import ChunkTree, GraphEdge, ResolvedChunk, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.models.structured import StructuredEquation, structured_to_text
+from knox.core.text.matching import cosine, similarity
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -36,9 +37,11 @@ def merge_similar_concepts(
     definitions are unioned and the longest name is kept as canonical.
 
     When embeddings are unavailable (``embedding_model == "hash"`` or
-    provider creation/embedding fails), falls back to a pure-Python
-    token-overlap (Jaccard) merge at *string_threshold* so dedup still
-    works offline.
+    provider creation/embedding fails), falls back to rapidfuzz string
+    similarity (:func:`knox.core.text.matching.similarity`) at
+    *string_threshold* so dedup still works offline. *string_threshold*
+    stays on the legacy 0–1 Jaccard scale for config compatibility and
+    is scaled to the 0–100 rapidfuzz scale internally.
     """
     if len(concepts) < 2:
         return concepts
@@ -60,7 +63,7 @@ def merge_similar_concepts(
 
     if vecs is not None:
         n = len(concepts)
-        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine_similarity(vecs[i], vecs[j]) >= threshold]
+        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine(vecs[i], vecs[j]) >= threshold]
         groups = _union_find_groups(n, similar)
         result = _merge_groups(concepts, groups)
         merged_count = n - len(result)
@@ -74,10 +77,11 @@ def merge_similar_concepts(
             )
         return result
 
-    # Fallback: string-similarity (token Jaccard) merge.
+    # Fallback: rapidfuzz string-similarity merge (scaled 0–1 config → 0–100).
     n = len(concepts)
     names = [c["name"] for c in concepts]
-    similar = [(i, j) for i in range(n) for j in range(i + 1, n) if _token_jaccard(names[i], names[j], min_token_len=jaccard_min_token_len) >= string_threshold]
+    fuzzy_threshold = string_threshold * 100.0
+    similar = [(i, j) for i in range(n) for j in range(i + 1, n) if similarity(names[i], names[j]) >= fuzzy_threshold]
     groups = _union_find_groups(n, similar)
     result = _merge_groups(concepts, groups)
     merged_count = n - len(result)
@@ -97,16 +101,6 @@ def merge_similar_concepts(
 # Callers must pass them explicitly; no defaults are assumed here.
 
 
-def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors (no numpy needed)."""
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(y * y for y in b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
 def _concept_embed_text(concept: dict[str, Any]) -> str:
     """Build the text to embed for a concept: name + first definition.
 
@@ -123,21 +117,6 @@ def _concept_embed_text(concept: dict[str, Any]) -> str:
         first_def = defs
     combined = f"{name}. {first_def}".strip(". ")
     return combined or name
-
-
-def _token_jaccard(a: str, b: str, *, min_token_len: int) -> float:
-    """Token-overlap ratio (Jaccard) between two strings.
-
-    Pure-Python fallback for when no embedding model is available.
-    Catches near-duplicate concept names like ``"Mean Temporal Distance
-    Measure"`` ↔ ``"Mean Temporal Distance"`` whose token sets overlap
-    heavily. Tokens shorter than *min_token_len* are ignored.
-    """
-    ta = {t for t in a.lower().split() if len(t) > min_token_len}
-    tb = {t for t in b.lower().split() if len(t) > min_token_len}
-    if not ta or not tb:
-        return 0.0
-    return len(ta & tb) / len(ta | tb)
 
 
 def _union_find_groups(n: int, similar: list[tuple[int, int]]) -> dict[int, list[int]]:

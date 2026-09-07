@@ -33,7 +33,6 @@ from knox.compilation._two_phase_core import (
 from knox.compilation.asset_registry import AssetIdMap, assign_asset_ids
 from knox.compilation.base import BaseCompiler
 from knox.compilation.flows.assembly import (
-    cosine_similarity,
     merge_similar_concepts,
 )
 from knox.compilation.flows.extraction import (
@@ -55,6 +54,7 @@ from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.templates import get_template_loader
+from knox.core.text.matching import cosine as cosine_similarity
 from knox.llm.context_window import ContextWindow, discover_context_window
 from knox.logging import get_logger
 
