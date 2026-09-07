@@ -44,20 +44,84 @@ from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.templates import get_template_loader
+from knox.core.text.matching import best_match, cosine
 from knox.core.utils.exceptions import LLMOutputError
 from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import BrokenWikilinksRule
 from knox.llm.format import encode_for_llm
 from knox.logging import get_logger
+from knox.rag.zvec_store import make_provider
 
 # Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
 # can be normalized to the intended [sources/foo.pdf] inline citation format
 # regardless of LLM compliance with the system prompt.
 _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 
+
+#: rapidfuzz-scale (0–100) threshold for "does a produced page title cover
+#: this concept" (T2 string tier).
+_COVER_SIMILARITY_THRESHOLD = 85.0
+#: Cosine threshold for the T3 semantic tier — catches paraphrases and
+#: punctuation variants the string tier misses (e.g. "ITU-T P.10/G.100" vs
+#: "P.10 G.100 Recommendation"). Conservative: a false *credit* silently
+#: drops a concept's page, so the bar sits above lint's topic-vs-chunk 0.55.
+_COVER_SEMANTIC_THRESHOLD = 0.65
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+
+class _CoverageCredit:
+    """Decides whether produced page titles cover fetched concepts.
+
+    T2: rapidfuzz similarity (:func:`knox.core.text.matching.best_match`).
+    T3: embedding cosine via the configured embedding model, embedded
+    incrementally and cached per string so repeated passes stay cheap.
+    When no embedding provider is available, T2 alone bounds the work —
+    callers degrade gracefully.
+    """
+
+    def __init__(self, embedding_model: str) -> None:
+        self._provider = None
+        if embedding_model and embedding_model != "hash":
+            try:
+                self._provider = make_provider(embedding_model)
+            except Exception as exc:
+                logger.debug("Coverage semantic tier disabled (no provider): %s", exc)
+        self._vectors: dict[str, list[float]] = {}
+
+    def covered(self, concept_name: str, titles: set[str]) -> bool:
+        """True when some title in *titles* covers *concept_name*."""
+        if not titles:
+            return False
+        if best_match(concept_name, titles, threshold=_COVER_SIMILARITY_THRESHOLD) is not None:
+            return True
+        if self._provider is None:
+            return False
+        cvec = self._vec(concept_name)
+        if cvec is None:
+            return False
+        for title in titles:
+            tvec = self._vec(title)
+            if tvec is not None and cosine(cvec, tvec) >= _COVER_SEMANTIC_THRESHOLD:
+                return True
+        return False
+
+    def _vec(self, text: str) -> list[float] | None:
+        if self._provider is None:
+            return None
+        cached = self._vectors.get(text)
+        if cached is not None:
+            return cached
+        try:
+            vec = self._provider.embed(text)
+        except Exception as exc:
+            logger.debug("Coverage embed failed for %r: %s", text, exc)
+            self._provider = None  # one failure disables the tier
+            return None
+        self._vectors[text] = vec
+        return vec
 
 
 def run_generation(
@@ -488,6 +552,9 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
         for c in concepts
         if c.get("kind") == "entity"
     }
+    # Coverage credit: rapidfuzz T2 + embedding T3 (single instances shared
+    # across segments so title/concept embeddings are cached compile-wide).
+    coverage = _CoverageCredit(compiler._config.embedding.model)
 
     logger.info(
         "TwoPhase: agentic generation — %d concept(s), %d segment(s)",
@@ -625,9 +692,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 )
 
             # Requeue fetched-but-uncovered concepts: the model may fetch a
-            # batch and only produce pages for part of it. Requeued concepts
-            # are handed out again on the next pass (within the same cap).
-            uncovered_fetched = [c for c in broker.consumed(seg_id) if normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) not in seg_titles]
+            # batch and only produce pages for part of it. Coverage credit
+            # routes through _CoverageCredit (rapidfuzz T2 + embedding T3)
+            # so titles like "P.10 G.100 Recommendation" credit concept
+            # "ITU-T P.10/G.100" instead of burning requeue passes.
+            uncovered_fetched = [c for c in broker.consumed(seg_id) if not coverage.covered(str(c.get(ExtractionField.NAME, "")), seg_titles)]
             if uncovered_fetched:
                 broker.requeue(seg_id, uncovered_fetched)
 
