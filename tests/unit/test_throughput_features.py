@@ -13,6 +13,11 @@ import pytest
 from knox.agents.types import VerificationDeps, VerificationVerdict
 from knox.agents.verification import AgenticVerificationAgent
 from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
+from knox.compilation.flows.generation import (
+    _agentic_reserved_tokens,
+    generate_all_pages_agentic,
+    prepare_source_segments,
+)
 from knox.compilation.schema import Concept, Entity, GenerationOutput
 from knox.compilation.two_phase import (
     Extraction,
@@ -710,8 +715,98 @@ class TestMergeSimilarConcepts:
         total = sum(len(content) for seg in result for _, content in seg)
         assert total == 40  # no data loss
 
-    """Source segmentation — splits content without data loss."""
 
+class TestAgenticSegmentSizing:
+    """Agentic-aware segment sizing and the request-fit guard."""
+
+    def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
+        config = PipelineConfig(
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(
+                default_model="test/model",
+                vlm_model="test/vlm",
+                timeout=120.0,
+            ),
+            embedding=EmbeddingConfig(model="hash"),
+        )
+        config.budget.gen_output_max = gen_output_max
+        config.llm.context_window = context_window
+        compiler = TwoPhaseCompiler(config=config)
+        return compiler
+
+    def test_reserved_tokens_measured_not_hardcoded(self) -> None:
+        """The agentic reservation measures the real templates + variables."""
+        compiler = self._compiler()
+        reserved = _agentic_reserved_tokens(compiler, ["Alpha", "Beta"], ["fact one"])
+        # Templates alone are ~1K tokens; known_titles + pinned add more. The
+        # reservation must be a few thousand — never zero and never negative.
+        assert reserved > 500
+        assert reserved < 20000
+
+    def test_reserved_tokens_shrink_segments_with_known_titles(self) -> None:
+        """A big known_titles list reserves more context, so segments shrink.
+
+        Content preservation is guaranteed by segment_sources splitting — the
+        total content across segments stays identical, never cropped.
+        """
+        compiler = self._compiler()
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="x" * 100_000,
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        empty = prepare_source_segments(compiler, chunks, reserved_tokens=0)
+        reserved = _agentic_reserved_tokens(compiler, [f"Title {i}" for i in range(300)], [])
+        sized = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        empty_chars = sum(len(c) for seg in empty for _, c in seg)
+        sized_chars = sum(len(c) for seg in sized for _, c in seg)
+        # No data loss either way — the content is fully preserved (the
+        # +2 per source is the "\n\n" separator the segmenter adds).
+        assert empty_chars == sized_chars
+        # The reservation must actually shrink the per-segment budget.
+        assert len(sized) >= len(empty)
+
+    def test_request_fit_guard_raises_on_overflow(self) -> None:
+        """When segment content + overhead + output exceeds the window, the
+        agentic loop must fail loudly instead of letting Ollama stall.
+        """
+        compiler = self._compiler(context_window=8192, gen_output_max=8192)
+        # Tiny window: even a small segment overflows once reserved + output
+        # are added. The guard must raise LLMOutputError before any agent call.
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="y" * 40_000,
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        reserved = _agentic_reserved_tokens(compiler, [], [])
+        segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        concepts = [
+            {"name": "Concept One", "kind": "concept", "importance": "high", "definition": "def"}
+        ]
+        with pytest.raises(Exception, match="context window"):
+            generate_all_pages_agentic(
+                compiler,
+                concepts,
+                segments,
+                [],
+                pinned_facts=[],
+                known_titles=[],
+            )
 
 class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""

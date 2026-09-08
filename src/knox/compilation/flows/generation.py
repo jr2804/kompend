@@ -63,6 +63,78 @@ _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 #: this concept" (T2 string tier).
 _COVER_SIMILARITY_THRESHOLD = 85.0
 
+#: Fixed per-turn agentic conversation framing (tool call + result parts)
+#: beyond the content itself. Sized for a full read_segment + fetch_concepts
+#: round and a follow-up fetch round (models often loop several rounds
+#: before answering).
+_AGENTIC_TOOL_FRAMING_TOKENS = 900
+#: Per fetch_concepts round: assistant tool call + result framing.
+_AGENTIC_FETCH_ROUND_TOKENS = 600
+#: Safety floor so a pathological known_titles/pinned list cannot zero the
+#: segment budget (content is preserved via more segments instead).
+_AGENTIC_SAFETY_TOKENS = 512
+#: Fraction of the context window reserved as extra headroom beyond the
+#: measured overhead. Ollama's effective usable context is smaller than the
+#: nominal num_ctx (KV cache + prompt-cache rollover), so exact-fit requests
+#: still stall; a fraction-based margin keeps the full request inside the
+#: *effective* window. Content is never cropped — the segment budget shrinks
+#: and sources split across more segments.
+_AGENTIC_SAFETY_FRACTION = 0.08
+
+
+def _token_estimate(text: str, chars_per_token: float) -> int:
+    return max(1, int(round(len(text) / chars_per_token)))
+
+
+def _agentic_reserved_tokens(
+    compiler: TwoPhaseRuntime,
+    known_titles: list[str],
+    pinned_clean: list[str],
+) -> int:
+    """Fixed per-request cost of an agentic generation turn.
+
+    Everything that lands in the request that is NOT the segment content:
+    system template + rendered user prompt (template body + known_titles +
+    pinned_facts blocks + categories) + the read_segment/fetch_concepts
+    tool-call framing + one fetch result + a safety margin.
+
+    Measured from the actual templates and variable payloads (same
+    chars-per-token heuristic used for segment sizing), never hard-coded
+    estimates.
+    """
+    cpt = compiler._config.llm.default_chars_per_token
+    system_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt)
+    prompt_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_prompt.md.j2"), cpt)
+    known_tokens = _token_estimate("\n".join(known_titles), cpt)
+    pinned_tokens = _token_estimate("\n".join(pinned_clean), cpt)
+    categories = compiler._config.extraction_categories
+    categories_tokens = _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt)
+    fraction_safety = max(_AGENTIC_SAFETY_TOKENS, int(round(_AGENTIC_SAFETY_FRACTION * compiler._context_window.max_input)))
+    total = (
+        system_tokens
+        + prompt_tokens
+        + known_tokens
+        + pinned_tokens
+        + categories_tokens
+        + _AGENTIC_TOOL_FRAMING_TOKENS
+        + _AGENTIC_FETCH_ROUND_TOKENS
+        + fraction_safety
+    )
+    logger.info(
+        "TwoPhase: agentic reserved_tokens=%d (sys=%d prompt=%d known=%d pinned=%d cats=%d framing=%d fetch=%d safety=%d [%.0f%% of cw])",
+        total,
+        system_tokens,
+        prompt_tokens,
+        known_tokens,
+        pinned_tokens,
+        categories_tokens,
+        _AGENTIC_TOOL_FRAMING_TOKENS,
+        _AGENTIC_FETCH_ROUND_TOKENS,
+        fraction_safety,
+        100 * _AGENTIC_SAFETY_FRACTION,
+    )
+    return total
+
 
 def _rate_suffix(tracker: UsageTracker | None) -> str:
     """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
@@ -166,10 +238,16 @@ def run_generation(
         )
 
     all_images = extract_images_from_chunks(chunks)
-    source_segments = prepare_source_segments(compiler, chunks)
     pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
-    _loader.get_body("compilation/generation_system.md.j2")
     known_titles = build_known_titles(compiler, concepts)
+    # Agentic-conversation fixed cost (everything that lands in the request
+    # that is NOT the segment content): system template + rendered user
+    # prompt (template + known_titles + pinned_facts) + tool-call framing
+    # (read_segment + fetch_concepts round-trips) + the fetch result + a
+    # safety margin. Subtracting this from the window keeps the full
+    # request (segment content + output budget) inside the context.
+    reserved_tokens = _agentic_reserved_tokens(compiler, known_titles, pinned_clean)
+    source_segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved_tokens)
 
     try:
         nodes, slug_to_idx, _caller_progress = run_generation_with_checkpoint(
@@ -248,8 +326,23 @@ def _with_entity_pages(
     return concepts
 
 
-def prepare_source_segments(compiler: TwoPhaseRuntime, chunks: list[ResolvedChunk]) -> list[list[tuple[str, str]]]:
-    """Build source segments sized to the context window."""
+def prepare_source_segments(
+    compiler: TwoPhaseRuntime,
+    chunks: list[ResolvedChunk],
+    *,
+    reserved_tokens: int = 0,
+) -> list[list[tuple[str, str]]]:
+    """Build source segments sized to the context window.
+
+    *reserved_tokens* is the fixed per-request conversation cost that is
+    NOT the segment content: system prompt + rendered user prompt
+    (template + known_titles + pinned_facts) + tool-call framing + the
+    fetch_concepts result + a safety margin. The agentic flow passes the
+    measured value so the segment budget = window - reserved - output
+    budget, guaranteeing the full request (segment + output) fits.
+    Content is preserved: oversized sources are split across more
+    segments by :func:`segment_sources` — nothing is cropped.
+    """
     by_source: dict[str, str] = defaultdict(str)
     for rc in chunks:
         label = Path(str(rc.chunk.source_file or "unknown")).stem
@@ -259,16 +352,26 @@ def prepare_source_segments(compiler: TwoPhaseRuntime, chunks: list[ResolvedChun
 
     cw = compiler._context_window
     budget = compiler._budget
+    if reserved_tokens:
+        # Agentic path: reserved is the complete fixed overhead (system +
+        # prompt + variables + tool framing), so the content budget is the
+        # window minus the output budget minus everything reserved.
+        content_budget = cw.max_input - budget.gen_output_max - reserved_tokens
+    else:
+        # Legacy template path: only the system template is pre-known; the
+        # content block IS the prompt, so no other reservation applies.
+        content_budget = cw.max_input - compiler._gen_system_tokens - budget.gen_output_max
     segment_char_size = tokens_to_chars(
-        max(compiler._config.llm.min_segment_tokens, cw.max_input - compiler._gen_system_tokens - budget.gen_output_max),
+        max(compiler._config.llm.min_segment_tokens, content_budget),
         chars_per_token=compiler._config.llm.default_chars_per_token,
     )
     logger.info(
-        "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d)",
+        "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d, reserved=%d)",
         segment_char_size,
         cw.max_input,
         compiler._gen_system_tokens,
         budget.gen_output_max,
+        reserved_tokens,
     )
     source_segments = segment_sources(sources, segment_char_size)
     logger.info(
@@ -642,9 +745,27 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
         cap = start_remaining + 1
         passes = 0
         gen_output = None
+        last_error: str | None = None
         seg_start_nodes = len(nodes)
         seg_titles: set[str] = set()  # normalized page titles produced for this segment
         seg_consumed_names: list[str] = list(caller_progress.get(seg_id, []))  # accumulate for checkpoint
+        # Request-fit guard: the segment content is placed in the conversation
+        # by read_segment (a tool result), and the model still emits up to
+        # gen_output_max on top. If even ONE call would exceed the window,
+        # fail loudly now instead of letting Ollama stall/time out mid-stream.
+        # The no-crop rule is honored: we never silently clamp max_tokens;
+        # content is preserved by splitting into smaller segments at the
+        # sizing stage.
+        _segment_content_tokens = _token_estimate(content_block, compiler._config.llm.default_chars_per_token)
+        _estimated_request = _agentic_reserved_tokens(compiler, known_titles or [], pinned_facts or []) + _segment_content_tokens
+        if _estimated_request + compiler._budget.gen_output_max > compiler._context_window.max_input:
+            raise LLMOutputError(
+                f"Agentic generation for {seg_label}: segment content ({_segment_content_tokens} tokens) + fixed "
+                f"overhead ({_estimated_request - _segment_content_tokens} tokens) + output budget "
+                f"({compiler._budget.gen_output_max} tokens) exceeds the {compiler._context_window.max_input}-token "
+                f"context window. Segments were sized with reserved_tokens; this indicates the conversation "
+                f"grew beyond the reservation. Re-run with a smaller context budget or check config."
+            )
         while broker.remaining(seg_id) > 0 and passes < cap:
             passes += 1
             try:
@@ -652,9 +773,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             except LLMOutputError as exc:
                 logger.warning("Agentic generation failed for '%s': %s", seg_id, exc)
                 gen_output = None
+                last_error = str(exc)
             except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
                 logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
                 gen_output = None
+                last_error = str(exc)
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
@@ -765,11 +888,20 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             if not seg_titles:
                 # Hard fail: no pages at all. Preserve checkpoint (already saved
                 # above) so the user can re-run to retry the failed segment.
+                # Distinguish a model that never called the tool (tool-call
+                # support problem) from one that fetched and then the request
+                # died (timeout/overflow — a sizing or provider problem).
+                fetched = broker.consumed(seg_id)
+                if fetched and last_error:
+                    cause = (f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}")
+                    hint = "This is not a tool-calling problem — check the request size vs the model's context window."
+                else:
+                    cause = "it never called the fetch_concepts tool"
+                    hint = "The model is not using the fetch_concepts tool; check its tool-calling support."
                 raise LLMOutputError(
                     f"Agentic generation for {seg_label} produced no page(s) for any of its "
-                    f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}). "
-                    f"Uncovered: [{sample}].{debug_hint} "
-                    f"The model is not using the fetch_concepts tool; check its tool-calling support."
+                    f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}): {cause}. "
+                    f"Uncovered: [{sample}].{debug_hint} {hint}"
                 )
             else:
                 logger.warning(
