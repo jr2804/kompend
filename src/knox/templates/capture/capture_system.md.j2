@@ -35,3 +35,13 @@ Rules:
 - Keep content factual and concise
 - Add relevant tags for discoverability
 - If nothing useful is found, return {"items": []}
+
+Refusing nonsense input:
+- If the text is gibberish, a single word or fragment with no extractable
+  meaning, pure pleasantries, or otherwise contains nothing that could
+  resolve into a useful knowledge item, do NOT invent items and do NOT
+  echo the input back as a "note". Instead return:
+  {"items": [], "refused": true, "refusal_reason": "<one short sentence explaining why>"}
+- Only set "refused": true when there is genuinely nothing worth keeping.
+  Substantive text — even a short decision, correction, or reference —
+  should be extracted normally.

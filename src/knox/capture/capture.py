@@ -13,12 +13,6 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
-#: Minimum input length for ``capture``. ``learn`` may store a short fact
-#: verbatim, but ``capture`` runs an LLM extraction over the text — below
-#: this threshold there is nothing meaningful to extract, so we fail fast
-#: instead of burning an LLM call on trivia.
-MIN_CAPTURE_CHARS: int = 80
-
 
 @dataclass
 class CapturedItem:
@@ -40,12 +34,8 @@ def capture(
     captured_dir = sources_dir / CAPTURED_SUBDIR
     captured_dir.mkdir(parents=True, exist_ok=True)
 
-    if len(text.strip()) < MIN_CAPTURE_CHARS:
-        raise ValueError(
-            f"capture input is too short ({len(text.strip())} chars < {MIN_CAPTURE_CHARS}). "
-            "Use 'knox learn' for short verbatim facts; capture is for text with enough "
-            "substance to extract knowledge items from."
-        )
+    if not text.strip():
+        raise ValueError("capture input is empty. Provide text with something to extract.")
 
     user_tags = list(tags or [])
     items = (
@@ -87,7 +77,12 @@ source: capture
 
 
 def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[str]) -> list[CapturedItem]:
-    """Use the CaptureAgent to extract structured items from text."""
+    """Use the CaptureAgent to extract structured items from text.
+
+    Returns an empty list when the agent refuses the input (nonsense,
+    nothing extractable) — the caller warns and writes nothing. Falls back
+    to a raw note only when the agent itself fails (not when it refuses).
+    """
     tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
     user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
     deps = PipelineAgentDeps(text=user_prompt, source_id="capture", timeout=capture_agent.timeout)
@@ -97,6 +92,11 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
     except Exception:
         logger.warning("CaptureAgent failed, falling back to raw capture")
         return [CapturedItem(kind="note", title=make_title(text), content=text)]
+
+    if result.refused:
+        reason = result.refusal_reason or "the input contains nothing extractable"
+        logger.warning("CaptureAgent refused input: %s", reason)
+        return []
 
     items: list[CapturedItem] = []
     for raw in result.items:
@@ -109,7 +109,9 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
             )
         )
 
-    return items if items else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
+    if not items:
+        logger.warning("CaptureAgent returned no items for the input")
+    return items
 
 
 def _merge_tags(user_tags: list[str], llm_tags: list[str]) -> list[str]:

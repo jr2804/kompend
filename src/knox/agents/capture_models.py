@@ -15,9 +15,17 @@ class CapturedItem(BaseModel):
 
 
 class CaptureOutput(BaseModel):
-    """List of extracted knowledge items."""
+    """List of extracted knowledge items.
+
+    When the input contains nothing extractable (greetings, chit-chat,
+    gibberish, or a single trivial fragment), the agent sets ``refused``
+    to ``True`` and explains why in ``refusal_reason`` instead of emitting
+    empty or hallucinated items.
+    """
 
     items: list[CapturedItem] = []
+    refused: bool = False
+    refusal_reason: str = ""
 
 
 class DistillOutput(BaseModel):

@@ -328,11 +328,22 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 
 ```text
 1. During a chat, periodically call wiki_capture(text=last_turns, sources_dir="./sources")
-   to extract decisions, corrections, and discoveries into _captured/ notes
+   to extract decisions, corrections, and discoveries into _captured/ notes.
+   Use wiki_learn for short verbatim facts (no LLM). Both accept tags and
+   attributes (--tag / --attr KEY=VALUE).
 2. After enough captures, call wiki_distill(wiki_dir=".") to synthesize
-   captured notes into full wiki pages via LLM
-3. Re-compile with compile_wiki to integrate the new pages
+   captured notes into full wiki pages via LLM. Distill updates existing
+   per-group pages in place and archives the source notes by default.
+3. Periodically call wiki_consolidate(wiki_dir=".") to find and archive
+   redundant notes across _captured/_learned/_distilled (rapidfuzz +
+   embeddings).
+4. Re-compile with compile_wiki to integrate the new pages.
 ```
+
+See [Input pipeline](docs/guides/input-pipeline.md) for the full
+capture/learn/distill/consolidate lifecycle. Note: `capture` refuses
+nonsense input (the agent sets `refused: true` and nothing is written) —
+if a capture call returns zero files, the input had nothing extractable.
 
 ### Workflow 4: Organize an existing wiki
 

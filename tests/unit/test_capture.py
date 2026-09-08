@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from knox.agents.capture_models import CaptureOutput
 from knox.agents.deps import DistillDeps
 from knox.agents.distill import DistillAgent
 from knox.capture.capture import (
@@ -268,9 +269,29 @@ class TestLearn:
 class TestCaptureSufficiency:
     """capture() rejects inputs too short to extract from."""
 
-    def test_short_input_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="too short"):
-            capture("short", sources_dir=tmp_path)
+    def test_empty_input_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            capture("   \n  ", sources_dir=tmp_path)
+
+    def test_short_input_captured_without_llm(self, tmp_path: Path) -> None:
+        # Without an LLM, short input is stored as a raw note (no arbitrary
+        # length gate — the agent is the judge of "nonsense" when present).
+        paths = capture("short", sources_dir=tmp_path)
+        assert len(paths) == 1
+
+    def test_agent_refusal_writes_nothing(self, tmp_path: Path) -> None:
+
+        agent = Mock()
+        agent.run.return_value = CaptureOutput(items=[], refused=True, refusal_reason="gibberish")
+        paths = capture("asdf qwerty zxcv", sources_dir=tmp_path, capture_agent=agent)
+        assert paths == []
+
+    def test_agent_empty_items_writes_nothing(self, tmp_path: Path) -> None:
+
+        agent = Mock()
+        agent.run.return_value = CaptureOutput(items=[])
+        paths = capture("Just a greeting, nothing else here.", sources_dir=tmp_path, capture_agent=agent)
+        assert paths == []
 
     def test_attributes_in_frontmatter(self, tmp_path: Path) -> None:
         paths = capture(
@@ -284,16 +305,6 @@ class TestCaptureSufficiency:
 
 class TestDistillUpdateAndArchive:
     """distill() updates existing per-group pages and archives originals."""
-
-    def _make_note(self, sources_dir: Path, name: str, tag: str, body: str) -> Path:
-        captured = sources_dir / "_captured"
-        captured.mkdir(parents=True, exist_ok=True)
-        p = captured / name
-        p.write_text(
-            f"---\ntitle: {name}\ntags:\n  - {tag}\n---\n\n{body}",
-            encoding="utf-8",
-        )
-        return p
 
     def test_repeated_distill_updates_same_page(self, tmp_path: Path) -> None:
         self._make_note(tmp_path, "note-a.md", "alpha", "First note about alpha.")
@@ -317,24 +328,29 @@ class TestDistillUpdateAndArchive:
         distill(tmp_path, archive=False)
         assert (tmp_path / "_captured" / "note-a.md").exists()
 
+    def _make_note(self, sources_dir: Path, name: str, tag: str, body: str) -> Path:
+        captured = sources_dir / "_captured"
+        captured.mkdir(parents=True, exist_ok=True)
+        p = captured / name
+        p.write_text(
+            f"---\ntitle: {name}\ntags:\n  - {tag}\n---\n\n{body}",
+            encoding="utf-8",
+        )
+        return p
+
 
 class TestConsolidate:
     """consolidate() finds near-duplicates and archives them."""
-
-    def _write(self, sources_dir: Path, sub: str, name: str, body: str) -> Path:
-        d = sources_dir / sub
-        d.mkdir(parents=True, exist_ok=True)
-        p = d / name
-        p.write_text(f"---\ntitle: {name}\n---\n\n{body}", encoding="utf-8")
-        return p
 
     def test_finds_identical_duplicates(self, tmp_path: Path) -> None:
         body = "The PESQ algorithm aligns utterances before scoring."
         self._write(tmp_path, "_captured", "a.md", body)
         self._write(tmp_path, "_captured", "b.md", body)
         groups = find_duplicates(
-            [CapturedNote(title="a", content=body, source_file=tmp_path / "_captured" / "a.md"),
-             CapturedNote(title="b", content=body, source_file=tmp_path / "_captured" / "b.md")]
+            [
+                CapturedNote(title="a", content=body, source_file=tmp_path / "_captured" / "a.md"),
+                CapturedNote(title="b", content=body, source_file=tmp_path / "_captured" / "b.md"),
+            ]
         )
         assert len(groups) == 1
         assert len(groups[0].duplicates) == 1
@@ -356,3 +372,9 @@ class TestConsolidate:
         assert len(groups) == 1
         assert (tmp_path / "_captured" / "b.md").exists()
 
+    def _write(self, sources_dir: Path, sub: str, name: str, body: str) -> Path:
+        d = sources_dir / sub
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / name
+        p.write_text(f"---\ntitle: {name}\n---\n\n{body}", encoding="utf-8")
+        return p

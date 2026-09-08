@@ -63,6 +63,7 @@ knox query "what is the main result?"
 
 - [Motivation](about/motivation.md) — Why KNOX exists and what makes it different
 - [Getting Started](guides/cli.md) — CLI setup, compile/query examples
+- [Input Pipeline](guides/input-pipeline.md) — capture/learn/distill/consolidate: turning notes into wiki sources
 - [Initialization](guides/initialization.md) — `knox init` project scaffolding
 - [Configuration](guides/configuration.md) — 5-layer config system, `knox config` subcommands
 - [Basic Principles](concepts/basic-principles.md) — What KNOX does and why

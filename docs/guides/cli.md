@@ -8,6 +8,7 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox config` | Inspect and manage configuration |
 | `knox parse` | Parse documents and show their structure |
 | `knox compile` | Compile documents into a knowledge wiki |
+| `knox ingest` | Copy files into sources without compiling |
 | `knox query` | Query the compiled wiki with natural language |
 | `knox doctor` | Validate configuration and connectivity |
 | `knox status` | Show per-wiki statistics |
@@ -185,6 +186,19 @@ model don't compete for GPU memory.
 
 Use `--no-progress` to disable, or `--progress` to force enable.
 
+## `knox ingest`
+
+Copy files (or URLs) into `sources/` without compiling. Like `capture`/`learn`,
+ingest accepts `--tag` (repeatable) and `--attr KEY=VALUE` (repeatable) —
+written to the parse-cache metadata and propagated to wiki nodes on the next
+`knox compile`. See [Input pipeline](input-pipeline.md) for the full
+capture/learn/distill/consolidate lifecycle.
+
+```bash
+knox ingest paper.pdf --tag audio --tag standards --attr version=2
+knox ingest --url https://example.com/report.pdf --attr status=draft
+```
+
 ## `knox index`
 
 Rebuild the zvec vector index for semantic search from the cached wiki.
@@ -327,6 +341,8 @@ Quickly persist notes, facts, or conversation snippets as **source material**
 for future compilation. Files land in `sources/_captured/` (capture) and
 `sources/_learned/` (learn) — they are *inputs* that the next `knox compile`
 will parse, chunk, and resolve like any other source. See
+[Input pipeline](input-pipeline.md) for the full capture/learn/distill/
+consolidate story, and
 [Wiki structure: input vs output](wiki-structure.md#input-vs-output-where-files-land)
 for why captures go under `sources/` rather than `wiki/`.
 

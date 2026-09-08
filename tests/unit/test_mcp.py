@@ -142,6 +142,33 @@ def test_cli_mcp_parity() -> None:
     assert not missing, f"CLI commands missing MCP tools: {missing}"
 
 
+def test_mcp_cli_parity_reverse() -> None:
+    """Every MCP tool has a matching CLI command (reverse direction).
+
+    Guards against MCP tools that drift out of the CLI surface — e.g. a
+    tool added to the MCP server but never exposed as a CLI command, or a
+    CLI command renamed without updating the MCP side.
+    """
+    register_all_commands()
+    cli_cmds: set[str] = set()
+    for cmd in cli_app.registered_commands:
+        cli_cmds.add(_normalize_cli(cmd.name))
+    for group in cli_app.registered_groups:
+        sub_app = group.typer_instance
+        gname = sub_app.info.name or str(group.name)
+        gnorm = _normalize_cli(gname)
+        for cmd in sub_app.registered_commands:
+            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name)}")
+
+    mcp_tools = set(mcp_server._tool_manager._tools)
+    mcp_norm = {_normalize_mcp(t) for t in mcp_tools}
+    # MCP tools that intentionally have no CLI equivalent (server bootstrap,
+    # interactive, or pure-MCP conveniences).
+    mcp_only = {"list_attachments", "read_attachment", "attachment_info"}
+    orphan = sorted(mcp_norm - cli_cmds - mcp_only)
+    assert not orphan, f"MCP tools without a CLI command: {orphan}"
+
+
 def _normalize_cli(name: str) -> str:
     return name.replace(" ", "_").replace("-", "_").strip("_")
 

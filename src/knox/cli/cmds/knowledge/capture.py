@@ -78,20 +78,12 @@ def capture_cmd(
         tags=tag,
         attributes=_parse_attrs(attr),
     )
+    if not paths:
+        get_console().print("[yellow]Nothing captured — the input contained no extractable knowledge items.[/]")
+        return
     get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / CAPTURED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
-
-
-def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
-    """Parse ``KEY=VALUE`` --attr flags into a dict."""
-    out: dict[str, str] = {}
-    for item in attr or []:
-        if "=" not in item:
-            raise typer.BadParameter(f"Use KEY=VALUE format for attributes, got: '{item}'")
-        key, _, value = item.partition("=")
-        out[key.strip()] = value.strip()
-    return out
 
 
 @app.command(name="learn")
@@ -123,6 +115,17 @@ def learn_cmd(
         attributes=_parse_attrs(attr),
     )
     get_console().print(f"Learned fact -> {path.name}")
+
+
+def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` --attr flags into a dict."""
+    out: dict[str, str] = {}
+    for item in attr or []:
+        if "=" not in item:
+            raise typer.BadParameter(f"Use KEY=VALUE format for attributes, got: '{item}'")
+        key, _, value = item.partition("=")
+        out[key.strip()] = value.strip()
+    return out
 
 
 @app.command(name="consolidate")
