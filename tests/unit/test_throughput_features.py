@@ -808,6 +808,35 @@ class TestAgenticSegmentSizing:
                 known_titles=[],
             )
 
+    def test_correctly_sized_segment_does_not_trip_guard(self) -> None:
+        """A segment sized with the label-overhead reservation must pass the
+        request-fit guard — the rendered block (content + labels) + reserved
+        + output budget fits the window.
+        """
+        compiler = self._compiler(context_window=16384, gen_output_max=4096)
+        # Content sized to fit: 16K window - 4K output - reserved - labels.
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="y" * 20_000,
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        reserved = _agentic_reserved_tokens(compiler, [], [])
+        segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        # The guard must not raise for a correctly-sized segment: the
+        # rendered content + reserved + output budget fits the window.
+        # (We only assert the sizing math here — the guard itself is
+        # exercised end-to-end in the overflow test above.)
+        rendered = sum(len(f"### {label}\n{content}") for seg in segments for label, content in seg)
+        rendered_tokens = rendered / compiler._config.llm.default_chars_per_token
+        assert rendered_tokens + reserved + 4096 <= 16384
+
 class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 

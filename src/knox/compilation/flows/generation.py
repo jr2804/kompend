@@ -352,15 +352,24 @@ def prepare_source_segments(
 
     cw = compiler._context_window
     budget = compiler._budget
+    # The rendered content block is ``"\n\n".join(f"### {label}\n{content}")``
+    # — each source adds ``### {label}\n`` plus the ``\n\n`` separator. The
+    # request-fit guard measures the *rendered* block, so the sizing must
+    # reserve this label/separator overhead or the guard fires on segments
+    # that are exactly at the raw-content budget (observed: 27-token
+    # overshoot on a 39K-token segment). Conservative: reserve the total
+    # across all sources (segments share it, so this over-reserves slightly).
+    cpt = compiler._config.llm.default_chars_per_token
+    label_overhead_tokens = int(sum(len(label) + 7 for label, _ in sources) / cpt)
     if reserved_tokens:
         # Agentic path: reserved is the complete fixed overhead (system +
         # prompt + variables + tool framing), so the content budget is the
         # window minus the output budget minus everything reserved.
-        content_budget = cw.max_input - budget.gen_output_max - reserved_tokens
+        content_budget = cw.max_input - budget.gen_output_max - reserved_tokens - label_overhead_tokens
     else:
         # Legacy template path: only the system template is pre-known; the
         # content block IS the prompt, so no other reservation applies.
-        content_budget = cw.max_input - compiler._gen_system_tokens - budget.gen_output_max
+        content_budget = cw.max_input - compiler._gen_system_tokens - budget.gen_output_max - label_overhead_tokens
     segment_char_size = tokens_to_chars(
         max(compiler._config.llm.min_segment_tokens, content_budget),
         chars_per_token=compiler._config.llm.default_chars_per_token,
