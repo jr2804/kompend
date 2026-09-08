@@ -98,7 +98,9 @@ def build_model(model_string: str) -> Model:
     # (e.g. minimax via an anthropic-protocol proxy) must win, otherwise the
     # catalog shadows their base_url/api_type and requests hit the wrong
     # endpoint.
-    if provider_id in _user_providers:
+    # Override-only blocks (no base_url, e.g. [providers.ollama] with just
+    # max_connections) do not build models — fall through to the catalog.
+    if provider_id in _user_providers and _user_providers[provider_id].get("base_url"):
         return _build_user_provider(provider_id, model_name)
 
     # 3. models-dev catalog (OpenAI-compatible custom provider)?

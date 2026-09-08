@@ -25,6 +25,7 @@ from knox.core.pipeline.attachments import (
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import parse_cache_name, relativize_image_paths
 from knox.core.pipeline.runtime import PipelineRuntime
+from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
 from knox.preprocessing.parsers.base import scrub_document
@@ -76,6 +77,11 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
             return []
 
     workers = max(1, pipeline.config.workers)
+    # Clip against the LLM provider's client-side connection budget
+    # ([providers.<name>].max_connections — overridable for integrated
+    # providers like ollama). Silent throttling is impossible: a clip logs
+    # a warning naming both values.
+    workers = effective_workers(pipeline.config.llm.default_model or "", workers)
 
     trees: list[ChunkTree] = []
     if workers > 1 and len(source_files) > 1:

@@ -67,11 +67,26 @@ including `default_model`, `fallback_chain`, and CLI overrides.
 
 | Field | Required | Notes |
 | ----- | -------- | ---------------------------------------------------- |
-| `base_url` | yes | Provider base URL (e.g. `http://host:8081/v1`) |
+| `base_url` | no¹  | Provider base URL (e.g. `http://host:8081/v1`). Omit for an override-only block on an integrated provider (see below) |
 | `api_key` | no | Literal value or `${ENV_VAR}` reference |
 | `api_type` | no | Wire protocol: `openai-chat` (default), `openai-responses`, or `anthropic` |
 | `context_window` | no | Default context window length for all models on this provider |
+| `max_connections` | no | Client-side limit on parallel LLM connections to this provider; clips `compile.workers`. `None` (default) = no limit |
 | `models."<name>".context_window` | no | Per-model context window (wins over provider-level) |
+
+¹ `base_url` is required to *define* a custom endpoint; omit it to write an
+**override-only block** that only tunes settings for an existing provider
+(integrated like `ollama` or catalog-based), e.g.:
+
+```toml
+[providers.ollama]        # no base_url — override-only
+max_connections = 2       # clip compile.workers to 2 for ollama models
+```
+
+`max_connections` applies wherever KNOX creates parallel workers for a model
+on that provider (parse today, and future parallel LLM stages) — a quiet way
+to rate-limit online APIs so tokens aren't burned faster than intended, or to
+stop two local GPU servers from starving each other under `compile.workers > 1`.
 
 `api_key` supports the same `${ENV_VAR}` interpolation KNOX uses elsewhere.
 A plain literal works too. Omit `api_key` entirely for keyless endpoints;

@@ -226,9 +226,13 @@ class TestBuildModelUserProvider:
         assert isinstance(m, OpenAIChatModel)
         assert m.model_name == "some-model"
 
-    def test_user_provider_missing_base_url_raises(self) -> None:
+    def test_user_provider_missing_base_url_falls_through(self) -> None:
+        """Override-only blocks (no base_url) skip model building, so an
+        unknown provider id surfaces the standard catalog/unknown error
+        instead of a misleading 'no base_url' one.
+        """
         set_user_providers({"broken": {"api_key": "sk-key"}})
-        with pytest.raises(ValueError, match="no base_url"):
+        with pytest.raises(ValueError, match="Unknown provider"):
             build_model("broken/model")
 
     def test_user_provider_unknown_provider_falls_through(self) -> None:
