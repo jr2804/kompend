@@ -89,12 +89,6 @@ class TestUsageTracker:
 
 
 class TestProviderMaxConnections:
-    @pytest.fixture(autouse=True)
-    def _clean(self) -> None:
-        set_user_providers({})
-        yield
-        set_user_providers({})
-
     def test_no_limit_by_default(self) -> None:
         set_user_providers({"my-llm": {"base_url": "http://x", "max_connections": None}})
         assert provider_max_connections("my-llm") is None
@@ -119,3 +113,9 @@ class TestProviderMaxConnections:
     def test_no_slash_model_string(self) -> None:
         set_user_providers({"foo": {"max_connections": 1}})
         assert effective_workers("foo", 3) == 1
+
+    @pytest.fixture(autouse=True)
+    def _clean(self) -> None:
+        set_user_providers({})
+        yield
+        set_user_providers({})

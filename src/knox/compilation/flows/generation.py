@@ -80,75 +80,6 @@ _AGENTIC_SAFETY_TOKENS = 512
 #: *effective* window. Content is never cropped — the segment budget shrinks
 #: and sources split across more segments.
 _AGENTIC_SAFETY_FRACTION = 0.08
-
-
-def _token_estimate(text: str, chars_per_token: float) -> int:
-    return max(1, int(round(len(text) / chars_per_token)))
-
-
-def _agentic_reserved_tokens(
-    compiler: TwoPhaseRuntime,
-    known_titles: list[str],
-    pinned_clean: list[str],
-) -> int:
-    """Fixed per-request cost of an agentic generation turn.
-
-    Everything that lands in the request that is NOT the segment content:
-    system template + rendered user prompt (template body + known_titles +
-    pinned_facts blocks + categories) + the read_segment/fetch_concepts
-    tool-call framing + one fetch result + a safety margin.
-
-    Measured from the actual templates and variable payloads (same
-    chars-per-token heuristic used for segment sizing), never hard-coded
-    estimates.
-    """
-    cpt = compiler._config.llm.default_chars_per_token
-    system_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt)
-    prompt_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_prompt.md.j2"), cpt)
-    known_tokens = _token_estimate("\n".join(known_titles), cpt)
-    pinned_tokens = _token_estimate("\n".join(pinned_clean), cpt)
-    categories = compiler._config.extraction_categories
-    categories_tokens = _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt)
-    fraction_safety = max(_AGENTIC_SAFETY_TOKENS, int(round(_AGENTIC_SAFETY_FRACTION * compiler._context_window.max_input)))
-    total = (
-        system_tokens
-        + prompt_tokens
-        + known_tokens
-        + pinned_tokens
-        + categories_tokens
-        + _AGENTIC_TOOL_FRAMING_TOKENS
-        + _AGENTIC_FETCH_ROUND_TOKENS
-        + fraction_safety
-    )
-    logger.info(
-        "TwoPhase: agentic reserved_tokens=%d (sys=%d prompt=%d known=%d pinned=%d cats=%d framing=%d fetch=%d safety=%d [%.0f%% of cw])",
-        total,
-        system_tokens,
-        prompt_tokens,
-        known_tokens,
-        pinned_tokens,
-        categories_tokens,
-        _AGENTIC_TOOL_FRAMING_TOKENS,
-        _AGENTIC_FETCH_ROUND_TOKENS,
-        fraction_safety,
-        100 * _AGENTIC_SAFETY_FRACTION,
-    )
-    return total
-
-
-def _rate_suffix(tracker: UsageTracker | None) -> str:
-    """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
-
-    Uses the tracker's real completion-token event log (short-term window
-    + overall average) — the single source of truth for throughput.
-    """
-    if tracker is None:
-        return ""
-    overall = tracker.overall_rate()
-    recent = tracker.recent_rate()
-    if not overall and not recent:
-        return ""
-    return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 #: Cosine threshold for the T3 semantic tier — catches paraphrases and
 #: punctuation variants the string tier misses (e.g. "ITU-T P.10/G.100" vs
 #: "P.10 G.100 Recommendation"). Conservative: a false *credit* silently
@@ -902,7 +833,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 # died (timeout/overflow — a sizing or provider problem).
                 fetched = broker.consumed(seg_id)
                 if fetched and last_error:
-                    cause = (f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}")
+                    cause = f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}"
                     hint = "This is not a tool-calling problem — check the request size vs the model's context window."
                 else:
                     cause = "it never called the fetch_concepts tool"
@@ -926,6 +857,75 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+def _agentic_reserved_tokens(
+    compiler: TwoPhaseRuntime,
+    known_titles: list[str],
+    pinned_clean: list[str],
+) -> int:
+    """Fixed per-request cost of an agentic generation turn.
+
+    Everything that lands in the request that is NOT the segment content:
+    system template + rendered user prompt (template body + known_titles +
+    pinned_facts blocks + categories) + the read_segment/fetch_concepts
+    tool-call framing + one fetch result + a safety margin.
+
+    Measured from the actual templates and variable payloads (same
+    chars-per-token heuristic used for segment sizing), never hard-coded
+    estimates.
+    """
+    cpt = compiler._config.llm.default_chars_per_token
+    system_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt)
+    prompt_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_prompt.md.j2"), cpt)
+    known_tokens = _token_estimate("\n".join(known_titles), cpt)
+    pinned_tokens = _token_estimate("\n".join(pinned_clean), cpt)
+    categories = compiler._config.extraction_categories
+    categories_tokens = _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt)
+    fraction_safety = max(_AGENTIC_SAFETY_TOKENS, int(round(_AGENTIC_SAFETY_FRACTION * compiler._context_window.max_input)))
+    total = (
+        system_tokens
+        + prompt_tokens
+        + known_tokens
+        + pinned_tokens
+        + categories_tokens
+        + _AGENTIC_TOOL_FRAMING_TOKENS
+        + _AGENTIC_FETCH_ROUND_TOKENS
+        + fraction_safety
+    )
+    logger.info(
+        "TwoPhase: agentic reserved_tokens=%d (sys=%d prompt=%d known=%d pinned=%d cats=%d framing=%d fetch=%d safety=%d [%.0f%% of cw])",
+        total,
+        system_tokens,
+        prompt_tokens,
+        known_tokens,
+        pinned_tokens,
+        categories_tokens,
+        _AGENTIC_TOOL_FRAMING_TOKENS,
+        _AGENTIC_FETCH_ROUND_TOKENS,
+        fraction_safety,
+        100 * _AGENTIC_SAFETY_FRACTION,
+    )
+    return total
+
+
+def _token_estimate(text: str, chars_per_token: float) -> int:
+    return max(1, int(round(len(text) / chars_per_token)))
+
+
+def _rate_suffix(tracker: UsageTracker | None) -> str:
+    """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
+
+    Uses the tracker's real completion-token event log (short-term window
+    + overall average) — the single source of truth for throughput.
+    """
+    if tracker is None:
+        return ""
+    overall = tracker.overall_rate()
+    recent = tracker.recent_rate()
+    if not overall and not recent:
+        return ""
+    return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 
 
 def _page_kind(page: GenerationPage, batch: list[dict[str, Any]], extras: dict[str, str]) -> str:

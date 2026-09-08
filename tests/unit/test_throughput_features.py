@@ -719,22 +719,6 @@ class TestMergeSimilarConcepts:
 class TestAgenticSegmentSizing:
     """Agentic-aware segment sizing and the request-fit guard."""
 
-    def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
-        config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
-            llm=LLMConfig(
-                default_model="test/model",
-                vlm_model="test/vlm",
-                timeout=120.0,
-            ),
-            embedding=EmbeddingConfig(model="hash"),
-        )
-        config.budget.gen_output_max = gen_output_max
-        config.llm.context_window = context_window
-        compiler = TwoPhaseCompiler(config=config)
-        return compiler
-
     def test_reserved_tokens_measured_not_hardcoded(self) -> None:
         """The agentic reservation measures the real templates + variables."""
         compiler = self._compiler()
@@ -795,9 +779,7 @@ class TestAgenticSegmentSizing:
         ]
         reserved = _agentic_reserved_tokens(compiler, [], [])
         segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
-        concepts = [
-            {"name": "Concept One", "kind": "concept", "importance": "high", "definition": "def"}
-        ]
+        concepts = [{"name": "Concept One", "kind": "concept", "importance": "high", "definition": "def"}]
         with pytest.raises(Exception, match="context window"):
             generate_all_pages_agentic(
                 compiler,
@@ -836,6 +818,23 @@ class TestAgenticSegmentSizing:
         rendered = sum(len(f"### {label}\n{content}") for seg in segments for label, content in seg)
         rendered_tokens = rendered / compiler._config.llm.default_chars_per_token
         assert rendered_tokens + reserved + 4096 <= 16384
+
+    def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
+        config = PipelineConfig(
+            source_dir=Path("."),
+            output_dir=Path("."),
+            llm=LLMConfig(
+                default_model="test/model",
+                vlm_model="test/vlm",
+                timeout=120.0,
+            ),
+            embedding=EmbeddingConfig(model="hash"),
+        )
+        config.budget.gen_output_max = gen_output_max
+        config.llm.context_window = context_window
+        compiler = TwoPhaseCompiler(config=config)
+        return compiler
+
 
 class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""

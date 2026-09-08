@@ -16,13 +16,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-def tokens_per_second(tokens: int, elapsed_s: float) -> float:
-    """Throughput for one completed interval (0.0 when nothing/zero time)."""
-    if tokens <= 0 or elapsed_s <= 0.0:
-        return 0.0
-    return tokens / elapsed_s
-
-
 @dataclass
 class UsageTracker:
     """Accumulates LLM usage statistics across complete() calls.
@@ -130,3 +123,10 @@ class UsageTracker:
             "context_tokens": self.context_tokens,
             "context_budget": self.context_budget,
         }
+
+
+def tokens_per_second(tokens: int, elapsed_s: float) -> float:
+    """Throughput for one completed interval (0.0 when nothing/zero time)."""
+    if tokens <= 0 or elapsed_s <= 0.0:
+        return 0.0
+    return tokens / elapsed_s

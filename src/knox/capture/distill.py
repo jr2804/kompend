@@ -89,20 +89,6 @@ def distill(
     return written
 
 
-def _distilled_path(output_dir: Path, slug: str, timestamp: str) -> Path:
-    """Return the distilled page path for *slug*.
-
-    If a page for the same slug already exists (a previous distill run),
-    that file is reused — the group's page is *updated* in place instead of
-    accumulating a new timestamped file per run. This is what keeps repeated
-    ``knox distill`` runs from piling up near-duplicate pages.
-    """
-    existing = sorted(output_dir.glob(f"distilled-*-{slug}.md"))
-    if existing:
-        return existing[0]
-    return output_dir / f"distilled-{timestamp}-{slug}.md"
-
-
 def _archive_notes(notes: list[CapturedNote], sources_dir: Path) -> None:
     """Move distilled source notes to ``sources/_archive/<kind>/``.
 
@@ -232,6 +218,20 @@ def _distill_fallback_per_group(
         logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
     return written
+
+
+def _distilled_path(output_dir: Path, slug: str, timestamp: str) -> Path:
+    """Return the distilled page path for *slug*.
+
+    If a page for the same slug already exists (a previous distill run),
+    that file is reused — the group's page is *updated* in place instead of
+    accumulating a new timestamped file per run. This is what keeps repeated
+    ``knox distill`` runs from piling up near-duplicate pages.
+    """
+    existing = sorted(output_dir.glob(f"distilled-*-{slug}.md"))
+    if existing:
+        return existing[0]
+    return output_dir / f"distilled-{timestamp}-{slug}.md"
 
 
 # ── Synthesis ───────────────────────────────────────────────────────────

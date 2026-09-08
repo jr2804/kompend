@@ -34,16 +34,6 @@ def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:
     _user_providers.update(providers)
 
 
-def provider_max_connections(provider_id: str) -> int | None:
-    """Client-side connection limit for *provider_id* (None = unlimited).
-
-    Reads ``[providers.<name>].max_connections`` — works for both
-    custom-defined endpoints and override-only blocks against integrated
-    providers (``[providers.ollama]`` with just ``max_connections``).
-    """
-    return _user_providers.get(provider_id, {}).get("max_connections")
-
-
 def effective_workers(model_string: str, requested: int) -> int:
     """Clip a worker count to the provider's ``max_connections`` limit.
 
@@ -68,3 +58,13 @@ def effective_workers(model_string: str, requested: int) -> int:
         limit,
     )
     return limit
+
+
+def provider_max_connections(provider_id: str) -> int | None:
+    """Client-side connection limit for *provider_id* (None = unlimited).
+
+    Reads ``[providers.<name>].max_connections`` — works for both
+    custom-defined endpoints and override-only blocks against integrated
+    providers (``[providers.ollama]`` with just ``max_connections``).
+    """
+    return _user_providers.get(provider_id, {}).get("max_connections")

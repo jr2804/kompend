@@ -74,7 +74,7 @@ including `default_model`, `fallback_chain`, and CLI overrides.
 | `max_connections` | no | Client-side limit on parallel LLM connections to this provider; clips `compile.workers`. `None` (default) = no limit |
 | `models."<name>".context_window` | no | Per-model context window (wins over provider-level) |
 
-¹ `base_url` is required to *define* a custom endpoint; omit it to write an
+¹ `base_url` is required to _define_ a custom endpoint; omit it to write an
 **override-only block** that only tunes settings for an existing provider
 (integrated like `ollama` or catalog-based), e.g.:
 

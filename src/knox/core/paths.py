@@ -46,9 +46,7 @@ ARCHIVE_SUBDIR: Final[str] = "_archive"
 # relocate. These are tool-managed input zones, not topically-categorized
 # material. Compile still processes them (they are legitimate sources);
 # organize leaves them in place.
-PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset(
-    {CAPTURED_SUBDIR, LEARNED_SUBDIR, DISTILLED_SUBDIR, ARCHIVE_SUBDIR}
-)
+PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, LEARNED_SUBDIR, DISTILLED_SUBDIR, ARCHIVE_SUBDIR})
 
 # ── Config ──────────────────────────────────────────────────────────────
 CONFIG_FILE: Final[str] = "config.toml"
