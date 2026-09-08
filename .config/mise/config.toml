@@ -2,7 +2,7 @@
 # Task definitions are in conf.d/*.toml files (automatically loaded by mise)
 [tools]
 # basic frameworks that should always be available
-node = "latest"
+#node = "latest"
 bun = "latest"
 
 # Linter/formatter/type checker tools
