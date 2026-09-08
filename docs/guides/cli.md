@@ -483,6 +483,7 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys.
 | `KNOX_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |
 | `KNOX_RELATION_CONFIDENCE_THRESHOLD` | `compile.relation_confidence_threshold` | Minimum confidence for relations |
 | `KNOX_LLM_AGENTIC_OUTPUT_RETRIES` | `compile.llm.agentic_output_retries` | Output retry budget for agentic agents (default 4) |
+| `KNOX_LLM_THROUGHPUT_WINDOW_TOKENS` | `compile.llm.throughput_window_tokens` | Rolling window (output tokens) for the short-term tok/s rate (default 1000) |
 
 ## Agentic Mode
 

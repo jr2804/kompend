@@ -222,7 +222,10 @@ def _llm_usage_line(llm_usage: dict[str, Any], llm_model: str | None) -> str | N
     pt = llm_usage.get("prompt_tokens", 0)
     ct = llm_usage.get("completion_tokens", 0)
     ttft = llm_usage.get("avg_ttft", 0)
-    return f"{strong('LLM:')} {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out | avg TTFT {ttft:.1f}s | {models}"
+    overall = llm_usage.get("overall_tok_s", 0)
+    recent = llm_usage.get("recent_tok_s", 0)
+    rate_s = f" | {overall:.1f} tok/s avg ({recent:.1f} recent)" if overall else ""
+    return f"{strong('LLM:')} {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out{rate_s} | avg TTFT {ttft:.1f}s | {models}"
 
 
 # ── small helpers ────────────────────────────────────────────────────────

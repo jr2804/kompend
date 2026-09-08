@@ -206,6 +206,8 @@ class LLMConfig(_KnoxBaseModel):
     #: ``AgentRetries`` TypedDict (tool failures 4× in a row are a real bug;
     #: output validation 4× in a row is a small-model normal occurrence).
     agentic_output_retries: int = Field(default=4, validation_alias=EnvVar.LLM_AGENTIC_OUTPUT_RETRIES)
+    #: Rolling window (in output tokens) for the short-term tok/s rate.
+    throughput_window_tokens: int = Field(default=1000, validation_alias=EnvVar.LLM_THROUGHPUT_WINDOW_TOKENS)
     delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)
     batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_RATIO)
     batch_failure_threshold_min: int = Field(default=5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_MIN)
@@ -528,9 +530,17 @@ class ProviderEndpoint(_KnoxBaseModel):
 
     The provider name (``my-llama``) becomes the ``provider`` part in
     ``provider/model`` strings, e.g. ``my-llama/mistral-nemo``.
+
+    A section may omit ``base_url`` entirely to act as an **override block**
+    for an integrated provider (e.g. ``[providers.ollama]`` with only
+    ``max_connections``) — settings apply, model building still routes
+    through the native/catalog path.
     """
 
-    base_url: str = Field(description="Provider base URL (e.g. http://localhost:8081/v1)")
+    base_url: str | None = Field(
+        default=None,
+        description="Provider base URL (e.g. http://localhost:8081/v1). None = override-only block for an integrated provider",
+    )
     api_key: str | None = Field(default=None, description="API key or env var reference like ${VAR_NAME}")
     api_type: Literal["openai-chat", "openai-responses", "anthropic"] = Field(
         default="openai-chat",
@@ -543,6 +553,10 @@ class ProviderEndpoint(_KnoxBaseModel):
         default=None, description="DEPRECATED — use context_window. Old per-provider override key, still honored when context_window is unset"
     )
     models: dict[str, ProviderModelConfig] = Field(default_factory=dict, description="Per-model settings keyed by model name")
+    max_connections: int | None = Field(
+        default=None,
+        description="Max parallel LLM connections to this provider (client-side). Clips compile.workers when set. None = no limit",
+    )
 
 
 class SkillConfig(_KnoxBaseModel):

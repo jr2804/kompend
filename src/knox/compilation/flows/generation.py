@@ -49,6 +49,7 @@ from knox.core.utils.exceptions import LLMOutputError
 from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import BrokenWikilinksRule
 from knox.llm.format import encode_for_llm
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -61,6 +62,21 @@ _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 #: rapidfuzz-scale (0–100) threshold for "does a produced page title cover
 #: this concept" (T2 string tier).
 _COVER_SIMILARITY_THRESHOLD = 85.0
+
+
+def _rate_suffix(tracker: UsageTracker | None) -> str:
+    """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
+
+    Uses the tracker's real completion-token event log (short-term window
+    + overall average) — the single source of truth for throughput.
+    """
+    if tracker is None:
+        return ""
+    overall = tracker.overall_rate()
+    recent = tracker.recent_rate()
+    if not overall and not recent:
+        return ""
+    return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 #: Cosine threshold for the T3 semantic tier — catches paraphrases and
 #: punctuation variants the string tier misses (e.g. "ITU-T P.10/G.100" vs
 #: "P.10 G.100 Recommendation"). Conservative: a false *credit* silently
@@ -383,6 +399,7 @@ def generate_all_pages(  # noqa: PLR0915 — legacy template path; long by desig
                 context_window=compiler._context_window.max_input,
                 rlm=compiler._config.llm.rlm,
                 rlm_context_field="content",
+                usage_tracker=compiler._usage_tracker,
             )
             gen_output = try_pydanticai_generation(
                 agent,
@@ -584,7 +601,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             compiler._report(
                 pages_done,
                 gen_progress_total,
-                f"generating [{pages_done}/{gen_progress_total}] {seg_label} (resumed)",
+                f"generating [{pages_done}/{gen_progress_total}] {seg_label} (resumed){_rate_suffix(compiler._usage_tracker)}",
             )
             continue
         compiler._report(pages_done, gen_progress_total, f"generating [{pages_done}/{gen_progress_total}] {seg_label}")
@@ -604,6 +621,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             context_manager=compiler._config.llm.context_manager,
             context_window=compiler._context_window.max_input,
             rlm=compiler._config.llm.rlm,
+            usage_tracker=compiler._usage_tracker,
         )
 
         deps = ToolGenerationDeps(
@@ -707,10 +725,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             # ``[N/338]`` when the model under-produces for a segment.
             seg_progress = min(len(seg_titles), start_remaining)
             running = min(pages_done + seg_progress, gen_progress_total)
+            rate_s = _rate_suffix(compiler._usage_tracker)
             compiler._report(
                 running,
                 gen_progress_total,
-                f"generating [{running}/{gen_progress_total}] {seg_label}",
+                f"generating [{running}/{gen_progress_total}] {seg_label}{rate_s}",
             )
 
         # Credit the segment with the pages actually produced, not the

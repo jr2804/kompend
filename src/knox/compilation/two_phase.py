@@ -56,6 +56,7 @@ from knox.core.pipeline.references import ReferenceStore
 from knox.core.templates import get_template_loader
 from knox.core.text.matching import cosine as cosine_similarity
 from knox.llm.context_window import ContextWindow, discover_context_window
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 # Re-export for backward compatibility.
@@ -103,6 +104,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._timeout = config.llm.timeout
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
+        self._usage_tracker = UsageTracker(throughput_window_tokens=config.llm.throughput_window_tokens)
         self._extraction_stats: list[ExtractionStats] = []
         self._asset_store: AssetStore | None = None
         self._asset_id_maps: dict[str, AssetIdMap] = {}
@@ -286,6 +288,8 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki.metadata["llm_calls"] = len(self._llm_stats)
         wiki.metadata["llm_prompt_tokens"] = total_prompt
         wiki.metadata["llm_completion_tokens"] = total_comp
+        wiki.metadata[str(WikiField.LLM_USAGE)] = self._usage_tracker.to_dict()
+        wiki.metadata[str(WikiField.LLM_MODEL)] = self._model
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 
         if self._batch_tracker.should_stop() or self._batch_tracker.failed > 0:
@@ -294,9 +298,12 @@ class TwoPhaseCompiler(BaseCompiler):
             wiki.metadata["batch_total"] = self._batch_tracker.total
 
         total_elapsed = time.monotonic() - compile_start
+        overall_rate = self._usage_tracker.overall_rate()
+        recent_rate = self._usage_tracker.recent_rate()
         node_count = len(wiki.nodes)
         logger.info(
-            "TwoPhase: compile done — %d source(s) → %d concept(s) in %.1fs (extract %.1fs, generate %.1fs), %d LLM call(s), %d prompt + %d completion tokens",
+            "TwoPhase: compile done — %d source(s) → %d concept(s) in %.1fs (extract %.1fs, generate %.1fs), %d LLM call(s), "
+            "%d prompt + %d completion tokens (%s; %.1f tok/s avg, %.1f tok/s recent)",
             num_sources,
             node_count,
             total_elapsed,
@@ -305,6 +312,9 @@ class TwoPhaseCompiler(BaseCompiler):
             len(self._llm_stats),
             total_prompt,
             total_comp,
+            self._model or "unknown",
+            overall_rate,
+            recent_rate,
         )
 
         if not self._config.no_cache and not has_failures:

@@ -65,6 +65,7 @@ COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"  #
 COMPILE_LLM_CONTEXT_WINDOW: Final[str] = "compile.llm.context_window"
 COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
 COMPILE_LLM_AGENTIC_OUTPUT_RETRIES: Final[str] = "compile.llm.agentic_output_retries"
+COMPILE_LLM_THROUGHPUT_WINDOW_TOKENS: Final[str] = "compile.llm.throughput_window_tokens"
 
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"

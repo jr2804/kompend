@@ -39,6 +39,7 @@ from knox.agents.types import GenerationDeps, ToolGenerationDeps
 from knox.compilation.gen_tools import build_gen_tools
 from knox.compilation.schema import GenerationOutput, GenerationPage
 from knox.core.config._configs import RlmConfig
+from knox.llm.usage import UsageTracker
 
 
 class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
@@ -111,6 +112,7 @@ def make_agentic_generation_agent(
     context_manager: str | bool | None = None,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
+    usage_tracker: UsageTracker | None = None,
 ) -> AgenticGenerationAgent:
     """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
 
@@ -138,6 +140,7 @@ def make_agentic_generation_agent(
         context_manager=context_manager if context_manager is not None else False,
         context_window=context_window,
         rlm=rlm,
+        usage_tracker=usage_tracker,
         tools=build_gen_tools(),  # type: ignore[arg-type]
         extra_capabilities=harness.build_capabilities(),
     )

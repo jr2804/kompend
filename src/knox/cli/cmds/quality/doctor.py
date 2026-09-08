@@ -23,6 +23,7 @@ from knox.core.config import LLMConfig
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
 from knox.llm.models import build_model
+from knox.llm.usage import UsageTracker, tokens_per_second
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
@@ -261,15 +262,21 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         return CheckResult(name, True, f"No {label} model configured — skipped", warning=True)
 
     try:
+        tracker = UsageTracker()
         agent = DoctorAgent(
             model_string=model,
             timeout=timeout,
             max_tokens=128,
             retries=retries or 2,
+            usage_tracker=tracker,
         )
+        start = monotonic()
         result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
+        elapsed = monotonic() - start
+        rate = tokens_per_second(tracker.completion_tokens, elapsed)
+        rate_s = f" ({rate:.1f} tok/s over {elapsed:.1f}s)" if rate else ""
         if result and result.strip():
-            return CheckResult(name, True, f"{label} OK ({model})")
+            return CheckResult(name, True, f"{label} OK ({model}){rate_s}")
         return CheckResult(name, False, f"{label} returned empty response")
     except Exception as exc:
         return CheckResult(name, False, f"{label} failed: {exc}")
@@ -319,12 +326,15 @@ def _check_structured_output(
         start = monotonic()
         result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")
         elapsed = monotonic() - start
+        usage = result.usage
+        rate = tokens_per_second(usage.output_tokens, elapsed)
+        rate_s = f" ({rate:.1f} tok/s over {elapsed:.1f}s)" if rate else ""
         validated = result.output
         if isinstance(validated, _CapabilityCheck) and validated.ok:
             return CheckResult(
                 name,
                 True,
-                f"{label} OK ({elapsed:.1f}s, model={model})",
+                f"{label} OK{rate_s} (model={model})",
             )
         return CheckResult(
             name,

@@ -326,6 +326,10 @@ output_retries = 2
 # Tool-call retries keep using output_retries via pydantic-ai's AgentRetries.
 agentic_output_retries = 4
 
+# Rolling window (in output tokens) for the short-term tok/s rate reported
+# in progress and log lines. Default 1000.
+throughput_window_tokens = 1000
+
 # Enable/disable output retries. When disabled, the agent gives up immediately
 # on schema validation failure rather than retrying with a correction prompt.
 # Disabling can help small models (<3B params) that spin on retry loops.

@@ -28,6 +28,7 @@ from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
 from knox.llm.context_window import ContextWindow
+from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
 # Maximum slug length. Windows limits a single path component to 255 chars;
@@ -249,6 +250,7 @@ class TwoPhaseRuntime(Protocol):
     _extract_system_tokens: int
     _gen_system_tokens: int
     _llm_stats: list[tuple[int, int]]
+    _usage_tracker: UsageTracker
 
     def merge_duplicate_nodes(
         self,
