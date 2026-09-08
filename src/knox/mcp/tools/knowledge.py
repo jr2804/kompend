@@ -10,6 +10,7 @@ from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
 from knox.agents.distill_agentic import AgenticDistillAgent
 from knox.capture.capture import capture
+from knox.capture.consolidate import consolidate
 from knox.capture.distill import distill
 from knox.capture.learn import learn
 from knox.core.config import (
@@ -24,9 +25,11 @@ from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import vault_paths
 from knox.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
+from knox.core.text.matching import SemanticMatcher
 from knox.core.utils.dicts import as_int
 from knox.logging import get_logger
 from knox.preprocessing.parsers import ParserBuildOptions, ParserRouter, get_backend
+from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
@@ -220,6 +223,46 @@ def wiki_distill(
             "status": "ok",
             "count": len(paths),
             "files": [str(p) for p in paths],
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+def wiki_consolidate(
+    wiki_dir: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Find and archive redundant captured/learned/distilled notes.
+
+    Scans sources/_captured/, sources/_learned/ and sources/_distilled/ for
+    near-duplicate notes (rapidfuzz token similarity, plus embeddings when
+    an embedding model is configured). For each duplicate group the newest
+    or longest note is kept; the rest are archived to
+    sources/_archive/<kind>/. With dry_run=True nothing is moved.
+    """
+    try:
+        vp = vault_paths(wiki_dir)
+        cfg = resolve_config(base_dir=vp.base_dir)
+        sources_dir = vp.sources_dir
+
+        matcher: SemanticMatcher | None = None
+        embed_model = cfg.knox.compile.embedding.model
+        if embed_model and embed_model != "hash":
+            try:
+                matcher = SemanticMatcher(embedder=make_provider(embed_model))
+            except Exception:
+                matcher = None
+
+        groups = consolidate(sources_dir, matcher=matcher, dry_run=dry_run, archive=not dry_run)
+        return {
+            "status": "ok",
+            "groups": [
+                {
+                    "keeper": g.keeper.source_file.name if g.keeper.source_file else "?",
+                    "duplicates": [d.source_file.name if d.source_file else "?" for d in g.duplicates],
+                }
+                for g in groups
+            ],
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}

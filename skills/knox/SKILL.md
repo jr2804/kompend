@@ -60,8 +60,10 @@ uv tool install --git https://codeberg.org/jr2804/knox
 ├── knox.toml           ← project config (optional, overriden by .knox/config.toml)
 ├── .knox/              ← derived state ONLY (cache, vectors, search db, memory) — never required to read the wiki
 ├── sources/            ← source documents (PDF, DOCX, markdown, URLs) — user-owned
-│   ├── _captured/      ← knowledge items extracted from conversation
-│   └── _distilled/     ← LLM-synthesized wiki pages
+│   ├── _captured/      ← knowledge items extracted from conversation (LLM)
+│   ├── _learned/       ← verbatim facts stored without an LLM
+│   ├── _distilled/     ← LLM-synthesized wiki pages (updated in place per tag group)
+│   └── _archive/       ← notes archived by distill/consolidate (capture/, learn/, distilled/)
 ├── attachments/        ← durable media (per-source attachments + wiki-embedded images)
 ├── exported/           ← full-source markdown exports (`knox sources export` without OUTPUT; on demand)
 └── wiki/               ← compiled output — the product
@@ -161,10 +163,11 @@ lint rule flags files whose slug matches no source.
 |---------|---------|-----------|
 | `knox query <text>` | Natural language query against compiled wiki (markdown-first: works from `wiki/*.md` alone; vector sidecar optional, keyword fallback without it) | `--remember` (stores result in memory), `--raw` (raw output), `--search-mode hybrid\|token\|semantic`, `--top-k N`, `--verbosity brief\|standard\|comprehensive`, `--format text\|json\|toon\|ison`, `--tags <group>` (repeatable; comma=AND within, multiple flags OR), `--attr key=value` or `--attr key` (repeatable, AND'd) |
 | `knox provenance [SLUG]...` | List pages with slugs, or trace page(s) to their source chunks | `--with-content`, `--json` |
-| `knox capture <text>` | LLM-extract knowledge items from free text | `--tag` (repeatable) |
-| `knox learn <text>` | Store a fact verbatim, no LLM | `--tag` (repeatable) |
+| `knox capture <text>` | LLM-extract knowledge items from free text (rejects <80 chars; use learn) | `--tag`, `--attr KEY=VALUE` (both repeatable) |
+| `knox learn <text>` | Store a fact verbatim, no LLM | `--tag`, `--attr KEY=VALUE` (both repeatable) |
 | `knox write <TITLE>` | Create a one-shot wiki page from a title and optional sources | `--source` (repeatable, bare filename searched in sources/), `--frontmatter` |
-| `knox distill` | Synthesize captured notes into full wiki pages via LLM | — |
+| `knox distill` | Synthesize captured notes into full wiki pages via LLM (updates existing per-group pages; archives originals by default) | `--no-archive` |
+| `knox consolidate` | Find and archive redundant captured/learned/distilled notes (rapidfuzz + embeddings) | `--dry-run`, `--no-archive` |
 
 ### Memory
 

@@ -14,21 +14,24 @@ from knox.agents.distill_agentic import AgenticDistillAgent
 from knox.agents.types import WriteDeps
 from knox.agents.write import make_agentic_write_agent
 from knox.capture.capture import capture
+from knox.capture.consolidate import consolidate
 from knox.capture.distill import distill
 from knox.capture.learn import learn
 from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
-from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceTags
+from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceAttrs, SourceTags
 from knox.core.config import resolve_config
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
+from knox.core.text.matching import SemanticMatcher
 from knox.core.utils.time import iso_local
 from knox.llm.format import strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
+from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
 
@@ -38,6 +41,7 @@ def capture_cmd(
     ctx: typer.Context,
     text: CaptureText,
     tag: SourceTags = None,
+    attr: SourceAttrs = None,
 ) -> None:
     """Extract knowledge items from text via LLM; save each as a source file.
 
@@ -49,6 +53,7 @@ def capture_cmd(
     Examples:
         knox capture "We decided to use QKV projections with RoPE"
         knox capture "Discussion about layer norm placement" --tags architecture --tags training
+        knox capture "..." --attr version=2 --attr status=confirmed
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
@@ -66,10 +71,27 @@ def capture_cmd(
         except Exception:
             capture_agent = None
 
-    paths = capture(text, sources_dir=sources_dir, capture_agent=capture_agent, tags=tag)
+    paths = capture(
+        text,
+        sources_dir=sources_dir,
+        capture_agent=capture_agent,
+        tags=tag,
+        attributes=_parse_attrs(attr),
+    )
     get_console().print(f"Captured {len(paths)} item(s) to {sources_dir / CAPTURED_SUBDIR}")
     for p in paths:
         get_console().print(f"  {p.name}")
+
+
+def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` --attr flags into a dict."""
+    out: dict[str, str] = {}
+    for item in attr or []:
+        if "=" not in item:
+            raise typer.BadParameter(f"Use KEY=VALUE format for attributes, got: '{item}'")
+        key, _, value = item.partition("=")
+        out[key.strip()] = value.strip()
+    return out
 
 
 @app.command(name="learn")
@@ -77,38 +99,98 @@ def learn_cmd(
     ctx: typer.Context,
     text: LearnText,
     tag: SourceTags = None,
+    attr: SourceAttrs = None,
 ) -> None:
     """Store a single fact verbatim as a source file — no LLM involved.
 
-    The text is written exactly as given (with optional tags) to
-    sources/_captured/. Use this when you already know the fact you want
+    The text is written exactly as given (with optional tags/attributes) to
+    sources/_learned/. Use this when you already know the fact you want
     recorded; use 'capture' when you want an LLM to pull items out of
     free-form text.
 
     Examples:
         knox learn "The transformer uses d_model=512 and h=8"
         knox learn "QKV with RoPE" --tags attention --tags architecture
+        knox learn "..." --attr version=2
     """
     vp = vault_paths_from_ctx(ctx)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
-    path = learn(text, sources_dir=vp.sources_dir, tags=tag)
+    path = learn(
+        text,
+        sources_dir=vp.sources_dir,
+        tags=tag,
+        attributes=_parse_attrs(attr),
+    )
     get_console().print(f"Learned fact -> {path.name}")
+
+
+@app.command(name="consolidate")
+def consolidate_cmd(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report duplicate groups without moving anything."),
+    no_archive: bool = typer.Option(False, "--no-archive", help="Keep duplicate notes in place (report only)."),
+) -> None:
+    """Find and archive redundant captured/learned/distilled notes.
+
+    Scans sources/_captured/, sources/_learned/ and sources/_distilled/ for
+    near-duplicate notes (rapidfuzz token similarity, plus embeddings when
+    an embedding model is configured). For each duplicate group the newest
+    or longest note is kept; the rest are archived to
+    sources/_archive/<kind>/ by default.
+
+    Examples:
+        knox consolidate --dry-run
+        knox consolidate
+        knox consolidate --no-archive
+    """
+    vp = vault_paths_from_ctx(ctx)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+
+    matcher: SemanticMatcher | None = None
+    embed_model = cfg.knox.compile.embedding.model
+    if embed_model and embed_model != "hash":
+        try:
+            matcher = SemanticMatcher(embedder=make_provider(embed_model))
+        except Exception as exc:
+            logger.warning("consolidate: embedding tier unavailable (%s); string similarity only", exc)
+
+    groups = consolidate(vp.sources_dir, matcher=matcher, dry_run=dry_run, archive=not no_archive)
+    if not groups:
+        get_console().print("No duplicate notes found.")
+        return
+    for group in groups:
+        keeper = group.keeper.source_file.name if group.keeper.source_file else "?"
+        get_console().print(f"Group: keeper={keeper}")
+        for dup in group.duplicates:
+            name = dup.source_file.name if dup.source_file else "?"
+            action = "would archive" if (dry_run or no_archive) else "archived"
+            get_console().print(f"  {action}: {name}")
 
 
 @app.command(name="distill")
 def distill_cmd(
     ctx: typer.Context,
+    no_archive: bool = typer.Option(
+        False,
+        "--no-archive",
+        help="Keep the source notes in place after distilling (default: archive them to sources/_archive/).",
+    ),
 ) -> None:
     """Merge captured notes into coherent wiki pages via LLM.
 
-    Reads all notes from sources/_captured/, groups them by tag, and uses an
-    LLM to merge each group into a single well-structured page written to
-    sources/_distilled/. Run 'knox compile' afterwards to incorporate
-    the distilled pages into the wiki.
+    Reads all notes from sources/_captured/ and sources/_learned/, groups
+    them by tag, and uses an LLM to merge each group into a single
+    well-structured page written to sources/_distilled/. Existing pages for
+    the same group are updated in place (no duplicate timestamped files).
+    By default the distilled source notes are archived to
+    sources/_archive/<kind>/; pass --no-archive to keep them.
+    Run 'knox compile' afterwards to incorporate the distilled pages into
+    the wiki.
 
     Examples:
         knox distill
+        knox distill --no-archive
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
@@ -132,7 +214,7 @@ def distill_cmd(
             except Exception:
                 distill_agent = None
 
-    paths = distill(vp.sources_dir, distill_agent=distill_agent)
+    paths = distill(vp.sources_dir, distill_agent=distill_agent, archive=not no_archive)
     if not paths:
         get_console().print("No captured notes found to distill.")
         return

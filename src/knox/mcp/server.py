@@ -48,6 +48,7 @@ from knox.mcp.tools import (
     sources_untag,
     wiki_attachment_info,
     wiki_capture,
+    wiki_consolidate,
     wiki_distill,
     wiki_index,
     wiki_ingest,
@@ -64,7 +65,7 @@ from knox.mcp.tools._helpers import set_default_wiki_dir
 server = FastMCP("KNOX")
 
 
-def _register_all(srv: FastMCP) -> None:
+def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration per tool; long by design
     """Register every KNOX tool on a FastMCP instance."""
     srv.tool(name="wiki_parse")(parse_document)
     srv.tool(name="wiki_compile")(compile_wiki)
@@ -81,6 +82,7 @@ def _register_all(srv: FastMCP) -> None:
     srv.tool(name="wiki_query")(query_wiki)
     srv.tool(name="wiki_status")(wiki_status)
     srv.tool(name="wiki_distill")(wiki_distill)
+    srv.tool(name="wiki_consolidate")(wiki_consolidate)
     srv.tool(name="wiki_list_attachments")(wiki_list_attachments)
     srv.tool(name="wiki_read_attachment")(wiki_read_attachment)
     srv.tool(name="wiki_attachment_info")(wiki_attachment_info)

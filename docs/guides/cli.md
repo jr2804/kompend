@@ -25,9 +25,10 @@ KNOX provides a Typer-based CLI with the following commands:
 | `knox sources untag` | Remove a tag from an ingested source file |
 | `knox sources export` | Render an ingested source as clean markdown |
 | `knox provenance [SLUG]` | List pages with slugs, or trace a page to its sources |
-| `knox capture` | LLM-extract knowledge items from free text (`--tag`) |
-| `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`) |
-| `knox distill` | Merge captured notes into wiki pages |
+| `knox capture` | LLM-extract knowledge items from free text (`--tag`, `--attr`) |
+| `knox learn` | Store a fact verbatim as a source, no LLM (`--tag`, `--attr`) |
+| `knox distill` | Merge captured notes into wiki pages (updates in place, archives originals) |
+| `knox consolidate` | Find and archive redundant captured/learned/distilled notes |
 | `knox write` | Write or overwrite a wiki page from source |
 | `knox pack-list` | List available content packs |
 | `knox pack-install` | Install a content pack |
@@ -323,33 +324,68 @@ knox query [OPTIONS] QUESTION
 ## `knox capture` and `knox learn`
 
 Quickly persist notes, facts, or conversation snippets as **source material**
-for future compilation. Files land in `sources/_captured/` — they are *inputs*
-that the next `knox compile` will parse, chunk, and resolve like any other
-source. See [Wiki structure: input vs output](wiki-structure.md#input-vs-output-where-files-land)
+for future compilation. Files land in `sources/_captured/` (capture) and
+`sources/_learned/` (learn) — they are *inputs* that the next `knox compile`
+will parse, chunk, and resolve like any other source. See
+[Wiki structure: input vs output](wiki-structure.md#input-vs-output-where-files-land)
 for why captures go under `sources/` rather than `wiki/`.
 
 ```bash
-# LLM extraction into one or more knowledge items
-knox capture "We decided to use QKV projections with RoPE"
+# LLM extraction into one or more knowledge items (needs substantive input)
+knox capture "We decided to use QKV projections with RoPE for the attention mechanism"
 
-# Store a fact verbatim
+# Store a fact verbatim (short notes are fine here)
 knox learn "The transformer uses d_model=512 and h=8" --tag attention
+
+# Both accept --attr KEY=VALUE (repeatable) for filterable facts
+knox capture "..." --attr version=2 --attr status=confirmed
+knox learn "..." --attr version=2
 ```
+
+`capture` runs an LLM extraction over the text, so it rejects inputs shorter
+than 80 characters — use `learn` for short verbatim facts.
 
 ## `knox distill`
 
-Synthesize captured notes from `sources/_captured/` into coherent wiki pages.
-Notes are grouped by tag and merged (LLM-powered or deterministic fallback).
-Output goes to `sources/_distilled/` — like `capture`/`learn`, distilled pages
-are still *inputs* that the next `knox compile` will fold into the compiled
-wiki.
+Synthesize captured notes from `sources/_captured/` and `sources/_learned/`
+into coherent wiki pages. Notes are grouped by tag and merged (LLM-powered or
+deterministic fallback). Output goes to `sources/_distilled/` — like
+`capture`/`learn`, distilled pages are still *inputs* that the next
+`knox compile` will fold into the compiled wiki.
+
+Repeated runs **update** the existing page for each tag group in place (no
+accumulating timestamped duplicates), and by default the distilled source
+notes are archived to `sources/_archive/<kind>/`. Pass `--no-archive` to
+keep them in place.
 
 ```bash
-# Merge all captured notes into synthesized pages
+# Merge all captured notes into synthesized pages (archives originals)
 knox distill
+
+# Keep the source notes in place
+knox distill --no-archive
 
 # Then compile to incorporate distilled pages
 knox compile
+```
+
+## `knox consolidate`
+
+Find and archive redundant notes across `sources/_captured/`,
+`sources/_learned/` and `sources/_distilled/`. Near-duplicates are detected
+with rapidfuzz token similarity, plus an embedding tier when an embedding
+model is configured. For each duplicate group the newest or longest note is
+kept; the rest are archived to `sources/_archive/<kind>/`.
+
+```bash
+# Preview what would be archived
+knox consolidate --dry-run
+
+# Archive duplicates (default)
+knox consolidate
+
+# Report only, keep everything in place
+knox consolidate --no-archive
 ```
 
 ## `knox write`

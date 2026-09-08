@@ -6,18 +6,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from knox.agents.deps import DistillDeps
 from knox.agents.distill import DistillAgent
 from knox.capture.capture import (
     _merge_tags,
     capture,
 )
+from knox.capture.consolidate import consolidate, find_duplicates
 from knox.capture.distill import (
     CapturedNote,
     _group_by_tag,
     _parse_frontmatter,
     distill,
 )
+from knox.capture.learn import learn
 from knox.cli.cmds.knowledge.capture import _build_references_section
 from knox.core.pipeline.ingest import extract_text_from_cached
 from knox.output.markdown import MarkdownWriter
@@ -178,7 +182,7 @@ class TestDistill:
 class TestCapture:
     def test_no_llm_applies_user_tags(self, tmp_path: Path) -> None:
         paths = capture(
-            "The transformer uses d_model=512",
+            "The transformer uses d_model=512 and h=8 heads with RoPE positional encodings for the attention mechanism.",
             sources_dir=tmp_path,
             tags=["architecture", "decoder"],
         )
@@ -238,3 +242,117 @@ class TestWriteCmd:
         assert "paper_b" in section
         assert "[[Listening Effort]]" in section
         assert "[[Better Ear]]" in section
+
+
+class TestLearn:
+    """learn() writes to sources/_learned/ with tags + attributes."""
+
+    def test_writes_to_learned_dir(self, tmp_path: Path) -> None:
+        path = learn("The transformer uses d_model=512", sources_dir=tmp_path)
+        assert path.parent.name == "_learned"
+        assert path.exists()
+
+    def test_attributes_in_frontmatter(self, tmp_path: Path) -> None:
+        path = learn(
+            "The transformer uses d_model=512 and h=8 heads.",
+            sources_dir=tmp_path,
+            tags=["architecture"],
+            attributes={"version": "2", "status": "confirmed"},
+        )
+        content = path.read_text(encoding="utf-8")
+        assert "version: 2" in content
+        assert "status: confirmed" in content
+        assert "architecture" in content
+
+
+class TestCaptureSufficiency:
+    """capture() rejects inputs too short to extract from."""
+
+    def test_short_input_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="too short"):
+            capture("short", sources_dir=tmp_path)
+
+    def test_attributes_in_frontmatter(self, tmp_path: Path) -> None:
+        paths = capture(
+            "The transformer uses d_model=512 and h=8 heads with RoPE positional encodings for the attention mechanism.",
+            sources_dir=tmp_path,
+            attributes={"version": "2"},
+        )
+        content = paths[0].read_text(encoding="utf-8")
+        assert "version: 2" in content
+
+
+class TestDistillUpdateAndArchive:
+    """distill() updates existing per-group pages and archives originals."""
+
+    def _make_note(self, sources_dir: Path, name: str, tag: str, body: str) -> Path:
+        captured = sources_dir / "_captured"
+        captured.mkdir(parents=True, exist_ok=True)
+        p = captured / name
+        p.write_text(
+            f"---\ntitle: {name}\ntags:\n  - {tag}\n---\n\n{body}",
+            encoding="utf-8",
+        )
+        return p
+
+    def test_repeated_distill_updates_same_page(self, tmp_path: Path) -> None:
+        self._make_note(tmp_path, "note-a.md", "alpha", "First note about alpha.")
+        first = distill(tmp_path, archive=False)
+        assert len(first) == 1
+        page = first[0]
+        # Second run with a new note in the same group must UPDATE the same file.
+        self._make_note(tmp_path, "note-b.md", "alpha", "Second note about alpha.")
+        second = distill(tmp_path, archive=False)
+        assert len(second) == 1
+        assert second[0] == page  # same path, not a new timestamped file
+
+    def test_archive_moves_originals(self, tmp_path: Path) -> None:
+        self._make_note(tmp_path, "note-a.md", "alpha", "First note about alpha.")
+        distill(tmp_path, archive=True)
+        assert not (tmp_path / "_captured" / "note-a.md").exists()
+        assert (tmp_path / "_archive" / "capture" / "note-a.md").exists()
+
+    def test_no_archive_keeps_originals(self, tmp_path: Path) -> None:
+        self._make_note(tmp_path, "note-a.md", "alpha", "First note about alpha.")
+        distill(tmp_path, archive=False)
+        assert (tmp_path / "_captured" / "note-a.md").exists()
+
+
+class TestConsolidate:
+    """consolidate() finds near-duplicates and archives them."""
+
+    def _write(self, sources_dir: Path, sub: str, name: str, body: str) -> Path:
+        d = sources_dir / sub
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / name
+        p.write_text(f"---\ntitle: {name}\n---\n\n{body}", encoding="utf-8")
+        return p
+
+    def test_finds_identical_duplicates(self, tmp_path: Path) -> None:
+        body = "The PESQ algorithm aligns utterances before scoring."
+        self._write(tmp_path, "_captured", "a.md", body)
+        self._write(tmp_path, "_captured", "b.md", body)
+        groups = find_duplicates(
+            [CapturedNote(title="a", content=body, source_file=tmp_path / "_captured" / "a.md"),
+             CapturedNote(title="b", content=body, source_file=tmp_path / "_captured" / "b.md")]
+        )
+        assert len(groups) == 1
+        assert len(groups[0].duplicates) == 1
+
+    def test_consolidate_archives_duplicates(self, tmp_path: Path) -> None:
+        body = "The PESQ algorithm aligns utterances before scoring."
+        self._write(tmp_path, "_captured", "a.md", body)
+        self._write(tmp_path, "_captured", "b.md", body)
+        groups = consolidate(tmp_path)
+        assert len(groups) == 1
+        assert not (tmp_path / "_captured" / "b.md").exists()
+        assert (tmp_path / "_archive" / "capture" / "b.md").exists()
+
+    def test_dry_run_moves_nothing(self, tmp_path: Path) -> None:
+        body = "The PESQ algorithm aligns utterances before scoring."
+        self._write(tmp_path, "_captured", "a.md", body)
+        self._write(tmp_path, "_captured", "b.md", body)
+        groups = consolidate(tmp_path, dry_run=True)
+        assert len(groups) == 1
+        assert (tmp_path / "_captured" / "b.md").exists()
+

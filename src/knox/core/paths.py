@@ -38,12 +38,17 @@ KNOX_DIR: Final[str] = ".knox"
 
 # ── Capture (learn/capture/distill inputs live under sources/<subdir>) ──
 CAPTURED_SUBDIR: Final[str] = "_captured"
+LEARNED_SUBDIR: Final[str] = "_learned"
 DISTILLED_SUBDIR: Final[str] = "_distilled"
+# Archived (consolidated/distilled-away) inputs live under sources/_archive/<kind>/
+ARCHIVE_SUBDIR: Final[str] = "_archive"
 # Subdirectories under sources/ that `knox organize` must NEVER flatten or
 # relocate. These are tool-managed input zones, not topically-categorized
 # material. Compile still processes them (they are legitimate sources);
 # organize leaves them in place.
-PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, DISTILLED_SUBDIR})
+PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset(
+    {CAPTURED_SUBDIR, LEARNED_SUBDIR, DISTILLED_SUBDIR, ARCHIVE_SUBDIR}
+)
 
 # ── Config ──────────────────────────────────────────────────────────────
 CONFIG_FILE: Final[str] = "config.toml"

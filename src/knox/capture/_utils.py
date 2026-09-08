@@ -7,7 +7,7 @@ from pathlib import Path
 from slugify import slugify as _slugify_impl
 
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
+from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from knox.output.renderer import format_output
 
 MAX_TITLE_LENGTH: int = 60
@@ -36,7 +36,7 @@ def format_sources_markdown(sources_dir: Path) -> None:
     skips silently when rumdl is not installed; never raises.
     """
     rumdl_config = resolve_rumdl_config(sources_dir.parent)
-    for sub in (CAPTURED_SUBDIR, DISTILLED_SUBDIR):
+    for sub in (CAPTURED_SUBDIR, LEARNED_SUBDIR, DISTILLED_SUBDIR):
         directory = sources_dir / sub
         if directory.is_dir():
             format_output(directory, rumdl_config=rumdl_config)

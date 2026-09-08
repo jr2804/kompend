@@ -19,7 +19,7 @@ from knox.agents.distill_agentic import AgenticDistillAgent
 from knox.agents.types import DistillAgentDeps
 from knox.capture import TIMESTAMP_FORMAT
 from knox.capture._utils import format_sources_markdown, make_slug, make_title
-from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
+from knox.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from knox.core.utils.time import display_local
 from knox.logging import get_logger
 
@@ -41,6 +41,7 @@ def distill(
     sources_dir: Path,
     *,
     distill_agent: DistillAgent | AgenticDistillAgent | None = None,
+    archive: bool = True,
 ) -> list[Path]:
     """Distill all captured notes into synthesized wiki pages.
 
@@ -48,16 +49,16 @@ def distill(
         sources_dir: Root sources directory (``sources/``).
         distill_agent: Optional agent for synthesis.  When ``None``, notes are
             merged deterministically without LLM call.
+        archive: When ``True`` (default), the source notes that were distilled
+            are moved to ``sources/_archive/<kind>/`` after a successful
+            write. Pass ``--no-archive`` to keep them in place.
 
     Returns:
         List of paths to the written distilled pages.
     """
     captured_dir = sources_dir / CAPTURED_SUBDIR
-    if not captured_dir.is_dir():
-        logger.warning("No captured notes found at %s", captured_dir)
-        return []
-
-    notes = _load_captured_notes(captured_dir)
+    learned_dir = sources_dir / LEARNED_SUBDIR
+    notes = _load_captured_notes(captured_dir) + _load_captured_notes(learned_dir)
     if not notes:
         logger.info("No captured notes to distill")
         return []
@@ -76,13 +77,51 @@ def distill(
             page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
             slug = make_slug(page["title"])
             source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-            filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+            filepath = _distilled_path(output_dir, slug, timestamp)
             _write_page(filepath, page, source_files, timestamp)
             logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
             written.append(filepath)
 
+    if archive and written:
+        _archive_notes(notes, sources_dir)
+
     format_sources_markdown(sources_dir)
     return written
+
+
+def _distilled_path(output_dir: Path, slug: str, timestamp: str) -> Path:
+    """Return the distilled page path for *slug*.
+
+    If a page for the same slug already exists (a previous distill run),
+    that file is reused — the group's page is *updated* in place instead of
+    accumulating a new timestamped file per run. This is what keeps repeated
+    ``knox distill`` runs from piling up near-duplicate pages.
+    """
+    existing = sorted(output_dir.glob(f"distilled-*-{slug}.md"))
+    if existing:
+        return existing[0]
+    return output_dir / f"distilled-{timestamp}-{slug}.md"
+
+
+def _archive_notes(notes: list[CapturedNote], sources_dir: Path) -> None:
+    """Move distilled source notes to ``sources/_archive/<kind>/``.
+
+    The kind subdir mirrors the source zone (``capture`` / ``learn``) so
+    archived files stay identifiable. Files are moved, not copied — the
+    distilled page is now the canonical home of the content.
+    """
+    archive_root = sources_dir / ARCHIVE_SUBDIR
+    for note in notes:
+        if note.source_file is None or not note.source_file.exists():
+            continue
+        kind = "capture" if CAPTURED_SUBDIR in note.source_file.parts else "learn"
+        dest_dir = archive_root / kind
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / note.source_file.name
+        if dest.exists():
+            dest.unlink()
+        note.source_file.rename(dest)
+        logger.info("Archived %s -> %s", note.source_file.name, dest)
 
 
 # ── Parsing ─────────────────────────────────────────────────────────────
@@ -170,7 +209,7 @@ def _distill_agentic(
             }
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in note_list]
-        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+        filepath = _distilled_path(output_dir, slug, timestamp)
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Distilled %d notes -> %s", len(note_list), filepath)
         written.append(filepath)
@@ -188,7 +227,7 @@ def _distill_fallback_per_group(
         page = _synthesize_with_agent(tag, group_notes, distill_agent)
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-        filepath = output_dir / f"distilled-{timestamp}-{slug}.md"
+        filepath = _distilled_path(output_dir, slug, timestamp)
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)

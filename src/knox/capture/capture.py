@@ -13,6 +13,12 @@ from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
+#: Minimum input length for ``capture``. ``learn`` may store a short fact
+#: verbatim, but ``capture`` runs an LLM extraction over the text — below
+#: this threshold there is nothing meaningful to extract, so we fail fast
+#: instead of burning an LLM call on trivia.
+MIN_CAPTURE_CHARS: int = 80
+
 
 @dataclass
 class CapturedItem:
@@ -28,10 +34,18 @@ def capture(
     sources_dir: Path,
     capture_agent: CaptureAgent | None = None,
     tags: list[str] | None = None,
+    attributes: dict[str, str] | None = None,
 ) -> list[Path]:
     sources_dir.mkdir(parents=True, exist_ok=True)
     captured_dir = sources_dir / CAPTURED_SUBDIR
     captured_dir.mkdir(parents=True, exist_ok=True)
+
+    if len(text.strip()) < MIN_CAPTURE_CHARS:
+        raise ValueError(
+            f"capture input is too short ({len(text.strip())} chars < {MIN_CAPTURE_CHARS}). "
+            "Use 'knox learn' for short verbatim facts; capture is for text with enough "
+            "substance to extract knowledge items from."
+        )
 
     user_tags = list(tags or [])
     items = (
@@ -48,12 +62,15 @@ def capture(
         filepath = captured_dir / filename
 
         tag_lines = "\n".join(f"  - {t}" for t in item.tags)
+        attr_lines = "\n".join(f"  {k}: {v}" for k, v in (attributes or {}).items())
         frontmatter = f"""---
 type: {item.kind}
 title: {item.title}
 captured_at: {timestamp}
 tags:
 {tag_lines}
+attributes:
+{attr_lines}
 source: capture
 ---
 
