@@ -11,41 +11,12 @@ from typing import Any
 from knox.agents.lint import LintRuleAgent
 from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki
-from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from knox.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, Severity
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule, RumdlRule
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class LintReport:
-    """Aggregated lint report for a compiled wiki.
-
-    Attributes:
-    ----------
-    results:
-        All individual findings.
-    total_checks:
-        Number of distinct rules that ran.
-    failures:
-        Count of FAIL outcomes.
-    passes:
-        Count of PASS outcomes.
-    skips:
-        Count of SKIP outcomes.
-    health_score:
-        0-100 score: ``100 * passes / max(total_checks, 1)``.
-    """
-
-    results: list[LintResult] = field(default_factory=list)
-    total_checks: int = 0
-    failures: int = 0
-    passes: int = 0
-    skips: int = 0
-    health_score: float = 0.0
-
 
 class LintRunner:
     """Run enabled lint rules against a :class:`CompiledWiki`.
@@ -239,7 +210,22 @@ def report_to_json(report: LintReport) -> str:
 
 
 def report_to_dict(report: LintReport) -> dict[str, Any]:
-    """Serialize a lint report to a plain dict."""
+    """Serialize a lint report to a plain dict.
+
+    The results list may hold either :class:`LintResult` (StrEnum
+    outcome/severity, ``fix_applied``) or :class:`LintReportResult` (plain
+    strings, no severity/fix fields) — both flow through this serializer.
+    Values are normalized so the dict shape is identical regardless.
+    """
+
+    def _outcome(r: Any) -> str:
+        value = r.outcome
+        return value.value if hasattr(value, "value") else str(value)
+
+    def _severity(r: Any) -> str:
+        value = getattr(r, "severity", "warning")
+        return value.value if hasattr(value, "value") else str(value)
+
     return {
         "health_score": report.health_score,
         "total_checks": report.total_checks,
@@ -249,11 +235,11 @@ def report_to_dict(report: LintReport) -> dict[str, Any]:
         "results": [
             {
                 "rule": r.rule,
-                "outcome": r.outcome.value,
-                "severity": r.severity.value,
+                "outcome": _outcome(r),
+                "severity": _severity(r),
                 "message": r.message,
                 "page_id": r.page_id,
-                "fix_applied": r.fix_applied,
+                "fix_applied": getattr(r, "fix_applied", False),
                 "details": r.details,
             }
             for r in report.results

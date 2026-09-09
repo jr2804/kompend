@@ -604,6 +604,54 @@ class TestReportFormatting:
             assert "severity" in result
 
 
+# ── entry_from_report (history serialization) ───────────────────────────
+class TestEntryFromReport:
+    def test_entry_from_report_with_lintreportresult(self) -> None:
+        """Regression: flow.py builds LintReport(results=LintReportResult)
+        and passes it to entry_from_report -> report_to_dict, which must not
+        crash on missing health_score/summary fields (previously the
+        narrow base.LintReport had no health_score: AttributeError).
+        """
+        from knox.lint.history import entry_from_report
+
+        entry = entry_from_report(
+            LintReport(
+                results=[LintReportResult(rule="broken-wikilinks", outcome="fail", message="m", page_id="n1")],
+            ),
+            duration_seconds=0.0,
+            options={},
+            config={},
+            node_count=1,
+        )
+        report = entry["report"]
+        assert report["health_score"] == 0.0  # no crash: field exists
+        assert report["total_checks"] == 0  # summary defaults when not computed
+        assert report["results"][0]["rule"] == "broken-wikilinks"
+        assert report["results"][0]["outcome"] == "fail"
+
+    def test_report_to_dict_normalizes_both_result_shapes(self) -> None:
+        """report_to_dict must tolerate StrEnum (LintResult) and plain-str
+        (LintReportResult) outcome/severity values."""
+        from knox.lint.runner import report_to_dict
+
+        rich = LintReport(
+            results=[LintResult(rule="a", outcome=LintRuleOutcome.PASS, severity=Severity.INFO)],
+            total_checks=1,
+            passes=1,
+            health_score=100.0,
+        )
+        data = report_to_dict(rich)
+        assert data["results"][0]["outcome"] == "pass"
+        assert data["results"][0]["severity"] == "info"
+        assert data["results"][0]["fix_applied"] is False
+
+        plain = LintReport(results=[LintReportResult(rule="b", outcome="fail")])
+        data2 = report_to_dict(plain)
+        assert data2["results"][0]["outcome"] == "fail"
+        assert data2["results"][0]["severity"] == "warning"  # default
+        assert data2["results"][0]["fix_applied"] is False
+
+
 # ── _build_report ────────────────────────────────────────────────────────
 
 

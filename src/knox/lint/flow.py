@@ -108,11 +108,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
         _persist_lint_fixes(wiki, vp)
 
     merged_results = _merge_results(check_report, semantic_report)
-    passes = sum(1 for r in merged_results if r.outcome == "pass")
-    total_checks = len(merged_results)
-    failures = sum(1 for r in merged_results if r.outcome == "fail")
-    skips = sum(1 for r in merged_results if r.outcome == "skip")
-    health_score = round(100.0 * passes / total_checks, 1) if total_checks else 0.0
+    merged_report = _rich_report(merged_results)
 
     llm_meta: dict[str, Any] | None = None
     if lint_agent is not None:
@@ -122,38 +118,20 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             llm_meta["usage"] = usage.to_dict()
 
     entry = entry_from_report(
-        LintReport(results=merged_results),
+        merged_report,
         duration_seconds=time.monotonic() - flow_start,
         options={"context": "all", "fix": fix},
         config=cfg.raw,
         node_count=node_count,
         llm=llm_meta,
     )
-    entry["report"] = {
-        "results": [
-            {
-                "rule": r.rule,
-                "page_id": r.page_id,
-                "outcome": r.outcome,
-                "severity": r.severity.name if hasattr(r.severity, "name") else str(r.severity),
-                "fix_applied": r.fix_applied,
-                "details": r.details,
-            }
-            for r in merged_results
-        ],
-        "passes": passes,
-        "failures": failures,
-        "skips": skips,
-        "total_checks": total_checks,
-        "health_score": health_score,
-    }
     save_lint_entry(entry, vp.knox_dir / LINT_HISTORY_FILE)
 
     merged_dict = entry["report"]
     if json_output:
         get_console().print_json(merged_dict)
     else:
-        get_console().print(report_to_text(LintReport(results=merged_results)))
+        get_console().print(report_to_text(merged_report))
     return merged_dict
 
 
@@ -203,6 +181,24 @@ def _merge_results(
     semantic_report: LintReport | None,
 ) -> list[LintReportResult]:
     return (check_report.results if check_report else []) + (semantic_report.results if semantic_report else [])
+
+
+def _rich_report(results: list[LintReportResult]) -> LintReport:
+    """Populate summary fields from a flat result list (single source of
+    truth for the merge; mirrors ``runner._build_report`` aggregation)."""
+    passes = sum(1 for r in results if r.outcome == "pass")
+    failures = sum(1 for r in results if r.outcome == "fail")
+    skips = sum(1 for r in results if r.outcome == "skip")
+    total_checks = len(results)
+    health_score = round(100.0 * passes / total_checks, 1) if total_checks else 0.0
+    return LintReport(
+        results=results,
+        total_checks=total_checks,
+        failures=failures,
+        passes=passes,
+        skips=skips,
+        health_score=health_score,
+    )
 
 
 def _load_degree_map(base_dir: Path) -> dict[str, int] | None:

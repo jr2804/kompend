@@ -82,11 +82,20 @@ class LintReportResult:
 class LintReport:
     """Typed wrapper around a lint report's ``results`` list.
 
-    Replaces the previous ``report_dict: dict[str, Any]`` parameter with a
-    named, strictly-typed model.
+    Single source of truth for the lint-report shape (previously defined
+    twice — here narrow, in ``runner`` with summary fields — and the two
+    drifted apart: consumers importing the narrow one crashed in
+    ``runner.report_to_dict`` with ``AttributeError: 'LintReport' object has
+    no attribute 'health_score'``). Summary fields default to 0/0.0; callers
+    that can compute them (runner, flow) should fill them in.
     """
 
     results: list[LintReportResult]
+    total_checks: int = 0
+    failures: int = 0
+    passes: int = 0
+    skips: int = 0
+    health_score: float = 0.0
 
 
 @dataclass
