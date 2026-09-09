@@ -11,6 +11,7 @@ from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.core.models.attachments import Attachment, AttachmentManifest
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
+from knox.core.pipeline.stages._parse import _process_attachments
 
 
 def test_iter_ingestible_attachments_empty_manifest(vault: VaultPaths) -> None:
@@ -101,6 +102,45 @@ def test_ingest_image_attachment_with_vlm(vault: VaultPaths) -> None:
     content = result.elements[0].content
     assert isinstance(content, str)
     assert "landscape" in content.lower()
+
+
+def test_process_attachments_gate_off_skips_all(vault: VaultPaths) -> None:
+    """attachments.ingest_adopted=false is a global gate: nothing is ingested
+    even when manifest entries are marked ingestible.
+    """
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
+    (vault.attachments_dir / "r").mkdir(parents=True)
+    (vault.attachments_dir / "r" / "a.txt").write_text("a")
+
+    pipeline = MagicMock()
+    pipeline.base_directory = str(vault.base_dir)
+    pipeline.config.attachments_ingest_adopted = False
+
+    assert _process_attachments(pipeline) == []
+    pipeline.router.parse.assert_not_called()
+
+
+def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
+    """With the gate on, only manifest-ingestible attachments are processed."""
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
+    (vault.attachments_dir / "r").mkdir(parents=True)
+    (vault.attachments_dir / "r" / "a.txt").write_text("a")
+
+    pipeline = MagicMock()
+    pipeline.base_directory = str(vault.base_dir)
+    pipeline.config.attachments_ingest_adopted = True
+    pipeline.config.llm.vlm_model = None
+    pipeline.config.llm.timeout = 120.0
+    pipeline.router = MagicMock()
+    pipeline.chunker = None
+
+    # ingest_attachment returns None for a text file without a router parse
+    # result; the loop must still run (emit called) rather than early-return.
+    trees = _process_attachments(pipeline)
+    assert trees == []
+    pipeline.emit.assert_called()
 
 
 def test_ingest_unsupported_type(vault: VaultPaths) -> None:

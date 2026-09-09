@@ -395,9 +395,15 @@ class AttachmentsConfig(_KnoxBaseModel):
     """Attachment lifecycle configuration (auto-adoption, vector indexing)."""
 
     ingest_adopted: bool = Field(
-        default=True,
+        default=False,
         validation_alias=EnvVar.ATTACHMENTS_INGEST_ADOPTED,
-        description="Auto-adopted attachments (files under attachments/<slug>/ without a manifest entry) become ingestible — parsed at compile. When False, adoption only registers them.",
+        description=(
+            "Global gate for attachment ingestion: auto-adopted attachments "
+            "(files under attachments/<slug>/ without a manifest entry) are "
+            "registered but NOT ingestible by default. When True, adopted "
+            "text/image files become ingestible. Effective ingestibility at "
+            "compile is manifest flag AND this gate."
+        ),
     )
     embed: bool = Field(
         default=False,

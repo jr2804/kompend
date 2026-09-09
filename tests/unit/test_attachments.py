@@ -131,6 +131,29 @@ def test_manifest_latest_entry_wins(tmp_path: Path) -> None:
     assert entries["r/a.txt"].ingestible is True
 
 
+def test_manifest_set_ingestible_updates_flag(tmp_path: Path) -> None:
+    """set_ingestible flips the per-attachment flag (append-only update)."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True, embed=True))
+
+    assert manifest.set_ingestible("r/a.txt", False) is True
+    att = manifest.read_all()["r/a.txt"]
+    assert att.ingestible is False
+    assert att.embed is True  # unrelated fields preserved
+
+    assert manifest.set_ingestible("r/a.txt", True) is True
+    assert manifest.read_all()["r/a.txt"].ingestible is True
+
+    # Unknown path returns False.
+    assert manifest.set_ingestible("r/missing.txt", True) is False
+
+
+def test_manifest_set_ingestible_empty_manifest(tmp_path: Path) -> None:
+    """set_ingestible on an empty manifest returns False."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    assert manifest.set_ingestible("r/a.txt", True) is False
+
+
 def test_manifest_read_for_source(tmp_path: Path) -> None:
     """read_for_source filters by source stem."""
     manifest = AttachmentManifest(tmp_path / "attachments.jsonl")

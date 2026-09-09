@@ -378,6 +378,13 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
     if not manifest.exists():
         return []
 
+    # Global gate: ``attachments.ingest_adopted`` ANDs with the per-attachment
+    # manifest flag. When the gate is off, nothing is ingested regardless of
+    # how many attachments were explicitly marked ingestible.
+    if not pipeline.config.attachments_ingest_adopted:
+        logger.info("Attachment ingestion disabled (attachments.ingest_adopted=false) — skipping %d manifest entry(s)", len(manifest.read_all()))
+        return []
+
     ingestible = iter_ingestible_attachments(vp)
     if not ingestible:
         return []

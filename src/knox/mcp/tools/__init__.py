@@ -12,7 +12,11 @@
 - :mod:`knox.mcp.tools.packs` — pack-list, pack-install
 """
 
-from knox.mcp.tools.attachments import attachments_add, attachments_remove
+from knox.mcp.tools.attachments import (
+    attachments_add,
+    attachments_remove,
+    attachments_set_ingestible,
+)
 from knox.mcp.tools.config import (
     config_check,
     config_get,
@@ -68,6 +72,7 @@ from knox.mcp.tools.sources import (
 __all__ = [
     "attachments_add",
     "attachments_remove",
+    "attachments_set_ingestible",
     "compile_wiki",
     "config_check",
     "config_get",

@@ -270,7 +270,7 @@ class TestResolveConfig:
     def test_attachments_config_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
-        assert cfg.get("attachments.ingest_adopted") is True
+        assert cfg.get("attachments.ingest_adopted") is False
         assert cfg.get("attachments.embed") is False
 
     def test_deprecated_embed_attachments_migrates(self, tmp_path: Any, monkeypatch: Any) -> None:

@@ -152,6 +152,84 @@ def remove_attachment(
         raise typer.Exit(1)
 
 
+@attachments_app.command("ingest")
+def ingest_attachment(
+    ctx: typer.Context,
+    attachment_file: str = typer.Argument(None, help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),  # noqa: B008
+    all_attachments: bool = typer.Option(False, "--all", help="Apply to every registered attachment."),  # noqa: B008
+) -> None:
+    """Mark attachment(s) as ingestible (processed during compile).
+
+    Independent of the global ``attachments.ingest_adopted`` gate: this
+    sets the per-attachment manifest flag. Compile ingests only when the
+    manifest flag AND the global gate are both true.
+
+    Examples:
+        knox attachments ingest report/photo.jpg
+        knox attachments ingest --all
+    """
+    _set_ingestible(ctx, attachment_file, all_attachments, ingestible=True)
+
+
+@attachments_app.command("no-ingest")
+def no_ingest_attachment(
+    ctx: typer.Context,
+    attachment_file: str = typer.Argument(None, help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),  # noqa: B008
+    all_attachments: bool = typer.Option(False, "--all", help="Apply to every registered attachment."),  # noqa: B008
+) -> None:
+    """Mark attachment(s) as NOT ingestible (skipped during compile).
+
+    Independent of the global ``attachments.ingest_adopted`` gate: this
+    sets the per-attachment manifest flag. Compile ingests only when the
+    manifest flag AND the global gate are both true.
+
+    Examples:
+        knox attachments no-ingest report/photo.jpg
+        knox attachments no-ingest --all
+    """
+    _set_ingestible(ctx, attachment_file, all_attachments, ingestible=False)
+
+
+def _set_ingestible(ctx: typer.Context, attachment_file: str | None, all_attachments: bool, *, ingestible: bool) -> None:
+    """Shared implementation for ``ingest`` / ``no-ingest``."""
+    vp = vault_paths_from_ctx(ctx)
+    console = get_console()
+
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    existing = manifest.read_all()
+    if not existing:
+        console.print("No attachments registered.")
+        raise typer.Exit(1)
+
+    if all_attachments:
+        targets = list(existing)
+    else:
+        if not attachment_file:
+            console.print("[red]Error:[/red] Provide an attachment path or use --all.")
+            raise typer.Exit(1)
+        resolved = attachment_file
+        if "/" not in attachment_file and "\\" not in attachment_file:
+            matches = [p for p in existing if Path(p).name == attachment_file]
+            if len(matches) == 1:
+                resolved = matches[0]
+            elif len(matches) > 1:
+                console.print(f"[yellow]Multiple matches for '{attachment_file}':[/yellow]")
+                for m in matches:
+                    console.print(f"  {m}")
+                console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
+                raise typer.Exit(1)
+        if resolved not in existing:
+            console.print(f"[red]Error:[/red] Attachment not found: {resolved}")
+            raise typer.Exit(1)
+        targets = [resolved]
+
+    verb = "ingestible" if ingestible else "not ingestible"
+    for path in targets:
+        manifest.set_ingestible(path, ingestible)
+        console.print(f"  {path:<40} -> {verb}")
+    console.print(f"[green]Marked {len(targets)} attachment(s) {verb}.[/green]")
+
+
 @attachments_app.command("list")
 def list_attachments(
     ctx: typer.Context,

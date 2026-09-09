@@ -248,6 +248,31 @@ class AttachmentManifest:
         self.append(tombstone)
         return True
 
+    def set_ingestible(self, attachment_file: str, ingestible: bool) -> bool:
+        """Update the ingestible flag of an attachment (append-only update).
+
+        Appends a new entry with the same ``path`` and the new flag; the
+        latest entry wins on read. Independent of the global
+        ``attachments.ingest_adopted`` gate — that gate is applied at
+        compile time on top of this per-attachment flag.
+
+        Returns:
+            ``True`` if the attachment existed and was updated.
+        """
+        existing = self.read_all()
+        if attachment_file not in existing:
+            return False
+        att = existing[attachment_file]
+        updated = Attachment(
+            path=att.path,
+            source=att.source,
+            ingestible=ingestible,
+            embed=att.embed,
+            registered_at=att.registered_at,
+        )
+        self.append(updated)
+        return True
+
     def list_sources(self) -> list[str]:
         """List all unique source stems with registered attachments."""
         return sorted({a.source for a in self.read_all().values()})

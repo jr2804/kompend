@@ -111,3 +111,53 @@ def attachments_remove(
     if manifest.remove(resolved_file):
         return {"status": "ok", "message": f"Removed attachment: {resolved_file}"}
     return {"status": "error", "message": f"Failed to remove attachment: {resolved_file}"}
+
+
+def attachments_set_ingestible(
+    wiki_dir: str | None = None,
+    attachment_file: str = "",
+    ingestible: bool = True,
+    all_attachments: bool = False,
+) -> dict[str, Any]:
+    """Mark attachment(s) as ingestible or not (per-attachment manifest flag).
+
+    Independent of the global ``attachments.ingest_adopted`` gate — compile
+    ingests only when the manifest flag AND the global gate are both true.
+    With *all_attachments*, applies to every registered attachment.
+    """
+    vp = vault_paths(wiki_dir)
+
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    if not manifest.exists():
+        return {"status": "error", "message": "No attachment manifest found."}
+
+    existing = manifest.read_all()
+    if not existing:
+        return {"status": "error", "message": "No attachments registered."}
+
+    if all_attachments:
+        targets = list(existing)
+    else:
+        if not attachment_file:
+            return {"status": "error", "message": "Provide attachment_file or set all_attachments=True."}
+        resolved_file = attachment_file
+        if "/" not in attachment_file and "\\" not in attachment_file:
+            matches = [p for p in existing if Path(p).name == attachment_file]
+            if len(matches) == 1:
+                resolved_file = matches[0]
+            elif len(matches) > 1:
+                return {
+                    "status": "error",
+                    "message": f"Multiple matches for '{attachment_file}': {matches}. Use the full path (e.g. 'slug/filename').",
+                }
+        if resolved_file not in existing:
+            return {"status": "error", "message": f"Attachment not found: {resolved_file}"}
+        targets = [resolved_file]
+
+    for path in targets:
+        manifest.set_ingestible(path, ingestible)
+    return {
+        "status": "ok",
+        "updated": len(targets),
+        "ingestible": ingestible,
+    }
