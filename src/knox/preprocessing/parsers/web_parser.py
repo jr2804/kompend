@@ -17,6 +17,7 @@ from typing import Any
 import trafilatura
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.text.encoding import read_text_auto
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
@@ -67,7 +68,7 @@ class WebPageParser(BaseParser):
         return source_file.suffix.lower() in {".html", ".htm"}
 
     def parse(self, source_file: Path, **kwargs: Any) -> ParsedDocument:  # noqa: ARG002
-        html = source_file.read_text(encoding="utf-8", errors="replace")
+        html = read_text_auto(source_file)
 
         # trafilatura's markdown output preserves headings, paragraphs,
         # lists, tables, and code — much cleaner than docling on raw HTML.

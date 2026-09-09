@@ -25,6 +25,7 @@ from knox.core.pipeline.attachments import (
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import parse_cache_name, relativize_image_paths
 from knox.core.pipeline.runtime import PipelineRuntime
+from knox.core.text.encoding import normalize_to_utf8_path
 from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
@@ -218,7 +219,8 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
         if selected is None:
             logger.warning("No parser backend for %s, skipping", source_file)
             return None
-        parsed = selected.parse(source_file)
+        parse_target, _encoding = normalize_to_utf8_path(source_file, pipeline.cache_directory())
+        parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
     except Exception:
         logger.exception("Failed to parse %s", source_file)

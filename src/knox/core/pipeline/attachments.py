@@ -21,6 +21,7 @@ from knox.agents.vlm import VlmAgent, VlmDeps
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
 from knox.core.paths import VaultPaths
+from knox.core.text.encoding import normalize_to_utf8_path
 from knox.logging import get_logger
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -65,8 +66,11 @@ def ingest_attachment(
 ) -> ParsedDocument | None:
     """Ingest a single attachment through the parser pipeline.
 
-    Text/markdown files are parsed via the standard router. PNG/JPG files
-    are captioned via the VLM captioner (which must be provided).
+    Text/markdown files are parsed via the standard router after
+    auto-normalizing their encoding (UTF-8 pass-through; non-UTF-8
+    re-encoded to ``vp.cache_dir / "encoding" / <hash>.utf8``).
+    PNG/JPG files are captioned via the VLM captioner (which must be
+    provided).
 
     Args:
         vp: Vault paths.
@@ -99,13 +103,21 @@ def ingest_attachment(
     if is_binary(str(att_file)):
         logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
         return None
-    return _parse_text(att_file, att, router)
+    return _parse_text(att_file, att, router, vp.cache_dir)
 
 
-def _parse_text(att_file: Path, att: Attachment, router: ParserRouter) -> ParsedDocument | None:
-    """Parse a text/markdown attachment via the standard router."""
+def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir: Path) -> ParsedDocument | None:
+    """Parse a text/markdown attachment via the standard router.
+
+    The path passed to the parser is the UTF-8-normalized sibling of
+    *att_file* (see :func:`normalize_to_utf8_path`); the original path
+    is preserved on the :class:`ParsedDocument` only if the parser
+    chooses to keep it — typical behavior is to read content and leave
+    *source_file* untouched, so this is transparent to downstream.
+    """
     try:
-        doc = router.parse(att_file)
+        parse_target, _encoding = normalize_to_utf8_path(att_file, cache_dir)
+        doc = router.parse(parse_target)
         doc.title = doc.title or att.filename
         _tag_metadata(doc, att)
         return doc

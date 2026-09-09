@@ -18,6 +18,7 @@ from typing import Any
 from knox.core.models import ElementType, MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.state import TierStateStore
+from knox.core.text.encoding import normalize_to_utf8_path
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import ParserRouter
@@ -173,7 +174,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             continue
 
         try:
-            doc = parser.parse(source_file)
+            parse_target, _encoding = normalize_to_utf8_path(source_file, cache_dir)
+            doc = parser.parse(parse_target)
         except Exception:
             logger.debug("Failed to parse %s", source_file, exc_info=True)
             failed += 1
