@@ -27,7 +27,6 @@ from knox.core.text.encoding import (
     read_text_auto,
 )
 
-
 # ── read_text_auto ──────────────────────────────────────────────────────
 
 
@@ -57,23 +56,17 @@ def test_cp1252_file_detected_and_decoded(tmp_path: Path) -> None:
     that yields the right characters.
     """
     src = tmp_path / "source.cpp"
-    payload = (
-        b"#include <stdio.h>\n"
-        b"/* German: gr\xc3\x9c\xc3\x9fe (should decode to 'gr\xc3\xbc\xc3\x9fe') */\n"
-        b"int main() { printf('hello\\n'); return 0; }\n"
-    )
+    payload = b"#include <stdio.h>\n/* German: gr\xc3\x9c\xc3\x9fe (should decode to 'gr\xc3\xbc\xc3\x9fe') */\nint main() { printf('hello\\n'); return 0; }\n"
     # The above is wrong; let me rewrite with actual CP1252 bytes:
-    payload = (
-        b"#include <stdio.h>\n"
-        b"/* German: gr\xfc\xdfe (german greets) */\n"
-        b"int main() { printf('hello\\n'); return 0; }\n"
-    )
+    payload = b"#include <stdio.h>\n/* German: gr\xfc\xdfe (german greets) */\nint main() { printf('hello\\n'); return 0; }\n"
     src.write_bytes(payload)
 
     text, encoding = detect_and_decode(src)
     assert encoding is not None, "CP1252 sample should not be classified as UTF-8"
     # The decoded text should contain the German word 'grüße':
-    assert "gr" in text and "e" in text and ("ü" in text or "\ufffd" in text)
+    assert "gr" in text
+    assert "e" in text
+    assert "ü" in text or "\ufffd" in text
     # What matters is the file was classified as non-UTF-8 (a Windows codepage)
     # and successfully decoded to text rather than raising:
     assert isinstance(text, str)
@@ -85,7 +78,8 @@ def test_latin1_file_detected_and_decoded(tmp_path: Path) -> None:
     src.write_bytes(b"# Title\nsome latin1: caf\xe9\n")
     text, encoding = detect_and_decode(src)
     assert encoding is not None
-    assert "caf" in text and "é" in text
+    assert "caf" in text
+    assert "é" in text
 
 
 def test_binary_file_raises(tmp_path: Path) -> None:
@@ -99,7 +93,7 @@ def test_binary_file_raises(tmp_path: Path) -> None:
 def test_read_text_auto_equivalent(tmp_path: Path) -> None:
     """``read_text_auto`` is a thin wrapper around ``detect_and_decode``."""
     src = tmp_path / "u.txt"
-    src.write_bytes("simple\n".encode("utf-8"))
+    src.write_bytes(b"simple\n")
     assert read_text_auto(src) == "simple\n"
 
 
@@ -120,10 +114,7 @@ def test_normalize_passthrough_for_utf8(tmp_path: Path) -> None:
 def test_normalize_writes_cache_for_non_utf8(tmp_path: Path) -> None:
     """Non-UTF-8 source gets a UTF-8 sibling in the cache directory."""
     src = tmp_path / "source.cpp"
-    src.write_bytes(
-        b"// C-source comment with German: gr\xfc\xdfe\n"
-        b"int main() { return 0; }\n" * 20
-    )
+    src.write_bytes(b"// C-source comment with German: gr\xfc\xdfe\nint main() { return 0; }\n" * 20)
     cache = tmp_path / "cache"
     target, encoding = normalize_to_utf8_path(src, cache)
     assert target != src, "Non-UTF-8 source must produce a cached sibling"
