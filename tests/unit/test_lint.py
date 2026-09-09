@@ -18,6 +18,7 @@ from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from knox.lint.history import entry_from_report
 from knox.lint.llm_rules import (
     Contradiction,
     ContradictionOutput,
@@ -25,7 +26,7 @@ from knox.lint.llm_rules import (
     CoverageGapOutput,
 )
 from knox.lint.remediation import remediate
-from knox.lint.runner import LintRunner, _build_report, report_to_json, report_to_text
+from knox.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
 from knox.lint.structural import (
     RULE_BY_NAME,
     STRUCTURAL_RULES,
@@ -612,8 +613,6 @@ class TestEntryFromReport:
         crash on missing health_score/summary fields (previously the
         narrow base.LintReport had no health_score: AttributeError).
         """
-        from knox.lint.history import entry_from_report
-
         entry = entry_from_report(
             LintReport(
                 results=[LintReportResult(rule="broken-wikilinks", outcome="fail", message="m", page_id="n1")],
@@ -631,9 +630,8 @@ class TestEntryFromReport:
 
     def test_report_to_dict_normalizes_both_result_shapes(self) -> None:
         """report_to_dict must tolerate StrEnum (LintResult) and plain-str
-        (LintReportResult) outcome/severity values."""
-        from knox.lint.runner import report_to_dict
-
+        (LintReportResult) outcome/severity values.
+        """
         rich = LintReport(
             results=[LintResult(rule="a", outcome=LintRuleOutcome.PASS, severity=Severity.INFO)],
             total_checks=1,

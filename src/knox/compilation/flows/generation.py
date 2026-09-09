@@ -14,6 +14,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from pydantic_ai.exceptions import ModelHTTPError
+
 from knox.agents.generation import GenerationAgent, make_agentic_generation_agent
 from knox.agents.types import ToolGenerationDeps
 from knox.compilation._checkpoints import (
@@ -73,39 +75,6 @@ _AGENTIC_TOOL_FRAMING_TOKENS = 900
 _AGENTIC_FETCH_ROUND_TOKENS = 600
 
 
-def _format_uncovered_concepts(
-    broker: "ConceptBroker",  # noqa: F821 — forward ref
-    seg_id: str,
-    *,
-    limit: int = 10,
-) -> str:
-    """Build a traceable uncovered-concepts summary for warnings/exceptions.
-
-    Each entry is rendered as ``"<name> [sources: <src1>, <src2>...]"`` so the
-    user can grep for the source PDF/section that produced the concept and
-    cross-check against the wiki's source tree and the gen_checkpoint file.
-
-    A trailing ellipsis marks truncation when more than *limit* concepts
-    remain. Empty ``sources`` lists fall back to ``"(no-source)"`` so the
-    field never silently disappears (memory #149).
-    """
-    items = broker.remaining_concepts(seg_id)
-    if not items:
-        return "(none)"
-    rendered: list[str] = []
-    for concept in items[:limit]:
-        name = str(concept.get(ExtractionField.NAME, "?")).strip() or "?"
-        sources_raw = concept.get("sources") or []
-        if isinstance(sources_raw, str):
-            sources: list[str] = [sources_raw]
-        else:
-            sources = [str(s) for s in sources_raw if s]
-        sources_str = ", ".join(sources) if sources else "(no-source)"
-        rendered.append(f"{name} [sources: {sources_str}]")
-    suffix = "…" if len(items) > limit else ""
-    return ", ".join(rendered) + suffix
-
-
 #: How many retries to attempt when the upstream returns a transient 4xx
 #: with a "timed out" body (typically the model gateway routing hit a
 #: non-tool-capable or temporarily slow upstream, e.g. omniroute ``auto``
@@ -120,31 +89,6 @@ _UPSTREAM_TRANSIENT_MAX_RETRIES: int = 3
 _UPSTREAM_TRANSIENT_BACKOFF_BASE: float = 1.0
 
 
-def _is_upstream_transient_timeout(exc: BaseException) -> bool:
-    """Return True when *exc* looks like an upstream "Request timed out" 4xx.
-
-    Matches ``pydantic_ai.exceptions.ModelHTTPError`` whose ``status_code``
-    is below 500 and whose ``body['message']`` (or string body) contains
-    ``"timed out"`` case-insensitively. Other exception types are not
-    matched — keep this heuristic narrow.
-    """
-    try:
-        from pydantic_ai.exceptions import ModelHTTPError
-    except ImportError:  # pragma: no cover — pydantic-ai is a hard dep
-        return False
-
-    if not isinstance(exc, ModelHTTPError):
-        return False
-    if not isinstance(exc.status_code, int) or exc.status_code >= 500:
-        return False
-    body = exc.body
-    if isinstance(body, dict):
-        msg = body.get("message") or body.get("error") or ""
-    elif isinstance(body, str):
-        msg = body
-    else:
-        msg = str(exc)
-    return "timed out" in str(msg).lower()
 #: Safety floor so a pathological known_titles/pinned list cannot zero the
 #: segment budget (content is preserved via more segments instead).
 _AGENTIC_SAFETY_TOKENS = 512
@@ -808,8 +752,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                         retry_attempts += 1
                         backoff = _UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (retry_attempts - 1))
                         logger.warning(
-                            "Agentic generation transient upstream timeout for '%s' "
-                            "(attempt %d/%d); retrying in %.1fs. error=%s",
+                            "Agentic generation transient upstream timeout for '%s' (attempt %d/%d); retrying in %.1fs. error=%s",
                             seg_id,
                             retry_attempts,
                             _UPSTREAM_TRANSIENT_MAX_RETRIES,
@@ -969,6 +912,66 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+def _format_uncovered_concepts(
+    broker: ConceptBroker,  # noqa: F821 — forward ref
+    seg_id: str,
+    *,
+    limit: int = 10,
+) -> str:
+    """Build a traceable uncovered-concepts summary for warnings/exceptions.
+
+    Each entry is rendered as ``"<name> [sources: <src1>, <src2>...]"`` so the
+    user can grep for the source PDF/section that produced the concept and
+    cross-check against the wiki's source tree and the gen_checkpoint file.
+
+    A trailing ellipsis marks truncation when more than *limit* concepts
+    remain. Empty ``sources`` lists fall back to ``"(no-source)"`` so the
+    field never silently disappears (memory #149).
+    """
+    items = broker.remaining_concepts(seg_id)
+    if not items:
+        return "(none)"
+    rendered: list[str] = []
+    for concept in items[:limit]:
+        name = str(concept.get(ExtractionField.NAME, "?")).strip() or "?"
+        sources_raw = concept.get("sources") or []
+        if isinstance(sources_raw, str):
+            sources: list[str] = [sources_raw]
+        else:
+            sources = [str(s) for s in sources_raw if s]
+        sources_str = ", ".join(sources) if sources else "(no-source)"
+        rendered.append(f"{name} [sources: {sources_str}]")
+    suffix = "…" if len(items) > limit else ""
+    return ", ".join(rendered) + suffix
+
+
+def _is_upstream_transient_timeout(exc: BaseException) -> bool:
+    """Return True when *exc* looks like an upstream "Request timed out" 4xx.
+
+    Matches ``pydantic_ai.exceptions.ModelHTTPError`` whose ``status_code``
+    is below 500 and whose ``body['message']`` (or string body) contains
+    ``"timed out"`` case-insensitively. Other exception types are not
+    matched — keep this heuristic narrow.
+    """
+    try:
+        pass
+    except ImportError:  # pragma: no cover — pydantic-ai is a hard dep
+        return False
+
+    if not isinstance(exc, ModelHTTPError):
+        return False
+    if not isinstance(exc.status_code, int) or exc.status_code >= 500:
+        return False
+    body = exc.body
+    if isinstance(body, dict):
+        msg = body.get("message") or body.get("error") or ""
+    elif isinstance(body, str):
+        msg = body
+    else:
+        msg = str(exc)
+    return "timed out" in str(msg).lower()
 
 
 def _agentic_reserved_tokens(

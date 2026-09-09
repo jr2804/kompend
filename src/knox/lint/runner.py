@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,7 @@ from knox.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateRefere
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 class LintRunner:
     """Run enabled lint rules against a :class:`CompiledWiki`.

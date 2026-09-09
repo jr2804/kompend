@@ -72,12 +72,13 @@ The project root directory is always called `base_dir`. Never use `target_dir`,
 
 ```python
 from knox.core.paths import VaultPaths
+
 paths = VaultPaths(base_dir)
-paths.cache_dir          # base_dir/.knox/cache
-paths.compile_state_path # base_dir/.knox/compile_state.json
-paths.wiki_cache_path    # base_dir/.knox/last_wiki.json
-paths.extract_dir        # base_dir/.knox/cache/extract
-paths.images_dir         # base_dir/.knox/cache/images
+paths.cache_dir  # base_dir/.knox/cache
+paths.compile_state_path  # base_dir/.knox/compile_state.json
+paths.wiki_cache_path  # base_dir/.knox/last_wiki.json
+paths.extract_dir  # base_dir/.knox/cache/extract
+paths.images_dir  # base_dir/.knox/cache/images
 ```
 
 | Context | Pattern |

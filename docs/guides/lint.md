@@ -325,6 +325,7 @@ Create a class that satisfies the `LintRule` protocol:
 ```python
 from knox.lint.base import LintResult, LintRuleOutcome
 
+
 class MyCustomRule:
     name = "my-custom-rule"
     description = "What this rule checks"

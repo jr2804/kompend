@@ -95,9 +95,9 @@ Key methods (on `SummarizationProcessor`):
 ### `ContextSize` Types
 
 ```python
-ContextFraction = tuple[Literal["fraction"], float]   # ("fraction", 0.5)  → 50% of budget
-ContextTokens   = tuple[Literal["tokens"], int]       # ("tokens", 4000)   → 4000 tokens
-ContextMessages = tuple[Literal["messages"], int]     # ("messages", 50)   → 50 messages
+ContextFraction = tuple[Literal["fraction"], float]  # ("fraction", 0.5)  → 50% of budget
+ContextTokens = tuple[Literal["tokens"], int]  # ("tokens", 4000)   → 4000 tokens
+ContextMessages = tuple[Literal["messages"], int]  # ("messages", 50)   → 50 messages
 ```
 
 ### `CompressionPlan` & `SummarizationResult`
@@ -109,6 +109,7 @@ class CompressionPlan:
     messages_to_summarize: list[ModelMessage]
     preserved_messages: list[ModelMessage]
     system_parts: list[SystemPromptPart]
+
 
 @dataclass
 class SummarizationResult:
@@ -179,14 +180,15 @@ Wire it to KNOX's `UsageTracker`:
 ```python
 def _on_usage_update(pct: float, current: int, max_tokens: int) -> None:
     """Called by ContextManagerCapability when token usage changes."""
-    if hasattr(thread_local, 'usage_tracker'):
+    if hasattr(thread_local, "usage_tracker"):
         thread_local.usage_tracker.record_context_usage(current, max_tokens)
+
 
 capability = ContextManagerCapability(
     ...,
     on_usage_update=_on_usage_update,
     on_before_compress=_on_before_compress,  # log compression events
-    on_after_compress=_on_after_compress,    # log summary quality
+    on_after_compress=_on_after_compress,  # log summary quality
 )
 ```
 
@@ -242,9 +244,8 @@ Wire compression events into KNOX's logging and runlog:
 def _on_before_compress(messages: list, cutoff_index: int) -> None:
     logger.info("Compressing %d messages at cutoff %d", len(messages), cutoff_index)
 
-def _on_after_compress(
-    messages: list, summarized: bool, summary: str | None
-) -> str | None:
+
+def _on_after_compress(messages: list, summarized: bool, summary: str | None) -> str | None:
     if summarized:
         logger.info("Compression produced %d-char summary", len(summary or ""))
     else:

@@ -24,10 +24,11 @@ class ChunkNode:
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
     heading_chain: tuple[str, ...] = field(default_factory=tuple)
-    chunk: Chunk | None = None          # leaf prose content
+    chunk: Chunk | None = None  # leaf prose content
     structured: StructuredData | None = None  # leaf table/equation/figure
-    summary: str = ""                   # internal node summary (LLM-generated)
+    summary: str = ""  # internal node summary (LLM-generated)
     token_count: int = 0
+
 
 @dataclass
 class ChunkTree:
@@ -61,11 +62,13 @@ class StructuredTable:
     rows: list[dict[str, str]]
     caption: str = ""
 
+
 @dataclass
 class StructuredEquation:
     latex: str
     variables: list[EquationVariable] = field(default_factory=list)
     caption: str = ""
+
 
 @dataclass
 class StructuredFigure:

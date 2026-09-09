@@ -219,6 +219,7 @@ from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
 from knox.compilation.schema import MyOutput  # or define a Pydantic model
 
+
 class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
     """One-line description of what this agent does."""
 

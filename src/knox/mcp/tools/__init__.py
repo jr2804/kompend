@@ -72,9 +72,9 @@ from knox.mcp.tools.sources import (
 
 __all__ = [
     "attachments_add",
-    "attachments_remove",
     "attachments_ingest",
     "attachments_no_ingest",
+    "attachments_remove",
     "compile_wiki",
     "config_check",
     "config_get",

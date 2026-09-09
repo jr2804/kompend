@@ -287,8 +287,7 @@ class ZvecWikiStore:
                     # silent failure at insert time). Document the change so
                     # users understand the embedding cost.
                     logger.warning(
-                        "Vector store at %s schema mismatch: missing fields=%s, obsolete fields=%s; "
-                        "destroying and rebuilding (re-embedding required)",
+                        "Vector store at %s schema mismatch: missing fields=%s, obsolete fields=%s; destroying and rebuilding (re-embedding required)",
                         self.db_file,
                         missing,
                         obsolete,

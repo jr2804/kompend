@@ -65,8 +65,5 @@ def test_retry_constants_have_expected_shape() -> None:
     # 1 + 2 + 4 = 7s worst-case at base=1.0, max 3 retries.
     assert _UPSTREAM_TRANSIENT_MAX_RETRIES >= 1
     assert 0.5 <= _UPSTREAM_TRANSIENT_BACKOFF_BASE <= 5.0
-    worst_case = sum(
-        _UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (attempt - 1))
-        for attempt in range(1, _UPSTREAM_TRANSIENT_MAX_RETRIES + 1)
-    )
+    worst_case = sum(_UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (attempt - 1)) for attempt in range(1, _UPSTREAM_TRANSIENT_MAX_RETRIES + 1))
     assert worst_case < 10.0, f"total worst-case backoff too long: {worst_case:.1f}s"

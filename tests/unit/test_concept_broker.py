@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from knox.compilation.concept_broker import ConceptBroker
+from knox.compilation.flows.generation import _format_uncovered_concepts
 
 
 def test_remaining_concepts_tracks_unassigned() -> None:
@@ -99,8 +100,6 @@ def _concepts(n: int) -> list[dict[str, str]]:
 
 def test_format_uncovered_concepts_includes_sources() -> None:
     """Concepts are rendered with source provenance so warnings are traceable."""
-    from knox.compilation.flows.generation import _format_uncovered_concepts
-
     concepts = [
         {"name": "PESQ score", "sources": ["ITU-T_P.862__2001.pdf"]},
         {"name": "VTR", "sources": ["ITU-T_P.863__03_2018.pdf", "ITU-T_P.Imp863.pdf"]},
@@ -117,7 +116,6 @@ def test_format_uncovered_concepts_includes_sources() -> None:
 
 
 def test_format_uncovered_concepts_truncates_with_ellipsis() -> None:
-    from knox.compilation.flows.generation import _format_uncovered_concepts
 
     concepts = [{"name": f"c-{i}", "sources": []} for i in range(15)]
     broker = ConceptBroker(concepts, num_callers=1)
@@ -129,9 +127,6 @@ def test_format_uncovered_concepts_truncates_with_ellipsis() -> None:
 
 def test_format_uncovered_concepts_handles_string_sources() -> None:
     """A single source can be encoded as a bare string instead of a list."""
-    from knox.compilation.flows.generation import _format_uncovered_concepts
-
     broker = ConceptBroker([{"name": "x", "sources": "single.pdf"}], num_callers=1)
     out = _format_uncovered_concepts(broker, ConceptBroker.caller_id(0))
     assert "x [sources: single.pdf]" in out
-

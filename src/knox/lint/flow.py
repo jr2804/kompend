@@ -185,7 +185,8 @@ def _merge_results(
 
 def _rich_report(results: list[LintReportResult]) -> LintReport:
     """Populate summary fields from a flat result list (single source of
-    truth for the merge; mirrors ``runner._build_report`` aggregation)."""
+    truth for the merge; mirrors ``runner._build_report`` aggregation).
+    """
     passes = sum(1 for r in results if r.outcome == "pass")
     failures = sum(1 for r in results if r.outcome == "fail")
     skips = sum(1 for r in results if r.outcome == "skip")

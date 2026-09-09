@@ -67,6 +67,7 @@ class ElementType(StrEnum):
     LIST_ITEM = "list_item"
     METADATA = "metadata"
 
+
 @dataclass
 class DocumentElement:
     type: ElementType
@@ -104,10 +105,11 @@ class ChunkNode:
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
     heading_chain: tuple[str, ...] = field(default_factory=tuple)
-    chunk: Chunk | None = None          # leaf prose
+    chunk: Chunk | None = None  # leaf prose
     structured: StructuredData | None = None  # leaf table/equation/figure
-    summary: str = ""                   # internal node summary
+    summary: str = ""  # internal node summary
     token_count: int = 0
+
 
 @dataclass
 class ChunkTree:
@@ -126,11 +128,13 @@ class StructuredTable:
     rows: list[dict[str, str]]
     caption: str = ""
 
+
 @dataclass
 class StructuredEquation:
     latex: str
     variables: list[EquationVariable] = field(default_factory=list)
     caption: str = ""
+
 
 @dataclass
 class StructuredFigure:
@@ -146,8 +150,8 @@ class StructuredFigure:
 @dataclass
 class ResolvedChunk:
     chunk: Chunk
-    entities: list[dict[str, Any]]       # resolved terms, abbreviations, etc.
-    relations: list[dict[str, Any]]      # typed, confidence-scored edges
+    entities: list[dict[str, Any]]  # resolved terms, abbreviations, etc.
+    relations: list[dict[str, Any]]  # typed, confidence-scored edges
     resolved_references: list[str]
     metadata: dict[str, Any]
 ```
@@ -158,11 +162,11 @@ class ResolvedChunk:
 @dataclass
 class CompiledWiki:
     nodes: list[WikiNode]
-    edges: list[dict[str, Any]]    # typed graph edges (entity_reference, uses, …)
-    toc: list[dict[str, Any]]      # table of contents
-    quality_score: float           # WiCER evaluation metric
-    iteration: int                 # WiCER loop count
-    metadata: dict[str, Any]       # source_count, kinds, memory, …
+    edges: list[dict[str, Any]]  # typed graph edges (entity_reference, uses, …)
+    toc: list[dict[str, Any]]  # table of contents
+    quality_score: float  # WiCER evaluation metric
+    iteration: int  # WiCER loop count
+    metadata: dict[str, Any]  # source_count, kinds, memory, …
 ```
 
 ## Core Principles (Expanded)

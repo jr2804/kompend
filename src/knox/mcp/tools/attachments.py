@@ -113,6 +113,39 @@ def attachments_remove(
     return {"status": "error", "message": f"Failed to remove attachment: {resolved_file}"}
 
 
+def attachments_ingest(
+    wiki_dir: str | None = None,
+    attachment_file: str = "",
+    all_attachments: bool = False,
+) -> dict[str, Any]:
+    """Mark attachment(s) as ingestible (per-attachment manifest flag = True).
+
+    Independent of the global ``attachments.ingest_adopted`` gate — compile
+    ingests only when the manifest flag AND the global gate are both true.
+    With *all_attachments*, applies to every registered attachment.
+    """
+    return _set_ingestible(
+        wiki_dir,
+        attachment_file,
+        all_attachments=all_attachments,
+        ingestible=True,
+    )
+
+
+def attachments_no_ingest(
+    wiki_dir: str | None = None,
+    attachment_file: str = "",
+    all_attachments: bool = False,
+) -> dict[str, Any]:
+    """Mark attachment(s) as NOT ingestible (per-attachment manifest flag = False)."""
+    return _set_ingestible(
+        wiki_dir,
+        attachment_file,
+        all_attachments=all_attachments,
+        ingestible=False,
+    )
+
+
 def _set_ingestible(
     wiki_dir: str | None,
     attachment_file: str,
@@ -156,36 +189,3 @@ def _set_ingestible(
         "updated": len(targets),
         "ingestible": ingestible,
     }
-
-
-def attachments_ingest(
-    wiki_dir: str | None = None,
-    attachment_file: str = "",
-    all_attachments: bool = False,
-) -> dict[str, Any]:
-    """Mark attachment(s) as ingestible (per-attachment manifest flag = True).
-
-    Independent of the global ``attachments.ingest_adopted`` gate — compile
-    ingests only when the manifest flag AND the global gate are both true.
-    With *all_attachments*, applies to every registered attachment.
-    """
-    return _set_ingestible(
-        wiki_dir,
-        attachment_file,
-        all_attachments=all_attachments,
-        ingestible=True,
-    )
-
-
-def attachments_no_ingest(
-    wiki_dir: str | None = None,
-    attachment_file: str = "",
-    all_attachments: bool = False,
-) -> dict[str, Any]:
-    """Mark attachment(s) as NOT ingestible (per-attachment manifest flag = False)."""
-    return _set_ingestible(
-        wiki_dir,
-        attachment_file,
-        all_attachments=all_attachments,
-        ingestible=False,
-    )

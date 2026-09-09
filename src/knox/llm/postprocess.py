@@ -148,7 +148,6 @@ class ThinkingPartRepair:
             return
         parts = list(response.parts)
 
-        # Phase 1: Convert ThinkingPart containing JSON to TextPart
         for i, part in enumerate(parts):
             if not isinstance(part, ThinkingPart):
                 continue
@@ -166,8 +165,6 @@ class ThinkingPartRepair:
 
         has_tool_call = any(isinstance(p, ToolCallPart) for p in parts)
 
-        # Phase 2: Convert TextPart containing JSON to ToolCallPart
-        # (only for structured-output agents — free-text handled above)
         for i, part in enumerate(parts):
             if not isinstance(part, TextPart):
                 continue
