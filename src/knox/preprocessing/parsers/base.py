@@ -58,6 +58,35 @@ class FileExtension(StrEnum):
     TIF = ".tif"
     BMP = ".bmp"
 
+    @property
+    def is_text(self) -> bool:
+        """True when the format is naturally text and benefits from
+        :func:`knox.core.text.encoding.normalize_to_utf8_path` prior to
+        parsing. False for binary containers (PDF/DOCX/raster/...) which
+        parsers consume byte-wise.
+        """
+        return self in _TEXT_EXTENSIONS
+
+
+#: Text-format extensions. Single source of truth for the encoding layer
+#: gate in :mod:`knox.core.pipeline.stages._parse`. Anything not in this
+#: set is treated as a binary container by the parse tier.
+_TEXT_EXTENSIONS: frozenset[FileExtension] = frozenset(
+    {
+        FileExtension.HTML,
+        FileExtension.HTM,
+        FileExtension.MD,
+        FileExtension.MARKDOWN,
+        FileExtension.TXT,
+        FileExtension.CSV,
+        FileExtension.ADOC,
+        FileExtension.RST,
+        FileExtension.TEX,
+        FileExtension.LTX,
+        FileExtension.EML,
+    }
+)
+
 
 class BaseParser(ABC):
     """Parser-agnostic interface for KNOX Tier 1."""

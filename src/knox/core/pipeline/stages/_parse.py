@@ -29,7 +29,7 @@ from knox.core.text.encoding import normalize_to_utf8_path
 from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
-from knox.preprocessing.parsers.base import scrub_document
+from knox.preprocessing.parsers.base import FileExtension, scrub_document
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
@@ -219,7 +219,11 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
         if selected is None:
             logger.warning("No parser backend for %s, skipping", source_file)
             return None
-        parse_target, _encoding = normalize_to_utf8_path(source_file, pipeline.cache_directory())
+        # Encoding normalization only helps text-format sources; binary
+        # containers (PDF/DOCX/raster) are handled byte-wise by their parser
+        # and would raise ValueError("binary") if funneled through normalize_to_utf8_path.
+        suffix = FileExtension(source_file.suffix.lower())
+        parse_target, _encoding = normalize_to_utf8_path(source_file, pipeline.cache_directory()) if suffix.is_text else (source_file, None)
         parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
     except Exception:
