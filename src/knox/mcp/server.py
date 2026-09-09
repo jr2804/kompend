@@ -9,8 +9,9 @@ from mcp.server.fastmcp import FastMCP
 
 from knox.mcp.tools import (
     attachments_add,
+    attachments_ingest,
+    attachments_no_ingest,
     attachments_remove,
-    attachments_set_ingestible,
     compile_wiki,
     config_check,
     config_get,
@@ -88,8 +89,9 @@ def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration p
     srv.tool(name="wiki_read_attachment")(wiki_read_attachment)
     srv.tool(name="wiki_attachment_info")(wiki_attachment_info)
     srv.tool(name="attachments_add")(attachments_add)
+    srv.tool(name="attachments_ingest")(attachments_ingest)
+    srv.tool(name="attachments_no_ingest")(attachments_no_ingest)
     srv.tool(name="attachments_remove")(attachments_remove)
-    srv.tool(name="attachments_set_ingestible")(attachments_set_ingestible)
     srv.tool(name="config_get")(config_get)
     srv.tool(name="config_set")(config_set)
     srv.tool(name="config_list")(config_list)
