@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -103,6 +104,47 @@ def _format_uncovered_concepts(
         rendered.append(f"{name} [sources: {sources_str}]")
     suffix = "…" if len(items) > limit else ""
     return ", ".join(rendered) + suffix
+
+
+#: How many retries to attempt when the upstream returns a transient 4xx
+#: with a "timed out" body (typically the model gateway routing hit a
+#: non-tool-capable or temporarily slow upstream, e.g. omniroute ``auto``
+#: roaming onto ``jr/agent``). Each retry is exponential backoff from
+#: :data:`_UPSTREAM_TRANSIENT_BACKOFF_BASE`. Retries do NOT consume a pass
+#: slot of the segment agent's coverage loop.
+_UPSTREAM_TRANSIENT_MAX_RETRIES: int = 3
+
+#: Initial backoff in seconds for transient upstream timeouts. Doubled per
+#: attempt: 1s, 2s, 4s. Total worst-case wait: 7s before surfacing the
+#: error and moving to the next capability in the fallback chain.
+_UPSTREAM_TRANSIENT_BACKOFF_BASE: float = 1.0
+
+
+def _is_upstream_transient_timeout(exc: BaseException) -> bool:
+    """Return True when *exc* looks like an upstream "Request timed out" 4xx.
+
+    Matches ``pydantic_ai.exceptions.ModelHTTPError`` whose ``status_code``
+    is below 500 and whose ``body['message']`` (or string body) contains
+    ``"timed out"`` case-insensitively. Other exception types are not
+    matched — keep this heuristic narrow.
+    """
+    try:
+        from pydantic_ai.exceptions import ModelHTTPError
+    except ImportError:  # pragma: no cover — pydantic-ai is a hard dep
+        return False
+
+    if not isinstance(exc, ModelHTTPError):
+        return False
+    if not isinstance(exc.status_code, int) or exc.status_code >= 500:
+        return False
+    body = exc.body
+    if isinstance(body, dict):
+        msg = body.get("message") or body.get("error") or ""
+    elif isinstance(body, str):
+        msg = body
+    else:
+        msg = str(exc)
+    return "timed out" in str(msg).lower()
 #: Safety floor so a pathological known_titles/pinned list cannot zero the
 #: segment budget (content is preserved via more segments instead).
 _AGENTIC_SAFETY_TOKENS = 512
@@ -740,17 +782,46 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 f"grew beyond the reservation. Re-run with a smaller context budget or check config."
             )
         while broker.remaining(seg_id) > 0 and passes < cap:
-            passes += 1
-            try:
-                gen_output = agent.run(deps)
-            except LLMOutputError as exc:
-                logger.warning("Agentic generation failed for '%s': %s", seg_id, exc)
-                gen_output = None
-                last_error = str(exc)
-            except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
-                logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
-                gen_output = None
-                last_error = str(exc)
+            # Inner retry: upstream transient errors (4xx with
+            # 'timed out' body) get a brief backoff and a re-attempt of the
+            # SAME pass (does not consume a pass slot). Hard errors (5xx,
+            # validation, schema) skip the backoff and consume a pass.
+            retry_attempts = 0
+            for retry in range(_UPSTREAM_TRANSIENT_MAX_RETRIES + 1):
+                passes += 1 if retry == 0 else 0  # only the first try counts as a pass
+                try:
+                    gen_output = agent.run(deps)
+                    if retry_attempts:
+                        logger.info(
+                            "Agentic generation for '%s' recovered after %d transient retry attempt(s)",
+                            seg_id,
+                            retry_attempts,
+                        )
+                    break
+                except LLMOutputError as exc:
+                    logger.warning("Agentic generation failed for '%s': %s", seg_id, exc)
+                    gen_output = None
+                    last_error = str(exc)
+                    break
+                except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
+                    if _is_upstream_transient_timeout(exc) and retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
+                        retry_attempts += 1
+                        backoff = _UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (retry_attempts - 1))
+                        logger.warning(
+                            "Agentic generation transient upstream timeout for '%s' "
+                            "(attempt %d/%d); retrying in %.1fs. error=%s",
+                            seg_id,
+                            retry_attempts,
+                            _UPSTREAM_TRANSIENT_MAX_RETRIES,
+                            backoff,
+                            exc,
+                        )
+                        time.sleep(backoff)
+                        continue
+                    logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
+                    gen_output = None
+                    last_error = str(exc)
+                    break
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
