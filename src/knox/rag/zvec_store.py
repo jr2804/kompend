@@ -239,21 +239,25 @@ class ZvecWikiStore:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
+    def _expected_field_schemas(self) -> list[_zvec.FieldSchema]:
+        """Canonical field list declared by the current knox version (SoT)."""
+        return [
+            _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
+        ]
+
     def _create_collection(self) -> ZvecCollection:
         if self._provider is None:
             raise RuntimeError("Embedding provider not configured. Call build_index() first.")
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
         schema = _zvec.CollectionSchema(
             name=_ZVEC_COLLECTION_NAME,
-            fields=[
-                _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
-                _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
-            ],
+            fields=self._expected_field_schemas(),
             vectors=_zvec.VectorSchema(
                 ZvecField.EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
@@ -264,12 +268,30 @@ class ZvecWikiStore:
             try:
                 collection = _zvec.open(path=str(self.db_file))
                 stored_dim = collection.schema.vectors[0].dimension
+                stored_field_names = {f.name for f in collection.schema.fields}
+                expected_field_names = {f.name for f in schema.fields}
                 if stored_dim != self._provider.dim:
                     logger.warning(
                         "Vector store at %s has dimension %d but the embedding model produces %d; rebuilding",
                         self.db_file,
                         stored_dim,
                         self._provider.dim,
+                    )
+                    collection.destroy()
+                    collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+                elif stored_field_names != expected_field_names:
+                    missing = sorted(expected_field_names - stored_field_names)
+                    obsolete = sorted(stored_field_names - expected_field_names)
+                    # zvec's add_column only supports numeric data types, so a
+                    # missing STRING field forces a full destroy+rebuild (no
+                    # silent failure at insert time). Document the change so
+                    # users understand the embedding cost.
+                    logger.warning(
+                        "Vector store at %s schema mismatch: missing fields=%s, obsolete fields=%s; "
+                        "destroying and rebuilding (re-embedding required)",
+                        self.db_file,
+                        missing,
+                        obsolete,
                     )
                     collection.destroy()
                     collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)

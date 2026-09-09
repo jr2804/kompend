@@ -101,3 +101,82 @@ def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
         edges=[],
         toc=[],
     )
+
+
+def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog) -> None:
+    """When a stored collection predates a newer knox field, the store
+    detects the mismatch and rebuilds rather than silently failing at
+    insert time with ``attributes not found in collection schema``.
+
+    The mismatch is simulated by creating the collection directly with a
+    schema missing the ``attributes`` field (the real-world scenario: a
+    wiki compiled before that field was added to knox). zvec's STRING
+    columns are immutable (add_column / drop_column only accept numeric
+    types), so in-place migration is not possible — destroy+rebuild is the
+    only correct path.
+    """
+    import logging
+    import zvec as _zvec
+
+    db = tmp_path / "vectors"
+    # Seed an older collection without the "attributes" field.
+    legacy_schema = _zvec.CollectionSchema(
+        name="wiki",
+        fields=[
+            _zvec.FieldSchema("node_id", _zvec.DataType.STRING),
+            _zvec.FieldSchema("title", _zvec.DataType.STRING),
+            _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
+            _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
+            _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
+            _zvec.FieldSchema("tags", _zvec.DataType.STRING),
+            # Note: no "attributes" field — mirrors pre-4746a81d wiki state.
+        ],
+        vectors=_zvec.VectorSchema("embedding", _zvec.DataType.VECTOR_FP32, 4),
+    )
+    legacy = _zvec.create_and_open(path=str(db), schema=legacy_schema)
+    legacy.close()
+
+    caplog.set_level(logging.WARNING)
+    store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
+    assert store.build_index(_wiki(4)) == 1
+    assert store._collection is not None
+    # Schema was rebuilt with the missing field restored.
+    assert "attributes" in {f.name for f in store._collection.schema.fields}
+    assert any("schema mismatch" in rec.message for rec in caplog.records)
+    store.close()
+
+
+def test_wiki_store_rebuilds_on_obsolete_field(tmp_path: Path, caplog) -> None:
+    """A stored field no longer in the expected schema also triggers
+    destroy+rebuild (data loss is logged at WARNING).
+    """
+    import logging
+    import zvec as _zvec
+
+    db = tmp_path / "vectors"
+    # Seed a collection with an extra numeric field (zvec accepts add_column
+    # for numeric types). Drop it later by running through knox which has a
+    # different expected schema.
+    seed_schema = _zvec.CollectionSchema(
+        name="wiki",
+        fields=[
+            _zvec.FieldSchema("node_id", _zvec.DataType.STRING),
+            _zvec.FieldSchema("title", _zvec.DataType.STRING),
+            _zvec.FieldSchema("node_type", _zvec.DataType.STRING),
+            _zvec.FieldSchema("source_file", _zvec.DataType.STRING),
+            _zvec.FieldSchema("content_preview", _zvec.DataType.STRING),
+            _zvec.FieldSchema("tags", _zvec.DataType.STRING),
+        ],
+        vectors=_zvec.VectorSchema("embedding", _zvec.DataType.VECTOR_FP32, 4),
+    )
+    legacy = _zvec.create_and_open(path=str(db), schema=seed_schema)
+    legacy.add_column(_zvec.FieldSchema("legacy_numeric", _zvec.DataType.INT64, nullable=True))
+    legacy.close()
+
+    caplog.set_level(logging.WARNING)
+    store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
+    assert store.build_index(_wiki(4)) == 1
+    assert store._collection is not None
+    assert "legacy_numeric" not in {f.name for f in store._collection.schema.fields}
+    assert any("schema mismatch" in rec.message for rec in caplog.records)
+    store.close()
