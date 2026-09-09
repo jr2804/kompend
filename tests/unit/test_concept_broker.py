@@ -95,3 +95,43 @@ def test_requeue_empty_is_noop() -> None:
 
 def _concepts(n: int) -> list[dict[str, str]]:
     return [{"name": f"concept-{i}"} for i in range(n)]
+
+
+def test_format_uncovered_concepts_includes_sources() -> None:
+    """Concepts are rendered with source provenance so warnings are traceable."""
+    from knox.compilation.flows.generation import _format_uncovered_concepts
+
+    concepts = [
+        {"name": "PESQ score", "sources": ["ITU-T_P.862__2001.pdf"]},
+        {"name": "VTR", "sources": ["ITU-T_P.863__03_2018.pdf", "ITU-T_P.Imp863.pdf"]},
+        {"name": "G.191"},  # missing sources — must not silently drop (memory #149)
+    ]
+    broker = ConceptBroker(concepts, num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+    out = _format_uncovered_concepts(broker, seg0, limit=10)
+    assert "PESQ score [sources: ITU-T_P.862__2001.pdf]" in out
+    assert "VTR [sources: ITU-T_P.862__2001.pdf" not in out  # not PESQ's source
+    assert "ITU-T_P.863__03_2018.pdf" in out
+    assert "G.191 [sources: (no-source)]" in out
+    assert "(none)" not in out
+
+
+def test_format_uncovered_concepts_truncates_with_ellipsis() -> None:
+    from knox.compilation.flows.generation import _format_uncovered_concepts
+
+    concepts = [{"name": f"c-{i}", "sources": []} for i in range(15)]
+    broker = ConceptBroker(concepts, num_callers=1)
+    seg0 = ConceptBroker.caller_id(0)
+    out = _format_uncovered_concepts(broker, seg0, limit=3)
+    assert out.count("[sources: (no-source)]") == 3
+    assert out.endswith("…")
+
+
+def test_format_uncovered_concepts_handles_string_sources() -> None:
+    """A single source can be encoded as a bare string instead of a list."""
+    from knox.compilation.flows.generation import _format_uncovered_concepts
+
+    broker = ConceptBroker([{"name": "x", "sources": "single.pdf"}], num_callers=1)
+    out = _format_uncovered_concepts(broker, ConceptBroker.caller_id(0))
+    assert "x [sources: single.pdf]" in out
+

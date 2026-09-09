@@ -70,6 +70,39 @@ _COVER_SIMILARITY_THRESHOLD = 85.0
 _AGENTIC_TOOL_FRAMING_TOKENS = 900
 #: Per fetch_concepts round: assistant tool call + result framing.
 _AGENTIC_FETCH_ROUND_TOKENS = 600
+
+
+def _format_uncovered_concepts(
+    broker: "ConceptBroker",  # noqa: F821 — forward ref
+    seg_id: str,
+    *,
+    limit: int = 10,
+) -> str:
+    """Build a traceable uncovered-concepts summary for warnings/exceptions.
+
+    Each entry is rendered as ``"<name> [sources: <src1>, <src2>...]"`` so the
+    user can grep for the source PDF/section that produced the concept and
+    cross-check against the wiki's source tree and the gen_checkpoint file.
+
+    A trailing ellipsis marks truncation when more than *limit* concepts
+    remain. Empty ``sources`` lists fall back to ``"(no-source)"`` so the
+    field never silently disappears (memory #149).
+    """
+    items = broker.remaining_concepts(seg_id)
+    if not items:
+        return "(none)"
+    rendered: list[str] = []
+    for concept in items[:limit]:
+        name = str(concept.get(ExtractionField.NAME, "?")).strip() or "?"
+        sources_raw = concept.get("sources") or []
+        if isinstance(sources_raw, str):
+            sources: list[str] = [sources_raw]
+        else:
+            sources = [str(s) for s in sources_raw if s]
+        sources_str = ", ".join(sources) if sources else "(no-source)"
+        rendered.append(f"{name} [sources: {sources_str}]")
+    suffix = "…" if len(items) > limit else ""
+    return ", ".join(rendered) + suffix
 #: Safety floor so a pathological known_titles/pinned list cannot zero the
 #: segment budget (content is preserved via more segments instead).
 _AGENTIC_SAFETY_TOKENS = 512
@@ -724,8 +757,12 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
 
             if gen_output is None:
                 logger.warning(
-                    "TwoPhase: agentic %s failed — skipping (debug: %s)",
+                    "TwoPhase: agentic %s (caller_id=%s, pass=%d/%d, remaining=%d) failed — skipping (debug: %s)",
                     seg_label,
+                    seg_id,
+                    passes,
+                    cap,
+                    broker.remaining(seg_id),
                     debug_file or "(none)",
                 )
                 break
@@ -822,8 +859,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
         uncovered = broker.remaining(seg_id)
         if uncovered > 0:
             len(nodes) - seg_start_nodes
-            names = [str(c.get(ExtractionField.NAME, "?")) for c in broker.remaining_concepts(seg_id)]
-            sample = ", ".join(names[:10]) + ("…" if len(names) > 10 else "")
+            sample = _format_uncovered_concepts(broker, seg_id, limit=10)
             debug_hint = f" (debug: {debug_file})" if debug_file else ""
             if not seg_titles:
                 # Hard fail: no pages at all. Preserve checkpoint (already saved
@@ -839,18 +875,23 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                     cause = "it never called the fetch_concepts tool"
                     hint = "The model is not using the fetch_concepts tool; check its tool-calling support."
                 raise LLMOutputError(
-                    f"Agentic generation for {seg_label} produced no page(s) for any of its "
+                    f"Agentic generation for {seg_label} (caller_id={seg_id}) produced no page(s) for any of its "
                     f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}): {cause}. "
+                    f"caller_progress={caller_progress.get(seg_id, [])}. "
                     f"Uncovered: [{sample}].{debug_hint} {hint}"
                 )
             else:
                 logger.warning(
-                    "TwoPhase: agentic %s ended with %d/%d concept(s) still uncovered (passes=%d, cap=%d) — these will have no page. Uncovered: [%s].%s",
+                    "TwoPhase: agentic %s (caller_id=%s) ended with %d/%d concept(s) still uncovered "
+                    "(passes=%d, cap=%d) — these will have no page. "
+                    "produced_for_this_seg=%d. Uncovered: [%s].%s",
                     seg_label,
+                    seg_id,
                     uncovered,
                     start_remaining,
                     passes,
                     cap,
+                    len(seg_titles),
                     sample,
                     debug_hint,
                 )
