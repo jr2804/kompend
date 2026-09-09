@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
+
+import pytest
+import zvec as _zvec
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.memory.store import MemoryStore
@@ -64,16 +68,6 @@ def test_wiki_store_default_dim_resolved_from_provider() -> None:
         store.close()
 
 
-def _wiki(dim: int) -> CompiledWiki:
-    return CompiledWiki(
-        nodes=[
-            WikiNode(id="n1", title="t", content="c", node_type="concept"),
-        ],
-        edges=[],
-        toc=[],
-    )
-
-
 def test_wiki_store_prunes_stale_ids(tmp_path: Path) -> None:
     """Follow-up to #24: renaming/removing a page must not leave its
     old id in the vector store after a rebuild.
@@ -103,7 +97,7 @@ def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
     )
 
 
-def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog) -> None:
+def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """When a stored collection predates a newer knox field, the store
     detects the mismatch and rebuilds rather than silently failing at
     insert time with ``attributes not found in collection schema``.
@@ -115,9 +109,6 @@ def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog) -> None:
     types), so in-place migration is not possible — destroy+rebuild is the
     only correct path.
     """
-    import logging
-    import zvec as _zvec
-
     db = tmp_path / "vectors"
     # Seed an older collection without the "attributes" field.
     legacy_schema = _zvec.CollectionSchema(
@@ -146,13 +137,10 @@ def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog) -> None:
     store.close()
 
 
-def test_wiki_store_rebuilds_on_obsolete_field(tmp_path: Path, caplog) -> None:
+def test_wiki_store_rebuilds_on_obsolete_field(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """A stored field no longer in the expected schema also triggers
     destroy+rebuild (data loss is logged at WARNING).
     """
-    import logging
-    import zvec as _zvec
-
     db = tmp_path / "vectors"
     # Seed a collection with an extra numeric field (zvec accepts add_column
     # for numeric types). Drop it later by running through knox which has a
@@ -180,3 +168,13 @@ def test_wiki_store_rebuilds_on_obsolete_field(tmp_path: Path, caplog) -> None:
     assert "legacy_numeric" not in {f.name for f in store._collection.schema.fields}
     assert any("schema mismatch" in rec.message for rec in caplog.records)
     store.close()
+
+
+def _wiki(dim: int) -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[
+            WikiNode(id="n1", title="t", content="c", node_type="concept"),
+        ],
+        edges=[],
+        toc=[],
+    )
