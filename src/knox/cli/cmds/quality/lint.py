@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,7 @@ from knox.cli.args import (
     LintRule,
 )
 from knox.core.config import resolve_config
+from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE
@@ -45,6 +47,7 @@ from knox.lint.base import LintReport, LintReportResult, RemediationStatus
 from knox.lint.flow import (
     _make_lint_agent,
     run_full_lint_flow,  # noqa: F401 — re-export
+    run_runner_with_progress,
 )
 from knox.lint.flow import (
     _run_pass as _run_rules_pass,
@@ -60,7 +63,7 @@ from knox.lint.history import (
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
-from knox.lint.runner import report_to_json, report_to_text
+from knox.lint.runner import LintRunner, report_to_json, report_to_text
 from knox.lint.semantic_gaps import verify_topics
 from knox.lint.structural import STRUCTURAL_RULES
 from knox.logging import get_console, get_err_console
@@ -128,9 +131,19 @@ def lint_check(
         get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    report, elapsed = _run_rules_pass(
-        wiki, vp, cfg, rules=rule or CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive
+    start = time.monotonic()
+    runner = LintRunner(
+        rules=rule or CHECK_STEP_RULES,
+        enable_llm=False,
+        lint_agent=None,
+        fix=fix,
+        fix_destructive=fix_destructive,
+        sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
+        lint_config=LintConfig(fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold)),
+        rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),
     )
+    report = run_runner_with_progress(runner, wiki, show_progress=None)
+    elapsed = time.monotonic() - start
     if fix and any(r.fix_applied for r in report.results):
         updated = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
         get_console().print(f"Persisted fixes to {updated} file(s).")

@@ -62,8 +62,8 @@ class FileProgressTracker:
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}", table_column=Column(no_wrap=True)),
             BarColumn(bar_width=None),
-            _PercentageColumn(),
-            _EtaColumn(),
+            PercentageColumn(),
+            EtaColumn(),
             TimeElapsedColumn(),
             console=self.console,
             transient=False,
@@ -178,7 +178,7 @@ class PipelineProgress:
 # ── Rich progress tracker ───────────────────────────────────────────────
 
 
-class _EtaColumn(ProgressColumn):
+class EtaColumn(ProgressColumn):
     """ETA column using direct elapsed/completed math instead of Rich's speed estimation.
 
     Rich's built-in ``TimeRemainingColumn`` relies on an internal ``_progress``
@@ -206,7 +206,7 @@ class _EtaColumn(ProgressColumn):
         return Text(f"{minutes}:{seconds:02d}", style="progress.remaining")
 
 
-class _PercentageColumn(ProgressColumn):
+class PercentageColumn(ProgressColumn):
     """Percentage column that hides for indeterminate (total=None) tasks.
 
     Rich renders ``0%`` for indeterminate tasks, which reads as "stuck".

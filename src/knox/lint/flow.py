@@ -17,6 +17,7 @@ import yaml
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from knox.agents.lint import LintRuleAgent
+from knox.cli._progress import EtaColumn, PercentageColumn
 from knox.core.cache.wiki import write_wiki_cache
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
@@ -181,6 +182,32 @@ def _run_pass(
     return report, time.monotonic() - start
 
 
+def run_runner_with_progress(
+    runner: LintRunner,
+    wiki: CompiledWiki,
+    *,
+    show_progress: bool | None = None,
+) -> LintReport:
+    """Run a :class:`LintRunner` with a per-rule progress bar (ETA included).
+
+    Shared by ``knox lint check`` and the post-compile ``--lint`` pass so
+    both surfaces get the same progress experience. The bar is skipped when
+    *show_progress* is False or stdout is not a TTY (auto mode).
+    """
+    from knox.cli._progress import _should_show_progress
+
+    if not _should_show_progress(show_progress):
+        return runner.run(wiki)
+    progress = _build_progress()
+    task_id = progress.add_task("lint", total=None)  # total set on first on_rule
+    with progress:
+
+        def _on_rule(name: str, current: int, total: int) -> None:
+            progress.update(task_id, total=total, completed=current, description=f"lint [{name}]")
+
+        return runner.run(wiki, on_rule=_on_rule)
+
+
 def _merge_results(
     check_report: LintReport | None,
     semantic_report: LintReport | None,
@@ -291,7 +318,8 @@ def _build_progress() -> Progress:
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(bar_width=None),
-        TextColumn("{task.completed}/{task.total}"),
+        PercentageColumn(),
+        EtaColumn(),
         TimeElapsedColumn(),
         console=get_err_console(),
         transient=False,

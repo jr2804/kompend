@@ -23,7 +23,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
-from knox.lint.flow import run_full_lint_flow  # noqa: PLC0415
+from knox.lint.flow import run_full_lint_flow, run_runner_with_progress  # noqa: PLC0415
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger
@@ -126,9 +126,13 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
     if opts.compile_lint_all:
-        run_post_compile_lint_all(opts.wiki, base_dir, pipeline_config=opts.pipeline_config)
+        run_post_compile_lint_all(
+            opts.wiki, base_dir, pipeline_config=opts.pipeline_config, show_progress=opts.show_progress
+        )
     elif opts.compile_lint:
-        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config)
+        run_post_compile_lint(
+            opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config, show_progress=opts.show_progress
+        )
 
     write_wiki_cache(opts.wiki, base_dir)
 
@@ -173,7 +177,13 @@ def verify_claims(
     wiki.metadata["verified"] = verified_events
 
 
-def run_post_compile_lint_all(wiki: CompiledWiki, base_dir: Path, *, pipeline_config: PipelineConfig) -> dict[str, Any]:
+def run_post_compile_lint_all(
+    wiki: CompiledWiki,
+    base_dir: Path,
+    *,
+    pipeline_config: PipelineConfig,
+    show_progress: bool | None = None,
+) -> dict[str, Any]:
 
     paths = VaultPaths(base_dir)
     cfg = resolve_config(base_dir=base_dir)
@@ -182,7 +192,7 @@ def run_post_compile_lint_all(wiki: CompiledWiki, base_dir: Path, *, pipeline_co
         cfg,
         fix=True,
         json_output=False,
-        show_progress=False,
+        show_progress=show_progress if show_progress is not None else True,
     )
 
 
@@ -193,6 +203,7 @@ def run_post_compile_lint(
     base_dir: Path,
     json_output: bool = False,
     lint_config: LintConfig | None = None,
+    show_progress: bool | None = None,
 ) -> None:
     """Run lint after compilation, persist to history, and print a summary."""
     runner = LintRunner(
@@ -200,7 +211,7 @@ def run_post_compile_lint(
         lint_config=lint_config,
     )
     lint_start = time.monotonic()
-    report = runner.run(wiki)
+    report = run_runner_with_progress(runner, wiki, show_progress=show_progress)
     lint_elapsed = time.monotonic() - lint_start
 
     state_dir = VaultPaths(base_dir).knox_dir
