@@ -470,6 +470,23 @@ def attachment_slug(source_rel: Path | str) -> str:
     return raw.strip("_")
 
 
+def attachment_slugs_for_source(source_rel: Path | str) -> set[str]:
+    """All slug forms that could refer to a source file.
+
+    Attachments may be registered with either the full relative path
+    (``attachment_slug("papers/thesis.pdf") == "papers_thesis"``) or the
+    bare filename (``attachment_slug("thesis.pdf") == "thesis"``) — the
+    ``knox attachments add`` command passes the user's string verbatim.
+    Orphan detection and auto-adoption must match BOTH forms, otherwise
+    every attachment for a source under a subdirectory is falsely flagged
+    as orphaned (p863 wiki roundup 2026-09-10: 248 files deleted by the
+    post-compile lint's ``--fix`` because ``p862_...`` never matched
+    ``t-rec-p_862-...``).
+    """
+    rel = Path(source_rel)
+    return {attachment_slug(rel), attachment_slug(rel.name)}
+
+
 def is_protected_source(path: Path, sources_dir: Path) -> bool:
     """True if *path* lives under a protected tool-managed subdir of *sources_dir*.
 

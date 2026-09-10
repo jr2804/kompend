@@ -119,6 +119,12 @@ class BaseLintRule(ABC):
     name: ClassVar[str]
     description: ClassVar[str]
 
+    #: When True, :meth:`fix` deletes or irreversibly modifies files. The
+    #: lint runner skips destructive fixes unless the caller explicitly
+    #: passes ``fix_destructive=True`` — the post-compile lint and default
+    #: ``knox lint check`` do NOT, so destructive rules only report there.
+    destructive: ClassVar[bool] = False
+
     @abstractmethod
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...
 

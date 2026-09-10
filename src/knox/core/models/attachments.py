@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from knox.core.paths import VaultPaths, attachment_slug, is_protected_source
+from knox.core.paths import VaultPaths, attachment_slug, attachment_slugs_for_source, is_protected_source
 
 __all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments"]
 
@@ -336,7 +336,12 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
     if sources_dir.is_dir():
         for p in sources_dir.rglob("*"):
             if p.is_file() and not is_protected_source(p, sources_dir):
-                live_slugs.add(attachment_slug(p.relative_to(sources_dir).as_posix()))
+                # Match both slug forms (full relative path + bare filename)
+                # so sources under subdirectories are adoptable — see
+                # attachment_slugs_for_source docstring.
+                live_slugs.update(
+                    attachment_slugs_for_source(p.relative_to(sources_dir).as_posix())
+                )
 
     adopted: list[Attachment] = []
     for slug_dir in sorted(attachments_root.iterdir()):

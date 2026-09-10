@@ -43,6 +43,7 @@ class LintRunner:
         lint_agent: LintRuleAgent | None = None,
         lint_page_budget: int | None = None,
         fix: bool = False,
+        fix_destructive: bool = False,
         sources_dir: str | None = None,
         lint_config: LintConfig | None = None,
         rumdl_config: Path | None = None,
@@ -52,6 +53,13 @@ class LintRunner:
         self._lint_agent = lint_agent
         self.lint_page_budget = lint_page_budget or 100000
         self.fix = fix
+        #: Destructive fixes (file deletion) require explicit opt-in — the
+        #: post-compile lint and default ``knox lint check`` pass ``fix=True``
+        #: but NOT this flag, so rules marked ``destructive`` only report.
+        #: See p863 wiki roundup 2026-09-10: the orphan-attachments fix
+        #: deleted 248 valid files because the slug check falsely flagged
+        #: them and ``fix=True`` auto-ran the deletion.
+        self.fix_destructive = fix_destructive
         self.sources_dir = sources_dir
         self._lint_config = lint_config
         self.rumdl_config = rumdl_config
@@ -92,10 +100,18 @@ class LintRunner:
             if self.fix:
                 fixable = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
                 if fixable:
-                    try:
-                        results = rule.fix(wiki, fixable)
-                    except Exception as exc:
-                        logger.warning("Fix for '%s' raised: %s", rule.name, exc, exc_info=True)
+                    # Destructive rules (file deletion) only run when the
+                    # caller explicitly opts in via ``fix_destructive``.
+                    if rule.destructive and not self.fix_destructive:
+                        logger.info(
+                            "Rule '%s' is destructive — skipping auto-fix (pass fix_destructive to enable)",
+                            rule.name,
+                        )
+                    else:
+                        try:
+                            results = rule.fix(wiki, fixable)
+                        except Exception as exc:
+                            logger.warning("Fix for '%s' raised: %s", rule.name, exc, exc_info=True)
 
             all_results.extend(results)
 

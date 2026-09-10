@@ -29,6 +29,7 @@ from knox.cli.args import (
     JsonOutput,
     LintDryRun,
     LintFix,
+    LintFixDestructive,
     LintFormatCheck,
     LintHistoryLast,
     LintHistoryTrend,
@@ -96,6 +97,7 @@ CHECK_STEP_RULES: list[str] = [r.name for r in STRUCTURAL_RULES] + ["duplicate-r
 def lint_check(
     ctx: typer.Context,
     fix: LintFix = True,
+    fix_destructive: LintFixDestructive = False,
     rule: LintRule = None,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
@@ -109,11 +111,14 @@ def lint_check(
 
     With --fix (default), repairable findings are fixed in place: alias
     links are rewritten to resolved markdown links, image embeds corrected,
-    missing frontmatter filled.
+    missing frontmatter filled. Destructive fixes (file deletion, e.g.
+    orphan-attachments) require an explicit --fix-destructive — plain
+    --fix never deletes files (p863 wiki roundup 2026-09-10).
 
     Examples:
         knox lint check                  # structural rules, fix what's possible
         knox lint check --no-fix         # report only
+        knox lint check --fix-destructive  # also delete orphan attachments
         knox lint check --rule broken-wikilinks
     """
     vp = vault_paths_from_ctx(ctx)
@@ -123,7 +128,9 @@ def lint_check(
         get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
 
-    report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=rule or CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix)
+    report, elapsed = _run_rules_pass(
+        wiki, vp, cfg, rules=rule or CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive
+    )
     if fix and any(r.fix_applied for r in report.results):
         updated = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
         get_console().print(f"Persisted fixes to {updated} file(s).")
@@ -206,6 +213,7 @@ def _print_report(report: LintReport, json_output: bool, vp: Any) -> None:
 def lint_all(
     ctx: typer.Context,
     fix: LintFix = True,
+    fix_destructive: LintFixDestructive = False,
     json_output: JsonOutput = False,
     config: ConfigPath = None,
 ) -> None:
@@ -221,6 +229,10 @@ def lint_all(
     | gaps      | gap analysis + semantic source check    | no  |
     | remediate | generate missing pages from extractions | yes |
 
+    Destructive fixes (file deletion, e.g. orphan-attachments) require an
+    explicit --fix-destructive — plain --fix never deletes files
+    (p863 wiki roundup 2026-09-10).
+
     LLM steps are skipped gracefully (with a note) when no model is
     configured (compile.lint.model / compile.llm.default_model).
 
@@ -231,7 +243,7 @@ def lint_all(
     """
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
-    merged_dict = run_full_lint_flow(vp, cfg, fix=fix)
+    merged_dict = run_full_lint_flow(vp, cfg, fix=fix, fix_destructive=fix_destructive)
     if json_output:
         get_console().print(json.dumps(merged_dict, indent=2, ensure_ascii=False))
     else:

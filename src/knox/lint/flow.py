@@ -42,6 +42,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     cfg: Any,
     *,
     fix: bool = True,
+    fix_destructive: bool = False,
     json_output: bool = False,
     show_progress: bool = True,
 ) -> dict[str, Any]:
@@ -78,7 +79,9 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             if progress is not None and task_id is not None:
                 progress.update(task_id, description=f"lint [{name}]")
             if name == "check":
-                check_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix)
+                check_report, _ = _run_pass(
+                    wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive
+                )
             elif name == "format":
                 _format_output_phase(vp, cfg)
             elif name == "semantic":
@@ -160,6 +163,7 @@ def _run_pass(
     enable_llm: bool,
     lint_agent: LintRuleAgent | None,
     fix: bool,
+    fix_destructive: bool = False,
 ) -> tuple[LintReport, float]:
     """Run one LintRunner pass and return (report, elapsed)."""
     runner = LintRunner(
@@ -167,6 +171,7 @@ def _run_pass(
         enable_llm=enable_llm,
         lint_agent=lint_agent,
         fix=fix,
+        fix_destructive=fix_destructive,
         sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
         lint_config=LintConfig(fuzzy_threshold=float(cfg.knox.lint.fuzzy_threshold)),
         rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.knox.compile.output.rumdl_config),

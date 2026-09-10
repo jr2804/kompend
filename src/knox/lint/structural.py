@@ -12,11 +12,11 @@ import re
 import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, ClassVar
 
 from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
-from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, is_protected_source
+from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, attachment_slugs_for_source, is_protected_source
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -630,6 +630,11 @@ class OrphanAttachmentsRule(BaseLintRule):
     name = "orphan-attachments"
     description = "Attachment files with no matching source (unrecoverable by auto-adoption)"
 
+    #: Deletes files on disk — never auto-run by the post-compile lint or
+    #: default ``knox lint check``. Only an explicit ``fix_destructive``
+    #: opt-in triggers deletion (p863 wiki roundup 2026-09-10).
+    destructive: ClassVar[bool] = True
+
     # Stored on the instance by check() so fix() can locate the manifest
     # without the lint runner needing to thread ``sources_dir`` through.
     _last_sources_dir: str | None = None
@@ -659,7 +664,13 @@ class OrphanAttachmentsRule(BaseLintRule):
         if sources_root.is_dir():
             for p in sources_root.rglob("*"):
                 if p.is_file() and not is_protected_source(p, sources_root):
-                    live_slugs.add(attachment_slug(p.relative_to(sources_root).as_posix()))
+                    # Attachments may be registered with the full relative
+                    # path OR the bare filename — match both slug forms so
+                    # sources under subdirectories (p862/, misc/) are not
+                    # falsely flagged as orphans (p863 roundup 2026-09-10).
+                    live_slugs.update(
+                        attachment_slugs_for_source(p.relative_to(sources_root).as_posix())
+                    )
 
         orphans: list[str] = []
         for slug_dir in sorted(attachments_root.iterdir()):
