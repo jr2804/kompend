@@ -827,6 +827,35 @@ class TestOkfDescription:
         assert len(desc) <= 201
         assert desc.endswith("…")
 
+    def test_skips_leading_heading_lines(self) -> None:
+        """Regression: p863 wiki pages started with '## Definition', so the
+        index description was a heading fragment. Must skip heading lines."""
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="## Definition\nAbsolute Category Rating is a discrete rating scale. It uses five points.",
+            node_type="concept",
+        )
+        assert VaultWriter.okf_description(node) == "Absolute Category Rating is a discrete rating scale."
+
+    def test_skips_multiple_leading_headings(self) -> None:
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="# Title\n## Definition\n## Methodology\nBody sentence starts here.",
+            node_type="concept",
+        )
+        assert VaultWriter.okf_description(node) == "Body sentence starts here."
+
+    def test_all_headings_returns_empty(self) -> None:
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="# H1\n## H2\n### H3",
+            node_type="concept",
+        )
+        assert VaultWriter.okf_description(node) == ""
+
 
 # ---------------------------------------------------------------------------
 # Fixtures

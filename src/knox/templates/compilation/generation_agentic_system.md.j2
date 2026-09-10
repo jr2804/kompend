@@ -10,6 +10,12 @@ Return only valid JSON matching the requested schema — no markdown fences, no 
 
 Rules:
 - Each page must be 150–400 words of well-structured prose (no bullet dumps).
+- Start with a prose paragraph (the page's intro/definition); then organize
+  the rest with ## subheadings as appropriate. The page title is rendered
+  as the H1 from frontmatter, so do NOT emit your own `# Title` line —
+  begin content directly with prose. Likewise, do NOT start the body with
+  a `## Section` heading — a leading heading becomes the description in
+  the index instead of prose.
 - Organise each page with ## subheadings as appropriate for the content.
 - After each factual claim, append inline provenance as a square-bracket
   citation: [sources/<file>] — use the exact source filename from the content

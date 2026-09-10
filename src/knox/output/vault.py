@@ -196,15 +196,33 @@ class VaultWriter(BaseOutputWriter):
     def okf_description(node: WikiNode) -> str:
         """Extract a one-line description from a wiki node.
 
-        Uses the first sentence of the first non-empty content line, with
-        ``[[wikilinks]]`` reduced to plain text. Generated pages open with a
-        full paragraph; without sentence truncation the index duplicates the
-        whole page body (Karpathy's index spec is link + one-line summary).
+        Uses the first sentence of the first non-empty **prose** content
+        line, with ``[[wikilinks]]`` reduced to plain text. Generated
+        pages open with a full paragraph; without sentence truncation
+        the index duplicates the whole page body (Karpathy's index spec
+        is link + one-line summary).
+
+        The agentic generation template instructs the model to start
+        page content with ``##`` subheadings (per OKF v0.2 — the title
+        is rendered as H1 from frontmatter). Skipping leading ``#``
+        lines ensures the description is the first sentence of prose,
+        not a heading fragment like ``## Definition``.
         """
         content = (node.content or "").strip()
         if not content:
             return ""
-        first_line = content.split("\n")[0].strip()
+        # Skip lines that are markdown headings (start with one or more
+        # ``#`` chars) so we land on the first prose paragraph.
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
+                continue
+            first_line = stripped
+            break
+        else:
+            return ""  # all lines were headings — nothing to describe
         text = WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
         # ponytail: heuristic sentence split — a boundary needs ". " +
         # capitalized/paren continuation, and pseudo-boundaries inside
