@@ -626,12 +626,41 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 caller_progress.setdefault(seg_id, list(names))
     categories = _categories_block(compiler._config.extraction_categories)
     # Entity sub-type per concept (person/organization/standard/...) — routed
-    # into entities/<type>/ subfolders by the vault writer.
-    entity_types = {
-        normalize_concept_key(str(c.get(ExtractionField.NAME, ""))): _sanitize_entity_type(str(c.get("type", "")))
-        for c in concepts
-        if c.get("kind") == "entity"
-    }
+    # into entities/<type>/ subfolders by the vault writer. The persistent
+    # EntityTypeRegistry is the source of truth across recompiles (p863 wiki
+    # roundup 2026-09-10): the model returned different ``type`` values for
+    # the same concept across runs, causing its page to flicker between
+    # folders. Load existing entries; for keys not in the registry, accept
+    # the model's choice and persist it. Override decisions are surfaced as
+    # overrides_applied for downstream logging.
+    from knox.core.pipeline.entity_types import EntityTypeRegistry
+
+    entity_types_registry = EntityTypeRegistry(
+        compiler._config.paths.entity_types_file
+    )
+    entity_types: dict[str, str] = {}
+    overrides_applied = 0
+    for c in concepts:
+        if c.get("kind") != "entity":
+            continue
+        name = str(c.get(ExtractionField.NAME, ""))
+        key = normalize_concept_key(name)
+        if not key:
+            continue
+        sanitized_model_choice = _sanitize_entity_type(str(c.get("type", "")))
+        registered = entity_types_registry.get(key)
+        if registered is not None:
+            # Registry wins — surface the override count for diagnostics.
+            entity_types[key] = registered
+            if registered != sanitized_model_choice:
+                overrides_applied += 1
+        else:
+            entity_types[key] = sanitized_model_choice
+    if overrides_applied:
+        logger.info(
+            "Entity-type registry overrode model choice for %d concept(s)",
+            overrides_applied,
+        )
     # Coverage credit: rapidfuzz T2 + embedding T3 (single instances shared
     # across segments so title/concept embeddings are cached compile-wide).
     coverage = _CoverageCredit(compiler._config.embedding.model)
@@ -1088,6 +1117,41 @@ def assemble_wiki(
     pinned_clean: list[str],
 ) -> CompiledWiki:
     """Filter, dedup, and assemble the final CompiledWiki."""
+    # Persist any new entity-type decisions to the on-disk registry before
+    # assembly runs. The entity_types dict used inside generate_all_pages
+    # already reads from this registry (so previously-known kinds win),
+    # but new concepts from THIS compile still need to land here so the
+    # NEXT compile sees them.
+    try:
+        from knox.core.pipeline.entity_types import EntityTypeRegistry
+
+        entity_types_registry = EntityTypeRegistry(
+            compiler._config.paths.entity_types_file
+        )
+        new_entries = 0
+        for c in concepts:
+            if c.get("kind") != "entity":
+                continue
+            key = normalize_concept_key(str(c.get(ExtractionField.NAME, "")))
+            if not key:
+                continue
+            if entity_types_registry.get(key) is not None:
+                continue
+            sanitized = _sanitize_entity_type(str(c.get("type", "")))
+            if sanitized:
+                if entity_types_registry.record(key, sanitized):
+                    new_entries += 1
+        if new_entries:
+            entity_types_registry.save()
+            logger.info(
+                "Entity-type registry: persisted %d new entry/entries (total=%d)",
+                new_entries,
+                len(entity_types_registry),
+            )
+    except OSError as exc:
+        logger.warning(
+            "Could not persist entity-type registry: %s", exc, exc_info=True
+        )
     cw = compiler._context_window
 
     if not nodes:

@@ -117,6 +117,9 @@ ORGANIZE_REPORT_FILE: Final[str] = "last_organize.json"
 # ── References (bibliographic citation extraction) ───────────────────────
 REFERENCES_FILE: Final[str] = "references.json"
 
+# ── Entity-type registry (stable per-concept entity kinds) ───────────────
+ENTITY_TYPES_FILE: Final[str] = "entity_types.json"
+
 # ── Assets (separated tables/figures) ────────────────────────────────────
 ASSETS_FILE: Final[str] = "assets.json"
 
@@ -341,6 +344,19 @@ class VaultPaths:
     def references_file(self) -> Path:
         """Bibliographic references store (CSL JSON-aligned)."""
         return self.knox_dir / REFERENCES_FILE
+
+    @property
+    def entity_types_file(self) -> Path:
+        """Stable per-concept entity-kind registry (JSON).
+
+        Keyed by ``normalize_concept_key(name)``; values are the sanitized
+        folder names (``person``, ``organization``, ``standard``, …) used
+        by the vault writer for ``entities/<type>/<id>.md`` paths.
+        Persisted across recompiles so a concept's folder does not
+        flicker between runs when the model gives a slightly different
+        type for the same name. See p863 wiki roundup 2026-09-10.
+        """
+        return self.knox_dir / ENTITY_TYPES_FILE
 
     @property
     def assets_file(self) -> Path:
