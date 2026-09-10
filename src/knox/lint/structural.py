@@ -583,13 +583,20 @@ class OrphanAttachmentsRule(BaseLintRule):
     source are auto-adopted at compile start (manifest entry created, flags
     derived from config). Files whose slug matches NO source cannot be
     recovered by that pass — the parent source is gone or was renamed — so
-    they are flagged here for manual intervention.
+    they are flagged here for manual intervention. ``--fix`` deletes them
+    on disk + tombstones them in ``.knox/attachments.jsonl``; the caller
+    must opt in via the lint ``--fix`` flag.
     """
 
     name = "orphan-attachments"
     description = "Attachment files with no matching source (unrecoverable by auto-adoption)"
 
+    # Stored on the instance by check() so fix() can locate the manifest
+    # without the lint runner needing to thread ``sources_dir`` through.
+    _last_sources_dir: str | None = None
+
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        self._last_sources_dir = sources_dir
         results: list[LintResult] = []
         if sources_dir is None:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
@@ -637,6 +644,69 @@ class OrphanAttachmentsRule(BaseLintRule):
         else:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No orphaned attachments"))
         return results
+
+    def fix(  # noqa: PLR6301 — signature on lint-rule contract
+        self,
+        wiki: CompiledWiki,
+        results: list[LintResult],
+    ) -> list[LintResult]:
+        """Delete orphan attachment files from disk + tombstone in the manifest.
+
+        Destructive. Each FAIL result becomes a removed file + a tombstone
+        entry in ``.knox/attachments.jsonl``. Empty slug directories are
+        also removed after their last file is deleted. Failures (permission
+        errors, missing manifest) leave the result outcome FAIL but record
+        the error in ``details["error"]`` and log at WARNING.
+
+        The lint runner's ``--fix`` flag is the user's opt-in to this
+        destructive action. There is no dry-run.
+
+        Reads ``sources_dir`` from the instance attribute populated by the
+        most recent :meth:`check` call — the lint runner calls them in
+        sequence (``check`` → ``fix``) on the same rule instance.
+        """
+        from knox.core.models.attachments import AttachmentManifest
+
+        sources_dir = self._last_sources_dir
+        if not results or sources_dir is None:
+            return list(results)
+
+        base_dir = Path(sources_dir).parent
+        vp = VaultPaths(base_dir)
+        manifest = AttachmentManifest(vp.attachments_manifest_file)
+
+        updated: list[LintResult] = []
+        for r in results:
+            if r.outcome != LintRuleOutcome.FAIL:
+                updated.append(r)
+                continue
+            rel_path = (r.details or {}).get("path")
+            if not rel_path:
+                updated.append(r)
+                continue
+            abs_path = base_dir / rel_path
+            try:
+                if abs_path.is_file():
+                    abs_path.unlink()
+                manifest.remove(rel_path)
+                r.fix_applied = True
+                r.message = f"Deleted orphan attachment '{rel_path}' (was unrecoverable)"
+                logger.info("Deleted orphan attachment: %s", rel_path)
+            except OSError as exc:
+                logger.warning("Could not delete orphan attachment %s: %s", abs_path, exc)
+                r.message = f"Could not delete orphan attachment '{rel_path}': {exc}"
+                r.details = {**(r.details or {}), "error": str(exc)}
+            updated.append(r)
+
+        # Clean up empty slug directories.
+        if vp.attachments_dir.is_dir():
+            for slug_dir in sorted(vp.attachments_dir.iterdir()):
+                if slug_dir.is_dir() and not any(slug_dir.iterdir()):
+                    try:
+                        slug_dir.rmdir()
+                    except OSError:
+                        pass
+        return updated
 
 
 # ── Rule 9: duplicate-references ────────────────────────────────────────
