@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import TypeVar
 
 from knox.compilation._two_phase_core import _merge_node
+from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
+from knox.core.paths import safe_stem
 from knox.core.text.matching import cosine as cosine_similarity
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
@@ -62,6 +64,70 @@ class BaseCompiler(ABC):
         """
         ...
 
+    @staticmethod
+    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]:
+        """Force-merge nodes whose titles share a concept key.
+
+        Runs BEFORE :meth:`merge_duplicate_nodes` (the embedding cosine
+        pass) so the two layers don't fight each other. Concept-key
+        normalization is the same one applied at extraction time by
+        :func:`ExtractionSet.concept_pages`, so duplicates that should
+        have collapsed upstream but didn't (e.g. only one variant was
+        surfaced from a chunk) still collapse here.
+
+        Picks the longest title as the canonical (preserves the most
+        descriptive surface form); merges via :func:`_merge_node` for
+        section-aware content + provenance union.
+        """
+        if len(nodes) < 2:
+            return list(nodes)
+
+        # First pass: collect concept nodes per concept key, and the
+        # canonical (longest-title) winner for each key.
+        key_to_indices: dict[str, list[int]] = defaultdict(list)
+        for idx, node in enumerate(nodes):
+            if node.node_type != "concept":
+                continue
+            key = normalize_concept_key(node.title)
+            if key:
+                key_to_indices[key].append(idx)
+
+        losers: set[int] = set()
+        winners: dict[int, WikiNode] = {}
+        for indices in key_to_indices.values():
+            if len(indices) < 2:
+                continue
+            winner_idx = max(indices, key=lambda i: (len(nodes[i].title), -i))
+            merged = nodes[winner_idx]
+            for idx in indices:
+                if idx == winner_idx:
+                    continue
+                merged = _merge_node(merged, nodes[idx])
+                losers.add(idx)
+            winners[winner_idx] = merged
+
+        if not losers:
+            return list(nodes)
+
+        # Second pass: rebuild the list — keep everything except losers,
+        # and swap in the merged winners at their original positions.
+        result: list[WikiNode] = []
+        for idx, node in enumerate(nodes):
+            if idx in losers:
+                continue
+            result.append(winners.get(idx, node))
+        assert len(result) == len(nodes) - len(losers), (
+            f"merge_by_concept_key lost nodes: in={len(nodes)} "
+            f"out={len(result)} losers={len(losers)}"
+        )
+        logger.info(
+            "Concept-key merge: %d pair(s) collapsed (%d → %d nodes)",
+            len(losers),
+            len(nodes),
+            len(result),
+        )
+        return result
+
     def merge_duplicate_nodes(
         self,
         nodes: list[WikiNode],
@@ -90,16 +156,41 @@ class BaseCompiler(ABC):
         if len(concept_nodes) < 2:
             return nodes
 
+        # Detect pre-existing concept-key collisions: if any survived the
+        # upstream ``merge_by_concept_key`` pass, something upstream is
+        # broken and we want to know about it (memory #149 — no silent
+        # sentinels for known failure modes).
+        residual_collisions: list[tuple[str, list[str]]] = []
+        seen_keys: dict[str, str] = {}
+        for n in concept_nodes:
+            key = normalize_concept_key(n.title)
+            if not key:
+                continue
+            if key in seen_keys:
+                residual_collisions.append((key, [seen_keys[key], n.title]))
+            else:
+                seen_keys[key] = n.title
+
         try:
             provider = make_provider(embedding_model)
             titles = [n.title for n in concept_nodes]
             vecs = [provider.embed(t) for t in titles]
         except Exception as exc:
-            logger.warning(
-                "Node merge disabled (%s): %s — falling through to disambiguation",
-                embedding_model,
-                exc,
-            )
+            msg = f"Embedding merge unavailable ({embedding_model}): {exc}"
+            if residual_collisions:
+                # Loud failure: provider failed AND we have near-duplicates
+                # that the deterministic merge would have caught. The user
+                # must re-run with the embedding model available, or the
+                # duplicates will ship to the wiki.
+                sample = ", ".join(f"{k} ({', '.join(vs)})" for k, vs in residual_collisions[:5])
+                logger.error(
+                    "%s — %d concept-key collision(s) remain unresolved: %s",
+                    msg,
+                    len(residual_collisions),
+                    sample,
+                )
+            else:
+                logger.warning("%s — falling through to disambiguation", msg)
             return nodes
 
         n = len(concept_nodes)
@@ -316,7 +407,7 @@ class BaseCompiler(ABC):
         chunk_sources: dict[str, str] = {}
         for rc in chunks:
             if rc.chunk.source_file and rc.chunk.id:
-                chunk_sources[rc.chunk.id] = Path(rc.chunk.source_file).stem
+                chunk_sources[rc.chunk.id] = safe_stem(rc.chunk.source_file)
 
         title_groups: dict[str, list[int]] = defaultdict(list)
         for idx, node in enumerate(nodes):

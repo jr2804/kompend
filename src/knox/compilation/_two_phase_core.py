@@ -578,6 +578,18 @@ def upsert_node(
 ) -> None:
     """Insert *new_node* into *nodes*, or merge with an existing same-slug node."""
     slug = new_node.id
+    # ponytail: WikiNode.source_chunks must always be a list — ``None`` breaks
+    # downstream consumers (dedup, lint, JSON round-trip). A generation
+    # branch occasionally set it to None when chunk_ids was empty; coerce here.
+    if new_node.source_chunks is None:
+        new_node = WikiNode(
+            id=new_node.id,
+            title=new_node.title,
+            content=new_node.content,
+            node_type=new_node.node_type,
+            source_chunks=[],
+            metadata=new_node.metadata,
+        )
     if slug in slug_to_idx:
         idx = slug_to_idx[slug]
         nodes[idx] = _merge_node(nodes[idx], new_node)

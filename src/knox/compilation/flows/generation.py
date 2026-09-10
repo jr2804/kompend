@@ -1097,6 +1097,14 @@ def assemble_wiki(
             f"Check that model '{compiler._model}' can produce structured JSON output."
         )
 
+    # Force-merge by concept key (normalize_concept_key) FIRST. This catches
+    # near-duplicates that share a key but different slugs (e.g. "Absolute
+    # Category Rating" and "Absolute Category Rating (ACR)") which the
+    # embedding cosine pass below would also catch, but doing it
+    # deterministically first avoids unnecessary embedding work and avoids
+    # silent fallthrough when the embedding model is unavailable.
+    nodes = compiler.merge_by_concept_key(nodes)
+
     compiler.merge_duplicate_nodes(
         nodes,
         compiler._config.embedding.model,
