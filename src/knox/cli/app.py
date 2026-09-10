@@ -208,7 +208,11 @@ def _register_for_argv(argv: list[str]) -> None:
     * A known subcommand → load only its module.
     * Otherwise (global flags only, e.g. ``--version``) → load nothing.
     """
-    if not argv or argv[0] in ("--help", "-h") or any(k.endswith("_COMPLETE") for k in os.environ):
+    # --help can appear anywhere global flags are allowed
+    # (``knox -w <dir> --help``) — not just at position 0. Without this, a
+    # help request after a global flag registered zero commands and the
+    # help screen rendered with an empty Commands panel.
+    if not argv or "--help" in argv or "-h" in argv or any(k.endswith("_COMPLETE") for k in os.environ):
         register_all_commands()
         return
     requested = _find_requested_command(argv)
