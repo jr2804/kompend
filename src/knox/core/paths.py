@@ -496,6 +496,78 @@ def rel_to_vault(path: Path | str, base_dir: Path) -> str:
         return p.as_posix()
 
 
+#: Filename extensions that ``safe_stem`` is allowed to strip. Anything
+#: outside this set is preserved verbatim — protects ITU-T filenames like
+#: ``T-REC-P.10-201906-I!Amd1!PDF-E.pdf`` where ``.stem`` would mistakenly
+#: chop off ``T-REC-P`` because Python treats ``.10-201906-…`` as the
+#: extension when ``.pdf`` is absent. See p863 lint roundup 2026-09-10.
+_SAFE_STEM_EXTENSIONS: Final[frozenset[str]] = frozenset(
+    {
+        ".pdf",
+        ".html",
+        ".htm",
+        ".md",
+        ".markdown",
+        ".txt",
+        ".csv",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".xml",
+        ".rst",
+        ".tex",
+        ".ltx",
+        ".eml",
+        ".zip",
+        ".tar",
+        ".gz",
+        ".7z",
+        ".rar",
+        ".docx",
+        ".pptx",
+        ".xlsx",
+        ".doc",
+        ".ppt",
+        ".xls",
+        ".epub",
+    }
+)
+
+
+def safe_stem(path: Path | str) -> str:
+    """Return the basename of *path* with a recognized extension stripped.
+
+    Unlike :attr:`pathlib.Path.stem` — which treats the last ``.xxx`` as the
+    extension regardless of whether it's a real one — this only strips
+    extensions from :data:`_SAFE_STEM_EXTENSIONS`. Multi-dot ITU filenames
+    survive intact::
+
+        Path("T-REC-P.10-201906-I!Amd1!PDF-E.pdf").stem
+            → "T-REC-P.10-201906-I!Amd1!PDF-E"      (correct for this one)
+        safe_stem("T-REC-P.10-201906-I!Amd1!PDF-E.pdf")
+            → "T-REC-P.10-201906-I!Amd1!PDF-E"      (correct)
+        Path("T-REC-P.10-201906-I!Amd1!PDF-E").stem
+            → "T-REC-P"                            (WRONG — chops parent slug)
+        safe_stem("T-REC-P.10-201906-I!Amd1!PDF-E")
+            → "T-REC-P.10-201906-I!Amd1!PDF-E"      (preserved verbatim)
+
+    Single source of truth for every provenance / label / slug extraction
+    (memory #44). Replaces ad-hoc ``Path(...).stem`` calls — those silently
+    corrupted ``source_files`` and ``sources[].id`` on the p863 wiki.
+    """
+    if not path:
+        return ""
+    name = Path(str(path)).name  # basename only — drops the directory
+    if not name:
+        return ""
+    # Walk from the end looking for a SAFE suffix to strip.
+    for ext in _SAFE_STEM_EXTENSIONS:
+        if name.lower().endswith(ext) and len(name) > len(ext):
+            return name[: -len(ext)]
+    return name
+
+
 def set_default_wiki_dir(path: str) -> None:
     """Set the server-wide default wiki directory (used by MCP server)."""
     _default_wiki_dir().set(path)

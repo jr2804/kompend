@@ -21,6 +21,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from knox.core.paths import safe_stem
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -131,7 +132,7 @@ def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str]]:
         if not isinstance(nodes, dict):
             continue
         source_file = str(value.get("source_file", "")) or cache_file.stem
-        stem = Path(source_file).stem
+        stem = safe_stem(source_file) if source_file else cache_file.stem
         for node in nodes.values():
             if not isinstance(node, dict):
                 continue

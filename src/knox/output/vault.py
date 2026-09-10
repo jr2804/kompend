@@ -50,6 +50,7 @@ from knox.core.paths import (
     VaultPaths,
     attachment_slug,
     is_protected_source,
+    safe_stem,
 )
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
@@ -259,7 +260,7 @@ class VaultWriter(BaseOutputWriter):
           ``sources`` to avoid shape collision; freed ``tags`` from this overload)
         """
         provenance = node.metadata.get(MetadataField.PROVENANCE) or []
-        source_files = sorted({Path(str(p)).stem for p in provenance if p}) if provenance else []
+        source_files = sorted({safe_stem(p) for p in provenance if p}) if provenance else []
         node_tags = node.metadata.get(MetadataField.TAGS) or []
 
         frontmatter: dict[str, Any] = dict(frontmatter_defaults or {})
@@ -480,7 +481,7 @@ class VaultWriter(BaseOutputWriter):
             # consistent with the attachments flow ("report", not "sources_report").
             _source_name(key)
             slug = slug_assignments[key]
-            stem = Path(key).stem
+            stem = safe_stem(key)
             # Display title: collapse underscore runs so raw filenames like
             # ``ITU-T_P_863__03_2018_`` read as text; the slug stays stable.
             display = re.sub(r"[_\s]+", " ", stem).strip(" .-")
@@ -520,7 +521,7 @@ class VaultWriter(BaseOutputWriter):
             # Tables/equations render inline on concept pages; ids live in
             # .knox/assets.json and mean nothing to a wiki reader.
             if asset_store is not None:
-                _asset_lines(lines, [rec for rec in asset_store if Path(rec.source).stem == stem])
+                _asset_lines(lines, [rec for rec in asset_store if safe_stem(rec.source) == stem])
 
             # Citations extracted from this source.
             if ref_store is not None:

@@ -46,6 +46,7 @@ from knox.compilation.schema import GenerationPage
 from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
+from knox.core.paths import safe_stem
 from knox.core.templates import get_template_loader
 from knox.core.text.matching import best_match, cosine
 from knox.core.utils.exceptions import LLMOutputError
@@ -295,7 +296,7 @@ def prepare_source_segments(
     """
     by_source: dict[str, str] = defaultdict(str)
     for rc in chunks:
-        label = Path(str(rc.chunk.source_file or "unknown")).stem
+        label = safe_stem(rc.chunk.source_file or "unknown")
         if rc.chunk.text:
             by_source[label] += rc.chunk.text + "\n\n"
     sources: list[tuple[str, str]] = list(by_source.items())

@@ -49,7 +49,7 @@ from wenmode.nodes import Node, Paragraph, Text
 from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField, Reference, WikiNode
 from knox.core.page_builder import PageBuilder, link
-from knox.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR
+from knox.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR, safe_stem
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
 from knox.core.utils.time import iso_local
@@ -390,7 +390,7 @@ def rewrite_citations_to_footnotes(body: str, sources: list[OkfSource]) -> str:
         id_by_stem.setdefault(sid.lower(), sid)
         resource = str(src.get("resource") or "")
         if resource:
-            id_by_stem.setdefault(Path(resource).stem.lower(), sid)
+            id_by_stem.setdefault(safe_stem(resource).lower(), sid)
 
     def _replace(match: re.Match[str]) -> str:
         refs: list[str] = []
@@ -435,14 +435,14 @@ def _provenance_sources(
     sources: list[OkfSource] = []
     if ref_store is not None:
         for prov in prov_ids:
-            refs = ref_store.get_source(prov) or ref_store.get_source(Path(prov).stem)
+            refs = ref_store.get_source(prov) or ref_store.get_source(safe_stem(prov))
             for ref in refs:
                 sources.append(_reference_to_okf_source(ref))
 
     # If no structured references resolved, emit minimal spec-shaped entries.
     if not sources:
         for prov in prov_ids:
-            sources.append({"id": Path(prov).stem, "resource": prov})
+            sources.append({"id": safe_stem(prov), "resource": prov})
     return sources
 
 
