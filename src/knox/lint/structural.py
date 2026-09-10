@@ -56,6 +56,20 @@ _IMAGE_EMBED_RE = re.compile(
 #: existing page (vs. a genuinely missing topic). Conservative default:
 #: 0.5 means at least half the target's tokens overlap with the candidate.
 
+#: Threshold above which a broken wikilink is treated as a SHORT-FORM alias
+#: (severity WARNING, the suggested alias is attached) instead of a hard
+#: failure (severity ERROR). Lowered from the default best_match threshold
+#: (0.85) because the p863 wiki roundup showed most "broken" wikilinks
+#: were intentional short-form aliases emitted by small models — the lint
+#: should surface these as guidance, not block the run.
+_WIKILINK_ALIAS_WARN_THRESHOLD: float = 60.0
+
+#: Lower detection bound — anything below this is treated as a genuine
+#: missing topic (no alias suggestion, ERROR severity). Avoids noisy
+#: ``alias_of=foo (similarity=9)`` markers when the target has no real
+#: relationship to any page.
+_WIKILINK_ALIAS_MIN_DETECT: float = 25.0
+
 # ── Rule: knox-reference ───────────────────────────────────────────────
 #: Markdown link or embed target pointing into the ``.knox/`` state dir
 #: (``.knox/…``, ``./.knox/…``, ``../.knox/…``, ``/.knox/…``).
@@ -92,18 +106,43 @@ class BrokenWikilinksRule(BaseLintRule):
                 if page_ref.lower() not in alias_index:
                     # No exact match — record as broken, but mark it as an
                     # "alias of existing page" when the LLM likely meant a
-                    # known page but used the wrong short form. This lets
-                    # the gap-analysis layer recommend the right fix.
-                    alias_of = nearest_alias(page_ref, alias_index)
+                    # known page but used the wrong short form. Strong
+                    # matches (similarity ≥ ALIAS_WARN_THRESHOLD) are
+                    # reported at WARNING severity with the suggested fix
+                    # attached; weak matches stay at ERROR so the user can
+                    # decide. This avoids 453 ERROR findings for harmless
+                    # short-form aliases (p863 wiki roundup 2026-09-10).
+                    from knox.core.text.matching import best_match
+
+                    target_norm = normalize_concept_key(page_ref)
+                    alias_of: str | None = None
+                    similarity_score: float = 0.0
+                    if target_norm:
+                        best = best_match(target_norm, alias_index, threshold=0.0)
+                        if best and best[1] >= _WIKILINK_ALIAS_MIN_DETECT:
+                            alias_of = alias_index[best[0]]
+                            similarity_score = best[1]
                     details: dict[str, Any] = {"target": target_title}
                     if alias_of:
                         details["alias_of"] = alias_of
+                        details["alias_similarity"] = round(similarity_score, 1)
+                    severity = (
+                        Severity.WARNING
+                        if similarity_score >= _WIKILINK_ALIAS_WARN_THRESHOLD
+                        else Severity.ERROR
+                    )
+                    message = (
+                        f"Wikilink [[{target_title}]] in page '{node.title}' "
+                        f"resolves to '{alias_of}' via short-form alias (similarity={similarity_score:.0f})"
+                        if alias_of
+                        else f"Broken wikilink [[{target_title}]] in page '{node.title}'"
+                    )
                     results.append(
                         LintResult(
                             rule=self.name,
                             outcome=LintRuleOutcome.FAIL,
-                            severity=Severity.ERROR,
-                            message=f"Broken wikilink [[{target_title}]] in page '{node.title}'",
+                            severity=severity,
+                            message=message,
                             page_id=node.id,
                             details=details,
                         )
@@ -1009,10 +1048,18 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
       to ``node.id``.
     - ``slug_to_id``: just ``node.id`` → ``node.id``, used by alias detection.
 
+    Also indexes the filesystem-path forms ``concepts/<id>`` and
+    ``entities/<id>`` (entities get a sub-folder per type, e.g.
+    ``entities/standard/foo``), so a wikilink emitted by the model that
+    includes the subdirectory prefix (``[[concepts/foo]]``) still
+    resolves.
+
     The acronym extraction lives in :mod:`knox.compilation.concept_keys`
     so the same normalization is used for concept-merge and wikilink
     resolution — one source of truth.
     """
+    from knox.core.paths import KIND_FOLDERS
+
     alias_index: dict[str, str] = {}
     slug_to_id: dict[str, str] = {}
     for n in wiki.nodes:
@@ -1030,6 +1077,15 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
         title_before_paren = n.title.split("(", 1)[0].strip().lower()
         if title_before_paren and title_before_paren != n.title.lower():
             alias_index.setdefault(title_before_paren, n.id)
+        # Index filesystem-path forms so wikilinks with subdirectory
+        # prefix (``[[concepts/foo]]``) resolve. The vault writer places
+        # nodes under KIND_FOLDERS[<node_type>]/<id>.md; entities get an
+        # extra <type>/ level per _folder_for_kind. We can't know the
+        # entity_subtype here without inspecting metadata, so we register
+        # both forms (``entities/<id>`` for unknown-type lookup and let
+        # nearest_alias pick the closer one).
+        folder = KIND_FOLDERS.get(n.node_type, "concepts")
+        alias_index.setdefault(f"{folder}/{n.id}", n.id)
     return alias_index, slug_to_id
 
 

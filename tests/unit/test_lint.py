@@ -173,8 +173,9 @@ class TestBrokenWikilinksRule:
         assert failures[0].details.get("alias_of") == "p863-eval"
 
     def test_genuine_missing_topic_has_no_alias(self) -> None:
-        """A wikilink to a topic with no nearby existing page fails without
-        an alias marker — gap analysis will recommend adding a source.
+        """A wikilink to a topic with no nearby existing page fails at ERROR
+        severity (no helpful alias marker) — gap analysis will recommend
+        adding a source.
         """
         node = _make_node("n1", "Alpha", "See [[No Such Topic XYZ]] here")
         wiki = _make_wiki([node])
@@ -182,7 +183,11 @@ class TestBrokenWikilinksRule:
         results = rule.check(wiki)
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
+        # Genuinely missing → no alias suggestion (alias_of absent) +
+        # ERROR severity so the user notices.
         assert "alias_of" not in failures[0].details
+        assert failures[0].severity == Severity.ERROR
+        assert "Broken wikilink" in failures[0].message
 
 
 # ── Rule 1b: image-embed ─────────────────────────────────────────────────
