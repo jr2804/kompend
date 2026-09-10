@@ -1279,13 +1279,22 @@ class TestRumdlConfigResolution:
         assert 'front-matter-title = ""' in content
 
     def test_existing_config_not_overwritten(self, tmp_path: Path) -> None:
+        """A user-edited file WITH a current-hash marker is preserved as-is."""
+        from knox.core.config.rumdl import _shipped_hash
 
         target = tmp_path / ".knox" / "rumdl.toml"
         target.parent.mkdir(parents=True)
-        target.write_text("[MD013]\nline_length = 999\n", encoding="utf-8")
+        # A user-edited file that already has the current hash marker is
+        # treated as up-to-date; the user section is preserved untouched.
+        user_section = "[MD013]\nline_length = 999\n"
+        current_hash = _shipped_hash()
+        target.write_text(
+            f"# shipped default content\n# knox-managed: {current_hash}\n{user_section}",
+            encoding="utf-8",
+        )
 
         resolve_rumdl_config(tmp_path)
-        assert target.read_text(encoding="utf-8") == "[MD013]\nline_length = 999\n"
+        assert target.read_text(encoding="utf-8").endswith(user_section)
 
     def test_explicit_config_wins(self, tmp_path: Path) -> None:
 
