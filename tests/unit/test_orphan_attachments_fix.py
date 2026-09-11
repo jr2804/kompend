@@ -16,27 +16,6 @@ from knox.lint.base import LintResult, LintRuleOutcome, Severity
 from knox.lint.structural import OrphanAttachmentsRule
 
 
-def _seed_manifest(base_dir: Path, path: str) -> None:
-    """Write a minimal manifest so the rule can read + tombstone it."""
-    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
-    manifest.append(
-        Attachment(
-            path=path,
-            source="orphan-source",
-            ingestible=True,
-        )
-    )
-
-
-def _make_orphan(vault: Path, slug: str, name: str) -> Path:
-    """Create a file under attachments/<slug>/<name> and return its abs path."""
-    att_dir = vault / "attachments" / slug
-    att_dir.mkdir(parents=True, exist_ok=True)
-    f = att_dir / name
-    f.write_text("orphan contents", encoding="utf-8")
-    return f
-
-
 def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None:
     vault = tmp_path
     orphan = _make_orphan(vault, "orphan-source", "old.c")
@@ -85,6 +64,27 @@ def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:
         [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
     )
     assert not (vault / "attachments" / "orphan-source").exists()
+
+
+def _seed_manifest(base_dir: Path, path: str) -> None:
+    """Write a minimal manifest so the rule can read + tombstone it."""
+    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
+    manifest.append(
+        Attachment(
+            path=path,
+            source="orphan-source",
+            ingestible=True,
+        )
+    )
+
+
+def _make_orphan(vault: Path, slug: str, name: str) -> Path:
+    """Create a file under attachments/<slug>/<name> and return its abs path."""
+    att_dir = vault / "attachments" / slug
+    att_dir.mkdir(parents=True, exist_ok=True)
+    f = att_dir / name
+    f.write_text("orphan contents", encoding="utf-8")
+    return f
 
 
 def test_fix_noop_when_no_failures(tmp_path: Path) -> None:

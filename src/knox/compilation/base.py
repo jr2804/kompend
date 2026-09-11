@@ -6,7 +6,6 @@ import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable
-from pathlib import Path
 from typing import TypeVar
 
 from knox.compilation._two_phase_core import _merge_node
@@ -63,70 +62,6 @@ class BaseCompiler(ABC):
             ignore this parameter.
         """
         ...
-
-    @staticmethod
-    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]:
-        """Force-merge nodes whose titles share a concept key.
-
-        Runs BEFORE :meth:`merge_duplicate_nodes` (the embedding cosine
-        pass) so the two layers don't fight each other. Concept-key
-        normalization is the same one applied at extraction time by
-        :func:`ExtractionSet.concept_pages`, so duplicates that should
-        have collapsed upstream but didn't (e.g. only one variant was
-        surfaced from a chunk) still collapse here.
-
-        Picks the longest title as the canonical (preserves the most
-        descriptive surface form); merges via :func:`_merge_node` for
-        section-aware content + provenance union.
-        """
-        if len(nodes) < 2:
-            return list(nodes)
-
-        # First pass: collect concept nodes per concept key, and the
-        # canonical (longest-title) winner for each key.
-        key_to_indices: dict[str, list[int]] = defaultdict(list)
-        for idx, node in enumerate(nodes):
-            if node.node_type != "concept":
-                continue
-            key = normalize_concept_key(node.title)
-            if key:
-                key_to_indices[key].append(idx)
-
-        losers: set[int] = set()
-        winners: dict[int, WikiNode] = {}
-        for indices in key_to_indices.values():
-            if len(indices) < 2:
-                continue
-            winner_idx = max(indices, key=lambda i: (len(nodes[i].title), -i))
-            merged = nodes[winner_idx]
-            for idx in indices:
-                if idx == winner_idx:
-                    continue
-                merged = _merge_node(merged, nodes[idx])
-                losers.add(idx)
-            winners[winner_idx] = merged
-
-        if not losers:
-            return list(nodes)
-
-        # Second pass: rebuild the list — keep everything except losers,
-        # and swap in the merged winners at their original positions.
-        result: list[WikiNode] = []
-        for idx, node in enumerate(nodes):
-            if idx in losers:
-                continue
-            result.append(winners.get(idx, node))
-        assert len(result) == len(nodes) - len(losers), (
-            f"merge_by_concept_key lost nodes: in={len(nodes)} "
-            f"out={len(result)} losers={len(losers)}"
-        )
-        logger.info(
-            "Concept-key merge: %d pair(s) collapsed (%d → %d nodes)",
-            len(losers),
-            len(nodes),
-            len(result),
-        )
-        return result
 
     def merge_duplicate_nodes(
         self,
@@ -242,6 +177,67 @@ class BaseCompiler(ABC):
             n,
             len(merged_concepts),
             threshold,
+        )
+        return result
+
+    @staticmethod
+    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]:
+        """Force-merge nodes whose titles share a concept key.
+
+        Runs BEFORE :meth:`merge_duplicate_nodes` (the embedding cosine
+        pass) so the two layers don't fight each other. Concept-key
+        normalization is the same one applied at extraction time by
+        :func:`ExtractionSet.concept_pages`, so duplicates that should
+        have collapsed upstream but didn't (e.g. only one variant was
+        surfaced from a chunk) still collapse here.
+
+        Picks the longest title as the canonical (preserves the most
+        descriptive surface form); merges via :func:`_merge_node` for
+        section-aware content + provenance union.
+        """
+        if len(nodes) < 2:
+            return list(nodes)
+
+        # First pass: collect concept nodes per concept key, and the
+        # canonical (longest-title) winner for each key.
+        key_to_indices: dict[str, list[int]] = defaultdict(list)
+        for idx, node in enumerate(nodes):
+            if node.node_type != "concept":
+                continue
+            key = normalize_concept_key(node.title)
+            if key:
+                key_to_indices[key].append(idx)
+
+        losers: set[int] = set()
+        winners: dict[int, WikiNode] = {}
+        for indices in key_to_indices.values():
+            if len(indices) < 2:
+                continue
+            winner_idx = max(indices, key=lambda i: (len(nodes[i].title), -i))
+            merged = nodes[winner_idx]
+            for idx in indices:
+                if idx == winner_idx:
+                    continue
+                merged = _merge_node(merged, nodes[idx])
+                losers.add(idx)
+            winners[winner_idx] = merged
+
+        if not losers:
+            return list(nodes)
+
+        # Second pass: rebuild the list — keep everything except losers,
+        # and swap in the merged winners at their original positions.
+        result: list[WikiNode] = []
+        for idx, node in enumerate(nodes):
+            if idx in losers:
+                continue
+            result.append(winners.get(idx, node))
+        assert len(result) == len(nodes) - len(losers), f"merge_by_concept_key lost nodes: in={len(nodes)} out={len(result)} losers={len(losers)}"
+        logger.info(
+            "Concept-key merge: %d pair(s) collapsed (%d → %d nodes)",
+            len(losers),
+            len(nodes),
+            len(result),
         )
         return result
 

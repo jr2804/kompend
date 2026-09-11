@@ -829,7 +829,8 @@ class TestOkfDescription:
 
     def test_skips_leading_heading_lines(self) -> None:
         """Regression: p863 wiki pages started with '## Definition', so the
-        index description was a heading fragment. Must skip heading lines."""
+        index description was a heading fragment. Must skip heading lines.
+        """
         node = WikiNode(
             id="x",
             title="X",

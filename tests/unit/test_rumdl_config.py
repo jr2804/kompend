@@ -12,11 +12,7 @@ from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.paths import RUMDL_CONFIG_FILE
 
 
-def _seed_vault(vault) -> None:
-    (vault / ".knox").mkdir(parents=True, exist_ok=True)
-
-
-def test_first_use_materializes_shipped_default(tmp_path):
+def test_first_use_materializes_shipped_default(tmp_path) -> None:
     """No on-disk copy → ship the default with the managed marker."""
     _seed_vault(tmp_path)
     p = resolve_rumdl_config(tmp_path)
@@ -27,7 +23,7 @@ def test_first_use_materializes_shipped_default(tmp_path):
     assert "MD025" in text  # the shipped default disables MD025 via front-matter-title
 
 
-def test_idempotent_when_hash_matches(tmp_path):
+def test_idempotent_when_hash_matches(tmp_path) -> None:
     """Repeated calls don't rewrite when the marker hash matches shipped."""
     _seed_vault(tmp_path)
     p1 = resolve_rumdl_config(tmp_path)
@@ -37,7 +33,7 @@ def test_idempotent_when_hash_matches(tmp_path):
     assert content1 == content2
 
 
-def test_stale_file_is_refreshed(tmp_path):
+def test_stale_file_is_refreshed(tmp_path) -> None:
     """An on-disk copy WITHOUT a current-hash marker is refreshed."""
     _seed_vault(tmp_path)
     stale = tmp_path / RUMDL_CONFIG_FILE
@@ -48,7 +44,7 @@ def test_stale_file_is_refreshed(tmp_path):
     assert "# knox-managed:" in text
 
 
-def test_user_edits_below_marker_are_preserved(tmp_path):
+def test_user_edits_below_marker_are_preserved(tmp_path) -> None:
     """User-added content below the marker survives a stale refresh."""
     _seed_vault(tmp_path)
     stale = tmp_path / RUMDL_CONFIG_FILE
@@ -63,7 +59,11 @@ def test_user_edits_below_marker_are_preserved(tmp_path):
     assert "my custom rule" in text
 
 
-def test_explicit_config_path_wins(tmp_path):
+def _seed_vault(vault) -> None:
+    (vault / ".knox").mkdir(parents=True, exist_ok=True)
+
+
+def test_explicit_config_path_wins(tmp_path) -> None:
     """A configured path bypasses the default materialization."""
     custom = tmp_path / "my-rumdl.toml"
     custom.write_text("# my config\n", encoding="utf-8")
@@ -71,7 +71,7 @@ def test_explicit_config_path_wins(tmp_path):
     assert p == custom
 
 
-def test_relative_config_path_resolves_against_base_dir(tmp_path):
+def test_relative_config_path_resolves_against_base_dir(tmp_path) -> None:
     custom_rel = "subdir/r.toml"
     (tmp_path / "subdir").mkdir()
     (tmp_path / custom_rel).write_text("# subdir\n", encoding="utf-8")

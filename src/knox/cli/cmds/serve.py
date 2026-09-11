@@ -11,6 +11,8 @@ from __future__ import annotations
 from knox.cli.app import app
 from knox.cli.args import ServeHost, ServeOpen, ServePort, WikiDir
 from knox.logging import get_console, get_err_console
+from knox.mcp.server import main as mcp_main
+from knox.web.server import serve
 
 
 @app.command(name="mcp")
@@ -27,8 +29,6 @@ def mcp_cmd(
         knox mcp --wiki-dir ./my-wiki   # point at a specific wiki
         knox mcp -w /path/to/wiki       # short form
     """
-    from knox.mcp.server import main as mcp_main  # noqa: PLC0415
-
     mcp_main(wiki_dir=wiki_dir)
 
 
@@ -50,6 +50,5 @@ def serve_cmd(
     get_console().print(f"Starting KNOX web UI at http://{host}:{port}")
     if host != "127.0.0.1":
         get_err_console().print("Warning: Binding to non-localhost exposes the server to the network.")
-    from knox.web.server import serve  # noqa: PLC0415
 
     serve(host=host, port=port, open_browser=open_browser)

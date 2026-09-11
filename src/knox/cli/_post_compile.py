@@ -126,13 +126,9 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'knox index' to retry: %s", exc)
 
     if opts.compile_lint_all:
-        run_post_compile_lint_all(
-            opts.wiki, base_dir, pipeline_config=opts.pipeline_config, show_progress=opts.show_progress
-        )
+        run_post_compile_lint_all(opts.wiki, base_dir, pipeline_config=opts.pipeline_config, show_progress=opts.show_progress)
     elif opts.compile_lint:
-        run_post_compile_lint(
-            opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config, show_progress=opts.show_progress
-        )
+        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config, show_progress=opts.show_progress)
 
     write_wiki_cache(opts.wiki, base_dir)
 

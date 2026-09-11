@@ -21,19 +21,11 @@ from pathlib import Path
 from knox.core.paths import RUMDL_CONFIG_FILE
 from knox.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Marker comment written into materialized configs so we can detect user
 #: edits below it. Format: ``# knox-managed: <sha256-prefix>``.
 _MANAGED_MARKER_RE = re.compile(r"^# knox-managed:\s*([0-9a-f]+)\s*$", re.MULTILINE)
 
-
-def _shipped_default_bytes() -> bytes | None:
-    """Load the bundled ``src/knox/lint/rumdl.toml`` (read-only)."""
-    try:
-        return (ir.files("knox.lint") / "rumdl.toml").read_bytes()
-    except (ModuleNotFoundError, FileNotFoundError, AttributeError):
-        return None
+logger = get_logger(__name__)
 
 
 def _shipped_hash() -> str:
@@ -83,8 +75,7 @@ def resolve_rumdl_config(
         target.write_bytes(new_content)
         if user_section is not None:
             logger.warning(
-                "Refreshed stale rumdl config at %s (shipped default updated); "
-                "user-edited section preserved below the knox-managed marker",
+                "Refreshed stale rumdl config at %s (shipped default updated); user-edited section preserved below the knox-managed marker",
                 target,
             )
         else:
@@ -96,6 +87,14 @@ def resolve_rumdl_config(
     target.write_bytes(_build_managed_config(shipped, None, current_hash))
     logger.info("Wrote default rumdl config to %s (edit below the marker to override)", target)
     return target
+
+
+def _shipped_default_bytes() -> bytes | None:
+    """Load the bundled ``src/knox/lint/rumdl.toml`` (read-only)."""
+    try:
+        return (ir.files("knox.lint") / "rumdl.toml").read_bytes()
+    except (ModuleNotFoundError, FileNotFoundError, AttributeError):
+        return None
 
 
 def _build_managed_config(shipped: bytes, user_section: str | None, current_hash: str) -> bytes:
@@ -112,4 +111,4 @@ def _extract_user_section(content: bytes) -> str | None:
     marker = _MANAGED_MARKER_RE.search(text)
     if marker is None:
         return None  # Old-format file — no marker, can't preserve (warn caller).
-    return text[marker.end():].strip() or None
+    return text[marker.end() :].strip() or None

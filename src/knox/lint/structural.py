@@ -7,6 +7,7 @@ directory on disk) and return :class:`LintResult` findings.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -14,10 +15,12 @@ import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
 
-from knox.compilation.concept_keys import nearest_alias, normalize_concept_key
+from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, MetadataField
-from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slug, attachment_slugs_for_source, is_protected_source
+from knox.core.models.attachments import AttachmentManifest
+from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
+from knox.core.text.matching import best_match
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
 
@@ -104,16 +107,6 @@ class BrokenWikilinksRule(BaseLintRule):
                 # Alias syntax [[Page Title|display text]]: resolve the page ref.
                 page_ref = target_title.split("|", 1)[0].strip()
                 if page_ref.lower() not in alias_index:
-                    # No exact match — record as broken, but mark it as an
-                    # "alias of existing page" when the LLM likely meant a
-                    # known page but used the wrong short form. Strong
-                    # matches (similarity ≥ ALIAS_WARN_THRESHOLD) are
-                    # reported at WARNING severity with the suggested fix
-                    # attached; weak matches stay at ERROR so the user can
-                    # decide. This avoids 453 ERROR findings for harmless
-                    # short-form aliases (p863 wiki roundup 2026-09-10).
-                    from knox.core.text.matching import best_match
-
                     target_norm = normalize_concept_key(page_ref)
                     alias_of: str | None = None
                     similarity_score: float = 0.0
@@ -126,14 +119,9 @@ class BrokenWikilinksRule(BaseLintRule):
                     if alias_of:
                         details["alias_of"] = alias_of
                         details["alias_similarity"] = round(similarity_score, 1)
-                    severity = (
-                        Severity.WARNING
-                        if similarity_score >= _WIKILINK_ALIAS_WARN_THRESHOLD
-                        else Severity.ERROR
-                    )
+                    severity = Severity.WARNING if similarity_score >= _WIKILINK_ALIAS_WARN_THRESHOLD else Severity.ERROR
                     message = (
-                        f"Wikilink [[{target_title}]] in page '{node.title}' "
-                        f"resolves to '{alias_of}' via short-form alias (similarity={similarity_score:.0f})"
+                        f"Wikilink [[{target_title}]] in page '{node.title}' resolves to '{alias_of}' via short-form alias (similarity={similarity_score:.0f})"
                         if alias_of
                         else f"Broken wikilink [[{target_title}]] in page '{node.title}'"
                     )
@@ -668,9 +656,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                     # path OR the bare filename — match both slug forms so
                     # sources under subdirectories (p862/, misc/) are not
                     # falsely flagged as orphans (p863 roundup 2026-09-10).
-                    live_slugs.update(
-                        attachment_slugs_for_source(p.relative_to(sources_root).as_posix())
-                    )
+                    live_slugs.update(attachment_slugs_for_source(p.relative_to(sources_root).as_posix()))
 
         orphans: list[str] = []
         for slug_dir in sorted(attachments_root.iterdir()):
@@ -715,8 +701,6 @@ class OrphanAttachmentsRule(BaseLintRule):
         most recent :meth:`check` call — the lint runner calls them in
         sequence (``check`` → ``fix``) on the same rule instance.
         """
-        from knox.core.models.attachments import AttachmentManifest
-
         sources_dir = self._last_sources_dir
         if not results or sources_dir is None:
             return list(results)
@@ -752,10 +736,8 @@ class OrphanAttachmentsRule(BaseLintRule):
         if vp.attachments_dir.is_dir():
             for slug_dir in sorted(vp.attachments_dir.iterdir()):
                 if slug_dir.is_dir() and not any(slug_dir.iterdir()):
-                    try:
+                    with contextlib.suppress(OSError):
                         slug_dir.rmdir()
-                    except OSError:
-                        pass
         return updated
 
 
@@ -1069,8 +1051,6 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
     so the same normalization is used for concept-merge and wikilink
     resolution — one source of truth.
     """
-    from knox.core.paths import KIND_FOLDERS
-
     alias_index: dict[str, str] = {}
     slug_to_id: dict[str, str] = {}
     for n in wiki.nodes:

@@ -268,3 +268,4 @@ def register_all_commands() -> None:
     """
     for module_name in dict.fromkeys(_COMMAND_MODULES.values()):
         importlib.import_module(module_name)
+from typer.main import get_command_from_info, get_group

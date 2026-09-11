@@ -17,7 +17,7 @@ import yaml
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from knox.agents.lint import LintRuleAgent
-from knox.cli._progress import EtaColumn, PercentageColumn
+from knox.cli._progress import EtaColumn, PercentageColumn, _should_show_progress
 from knox.core.cache.wiki import write_wiki_cache
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
@@ -80,9 +80,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             if progress is not None and task_id is not None:
                 progress.update(task_id, description=f"lint [{name}]")
             if name == "check":
-                check_report, _ = _run_pass(
-                    wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive
-                )
+                check_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive)
             elif name == "format":
                 _format_output_phase(vp, cfg)
             elif name == "semantic":
@@ -194,8 +192,6 @@ def run_runner_with_progress(
     both surfaces get the same progress experience. The bar is skipped when
     *show_progress* is False or stdout is not a TTY (auto mode).
     """
-    from knox.cli._progress import _should_show_progress
-
     if not _should_show_progress(show_progress):
         return runner.run(wiki)
     progress = _build_progress()

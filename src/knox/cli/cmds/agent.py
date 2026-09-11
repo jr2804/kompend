@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
 
 import typer
+from pydantic_ai import Agent
+from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
+from knox.acp import build_knox_agent, knox_session_config
 from knox.cli.app import app
-
-if TYPE_CHECKING:
-    from pydantic_ai import Agent
+from knox.mcp.server import create_mcp_server
 
 
 @app.command(name="agent")
@@ -43,11 +43,6 @@ def agent_cmd(
     query, capture, config) and resolves per-session configuration
     from the workspace the editor opened.
     """
-    # Deferred imports: ~10s of combined import cost (ACP harness + MCP
-    # server stack) that only this command pays, at run time.
-    from knox.acp import build_knox_agent  # noqa: PLC0415
-    from knox.mcp.server import create_mcp_server  # noqa: PLC0415
-
     agent = build_knox_agent()
 
     if mcp_port is not None:
@@ -65,10 +60,6 @@ def agent_cmd(
 
 def _run_sync(agent: Agent[None, str]) -> None:
     """Run the ACP agent synchronously."""
-    from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync  # noqa: PLC0415
-
-    from knox.acp import knox_session_config  # noqa: PLC0415
-
     run_acp_stdio_sync(
         agent,
         session_config=knox_session_config,

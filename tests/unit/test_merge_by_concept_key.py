@@ -12,26 +12,16 @@ on key collision regardless of provider availability.
 
 from __future__ import annotations
 
-from knox.compilation.base import BaseCompiler
 from knox.compilation._two_phase_core import upsert_node
+from knox.compilation.base import BaseCompiler
 from knox.core.models import WikiNode
-
-
-def _node(title: str, content: str = "body", chunks: list[str] | None = None) -> WikiNode:
-    return WikiNode(
-        id=title.lower().replace(" ", "-"),
-        title=title,
-        content=content,
-        node_type="concept",
-        source_chunks=chunks or [],
-        metadata={},
-    )
 
 
 class TestMergeByConceptKey:
     def test_collapses_two_parens_variants(self) -> None:
         """'Absolute Category Rating' and 'Absolute Category Rating (ACR)'
-        share a concept key — must collapse."""
+        share a concept key — must collapse.
+        """
         a = _node("Absolute Category Rating", "body A")
         b = _node("Absolute Category Rating (ACR)", "body B")
         merged = BaseCompiler.merge_by_concept_key([a, b])
@@ -116,3 +106,14 @@ class TestUpsertNodeHardensSourceChunks:
         slug_idx: dict[str, int] = {}
         upsert_node(node, nodes, slug_idx)
         assert nodes[0].source_chunks == []
+
+
+def _node(title: str, content: str = "body", chunks: list[str] | None = None) -> WikiNode:
+    return WikiNode(
+        id=title.lower().replace(" ", "-"),
+        title=title,
+        content=content,
+        node_type="concept",
+        source_chunks=chunks or [],
+        metadata={},
+    )

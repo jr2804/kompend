@@ -30,6 +30,7 @@ causing its page to land in ``entities/standard/`` one time and
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -92,9 +93,7 @@ class EntityTypeRegistry:
         leave a partially-written file.
         """
         self._file.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=self._file.parent, prefix=".entity_types.", suffix=".tmp"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=self._file.parent, prefix=".entity_types.", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(self._data, fh, indent=2, sort_keys=True)
@@ -102,10 +101,8 @@ class EntityTypeRegistry:
             os.replace(tmp_path, self._file)
         except Exception:
             # Clean up the tmp file on failure.
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
     def get(self, concept_key: str) -> str | None:

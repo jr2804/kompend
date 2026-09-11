@@ -149,6 +149,45 @@ _SLUG_INVALID_RE: Final = __import__("re").compile(r"[^a-z0-9_-]+")
 _SLUG_UNDERSCORE_RE: Final = __import__("re").compile(r"_+")
 
 
+#: Filename extensions that ``safe_stem`` is allowed to strip. Anything
+#: outside this set is preserved verbatim — protects ITU-T filenames like
+#: ``T-REC-P.10-201906-I!Amd1!PDF-E.pdf`` where ``.stem`` would mistakenly
+#: chop off ``T-REC-P`` because Python treats ``.10-201906-…`` as the
+#: extension when ``.pdf`` is absent. See p863 lint roundup 2026-09-10.
+_SAFE_STEM_EXTENSIONS: Final[frozenset[str]] = frozenset(
+    {
+        ".pdf",
+        ".html",
+        ".htm",
+        ".md",
+        ".markdown",
+        ".txt",
+        ".csv",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".xml",
+        ".rst",
+        ".tex",
+        ".ltx",
+        ".eml",
+        ".zip",
+        ".tar",
+        ".gz",
+        ".7z",
+        ".rar",
+        ".docx",
+        ".pptx",
+        ".xlsx",
+        ".doc",
+        ".ppt",
+        ".xls",
+        ".epub",
+    }
+)
+
+
 @dataclass(frozen=True)
 class VaultPaths:
     """All resolved paths for a KNOX vault.
@@ -439,6 +478,23 @@ class _DefaultWikiDir:
         return self._path
 
 
+def attachment_slugs_for_source(source_rel: Path | str) -> set[str]:
+    """All slug forms that could refer to a source file.
+
+    Attachments may be registered with either the full relative path
+    (``attachment_slug("papers/thesis.pdf") == "papers_thesis"``) or the
+    bare filename (``attachment_slug("thesis.pdf") == "thesis"``) — the
+    ``knox attachments add`` command passes the user's string verbatim.
+    Orphan detection and auto-adoption must match BOTH forms, otherwise
+    every attachment for a source under a subdirectory is falsely flagged
+    as orphaned (p863 wiki roundup 2026-09-10: 248 files deleted by the
+    post-compile lint's ``--fix`` because ``p862_...`` never matched
+    ``t-rec-p_862-...``).
+    """
+    rel = Path(source_rel)
+    return {attachment_slug(rel), attachment_slug(rel.name)}
+
+
 def attachment_slug(source_rel: Path | str) -> str:
     """Derive a deterministic flat directory name from a source's relative path.
 
@@ -468,23 +524,6 @@ def attachment_slug(source_rel: Path | str) -> str:
     # Collapse multiple underscores
     raw = _SLUG_UNDERSCORE_RE.sub("_", raw)
     return raw.strip("_")
-
-
-def attachment_slugs_for_source(source_rel: Path | str) -> set[str]:
-    """All slug forms that could refer to a source file.
-
-    Attachments may be registered with either the full relative path
-    (``attachment_slug("papers/thesis.pdf") == "papers_thesis"``) or the
-    bare filename (``attachment_slug("thesis.pdf") == "thesis"``) — the
-    ``knox attachments add`` command passes the user's string verbatim.
-    Orphan detection and auto-adoption must match BOTH forms, otherwise
-    every attachment for a source under a subdirectory is falsely flagged
-    as orphaned (p863 wiki roundup 2026-09-10: 248 files deleted by the
-    post-compile lint's ``--fix`` because ``p862_...`` never matched
-    ``t-rec-p_862-...``).
-    """
-    rel = Path(source_rel)
-    return {attachment_slug(rel), attachment_slug(rel.name)}
 
 
 def is_protected_source(path: Path, sources_dir: Path) -> bool:
@@ -527,45 +566,6 @@ def rel_to_vault(path: Path | str, base_dir: Path) -> str:
         return p.relative_to(base_dir).as_posix()
     except ValueError:
         return p.as_posix()
-
-
-#: Filename extensions that ``safe_stem`` is allowed to strip. Anything
-#: outside this set is preserved verbatim — protects ITU-T filenames like
-#: ``T-REC-P.10-201906-I!Amd1!PDF-E.pdf`` where ``.stem`` would mistakenly
-#: chop off ``T-REC-P`` because Python treats ``.10-201906-…`` as the
-#: extension when ``.pdf`` is absent. See p863 lint roundup 2026-09-10.
-_SAFE_STEM_EXTENSIONS: Final[frozenset[str]] = frozenset(
-    {
-        ".pdf",
-        ".html",
-        ".htm",
-        ".md",
-        ".markdown",
-        ".txt",
-        ".csv",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".xml",
-        ".rst",
-        ".tex",
-        ".ltx",
-        ".eml",
-        ".zip",
-        ".tar",
-        ".gz",
-        ".7z",
-        ".rar",
-        ".docx",
-        ".pptx",
-        ".xlsx",
-        ".doc",
-        ".ppt",
-        ".xls",
-        ".epub",
-    }
-)
 
 
 def safe_stem(path: Path | str) -> str:

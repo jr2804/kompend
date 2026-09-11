@@ -28,19 +28,6 @@ from knox.lint.runner import LintRunner
 from knox.lint.structural import OrphanAttachmentsRule
 
 
-def _seed_manifest(base_dir: Path, path: str) -> None:
-    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
-    manifest.append(Attachment(path=path, source="orphan-source", ingestible=True))
-
-
-def _make_orphan(vault: Path, slug: str, name: str) -> Path:
-    att_dir = vault / "attachments" / slug
-    att_dir.mkdir(parents=True, exist_ok=True)
-    f = att_dir / name
-    f.write_text("orphan contents", encoding="utf-8")
-    return f
-
-
 class TestAttachmentSlugsForSource:
     def test_returns_both_forms(self) -> None:
         """Full-path slug AND bare-name slug are both returned."""
@@ -83,7 +70,7 @@ class TestDestructiveGate:
 
         rule = OrphanAttachmentsRule()
         rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
-        results = rule.fix(
+        rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
             [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
         )
@@ -128,3 +115,16 @@ class TestDestructiveGate:
         report = runner.run(CompiledWiki(nodes=[], edges=[], toc=[]))
         assert not orphan.exists(), "file must be deleted with fix_destructive"
         assert any(r.fix_applied for r in report.results)
+
+
+def _seed_manifest(base_dir: Path, path: str) -> None:
+    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
+    manifest.append(Attachment(path=path, source="orphan-source", ingestible=True))
+
+
+def _make_orphan(vault: Path, slug: str, name: str) -> Path:
+    att_dir = vault / "attachments" / slug
+    att_dir.mkdir(parents=True, exist_ok=True)
+    f = att_dir / name
+    f.write_text("orphan contents", encoding="utf-8")
+    return f

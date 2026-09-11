@@ -16,22 +16,7 @@ from __future__ import annotations
 
 from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import CompiledWiki, WikiNode
-from knox.lint.structural import BrokenWikilinksRule, _node_lookup_index
-
-
-def _wiki(*nodes: WikiNode) -> CompiledWiki:
-    return CompiledWiki(nodes=list(nodes), edges=[], toc=[])
-
-
-def _node(node_id: str, title: str, content: str = "") -> WikiNode:
-    return WikiNode(
-        id=node_id,
-        title=title,
-        content=content,
-        node_type="concept",
-        source_chunks=[],
-        metadata={},
-    )
+from knox.lint.structural import BrokenWikilinksRule, Severity, _node_lookup_index
 
 
 class TestNodeLookupIndex:
@@ -74,15 +59,11 @@ class TestBrokenWikilinksSeverity:
         # P.863 has low similarity to POLQA's full title; the alias resolution
         # should still mark it as a possible short-form alias.
         if fails[0].details.get("alias_of"):
-            from knox.lint.structural import Severity
-
             assert fails[0].severity in {Severity.WARNING, Severity.ERROR}
 
     def test_filesystem_path_wikilink_resolves(self) -> None:
         """``[[concepts/polqa]]`` is NOT broken — the index knows about it."""
-        wiki = _wiki(
-            _node("polqa", "POLQA", "See [[concepts/polqa]]")
-        )
+        wiki = _wiki(_node("polqa", "POLQA", "See [[concepts/polqa]]"))
         rule = BrokenWikilinksRule()
         results = rule.check(wiki)
         fails = [r for r in results if r.outcome.value == "fail"]
@@ -111,6 +92,21 @@ class TestBrokenWikilinksSeverity:
         results = rule.check(wiki)
         # Exact match resolves cleanly (POLQA appears in alias_index).
         assert all(r.outcome.value != "fail" for r in results)
+
+
+def _wiki(*nodes: WikiNode) -> CompiledWiki:
+    return CompiledWiki(nodes=list(nodes), edges=[], toc=[])
+
+
+def _node(node_id: str, title: str, content: str = "") -> WikiNode:
+    return WikiNode(
+        id=node_id,
+        title=title,
+        content=content,
+        node_type="concept",
+        source_chunks=[],
+        metadata={},
+    )
 
 
 def test_normalize_concept_key_round_trip() -> None:

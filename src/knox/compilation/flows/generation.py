@@ -11,7 +11,6 @@ import json
 import re
 import time
 from collections import defaultdict
-from pathlib import Path
 from typing import Any
 
 from pydantic_ai.exceptions import ModelHTTPError
@@ -47,6 +46,7 @@ from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.paths import safe_stem
+from knox.core.pipeline.entity_types import EntityTypeRegistry
 from knox.core.templates import get_template_loader
 from knox.core.text.matching import best_match, cosine
 from knox.core.utils.exceptions import LLMOutputError
@@ -625,19 +625,8 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 # reported as already-done in the progress UI.
                 caller_progress.setdefault(seg_id, list(names))
     categories = _categories_block(compiler._config.extraction_categories)
-    # Entity sub-type per concept (person/organization/standard/...) — routed
-    # into entities/<type>/ subfolders by the vault writer. The persistent
-    # EntityTypeRegistry is the source of truth across recompiles (p863 wiki
-    # roundup 2026-09-10): the model returned different ``type`` values for
-    # the same concept across runs, causing its page to flicker between
-    # folders. Load existing entries; for keys not in the registry, accept
-    # the model's choice and persist it. Override decisions are surfaced as
-    # overrides_applied for downstream logging.
-    from knox.core.pipeline.entity_types import EntityTypeRegistry
 
-    entity_types_registry = EntityTypeRegistry(
-        compiler._config.paths.entity_types_file
-    )
+    entity_types_registry = EntityTypeRegistry(compiler._config.paths.entity_types_file)
     entity_types: dict[str, str] = {}
     overrides_applied = 0
     for c in concepts:
@@ -1095,12 +1084,6 @@ def _allowed_kind(kind: str, extras: dict[str, str]) -> str:
     return "concept"
 
 
-def _sanitize_entity_type(raw: str) -> str:
-    """Normalize an entity type for use as a folder name ("Person" → "person")."""
-    sanitized = slugify(raw or "", max_length=40)
-    return sanitized or "entity"
-
-
 def _categories_block(extras: dict[str, str]) -> str:
     """Render configured extra categories as prompt instruction lines."""
     return "\n".join(f'- "{name}" — {desc}'.rstrip(".") for name, desc in extras.items())
@@ -1123,11 +1106,7 @@ def assemble_wiki(
     # but new concepts from THIS compile still need to land here so the
     # NEXT compile sees them.
     try:
-        from knox.core.pipeline.entity_types import EntityTypeRegistry
-
-        entity_types_registry = EntityTypeRegistry(
-            compiler._config.paths.entity_types_file
-        )
+        entity_types_registry = EntityTypeRegistry(compiler._config.paths.entity_types_file)
         new_entries = 0
         for c in concepts:
             if c.get("kind") != "entity":
@@ -1138,9 +1117,8 @@ def assemble_wiki(
             if entity_types_registry.get(key) is not None:
                 continue
             sanitized = _sanitize_entity_type(str(c.get("type", "")))
-            if sanitized:
-                if entity_types_registry.record(key, sanitized):
-                    new_entries += 1
+            if sanitized and entity_types_registry.record(key, sanitized):
+                new_entries += 1
         if new_entries:
             entity_types_registry.save()
             logger.info(
@@ -1149,9 +1127,7 @@ def assemble_wiki(
                 len(entity_types_registry),
             )
     except OSError as exc:
-        logger.warning(
-            "Could not persist entity-type registry: %s", exc, exc_info=True
-        )
+        logger.warning("Could not persist entity-type registry: %s", exc, exc_info=True)
     cw = compiler._context_window
 
     if not nodes:
@@ -1220,6 +1196,12 @@ def assemble_wiki(
             MetadataField.WIKILINK_ALIASES: aliases,
         },
     )
+
+
+def _sanitize_entity_type(raw: str) -> str:
+    """Normalize an entity type for use as a folder name ("Person" → "person")."""
+    sanitized = slugify(raw or "", max_length=40)
+    return sanitized or "entity"
 
 
 def build_known_titles(compiler: TwoPhaseRuntime, concepts: list[dict[str, Any]]) -> list[str]:

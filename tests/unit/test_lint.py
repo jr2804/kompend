@@ -14,7 +14,7 @@ from knox.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from knox.agents.types import RemediationDeps, RemediationPageResult
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.schema import Concept, Entity
-from knox.core.config.rumdl import resolve_rumdl_config
+from knox.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from knox.core.models import CompiledWiki, WikiNode
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
@@ -1285,8 +1285,6 @@ class TestRumdlConfigResolution:
 
     def test_existing_config_not_overwritten(self, tmp_path: Path) -> None:
         """A user-edited file WITH a current-hash marker is preserved as-is."""
-        from knox.core.config.rumdl import _shipped_hash
-
         target = tmp_path / ".knox" / "rumdl.toml"
         target.parent.mkdir(parents=True)
         # A user-edited file that already has the current hash marker is
