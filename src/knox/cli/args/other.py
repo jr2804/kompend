@@ -23,7 +23,9 @@ LintFixDestructive = Annotated[
     bool,
     typer.Option(
         "--fix-destructive/--no-fix-destructive",
-        help="Also apply destructive fixes (file deletion, e.g. orphan-attachments). Off by default — the post-compile lint and plain --fix never delete files.",
+        help=(
+            "Also apply destructive fixes (file deletion, e.g. orphan-attachments). Off by default — the post-compile lint and plain --fix never delete files."
+        ),
     ),
 ]
 

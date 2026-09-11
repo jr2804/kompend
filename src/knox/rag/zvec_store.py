@@ -239,7 +239,8 @@ class ZvecWikiStore:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
-    def _expected_field_schemas(self) -> list[_zvec.FieldSchema]:
+    @staticmethod
+    def _expected_field_schemas() -> list[_zvec.FieldSchema]:
         """Canonical field list declared by the current knox version (SoT)."""
         return [
             _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),

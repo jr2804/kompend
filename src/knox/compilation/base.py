@@ -63,8 +63,8 @@ class BaseCompiler(ABC):
         """
         ...
 
+    @staticmethod
     def merge_duplicate_nodes(
-        self,
         nodes: list[WikiNode],
         embedding_model: str,
         *,

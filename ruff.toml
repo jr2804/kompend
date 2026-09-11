@@ -70,6 +70,9 @@ ignore = [
 
 [lint.pylint]
 max-locals = 20
+max-positional-args = 15
+max-returns = 8
+max-statements = 75
 
 [lint.pydocstyle]
 convention = "google"

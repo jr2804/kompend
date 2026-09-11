@@ -673,7 +673,10 @@ class OrphanAttachmentsRule(BaseLintRule):
                         rule=self.name,
                         outcome=LintRuleOutcome.FAIL,
                         severity=Severity.WARNING,
-                        message=f"Orphaned attachment '{rel}' — slug matches no source in sources/ (re-add the source, move the file under the correct slug, or delete it)",
+                        message=(
+                            f"Orphaned attachment '{rel}' — slug matches no source in sources/ "
+                            "(re-add the source, move the file under the correct slug, or delete it)"
+                        ),
                         details={"path": rel},
                     )
                 )
