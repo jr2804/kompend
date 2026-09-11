@@ -1,10 +1,13 @@
-"""Typer CLI app — lazy command registration for fast startup.
+"""Typer CLI app.
 
-Command modules are imported on-demand: only the module for the invoked
-subcommand is loaded, so ``knox --version`` or ``knox config get`` avoid
-loading heavy deps (pydantic-ai, docling, MCP SDK) when not needed.
-``--help`` and bare ``knox`` (no args) still load everything
-because the full command tree must be visible.
+Commands are registered lazily through :class:`_LazyGroup` (Click's
+native ``list_commands``/``get_command`` pattern, adapted to Typer), so
+Typer owns the full command tree — help, completion, and error
+suggestions work natively in every position (``knox --help``,
+``knox -w <dir> --help``, bare ``knox``) — while only the invoked
+subcommand's module is actually imported. Command modules keep heavy
+dependencies inside their command bodies so per-command startup stays
+fast.
 """
 
 from __future__ import annotations
@@ -14,9 +17,12 @@ import importlib
 import os
 import sys
 from importlib.metadata import version
+from typing import Final
 
+import click
 import logfire
 import typer
+from typer.core import TyperGroup
 
 from knox.core.config.keys import EnvVar
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
@@ -32,7 +38,11 @@ from knox.logging import configure_logging, get_console, get_err_console
 # Modules NOT listed here are never imported by the CLI — add new commands
 # here when they are created.
 
-_LAZY_MODULES: dict[str, str] = {
+#: Subcommand name → module path. Importing the module registers its
+#: command(s) on ``app`` via the ``@app.command()`` decorator side effect.
+#: Multiple subcommands can share one module (e.g. ``compile`` + ``ingest``
+#: + ``parse`` all live in ``pipeline.py``). Consumed by :class:`_LazyGroup`.
+_COMMAND_MODULES: Final[dict[str, str]] = {
     "agents": "knox.cli.cmds.agents",
     "attachments": "knox.cli.cmds.knowledge.attachments",
     "att": "knox.cli.cmds.knowledge.attachments",
@@ -66,6 +76,55 @@ _LAZY_MODULES: dict[str, str] = {
 }
 
 
+class _LazyGroup(TyperGroup):
+    """Click group that imports command modules on demand.
+
+    This is Click's documented lazy-subcommand pattern (``list_commands`` /
+    ``get_command``), adapted to Typer: Typer pre-builds command objects
+    when ``@app.command()`` decorates a function, so the group can't hold
+    them until the module is imported. ``list_commands`` reports every
+    registered name without importing anything (fast ``--help`` naming),
+    and ``get_command`` imports the module and attaches the freshly built
+    click command to this group.
+
+    Framework-native: no argv sniffing — Typer/Click decide when commands
+    are needed (dispatch, help rendering, completion, suggestions).
+    """
+
+    def list_commands(self, ctx: click.Context) -> list[str]:  # noqa: PLR6301 — Click API override
+        return sorted(_COMMAND_MODULES)
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        if cmd_name in self.commands:
+            return self.commands[cmd_name]
+        module_name = _COMMAND_MODULES.get(cmd_name)
+        if module_name is None:
+            return None
+        importlib.import_module(module_name)  # registers commands / groups on app
+        from typer.main import get_command_from_info, get_group  # noqa: PLC0415 — typer internal, cheap
+
+        # Plain commands from @app.command()
+        for info in app.registered_commands:
+            cmd = get_command_from_info(
+                info,
+                pretty_exceptions_short=True,
+                rich_markup_mode=None,
+            )
+            if cmd.name == cmd_name:
+                self.add_command(cmd)
+                return cmd
+        # Sub-Typer groups from app.add_typer() (config, lint, attachments, …).
+        # Aliases ("att" → attachments_app) live on the GroupInfo name.
+        for group_info in app.registered_groups:
+            gname = group_info.name or group_info.typer_instance.info.name or ""
+            if gname == cmd_name:
+                sub_group = get_group(group_info.typer_instance)
+                sub_group.name = gname
+                self.add_command(sub_group)
+                return sub_group
+        return None
+
+
 app = typer.Typer(
     name="knox",
     help="Knowledge Organizer for eXtended documents",
@@ -73,6 +132,7 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
     pretty_exceptions_show_locals=False,
+    cls=_LazyGroup,
 )
 
 
@@ -127,7 +187,6 @@ def main() -> None:
     _configure_logfire()
     configure_logging()
     _configure_streams_utf8()
-    _register_for_argv(sys.argv[1:])
     handle: RunHandle | None = None
     try:
         app()
@@ -200,45 +259,12 @@ def _configure_streams_utf8() -> None:
                 reconfigure(encoding="utf-8", errors="replace")
 
 
-def _register_for_argv(argv: list[str]) -> None:
-    """Lazy-register commands based on the incoming argv.
-
-    * ``--help`` / ``-h`` / empty argv → load all (help must list every command).
-    * Shell-completion env vars (``*_COMPLETE``) → load all.
-    * A known subcommand → load only its module.
-    * Otherwise (global flags only, e.g. ``--version``) → load nothing.
-    """
-    # --help can appear anywhere global flags are allowed
-    # (``knox -w <dir> --help``) — not just at position 0. Without this, a
-    # help request after a global flag registered zero commands and the
-    # help screen rendered with an empty Commands panel.
-    if not argv or "--help" in argv or "-h" in argv or any(k.endswith("_COMPLETE") for k in os.environ):
-        register_all_commands()
-        return
-    requested = _find_requested_command(argv)
-    if requested is not None:
-        register_command(requested)
-
-
-def register_command(name: str) -> None:
-    """Import the module that registers *name*.  No-op if unknown or already loaded."""
-    module_name = _LAZY_MODULES.get(name)
-    if module_name is not None:
-        importlib.import_module(module_name)
-
-
 def register_all_commands() -> None:
-    """Import every command module (for ``--help``, bare ``knox``, shell completion)."""
-    for module_name in dict.fromkeys(_LAZY_MODULES.values()):
-        importlib.import_module(module_name)
+    """Import every command module (test-support introspection helper).
 
-
-def _find_requested_command(argv: list[str]) -> str | None:
-    """Return the subcommand name from *argv*, or *None* if none is present.
-
-    Handles global flags before the subcommand (``knox --wiki-dir x compile``).
+    Dispatch never needs this — :class:`_LazyGroup` imports on demand.
+    Tests that enumerate the full command surface (CLI↔MCP parity) call
+    it so ``app.registered_commands`` is fully populated.
     """
-    for arg in argv:
-        if arg in _LAZY_MODULES:
-            return arg
-    return None
+    for module_name in dict.fromkeys(_COMMAND_MODULES.values()):
+        importlib.import_module(module_name)

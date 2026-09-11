@@ -8,20 +8,24 @@ Starts an ACP agent on stdio via ``pydantic-ai-harness``'s
 ``run_acp_stdio_sync``. The harness handles the ACP protocol, session
 management, streaming, tool approval, and cancellation. KNOX provides
 the agent, tools, and per-session configuration.
+
+Heavy imports (the harness ACP machinery, the MCP server factory) live
+inside the command body: this module is imported eagerly by the CLI so
+Typer can list every command in help — it must stay cheap to import.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
 
 import typer
-from pydantic_ai import Agent
-from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
-from knox.acp import build_knox_agent, knox_session_config
 from knox.cli.app import app
-from knox.mcp.server import create_mcp_server
+
+if TYPE_CHECKING:
+    from pydantic_ai import Agent
 
 
 @app.command(name="agent")
@@ -39,6 +43,11 @@ def agent_cmd(
     query, capture, config) and resolves per-session configuration
     from the workspace the editor opened.
     """
+    # Deferred imports: ~10s of combined import cost (ACP harness + MCP
+    # server stack) that only this command pays, at run time.
+    from knox.acp import build_knox_agent  # noqa: PLC0415
+    from knox.mcp.server import create_mcp_server  # noqa: PLC0415
+
     agent = build_knox_agent()
 
     if mcp_port is not None:
@@ -56,6 +65,10 @@ def agent_cmd(
 
 def _run_sync(agent: Agent[None, str]) -> None:
     """Run the ACP agent synchronously."""
+    from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync  # noqa: PLC0415
+
+    from knox.acp import knox_session_config  # noqa: PLC0415
+
     run_acp_stdio_sync(
         agent,
         session_config=knox_session_config,
