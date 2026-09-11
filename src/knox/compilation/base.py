@@ -232,7 +232,8 @@ class BaseCompiler(ABC):
             if idx in losers:
                 continue
             result.append(winners.get(idx, node))
-        assert len(result) == len(nodes) - len(losers), f"merge_by_concept_key lost nodes: in={len(nodes)} out={len(result)} losers={len(losers)}"
+        if len(result) != len(nodes) - len(losers):
+            raise AssertionError(f"merge_by_concept_key lost nodes: in={len(nodes)} out={len(result)} losers={len(losers)}")
         logger.info(
             "Concept-key merge: %d pair(s) collapsed (%d → %d nodes)",
             len(losers),
