@@ -23,6 +23,7 @@ import click
 import logfire
 import typer
 from typer.core import TyperGroup
+from typer.main import get_command_from_info, get_group
 
 from knox.core.config.keys import EnvVar
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
@@ -75,6 +76,54 @@ _COMMAND_MODULES: Final[dict[str, str]] = {
     "agent": "knox.cli.cmds.agent",
 }
 
+#: Workflow panels for ``knox --help``. Every :data:`_COMMAND_MODULES` key
+#: must appear here exactly once; :class:`_LazyGroup` applies the panel to
+#: each command (plain or sub-group) when it is built, and lists commands
+#: panel-by-panel so help follows the workflow, not the alphabet.
+#: Single source of truth for help organization — command modules stay
+#: panel-agnostic.
+_PANEL_ORDER: Final[tuple[str, ...]] = (
+    "Build pipeline",
+    "Capture & synthesis",
+    "Knowledge base",
+    "Quality & inspection",
+    "Setup",
+    "Serving",
+)
+
+_COMMAND_PANELS: Final[dict[str, str]] = {
+    "compile": "Build pipeline",
+    "ingest": "Build pipeline",
+    "parse": "Build pipeline",
+    "index": "Build pipeline",
+    "capture": "Capture & synthesis",
+    "learn": "Capture & synthesis",
+    "distill": "Capture & synthesis",
+    "write": "Capture & synthesis",
+    "query": "Knowledge base",
+    "memory": "Knowledge base",
+    "sources": "Knowledge base",
+    "references": "Knowledge base",
+    "attachments": "Knowledge base",
+    "att": "Knowledge base",
+    "organize": "Knowledge base",
+    "pack-list": "Knowledge base",
+    "pack-install": "Knowledge base",
+    "agents": "Knowledge base",
+    "lint": "Quality & inspection",
+    "doctor": "Quality & inspection",
+    "status": "Quality & inspection",
+    "log": "Quality & inspection",
+    "review": "Quality & inspection",
+    "provenance": "Quality & inspection",
+    "list-parsers": "Quality & inspection",
+    "init": "Setup",
+    "config": "Setup",
+    "mcp": "Serving",
+    "serve": "Serving",
+    "agent": "Serving",
+}
+
 
 class _LazyGroup(TyperGroup):
     """Click group that imports command modules on demand.
@@ -92,37 +141,45 @@ class _LazyGroup(TyperGroup):
     """
 
     def list_commands(self, ctx: click.Context) -> list[str]:  # noqa: PLR6301 — Click API override
-        return sorted(_COMMAND_MODULES)
+        order = {panel: idx for idx, panel in enumerate(_PANEL_ORDER)}
+        return sorted(_COMMAND_MODULES, key=lambda n: (order[_COMMAND_PANELS[n]], n))
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
-        if cmd_name in self.commands:
-            return self.commands[cmd_name]
-        module_name = _COMMAND_MODULES.get(cmd_name)
-        if module_name is None:
-            return None
-        importlib.import_module(module_name)  # registers commands / groups on app
-        from typer.main import get_command_from_info, get_group  # noqa: PLC0415 — typer internal, cheap
+        # NOTE: Typer's get_group_from_info pre-fills self.commands eagerly
+        # from already-imported modules (panels unset), so the panel must be
+        # applied to EVERY served command — not just lazily built ones —
+        # or second and later help renders lose their workflow grouping.
+        if cmd_name not in self.commands:
+            module_name = _COMMAND_MODULES.get(cmd_name)
+            if module_name is None:
+                return None
+            importlib.import_module(module_name)  # registers commands / groups on app
 
-        # Plain commands from @app.command()
-        for info in app.registered_commands:
-            cmd = get_command_from_info(
-                info,
-                pretty_exceptions_short=True,
-                rich_markup_mode=None,
-            )
-            if cmd.name == cmd_name:
-                self.add_command(cmd)
-                return cmd
-        # Sub-Typer groups from app.add_typer() (config, lint, attachments, …).
-        # Aliases ("att" → attachments_app) live on the GroupInfo name.
-        for group_info in app.registered_groups:
-            gname = group_info.name or group_info.typer_instance.info.name or ""
-            if gname == cmd_name:
-                sub_group = get_group(group_info.typer_instance)
-                sub_group.name = gname
-                self.add_command(sub_group)
-                return sub_group
-        return None
+            # Plain commands from @app.command()
+            for info in app.registered_commands:
+                cmd = get_command_from_info(
+                    info,
+                    pretty_exceptions_short=True,
+                    rich_markup_mode=None,
+                )
+                if cmd.name == cmd_name:
+                    self.add_command(cmd)
+                    break
+            else:
+                # Sub-Typer groups from app.add_typer() (config, lint, attachments, …).
+                # Aliases ("att" → attachments_app) live on the GroupInfo name.
+                for group_info in app.registered_groups:
+                    gname = group_info.name or group_info.typer_instance.info.name or ""
+                    if gname == cmd_name:
+                        sub_group = get_group(group_info.typer_instance)
+                        sub_group.name = gname
+                        self.add_command(sub_group)
+                        break
+        cmd = self.commands.get(cmd_name)
+        panel = _COMMAND_PANELS.get(cmd_name)
+        if cmd is not None and panel is not None:
+            cmd.rich_help_panel = panel
+        return cmd
 
 
 app = typer.Typer(
@@ -169,7 +226,11 @@ def _callback(
         get_console().print(_get_version())
         raise typer.Exit()
     ctx.obj = {"wiki_dir": wiki_dir, "no_user_tracking": no_user_tracking}
-    handle = log_run_start(wiki_dir=wiki_dir)
+    # Framework-parsed tokens: the group parser has already consumed its own
+    # options (--wiki-dir, --version, ...), so protected_args + args is
+    # exactly subcommand + its raw args. No argv sniffing.
+    cmd_tokens = [*ctx._protected_args, *ctx.args]
+    handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=cmd_tokens)
     _run_handle_holder["handle"] = handle
 
 
@@ -268,4 +329,3 @@ def register_all_commands() -> None:
     """
     for module_name in dict.fromkeys(_COMMAND_MODULES.values()):
         importlib.import_module(module_name)
-from typer.main import get_command_from_info, get_group

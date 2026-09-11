@@ -15,7 +15,6 @@ cap so ``.knox`` stays bounded.
 from __future__ import annotations
 
 import json
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -57,8 +56,12 @@ class RunEvent(TypedDict):
     error: NotRequired[str]
 
 
-def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
-    """Append a ``start`` line for the current command. No-op without a vault."""
+def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None = None) -> RunHandle | None:
+    """Append a ``start`` line for the current command. No-op without a vault.
+
+    ``cmd_tokens`` are the already-parsed command tokens supplied by the CLI
+    layer (subcommand + its raw args); the run log never reads ``sys.argv``.
+    """
     state_dir = resolve_state_dir(wiki_dir=wiki_dir)
     if state_dir is None:
         return None
@@ -73,7 +76,7 @@ def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
                     {
                         "event": "start",
                         "run_id": run_id,
-                        "cmd": _command_label(),
+                        "cmd": _command_label(cmd_tokens or []),
                         "ts": start_iso,
                     },  # RunEvent
                     ensure_ascii=False,
@@ -84,7 +87,7 @@ def log_run_start(wiki_dir: str | None = None) -> RunHandle | None:
         logger.debug("run-log start write failed: %s", exc)
         return None
     _maybe_prune(runs_dir)
-    return RunHandle(run_id=run_id, cmd=_command_label(), runs_dir=runs_dir, start_iso=start_iso)
+    return RunHandle(run_id=run_id, cmd=_command_label(cmd_tokens or []), runs_dir=runs_dir, start_iso=start_iso)
 
 
 def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
@@ -108,25 +111,15 @@ def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
     return None
 
 
-def _command_label() -> str:
+def _command_label(cmd_tokens: list[str]) -> str:
     """Human-readable command label, e.g. ``lint run`` or ``compile``.
 
-    Strips the global ``--wiki-dir`` flags so the label is just the command.
+    Pure function over already-parsed tokens (subcommand + its raw args);
+    group-level flags never reach it because the framework parser consumes
+    them before the callback runs.
     """
-    cleaned: list[str] = []
-    skip_next = False
-    for t in sys.argv[1:]:
-        if skip_next:
-            skip_next = False
-            continue
-        if t in ("--wiki-dir", "-w"):
-            skip_next = True
-            continue
-        if t.startswith("--wiki-dir="):
-            continue
-        cleaned.append(t)
     arg_preview_limit = DEFAULTS.get(DISPLAY_CLI_ARG_PREVIEW, 4)
-    return " ".join(cleaned[:arg_preview_limit]) or "(none)"
+    return " ".join(cmd_tokens[:arg_preview_limit]) or "(none)"
 
 
 def log_run_end(
