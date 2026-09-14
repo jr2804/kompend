@@ -239,19 +239,6 @@ class ZvecWikiStore:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
-    @staticmethod
-    def _expected_field_schemas() -> list[_zvec.FieldSchema]:
-        """Canonical field list declared by the current knox version (SoT)."""
-        return [
-            _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
-        ]
-
     def _create_collection(self) -> ZvecCollection:
         if self._provider is None:
             raise RuntimeError("Embedding provider not configured. Call build_index() first.")
@@ -380,6 +367,19 @@ class ZvecWikiStore:
         except OSError as exc:  # pragma: no cover — filesystem-dependent
             logger.warning("Could not write vector manifest (%s): %s", manifest, exc)
         return len(orphans)
+
+    @staticmethod
+    def _expected_field_schemas() -> list[_zvec.FieldSchema]:
+        """Canonical field list declared by the current knox version (SoT)."""
+        return [
+            _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
+        ]
 
 
 def _safe_id(node_id: str) -> str:

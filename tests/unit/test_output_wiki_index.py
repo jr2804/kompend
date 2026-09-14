@@ -328,19 +328,6 @@ class TestGenerateIndexPortable:
         )
 
 
-# ── Agentic overview ────────────────────────────────────────────────────
-
-
-def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
-    agent = MagicMock(spec=AgenticOverviewAgent)
-
-    def _run(deps: OverviewDeps) -> None:
-        deps.overview = content
-
-    agent.run.side_effect = _run
-    return agent
-
-
 # ── exported sources section ──────────────────────────────────────────────
 
 
@@ -425,6 +412,19 @@ class TestSyncExportedSourcesSection:
     def test_noop_when_index_missing(self, tmp_path: Path) -> None:
         sync_exported_sources_section(tmp_path / "index.md", tmp_path)
         assert not (tmp_path / "index.md").exists()
+
+
+# ── Agentic overview ────────────────────────────────────────────────────
+
+
+def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
+    agent = MagicMock(spec=AgenticOverviewAgent)
+
+    def _run(deps: OverviewDeps) -> None:
+        deps.overview = content
+
+    agent.run.side_effect = _run
+    return agent
 
 
 def _make_wiki(**overrides: object) -> CompiledWiki:

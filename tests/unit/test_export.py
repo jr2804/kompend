@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+# ── --all bulk export ──────────────────────────────────────────────────
+from typer.testing import CliRunner  # noqa: E402
+
+from knox.cli.app import app as cli_app  # noqa: E402
 from knox.core.models.enums import AssetKind
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.export import (
@@ -19,6 +23,9 @@ from knox.core.pipeline.export import (
     load_cache_entry,
     render_document_markdown,
 )
+from knox.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
+
+_cli_runner = CliRunner()
 
 # ── element rendering ────────────────────────────────────────────────────
 
@@ -261,90 +268,6 @@ class TestAnnotations:
         assert not (tmp_path / "out_assets").exists()
 
 
-def _element(
-    etype: str,
-    content: object,
-    *,
-    heading_level: int | None = None,
-    page: int | None = None,
-    metadata: dict | None = None,
-) -> dict:
-    return {
-        "type": etype,
-        "content": content,
-        "page": page,
-        "reading_order": None,
-        "heading_level": heading_level,
-        "metadata": metadata or {},
-        "source_file": None,
-    }
-
-
-def _cache_data(*elements: dict, title: str = "Doc Title", source_file: str = "sources/doc.pdf") -> dict:
-    return {
-        "source_file": source_file,
-        "title": title,
-        "author": "",
-        "language": "en",
-        "page_count": 1,
-        "metadata": {},
-        "elements": list(elements),
-    }
-
-
-def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> Path:
-    cache_dir = tmp_path / ".knox" / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"{stem}-a1b2c3d4.json"
-    cache_file.write_text(json.dumps(data), encoding="utf-8")
-    return cache_file
-
-
-def _render(data: dict, tmp_path: Path, **kwargs: object) -> str:
-    opts: dict[str, object] = {"inline": False, "annotations": "off", "summary": "off"}
-    opts.update(kwargs)
-    return render_document_markdown(
-        data,
-        base_dir=tmp_path,
-        assets_dir=tmp_path / "out_assets",
-        **opts,
-    )
-
-
-# ── annotations + summary modes ──────────────────────────────────────────
-
-
-def _seed_asset_store(tmp_path: Path, record: dict) -> None:
-    store = AssetStore(tmp_path / ".knox" / "assets.json")
-    store._data[record["id"]] = record  # noqa: SLF001
-    store.save()
-
-
-# ── --all bulk export ──────────────────────────────────────────────────
-
-
-from typer.testing import CliRunner  # noqa: E402
-
-from knox.cli.app import app as cli_app  # noqa: E402
-from knox.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
-
-_cli_runner = CliRunner()
-
-
-def _seed_vault_with_cache(tmp_path: Path, *cache: dict) -> Path:
-    """Minimal vault: .knox/config.toml, sources/, cache entries per source."""
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
-    for i, data in enumerate(cache):
-        stem = Path(data["source_file"]).stem
-        cache_dir = base / ".knox" / "cache"
-        cache_dir.mkdir(exist_ok=True)
-        (cache_dir / f"{stem}-{i:08x}.json").write_text(json.dumps(data), encoding="utf-8")
-    return base
-
-
 class TestCliExportAll:
     def test_exports_every_cache_entry_and_splices_index(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         base = _seed_vault_with_cache(
@@ -412,3 +335,76 @@ class TestMcpExportAll:
 
         assert result["status"] == "ok"
         assert result["count"] == 0
+
+
+def _element(
+    etype: str,
+    content: object,
+    *,
+    heading_level: int | None = None,
+    page: int | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    return {
+        "type": etype,
+        "content": content,
+        "page": page,
+        "reading_order": None,
+        "heading_level": heading_level,
+        "metadata": metadata or {},
+        "source_file": None,
+    }
+
+
+def _cache_data(*elements: dict, title: str = "Doc Title", source_file: str = "sources/doc.pdf") -> dict:
+    return {
+        "source_file": source_file,
+        "title": title,
+        "author": "",
+        "language": "en",
+        "page_count": 1,
+        "metadata": {},
+        "elements": list(elements),
+    }
+
+
+def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> Path:
+    cache_dir = tmp_path / ".knox" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{stem}-a1b2c3d4.json"
+    cache_file.write_text(json.dumps(data), encoding="utf-8")
+    return cache_file
+
+
+def _render(data: dict, tmp_path: Path, **kwargs: object) -> str:
+    opts: dict[str, object] = {"inline": False, "annotations": "off", "summary": "off"}
+    opts.update(kwargs)
+    return render_document_markdown(
+        data,
+        base_dir=tmp_path,
+        assets_dir=tmp_path / "out_assets",
+        **opts,
+    )
+
+
+# ── annotations + summary modes ──────────────────────────────────────────
+
+
+def _seed_asset_store(tmp_path: Path, record: dict) -> None:
+    store = AssetStore(tmp_path / ".knox" / "assets.json")
+    store._data[record["id"]] = record  # noqa: SLF001
+    store.save()
+
+
+def _seed_vault_with_cache(tmp_path: Path, *cache: dict) -> Path:
+    """Minimal vault: .knox/config.toml, sources/, cache entries per source."""
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    for i, data in enumerate(cache):
+        stem = Path(data["source_file"]).stem
+        cache_dir = base / ".knox" / "cache"
+        cache_dir.mkdir(exist_ok=True)
+        (cache_dir / f"{stem}-{i:08x}.json").write_text(json.dumps(data), encoding="utf-8")
+    return base

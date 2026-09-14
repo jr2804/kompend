@@ -15,6 +15,8 @@ from knox.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, LOG_FILE, SUMMARIES_S
 from knox.core.utils.time import display_local
 from knox.output.vault import VaultWriter
 
+EXPORTED_HEADING: Final[str] = "Exported sources"
+
 
 def write_index(
     wiki: CompiledWiki,
@@ -59,27 +61,6 @@ def generate_index(
     if nested:
         return _hub_index(wiki, prefix, base_dir)
     return _full_catalog(wiki, output_dir, prefix, base_dir)
-
-
-EXPORTED_HEADING: Final[str] = "Exported sources"
-
-
-def exported_sources_section(base_dir: Path) -> str:
-    """Render the ``## Exported sources`` section listing ``exported/*.md``.
-
-    Returns ``""`` when the ``exported/`` directory is missing or holds no
-    markdown files — the section only exists when there is something to
-    list. Links are relative to *base_dir* (the vault root), matching the
-    index's location.
-    """
-    exported_dir = base_dir / EXPORTED_DIR_NAME
-    files = sorted(p.name for p in exported_dir.glob("*.md")) if exported_dir.is_dir() else []
-    if not files:
-        return ""
-    b = PageBuilder()
-    b.heading(2, EXPORTED_HEADING)
-    b.bullet_list([link(f"exported/{name}", name) for name in files])
-    return b.render()
 
 
 def sync_exported_sources_section(index_file: Path, base_dir: Path) -> None:
@@ -193,6 +174,24 @@ def _full_catalog(
 
     section = exported_sources_section(base_dir) if base_dir is not None else ""
     return b.render() + ("\n\n" + section if section else "")
+
+
+def exported_sources_section(base_dir: Path) -> str:
+    """Render the ``## Exported sources`` section listing ``exported/*.md``.
+
+    Returns ``""`` when the ``exported/`` directory is missing or holds no
+    markdown files — the section only exists when there is something to
+    list. Links are relative to *base_dir* (the vault root), matching the
+    index's location.
+    """
+    exported_dir = base_dir / EXPORTED_DIR_NAME
+    files = sorted(p.name for p in exported_dir.glob("*.md")) if exported_dir.is_dir() else []
+    if not files:
+        return ""
+    b = PageBuilder()
+    b.heading(2, EXPORTED_HEADING)
+    b.bullet_list([link(f"exported/{name}", name) for name in files])
+    return b.render()
 
 
 def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> None:
