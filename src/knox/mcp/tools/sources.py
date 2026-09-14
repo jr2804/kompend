@@ -8,11 +8,12 @@ from knox.cli._shared import build_cli_overrides
 from knox.core.config import resolve_config
 from knox.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from knox.core.models import MetadataField
-from knox.core.paths import EXPORTED_DIR_NAME, vault_paths
+from knox.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, safe_stem, vault_paths
 from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.core.utils.dicts import as_str
 from knox.logging import get_logger
+from knox.output.pages.index import sync_exported_sources_section
 
 logger = get_logger(__name__)
 
@@ -112,6 +113,7 @@ def sources_attr_rm(
 def sources_export(
     wiki_dir: str | None = None,
     source_id: str = "",
+    export_all: bool = False,
     output: str = "",
     inline: bool = False,
     annotations: bool | None = None,
@@ -122,18 +124,11 @@ def sources_export(
 
     OUTPUT is optional — omit it to write to the vault's ``exported/``
     directory (reference material, outside wiki/); pass a path to export
-    to any arbitrary file.
+    to any arbitrary file. With EXPORT_ALL=true every ingested source is
+    exported into ``exported/`` and the vault-root ``index.md`` is refreshed
+    to list them (CLI ``--all`` parity).
     """
     vp = vault_paths(wiki_dir)
-    if output:
-        output_file = Path(output)
-    else:
-        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
-        stem = Path(source_id).stem or "source"
-        output_file = exported_dir / f"{stem}.md"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-    if output_file.suffix.lower() != ".md":
-        return {"status": "error", "message": f"Output file must end in .md, got '{output_file.suffix or '<none>'}'"}
 
     cli_set: dict[str, Any] = {}
     if annotations is not None:
@@ -145,6 +140,49 @@ def sources_export(
         config_file=config_file,
         cli_overrides=build_cli_overrides(cli_set=cli_set),
     )
+    ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"
+    summ = as_str(cfg.get(EXPORT_SUMMARY)) or "off"
+
+    if export_all:
+        if source_id:
+            return {"status": "error", "message": "SOURCE_ID cannot be combined with export_all=True."}
+        if output:
+            return {"status": "error", "message": "export_all=True exports into exported/; OUTPUT must be empty."}
+        cache_data = _load_all_cache_entries(vp.cache_dir)
+        if not cache_data:
+            return {"status": "ok", "exported": [], "count": 0, "message": "No sources found. Run 'wiki_ingest' first."}
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        exported_dir.mkdir(parents=True, exist_ok=True)
+        exported: list[str] = []
+        skipped: list[str] = []
+        for file in sorted(cache_data):
+            out_file = exported_dir / f"{safe_stem(file) or 'source'}.md"
+            try:
+                export_source(
+                    base_dir=vp.base_dir,
+                    cache_dir=vp.cache_dir,
+                    source_id=file,
+                    out_path=out_file,
+                    inline=inline,
+                    annotations=ann,
+                    summary=summ,
+                )
+                exported.append(str(out_file))
+            except FileNotFoundError as exc:
+                skipped.append(str(exc))
+        sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
+        return {"status": "ok", "exported": exported, "count": len(exported), "skipped": skipped}
+
+    if not source_id:
+        return {"status": "error", "message": "Pass a source_id or use export_all=True."}
+    if output:
+        output_file = Path(output)
+    else:
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        output_file = exported_dir / f"{safe_stem(source_id) or 'source'}.md"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+    if output_file.suffix.lower() != ".md":
+        return {"status": "error", "message": f"Output file must end in .md, got '{output_file.suffix or '<none>'}'"}
 
     try:
         export_source(
@@ -153,11 +191,13 @@ def sources_export(
             source_id=source_id,
             out_path=output_file,
             inline=inline,
-            annotations=as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off",
-            summary=as_str(cfg.get(EXPORT_SUMMARY)) or "off",
+            annotations=ann,
+            summary=summ,
         )
     except FileNotFoundError as exc:
         return {"status": "error", "message": str(exc)}
+    if not output:
+        sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
     return {"status": "ok", "message": f"Exported {source_id} -> {output_file}"}
 
 

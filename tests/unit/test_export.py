@@ -318,3 +318,97 @@ def _seed_asset_store(tmp_path: Path, record: dict) -> None:
     store = AssetStore(tmp_path / ".knox" / "assets.json")
     store._data[record["id"]] = record  # noqa: SLF001
     store.save()
+
+
+# ── --all bulk export ──────────────────────────────────────────────────
+
+
+from typer.testing import CliRunner  # noqa: E402
+
+from knox.cli.app import app as cli_app  # noqa: E402
+from knox.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
+
+_cli_runner = CliRunner()
+
+
+def _seed_vault_with_cache(tmp_path: Path, *cache: dict) -> Path:
+    """Minimal vault: .knox/config.toml, sources/, cache entries per source."""
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    for i, data in enumerate(cache):
+        stem = Path(data["source_file"]).stem
+        cache_dir = base / ".knox" / "cache"
+        cache_dir.mkdir(exist_ok=True)
+        (cache_dir / f"{stem}-{i:08x}.json").write_text(json.dumps(data), encoding="utf-8")
+    return base
+
+
+class TestCliExportAll:
+    def test_exports_every_cache_entry_and_splices_index(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        base = _seed_vault_with_cache(
+            tmp_path,
+            _cache_data(title="One", source_file="sources/one.pdf"),
+            _cache_data(title="Two", source_file="sources/two.pdf"),
+        )
+        (base / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
+        monkeypatch.chdir(base)
+
+        result = _cli_runner.invoke(cli_app, ["sources", "export", "--all"])
+
+        assert result.exit_code == 0, result.output
+        assert (base / "exported" / "one.md").is_file()
+        assert (base / "exported" / "two.md").is_file()
+        index = (base / "index.md").read_text(encoding="utf-8")
+        assert "## Exported sources" in index
+        assert "- [one.md](exported/one.md)" in index
+        assert "- [two.md](exported/two.md)" in index
+
+    def test_no_cache_entries_exits_successfully(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        base = _seed_vault_with_cache(tmp_path)
+        monkeypatch.chdir(base)
+
+        result = _cli_runner.invoke(cli_app, ["sources", "export", "--all"])
+
+        assert result.exit_code == 0, result.output
+        assert "No sources found" in result.output
+
+    def test_all_rejects_output_and_source_id(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        base = _seed_vault_with_cache(tmp_path, _cache_data(source_file="sources/one.pdf"))
+        monkeypatch.chdir(base)
+
+        with_output = _cli_runner.invoke(cli_app, ["sources", "export", "--all", "--output", "x.md"])
+        assert with_output.exit_code == 1
+        assert "OUTPUT must be empty" in with_output.output
+
+        with_source = _cli_runner.invoke(cli_app, ["sources", "export", "--all", "sources/one.pdf"])
+        assert with_source.exit_code == 1
+        assert "SOURCE_ID cannot be combined" in with_source.output
+
+
+class TestMcpExportAll:
+    def test_export_all_parity(self, tmp_path: Path) -> None:
+        base = _seed_vault_with_cache(
+            tmp_path,
+            _cache_data(title="One", source_file="sources/one.pdf"),
+            _cache_data(title="Two", source_file="sources/two.pdf"),
+        )
+        (base / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
+
+        result = mcp_sources_export(wiki_dir=str(base), export_all=True)
+
+        assert result["status"] == "ok"
+        assert result["count"] == 2
+        assert (base / "exported" / "one.md").is_file()
+        assert (base / "exported" / "two.md").is_file()
+        index = (base / "index.md").read_text(encoding="utf-8")
+        assert "## Exported sources" in index
+
+    def test_export_all_no_cache(self, tmp_path: Path) -> None:
+        base = _seed_vault_with_cache(tmp_path)
+
+        result = mcp_sources_export(wiki_dir=str(base), export_all=True)
+
+        assert result["status"] == "ok"
+        assert result["count"] == 0

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final
 
 from wenmode.nodes import Paragraph, Text
 
@@ -10,7 +11,7 @@ from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_WIKI_TOPICS
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.page_builder import PageBuilder, link, strong
-from knox.core.paths import INDEX_FILE, LOG_FILE, SUMMARIES_SUBDIR
+from knox.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, LOG_FILE, SUMMARIES_SUBDIR
 from knox.core.utils.time import display_local
 from knox.output.vault import VaultWriter
 
@@ -56,23 +57,83 @@ def generate_index(
     prefix = _bundle_prefix(output_dir, base_dir)
     nested = output_dir is not None and base_dir is not None and output_dir != base_dir
     if nested:
-        return _hub_index(wiki, prefix)
-    return _full_catalog(wiki, output_dir, prefix)
+        return _hub_index(wiki, prefix, base_dir)
+    return _full_catalog(wiki, output_dir, prefix, base_dir)
 
 
-def _hub_index(wiki: CompiledWiki, prefix: str) -> str:
+EXPORTED_HEADING: Final[str] = "Exported sources"
+
+
+def exported_sources_section(base_dir: Path) -> str:
+    """Render the ``## Exported sources`` section listing ``exported/*.md``.
+
+    Returns ``""`` when the ``exported/`` directory is missing or holds no
+    markdown files — the section only exists when there is something to
+    list. Links are relative to *base_dir* (the vault root), matching the
+    index's location.
+    """
+    exported_dir = base_dir / EXPORTED_DIR_NAME
+    files = sorted(p.name for p in exported_dir.glob("*.md")) if exported_dir.is_dir() else []
+    if not files:
+        return ""
+    b = PageBuilder()
+    b.heading(2, EXPORTED_HEADING)
+    b.bullet_list([link(f"exported/{name}", name) for name in files])
+    return b.render()
+
+
+def sync_exported_sources_section(index_file: Path, base_dir: Path) -> None:
+    """Insert or refresh the ``## Exported sources`` section in *index_file*.
+
+    Idempotent: replaces the section between the heading and the next ``## ``
+    heading (or the file end) with a fresh listing from ``exported/``, or
+    removes it when the directory is empty. No-op when *index_file* does
+    not exist — ``write_index`` renders the section on the next compile.
+
+    The generation-time index writers render the exact same section from
+    the same on-disk scan, so the splice and a later recompile agree byte
+    for byte (memory #44: single source of truth, no hand-maintained list).
+    """
+    if not index_file.exists():
+        return
+    section = exported_sources_section(base_dir)
+    text = index_file.read_text(encoding="utf-8")
+    updated = _splice_section(text, section)
+    if updated != text:
+        index_file.write_text(updated, encoding="utf-8")
+
+
+def _splice_section(text: str, section: str) -> str:
+    """Replace/append/remove the exported-sources block in *text*."""
+    heading = f"## {EXPORTED_HEADING}"
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln == heading), None)
+    if start is None:
+        if not section.strip():
+            return text
+        return "\n\n".join(b for b in (text.strip(), section.strip()) if b) + "\n"
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    prefix = "\n".join(lines[:start]).strip()
+    suffix = "\n".join(lines[end:]).strip()
+    blocks = [b for b in (prefix, section.strip(), suffix) if b]
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
+def _hub_index(wiki: CompiledWiki, prefix: str, base_dir: Path | None) -> str:
     """Thin hub: quick facts + pointer to the portable catalog."""
     b = PageBuilder()
     b.heading(1, "Wiki Index")
     _emit_stat_paragraphs(b, wiki, prefix)
     b.paragraph("The full catalog lives at ", link(f"{prefix}/index.md", f"{prefix}/index.md"), ".")
-    return b.render()
+    section = exported_sources_section(base_dir) if base_dir is not None else ""
+    return b.render() + ("\n\n" + section if section else "")
 
 
 def _full_catalog(
     wiki: CompiledWiki,
     output_dir: Path | None,
     prefix: str,
+    base_dir: Path | None = None,
 ) -> str:
     """Full catalog: stats, topics, per-page TOC, generated surfaces."""
     b = PageBuilder()
@@ -130,7 +191,8 @@ def _full_catalog(
         surface_items.append(entry)
     b.bullet_list(surface_items)
 
-    return b.render()
+    section = exported_sources_section(base_dir) if base_dir is not None else ""
+    return b.render() + ("\n\n" + section if section else "")
 
 
 def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> None:

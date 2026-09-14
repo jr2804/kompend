@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 from knox.agents.types import OverviewDeps, OverviewPage
 from knox.agents.wiki_index import AgenticOverviewAgent
 from knox.core.models import CompiledWiki, WikiNode
-from knox.output.pages.index import _full_catalog, generate_index, write_index
+from knox.output.pages.index import _full_catalog, exported_sources_section, generate_index, sync_exported_sources_section, write_index
 from knox.output.pages.overview import generate_overview_agentic
 from knox.output.wiki_index import (
     LogStage,
@@ -339,6 +339,92 @@ def _mock_agentic_overview(content: str = "Thematic overview.") -> MagicMock:
 
     agent.run.side_effect = _run
     return agent
+
+
+# ── exported sources section ──────────────────────────────────────────────
+
+
+class TestExportedSourcesSection:
+    """``## Exported sources`` listing in the vault-root index."""
+
+    def test_renders_links_from_exported_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "a.pdf.md").write_text("# A", encoding="utf-8")
+        (tmp_path / "exported" / "b.pdf.md").write_text("# B", encoding="utf-8")
+        section = exported_sources_section(tmp_path)
+        assert "## Exported sources" in section
+        assert "- [a.pdf.md](exported/a.pdf.md)" in section
+        assert "- [b.pdf.md](exported/b.pdf.md)" in section
+
+    def test_empty_when_no_exported_dir(self, tmp_path: Path) -> None:
+        assert exported_sources_section(tmp_path) == ""
+
+    def test_empty_when_dir_holds_no_markdown(self, tmp_path: Path) -> None:
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "keep.bin").write_bytes(b"x")
+        assert exported_sources_section(tmp_path) == ""
+
+    def test_hub_includes_section(self, tmp_path: Path) -> None:
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "a.pdf.md").write_text("# A", encoding="utf-8")
+        index = generate_index(_make_wiki(), output_dir=tmp_path / "wiki", base_dir=tmp_path)
+        assert "## Exported sources" in index
+        assert "[a.pdf.md](exported/a.pdf.md)" in index
+
+    def test_full_catalog_includes_section(self, tmp_path: Path) -> None:
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "a.pdf.md").write_text("# A", encoding="utf-8")
+        catalog = _full_catalog(self._wiki(), tmp_path / "wiki", "wiki", base_dir=tmp_path)
+        assert "## Exported sources" in catalog
+        assert "[a.pdf.md](exported/a.pdf.md)" in catalog
+
+    def _wiki(self) -> CompiledWiki:
+        return CompiledWiki(
+            nodes=[
+                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type="concept"),
+            ],
+            edges=[],
+            toc=[],
+        )
+
+
+class TestSyncExportedSourcesSection:
+    """Splice: insert / refresh / remove the section in an existing index."""
+
+    def test_inserts_when_missing(self, tmp_path: Path) -> None:
+        index_file = tmp_path / "index.md"
+        index_file.write_text("# Wiki Index\n\n**Sources:** 5\n", encoding="utf-8")
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "a.pdf.md").write_text("# A", encoding="utf-8")
+        sync_exported_sources_section(index_file, tmp_path)
+        text = index_file.read_text(encoding="utf-8")
+        assert "## Exported sources" in text
+        assert "- [a.pdf.md](exported/a.pdf.md)" in text
+        assert "**Sources:** 5" in text
+
+    def test_refresh_is_idempotent(self, tmp_path: Path) -> None:
+        index_file = tmp_path / "index.md"
+        index_file.write_text("# Wiki Index\n\n## Exported sources\n\n- [stale.md](exported/stale.md)\n", encoding="utf-8")
+        (tmp_path / "exported").mkdir()
+        (tmp_path / "exported" / "a.pdf.md").write_text("# A", encoding="utf-8")
+        sync_exported_sources_section(index_file, tmp_path)
+        first = index_file.read_text(encoding="utf-8")
+        sync_exported_sources_section(index_file, tmp_path)
+        assert index_file.read_text(encoding="utf-8") == first
+        assert "stale.md" not in first
+        assert "a.pdf.md" in first
+
+    def test_removes_when_dir_empty(self, tmp_path: Path) -> None:
+        index_file = tmp_path / "index.md"
+        index_file.write_text("# Wiki Index\n\n## Exported sources\n\n- [a.md](exported/a.md)\n", encoding="utf-8")
+        sync_exported_sources_section(index_file, tmp_path)
+        text = index_file.read_text(encoding="utf-8")
+        assert "Exported sources" not in text
+        assert "# Wiki Index" in text
+
+    def test_noop_when_index_missing(self, tmp_path: Path) -> None:
+        sync_exported_sources_section(tmp_path / "index.md", tmp_path)
+        assert not (tmp_path / "index.md").exists()
 
 
 def _make_wiki(**overrides: object) -> CompiledWiki:

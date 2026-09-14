@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from rich.markup import escape
@@ -25,6 +25,7 @@ from rich.markup import escape
 from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app
 from knox.cli.args.other import (
+    ExportAll,
     ExportAnnotations,
     ExportInline,
     ExportSummary,
@@ -33,11 +34,12 @@ from knox.cli.args.other import (
 from knox.core.config import resolve_config
 from knox.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from knox.core.models import MetadataField
-from knox.core.paths import EXPORTED_DIR_NAME
+from knox.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, safe_stem
 from knox.core.pipeline.export import export_source
 from knox.core.pipeline.ingest import parse_cache_glob
 from knox.core.utils.dicts import as_str
 from knox.logging import get_console, get_logger
+from knox.output.pages.index import sync_exported_sources_section
 
 logger = get_logger(__name__)
 
@@ -189,7 +191,8 @@ def sources_attr_rm(
 @sources_app.command("export", help="Export an ingested source as clean markdown.")
 def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     ctx: typer.Context,
-    source_id: str,
+    source_id: Annotated[str, typer.Argument()] = "",
+    export_all: ExportAll = False,
     output: str = "",
     inline: ExportInline = False,
     annotations: ExportAnnotations = None,
@@ -205,20 +208,10 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
 
     OUTPUT is optional — omit it to write to the vault's ``exported/``
     directory (reference material, outside wiki/); pass a path to export to
-    any arbitrary file.
+    any arbitrary file. With --all every ingested source is exported into
+    ``exported/`` and the vault-root ``index.md`` is refreshed to list them.
     """
     vp = vault_paths_from_ctx(ctx)
-    if output:
-        output_file = Path(output)
-    else:
-        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
-        stem = Path(source_id).stem or "source"
-        output_file = exported_dir / f"{stem}.md"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        get_console().print(f"No OUTPUT given — writing to {output_file}")
-    if output_file.suffix.lower() != ".md":
-        get_console().print(f"[red]Output file must end in .md, got '{escape(output_file.suffix or '<none>')}'[/]")
-        raise typer.Exit(1)
 
     cli_set: dict[str, Any] = {}
     if annotations is not None:
@@ -230,6 +223,56 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
         config_file=config,
         cli_overrides=build_cli_overrides(cli_set=cli_set),
     )
+    ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"
+    summ = as_str(cfg.get(EXPORT_SUMMARY)) or "off"
+
+    if export_all:
+        if source_id:
+            get_console().print("[red]SOURCE_ID cannot be combined with --all.[/]")
+            raise typer.Exit(1)
+        if output:
+            get_console().print("[red]--all exports into exported/; OUTPUT must be empty.[/]")
+            raise typer.Exit(1)
+        cache_data = _load_all_cache_entries(vp.cache_dir)
+        if not cache_data:
+            get_console().print("[yellow]No sources found. Run 'knox ingest' first.[/]")
+            raise typer.Exit(0)
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        exported_dir.mkdir(parents=True, exist_ok=True)
+        skipped = 0
+        for file in sorted(cache_data):
+            out_file = exported_dir / f"{safe_stem(file) or 'source'}.md"
+            try:
+                export_source(
+                    base_dir=vp.base_dir,
+                    cache_dir=vp.cache_dir,
+                    source_id=file,
+                    out_path=out_file,
+                    inline=inline,
+                    annotations=ann,
+                    summary=summ,
+                )
+            except FileNotFoundError as exc:
+                get_console().print(f"[yellow]Skipped {escape(file)}: {escape(str(exc))}[/]")
+                skipped += 1
+        sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
+        get_console().print(f"[green]Exported {len(cache_data) - skipped} source(s) -> {exported_dir}[/]")
+        raise typer.Exit(0 if not skipped else 1)
+
+    if not source_id:
+        get_console().print("[red]Pass a SOURCE_ID or use --all.[/]")
+        raise typer.Exit(1)
+    if output:
+        output_file = Path(output)
+    else:
+        exported_dir = vp.base_dir / EXPORTED_DIR_NAME
+        output_file = exported_dir / f"{safe_stem(source_id) or 'source'}.md"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        get_console().print(f"No OUTPUT given — writing to {output_file}")
+    if output_file.suffix.lower() != ".md":
+        get_console().print(f"[red]Output file must end in .md, got '{escape(output_file.suffix or '<none>')}'[/]")
+        raise typer.Exit(1)
+
     try:
         export_source(
             base_dir=vp.base_dir,
@@ -237,12 +280,14 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
             source_id=source_id,
             out_path=output_file,
             inline=inline,
-            annotations=as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off",
-            summary=as_str(cfg.get(EXPORT_SUMMARY)) or "off",
+            annotations=ann,
+            summary=summ,
         )
     except FileNotFoundError as exc:
         get_console().print(f"[red]{escape(str(exc))}[/]")
         raise typer.Exit(1) from exc
+    if not output:
+        sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
     get_console().print(f"[green]Exported {escape(source_id)} -> {escape(str(output_file))}[/]")
 
 

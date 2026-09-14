@@ -208,6 +208,11 @@ IngestTarget = Annotated[
 
 # ── sources export ───────────────────────────────────────────────────────
 
+ExportAll = Annotated[
+    bool,
+    typer.Option("--all", help="Export every ingested source into exported/."),
+]
+
 ExportInline = Annotated[
     bool,
     typer.Option(
