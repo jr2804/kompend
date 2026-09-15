@@ -19,21 +19,6 @@ from knox.core.pipeline.ingest import ingest_documents
 from knox.core.pipeline.state import TierStateStore
 
 
-def _seed_vault(tmp_path: Path) -> Path:
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
-    return base
-
-
-def _fake_parser() -> MagicMock:
-    doc = ParsedDocument(source_file=Path("sources"), elements=[], title="")
-    parser = MagicMock()
-    parser.parse.return_value = doc
-    return parser
-
-
 class _FakeRouter:
     def __init__(self) -> None:
         self.parsed: list[Path] = []
@@ -47,6 +32,13 @@ class _FakeRouter:
 
         parser.parse.side_effect = _parse
         return parser
+
+
+def _fake_parser() -> MagicMock:
+    doc = ParsedDocument(source_file=Path("sources"), elements=[], title="")
+    parser = MagicMock()
+    parser.parse.return_value = doc
+    return parser
 
 
 def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
@@ -94,3 +86,11 @@ def test_text_md_still_normalized(tmp_path: Path) -> None:
 
     assert result.failed == 0
     mock_norm.assert_called_once_with(src, base / ".knox" / "cache")
+
+
+def _seed_vault(tmp_path: Path) -> Path:
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    return base
