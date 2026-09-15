@@ -21,7 +21,7 @@ from knox.core.pipeline.state import TierStateStore
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
-from knox.preprocessing.parsers.base import ParserRouter
+from knox.preprocessing.parsers.base import FileExtension, ParserRouter
 
 # Length of the content-hash suffix appended to parse-cache filenames.
 # 8 hex chars (32 bits) plus the stem prefix makes collisions astronomically
@@ -174,10 +174,15 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             continue
 
         try:
-            parse_target, _encoding = normalize_to_utf8_path(source_file, cache_dir)
+            # Encoding normalization only helps text-format sources; binary
+            # containers (PDF/DOCX/raster) are handled byte-wise by their parser
+            # and would raise ValueError("binary") via normalize_to_utf8_path.
+            # Mirrors the gate in ``_parse.py`` (memory #802) — keep in sync.
+            suffix = FileExtension(source_file.suffix.lower())
+            parse_target, _encoding = normalize_to_utf8_path(source_file, cache_dir) if suffix.is_text else (source_file, None)
             doc = parser.parse(parse_target)
-        except Exception:
-            logger.debug("Failed to parse %s", source_file, exc_info=True)
+        except Exception as exc:
+            logger.warning("Failed to parse %s: %s", source_file, exc, exc_info=True)
             failed += 1
             continue
 
