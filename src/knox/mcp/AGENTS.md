@@ -8,6 +8,10 @@
 MCP (Model Context Protocol) server exposing KNOX compilation, query,
 memory, and configuration operations as MCP tools. Serves over stdio transport.
 
+Framework: Prefect-maintained ``fastmcp`` (built on official mcp SDK 2.x).
+Use ``from fastmcp import FastMCP`` — never the SDK's renamed
+``MCPServer``, and never pin ``mcp<2``.
+
 ## Ownership
 
 - ``src/knox/mcp/`` — FastMCP server, tool implementations
