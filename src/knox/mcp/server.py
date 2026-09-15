@@ -1,11 +1,15 @@
-"""KNOX MCP server — thin wrapper that registers all tools on FastMCP.
+"""KNOX MCP server — thin wrapper that registers all tools on fastmcp (Prefect).
 
-Tool implementations live in :mod:`knox.mcp.tools`.
+Tool implementations live in :mod:`knox.mcp.tools`. The server uses the
+Prefect-maintained ``fastmcp`` framework (built on the official mcp SDK
+2.x) — ``FastMCP`` here is ``fastmcp.FastMCP``, not the official SDK's
+renamed ``MCPServer`` (memory: keep this import on fastmcp, never pin
+mcp<2).
 """
 
 from __future__ import annotations
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from knox.mcp.tools import (
     attachments_add,
@@ -143,12 +147,13 @@ def main(wiki_dir: str | None = None) -> None:
     server.run(transport="stdio")
 
 
-def create_mcp_server(port: int = 8000) -> FastMCP:
+def create_mcp_server() -> FastMCP:
     """Create a new FastMCP instance with all KNOX tools registered.
 
     Used by both ``knox mcp`` (stdio) and the ACP agent's companion mode
-    (HTTP on the given *port*).
+    (HTTP). The port is no longer a constructor argument (fastmcp 4.x) —
+    it is passed to ``run_http_async(port=...)`` at the call site.
     """
-    srv = FastMCP("KNOX", port=port)
+    srv = FastMCP("KNOX")
     _register_all(srv)
     return srv

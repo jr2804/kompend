@@ -22,7 +22,8 @@ def mcp_cmd(
     """Start the KNOX MCP server over stdio transport.
 
     Connects to Claude Code, Cursor, and other MCP-compatible clients.
-    Uses the official FastMCP SDK with JSON-RPC 2.0 protocol.
+    Uses the Prefect fastmcp framework (built on official mcp SDK 2.x)
+    with JSON-RPC 2.0 protocol.
 
     Examples:
         knox mcp                        # start stdio server (wiki = cwd)

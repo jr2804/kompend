@@ -46,8 +46,8 @@ def agent_cmd(
     agent = build_knox_agent()
 
     if mcp_port is not None:
-        mcp_server = create_mcp_server(port=mcp_port)
-        mcp_task = asyncio.create_task(mcp_server.run_streamable_http_async())
+        mcp_server = create_mcp_server()
+        mcp_task = asyncio.create_task(mcp_server.run_http_async(port=mcp_port, transport="streamable-http"))
         try:
             _run_sync(agent)
         finally:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
@@ -118,6 +119,16 @@ class TestConfigCheck:
         assert len(result["reports"]) == 2
 
 
+def _mcp_tool_names() -> set[str]:
+    """Named tool set from the module-level fastmcp server.
+
+    ``fastmcp`` 4.x has no ``_tool_manager._tools`` (the official SDK's
+    private storage) — list tools through the public async API instead.
+    """
+    tools = asyncio.run(mcp_server.list_tools())
+    return {t.name for t in tools}
+
+
 def test_cli_mcp_parity() -> None:
     """Every functional CLI command has a matching MCP tool."""
     register_all_commands()
@@ -131,8 +142,7 @@ def test_cli_mcp_parity() -> None:
         for cmd in sub_app.registered_commands:
             cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name)}")
 
-    mcp_tools = set(mcp_server._tool_manager._tools)
-    mcp_norm = {_normalize_mcp(t) for t in mcp_tools}
+    mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # Apply explicit aliases: remove the aliased CLI command from the
     # expected set (the MCP tool already covers it).
     for cli_cmd in _MCP_TO_CLI_ALIASES.values():
@@ -160,8 +170,7 @@ def test_mcp_cli_parity_reverse() -> None:
         for cmd in sub_app.registered_commands:
             cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name)}")
 
-    mcp_tools = set(mcp_server._tool_manager._tools)
-    mcp_norm = {_normalize_mcp(t) for t in mcp_tools}
+    mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # MCP tools that intentionally have no CLI equivalent (server bootstrap,
     # interactive, or pure-MCP conveniences).
     mcp_only = {"list_attachments", "read_attachment", "attachment_info"}
