@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 
 class ContextSource(StrEnum):
+    USER_PROVIDER = "user_provider"
     OLLAMA = "ollama"
     MODELS_DEV = "models_dev"
     FALLBACK = "fallback"
@@ -46,11 +47,16 @@ def discover_context_window(  # noqa: PLR0915
     """Discover the context window for *model*.
 
     Strategy (first hit wins; each step fills only the values still missing):
-    1. For ``ollama/`` models, query via ``ollama.show()`` — checks
+    1. ``[providers.<name>]`` override (from knox.toml) — explicit user
+       config beats any discovered value, the same precedence rule
+       ``build_model()`` uses for endpoints. Applies to both user-defined
+       and integrated providers (e.g. ``[providers.ollama].context_window``).
+       Finest granularity wins: per-model → provider-level.
+    2. For ``ollama/`` models, query via ``ollama.show()`` — checks
        ``OLLAMA_NUM_CTX`` env var then GGUF ``context_length`` metadata.
-    2. Query the ``models.dev`` catalog — covers most cloud providers
+    3. Query the ``models.dev`` catalog — covers most cloud providers
        and custom OpenAI-compatible mirrors.
-    3. If *fallback_max_input* is provided (from ``[compile.llm]`` config),
+    4. If *fallback_max_input* is provided (from ``[compile.llm]`` config),
        use it as-is with **no clamping** — the value the user configured.
        If neither source resolves AND no fallback is provided, raise
        ``LookupError`` — a missing context window usually means the model
@@ -81,28 +87,30 @@ def discover_context_window(  # noqa: PLR0915
         )
         raise ValueError(msg)
 
-    if model.startswith("ollama/"):
+    # 1. Explicit [providers.<name>] override (from knox.toml) — finest
+    # granularity wins: per-model context_window → provider-level
+    # context_window (deprecated context_window_cap still honored).
+    # Checked before the probes so user config always beats auto-discovery,
+    # mirroring build_model()'s "explicit user config beats implicit catalog".
+    provider_id, model_name = _split_model(model)
+    cfg = _user_providers.get(provider_id)
+    if cfg:
+        model_cfg = cfg.get("models", {}).get(model_name, {})
+        per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None
+        provider_level = cfg.get("context_window", cfg.get("context_window_cap"))
+        override = per_model if per_model is not None else provider_level
+        if override is not None:
+            max_input = int(override)
+            max_output = int(override)
+            source = ContextSource.USER_PROVIDER
+
+    # 2. Integrated provider auto-discovery: live Ollama probe, then catalog.
+    if max_input is None and model.startswith("ollama/"):
         ollama_ctx = _query_ollama_num_ctx(model.removeprefix("ollama/"))
         if ollama_ctx is not None:
             max_input = ollama_ctx
             max_output = ollama_ctx
             source = ContextSource.OLLAMA
-
-    # 1b. User-defined provider (from [providers] in knox.toml)?
-    # Resolution: per-model context_window → provider-level context_window
-    # (old key context_window_cap still honored) — finest granularity wins.
-    if max_input is None:
-        provider_id, model_name = _split_model(model)
-        if provider_id in _user_providers:
-            cfg = _user_providers[provider_id]
-            model_cfg = cfg.get("models", {}).get(model_name, {})
-            per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None
-            provider_level = cfg.get("context_window", cfg.get("context_window_cap"))
-            override = per_model if per_model is not None else provider_level
-            if override is not None:
-                max_input = int(override)
-                max_output = int(override)
-                source = ContextSource.FALLBACK
 
     if max_input is None or max_output is None:
         try:

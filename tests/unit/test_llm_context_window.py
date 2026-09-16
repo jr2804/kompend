@@ -131,7 +131,7 @@ class TestDiscoverContextWindowUserProvider:
         cw = discover_context_window("my-llama/mistral-nemo")
         assert cw.max_input == 32768
         assert cw.max_output == 32768
-        assert cw.source == ContextSource.FALLBACK
+        assert cw.source == ContextSource.USER_PROVIDER
 
     def test_user_provider_no_cap_falls_through(self) -> None:
         """User-defined provider without context_window_cap falls through to fallback."""
@@ -181,3 +181,37 @@ class TestPerModelContextWindow:
 
     def _set(self, provider_cfg: dict) -> None:
         set_user_providers({"prov": {"base_url": "http://x/v1", **provider_cfg}})
+
+
+class TestUserProviderOverrideBeatsDiscovery:
+    """Explicit [providers.<name>] config beats auto-discovery (Ollama / catalog).
+
+    Regression: the Ollama live probe used to run first and shadow any
+    [providers.ollama].context_window override, so doctor reported the
+    auto-discovered value instead of the configured one.
+    """
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+        patch.stopall()
+
+    def test_override_beats_ollama_probe(self) -> None:
+        set_user_providers({"ollama": {"context_window": 65536}})
+        with patch("knox.llm.context_window._query_ollama_num_ctx", return_value=131072):
+            cw = discover_context_window("ollama/qwen3")
+        assert cw.max_input == 65536
+        assert cw.max_output == 65536
+        assert cw.source == ContextSource.USER_PROVIDER
+
+    def test_override_beats_catalog(self) -> None:
+        set_user_providers({"openai": {"context_window": 40000}})
+        with patch("knox.llm.context_window.resolve_model_limits", return_value=(200000, 100000)):
+            cw = discover_context_window("openai/gpt-5.2")
+        assert cw.max_input == 40000
+        assert cw.source == ContextSource.USER_PROVIDER
+
+    def test_no_override_still_uses_ollama_probe(self) -> None:
+        with patch("knox.llm.context_window._query_ollama_num_ctx", return_value=131072):
+            cw = discover_context_window("ollama/qwen3")
+        assert cw.max_input == 131072
+        assert cw.source == ContextSource.OLLAMA
