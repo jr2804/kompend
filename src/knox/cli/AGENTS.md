@@ -203,7 +203,6 @@ touched, not extended:
 
 | Violation | Where | Why it's wrong |
 |---|---|---|
-| `doctor.py` has its own parser registration logic | `doctor.py:58-74` | Should reuse `build_default_router()` from the parser registry |
 | `status.py` imports from `knox.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
 
 ### Fixed violations (do not re-introduce)
@@ -213,7 +212,6 @@ touched, not extended:
 | `_build_router()` → `build_default_router()` in `knox.preprocessing.parsers._registry` | Parser construction in CLI |
 | `_load_wiki()` → `load_cached_wiki()` in `knox.core.models` | JSON deserialization in CLI |
 | `_build_vector_index()` → `build_vector_index()` in `knox.rag` | RAG business logic in CLI |
-| `doctor.py` now uses `LLMClient.try_complete()` | Direct LLM client call |
 | `status.py` now uses `find_project_config()` | Hardcoded `.knox/config.yaml` path |
 | `SUPPORTED_EXTENSIONS` → `get_supported_extensions()` querying parser registry | Duplicated extension set |
 
