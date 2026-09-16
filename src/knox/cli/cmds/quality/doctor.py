@@ -102,10 +102,25 @@ def run_doctor(
     results.append(_check_disk_space(sources_dir))
     llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
     _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
-    # Connectivity pings BEFORE context-window discovery: they load the model
+    context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
+    if context_window_cap is None:
+        context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
+    if context_window_cap == 0:
+        context_window_cap = None
+    llm_cfg = LLMConfig(**(cfg or {}).get("compile", {}).get("llm", {}))
+
+    # Model-touching checks run in per-model blocks (llm → vlm → embed) so a
+    # model is never swapped out between its own checks — a reload would
+    # otherwise dominate the reported throughput as a bogus cold start.
+    # Within a block the connectivity ping comes first: it loads the model
     # into Ollama so /api/ps returns the context the server actually serves
     # (often memory-capped below the GGUF-metadata value).
+
     results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
+    results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
+    results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
+
     vlm_effective = resolve_vlm_model(default_model, vlm_model)
     if vlm_model:
         results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
@@ -123,21 +138,15 @@ def run_doctor(
         )
     else:
         results.append(_ping_model(None, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_ping_embed_model(embed_model))
-    context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
-    if context_window_cap is None:
-        context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
-    if context_window_cap == 0:
-        context_window_cap = None
-    llm_cfg = LLMConfig(**(cfg or {}).get("compile", {}).get("llm", {}))
-    results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
-    results.append(_check_context_window(vlm_model, "vlm", context_window_cap, llm_cfg))
-    results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
-    results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
     results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
+    results.append(_check_context_window(vlm_model, "vlm", context_window_cap, llm_cfg))
+
     referenced_providers = {provider_id for model in (default_model, vlm_model, embed_model) if model and (provider_id := _provider_id_of(model)) is not None}
     results.append(_check_custom_providers(cfg, referenced_providers))
     results.append(_check_ollama_device(default_model, vlm_model))
+    # Embed last: loading it evicts the llm/vlm from Ollama, so it must not
+    # sit between the llm/vlm checks (nor before ollama-device reads /api/ps).
+    results.append(_ping_embed_model(embed_model))
 
     return results
 
@@ -286,10 +295,16 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
             retries=retries or 2,
             usage_tracker=tracker,
         )
+        deps = DoctorDeps(ping="Respond with exactly one word: ok")
+        # Warm-up run: the first call pays model load (cold start) and would
+        # otherwise dominate the reported throughput. Discard it and measure
+        # the second, warm run — tok/s should reflect steady-state, not load.
+        agent.run(deps)
+        tokens_before = tracker.completion_tokens
         start = monotonic()
-        result = agent.run(DoctorDeps(ping="Respond with exactly one word: ok"))
+        result = agent.run(deps)
         elapsed = monotonic() - start
-        rate = tokens_per_second(tracker.completion_tokens, elapsed)
+        rate = tokens_per_second(tracker.completion_tokens - tokens_before, elapsed)
         rate_s = f" ({rate:.1f} tok/s over {elapsed:.1f}s)" if rate else ""
         if result and result.strip():
             return CheckResult(name, True, f"{label} OK ({model}){rate_s}")

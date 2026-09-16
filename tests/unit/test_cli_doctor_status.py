@@ -245,6 +245,53 @@ class TestRunDoctorOrder:
         if "context-window-llm" in names and "budget-consistency" in names:
             assert names.index("context-window-llm") < names.index("budget-consistency")
 
+    def test_llm_block_precedes_vlm_block(self) -> None:
+        """Per-model blocks: every llm check runs before the vlm block starts."""
+        names = [r.name for r in run_doctor()]
+        if "structured-output-llm" in names and "connectivity-vlm" in names:
+            assert names.index("structured-output-llm") < names.index("connectivity-vlm")
+
+    def test_embed_after_conversation_models(self) -> None:
+        """Embedding runs last — loading it evicts llm/vlm from Ollama mid-run."""
+        names = [r.name for r in run_doctor()]
+        if "connectivity-embed" in names:
+            for other in ("connectivity-llm", "structured-output-llm", "connectivity-vlm", "ollama-device"):
+                if other in names:
+                    assert names.index("connectivity-embed") > names.index(other)
+
+
+class TestPingModelWarmup:
+    """``_ping_model`` discards the cold-start run and reports warm throughput."""
+
+    def test_second_run_is_measured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        runs = 0
+
+        class _FakeTracker:
+            completion_tokens = 0
+
+        class _FakeAgent:
+            def __init__(self, **kwargs: object) -> None:
+                self._tracker = kwargs["usage_tracker"]
+
+            def run(self, _deps: object) -> str:
+                nonlocal runs
+                runs += 1
+                # Cold start emits far more tokens than the warm run; only the
+                # warm delta must feed the reported rate.
+                self._tracker.completion_tokens += 1000 if runs == 1 else 5
+                return "ok"
+
+        ticks = iter([10.0, 11.0])
+        monkeypatch.setattr(doctor, "DoctorAgent", _FakeAgent)
+        monkeypatch.setattr(doctor, "UsageTracker", _FakeTracker)
+        monkeypatch.setattr(doctor, "monotonic", lambda: next(ticks))
+
+        result = doctor._ping_model("ollama/foo", "llm")
+
+        assert runs == 2  # warm-up + measured run
+        assert result.passed is True
+        assert "5.0 tok/s" in result.message
+
 
 class TestCheckOllamaDevice:
     """``ollama-device`` doctor check reports GPU offload status per referenced model."""
