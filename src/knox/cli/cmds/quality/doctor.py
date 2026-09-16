@@ -22,7 +22,7 @@ from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
-from knox.llm.models import build_model
+from knox.llm.models import build_model, resolve_vlm_model
 from knox.llm.usage import UsageTracker, tokens_per_second
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
@@ -106,7 +106,23 @@ def run_doctor(
     # into Ollama so /api/ps returns the context the server actually serves
     # (often memory-capped below the GGUF-metadata value).
     results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    vlm_effective = resolve_vlm_model(default_model, vlm_model)
+    if vlm_model:
+        results.append(_ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
+    elif vlm_effective:
+        # No explicit VLM, but the default model is vision-capable and is used
+        # as captioning model. Plain informational note — not a warning: a
+        # single configured model is an intentional setup, and the default
+        # model's connectivity is already covered by the "llm" ping above.
+        results.append(
+            CheckResult(
+                "connectivity-vlm",
+                True,
+                f"No vlm model configured — using default ({vlm_effective}) as VLM (vision-capable)",
+            )
+        )
+    else:
+        results.append(_ping_model(None, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
     results.append(_ping_embed_model(embed_model))
     context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
     if context_window_cap is None:

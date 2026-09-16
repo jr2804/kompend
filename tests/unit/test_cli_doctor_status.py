@@ -347,3 +347,68 @@ def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         assert result_file.exists()
         content = result_file.read_text(encoding="utf-8")
         assert "lang: en" in content
+
+
+class TestVlmFallbackIndication:
+    def test_fallback_reported_without_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No explicit VLM + vision-capable default → plain info, no warning."""
+        calls = []
+
+        def _fake_resolve(default: str | None, vlm: str | None) -> str | None:
+            calls.append((default, vlm))
+            return "openai/gpt-5.2" if vlm is None else vlm
+
+        monkeypatch.setattr(doctor, "resolve_vlm_model", _fake_resolve)
+        monkeypatch.setattr(doctor, "_check_sources_dir", lambda *a, **k: CheckResult("sources", True))
+        monkeypatch.setattr(doctor, "_check_output_dir", lambda *a, **k: CheckResult("output", True))
+        monkeypatch.setattr(doctor, "_check_parsers", lambda *a, **k: CheckResult("parsers", True))
+        monkeypatch.setattr(doctor, "_check_git_repo", lambda *a, **k: CheckResult("git", True))
+        monkeypatch.setattr(doctor, "_check_disk_space", lambda *a, **k: CheckResult("disk", True))
+        monkeypatch.setattr(doctor, "_ping_model", lambda *a, **k: CheckResult("ping", True))
+        monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
+        monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
+        monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
+        monkeypatch.setattr(doctor, "_check_structured_output", lambda *a, **k: CheckResult("struct", True))
+        monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
+        monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
+
+        results = run_doctor(default_model="openai/gpt-5.2", vlm_model=None)
+
+        vlm = next(r for r in results if r.name == "connectivity-vlm")
+        assert vlm.passed is True
+        assert vlm.warning is False
+        assert "gpt-5.2" in vlm.message
+        assert "vision-capable" in vlm.message
+        # The fallback resolution is consulted with the real default model.
+        assert calls
+        assert calls[-1] == ("openai/gpt-5.2", None)
+        # No duplicate probe — the connectivity result IS the informational note.
+        assert vlm.message.startswith("No vlm model configured")
+
+    def test_explicit_vlm_still_pinged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Explicit vlm_model keeps the normal ping path (no fallback note)."""
+        pings: list[str] = []
+
+        def _fake_ping(model, model_label, **_kwargs) -> CheckResult:  # noqa: ANN001 — mock signature mirrors _ping_model
+            pings.append((model, model_label))
+            return CheckResult(f"connectivity-{model_label}", True, f"{model_label} OK")
+
+        monkeypatch.setattr(doctor, "resolve_vlm_model", lambda default, vlm: vlm or default)
+        monkeypatch.setattr(doctor, "_check_sources_dir", lambda *a, **k: CheckResult("sources", True))
+        monkeypatch.setattr(doctor, "_check_output_dir", lambda *a, **k: CheckResult("output", True))
+        monkeypatch.setattr(doctor, "_check_parsers", lambda *a, **k: CheckResult("parsers", True))
+        monkeypatch.setattr(doctor, "_check_git_repo", lambda *a, **k: CheckResult("git", True))
+        monkeypatch.setattr(doctor, "_check_disk_space", lambda *a, **k: CheckResult("disk", True))
+        monkeypatch.setattr(doctor, "_ping_model", _fake_ping)
+        monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
+        monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
+        monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
+        monkeypatch.setattr(doctor, "_check_structured_output", lambda *a, **k: CheckResult("struct", True))
+        monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
+        monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
+
+        results = run_doctor(default_model="openai/gpt-5.2", vlm_model="ollama/llava")
+
+        vlm = next(r for r in results if r.name == "connectivity-vlm")
+        assert ("ollama/llava", "vlm") in pings
+        assert "No vlm model configured" not in vlm.message
