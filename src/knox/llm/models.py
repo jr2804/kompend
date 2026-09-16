@@ -63,7 +63,20 @@ OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 # local / keyless OpenAI-compatible endpoints.
 _NO_KEY_PLACEHOLDER = "api-key-not-set"
 
-__all__ = ["build_model", "resolve_model_limits", "set_user_providers"]
+__all__ = [
+    "build_model",
+    "model_supports_vision",
+    "resolve_model_limits",
+    "resolve_vlm_model",
+    "set_user_providers",
+]
+
+
+#: Vision capability is cached per model string — the Ollama probe is a
+#: live HTTP call to the local server and must not run on every pipeline
+#: construction. The catalog path is cheap but the cache makes the whole
+#: lookup idempotent.
+_VISION_CACHE: dict[str, bool] = {}
 
 logger = get_logger(__name__)
 
@@ -80,6 +93,78 @@ class _NotNativeProvider(Exception):
 
 class _NotInCatalog(Exception):
     """Provider is not in the models-dev catalog or has no API endpoint."""
+
+
+def resolve_vlm_model(default_model: str | None, vlm_model: str | None) -> str | None:
+    """Effective VLM model: explicit VLM wins, else default model if vision-capable.
+
+    ``vlm_model`` is the configured VLM (``compile.llm.vlm_model``); when it
+    is empty, the default model is reused as the captioning model only if
+    :func:`model_supports_vision` confirms image input. Returns ``None`` when
+    neither is usable — callers then skip VLM enrichment as before.
+    """
+    if vlm_model:
+        return vlm_model
+    if default_model and model_supports_vision(default_model):
+        return default_model
+    return None
+
+
+def model_supports_vision(model_string: str) -> bool:
+    """True when *model_string* can consume image input.
+
+    Vision is a property of the *model entry* (its modality signature), not
+    of the api_type/transport: the same OpenAI-compatible endpoint will
+    accept images for a vision model and reject them for a text-only one.
+    How the signature is discovered depends on the provider:
+
+    - **models-dev catalog providers** (openai, google, anthropic, ...): the
+      catalog entry's ``modalities.input`` lists ``"image"``.
+    - **Ollama**: a live ``ollama.show()`` probe returns the server-side
+      ``capabilities`` list, which includes ``"vision"`` for multimodal
+      models (e.g. llava, qwen2.5-vl). The probe is cached per model string
+      and a dead/absent server is treated as *no vision* (conservative: a
+      wrong fallback would send images to a text-only model).
+    - **Unknown providers / user-defined endpoints**: no static metadata,
+      returns ``False`` unless the model is in the catalog.
+
+    Used by :func:`resolve_vlm_model` to fall back to the default model when
+    no explicit VLM is configured.
+    """
+    if model_string in _VISION_CACHE:
+        return _VISION_CACHE[model_string]
+    try:
+        provider_id, model_name = _split(model_string)
+    except ValueError:
+        return False
+
+    vision = _vision_from_catalog(provider_id, model_name)
+    if vision is None and provider_id == "ollama":
+        vision = _vision_from_ollama(model_name)
+    _VISION_CACHE[model_string] = bool(vision)
+    return bool(vision)
+
+
+def _vision_from_catalog(provider_id: str, model_name: str) -> bool | None:
+    """Vision flag from the models-dev catalog; ``None`` when not listed."""
+    try:
+        model = get_model_by_id(provider_id, model_name)
+    except (KeyError, ValueError, TypeError):
+        return None
+    modalities = getattr(model, "modalities", None)
+    if modalities is None or modalities.input is None:
+        return None
+    return "image" in modalities.input
+
+
+def _vision_from_ollama(model_name: str) -> bool | None:
+    """Vision flag via live ``ollama.show``; ``None`` on probe failure."""
+    try:
+        caps = ollama.show(model_name).capabilities
+        return bool(caps and "vision" in caps)
+    except Exception:
+        logger.debug("ollama.show() vision probe failed for %s", model_name, exc_info=True)
+        return None
 
 
 def build_model(model_string: str) -> Model:

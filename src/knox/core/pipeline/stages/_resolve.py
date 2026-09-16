@@ -8,6 +8,7 @@ from knox.core.models import Chunk, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
+from knox.llm.models import resolve_vlm_model
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -54,7 +55,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
             len(non_image),
         )
 
-    vlm_model = pipeline.config.llm.vlm_model if pipeline.config.llm.vlm_model else ""
+    vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model) or ""
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
         deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}

@@ -349,6 +349,57 @@ class SimpleNamespaceLike:
         self.__dict__.update(kw)
 
 
+# ── vision support + VLM fallback ─────────────────────────────────────────
+
+
+class TestVisionSupport:
+    def teardown_method(self) -> None:
+        mod._VISION_CACHE.clear()
+
+    def test_catalog_vision_model_has_image_modality(self) -> None:
+        # gpt-5.2 modalities.input includes 'image' in the models-dev catalog.
+        assert mod.model_supports_vision("openai/gpt-5.2") or mod.model_supports_vision("openai/gpt-5")
+        assert mod.model_supports_vision("google/gemini-2.5-flash")
+
+    def test_unknown_model_in_catalog_not_listed_is_no_vision(self) -> None:
+        # A model string that parses but is not in the catalog → False.
+        assert mod.model_supports_vision("openai/definitely-not-a-real-model-xyz") is False
+
+    def test_invalid_model_string_is_false(self) -> None:
+        assert mod.model_supports_vision("no-separator") is False
+
+    def test_ollama_probe_failure_is_conservative(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A dead Ollama server must not enable the fallback (no wrong VLM send)."""
+
+        def _fail(name: str) -> None:
+            raise ConnectionError("refused")
+
+        monkeypatch.setattr(mod.ollama, "show", _fail)
+        assert mod.model_supports_vision("ollama/anything") is False
+        assert "ollama/anything" in mod._VISION_CACHE
+
+
+class TestResolveVlmModel:
+    def teardown_method(self) -> None:
+        mod._VISION_CACHE.clear()
+
+    def test_explicit_vlm_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(mod, "model_supports_vision", lambda s: True)
+        assert mod.resolve_vlm_model("openai/gpt-5.2", "openai/gpt-4o") == "openai/gpt-4o"
+
+    def test_default_model_as_fallback_when_vision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(mod, "model_supports_vision", lambda s: True)
+        assert mod.resolve_vlm_model("openai/gpt-5.2", None) == "openai/gpt-5.2"
+
+    def test_no_fallback_when_no_vision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(mod, "model_supports_vision", lambda s: False)
+        assert mod.resolve_vlm_model("openai/gpt-5.2", None) is None
+
+    def test_no_vlm_no_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(mod, "model_supports_vision", lambda s: True)
+        assert mod.resolve_vlm_model(None, None) is None
+
+
 # ── build_model: native pydantic-ai providers ──────────────────────────
 
 

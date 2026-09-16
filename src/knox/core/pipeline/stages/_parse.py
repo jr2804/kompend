@@ -26,6 +26,7 @@ from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import parse_cache_name, relativize_image_paths
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.text.encoding import normalize_to_utf8_path
+from knox.llm.models import resolve_vlm_model
 from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupStore
@@ -394,10 +395,11 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
         logger.warning("No parser router available — skipping attachment ingestion")
         return []
     vlm_captioner = None
-    if pipeline.config.llm.vlm_model:
+    vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model)
+    if vlm_model:
         try:
             vlm_captioner = VlmAgent(
-                pipeline.config.llm.vlm_model,
+                vlm_model,
                 timeout=pipeline.config.llm.timeout,
             )
         except Exception:
@@ -447,10 +449,11 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
     """
     resolvers: list[BaseResolver] = []
 
-    if config.llm.vlm_model:
+    vlm_model = resolve_vlm_model(config.llm.default_model, config.llm.vlm_model)
+    if vlm_model:
         try:
             vlm_agent = VlmAgent(
-                config.llm.vlm_model,
+                vlm_model,
                 timeout=config.llm.timeout,
             )
             resolvers.append(
@@ -460,7 +463,7 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                     min_image_dimension=config.vlm_min_image_dimension,
                 )
             )
-            logger.debug("VLMEnricher added to resolver chain (model=%s)", config.llm.vlm_model)
+            logger.debug("VLMEnricher added to resolver chain (model=%s)", vlm_model)
         except Exception as exc:
             logger.debug("VLMEnricher not available: %s", exc, exc_info=True)
 

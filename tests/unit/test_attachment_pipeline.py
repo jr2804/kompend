@@ -131,6 +131,7 @@ def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
     pipeline = MagicMock()
     pipeline.base_directory = str(vault.base_dir)
     pipeline.config.attachments_ingest_adopted = True
+    pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
     pipeline.config.llm.timeout = 120.0
     pipeline.router = MagicMock()
