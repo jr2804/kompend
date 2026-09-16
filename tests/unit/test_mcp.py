@@ -119,16 +119,6 @@ class TestConfigCheck:
         assert len(result["reports"]) == 2
 
 
-def _mcp_tool_names() -> set[str]:
-    """Named tool set from the module-level fastmcp server.
-
-    ``fastmcp`` 4.x has no ``_tool_manager._tools`` (the official SDK's
-    private storage) — list tools through the public async API instead.
-    """
-    tools = asyncio.run(mcp_server.list_tools())
-    return {t.name for t in tools}
-
-
 def test_cli_mcp_parity() -> None:
     """Every functional CLI command has a matching MCP tool."""
     register_all_commands()
@@ -176,6 +166,16 @@ def test_mcp_cli_parity_reverse() -> None:
     mcp_only = {"list_attachments", "read_attachment", "attachment_info"}
     orphan = sorted(mcp_norm - cli_cmds - mcp_only)
     assert not orphan, f"MCP tools without a CLI command: {orphan}"
+
+
+def _mcp_tool_names() -> set[str]:
+    """Named tool set from the module-level fastmcp server.
+
+    ``fastmcp`` 4.x has no ``_tool_manager._tools`` (the official SDK's
+    private storage) — list tools through the public async API instead.
+    """
+    tools = asyncio.run(mcp_server.list_tools())
+    return {t.name for t in tools}
 
 
 def _normalize_cli(name: str) -> str:
