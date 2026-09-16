@@ -355,8 +355,8 @@ class ZvecWikiStore:
                 raw = json.loads(manifest.read_text(encoding="utf-8"))
                 if isinstance(raw, list):
                     old_ids = {str(i) for i in raw}
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Vector manifest corrupt — skipping prune: %s", manifest)
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Vector manifest corrupt — skipping prune: %s (%s)", manifest, exc)
         keep = {_safe_id(n.id) for n in nodes}
         orphans = old_ids - keep
         if orphans:

@@ -140,8 +140,8 @@ def _ensure_pandoc_available() -> None:
     """
     try:
         pypandoc.get_pandoc_path()
-    except OSError:
-        logger.info("pandoc binary not found — downloading on demand (one-time setup)")
+    except OSError as exc:
+        logger.info("pandoc binary not found (%s) — downloading on demand (one-time setup)", exc)
         try:
             pypandoc.ensure_pandoc_installed()
             logger.info("pandoc installed successfully")

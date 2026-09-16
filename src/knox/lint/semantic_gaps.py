@@ -151,8 +151,8 @@ def _load_vector_cache(cache_path: Path) -> dict[str, list[float]]:
     if cache_path.exists():
         try:
             return json.loads(cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Gap vector cache corrupt — rebuilding: %s", cache_path)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Gap vector cache corrupt — rebuilding: %s (%s)", cache_path, exc)
     return {}
 
 
