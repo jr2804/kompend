@@ -55,9 +55,18 @@ to handle the miss.
 ## Context-window discovery
 
 `discover_context_window()` (in `context_window.py`) resolves a model's
-token limits through a first-hit chain: bundled model tables → Ollama
-runtime `/api/show` → `models.dev` catalog → fallback (clamped, one
-WARNING) → user cap.
+token limits through a first-hit chain: `[providers.<name>]` override
+(from knox.toml; per-model → provider-level → legacy `context_window_cap`)
+→ Ollama runtime `/api/show` → `models.dev` catalog → `[compile.llm]`
+fallback → global cap. Explicit user config always beats auto-discovery,
+mirroring `build_model()`'s `[providers.<name>]` precedence. The result
+records its `ContextSource` (`user_provider`, `ollama`, `models_dev`,
+`fallback`) for doctor diagnostics.
+
+An override-only `[providers.<name>]` block (no `base_url`) is valid for any
+provider resolvable natively or via the catalog — `is_known_provider()`
+(exported from `models.py`) is the predicate `knox doctor` uses to
+distinguish such blocks from typo'd provider ids.
 
 ## Format module
 
@@ -80,4 +89,4 @@ prompt templates (`encode_for_llm`).
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
 - `uv run pytest tests/unit/test_litellm_model.py -x` — pydantic-ai model wrapper
-- `uv run pytest tests/unit/test_context_window.py -x` — window discovery
+- `uv run pytest tests/unit/test_llm_context_window.py -x` — window discovery
