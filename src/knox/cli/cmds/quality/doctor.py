@@ -22,7 +22,7 @@ from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
 from knox.llm.context_window import discover_context_window
-from knox.llm.models import build_model, resolve_vlm_model
+from knox.llm.models import build_model, is_known_provider, resolve_vlm_model
 from knox.llm.usage import UsageTracker, tokens_per_second
 from knox.logging import get_console, get_logger
 from knox.preprocessing.parsers import build_default_router
@@ -397,6 +397,13 @@ def _check_custom_providers(cfg: dict[str, Any] | None, referenced_providers: se
         checked.append(prov_name)
         base_url = prov_cfg.get("base_url", "") if isinstance(prov_cfg, dict) else ""
         if not base_url:
+            # Override-only block for a known provider (e.g. [providers.ollama]
+            # with only context_window / max_connections) — settings apply,
+            # model building still routes through the native/catalog path.
+            # Standalone providers (typo, never-known id) without base_url
+            # remain a hard error.
+            if is_known_provider(prov_name):
+                continue
             failures.append(f"{prov_name}: missing base_url")
             continue
         # Quick connectivity check — try to reach the base URL

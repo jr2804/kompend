@@ -65,6 +65,7 @@ _NO_KEY_PLACEHOLDER = "api-key-not-set"
 
 __all__ = [
     "build_model",
+    "is_known_provider",
     "model_supports_vision",
     "resolve_model_limits",
     "resolve_vlm_model",
@@ -205,6 +206,24 @@ def build_model(model_string: str) -> Model:
         f"  Got: {model_string!r} -> provider={provider_id!r}, model={model_name!r}"
     )
     raise ValueError(msg)
+
+
+def is_known_provider(provider_id: str) -> bool:
+    """Whether *provider_id* resolves without a user-defined endpoint.
+
+    True when pydantic-ai ships a native provider class for it, or the
+    models-dev catalog has an entry. Distinguishes an override-only
+    ``[providers.<name>]`` block (valid for a known provider — e.g.
+    ``[providers.ollama]`` with only ``context_window``) from a typo'd
+    provider id that can never build a model.
+    """
+    if provider_id in _discover_provider_ids():
+        return True
+    try:
+        get_provider(provider_id)
+    except (KeyError, ValueError):
+        return False
+    return True
 
 
 def resolve_model_limits(model_id: str) -> tuple[int, int]:

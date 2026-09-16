@@ -318,37 +318,6 @@ class TestCheckOllamaDevice:
         return SimpleNamespace(models=[SimpleNamespace(**m) for m in models])
 
 
-def test_provenance_no_wiki() -> None:
-    """Knox provenance without compiled wiki should exit with error."""
-    runner = CliRunner()
-    result = runner.invoke(app, ["provenance", "test-page"])
-    assert result.exit_code != 0
-    assert result.exit_code == 1
-
-
-def test_provenance_multiple_slugs_accepted() -> None:
-    """Knox provenance accepts multiple positional slugs (variadic)."""
-    runner = CliRunner()
-    # No wiki loaded, but Typer should accept the args without a usage error.
-    result = runner.invoke(app, ["provenance", "page-a", "page-b", "page-c"])
-    assert result.exit_code != 0  # no wiki → error, but NOT a usage/arg error
-    assert "Got unexpected extra argument" not in result.output
-
-
-def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox write creates a file (or errors gracefully)."""
-    monkeypatch.chdir(tmp_path)
-    runner = CliRunner()
-    result = runner.invoke(app, ["write", "Test Article", "--frontmatter", "lang=en"])
-    assert result.exit_code in (0, 1)
-    if result.exit_code == 0:
-        assert "Written" in result.stdout
-        result_file = tmp_path / "wiki" / "write" / "test-article.md"
-        assert result_file.exists()
-        content = result_file.read_text(encoding="utf-8")
-        assert "lang: en" in content
-
-
 class TestVlmFallbackIndication:
     def test_fallback_reported_without_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """No explicit VLM + vision-capable default → plain info, no warning."""
@@ -412,3 +381,55 @@ class TestVlmFallbackIndication:
         vlm = next(r for r in results if r.name == "connectivity-vlm")
         assert ("ollama/llava", "vlm") in pings
         assert "No vlm model configured" not in vlm.message
+
+
+class TestCheckCustomProviders:
+    """`[providers.<name>]` override-only blocks must not require base_url."""
+
+    def test_override_only_block_for_native_provider_passes(self) -> None:
+        cfg = {"providers": {"ollama": {"context_window": 65536}}}
+        result = doctor._check_custom_providers(cfg, {"ollama"})
+        assert result.passed is True
+        assert "missing base_url" not in result.message
+
+    def test_standalone_provider_without_base_url_fails(self) -> None:
+        cfg = {"providers": {"totally-unknown-xyz": {"context_window": 1}}}
+        result = doctor._check_custom_providers(cfg, {"totally-unknown-xyz"})
+        assert result.passed is False
+        assert "missing base_url" in result.message
+
+    def test_no_base_url_unreferenced_skipped(self) -> None:
+        cfg = {"providers": {"ollama": {"context_window": 65536}}}
+        result = doctor._check_custom_providers(cfg, {"openai"})
+        assert result.passed is True
+
+
+def test_provenance_no_wiki() -> None:
+    """Knox provenance without compiled wiki should exit with error."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["provenance", "test-page"])
+    assert result.exit_code != 0
+    assert result.exit_code == 1
+
+
+def test_provenance_multiple_slugs_accepted() -> None:
+    """Knox provenance accepts multiple positional slugs (variadic)."""
+    runner = CliRunner()
+    # No wiki loaded, but Typer should accept the args without a usage error.
+    result = runner.invoke(app, ["provenance", "page-a", "page-b", "page-c"])
+    assert result.exit_code != 0  # no wiki → error, but NOT a usage/arg error
+    assert "Got unexpected extra argument" not in result.output
+
+
+def test_write_command_minimal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Knox write creates a file (or errors gracefully)."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ["write", "Test Article", "--frontmatter", "lang=en"])
+    assert result.exit_code in (0, 1)
+    if result.exit_code == 0:
+        assert "Written" in result.stdout
+        result_file = tmp_path / "wiki" / "write" / "test-article.md"
+        assert result_file.exists()
+        content = result_file.read_text(encoding="utf-8")
+        assert "lang: en" in content
