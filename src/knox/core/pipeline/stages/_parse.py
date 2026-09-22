@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from knox.agents.vlm import VlmAgent
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import (
     ChunkTree,
     DocumentElement,
@@ -32,6 +33,7 @@ from knox.core.pipeline.ingest import (
 )
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.text.encoding import normalize_to_utf8_path
+from knox.core.text.rumdl import normalize_element_markdown
 from knox.llm.models import resolve_vlm_model
 from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
@@ -237,6 +239,14 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
     # cache write so cache and in-memory doc agree (asset ids hash figure
     # image_ref; the same doc is chunked after this function returns).
     relativize_image_paths(parsed, Path(pipeline.base_directory))
+    # Canonical markdown at the part level (one rumdl call per document), so
+    # backend formatting differences are levelled before anything downstream
+    # reads the content. Content-only: page/reading-order/metadata are kept.
+    normalize_element_markdown(
+        parsed.elements,
+        rumdl_config=resolve_rumdl_config(Path(pipeline.base_directory), pipeline.config.output.rumdl_config),
+        flavor=pipeline.config.output.flavor,
+    )
     if use_cache:
         _save_cache(pipeline, source_file, parsed)
     return parsed

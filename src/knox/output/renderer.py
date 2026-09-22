@@ -11,7 +11,6 @@ AST renderer, which produces consistent formatting without a subprocess.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ from typing import Any
 import yaml
 
 from knox.core.page_builder import PageBuilder
+from knox.core.text.rumdl import rumdl_available
 from knox.logging import get_logger
 from knox.output.models import Document
 
@@ -218,7 +218,7 @@ def format_output(
 
 def _check_rumdl() -> bool:
     """Check if ``rumdl`` is available on PATH."""
-    return shutil.which("rumdl") is not None
+    return rumdl_available()
 
 
 def _md_files_under(targets: list[Path]) -> list[Path]:

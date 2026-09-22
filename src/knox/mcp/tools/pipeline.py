@@ -93,6 +93,8 @@ def wiki_ingest(
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
             tags=tags,
+            rumdl_config=cfg.knox.compile.output.rumdl_config,
+            flavor=cfg.knox.compile.output.flavor,
         )
         elapsed = time.monotonic() - ingest_start
     except Exception as exc:

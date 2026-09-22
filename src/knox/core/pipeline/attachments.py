@@ -18,10 +18,12 @@ from pathlib import Path
 from binaryornot.check import is_binary
 
 from knox.agents.vlm import VlmAgent, VlmDeps
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
 from knox.core.paths import VaultPaths
 from knox.core.text.encoding import normalize_to_utf8_path
+from knox.core.text.rumdl import normalize_element_markdown
 from knox.logging import get_logger
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -118,6 +120,8 @@ def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir
     try:
         parse_target, _encoding = normalize_to_utf8_path(att_file, cache_dir)
         doc = router.parse(parse_target)
+        # Same part-level markdown normalisation as parse-tier sources.
+        normalize_element_markdown(doc.elements, rumdl_config=resolve_rumdl_config(cache_dir.parent.parent))
         doc.title = doc.title or att.filename
         _tag_metadata(doc, att)
         return doc

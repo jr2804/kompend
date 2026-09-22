@@ -15,10 +15,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import ElementType, MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.state import TierStateStore
 from knox.core.text.encoding import normalize_to_utf8_path
+from knox.core.text.rumdl import normalize_element_markdown
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import FileExtension, ParserRouter
@@ -83,6 +85,8 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     ingested_by: str = "",
     tags: list[str] | None = None,
     attributes: dict[str, str] | None = None,
+    rumdl_config: Path | None = None,
+    flavor: str | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -128,6 +132,9 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         attributes: Optional key=value source attributes to attach to each
             parsed document's metadata (stored under
             ``MetadataField.ATTRIBUTES``).
+        rumdl_config: Optional rumdl config path for the parse-time markdown
+            normalisation pass (defaults to the vault's ``.knox/rumdl.toml``).
+        flavor: Optional rumdl flavor for that same pass.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -191,6 +198,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             suffix = FileExtension(source_file.suffix.lower())
             parse_target, _encoding = normalize_to_utf8_path(source_file, cache_dir) if suffix.is_text else (source_file, None)
             doc = parser.parse(parse_target)
+            normalize_element_markdown(
+                doc.elements,
+                rumdl_config=resolve_rumdl_config(base_dir, rumdl_config),
+                flavor=flavor,
+            )
         except Exception as exc:
             logger.warning("Failed to parse %s: %s", source_file, exc, exc_info=True)
             failed += 1

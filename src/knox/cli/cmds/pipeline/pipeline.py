@@ -391,6 +391,8 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
             ingested_by=resolve_actor(cfg),
             tags=tags,
             attributes=_parse_attrs(attrs),
+            rumdl_config=cfg.knox.compile.output.rumdl_config,
+            flavor=cfg.knox.compile.output.flavor,
         )
         time.monotonic() - ingest_start
     finally:
