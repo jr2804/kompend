@@ -28,6 +28,7 @@ import base64
 import importlib
 import io
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,13 @@ from knox.preprocessing.parsers.base import (
     BaseParser,
     FileExtension,
 )
+from knox.preprocessing.parsers.markdown import (
+    MIME_BY_FMT,
+    ImagePayload,
+    MarkdownContext,
+    markdown_to_elements,
+    parse_table,
+)
 
 # GLM-OCR element labels → KNOX ElementType.
 _LABEL_TO_TYPE: dict[str, ElementType] = {
@@ -58,16 +66,6 @@ _LABEL_TO_TYPE: dict[str, ElementType] = {
     "caption": ElementType.TEXT,
     "list": ElementType.LIST_ITEM,
     "code": ElementType.CODE,
-}
-
-_MIME_BY_FMT: dict[str, str] = {
-    "png": "image/png",
-    "jpeg": "image/jpeg",
-    "jpg": "image/jpeg",
-    "gif": "image/gif",
-    "webp": "image/webp",
-    "bmp": "image/bmp",
-    "tiff": "image/tiff",
 }
 
 # Optional backend: glmocr is not a locked dependency — installed manually
@@ -251,12 +249,15 @@ def _result_to_elements(
     if not elements:
         md = getattr(result, "markdown_result", None) or ""
         if md:
-            elements, reading_order, first_title = _markdown_to_elements(
+            elements, reading_order, first_title = markdown_to_elements(
                 md,
-                source_file,
-                image_mode,
-                images_dir,
-                reading_order,
+                MarkdownContext(
+                    source_file=source_file,
+                    image_mode=image_mode,
+                    images_dir=images_dir,
+                    reading_order=reading_order,
+                    resolve_image=_glm_image_resolver(image_files),
+                ),
             )
 
     return elements, first_title
@@ -274,19 +275,8 @@ def _coerce_content(etype: ElementType, content: str | list) -> str | list[list[
 
 def _markdown_table_to_grid(md: str) -> list[list[str]]:
     """Best-effort parse of a GFM markdown table into a 2-D string grid."""
-    rows: list[list[str]] = []
-    for line in str(md).strip().splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        # Skip separator rows (| --- | :---: |).
-        stripped.strip("|").strip()
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if all(set(c) <= {"-", ":"} for c in cells):
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        rows.append(cells)
-    return rows
+    grid, _consumed = parse_table(str(md).strip().splitlines(), 0)
+    return grid
 
 
 def _element_metadata(label: str, raw: dict) -> dict[str, Any]:
@@ -301,6 +291,23 @@ def _element_metadata(label: str, raw: dict) -> dict[str, Any]:
     return meta
 
 
+def _glm_image_resolver(image_files: dict[str, Any]) -> Callable[[str, str], ImagePayload | None]:
+    """Look up a figure ref in GLM-OCR's cropped ``image_files`` (name -> PIL image)."""
+
+    def resolve(_alt_text: str, ref_url: str) -> ImagePayload | None:
+        img_name = Path(ref_url).name
+        pil_img = image_files.get(img_name) or image_files.get(ref_url)
+        if pil_img is None:
+            logger.debug("glm-ocr image ref %r has no matching crop — skipped", ref_url)
+            return None
+        fmt = (pil_img.format or "PNG").lower().replace("jpeg", "jpg")
+        buf = io.BytesIO()
+        pil_img.save(buf, format="JPEG" if fmt in {"jpg", "jpeg"} else (pil_img.format or "PNG"))
+        return ImagePayload(data=buf.getvalue(), format=fmt, name=Path(img_name).stem or "image")
+
+    return resolve
+
+
 def _build_image_element_from_pil(
     pil_img: Image.Image,
     *,
@@ -312,7 +319,7 @@ def _build_image_element_from_pil(
 ) -> DocumentElement:
     """Save a cropped PIL figure (from GLM-OCR ``image_files``) as a KNOX image."""
     fmt = (pil_img.format or "PNG").lower().replace("jpeg", "jpg")
-    mime = _MIME_BY_FMT.get(fmt, "image/png")
+    mime = MIME_BY_FMT.get(fmt, "image/png")
     buf = io.BytesIO()
     save_fmt = "JPEG" if fmt in {"jpg", "jpeg"} else (pil_img.format or "PNG")
     pil_img.save(buf, format=save_fmt)
@@ -345,40 +352,6 @@ def _build_image_element_from_pil(
         metadata=meta,
         source_file=source_file,
     )
-
-
-def _markdown_to_elements(
-    markdown: str,
-    source_file: Path,
-    image_mode: str,
-    images_dir: Path,
-    reading_order: int,
-) -> tuple[list[DocumentElement], int, str]:
-    """Fallback: split markdown into text paragraphs (one element per block)."""
-    elements: list[DocumentElement] = []
-    first_title = ""
-    for block in markdown.split("\n\n"):
-        text = block.strip()
-        if not text:
-            continue
-        if text.startswith("# ") and not first_title:
-            first_title = text.lstrip("# ").strip()
-        etype = ElementType.HEADING if text.startswith("#") else ElementType.TEXT
-        level = 0
-        if etype == ElementType.HEADING:
-            level = len(text) - len(text.lstrip("#"))
-        elements.append(
-            DocumentElement(
-                type=etype,
-                content=text.lstrip("# ").strip() if etype == ElementType.HEADING else text,
-                page=1,
-                reading_order=reading_order,
-                heading_level=level or None,
-                source_file=source_file,
-            ),
-        )
-        reading_order += 1
-    return elements, reading_order, first_title
 
 
 def _count_pages(result: PipelineResult) -> int:

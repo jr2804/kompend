@@ -16,11 +16,12 @@ from typing import Any
 
 import trafilatura
 
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.models import ParsedDocument
 from knox.core.text.encoding import read_text_auto
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
 from knox.preprocessing.parsers.base import BaseParser, FileExtension
+from knox.preprocessing.parsers.markdown import MarkdownContext, markdown_to_elements
 
 logger = get_logger(__name__)
 
@@ -89,7 +90,14 @@ class WebPageParser(BaseParser):
             # Fallback: emit the raw HTML-stripped text as a single element.
             markdown = trafilatura.extract(html, output_format=TrafilaturaFormat.TXT) or html
 
-        elements = _markdown_to_elements(markdown, source_file)
+        elements, _order, _title = markdown_to_elements(
+            markdown,
+            MarkdownContext(
+                source_file=source_file,
+                image_mode="none",
+                images_dir=source_file.parent / f"{source_file.stem}_images",
+            ),
+        )
 
         return ParsedDocument(
             source_file=source_file,
@@ -100,44 +108,6 @@ class WebPageParser(BaseParser):
             page_count=1,
             metadata={"parser": "web", "url": str(source_file)},
         )
-
-
-def _markdown_to_elements(markdown: str, source_file: Path) -> list[DocumentElement]:
-    """Convert a trafilatura markdown string to DocumentElement list.
-
-    Each heading becomes a HEADING element; each non-empty paragraph becomes
-    a TEXT element.  Preserves reading order.
-    """
-    elements: list[DocumentElement] = []
-    order = 0
-    for block in markdown.split("\n\n"):
-        block = block.strip()  # noqa: PLW2901
-        if not block:
-            continue
-        if block.startswith("#"):
-            # Count heading level from leading #
-            level = len(block) - len(block.lstrip("#"))
-            text = block.lstrip("#").strip()
-            elements.append(
-                DocumentElement(
-                    type=ElementType.HEADING,
-                    content=text,
-                    reading_order=order,
-                    heading_level=level,
-                    source_file=source_file,
-                )
-            )
-        else:
-            elements.append(
-                DocumentElement(
-                    type=ElementType.TEXT,
-                    content=block,
-                    reading_order=order,
-                    source_file=source_file,
-                )
-            )
-        order += 1
-    return elements
 
 
 def _factory(options: ParserBuildOptions) -> WebPageParser:  # noqa: ARG001
