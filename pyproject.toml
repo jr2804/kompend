@@ -83,6 +83,11 @@ docling = [
     "pypdfium2>=5.10.1",
     "opencv-python-headless>=4.13.0.92",
     "onnxruntime>=1.26.0",
+    # Formula/code enrichment loads CodeFormulaV2 through transformers with a
+    # device_map, which hard-requires accelerate. Without it every PDF parse
+    # raises once pdf.formula_enrichment/pdf.code_enrichment are on (both
+    # default on).
+    "accelerate>=1.0.0",
 ]
 
 pandoc = [

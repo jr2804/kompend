@@ -27,7 +27,8 @@ from knox.preprocessing.parsers.base import (
     FileExtension,
 )
 
-# ``![alt](image_<id>.png)`` — liteparse emits refs in this shape.
+# ``![alt](img_<id>.png)`` — liteparse emits refs in this shape (older
+# versions used an ``image_`` prefix; both are stripped by ``_ref_to_id``).
 _IMAGE_REF_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 # GFM table separator row, e.g. ``| --- | :---: |``.
 _TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|?\s*$")
@@ -42,6 +43,12 @@ _MIME_BY_FMT: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+
+#: Filename prefixes liteparse uses for image refs. Newer releases emit
+#: ``img_<id>.png``; older ones ``image_<id>.png``. Missing the prefix meant
+#: ``images_by_id`` lookup never matched and every figure was dropped.
+_REF_PREFIXES: tuple[str, ...] = ("img_", "image_")
 
 logger = get_logger(__name__)
 
@@ -101,6 +108,11 @@ class LiteParseParser(BaseParser):
             image_mode="embed",
             dpi=dpi,
             ocr_enabled=self.ocr_enabled,
+            # Full capability: without this ``result.images`` stays empty and
+            # every figure is dropped (no IMAGE element ever reaches the
+            # pipeline). Set explicitly rather than relying on the backend
+            # default, which is ``False``.
+            extract_images=True,
             quiet=True,
         )
         result = converter.parse(str(source_file))
@@ -288,10 +300,12 @@ def _build_image_element(
 
 
 def _ref_to_id(ref_url: str) -> str:
-    """``image_p1_0.png`` → ``p1_0`` (strip optional ``image_`` prefix + ext)."""
+    """``img_p1_0.png`` / ``image_p1_0.png`` → ``p1_0`` (strip prefix + ext)."""
     name = Path(ref_url).name
-    if name.startswith("image_"):
-        name = name[len("image_") :]
+    for prefix in _REF_PREFIXES:
+        if name.startswith(prefix):
+            name = name[len(prefix) :]
+            break
     return name.rsplit(".", 1)[0]
 
 

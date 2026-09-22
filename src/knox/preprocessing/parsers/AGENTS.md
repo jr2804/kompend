@@ -109,7 +109,25 @@ Image elements set `metadata["image_file"]` (file mode) or
 description to `metadata["description"]`, which flows via `extractors.py` →
 `StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`.
 
+### Full-capability default
+
+Parsers MUST request *every* extraction pass the backend exposes by default:
+turning them on is the contract, turning them off needs a config key.
+Disabling silently drops content from the wiki and the user has no signal.
+
+- **LiteParseParser**: `extract_images=True` is set explicitly; `image_mode`
+  controls embedding. Figure refs are normalized via `_ref_to_id`, which
+  strips both the new (`img_`) and legacy (`image_`) liteparse prefixes; a
+  missing prefix slipped past and dropped every figure (bug #1410).
+- **DoclingParser**: `PdfPipelineOptions` builds with
+  `do_table_structure`, `do_formula_enrichment`, `do_code_enrichment` driven
+  by `[compile.pdf]` (`PdfConfig`). All default to `True`. The
+  `image_mode="none"` branch still passes enrichment so equations/code
+  survive even when the user opts out of picture extraction.
+- Formula/code enrichment hard-requires `accelerate`; it is a regular `docling`
+  extra in `pyproject.toml`.
+
 ## Verification
 
-- `uv run pytest tests/unit/test_parser_registry.py -x`
+- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_capabilities.py -x`
 - `uv run python -c "from knox.preprocessing.parsers._registry import PARSER_BACKENDS; print(sorted(PARSER_BACKENDS))"` — registration fires without error

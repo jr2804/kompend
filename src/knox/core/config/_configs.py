@@ -288,15 +288,25 @@ class EmbeddingConfig(_KnoxBaseModel):
 
 
 class PdfConfig(_KnoxBaseModel):
-    """Configuration for PDF parsing to prevent OOM on large scanned PDFs.
+    """Configuration for PDF parsing.
 
-    When a PDF exceeds *max_pages_before_chunking*, Docling processes it in
-    overlapping page-range segments to keep ONNX/OCR memory bounded.
+    *chunking* keeps per-doc memory bounded on large scanned PDFs by splitting
+    above ``max_pages_before_chunking`` into overlapping page-range segments.
+
+    *enrichment* flags turn on Docling's heaviest recovery passes. All three
+    default ``True`` because the user-visible signal is *extraction quality*:
+    disabling any of them silently drops tables, formulas, or code blocks from
+    every parsed PDF and the resulting wiki is what knox compiled. Users with
+    a real reason to skip them (CPU, scanned-only corpus) set the flag to
+    ``False`` in ``[pdf]`` rather than leaving it hidden in payload.
     """
 
     max_pages_before_chunking: int = Field(default=50, validation_alias=EnvVar.PDF_MAX_PAGES_BEFORE_CHUNKING)
     page_chunk_size: int = Field(default=30, validation_alias=EnvVar.PDF_PAGE_CHUNK_SIZE)
     page_chunk_overlap: int = Field(default=5, validation_alias=EnvVar.PDF_PAGE_CHUNK_OVERLAP)
+    table_structure: bool = Field(default=True, validation_alias=EnvVar.PDF_TABLE_STRUCTURE)
+    formula_enrichment: bool = Field(default=True, validation_alias=EnvVar.PDF_FORMULA_ENRICHMENT)
+    code_enrichment: bool = Field(default=True, validation_alias=EnvVar.PDF_CODE_ENRICHMENT)
 
 
 # ── Other section configs ────────────────────────────────────────────────
@@ -619,7 +629,15 @@ class CompileConfig(_KnoxBaseModel):
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
-    pdf: PdfConfig = Field(default_factory=PdfConfig)
+    pdf: PdfConfig = Field(
+        default_factory=PdfConfig,
+        description=(
+            "PDF parsing knobs. ``max_pages_before_chunking`` bounds memory "
+            "on large scanned PDFs; the enrichment flags (``table_structure``, "
+            "``formula_enrichment``, ``code_enrichment``) default to true "
+            "and turn on Docling's recovery passes. See PdfConfig."
+        ),
+    )
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     skills: dict[str, SkillConfig] = Field(default_factory=dict)

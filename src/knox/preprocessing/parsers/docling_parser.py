@@ -250,15 +250,32 @@ class DoclingParser(BaseParser):
     def _get_converter(self) -> DocumentConverter:
         if self._converter is None:
             if self.image_mode in ("file", "base64"):
-                pipeline_opts = PdfPipelineOptions(
-                    generate_picture_images=True,
-                    images_scale=self.images_scale,
-                )
+                pipeline_opts = self._pipeline_options(generate_picture_images=True)
                 pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
                 self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
             else:
-                self._converter = DocumentConverter()
+                pipeline_opts = self._pipeline_options(generate_picture_images=False)
+                pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
+                self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
         return self._converter
+
+    def _pipeline_options(self, *, generate_picture_images: bool) -> PdfPipelineOptions:
+        """Docling PDF pipeline with full extraction capability.
+
+        Every knox-relevant pass is enabled from config: table structure,
+        formula recognition (LaTeX), and code-block recovery. Each defaults to
+        ``True`` — the earlier build passed only picture options, so Docling's
+        own defaults (``do_formula_enrichment=False``,
+        ``do_code_enrichment=False``) silently stripped every equation and
+        code block. Docling applies its default pipeline for non-PDF formats.
+        """
+        return PdfPipelineOptions(
+            generate_picture_images=generate_picture_images,
+            images_scale=self.images_scale,
+            do_table_structure=self._pdf_config.table_structure,
+            do_formula_enrichment=self._pdf_config.formula_enrichment,
+            do_code_enrichment=self._pdf_config.code_enrichment,
+        )
 
     def _extract_image(self, item: Any, source_file: Path, idx: int) -> str:
         image_ref = getattr(item, "image", None)
