@@ -78,11 +78,16 @@ knox = "knox.cli.app:main"
 [project.optional-dependencies]
 
 docling = [
-    "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown]>=2.97.0",
+    "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown,feat-ocr-rapidocr]>=2.97.0",
     "docling-ibm-models>=3.13.3",
     "pypdfium2>=5.10.1",
     "opencv-python-headless>=4.13.0.92",
     "onnxruntime>=1.26.0",
+    # OCR engine for scanned PDFs. Without one, docling's ``do_ocr`` silently
+    # raises "No OCR engine found" and scanned pages yield no text. rapidocr
+    # is the only OCR extra in docling-slim that needs no system Tesseract
+    # install (feat-ocr-rapidocr, selected above).
+    #
     # Formula/code enrichment loads CodeFormulaV2 through transformers with a
     # device_map, which hard-requires accelerate. Without it every PDF parse
     # raises once pdf.formula_enrichment/pdf.code_enrichment are on (both
