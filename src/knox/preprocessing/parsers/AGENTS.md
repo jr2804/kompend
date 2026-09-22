@@ -30,6 +30,11 @@ backends are registered in that order and the first one whose
 appended last (legacy formats + LaTeX + universal text fallback), so formats
 no listed backend handles never regress.
 
+`ParserRouter.fingerprint()` returns a hash of the ordered backend class
+names plus the text fallback — the identity of the parser chain. The parse
+cache and chunk cache key on it, so switching `ingest.parser` re-parses and
+re-chunks instead of silently reusing output from the previous backend.
+
 The canonical file-extension enum (`FileExtension`, in `base.py`) is the
 single source of truth for *which extensions exist*. Each parser declares its
 own `supported_extensions` set and owns any parser-specific metadata — e.g.

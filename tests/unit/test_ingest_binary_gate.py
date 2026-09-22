@@ -23,6 +23,9 @@ class _FakeRouter:
     def __init__(self) -> None:
         self.parsed: list[Path] = []
 
+    def fingerprint(self) -> str:  # noqa: D102
+        return "fake-parser-chain"
+
     def route(self, source_file: Path) -> MagicMock:  # noqa: D102
         parser = _fake_parser()
 

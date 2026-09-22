@@ -199,6 +199,33 @@ knox ingest paper.pdf --tag audio --tag standards --attr version=2
 knox ingest --url https://example.com/report.pdf --attr status=draft
 ```
 
+### Forced re-ingest (switching parser)
+
+`knox ingest --no-cache` forces a re-parse of every selected source. Two
+things make this safe and sufficient for switching `ingest.parser`:
+
+- **Tags and attributes are preserved.** `knox sources tag` / `attr add` write
+  into the parse-cache entry; a re-parse carries them forward instead of
+  overwriting them from fresh parser output. CLI `--tag` / `--attr` are merged
+  on top of the preserved values.
+- **Attachments are untouched.** They live in `.knox/attachments.jsonl`
+  and `attachments/<slug>/`; `ingest` never writes those.
+
+A parser change invalidates automatically: the parse cache records which
+parser chain produced each entry, and the chunk cache keys on the same
+fingerprint. So after editing `ingest.parser`, a plain `knox ingest`
+re-parses and the next `knox compile` re-chunks — no `--no-cache` needed.
+Use `--no-cache` only to force a re-parse when nothing changed.
+
+```bash
+# switch parser: edit ingest.parser, then
+knox ingest                 # re-parses the affected sources automatically
+knox compile                # re-chunks from the new parser output
+
+# force a re-parse regardless
+knox ingest --no-cache
+```
+
 ## `knox index`
 
 Rebuild the zvec vector index for semantic search from the cached wiki.

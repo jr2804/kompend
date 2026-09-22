@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from knox.core.models import ElementType, MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
@@ -27,6 +27,12 @@ from knox.preprocessing.parsers.base import FileExtension, ParserRouter
 # 8 hex chars (32 bits) plus the stem prefix makes collisions astronomically
 # unlikely within a single corpus while keeping filenames human-readable.
 _CACHE_HASH_LEN = 8
+
+#: Top-level parse-cache key recording which parser chain produced the entry.
+#: Compared against :meth:`ParserRouter.fingerprint` on load; a mismatch is a
+#: cache miss so switching ``[ingest] parser`` re-parses instead of silently
+#: reusing output from the old backend.
+PARSE_CACHE_PARSER_KEY: Final[str] = "_parser_fingerprint"
 
 logger = get_logger(__name__)
 
@@ -150,6 +156,10 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
+    # Identity of the parser chain that will produce these entries. Switching
+    # ``[ingest] parser`` changes it, which makes stale entries a cache miss.
+    parser_fingerprint = router.fingerprint()
+
     for idx, source_file in enumerate(files):
         if progress_fn is not None:
             progress_fn(idx, total, source_file.name)
@@ -160,7 +170,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         cache_key = f"{source_file.stem}-{content_hash[:_CACHE_HASH_LEN]}.json"
         out_file = cache_dir / cache_key
 
-        if not no_cache and out_file.exists():
+        if not no_cache and out_file.exists() and cached_entry_is_current(out_file, parser_fingerprint):
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
@@ -186,23 +196,33 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             failed += 1
             continue
 
-        # Attach CLI-provided tags to the parsed document metadata.
+        # Preserve user-set tags/attributes before the entry is overwritten.
+        # A re-parse (forced, or after a parser change) must not drop what
+        # ``knox sources tag`` / ``attr`` wrote into the previous entry.
+        preserve_cached_metadata(doc, out_file)
+
+        # Attach CLI-provided tags — union with any preserved tags.
         if tags:
             if doc.metadata is None:
                 doc.metadata = {}
-            doc.metadata["tags"] = tags  # nocheck: chunk metadata, not wiki metadata
+            existing_tags = list(doc.metadata.get(MetadataField.TAGS) or [])
+            for tag in tags:
+                if tag not in existing_tags:
+                    existing_tags.append(tag)
+            doc.metadata[MetadataField.TAGS] = existing_tags
         if attributes:
             if doc.metadata is None:
                 doc.metadata = {}
-            merged = dict(doc.metadata.get("attributes") or {})  # nocheck: chunk metadata
+            merged = dict(doc.metadata.get(MetadataField.ATTRIBUTES) or {})
             merged.update(attributes)
-            doc.metadata["attributes"] = merged  # nocheck: chunk metadata
+            doc.metadata[MetadataField.ATTRIBUTES] = merged
 
         # Portable cache: image paths relative to the vault, like source_file.
         relativize_image_paths(doc, base_dir)
 
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
+        data[PARSE_CACHE_PARSER_KEY] = parser_fingerprint
         out_file.write_text(
             json.dumps(data, indent=2, default=str),
             encoding="utf-8",
@@ -261,6 +281,72 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         dedup_skipped=dedup_skipped,
         cache_dir=cache_dir,
     )
+
+
+def cached_entry_is_current(cache_file: Path, parser_fingerprint: str) -> bool:
+    """Read *cache_file* and report whether the current parser chain wrote it.
+
+    A missing or unreadable entry is *not* current, so the caller re-parses.
+    """
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Corrupt parse cache at %s — reparsing", cache_file, exc_info=True)
+        return False
+    return parse_cache_is_current(data, parser_fingerprint)
+
+
+def parse_cache_is_current(data: dict[str, Any], parser_fingerprint: str) -> bool:
+    """True when a parse-cache entry was produced by the current parser chain.
+
+    Entries written before this key existed return ``False`` — a one-time
+    re-parse that self-heals the cache.
+    """
+    return data.get(PARSE_CACHE_PARSER_KEY) == parser_fingerprint
+
+
+def preserve_cached_metadata(doc: ParsedDocument, cache_file: Path) -> None:
+    """Carry user-set tags/attributes from *cache_file* into *doc* before overwrite.
+
+    Called before every parse-cache rewrite. The parser produces content,
+    never user metadata; without this a forced re-parse (``knox ingest
+    --no-cache``) or an automatic re-parse after a parser change would
+    silently drop what ``knox sources tag`` / ``attr`` wrote into the
+    previous entry.
+
+    Reads the entry being overwritten — same content hash, so a re-parse
+    of unchanged content preserves its metadata exactly. Merges are
+    additive: tags are unioned, attributes kept with *doc*'s existing
+    values winning on key conflict. No-op when *cache_file* is absent or
+    unreadable.
+    """
+    if not cache_file.exists():
+        return
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        logger.debug("Unreadable prior parse cache %s — not preserving metadata", cache_file)
+        return
+    prior_meta = data.get("metadata") or {}
+    if not isinstance(prior_meta, dict):  # nocheck: defensive against hand-edited cache
+        return
+
+    if doc.metadata is None:
+        doc.metadata = {}
+
+    prior_tags = prior_meta.get(MetadataField.TAGS) or []
+    if prior_tags:
+        merged_tags = list(doc.metadata.get(MetadataField.TAGS) or [])
+        for tag in prior_tags:
+            if tag not in merged_tags:
+                merged_tags.append(tag)
+        doc.metadata[MetadataField.TAGS] = merged_tags
+
+    prior_attributes = prior_meta.get(MetadataField.ATTRIBUTES) or {}
+    if prior_attributes:
+        merged_attributes = dict(prior_attributes)
+        merged_attributes.update(doc.metadata.get(MetadataField.ATTRIBUTES) or {})
+        doc.metadata[MetadataField.ATTRIBUTES] = merged_attributes
 
 
 def relativize_image_paths(doc: ParsedDocument, base_dir: Path) -> None:

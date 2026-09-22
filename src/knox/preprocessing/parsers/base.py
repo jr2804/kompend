@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from abc import ABC, abstractmethod
 from enum import StrEnum
@@ -131,6 +132,20 @@ class ParserRouter:
     def set_text_fallback(self, parser: BaseParser) -> None:
         """Set a fallback parser for text files detected by binaryornot."""
         self._text_fallback = parser
+
+    def fingerprint(self) -> str:
+        """Stable identity of the configured parser chain.
+
+        The ordered backend class names plus the text fallback identify
+        *which* parser produced a document. The parse cache and chunk
+        cache key on this so that switching the parser chain
+        (``[ingest] parser``) invalidates downstream caches instead of
+        silently reusing output from the old backend.
+        """
+        names = [type(parser).__name__ for parser in self._parsers]
+        fallback = type(self._text_fallback).__name__ if self._text_fallback is not None else ""
+        blob = "|".join([*names, f"fallback:{fallback}"])
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
     def route(self, source_file: Path) -> BaseParser | None:
         for parser in self._parsers:

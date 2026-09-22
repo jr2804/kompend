@@ -23,7 +23,13 @@ from knox.core.pipeline.attachments import (
     iter_ingestible_attachments,
 )
 from knox.core.pipeline.config import PipelineConfig
-from knox.core.pipeline.ingest import parse_cache_name, relativize_image_paths
+from knox.core.pipeline.ingest import (
+    PARSE_CACHE_PARSER_KEY,
+    cached_entry_is_current,
+    parse_cache_name,
+    preserve_cached_metadata,
+    relativize_image_paths,
+)
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.llm.models import resolve_vlm_model
@@ -179,10 +185,7 @@ def _process_single_source(
 
     if content_hash:
         pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
-        chunk_deps = {
-            "source": content_hash,
-            "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
-        }
+        chunk_deps = _chunk_cache_deps(pipeline, content_hash)
         pipeline.cache_store.set("chunk", chunk_deps, tree.to_dict())
     return tree
 
@@ -258,10 +261,7 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
     """Try to load a chunked tree from cache. Returns *None* on miss."""
     if not (use_cache and content_hash):
         return None
-    chunk_deps = {
-        "source": content_hash,
-        "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
-    }
+    chunk_deps = _chunk_cache_deps(pipeline, content_hash)
     cached = pipeline.cache_store.get_dict("chunk", chunk_deps)
     if cached is None:
         return None
@@ -272,10 +272,28 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
     return tree
 
 
+def _chunk_cache_deps(pipeline: PipelineRuntime, content_hash: str) -> dict[str, str]:
+    """Cache identity for a chunked tree.
+
+    ``source`` + chunker size identify the chunking; ``parser`` carries the
+    parser-chain fingerprint so a parser switch re-chunks instead of reusing
+    a tree built from the previous backend's output.
+    """
+    return {
+        "source": content_hash,
+        "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
+        "parser": pipeline.router.fingerprint() if pipeline.router is not None else "",
+    }
+
+
 def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument | None:
     """Load a cached ParsedDocument if available."""
     cache_file = pipeline.cache_directory() / f"{cache_key(source_file)}.json"
     if not cache_file.exists():
+        return None
+    if pipeline.router is not None and not cached_entry_is_current(cache_file, pipeline.router.fingerprint()):
+        # Entry produced by a different parser chain — re-parse so a parser
+        # switch takes effect instead of silently serving stale output.
         return None
     try:
         data = json.loads(cache_file.read_text(encoding="utf-8"))
@@ -315,8 +333,12 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{cache_key(source_file)}.json"
     try:
+        # Preserve user-set tags/attributes across the overwrite (a --no-cache
+        # compile, or an automatic re-parse after a parser change).
+        preserve_cached_metadata(doc, cache_file)
         data = {
             str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
+            PARSE_CACHE_PARSER_KEY: pipeline.router.fingerprint() if pipeline.router is not None else "",
             "title": doc.title,
             "author": doc.author,
             "language": doc.language,

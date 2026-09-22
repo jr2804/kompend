@@ -28,7 +28,7 @@ NoCacheFlag = Annotated[
     bool | None,
     typer.Option(
         "--no-cache/--cache",
-        help="Bypass the parse cache and re-parse every source. Default: cache on.",
+        help=("Force a re-parse of every source (bypass the parse cache). Tags/attributes are preserved; attachments are untouched."),
         rich_help_panel="Pipeline",
     ),
 ]

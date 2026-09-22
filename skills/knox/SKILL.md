@@ -106,7 +106,7 @@ required.
 |---------|---------|-----------|
 | `knox init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
 | `knox compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
-| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
+| `knox ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--no-cache` (force re-parse; tags/attributes preserved, attachments untouched — parser change invalidates automatically), `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
 | `knox index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `attachments.embed`) |
 | `knox organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `knox status` | Show wiki statistics | none |
