@@ -14,6 +14,9 @@ importing the `knox.preprocessing.parsers` package triggers registration.
 
 ```text
 base.py            BaseParser, FileExtension (extensions only), ParserRouter, DPI/IMAGE_SCALE constants
+markdown.py        markdown_to_elements() — THE Markdown→element converter used by every
+                   markdown-producing backend; element_to_markdown()/markdown_to_element()
+                   are the inverse pair used for rumdl normalisation
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
 docling_parser.py  DoclingParser  (default backend; supported_extensions owned by parser)
@@ -74,6 +77,39 @@ module imports `register_backend, ParserBuildOptions` from `_registry` and calls
 imports every parser module) fires all registrations before any
 `build_default_router` call. Re-export `build_default_router` only after the
 parser imports so backends are registered first.
+
+### One Markdown converter — no per-backend copies
+
+Any backend that produces Markdown (liteparse, marker, mineru, glmocr, web)
+MUST route it through `markdown.py:markdown_to_elements()`. Do not add a local
+`_markdown_to_elements` / `_parse_table` / `_build_image_element` — those were
+duplicated across four modules and drifted: every copy recognised only
+headings, images, tables and paragraphs, so `$$…$$` equations, fenced code and
+list items were silently folded into `TEXT`.
+
+Backend-specific behaviour belongs in a single `resolve_image` callback passed
+via `MarkdownContext` (ref → bytes). That is the *only* part of the walk that
+legitimately differs between backends.
+
+### Parse-time markdown normalisation (rumdl)
+
+After parsing, `knox.core.text.rumdl.normalize_element_markdown()` rewrites
+markdown element contents through **one batched `rumdl` call per document**,
+so cached content is canonical and backend formatting differences are levelled
+at the part level. Called from the parse tier, `ingest_documents`, and text
+attachments. Content-only: page/reading-order/metadata are preserved; tables
+and images are skipped. Best-effort — failure keeps the original content.
+
+### Full capability by default
+
+A backend's `parse()` must enable that backend's full extraction capability by
+default (figures, tables, formulas, code). Leaving a capability off because it
+costs time is a silent data-loss bug — the user cannot tell an empty result
+from a document that has no such content. Docling's `PdfPipelineOptions` is
+the cautionary example: passing only picture options let docling's own
+`do_formula_enrichment=False` / `do_code_enrichment=False` defaults win, so
+every equation was dropped. Expose a `[compile.pdf]` knob to turn a pass off
+and default it on.
 
 ### Adding a backend
 

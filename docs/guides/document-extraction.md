@@ -91,6 +91,87 @@ put it ahead of `liteparse` in the `parser` priority list:
 parser = "docling,liteparse,web"
 ```
 
+## Backend Comparison: Strengths and Weaknesses
+
+> Capabilities below reflect what each backend **actually emits into the
+tier-1 element model** through knox's shared Markdown converter, not just what
+the upstream project advertises. Backends that mark a capability "—" produce
+that content in their Markdown, but knox previously discarded it (see
+[Part-level markdown normalisation](#part-level-markdown-normalisation)).
+
+### Capabilities at a glance
+
+| Backend | Figures | Tables | Equations (LaTeX) | Code blocks | OCR engine | Speed |
+|---------|---------|--------|-------------------|-------------|------------|-------|
+| `liteparse` (default) | yes | yes¹ | **no** | — | Tesseract | fastest |
+| `docling` | yes | yes | yes² | yes | RapidOCR | slow |
+| `marker` | yes | yes | yes | yes | block OCR | medium (GPU-friendly) |
+| `mineru` | yes | yes | yes | yes | layout + OCR | medium–slow |
+| `glmocr` | yes (crops) | yes | yes | yes | VLM (cloud/self-host) | network-bound |
+| `pandoc` | no | yes | yes | yes | no | fastest (no ML) |
+| `web` (trafilatura) | no | yes | n/a | yes | no | fastest |
+
+¹ GFM tables only — column detection degrades on multi-column layouts, where
+contiguous text can be mis-detected as one very wide table row.
+² Formula/code recognition needs `accelerate` (bundled with the `docling`
+extra) and downloads the CodeFormulaV2 model on first use (~4 min on CPU).
+Turn it off with `[compile.pdf] formula_enrichment = false` if you have a
+reason; doing so silently drops every equation from every PDF, so it defaults
+to on.
+
+### Where each backend wins
+
+| Backend | Strong points | Weak points |
+|---------|---------------|-------------|
+| `liteparse` | Fastest by a wide margin (Rust core, no Python ML stack); native PDF via PDFium; office formats via an external LibreOffice install; figures extracted with real bytes; the right default for high-volume, born-digital text. | **No equation support at all** — its Markdown never contains `$$`, so no FORMULA element can ever be produced. Table detection is layout-blind and can produce garbage rows on multi-column pages. No internal captioning (every figure needs the VLM pass). |
+| `docling` | Broadest format coverage (20+, incl. email/EPUB/AsciiDoc); the only backend here that is a single locked extra with no manual install; structure-preserving headings/lists/figures; table structure + formula + code enrichment all available and on by default; RapidOCR handles scanned pages with no GPU. | Slowest of the local backends (ML models per document); table accuracy good but not best-in-class for complex borderless tables; no bounding-box/page-layout coordinates exposed; first parse downloads models. |
+| `marker` | Highest reported benchmark accuracy of the local backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra (its dependency graph conflicts), so it needs `uv pip install marker-pdf`; model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
+| `mineru` | Layout-aware with selectable backends (`pipeline` OCR + layout, `vlm`, `hybrid`); `formula_enable`/`table_enable` on by default; parse-method control (`auto`/`ocr`/`txt`) lets you force or skip OCR per corpus. | Cannot be a locked extra; heavy install (torch + ONNX); its Markdown carries no page markers, so `page_count` is reported as unknown (`0`); slower than docling on typical corpora. |
+| `glmocr` | Strong on image-only and raster content (photos, scans, screenshots) via a multimodal VLM; emits a structured per-element JSON (labels + bounding boxes) rather than a flat Markdown blob; no local model, so CPU-only hosts work. | Needs `ZHIPU_API_KEY` (cloud) or a running self-hosted endpoint; network latency per page; cannot be a locked extra; per-element page attribution is fixed to page 1 in the crop path. |
+| `pandoc` | No ML, no model downloads; excellent for legacy text formats (RST, LaTeX, ODT, EPUB, TEX) and any text file without a dedicated parser; equation and code passthrough from LaTeX sources. | No figures, no OCR, no layout analysis — it re-renders whatever the source format already encodes; the binary is downloaded on first use. |
+| `web` (trafilatura) | Purpose-built HTML reader: strips chrome/nav/boilerplate and returns clean GFM (headings, lists, tables, links, code) much faster than a PDF parser on HTML. | HTML only; no figures (image refs are dropped — knox's web parser has no image resolver), no OCR, no equations. |
+
+### Choosing
+
+- **Default/high volume, born-digital text:** `liteparse`. Accept that equations
+  and multi-column tables will be poor.
+- **Equations, formulas, or technical PDFs:** `docling` (locked, no manual
+  install, formula enrichment on by default) or `marker` (higher accuracy, needs
+  a manual install and preferably a GPU).
+- **Scanned or image-only documents:** `docling` (RapidOCR) or `mineru`
+  (`parse_method = "ocr"`); `glmocr` if a VLM endpoint is acceptable.
+- **Legacy text formats:** `pandoc`.
+- **Web pages:** `web`.
+
+Chain them — first matching backend per file wins:
+
+```toml
+[ingest]
+parser = "docling,mineru,liteparse,pandoc,web"
+```
+
+## Part-level markdown normalisation
+
+Every backend that produces Markdown after its SDK call goes through one shared
+converter (`knox/preprocessing/parsers/markdown.py`) that maps the Markdown into
+tier-1 elements. It recognises headings, images, tables, **equations** (`$$…$$`,
+`\[…\]`), **fenced code** (with language), and **list items**.
+
+Before that consolidation each backend had its own copy of the walk, and all of
+them recognised only headings, images, tables and paragraphs — so equations,
+code and list items from backends that *do* emit them (marker, mineru) were
+folded into `TEXT` and reached the chunker as prose.
+
+After conversion, each document's markdown-bearing elements are normalised
+through `rumdl` in **one batched call per document**, at parse time — so the
+cached parsed content is already canonical and backend formatting differences
+are levelled before anything downstream reads it. Only the element *content*
+changes; page numbers, reading order and metadata are preserved. Tables and
+images are skipped (their representation is already canonical).
+
+This is best-effort: if `rumdl` is not installed or the batch cannot be split
+back losslessly, the original content is kept.
+
 ## Docling
 
 [Docling](https://github.com/docling-project/docling) (MIT license) is KNOX's

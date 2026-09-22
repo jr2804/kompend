@@ -19,6 +19,13 @@ other KNOX subsystems build on.
 
 - Import paths follow the nested-package layout; import from the package root
   (e.g. `from knox.core.models import Chunk`), not from individual submodules
+- `core/text/` holds pure text utilities with no `knox.*` imports at module
+  scope (`matching.py` similarity, `encoding.py` UTF-8 detection,
+  `rumdl.py` markdown normalisation). They are the only sanctioned place for
+  string-in/string-out helpers shared across tiers.
+- One normaliser per concern: markdown formatting goes through
+  `core.text.rumdl` (text/batch variants) or `output.renderer.format_output`
+  (file sweep) — never a second hand-rolled formatter
 - See root AGENTS.md: Path Constants, New Code Checklist
 - See `src/knox/AGENTS.md`: Python Antipatterns, text-in-code rules
 
