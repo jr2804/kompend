@@ -39,6 +39,7 @@ other KNOX subsystems build on.
 | `pipeline/AGENTS.md` | Pipeline orchestration — orchestrator, config, state, ingest |
 | `resolution/AGENTS.md` | Programmatic Tier 3 resolution — entity registry, cross-reference checker |
 | `cache/AGENTS.md` | Content-addressed cache store |
+| `store/AGENTS.md` | Single non-vector SQLite store (`.knox/knox.db`) — schema, connection, clean-cut policy |
 | `templates/AGENTS.md` | Layered Jinja2 template loading |
 | `trust/AGENTS.md` | Actor identity and trust/privacy |
 | `reporting/AGENTS.md` | CLI observability reports — log, runlog |

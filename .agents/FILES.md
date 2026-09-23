@@ -38,6 +38,7 @@ any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 | Constant | Value | Usage |
 |----------|-------|-------|
 | `KNOX_DIR` | `".knox"` | Root metadata directory |
+| `KNOX_DB_FILE` | `"knox.db"` | Single non-vector SQLite store (`.knox/knox.db`) |
 | `CACHE_SUBDIR` | `"cache"` | Cache component within `KNOX_DIR` |
 | `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |

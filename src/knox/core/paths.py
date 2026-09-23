@@ -36,6 +36,9 @@ from knox.core.env import EnvVar
 # ── Hidden KNOX artifacts folder ────────────────────────────────────────
 KNOX_DIR: Final[str] = ".knox"
 
+# ── Single non-vector store (SQLite) ────────────────────────────────────
+KNOX_DB_FILE: Final[str] = "knox.db"
+
 # ── Capture (learn/capture/distill inputs live under sources/<subdir>) ──
 CAPTURED_SUBDIR: Final[str] = "_captured"
 LEARNED_SUBDIR: Final[str] = "_learned"
@@ -209,6 +212,7 @@ class VaultPaths:
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir (zvec directory store)
         │   ├── vectors.manifest.json ← zvec indexed-node id sidecar
+        │   ├── knox.db             ← knox_db_file (single non-vector store)
         │   ├── config.toml         ← config_file
         │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
         │   ├── compile_state.json  ← compile_state_file
@@ -320,6 +324,11 @@ class VaultPaths:
         return self.knox_dir / VECTORS_DIR
 
     # ── Files inside .knox/ ─────────────────────────────────────────────
+
+    @property
+    def knox_db_file(self) -> Path:
+        """Single SQLite store for all non-vector ``.knox/`` state."""
+        return self.knox_dir / KNOX_DB_FILE
 
     @property
     def config_file(self) -> Path:
