@@ -36,11 +36,8 @@ from knox.core.models.enums import CacheDeps
 from knox.core.paths import rel_to_vault
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
+from knox.core.utils.tokens import estimate_tokens
 from knox.logging import get_logger
-
-# Roughly 4 characters per token — the standard quick estimate for mixed
-# English prose. Over-estimating slightly is safe (compacts sooner).
-_CHARS_PER_TOKEN = 4
 
 logger = get_logger(__name__)
 
@@ -423,13 +420,8 @@ def _estimate_history_tokens(history: list[ModelMessage]) -> int:
         for part in parts:
             content = getattr(part, "content", None)
             if isinstance(content, str):
-                total += _estimate_tokens(content)
+                total += estimate_tokens(content)
     return total
-
-
-def _estimate_tokens(text: str) -> int:
-    """Coarse char-based token estimate (~4 chars/token)."""
-    return max(1, len(text) // _CHARS_PER_TOKEN)
 
 
 def _synthetic_history_response(extraction: Extraction) -> ModelResponse:

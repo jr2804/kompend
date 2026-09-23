@@ -18,6 +18,7 @@ that need full-context management instead of sliding window).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pydantic_ai.capabilities import AbstractCapability
@@ -45,12 +46,15 @@ class AgenticHarness:
     memory: bool = True
     compaction: bool = True
     clamp: bool = True
-    extra_capabilities: list[AbstractCapability] = field(default_factory=list)
+    extra_capabilities: Sequence[AbstractCapability] = field(default_factory=list)
 
-    def build_capabilities(self) -> list[AbstractCapability]:
+    def build_capabilities(self) -> Sequence[AbstractCapability]:
         """Build the capability list from the configured flags.
 
-        Returns a new list each time — safe to mutate or extend by the caller.
+        Returned as a :class:`~collections.abc.Sequence` (not ``list``) so it is
+        assignable to ``KnoxAgentBase.extra_capabilities`` regardless of the
+        agent's ``DepsT``: ``AbstractCapability`` is contravariant in its deps
+        parameter, so the built capabilities target ``object`` and fit any agent.
         """
         _ctx = self.context_window or DEFAULT_CONTEXT_WINDOW
         caps: list[AbstractCapability] = []

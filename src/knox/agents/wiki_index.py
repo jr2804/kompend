@@ -17,8 +17,9 @@ from knox.core.config._configs import RlmConfig
 class WikiIndexAgent(KnoxAgentBase[dict[str, Any], PipelineAgentDeps]):
     """PydanticAI agent for generating wiki overview/index text."""
 
-    template_name: ClassVar[str] = "output/synthesize.md.j2"
-    system_template_name: ClassVar[str] = "output/synthesize.md.j2"
+    template_prefix: ClassVar[str] = "output/"
+    template_name: ClassVar[str] = "synthesize.md.j2"
+    system_template_name: ClassVar[str] = "synthesize.md.j2"
 
 
 class AgenticOverviewAgent(KnoxAgentBase[str, OverviewDeps]):
@@ -32,6 +33,7 @@ class AgenticOverviewAgent(KnoxAgentBase[str, OverviewDeps]):
 
     template_name: ClassVar[str] = "synthesize_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "synthesize_agentic_system.md.j2"
+    template_prefix: ClassVar[str] = "output/"
     use_delta_retry: bool = True
 
 
@@ -60,6 +62,6 @@ def make_agentic_overview_agent(
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
-        tools=build_overview_tools(),  # type: ignore[arg-type]
+        tools=build_overview_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

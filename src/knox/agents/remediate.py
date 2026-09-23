@@ -44,6 +44,7 @@ class AgenticRemediationAgent(KnoxAgentBase[str, RemediationDeps]):
 
     template_name: ClassVar[str] = "remediate_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "remediate_agentic_system.md.j2"
+    template_prefix: ClassVar[str] = "lint/"
     use_delta_retry: bool = True
 
 
@@ -75,6 +76,6 @@ def make_agentic_remediation_agent(
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
-        tools=build_remediation_tools(),  # type: ignore[arg-type]
+        tools=build_remediation_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

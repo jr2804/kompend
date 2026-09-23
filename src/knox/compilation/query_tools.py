@@ -7,19 +7,24 @@ query agent uses to investigate sub-questions:
 - ``read_page(slug)`` — read a full wiki page.
 - ``add_finding(sub_question_index, finding)`` — record a finding.
 
-All tools access their data through ``RunContext[QueryAgentDeps]``.
+``search_wiki`` / ``read_page`` call the raw retrieval surface on
+``QueryAgentDeps.retriever`` — never ``synthesize_results`` — so the agent
+cannot re-enter itself. All tools access their data through
+``RunContext[QueryAgentDeps]``.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic_ai import RunContext, Tool
 
 from knox.agents.types import QueryAgentDeps
+from knox.llm.format import LlmDataFormat, encode_for_llm
+from knox.types import JSONDict, JSONList
+
+_MAX_PAGE_CHARS = 2000
 
 
-def build_query_tools() -> list[Any]:
+def build_query_tools() -> list[Tool[QueryAgentDeps]]:
     """Return the full toolset for the agentic query agent."""
     return [
         Tool(search_wiki, takes_ctx=True),
@@ -30,13 +35,26 @@ def build_query_tools() -> list[Any]:
 
 async def search_wiki(ctx: RunContext[QueryAgentDeps], question: str, top_k: int = 5) -> str:
     """Search the wiki for content related to a question."""
-    # Placeholder: actual search would dispatch through retriever
-    return f"Wiki search for: '{question}' (top {top_k})\n(wiki index lookup — placeholder until retriever is wired)"
+    hits = list(ctx.deps.retriever.search(question, top_k))
+    if not hits:
+        return f"No wiki pages matched: {question}"
+    payload: JSONList = []
+    for hit in hits:
+        row: JSONDict = {
+            "slug": hit.article_id,
+            "title": hit.title,
+            "excerpt": hit.content[:_MAX_PAGE_CHARS],
+        }
+        payload.append(row)
+    return encode_for_llm(payload, LlmDataFormat.JSON)
 
 
 async def read_page(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
     """Read a full wiki page by its slug."""
-    return f"Page content for '{slug}' (placeholder until page reader is wired)."
+    body = ctx.deps.retriever.read_page(slug)
+    if body is None:
+        return f"Page not found: {slug}"
+    return body
 
 
 async def add_finding(ctx: RunContext[QueryAgentDeps], sub_question_index: int, finding: str) -> str:

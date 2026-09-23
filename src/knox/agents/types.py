@@ -6,6 +6,7 @@ between the agents package and the compilation pipeline.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -346,7 +347,11 @@ class QueryAgentDeps:
 
     Attributes:
         question: The original question to answer.
-        sub_questions: List of sub-questions to investigate.
+        sub_questions: List of pre-supplied sub-questions (usually empty —
+            the system prompt has the agent decompose the question itself;
+            ``results`` is keyed by whatever index ``add_finding`` uses).
+        retriever: Raw wiki retrieval surface the tools call.
+        max_sub_questions: Upper bound declared to the model in the prompt.
         results: Collected answer fragments keyed by sub-question index.
         source_id: Identifier for tracking.
         timeout: Per-call timeout in seconds.
@@ -354,10 +359,37 @@ class QueryAgentDeps:
 
     question: str
     sub_questions: list[str]
+    retriever: QuerySearchProtocol
+    max_sub_questions: int = 5
     results: dict[int, str] = field(default_factory=dict)
     source_id: str = "query"
     timeout: float = 120.0
     current_sub_question: str | None = None
+
+
+class WikiHitProtocol(Protocol):
+    """Minimal wiki-search hit surface.
+
+    Structurally satisfied by :class:`knox.search.retriever.SearchResult`.
+    Declared locally so this leaf module stays free of ``knox.search``
+    imports (importing that package re-enters the agent import cycle).
+    """
+
+    article_id: str
+    title: str
+    content: str
+
+
+class QuerySearchProtocol(Protocol):
+    """Raw wiki retrieval used by the agentic query tools.
+
+    Implementations return raw hits and raw page bodies; they must NOT
+    synthesise answers — that would re-enter the query agent.
+    """
+
+    def search(self, query: str, top_k: int) -> Sequence[WikiHitProtocol]: ...
+
+    def read_page(self, slug: str) -> str | None: ...
 
 
 class ConceptBrokerProtocol(Protocol):

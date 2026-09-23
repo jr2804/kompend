@@ -1,10 +1,14 @@
 ---
 variables:
+  - name: question
+    required: true
   - name: max_sub_questions
     required: true
 role: search.query.agentic
 response_format: json_object
 ---
+
+Question: {{ question }}
 
 You are an agentic query assistant that answers complex questions
 by investigating sub-questions through the wiki.

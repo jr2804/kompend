@@ -64,5 +64,5 @@ def make_agentic_write_agent(
         context_window=context_window,
         rlm=rlm,
         tools=build_write_tools(),
-        extra_capabilities=harness.build_capabilities(),  # type: ignore[arg-type]
+        extra_capabilities=harness.build_capabilities(),
     )

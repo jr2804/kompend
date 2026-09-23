@@ -1,5 +1,7 @@
 """Tests for the Q20-N3-N8-N4-Q21 throughput feature chain."""
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
 import json
@@ -29,7 +31,7 @@ from knox.compilation.two_phase import (
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
-from knox.core.paths import KNOX_DIR, PRIVATE_FILE, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE, VERIFICATION_FILE
+from knox.core.paths import KNOX_DIR, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE
 from knox.core.pipeline.config import Tier
 from knox.core.pipeline.orchestrator import (
     ALL_TIERS,
@@ -48,6 +50,8 @@ from knox.core.pipeline.state import (
     auto_promote_demote,
     classify_compile_status,
 )
+from knox.core.store import open_store
+from knox.core.store.schema import PRIVATE_PAGES_TABLE, VERIFICATION_TABLE
 from knox.provenance import annotate_wiki_with_provenance
 from knox.review import ReviewQueue, ReviewStatus, slugify
 from knox.trust import (
@@ -172,24 +176,22 @@ class TestTierStateStore:
         loaded = store.load()
         assert loaded.entries["doc1"].ingested_by == "bob"
 
-    def test_old_state_file_without_ingested_by_loads(self, tmp_path: Path) -> None:
-        # A state file written before knox-gsb5 has no ingested_by field.
+    def test_legacy_state_file_is_not_read(self, tmp_path: Path) -> None:
+        # Clean-cut policy (B3): legacy .knox JSON is never read. A pre-existing
+        # compile_state.json is ignored; the store is the single source.
         path = tmp_path / STATE_FILE
         path.write_text(
             json.dumps({"entries": {"doc1": {"stem": "doc1", "source_file": "d", "content_hash": "h", "current_tier": 1}}}),
             encoding="utf-8",
         )
-        loaded = TierStateStore(path).load()
-        assert loaded.entries["doc1"].ingested_by == ""
+        assert TierStateStore(path).load().entries == {}
 
-    def test_corrupt_file_raises(self, tmp_path: Path) -> None:
-        # Per src/knox/AGENTS.md: a corrupt state file is a bug, not a silent reset.
-        # Missing -> empty state; corrupt -> raises so the real cause surfaces.
+    def test_legacy_corrupt_state_file_is_ignored(self, tmp_path: Path) -> None:
+        # Clean-cut policy (B3): a corrupt legacy file is not read, so it can
+        # neither raise nor silently reset — it is simply inert.
         path = tmp_path / STATE_FILE
         path.write_text("not json", encoding="utf-8")
-        store = TierStateStore(path)
-        with pytest.raises(json.JSONDecodeError):
-            store.load()
+        assert TierStateStore(path).load().entries == {}
 
     def test_tier_distribution(self) -> None:
         state = TierState(
@@ -1234,10 +1236,9 @@ class TestMarkWikiPrivate:
     def test_creates_private_index(self, tmp_path: Path) -> None:
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
         mark_wiki_private(wiki, tmp_path)
-        path = tmp_path / KNOX_DIR / PRIVATE_FILE
-        assert path.exists()
-        data = json.loads(path.read_text(encoding="utf-8"))
-        assert any(p["id"] == "n1" for p in data["pages"])
+        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+            rows = {r["id"] for r in conn.execute(f"SELECT id FROM {PRIVATE_PAGES_TABLE}")}
+        assert "n1" in rows
 
 
 class TestLifecycleStore:
@@ -1328,8 +1329,10 @@ class TestVerificationUnavailable:
         )
         result = verify_wiki(wiki, tmp_path, agent=self._fake_client())
         assert result.total >= 1
-        report = tmp_path / KNOX_DIR / VERIFICATION_FILE
-        assert report.exists()
+        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+            row = conn.execute(f"SELECT total FROM {VERIFICATION_TABLE} ORDER BY id DESC LIMIT 1").fetchone()
+        assert row is not None
+        assert row["total"] == result.total
 
     @staticmethod
     def _fake_client() -> Mock:

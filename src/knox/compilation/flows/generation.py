@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic_ai.exceptions import ModelHTTPError
 
-from knox.agents.generation import GenerationAgent, make_agentic_generation_agent
+from knox.agents.generation import make_agentic_generation_agent
 from knox.agents.types import ToolGenerationDeps
 from knox.compilation._checkpoints import (
     delete_gen_checkpoint,
@@ -30,7 +30,6 @@ from knox.compilation._two_phase_core import (
     segment_sources,
     slugify,
     tokens_to_chars,
-    try_pydanticai_generation,
     upsert_node,
 )
 from knox.compilation.concept_broker import ConceptBroker
@@ -41,7 +40,6 @@ from knox.compilation.flows.assembly import (
     build_edges,
     merge_similar_concepts,
 )
-from knox.compilation.schema import GenerationPage
 from knox.core.config.keys import MANDATORY_KINDS
 from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
@@ -52,7 +50,6 @@ from knox.core.text.matching import best_match, cosine
 from knox.core.utils.exceptions import LLMOutputError
 from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import BrokenWikilinksRule
-from knox.llm.format import encode_for_llm
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
@@ -393,189 +390,6 @@ def run_generation_with_checkpoint(
         initial_slug_to_idx=ck_slug_to_idx,
         initial_caller_progress=ck_caller_progress,
     )
-
-
-def generate_all_pages(  # noqa: PLR0915 — legacy template path; long by design
-    compiler: TwoPhaseRuntime,
-    concepts: list[dict[str, Any]],
-    source_segments: list[list[tuple[str, str]]],
-    generation_system: str,
-    all_images: list[ImageRef],
-    *,
-    pinned_facts: list[str],
-    initial_nodes: list[WikiNode] | None = None,
-    initial_slug_to_idx: dict[str, int] | None = None,
-    completed_batches: set[int] | None = None,
-    known_titles: list[str] | None = None,
-) -> tuple[list[WikiNode], dict[str, int]]:
-    """Generate (or fallback-generate) one node per concept/segment pair."""
-    nodes: list[WikiNode] = list(initial_nodes or [])
-    slug_to_idx: dict[str, int] = dict(initial_slug_to_idx or {})
-    completed: set[int] = set(completed_batches or [])
-
-    num_concepts = len(concepts)
-    num_segments = len(source_segments)
-    # The legacy non-agentic loop uses a fixed batch size.
-    # Since we've removed concepts_per_batch from BudgetConfig,
-    # we use a reasonable fallback default (8).
-    batch_size = 8
-    logger.info(
-        "TwoPhase: generating %d concept(s) across %d source segment(s) (batch_size=%d, pinned=%d)",
-        num_concepts,
-        num_segments,
-        batch_size,
-        len(pinned_facts),
-    )
-    gen_progress_total = ((num_concepts + batch_size - 1) // batch_size) * num_segments
-    gen_progress_step = 0
-
-    # ponytail: cap failed segment retries per batch.
-    MAX_FAILED = 3
-
-    for batch_start in range(0, num_concepts, batch_size):
-        if batch_start in completed:
-            gen_progress_step += 1
-            continue
-        batch = concepts[batch_start : batch_start + batch_size]
-        failed_count = 0
-
-        for seg_idx, segment in enumerate(source_segments):
-            if failed_count >= MAX_FAILED:
-                break
-            gen_progress_step += 1
-            batch_num = batch_start // batch_size + 1
-            total_batches = (num_concepts + batch_size - 1) // batch_size
-            seg_label = f"generating [{gen_progress_step}/{gen_progress_total}] batch {batch_num}/{total_batches} seg {seg_idx + 1}"
-            compiler._report(gen_progress_step, gen_progress_total, seg_label)
-            logger.info("TwoPhase: %s", seg_label)
-            content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
-
-            agent = GenerationAgent(
-                model_string=compiler._model or "",
-                timeout=compiler._timeout,
-                max_tokens=compiler._budget.gen_output_max,
-                skills=compiler._config.skills,
-                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
-                delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
-                reasoning_effort=compiler._config.llm.reasoning_effort,
-                context_manager=compiler._config.llm.context_manager,
-                context_window=compiler._context_window.max_input,
-                rlm=compiler._config.llm.rlm,
-                rlm_context_field="content",
-                usage_tracker=compiler._usage_tracker,
-            )
-            gen_output = try_pydanticai_generation(
-                agent,
-                concepts_json=encode_for_llm(batch, compiler._config.llm.data_format),
-                content=content_block,
-                source_id=seg_label,
-                pinned_facts=pinned_facts,
-                categories=_categories_block(compiler._config.extraction_categories),
-                known_titles=known_titles,
-                timeout=compiler._timeout,
-            )
-            debug_file = getattr(agent, "_last_debug_file", None)
-
-            compiler._batch_tracker.record(failed=gen_output is None)
-
-            if gen_output is None:
-                # This segment failed — but the batch will be retried against the
-                # next source segment. Only log at debug level here.
-                remaining = num_segments - seg_idx - 1
-                if remaining > 0:
-                    logger.debug(
-                        "TwoPhase: segment %d/%d failed for concepts #%d-%d — will retry with %d remaining segment(s)",
-                        seg_idx + 1,
-                        num_segments,
-                        batch_start,
-                        batch_start + len(batch) - 1,
-                        remaining,
-                    )
-                failed_count += 1
-                if failed_count >= MAX_FAILED or seg_idx == num_segments - 1:
-                    # All segments exhausted — these concepts are truly missing.
-                    concept_names = [c.get(ExtractionField.NAME, f"concept-{batch_start + i}") for i, c in enumerate(batch)]
-                    skipped_str = ", ".join(concept_names)
-                    logger.warning(
-                        "TwoPhase: %d/%d concepts will have no wiki page (all %d source segment(s) failed for batch #%d-%d): [%s]",
-                        len(batch),
-                        num_concepts,
-                        num_segments,
-                        batch_start,
-                        batch_start + len(batch) - 1,
-                        skipped_str,
-                    )
-                if compiler._batch_tracker.should_stop():
-                    logger.error(
-                        "TwoPhase: stopping generation early — %d/%d batches failed (model '%s' is not suitable for structured JSON output)",
-                        compiler._batch_tracker.failed,
-                        compiler._batch_tracker.total,
-                        compiler._model,
-                    )
-                    return nodes, slug_to_idx
-                continue
-
-            # Filter out pages with empty content — small models frequently
-            # produce valid titles/slugs but empty content when overwhelmed.
-            # Retrying causes degradation, so accept and filter instead.
-            empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]
-            valid_pages = [p for p in gen_output.pages if (p.content or "").strip()]
-            if empty_pages:
-                names = ", ".join(p.title or "(untitled)" for p in empty_pages)
-                debug_hint = f" (debug: {debug_file})" if debug_file else ""
-                logger.warning(
-                    "TwoPhase: batch %d-%d: %d/%d pages have empty content — filtered out ([%s]).%s",
-                    batch_start,
-                    batch_start + len(batch) - 1,
-                    len(empty_pages),
-                    len(gen_output.pages),
-                    names,
-                    debug_hint,
-                )
-
-            for idx, page in enumerate(valid_pages):
-                node_id = slugify(page.title or f"concept-{batch_start + idx}", max_length=compiler._config.llm.slug_max_length)
-                kind = _page_kind(page, batch, compiler._config.extraction_categories)
-                # Strip double brackets around source citations so [[sources/x.pdf]]
-                # becomes [sources/x.pdf] — matches the renderer’s _CITATION_RE and
-                # keeps provenance out of broken-wikilinks lint findings.
-                page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
-                upsert_node(
-                    WikiNode(
-                        id=node_id,
-                        title=page.title or f"Concept {batch_start + idx}",
-                        content=page_content,
-                        node_type=kind,
-                        source_chunks=[],
-                        metadata={
-                            MetadataField.PROVENANCE: page.provenance,
-                            MetadataField.RELATED: page.related,
-                            MetadataField.TWO_PHASE: True,
-                            "images": all_images,
-                            "frontmatter": {
-                                "title": page.title or f"Concept {batch_start + idx}",
-                            },
-                        },
-                    ),
-                    nodes,
-                    slug_to_idx,
-                )
-
-            # ponytail: break after the first successful segment for this batch.
-            break
-
-            # Checkpoint after each completed batch so interrupted runs can resume.
-        completed.add(batch_start)
-        save_gen_checkpoint(
-            compiler._config,
-            compiler._active_gen_deps,
-            nodes,
-            slug_to_idx,
-            completed,
-        )
-
-    compiler._report(gen_progress_total, gen_progress_total, "generating complete")
-    return nodes, slug_to_idx
 
 
 def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoint save; long by design
@@ -1062,17 +876,6 @@ def _rate_suffix(tracker: UsageTracker | None) -> str:
     return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 
 
-def _page_kind(page: GenerationPage, batch: list[dict[str, Any]], extras: dict[str, str]) -> str:
-    """Resolve a generated page's kind.
-
-    A pre-assigned kind on the batch entry (entity pages) wins over the
-    LLM's label — entity coverage is mandatory, not left to model discretion.
-    """
-    fixed = {normalize_concept_key(str(b.get("name", ""))): str(b.get("kind")) for b in batch if b.get("kind")}
-    expected = fixed.get(normalize_concept_key(page.title or ""))
-    return _allowed_kind(expected or page.kind, extras)
-
-
 def _allowed_kind(kind: str, extras: dict[str, str]) -> str:
     """Validate an LLM-assigned page kind against the taxonomy.
 
@@ -1101,10 +904,9 @@ def assemble_wiki(
 ) -> CompiledWiki:
     """Filter, dedup, and assemble the final CompiledWiki."""
     # Persist any new entity-type decisions to the on-disk registry before
-    # assembly runs. The entity_types dict used inside generate_all_pages
-    # already reads from this registry (so previously-known kinds win),
-    # but new concepts from THIS compile still need to land here so the
-    # NEXT compile sees them.
+    # assembly runs. Assembly reads from this registry (so previously-known
+    # kinds win), but new concepts from THIS compile still need to land here
+    # so the NEXT compile sees them.
     try:
         entity_types_registry = EntityTypeRegistry(compiler._config.paths.entity_types_file)
         new_entries = 0

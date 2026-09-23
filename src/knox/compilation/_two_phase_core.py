@@ -12,21 +12,20 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from slugify import slugify as _slugify_impl
-
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import GenerationDeps, PipelineAgentDeps
+from knox.agents.deps import PipelineAgentDeps
 from knox.compilation.concept_keys import (
     is_structural_concept,
     normalize_concept_key,
 )
-from knox.compilation.schema import Concept, Entity, ExtractionOutput, GenerationOutput, LLMOutputError
+from knox.compilation.schema import Concept, Entity, ExtractionOutput, LLMOutputError
 from knox.core.cache.store import CacheStore
 from knox.core.config import BudgetConfig
 from knox.core.models import ElementType, ExtractionStats, GraphEdge, ImageRef, ResolvedChunk, WikiNode
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.templates import get_template_loader
+from knox.core.text.slug import slugify as _canonical_slugify
 from knox.llm.context_window import ContextWindow
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
@@ -317,7 +316,7 @@ def slugify(text: str, max_length: int | None = None) -> str:
             which is the fallback for ``compile.llm.slug_max_length``.
     """
     cap = max_length if max_length is not None else _SLUG_MAX_LENGTH
-    slug = _slugify_impl(text) or "concept"
+    slug = _canonical_slugify(text, default="concept")
     if len(slug) <= cap:
         return slug
     truncated = slug[: cap - 5].rstrip("-")
@@ -441,57 +440,6 @@ def try_pydanticai_extraction(
         return None
     except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
         logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, exc)
-        return None
-
-
-def try_pydanticai_generation(
-    agent: KnoxAgentBase[GenerationOutput, GenerationDeps],
-    *,
-    concepts_json: str,
-    content: str,
-    source_id: str,
-    pinned_facts: list[str] | None = None,
-    categories: str = "",
-    known_titles: list[str] | None = None,
-    timeout: float = 120.0,
-) -> GenerationOutput | None:
-    """Run a PydanticAI :class:`GenerationAgent` on a concept batch.
-
-    Agent-based generation entry point (the only path).
-
-    Args:
-        agent: An instantiated :class:`~knox.agents.GenerationAgent`.
-        concepts_json: The concept batch encoded via
-            :func:`knox.llm.format.encode_for_llm`.
-        content: Combined source-content block.
-        source_id: Provenance / log label for the batch.
-        pinned_facts: Facts that must appear in the output.
-        categories: Rendered extra-category instructions for the prompt (empty
-            when no `compile.extraction.categories` are configured).
-        known_titles: Canonical page titles for wikilink emission (empty when
-            unknown — see ``GenerationDeps.known_titles``).
-        timeout: Per-call timeout in seconds.
-
-    Returns:
-        The validated :class:`~knox.compilation.schema.GenerationOutput`
-        instance, or ``None`` on failure.
-    """
-    try:
-        deps = GenerationDeps(
-            concepts_json=concepts_json,
-            content=content,
-            source_id=source_id,
-            pinned_facts=pinned_facts or [],
-            categories=categories,
-            known_titles=known_titles or [],
-            timeout=timeout,
-        )
-        return agent.run(deps)
-    except LLMOutputError as exc:
-        logger.warning("PydanticAI generation failed for '%s': %s", source_id, exc)
-        return None
-    except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
-        logger.warning("PydanticAI generation unexpected error for '%s': %s", source_id, exc)
         return None
 
 

@@ -34,7 +34,7 @@ class AgenticVerificationAgent(KnoxAgentBase[str, VerificationDeps]):
 
     template_name: ClassVar[str] = "verify_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "verify_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "verification/"
+    template_prefix: ClassVar[str] = "lint/"
     use_delta_retry: bool = True
 
 
@@ -63,6 +63,6 @@ def make_agentic_verification_agent(
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
-        tools=build_verification_tools(),  # type: ignore[arg-type]
-        extra_capabilities=harness.build_capabilities(),  # type: ignore[arg-type]
+        tools=build_verification_tools(),
+        extra_capabilities=harness.build_capabilities(),
     )

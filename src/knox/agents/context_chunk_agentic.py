@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from pydantic_ai.agent.abstract import AgentRetries
+
+from knox.agents.agentic_harness import AgenticHarness
 from knox.agents.base import KnoxAgentBase
 from knox.agents.types import ContextChunkDeps
+from knox.compilation.context_chunk_tools import build_context_chunk_tools
+from knox.core.config._configs import RlmConfig
 
 
 class AgenticContextChunkAgent(KnoxAgentBase[str, ContextChunkDeps]):
@@ -33,3 +38,33 @@ class AgenticContextChunkAgent(KnoxAgentBase[str, ContextChunkDeps]):
             f"Heading: {chunk.get('heading_chain', [])} \n"
             f"Text: {chunk.get('text', '')[:500]}"
         )
+
+
+def make_agentic_context_chunk_agent(
+    model_string: str,
+    *,
+    timeout: float = 120.0,
+    skills: dict[str, str] | None = None,
+    retries: int = 2,
+    output_retries: int | None = None,
+    context_window: int | None = None,
+    rlm: RlmConfig | None = None,
+) -> AgenticContextChunkAgent:
+    """Build an :class:`AgenticContextChunkAgent` with tools + harness capabilities.
+
+    Registers the ``next_chunk()`` / ``situate_chunk()`` tools the system prompt
+    instructs the model to call, and injects the standard agentic capabilities
+    via :class:`AgenticHarness`.
+    """
+    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    harness = AgenticHarness(context_window=context_window, memory_agent_name="context_chunk")
+    return AgenticContextChunkAgent(
+        model_string=model_string,
+        timeout=timeout,
+        skills=skills or {},
+        retries=agent_retries,
+        context_window=context_window,
+        rlm=rlm,
+        tools=build_context_chunk_tools(),
+        extra_capabilities=harness.build_capabilities(),
+    )

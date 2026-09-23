@@ -28,6 +28,7 @@ from knox.core.models import (
     ElementType,
     ParsedDocument,
 )
+from knox.core.utils.tokens import estimate_tokens
 from knox.llm.context_window import ContextWindow
 from knox.logging import get_logger
 
@@ -217,7 +218,7 @@ class _TreeBuilder:
             heading_chain=hpath,
             chunk=chunk,
             structured=structured,
-            token_count=_estimate_tokens(text_repr),
+            token_count=estimate_tokens(text_repr),
         )
         self._nodes[pid].children_ids.append(leaf_id)
 
@@ -231,7 +232,7 @@ class _TreeBuilder:
         hpath = self._heading_path()
         full_text = "\n\n".join(t for _, t in self._text_buffer)
         el_indices = [i for i, _ in self._text_buffer]
-        est_tokens = _estimate_tokens(full_text)
+        est_tokens = estimate_tokens(full_text)
 
         if est_tokens <= self._chunker._effective_max:
             self._add_text_leaf(pid, p_depth + 1, hpath, full_text, el_indices, est_tokens)
@@ -243,7 +244,7 @@ class _TreeBuilder:
                     hpath,
                     piece,
                     el_indices,  # ponytail: each piece gets ALL buffer indices (provenance ceiling). Needs char-range tracking.
-                    _estimate_tokens(piece),
+                    estimate_tokens(piece),
                 )
         self._text_buffer = []
 
@@ -296,11 +297,6 @@ class _TreeBuilder:
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
-
-
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate (~4 chars per token)."""
-    return max(1, len(text) // 4)
 
 
 def _boundary_rules() -> RecursiveRules:

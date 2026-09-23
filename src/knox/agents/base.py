@@ -32,6 +32,7 @@ import json
 import re
 import typing
 from abc import ABC
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
@@ -154,8 +155,8 @@ class KnoxAgentBase[ResultT, DepsT: AgentDeps](ABC):
     context_manager: str | bool = False
     context_window: int | None = None
     delta_retry_enabled: bool = True
-    tools: list[Tool] = field(default_factory=list)
-    extra_capabilities: list[AbstractCapability[DepsT]] = field(default_factory=list)
+    tools: list[Tool[DepsT]] = field(default_factory=list)
+    extra_capabilities: Sequence[AbstractCapability[DepsT]] = field(default_factory=list)
     temperature: float | None = None
     use_delta_retry: bool = False
     #: RLM configuration from the ``compile.llm.rlm`` group

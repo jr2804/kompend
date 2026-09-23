@@ -27,7 +27,6 @@ Usage::
 
 from __future__ import annotations
 
-import re
 from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
@@ -39,6 +38,7 @@ from knox.agents.types import GenerationDeps, ToolGenerationDeps
 from knox.compilation.gen_tools import build_gen_tools
 from knox.compilation.schema import GenerationOutput, GenerationPage
 from knox.core.config._configs import RlmConfig
+from knox.core.text.slug import slugify
 from knox.llm.usage import UsageTracker
 
 
@@ -141,7 +141,7 @@ def make_agentic_generation_agent(
         context_window=context_window,
         rlm=rlm,
         usage_tracker=usage_tracker,
-        tools=build_gen_tools(),  # type: ignore[arg-type]
+        tools=build_gen_tools(),
         extra_capabilities=harness.build_capabilities(),
     )
 
@@ -158,7 +158,7 @@ def _fix_slugs_locally(pages: list[GenerationPage]) -> None:
     seen: set[str] = set()
     for page in pages:
         if not page.slug.strip():
-            page.slug = _slugify_title(page.title)
+            page.slug = slugify(page.title, default="concept")
         # De-duplicate: append numeric suffix if slug already seen.
         if page.slug in seen:
             base = page.slug
@@ -167,10 +167,3 @@ def _fix_slugs_locally(pages: list[GenerationPage]) -> None:
                 page.slug = f"{base}-{counter}"
                 counter += 1
         seen.add(page.slug)
-
-
-def _slugify_title(title: str) -> str:
-    """Convert a title to a filesystem-safe slug (lowercase, hyphenated)."""
-    slug = re.sub(r"[^\w\s-]", "", title.lower()).strip()
-    slug = re.sub(r"[\s_-]+", "-", slug).strip("-")
-    return slug or "concept"

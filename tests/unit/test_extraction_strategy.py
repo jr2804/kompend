@@ -20,7 +20,6 @@ from knox.compilation.flows import extraction as ext_module
 from knox.compilation.flows.extraction import (
     _compact_history_inplace,
     _estimate_history_tokens,
-    _estimate_tokens,
     _synthetic_history_response,
 )
 from knox.compilation.schema import Concept, Entity, ExtractionOutput
@@ -32,6 +31,7 @@ from knox.core.config._configs import (
 )
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.exceptions import LLMOutputError
+from knox.core.utils.tokens import estimate_tokens
 from knox.llm.context_window import ContextSource, ContextWindow
 
 # ── _batch_texts ─────────────────────────────────────────────────────────
@@ -162,9 +162,9 @@ class TestHistoryCompaction:
 
     def test_estimate_tokens_is_chars_div_4(self) -> None:
 
-        assert _estimate_tokens("") == 1  # min 1
-        assert _estimate_tokens("abcd") == 1
-        assert _estimate_tokens("abcdefgh") == 2
+        assert estimate_tokens("") == 1  # min 1
+        assert estimate_tokens("abcd") == 1
+        assert estimate_tokens("abcdefgh") == 2
 
     def test_estimate_history_tokens_sums_part_contents(self) -> None:
 
