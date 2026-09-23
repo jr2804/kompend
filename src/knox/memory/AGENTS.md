@@ -28,3 +28,9 @@ KNOX memory layer. Two concerns:
 - `lifecycle.py` depends on `knox.core.paths` and `knox.core.utils.time`.
 - `store.py` depends on `knox.core.config`, `knox.core.paths`, `knox.core.utils.time`,
   and `knox.rag.zvec_store`.
+- `store.py` keeps zvec's default **flat** index for
+  `MemoryField.QUERY_EMBEDDING` — it is built inline on insert, always
+  complete, with zero insert overhead. Do NOT add `HnswIndexParam` or per-insert
+  `optimize()` here: `add_entry()` runs once per user query, so HNSW's ~40 ms
+  `optimize()` cost would make every query slower than the ~8 ms flat search it
+  saves. HNSW belongs on the bulk-built wiki store, not this one.
