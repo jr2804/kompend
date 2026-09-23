@@ -111,6 +111,16 @@ the cautionary example: passing only picture options let docling's own
 every equation was dropped. Expose a `[compile.pdf]` knob to turn a pass off
 and default it on.
 
+The one exception is a pass that only *re-derives* content the format already
+carries. Docling's `do_code_enrichment` runs CodeFormulaV2 over every
+`CodeItem` to re-OCR it; a born-digital PDF's code is already correct in its
+text layer, so the pass is pure cost (~140 s per code block on CPU — measured
+9 blocks adding ~1250 s to a 16-page range, and >25 min for one code-heavy
+manual). `code_enrichment` therefore defaults `False`. Tables
+(`table_structure`) and equations (`formula_enrichment`) have no equivalent
+native representation and stay on. OCR follows the same rule through
+`ocr = "auto"`: it runs only when the PDF has no text layer.
+
 ### Adding a backend
 
 1. Create a module `preprocessing/parsers/<name>_parser.py` with a
@@ -155,15 +165,19 @@ Disabling silently drops content from the wiki and the user has no signal.
   controls embedding. Figure refs are normalized via `_ref_to_id`, which
   strips both the new (`img_`) and legacy (`image_`) liteparse prefixes; a
   missing prefix slipped past and dropped every figure (bug #1410).
-- **DoclingParser**: `PdfPipelineOptions` builds with
-  `do_table_structure`, `do_formula_enrichment`, `do_code_enrichment` driven
-  by `[compile.pdf]` (`PdfConfig`). All default to `True`. The
-  `image_mode="none"` branch still passes enrichment so equations/code
-  survive even when the user opts out of picture extraction.
+- **DoclingParser**: `PdfPipelineOptions` builds from `[compile.pdf]`
+  (`PdfConfig`): `do_table_structure` and `do_formula_enrichment` (default
+  `True`), `do_code_enrichment` (default `False` — see "Full capability by
+  default"), `do_ocr` resolved by a text-layer probe (`PdfOcrMode.AUTO`),
+  `table_mode` (TableFormer `accurate`/`fast`), and
+  `accelerator_options.num_threads` (`0` = all usable cores; Docling otherwise
+  hard-defaults to 4 regardless of host). The `image_mode="none"` branch still
+  passes enrichment so equations survive even when the user opts out of picture
+  extraction.
 - Formula/code enrichment hard-requires `accelerate`; it is a regular `docling`
   extra in `pyproject.toml`.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_capabilities.py -x`
+- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_capabilities.py tests/unit/test_pdf_chunking.py -x`
 - `uv run python -c "from knox.preprocessing.parsers._registry import PARSER_BACKENDS; print(sorted(PARSER_BACKENDS))"` — registration fires without error

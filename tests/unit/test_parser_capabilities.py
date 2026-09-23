@@ -18,8 +18,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from docling.datamodel.pipeline_options import TableFormerMode
 
-from knox.core.config import PdfConfig
+from knox.core.config import PdfConfig, PdfOcrMode, PdfTableMode
 from knox.core.config.engine._env import read_env_vars
 from knox.core.models import ElementType, ParsedDocument
 from knox.preprocessing.parsers import liteparse_parser as lp
@@ -102,11 +103,19 @@ def test_liteparse_requests_image_extraction(tmp_path: Path) -> None:
 # ── PdfConfig enrichment flags ─────────────────────────────────────────
 
 
-def test_pdf_config_enrichment_defaults_true() -> None:
+def test_pdf_config_enrichment_defaults() -> None:
     cfg = PdfConfig()
     assert cfg.table_structure is True
     assert cfg.formula_enrichment is True
-    assert cfg.code_enrichment is True
+    # Code enrichment is off by default: born-digital code is already text, and
+    # the CodeFormulaV2 VLM costs ~140s per code block on CPU.
+    assert cfg.code_enrichment is False
+
+
+def test_pdf_config_ocr_and_table_mode_defaults() -> None:
+    cfg = PdfConfig()
+    assert cfg.ocr is PdfOcrMode.AUTO
+    assert cfg.table_mode is PdfTableMode.ACCURATE
 
 
 def test_pdf_config_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,8 +159,29 @@ def test_docling_enrichment_independent_of_image_mode() -> None:
     parser = DoclingParser(image_mode="none", pdf_config=PdfConfig())
     opts = parser._pipeline_options(generate_picture_images=False)  # noqa: SLF001
     assert opts.do_formula_enrichment is True
-    assert opts.do_code_enrichment is True
+    assert opts.do_code_enrichment is False
     assert opts.generate_picture_images is False
+
+
+def test_docling_pipeline_threads_from_config() -> None:
+    """[compile.pdf] num_threads must reach Docling's accelerator options."""
+    parser = DoclingParser(pdf_config=PdfConfig(num_threads=11))
+    opts = parser._pipeline_options(generate_picture_images=False)  # noqa: SLF001
+    assert opts.accelerator_options.num_threads == 11
+
+
+def test_docling_pipeline_do_ocr_flag() -> None:
+    parser = DoclingParser(pdf_config=PdfConfig())
+    off = parser._pipeline_options(generate_picture_images=False, do_ocr=False)  # noqa: SLF001
+    on = parser._pipeline_options(generate_picture_images=False, do_ocr=True)  # noqa: SLF001
+    assert off.do_ocr is False
+    assert on.do_ocr is True
+
+
+def test_docling_pipeline_table_mode_from_config() -> None:
+    parser = DoclingParser(pdf_config=PdfConfig(table_mode=PdfTableMode.FAST))
+    opts = parser._pipeline_options(generate_picture_images=False)  # noqa: SLF001
+    assert opts.table_structure_options.mode is TableFormerMode.FAST
 
 
 def test_docling_parse_returns_parsed_document() -> None:

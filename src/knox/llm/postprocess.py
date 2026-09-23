@@ -407,19 +407,26 @@ def default_pipeline(
 ) -> ResponsePipeline:
     """Create the default post-processing pipeline used by KnoxModel.
 
-    Order matters:
-    1. SurrogateScrubber — remove surrogates before JSON operations
-    2. ToolCallRepair — repair tool-call args using schema guidance
-    3. ThinkingPartRepair — convert ThinkingPart/TextPart to ToolCallPart
-    4. UsageRecorder — record input/output token counts
-    5. DebugSaver — save debug dump if configured
+    Built from the post-processor registry via :func:`pipeline_from_registry`,
+    with the names in a fixed order so the ordering contract stays explicit and
+    deterministic (independent of registration order):
+
+    1. ``surrogate_scrub`` — remove surrogates before JSON operations
+    2. ``tool_call_repair`` — repair tool-call args using schema guidance
+    3. ``thinking_part_repair`` — convert ThinkingPart/TextPart to ToolCallPart
+    4. ``usage_recorder`` — record input/output token counts
+    5. ``debug_saver`` — save debug dump if configured (only when an agent is set)
     """
-    processors: list[ResponsePostprocessor] = [
-        SurrogateScrubber(),
-        ToolCallRepair(schema_resolver=schema_resolver),
-        ThinkingPartRepair(schema_resolver=schema_resolver),
-        UsageRecorder(tracker=usage_tracker, model_name=model_name),
-    ]
+    names: list[str] = ["surrogate_scrub", "tool_call_repair", "thinking_part_repair", "usage_recorder"]
     if agent is not None:
-        processors.append(DebugSaver(agent=agent, model_name=model_name, messages=messages))
-    return ResponsePipeline(processors)
+        names.append("debug_saver")
+    return pipeline_from_registry(
+        names,
+        tool_call_repair__schema_resolver=schema_resolver,
+        thinking_part_repair__schema_resolver=schema_resolver,
+        usage_recorder__tracker=usage_tracker,
+        usage_recorder__model_name=model_name,
+        debug_saver__agent=agent,
+        debug_saver__model_name=model_name,
+        debug_saver__messages=messages,
+    )

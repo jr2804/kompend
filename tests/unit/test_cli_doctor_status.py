@@ -13,7 +13,7 @@ from knox.cli.app import app
 from knox.cli.cmds.pipeline.status import collect_stats, print_status
 from knox.cli.cmds.quality import doctor
 from knox.cli.cmds.quality.doctor import CheckResult, print_doctor_results, run_doctor
-from knox.core.paths import COMPILE_STATE_FILE
+from knox.core.paths import COMPILE_STATE_FILE, KNOX_DB_FILE
 from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 
 
@@ -217,13 +217,13 @@ class TestCollectStats:
         assert stats["compile_status"]["compiled"] == 1
 
     def test_compile_status_broken(self, tmp_path: Path) -> None:
-        """Corrupt tier state file → broken."""
+        """Corrupt store → broken."""
         sources = tmp_path / "sources"
         sources.mkdir()
         (sources / "doc.pdf").write_text("x")
         state_dir = tmp_path / ".knox"
         state_dir.mkdir()
-        (state_dir / COMPILE_STATE_FILE).write_text("not json {{{", encoding="utf-8")
+        (state_dir / KNOX_DB_FILE).write_text("not a database {{{", encoding="utf-8")
         stats = collect_stats(sources_dir=sources, state_dir=state_dir)
         assert stats["compile_status"]["status"] == "broken"
         assert stats["compile_status"]["error"]

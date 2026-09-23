@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -75,7 +76,7 @@ def collect_stats(
         store = TierStateStore(state_file)
         try:
             tier_state = store.load()
-        except (json.JSONDecodeError, ValueError) as exc:
+        except (json.JSONDecodeError, ValueError, sqlite3.Error) as exc:
             error = str(exc)
 
     info = classify_compile_status(

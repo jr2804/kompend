@@ -8,7 +8,7 @@ from binaryornot.check import is_binary
 
 from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
-from knox.agents.distill_agentic import AgenticDistillAgent
+from knox.agents.distill_agentic import make_agentic_distill_agent
 from knox.capture.capture import capture
 from knox.capture.consolidate import consolidate
 from knox.capture.distill import distill
@@ -211,7 +211,7 @@ def wiki_distill(
 
         try:
             model = cfg.knox.compile.llm.default_model
-            distill_agent = AgenticDistillAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
+            distill_agent = make_agentic_distill_agent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
         except Exception:
             try:
                 distill_agent = DistillAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None

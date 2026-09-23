@@ -119,7 +119,6 @@ class TestPushdownFilters:
 
 
 class TestFtsDegradation:
-
     def test_fts_search_returns_empty_without_fts(self, tmp_path: Path) -> None:
         store = self._legacy_store(tmp_path)
         assert store.fts_search("ITU-T P.863") == []
@@ -140,6 +139,7 @@ class TestFtsDegradation:
         warnings = [r for r in caplog.records if "FTS unavailable" in r.message]
         assert len(warnings) == 1
         store.close()
+
     def _legacy_store(self, tmp_path: Path) -> ZvecWikiStore:
         """A collection with NO FTS index, opened for querying."""
         db = tmp_path / "vectors"

@@ -22,6 +22,7 @@ from knox.core.models import MetadataField, WikiField, load_wiki_from_files
 from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.ingest import extract_text_from_cached, ingest_documents, parse_cache_glob
 from knox.core.templates import get_template_loader
+from knox.core.text.slug import slugify
 from knox.core.trust.actor import resolve_actor
 from knox.core.utils.time import iso_local
 from knox.llm.format import strip_reasoning
@@ -218,7 +219,7 @@ def wiki_write(
             source_char_max=cfg.knox.compile.budget.capture_source_char_max,
         )
 
-    slug = page_title.lower().replace(" ", "-")
+    slug = slugify(page_title)
     write_dir = vp.output_dir / "write"
     write_dir.mkdir(parents=True, exist_ok=True)
     output_file = write_dir / f"{slug}.md"

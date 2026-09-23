@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from slugify import slugify as _slugify_impl
-
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
+from knox.core.text.slug import slugify as _slugify_impl
 from knox.output.renderer import format_output
 
 MAX_TITLE_LENGTH: int = 60

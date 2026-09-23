@@ -25,6 +25,8 @@ from knox.capture.distill import (
 from knox.capture.learn import learn
 from knox.cli.cmds.knowledge.capture import _build_references_section
 from knox.core.pipeline.ingest import extract_text_from_cached
+from knox.core.pipeline.parse_cache import write_document
+from knox.core.store import vault_db_path
 from knox.output.markdown import MarkdownWriter
 from knox.output.models import Document
 
@@ -204,15 +206,16 @@ class TestWriteCmd:
     """knox-zkfd: write resolves sources through cache, writes to write/ subfolder."""
 
     def test_write_reads_cache_not_raw_bytes(self, tmp_path: Path) -> None:
-        """When a cache JSON exists, write_cmd extracts clean text, not raw PDF bytes."""
-        # Create a minimal parse-cache JSON for a fake PDF.
+        """When a parse-cache entry exists, write_cmd extracts clean text, not raw PDF bytes."""
+        # Seed a parse-cache entry for a fake PDF into the store.
         cache_dir = tmp_path / ".knox" / "cache"
         cache_dir.mkdir(parents=True)
-        cache_file = cache_dir / "paper.json"
-        cache_file.write_text(
-            '{"elements": [{"content": "This is clean extracted text from the PDF."}]}',
-            encoding="utf-8",
+        write_document(
+            vault_db_path(cache_dir),
+            "paper",
+            {"elements": [{"content": "This is clean extracted text from the PDF."}]},
         )
+        cache_file = cache_dir / "paper.json"
         text = extract_text_from_cached(cache_file)
         assert "clean extracted text" in text
         assert "%PDF" not in text

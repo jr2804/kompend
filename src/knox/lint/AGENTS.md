@@ -24,7 +24,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
 | ``_remediation_gaps.py`` | Gap-specific remediation logic; generated pages route through ``MarkdownWriter`` (→ ``concepts/`` + index regen) |
-| ``history.py`` | ``LintHistoryStore`` — persistent lint result history |
+| ``history.py`` | ``LintEntry`` + ``save_lint_entry``/``load_lint_history``/``prune_lint_history`` — lint run history in the ``lint_runs`` table of ``.knox/knox.db`` |
 
 ## Rules
 
@@ -33,3 +33,5 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 - Structural rules are fast and run always; LLM rules are gated by config.
 - ``RemediationAutoFixer`` calls ``RemediationAgent`` for LLM auto-fixes.
 - ``LintRuleAgent`` and ``RemediationAgent`` live in ``knox.agents.lint``.
+- ``history.py`` I/O takes a vault path and resolves ``knox.db`` via
+  ``core.store.vault_db_path`` — it no longer writes ``lint_history.jsonl``.

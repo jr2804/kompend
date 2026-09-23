@@ -138,26 +138,19 @@ class PageBuilder:
         self._root.children.append(tbl)
         return self
 
+    # Canonical PageBuilder AST method (memory #856): part of the public
+    # markdown-AST surface, reachable via the builder/renderer rather than by a
+    # direct in-repo call site. Do not delete as "unused".
     def code_block(self, value: str, lang: str | None = None) -> PageBuilder:
         """Add a fenced code block."""
         self._root.children.append(Code(value=value, lang=lang))
         return self
 
-    def blockquote(self, *paragraphs: Sequence[str | Span]) -> PageBuilder:
-        """Add a blockquote containing one paragraph per argument."""
-        raise NotImplementedError("extend when a consumer needs it")
-
+    # Canonical PageBuilder AST method (memory #856) — see note on ``code_block``.
     def thematic_break(self) -> PageBuilder:
         """Add a horizontal rule."""
         self._root.children.append(ThematicBreak())
         return self
-
-    def raw_html(self, html: str) -> PageBuilder:
-        """Append pre-rendered HTML/markdown verbatim (trust boundary).
-
-        Only for content already produced by trusted pipeline stages.
-        """
-        raise NotImplementedError("extend when a consumer needs it")
 
     # ── output ────────────────────────────────────────────────────────
 
@@ -188,6 +181,8 @@ def link(url: str, *content: str | Span, title: str | None = None) -> Link:
     return Link(url=url, title=title, children=_inline_children(content))
 
 
+# Canonical PageBuilder inline helper (memory #856) — no direct caller, but part
+# of the public AST surface. Do not delete as "unused".
 def image(url: str, alt: str = "", title: str | None = None) -> Image:
     """Image reference."""
     return Image(url=url, title=title, alt=alt)

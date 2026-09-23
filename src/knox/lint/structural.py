@@ -788,14 +788,12 @@ class DuplicateReferencesRule(BaseLintRule):
             return results
 
         base_dir = Path(sources_dir).parent
-        ref_file = VaultPaths(base_dir).references_file
-        if not ref_file.exists():
+        store = ReferenceStore(VaultPaths(base_dir).references_file)
+        raw_data = store.to_dict()
+        if not raw_data:
             msg = f"No {REFERENCES_FILE} found — run 'knox compile' with reference extraction"
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=msg))
             return results
-
-        store = ReferenceStore(ref_file)
-        raw_data = store.to_dict()
 
         duplicates = self._find_exact_duplicates(raw_data)
         near_dupes = self._find_fuzzy_duplicates(store)

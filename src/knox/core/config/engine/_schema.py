@@ -69,6 +69,7 @@ ENV_MAP: dict[str, str] = _build_env_map()
 # upgrade; ``knox config check`` reports them as deprecations.
 REMOVED_KEYS: dict[str, list[str]] = {
     "compile.budget": ["concepts_per_batch"],
+    "compile.pdf": ["page_chunk_overlap"],
 }
 
 

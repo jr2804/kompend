@@ -7,16 +7,22 @@ from __future__ import annotations
 
 import base64
 import binascii
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import DoclingDocument
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import (
+    AcceleratorOptions,
+    PdfPipelineOptions,
+    TableFormerMode,
+    TableStructureOptions,
+)
 from docling.document_converter import ConversionResult, DocumentConverter, PdfFormatOption
 
-from knox.core.config import PdfConfig
+from knox.core.config import PdfConfig, PdfOcrMode, PdfTableMode
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import ParserBuildOptions, register_backend
@@ -35,6 +41,17 @@ _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "FormulaItem": ElementType.FORMULA,
     "CodeItem": ElementType.CODE,
     "ListItem": ElementType.LIST_ITEM,
+}
+
+# Number of PDF pages sampled when deciding whether a text layer exists.
+# AUTO OCR probes this many evenly spaced pages; a born-digital PDF carries
+# extractable text on all of them, a scan carries none.
+_OCR_PROBE_PAGES: Final[int] = 5
+
+# PdfTableMode → Docling's TableFormerMode.
+_TABLE_FORMER_MODE: dict[PdfTableMode, TableFormerMode] = {
+    PdfTableMode.ACCURATE: TableFormerMode.ACCURATE,
+    PdfTableMode.FAST: TableFormerMode.FAST,
 }
 
 logger = get_logger(__name__)
@@ -98,12 +115,14 @@ class DoclingParser(BaseParser):
         self.images_dir = images_dir
         self._pdf_config = pdf_config or PdfConfig()
         self.images_scale = images_scale
-        self._converter: DocumentConverter | None = None
+        self._converters: dict[tuple[bool, bool], DocumentConverter] = {}
 
     def parse(self, source_file: Path) -> ParsedDocument:
-        converter = self._get_converter()
+        is_pdf = source_file.suffix.lower() == ".pdf"
+        do_ocr = self._resolve_do_ocr(source_file) if is_pdf else True
+        converter = self._get_converter(do_ocr=do_ocr)
 
-        if source_file.suffix.lower() == ".pdf" and self._pdf_config.max_pages_before_chunking > 0:
+        if is_pdf and self._pdf_config.max_pages_before_chunking > 0:
             page_count = self._count_pdf_pages(source_file)
             if page_count > self._pdf_config.max_pages_before_chunking:
                 logger.info(
@@ -247,35 +266,98 @@ class DoclingParser(BaseParser):
 
         return elements, reading_order
 
-    def _get_converter(self) -> DocumentConverter:
-        if self._converter is None:
-            if self.image_mode in ("file", "base64"):
-                pipeline_opts = self._pipeline_options(generate_picture_images=True)
-                pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
-                self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
-            else:
-                pipeline_opts = self._pipeline_options(generate_picture_images=False)
-                pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
-                self._converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
-        return self._converter
+    def _get_converter(self, *, do_ocr: bool = True) -> DocumentConverter:
+        """Return a converter for the current image mode and OCR decision.
 
-    def _pipeline_options(self, *, generate_picture_images: bool) -> PdfPipelineOptions:
-        """Docling PDF pipeline with full extraction capability.
+        Docling keys its pipeline cache on the full options hash, so a
+        born-digital PDF (``do_ocr=False``) and a scan (``do_ocr=True``) in the
+        same run reuse separate, correctly-configured pipelines instead of one
+        overwriting the other.
+        """
+        generate_picture_images = self.image_mode in ("file", "base64")
+        key = (generate_picture_images, do_ocr)
+        converter = self._converters.get(key)
+        if converter is None:
+            pipeline_opts = self._pipeline_options(
+                generate_picture_images=generate_picture_images,
+                do_ocr=do_ocr,
+            )
+            pdf_opts = PdfFormatOption(pipeline_options=pipeline_opts)
+            converter = DocumentConverter(format_options={InputFormat.PDF: pdf_opts})
+            self._converters[key] = converter
+        return converter
 
-        Every knox-relevant pass is enabled from config: table structure,
-        formula recognition (LaTeX), and code-block recovery. Each defaults to
-        ``True`` — the earlier build passed only picture options, so Docling's
-        own defaults (``do_formula_enrichment=False``,
-        ``do_code_enrichment=False``) silently stripped every equation and
-        code block. Docling applies its default pipeline for non-PDF formats.
+    def _pipeline_options(
+        self,
+        *,
+        generate_picture_images: bool,
+        do_ocr: bool = True,
+    ) -> PdfPipelineOptions:
+        """Docling PDF pipeline driven by ``[compile.pdf]``.
+
+        Every knox-relevant pass comes from config: table structure, formula
+        recognition (LaTeX), code recovery, OCR, thread count, and table mode.
+        ``table_structure``/``formula_enrichment`` default on — an earlier build
+        passed only picture options, so Docling's own
+        ``do_formula_enrichment=False`` default silently stripped every equation.
+        ``do_code_enrichment`` defaults off because it only re-derives code that
+        a born-digital PDF already carries as text (see ``PdfConfig``). Docling
+        applies its default pipeline for non-PDF formats.
+
+        ``do_ocr`` and ``accelerator_options`` come from ``[compile.pdf]``:
+        OCR is a fallback for scans (see :class:`PdfOcrMode`), and Docling
+        otherwise pins CPU work to 4 threads regardless of the host.
         """
         return PdfPipelineOptions(
             generate_picture_images=generate_picture_images,
             images_scale=self.images_scale,
             do_table_structure=self._pdf_config.table_structure,
+            table_structure_options=TableStructureOptions(
+                mode=_TABLE_FORMER_MODE[self._pdf_config.table_mode],
+            ),
             do_formula_enrichment=self._pdf_config.formula_enrichment,
             do_code_enrichment=self._pdf_config.code_enrichment,
+            do_ocr=do_ocr,
+            accelerator_options=AcceleratorOptions(
+                num_threads=self._resolved_num_threads(),
+                device="auto",
+            ),
         )
+
+    def _resolve_do_ocr(self, source_file: Path) -> bool:
+        """Resolve the OCR decision for *source_file* from :class:`PdfOcrMode`."""
+        mode = self._pdf_config.ocr
+        if mode is PdfOcrMode.ALWAYS:
+            return True
+        if mode is PdfOcrMode.NEVER:
+            return False
+        return not self._has_text_layer(source_file)
+
+    def _has_text_layer(self, source_file: Path) -> bool:
+        """True when every sampled page already carries extractable text.
+
+        Conservative: one page below the threshold (a scanned insert, a blank
+        page) keeps OCR on, because a missing text layer means real data loss.
+        """
+        threshold = self._pdf_config.ocr_min_text_chars_per_page
+        document = pdfium.PdfDocument(str(source_file))
+        try:
+            page_count = len(document)
+            if page_count == 0:
+                return False
+            for page_index in self._sample_page_indices(page_count):
+                text = document[page_index].get_textpage().get_text_range()
+                if len(text.strip()) < threshold:
+                    return False
+            return True
+        finally:
+            document.close()
+
+    def _resolved_num_threads(self) -> int:
+        """Effective CPU thread count: configured value, else all usable cores."""
+        if self._pdf_config.num_threads > 0:
+            return self._pdf_config.num_threads
+        return os.process_cpu_count() or os.cpu_count() or 1
 
     def _extract_image(self, item: Any, source_file: Path, idx: int) -> str:
         image_ref = getattr(item, "image", None)
@@ -315,6 +397,14 @@ class DoclingParser(BaseParser):
             return f"[Image: {caption_text if caption_text else 'figure'}]"
 
         return f"[Image #{idx}]"
+
+    @staticmethod
+    def _sample_page_indices(page_count: int) -> list[int]:
+        """Evenly spaced 0-indexed page indices, at most ``_OCR_PROBE_PAGES``."""
+        if page_count <= _OCR_PROBE_PAGES:
+            return list(range(page_count))
+        step = page_count / _OCR_PROBE_PAGES
+        return sorted({int(index * step) for index in range(_OCR_PROBE_PAGES)})
 
     @staticmethod
     def _heading_element(item: Any, class_name: str, page_no: int | None, reading_order: int) -> DocumentElement:

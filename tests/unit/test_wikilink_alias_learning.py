@@ -6,11 +6,11 @@ wikilink prompts): :mod:`knox.compilation.flows.generation`.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
 from knox.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
+from knox.core.cache.wiki import write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.models.enums import MetadataField
 from knox.core.templates import get_template_loader
@@ -84,15 +84,7 @@ def test_build_known_titles_merges_previous_aliases(tmp_path: Path) -> None:
     )
     cache_dir = tmp_path / ".knox"
     cache_dir.mkdir()
-    payload = {
-        "nodes": [],
-        "edges": [],
-        "toc": [],
-        "quality_score": 0.0,
-        "iteration": 0,
-        "metadata": previous.metadata,
-    }
-    (cache_dir / "last_wiki.json").write_text(json.dumps(payload), encoding="utf-8")
+    write_wiki_cache(previous, tmp_path)
 
     compiler = _fake_compiler(tmp_path)
     titles = build_known_titles(compiler, [{"name": "POLQA"}])  # type: ignore[arg-type]

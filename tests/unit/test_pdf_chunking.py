@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pypdfium2 as pdfium
 import pytest
 
-from knox.core.config import PdfConfig
+from knox.core.config import PdfConfig, PdfOcrMode, PdfTableMode
 from knox.preprocessing.parsers.docling_parser import DoclingParser
 
 
@@ -35,18 +35,72 @@ class TestPdfConfigDefaults:
         cfg = PdfConfig()
         assert cfg.max_pages_before_chunking == 50
         assert cfg.page_chunk_size == 30
-        assert cfg.page_chunk_overlap == 5
+        assert cfg.ocr is PdfOcrMode.AUTO
+        assert cfg.table_mode is PdfTableMode.ACCURATE
+        assert cfg.num_threads == 0
 
     def test_custom_values(self) -> None:
-        cfg = PdfConfig(max_pages_before_chunking=10, page_chunk_size=5, page_chunk_overlap=1)
+        cfg = PdfConfig(max_pages_before_chunking=10, page_chunk_size=5)
         assert cfg.max_pages_before_chunking == 10
         assert cfg.page_chunk_size == 5
-        assert cfg.page_chunk_overlap == 1
 
     def test_chunking_disabled(self) -> None:
         cfg = PdfConfig(max_pages_before_chunking=0)
         parser = DoclingParser(pdf_config=cfg)
         assert parser._pdf_config.max_pages_before_chunking == 0
+
+
+class TestOcrAutoDetection:
+    """DoclingParser OCR decision: AUTO skips born-digital, runs on scans."""
+
+    def test_auto_detects_born_digital_text_layer(self, tmp_path: Path) -> None:
+        parser = DoclingParser(pdf_config=PdfConfig(ocr=PdfOcrMode.AUTO))
+        text_file = tmp_path / "doc.pdf"
+        text_file.write_bytes(b"%PDF")
+        with patch.object(parser, "_has_text_layer", return_value=True):
+            assert parser._resolve_do_ocr(text_file) is False
+
+    def test_auto_enables_ocr_when_no_text_layer(self, tmp_path: Path) -> None:
+        parser = DoclingParser(pdf_config=PdfConfig(ocr=PdfOcrMode.AUTO))
+        scanned = tmp_path / "scan.pdf"
+        scanned.write_bytes(b"%PDF")
+        with patch.object(parser, "_has_text_layer", return_value=False):
+            assert parser._resolve_do_ocr(scanned) is True
+
+    def test_always_and_never_override_probe(self, tmp_path: Path) -> None:
+        src = tmp_path / "doc.pdf"
+        src.write_bytes(b"%PDF")
+        always = DoclingParser(pdf_config=PdfConfig(ocr=PdfOcrMode.ALWAYS))
+        never = DoclingParser(pdf_config=PdfConfig(ocr=PdfOcrMode.NEVER))
+        with patch.object(DoclingParser, "_has_text_layer", return_value=False):
+            assert always._resolve_do_ocr(src) is True
+            assert never._resolve_do_ocr(src) is False
+
+    def test_blank_pdf_has_no_text_layer(self, tmp_path: Path) -> None:
+        pdf_file = tmp_path / "blank.pdf"
+        _create_pdf(pdf_file, 3)
+        parser = DoclingParser(pdf_config=PdfConfig())
+        assert parser._has_text_layer(pdf_file) is False
+
+    def test_sample_page_indices_caps_and_spreads(self) -> None:
+        assert DoclingParser._sample_page_indices(3) == [0, 1, 2]
+        sampled = DoclingParser._sample_page_indices(113)
+        assert len(sampled) == 5
+        assert sampled[0] == 0
+        assert sampled[-1] < 113
+        assert sampled == sorted(sampled)
+
+
+class TestResolvedThreads:
+    """num_threads = 0 means all usable cores, not Docling's default of 4."""
+
+    def test_explicit_threads_win(self) -> None:
+        parser = DoclingParser(pdf_config=PdfConfig(num_threads=7))
+        assert parser._resolved_num_threads() == 7
+
+    def test_zero_uses_all_cores(self) -> None:
+        parser = DoclingParser(pdf_config=PdfConfig(num_threads=0))
+        assert parser._resolved_num_threads() >= 1
 
 
 class TestParseChunked:

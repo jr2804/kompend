@@ -25,6 +25,8 @@ from knox.core.config._configs import (
     OutputConfig,
     OutputFormat,
     PdfConfig,
+    PdfOcrMode,
+    PdfTableMode,
     RlmConfig,
 )
 from knox.core.config._core import (
@@ -72,6 +74,8 @@ __all__ = [
     "OutputConfig",
     "OutputFormat",
     "PdfConfig",
+    "PdfOcrMode",
+    "PdfTableMode",
     "ResolvedConfig",
     "RlmConfig",
     "check_config_file",

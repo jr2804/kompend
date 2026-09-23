@@ -22,6 +22,7 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_SUBCATEGORIES,
 )
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
+from knox.core.text.slug import slugify
 from knox.organize import (
     CategoryNode,
     CategoryTree,
@@ -36,7 +37,7 @@ from knox.organize import (
     update_wiki_links,
     validate_tree,
 )
-from knox.organize.categorize import _slugify_category, _tree_from_json
+from knox.organize.categorize import _tree_from_json
 from knox.organize.engine import resolve_organize_config
 from knox.organize.moves import FileMove
 
@@ -45,20 +46,20 @@ from knox.organize.moves import FileMove
 
 class TestSlugify:
     def test_lowercase(self) -> None:
-        assert _slugify_category("MyCategory") == "mycategory"
+        assert slugify("MyCategory", default="misc") == "mycategory"
 
     def test_spaces_to_hyphens(self) -> None:
-        assert _slugify_category("hello world") == "hello-world"
+        assert slugify("hello world", default="misc") == "hello-world"
 
     def test_strips_invalid_chars(self) -> None:
-        assert _slugify_category("foo/bar:baz") == "foo-bar-baz"
+        assert slugify("foo/bar:baz", default="misc") == "foo-bar-baz"
 
     def test_collapses_runs(self) -> None:
-        assert _slugify_category("a  -  b") == "a-b"
+        assert slugify("a  -  b", default="misc") == "a-b"
 
     def test_empty_falls_back(self) -> None:
-        assert _slugify_category("") == "misc"
-        assert _slugify_category("///") == "misc"
+        assert slugify("", default="misc") == "misc"
+        assert slugify("///", default="misc") == "misc"
 
 
 # ── CategoryNode helpers ────────────────────────────────────────────────

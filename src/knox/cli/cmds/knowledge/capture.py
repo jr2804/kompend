@@ -10,7 +10,7 @@ import typer
 
 from knox.agents.capture import CaptureAgent
 from knox.agents.distill import DistillAgent
-from knox.agents.distill_agentic import AgenticDistillAgent
+from knox.agents.distill_agentic import make_agentic_distill_agent
 from knox.agents.types import WriteDeps
 from knox.agents.write import make_agentic_write_agent
 from knox.capture.capture import capture
@@ -27,6 +27,7 @@ from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
 from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
 from knox.core.text.encoding import read_text_auto
 from knox.core.text.matching import SemanticMatcher
+from knox.core.text.slug import slugify
 from knox.core.utils.time import iso_local
 from knox.llm.format import strip_reasoning
 from knox.logging import get_console, get_err_console, get_logger
@@ -203,7 +204,7 @@ def distill_cmd(
     distill_agent = None
     if default_model:
         try:
-            distill_agent = AgenticDistillAgent(
+            distill_agent = make_agentic_distill_agent(
                 default_model,
                 timeout=float(cfg.knox.compile.llm.timeout),
                 retries=cfg.knox.compile.llm.output_retries,
@@ -300,7 +301,7 @@ def write_cmd(
         )
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────
-    slug = page_title.lower().replace(" ", "-")
+    slug = slugify(page_title)
     write_dir = vp.output_dir / "write"
     write_dir.mkdir(parents=True, exist_ok=True)
     output_file = write_dir / f"{slug}.md"

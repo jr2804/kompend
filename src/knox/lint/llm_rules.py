@@ -11,12 +11,12 @@ import json
 from typing import Any
 
 from pydantic import BaseModel, Field
-from slugify import slugify
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.lint import LintRuleAgent
 from knox.core.models import CompiledWiki
 from knox.core.templates import get_template_loader
+from knox.core.text.slug import slugify
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
 
