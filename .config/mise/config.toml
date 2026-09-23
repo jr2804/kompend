@@ -9,8 +9,8 @@ bun = "latest"
 "ruff" = "latest"
 "ty" = "latest"
 "rumdl" = "latest"
-"pipx:undersort" = "latest"
-"pipx:codespell" = "latest"
+"pypi:git+https://codeberg.org/jr2804/clean-sort.git" = "latest"
+"pypi:codespell" = "latest"
 
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
@@ -18,7 +18,7 @@ ripgrep = "latest"
 
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
-"pipx:git+https://codeberg.org/jr2804/clean-sort.git" = "latest"
+
 
 [settings.npm]
 package_manager = "bun"
