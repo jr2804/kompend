@@ -80,9 +80,6 @@ QUALITY_FILE: Final[str] = "quality.md"
 # ── Vector store ────────────────────────────────────────────────────────
 VECTORS_DIR: Final[str] = "vectors"
 
-# ── Search database ─────────────────────────────────────────────────────
-SEARCH_DB_FILE: Final[str] = "search.db"
-
 # ── Download tracking ───────────────────────────────────────────────────
 DOWNLOADED_FILE: Final[str] = "downloaded.json"
 
@@ -214,7 +211,6 @@ class VaultPaths:
         │   ├── compile_state.json  ← compile_state_file
         │   ├── last_wiki.json      ← wiki_cache_file
         │   ├── compiled_wiki.json  ← compiled_wiki_file
-        │   ├── search.db           ← search_db_file
         │   ├── memory.db           ← memory_db_file
         │   ├── memory.jsonl        ┆ memory_log_file
         │   ├── memory.json         ← memory_store_file
@@ -338,11 +334,6 @@ class VaultPaths:
     def compiled_wiki_file(self) -> Path:
         """Full compiled wiki JSON (used by pipeline internally)."""
         return self.knox_dir / COMPILED_WIKI_FILE
-
-    @property
-    def search_db_file(self) -> Path:
-        """SQLite search index database."""
-        return self.knox_dir / SEARCH_DB_FILE
 
     @property
     def memory_db_file(self) -> Path:

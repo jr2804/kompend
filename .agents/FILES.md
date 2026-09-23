@@ -32,7 +32,7 @@ path as a property. This ensures consistent path construction across the codebas
 All on-disk artifact names are `Final[str]` constants in **`src/knox/core/paths.py`**.
 
 **Rule:** `".knox"`, `"cache"`, `"config.toml"`, `"vectors"`, `"memory.db"`,
-`"last_wiki.json"`, `"search.db"`, etc. must **never** appear as a literal in
+`"last_wiki.json"`, etc. must **never** appear as a literal in
 any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 
 | Constant | Value | Usage |
@@ -42,7 +42,6 @@ any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 | `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |
 | `VECTORS_DIR` | `"vectors"` | Embedding vector store |
-| `SEARCH_DB_FILE` | `"search.db"` | SQLite search index |
 | `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest |
 | `MEMORY_DB_FILE` | `"memory.db"` | SQLite memory store |
 | `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log |
