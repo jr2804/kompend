@@ -19,10 +19,9 @@ from __future__ import annotations
 
 import re
 
-from slugify import slugify as _slugify
-
 from knox.core.models.references import YEAR_DIGITS, Reference
 from knox.core.pipeline.references import ReferenceStore
+from knox.core.text.slug import slugify as _slugify
 from knox.logging import get_logger
 
 __all__ = [
@@ -279,7 +278,7 @@ def _slugify_ref(ref: Reference) -> str:
     to ``short_label()`` or title.
     """
     label = ref.id or ref.short_label() or ref.title[:_ANCHOR_TITLE_MAX]
-    return _slugify(label) or "ref"
+    return _slugify(label, default="ref")
 
 
 def _expand_numeric_range(spec: str) -> list[int]:

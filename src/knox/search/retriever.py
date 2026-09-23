@@ -15,8 +15,9 @@ from typing import Final, TypedDict
 
 from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
-from knox.agents.query_agentic import AgenticQueryAgent
+from knox.agents.query_agentic import AgenticQueryAgent, make_agentic_query_agent
 from knox.agents.search import QueryExpansionAgent
+from knox.agents.types import QueryAgentDeps, QuerySearchProtocol
 from knox.core.config import DEFAULTS, RlmConfig
 from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
@@ -81,6 +82,15 @@ class HybridRetriever:
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         return self.search_wiki(query, top_k=top_k)
+
+    def read_page(self, slug: str) -> str | None:
+        """Return the full page body for *slug* (a wiki node id), or None.
+
+        Satisfies :class:`knox.agents.types.QuerySearchProtocol` — the agentic
+        query tools call this to fetch a whole page, not just a snippet.
+        """
+        node = self._node_by_id.get(slug)
+        return node.content if node is not None else None
 
     def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
         return self._wiki_vector_results(query, top_k)
@@ -224,8 +234,8 @@ class KeywordRetriever:
         for node in self._nodes.values():
             title_tokens = set(tokenize(node.title))
             content_tokens = set(tokenize(node.content or ""))
-            desc = (node.metadata or {}).get("description", "") if node.metadata else ""
-            desc_tokens = set(tokenize(str(desc)))
+            desc = node.description
+            desc_tokens = set(tokenize(desc))
             score = len(query_tokens & title_tokens) * 3 + len(query_tokens & desc_tokens) * 2 + len(query_tokens & content_tokens)
             if score > 0:
                 scored.append((float(score), node))
@@ -254,6 +264,11 @@ class KeywordRetriever:
     def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Alias of :meth:`search`."""
         return self.search(query, top_k=top_k)
+
+    def read_page(self, slug: str) -> str | None:
+        """Return the full page body for *slug* (a wiki node id), or None."""
+        node = self._nodes.get(slug)
+        return node.content if node is not None else None
 
     def search_hybrid(
         self,
@@ -377,6 +392,43 @@ def synthesize_results(
         )
 
     return SynthesisResult(answer=answer, citations=citations_out)
+
+
+def run_agentic_query(
+    question: str,
+    *,
+    retriever: QuerySearchProtocol,
+    model: str,
+    max_sub_questions: int = 5,
+    timeout: float = 120.0,
+    retries: int = 2,
+    context_window: int | None = None,
+    rlm: RlmConfig | None = None,
+) -> str:
+    """Answer *question* with the agentic query agent against *retriever*.
+
+    Unlike :func:`synthesize_results` — which pre-retrieves and formats
+    results for a single-shot :class:`QueryAgent` — this hands the agent the
+    question plus the raw retrieval surface and lets it search/read pages via
+    tools. Deliberately separate: ``synthesize_results`` builds
+    :class:`QueryDeps`, which has no ``retriever``, so an agentic agent run
+    there would crash the query tools.
+    """
+    agent = make_agentic_query_agent(
+        model,
+        timeout=timeout,
+        retries=retries,
+        context_window=context_window,
+        rlm=rlm,
+    )
+    deps = QueryAgentDeps(
+        question=question,
+        sub_questions=[],
+        retriever=retriever,
+        max_sub_questions=max_sub_questions,
+        timeout=timeout,
+    )
+    return agent.run(deps)
 
 
 # ── Query expansion ────────────────────────────────────────────────────

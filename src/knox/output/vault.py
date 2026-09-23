@@ -22,9 +22,9 @@ Subclasses fill in the rendering hooks that differ by format:
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
+import sqlite3
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
@@ -54,6 +54,8 @@ from knox.core.paths import (
 )
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
+from knox.core.store import open_store
+from knox.core.store.schema import VERIFICATION_TABLE
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
@@ -172,10 +174,8 @@ class VaultWriter(BaseOutputWriter):
             if not dest.exists() or dest.read_bytes() != src_file.read_bytes():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_file, dest)
-            link = os.path.relpath(
-                dest.relative_to(self._base_dir),
-                f"{self._output_dir_name}/{folder}" if folder else self._output_dir_name,
-            ).replace("\\", "/")
+            target = Path(self._output_dir_name) / folder if folder else Path(self._output_dir_name)
+            link = dest.relative_to(self._base_dir).relative_to(target, walk_up=True).as_posix()
             new_img = img.copy()
             new_img["path"] = link
             out.append(new_img)
@@ -194,58 +194,13 @@ class VaultWriter(BaseOutputWriter):
 
     @staticmethod
     def okf_description(node: WikiNode) -> str:
-        """Extract a one-line description from a wiki node.
+        """Frontmatter description for *node* — delegates to :attr:`WikiNode.description`.
 
-        Uses the first sentence of the first non-empty **prose** content
-        line, with ``[[wikilinks]]`` reduced to plain text. Generated
-        pages open with a full paragraph; without sentence truncation
-        the index duplicates the whole page body (Karpathy's index spec
-        is link + one-line summary).
-
-        The agentic generation template instructs the model to start
-        page content with ``##`` subheadings (per OKF v0.2 — the title
-        is rendered as H1 from frontmatter). Skipping leading ``#``
-        lines ensures the description is the first sentence of prose,
-        not a heading fragment like ``## Definition``.
+        Kept as a named seam because the writer is the historic caller; the
+        derivation itself lives on the model so the vector store's embed text
+        and the written index cannot drift apart.
         """
-        content = (node.content or "").strip()
-        if not content:
-            return ""
-        # Skip lines that are markdown headings (start with one or more
-        # ``#`` chars) so we land on the first prose paragraph.
-        for line in content.split("\n"):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("#"):
-                continue
-            first_line = stripped
-            break
-        else:
-            return ""  # all lines were headings — nothing to describe
-        text = WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
-        # ponytail: heuristic sentence split — a boundary needs ". " +
-        # capitalized/paren continuation, and pseudo-boundaries inside
-        # identifiers like "Rec. P.863" are skipped when the next word itself
-        # contains a period. Swap for a tokenizer if this ever misfires.
-        desc = text
-        for m in re.finditer(r"^(.+?[.!?])\s+(?=[A-Z(])", text):
-            next_word = text[m.end() :].split(" ", 1)[0]
-            if "." in next_word.rstrip(".,;:"):
-                continue
-            # Skip boundaries after initials — "John G. Beerends is ..." must
-            # not truncate to "John G." (single-letter word before the dot).
-            preceding = m.group(1).rstrip(".!?")
-            if preceding.split(" ")[-1].strip("(") and len(preceding.split(" ")[-1].strip("(")) == 1:
-                continue
-            desc = m.group(1)
-            break
-        else:
-            tail = re.match(r"^(.+?[.!?])\s*$", text)
-            desc = tail.group(1) if tail else text
-        if len(desc) > 200:
-            desc = desc[:200].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
-        return desc
+        return node.description
 
     @staticmethod
     def okf_frontmatter(
@@ -382,7 +337,7 @@ class VaultWriter(BaseOutputWriter):
 
         # Load reference store once for citation link rewriting.
         ref_store: ReferenceStore | None = None
-        if self._references_file and self._references_file.exists():
+        if self._references_file is not None:
             ref_store = ReferenceStore(self._references_file)
 
         for doc in docs:
@@ -444,9 +399,9 @@ class VaultWriter(BaseOutputWriter):
             return
 
         ref_store: ReferenceStore | None = None
-        if self._references_file and self._references_file.exists():
+        if self._references_file is not None:
             ref_store = ReferenceStore(self._references_file)
-        asset_store = AssetStore(vp.assets_file) if vp.assets_file.exists() else None
+        asset_store: AssetStore | None = AssetStore(vp.assets_file)
 
         # Backlink index: stem -> concept titles fed by this source.
         feeds: dict[str, list[str]] = {}
@@ -565,18 +520,28 @@ class VaultWriter(BaseOutputWriter):
             (summaries_dir / f"{stale_slug}.md").unlink(missing_ok=True)
 
     def _load_verification(self) -> dict[str, Any] | None:
-        """Read ``.knox/verification.json`` if present (per-claim records)."""
+        """Read the latest ``verification`` row (per-claim records) if present."""
         if self._base_dir is None:
             return None
-        vf = VaultPaths(self._base_dir).verification_file
-        if not vf.is_file():
+        db_path = VaultPaths(self._base_dir).knox_db_file
+        if not db_path.is_file():
             return None
         try:
-            data = json.loads(vf.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Verification report corrupt — skipping quality page: %s", vf)
+            with open_store(db_path) as conn:
+                query = f"SELECT total, verified, unsupported, average_confidence, claims FROM {VERIFICATION_TABLE} ORDER BY id DESC LIMIT 1"  # noqa: S608
+                row = conn.execute(query).fetchone()
+        except sqlite3.Error as exc:
+            logger.warning("Verification store unreadable — skipping quality page: %s", exc)
             return None
-        return data if isinstance(data, dict) else None
+        if row is None:
+            return None
+        return {
+            "total": row["total"],
+            "verified": row["verified"],
+            "unsupported": row["unsupported"],
+            "average_confidence": row["average_confidence"],
+            "claims": json.loads(row["claims"]),
+        }
 
     def _write_quality_page(self, wiki: CompiledWiki, output_dir: Path) -> None:
         """Write ``quality.md`` — WiCER verification summary (per-page table)."""

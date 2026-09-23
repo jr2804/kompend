@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
-from knox.compilation.two_phase import cosine_similarity
 from knox.core.config import RlmConfig
 from knox.core.models import CompiledWiki
 from knox.core.templates import TemplateLoader, get_template_loader
+from knox.core.text.matching import cosine as cosine_similarity
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.retriever import (

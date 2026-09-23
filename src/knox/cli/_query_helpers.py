@@ -27,7 +27,14 @@ from knox.rag import build_vector_index
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import HybridRetriever, KeywordRetriever, SearchResult, SynthesisResult, synthesize_results
+from knox.search.retriever import (
+    HybridRetriever,
+    KeywordRetriever,
+    SearchResult,
+    SynthesisResult,
+    run_agentic_query,
+    synthesize_results,
+)
 
 #: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
 #: the overview kind, which stays at the bundle root.
@@ -198,6 +205,64 @@ def matches_attr_filter(
         if value is not None and value not in values:
             return False
     return True
+
+
+def should_use_agentic(
+    cfg: ResolvedConfig,
+    *,
+    raw: bool,
+    model: str | None,
+    tag_groups: list[list[str]],
+    attr_filters: list[tuple[str, str | None]],
+) -> bool:
+    """Whether this query should take the opt-in agentic path.
+
+    Disabled by default. Falls back to the classic path when filters are
+    present — the agentic tools do not thread filters yet (server-side
+    pushdown is wired separately), so filtering would be silently dropped.
+    """
+    agentic = cfg.knox.search.agentic
+    return bool(agentic.enabled and not raw and model and not tag_groups and not attr_filters)
+
+
+def run_agentic_query_output(
+    query: str,
+    wiki: CompiledWiki,
+    vector_store: ZvecWikiStore | None,
+    format: LlmDataFormat,
+    cfg: ResolvedConfig,
+    cw: ContextWindow | None,
+    remember: bool,
+    state_dir: Path,
+) -> None:
+    """Run the agentic query agent and print its answer.
+
+    Does NOT close *vector_store* — the caller owns its lifetime (the store
+    must stay open while the agent's tools search).
+    """
+    model = cfg.knox.search.agentic.model or cfg.knox.compile.llm.default_model
+    if not model:
+        get_err_console().print("error: No LLM model configured for agentic query.")
+        raise typer.Exit(1)
+    retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
+    try:
+        answer = run_agentic_query(
+            query,
+            retriever=retriever,
+            model=model,
+            max_sub_questions=cfg.knox.search.agentic.max_sub_questions,
+            context_window=cw.max_input if cw is not None else None,
+        )
+    except Exception as exc:
+        get_err_console().print(f"Agentic query failed: {exc}")
+        raise typer.Exit(1)
+    synthesis = SynthesisResult(answer=answer, citations=[])
+    if format == LlmDataFormat.MARKDOWN:
+        get_console().print(synthesis.answer)
+    else:
+        get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
+    if remember:
+        save_query_memory(state_dir, query, synthesis.answer, cfg.knox.compile.embedding.model, memory_by=resolve_actor(cfg))
 
 
 def build_enhanced_retriever(

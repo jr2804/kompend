@@ -39,6 +39,9 @@ _ZVEC_MAX_ID_LEN = 64
 
 _ZVEC_COLLECTION_NAME = "knox_wiki"
 
+
+_EMBED_TEXT_VERSION = 2
+
 logger = get_logger(__name__)
 
 
@@ -315,6 +318,10 @@ class ZvecWikiStore:
         against the current wiki's node set. A missing manifest, a corrupt
         manifest, or any id set mismatch means the sidecar index is stale and
         must be rebuilt before it can serve the loaded wiki.
+
+        The manifest also records the embed-text version. A manifest written by
+        an older composition (or the legacy bare-id-list format) is stale even
+        when the ids match, because its vectors were built from different text.
         """
         expected = {_safe_id(n.id) for n in wiki.nodes}
         if not expected:
@@ -323,11 +330,26 @@ class ZvecWikiStore:
         if not manifest.is_file():
             return True
         try:
-            raw = json.loads(manifest.read_text(encoding="utf-8"))
-            stored = {str(i) for i in raw}
+            raw: object = json.loads(manifest.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             logger.warning("Vector manifest corrupt — treating store as stale: %s", manifest)
             return True
+        if not isinstance(raw, dict):
+            # Legacy bare-id-list manifest, written before the embed-text version
+            # was recorded. Its vectors were composed by unknown code, so rebuild
+            # rather than serve vectors we cannot vouch for.
+            logger.info("Vector manifest predates embed-text versioning — rebuilding: %s", manifest)
+            return True
+        if raw.get("embed_version") != _EMBED_TEXT_VERSION:
+            logger.info(
+                "Vector manifest embed-text version %r != %d — rebuilding: %s",
+                raw.get("embed_version"),
+                _EMBED_TEXT_VERSION,
+                manifest,
+            )
+            return True
+        ids = raw.get("ids")
+        stored = {str(i) for i in ids} if isinstance(ids, list) else set()
         return stored != expected
 
     @classmethod
@@ -445,7 +467,7 @@ class ZvecWikiStore:
             source_file = rel_to_vault(raw_source, base_dir) if base_dir else raw_source
             doc = _zvec.Doc(
                 id=_safe_id(node.id),
-                vectors={ZvecField.EMBEDDING: provider.embed(f"{node.title}\n{node.content}")},
+                vectors={ZvecField.EMBEDDING: provider.embed(_embed_text(node))},
                 fields={
                     ZvecField.NODE_ID: node.id,
                     ZvecField.TITLE: node.title,
@@ -493,7 +515,10 @@ class ZvecWikiStore:
             logger.info("Pruned %d stale vector(s) from %s", len(orphans), self.db_file)
         manifest = self._manifest_file()
         try:
-            manifest.write_text(json.dumps(sorted(keep)), encoding="utf-8")
+            manifest.write_text(
+                json.dumps({"embed_version": _EMBED_TEXT_VERSION, "ids": sorted(keep)}),
+                encoding="utf-8",
+            )
         except OSError as exc:  # pragma: no cover — filesystem-dependent
             logger.warning("Could not write vector manifest (%s): %s", manifest, exc)
         return len(orphans)
@@ -525,6 +550,31 @@ class ZvecWikiStore:
             _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
             _zvec.FieldSchema(ZvecField.ATTR_KEYS, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
         ]
+
+
+"""Version of the embed-text composition used at index time.
+
+Bump this whenever :func:`_embed_text` changes the text it feeds the embedder.
+``is_stale`` compares it against the build-time manifest, so an embed-text
+change forces a rebuild instead of silently serving vectors built from the old
+text — a failure mode with no other signal. ``test_zvec_embed_text.py`` pins the
+composition, so changing it fails a test and reminds you to bump this.
+"""
+
+
+def _embed_text(node: WikiNode) -> str:
+    """Compose the text embedded for *node*.
+
+    Includes :attr:`WikiNode.description` — the page's first prose sentence,
+    derived from its own content and already used for the written index
+    frontmatter. Leaving it out made the vector path weigh different evidence
+    than the written summary. A node with no prose (empty content, or headings
+    only) embeds as ``title`` plus a newline plus ``content``, as before.
+    """
+    description = node.description
+    if description:
+        return f"{node.title}\n{description}\n{node.content}"
+    return f"{node.title}\n{node.content}"
 
 
 def _safe_id(node_id: str) -> str:

@@ -12,7 +12,7 @@ from knox.core.models import load_wiki_from_files
 from knox.core.paths import VECTORS_DIR, vault_paths
 from knox.logging import get_logger
 from knox.rag.zvec_store import ZvecWikiStore
-from knox.search.retriever import HybridRetriever, KeywordRetriever
+from knox.search.retriever import HybridRetriever, KeywordRetriever, run_agentic_query
 
 logger = get_logger(__name__)
 
@@ -54,6 +54,17 @@ def query_wiki(
 
     try:
         retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
+        model = cfg.knox.compile.llm.default_model or ""
+        agentic = cfg.knox.search.agentic
+        if agentic.enabled and not raw and model and not attributes and search_mode != SearchMode.RAW:
+            answer = run_agentic_query(
+                query,
+                retriever=retriever,
+                model=agentic.model or model,
+                max_sub_questions=agentic.max_sub_questions,
+                rlm=RlmConfig.model_validate(cfg.knox.compile.llm.rlm or {}),
+            )
+            return {"status": "ok", "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 

@@ -1,5 +1,7 @@
 """Tests for KNOX output writers (Milestone 5)."""
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
 import json
@@ -15,6 +17,8 @@ from knox.core.models.structured import StructuredFigure, StructuredTable
 from knox.core.paths import attachment_slug
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.references import ReferenceStore
+from knox.core.store import open_store
+from knox.core.store.schema import VERIFICATION_TABLE
 from knox.output.json_writer import JsonWriter
 from knox.output.markdown import MarkdownWriter
 from knox.output.typst import TypstWriter
@@ -730,24 +734,19 @@ class TestQualityPage:
         return base
 
     def _verification(self, base: Path) -> None:
-        vf = base / ".knox" / "verification.json"
-        vf.parent.mkdir(exist_ok=True)
-        vf.write_text(
-            json.dumps(
-                {
-                    "total": 3,
-                    "verified": 2,
-                    "unsupported": 1,
-                    "average_confidence": 0.7,
-                    "claims": [
-                        {"node_id": "concept-1", "verdict": "supported", "confidence": 0.9},
-                        {"node_id": "concept-1", "verdict": "unsupported", "confidence": 0.2},
-                        {"node_id": "concept-2", "verdict": "supported", "confidence": 1.0},
-                    ],
-                }
-            ),
-            encoding="utf-8",
+        claims = json.dumps(
+            [
+                {"node_id": "concept-1", "verdict": "supported", "confidence": 0.9},
+                {"node_id": "concept-1", "verdict": "unsupported", "confidence": 0.2},
+                {"node_id": "concept-2", "verdict": "supported", "confidence": 1.0},
+            ]
         )
+        db = base / ".knox" / "knox.db"
+        with open_store(db) as conn:
+            conn.execute(
+                f"INSERT INTO {VERIFICATION_TABLE} (written_at, total, verified, unsupported, average_confidence, claims) VALUES (?, ?, ?, ?, ?, ?)",  # noqa: S608
+                ("2025-01-01T00:00:00+00:00", 3, 2, 1, 0.7, claims),
+            )
 
 
 class TestReferencesPage:

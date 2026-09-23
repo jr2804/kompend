@@ -1,19 +1,30 @@
 """Compiled wiki graph models (Tier 4: Compilation output) and cache loading."""
 
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
+
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Final, NotRequired, TypedDict
 
 import yaml
 
-from knox.core.models.enums import WikiField
-from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import WIKI_SNAPSHOT_TABLE
+from knox.core.utils.time import iso_local
+
+#: Discriminator values for the ``wiki_snapshot`` table. ``last`` is the
+#: post-run snapshot (lint/capture/MCP); ``compiled`` is the tier-handoff
+#: snapshot (Tier 3 -> Tier 4).
+WIKI_SNAPSHOT_LAST: Final[str] = "last"
+WIKI_SNAPSHOT_COMPILED: Final[str] = "compiled"
 
 __all__ = [
+    "WIKI_SNAPSHOT_COMPILED",
+    "WIKI_SNAPSHOT_LAST",
     "CompiledWiki",
     "CrossReferenceIssue",
     "CrossReferenceResult",
@@ -22,6 +33,8 @@ __all__ = [
     "WikiNode",
     "load_cached_wiki",
     "load_wiki_from_files",
+    "load_wiki_snapshot",
+    "write_wiki_snapshot_payload",
 ]
 
 # Frontmatter ``kind`` extension maps back to the KNOX node_type.
@@ -91,6 +104,54 @@ class WikiNode:
     depth: int = 0
     heading_chain: tuple[str, ...] = field(default_factory=tuple)
 
+    @property
+    def description(self) -> str:
+        """One-line description: the first sentence of the first prose line.
+
+        The single source of truth for a page's description — the OKF
+        frontmatter writer and the vector store's embed text both read this, so
+        retrieval and the written index summarise a page identically. Leading
+        markdown headings are skipped (generated pages open with ``##``
+        subheadings, so the description must be the first sentence of prose and
+        not a heading fragment) and ``[[wikilinks]]`` are reduced to their
+        display text.
+        """
+        content = (self.content or "").strip()
+        if not content:
+            return ""
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            first_line = stripped
+            break
+        else:
+            return ""
+        text = _WIKILINK_RE.sub(lambda m: m.group(2) or m.group(1), first_line)
+        # ponytail: heuristic sentence split — a boundary needs ". " +
+        # capitalized/paren continuation, and pseudo-boundaries inside
+        # identifiers like "Rec. P.863" are skipped when the next word itself
+        # contains a period. Swap for a tokenizer if this ever misfires.
+        desc = text
+        for match in re.finditer(r"^(.+?[.!?])\s+(?=[A-Z(])", text):
+            next_word = text[match.end() :].split(" ", 1)[0]
+            if "." in next_word.rstrip(".,;:"):
+                continue
+            # Skip boundaries after initials — "John G. Beerends is ..." must
+            # not truncate to "John G." (single-letter word before the dot).
+            preceding = match.group(1).rstrip(".!?")
+            last_word = preceding.split(" ")[-1].strip("(")
+            if last_word and len(last_word) == 1:
+                continue
+            desc = match.group(1)
+            break
+        else:
+            tail = re.match(r"^(.+?[.!?])\s*$", text)
+            desc = tail.group(1) if tail else text
+        if len(desc) > 200:
+            desc = desc[:200].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+        return desc
+
 
 @dataclass
 class CompiledWiki:
@@ -126,6 +187,42 @@ class TocEntry(TypedDict):
     level: int
 
 
+def write_wiki_snapshot_payload(
+    base_dir: Path,
+    kind: str,
+    *,
+    nodes: list[dict[str, Any]],
+    edges: list[Any],
+    toc: list[Any],
+    quality_score: float,
+    iteration: int,
+    metadata: dict[str, Any],
+) -> None:
+    """Write a wiki snapshot to the ``wiki_snapshot`` table under *kind*.
+
+    *nodes* are pre-shaped by the caller (the two writers rewrite paths
+    differently). Loaded back via :func:`load_wiki_snapshot`.
+    """
+    with open_store(vault_db_path(base_dir)) as conn:
+        conn.execute(
+            f"INSERT INTO {WIKI_SNAPSHOT_TABLE}(kind, nodes, edges, toc, quality_score, iteration, metadata, written_at) "
+            f"VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            f"ON CONFLICT(kind) DO UPDATE SET nodes = excluded.nodes, edges = excluded.edges, toc = excluded.toc, "
+            f"quality_score = excluded.quality_score, iteration = excluded.iteration, "
+            f"metadata = excluded.metadata, written_at = excluded.written_at",
+            (
+                kind,
+                json.dumps(nodes, default=str),
+                json.dumps(list(edges), default=str),
+                json.dumps(list(toc), default=str),
+                quality_score,
+                iteration,
+                json.dumps(dict(metadata), default=str),
+                iso_local(),
+            ),
+        )
+
+
 def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
     """Load the last compiled wiki from the on-disk cache.
 
@@ -137,20 +234,29 @@ def load_cached_wiki(base_dir: Path) -> CompiledWiki | None:
     surfaces instead of producing a misleading "run compile first" message.
     Reconstructs nested ``WikiNode`` objects from their dict representation.
     """
-    cache_file = VaultPaths(base_dir).wiki_cache_file
-    if not cache_file.exists():
+    return load_wiki_snapshot(base_dir, WIKI_SNAPSHOT_LAST)
+
+
+def load_wiki_snapshot(base_dir: Path, kind: str) -> CompiledWiki | None:
+    """Load the wiki snapshot of *kind* from the store, or ``None`` on miss."""
+    if not vault_db_path(base_dir).exists():
         return None
-    data = json.loads(cache_file.read_text(encoding="utf-8"))
-    # Reconstruct WikiNode objects from plain dicts
-    raw_nodes = data.get(WikiField.NODES, [])
+    with open_store(vault_db_path(base_dir)) as conn:
+        row = conn.execute(
+            f"SELECT nodes, edges, toc, quality_score, iteration, metadata FROM {WIKI_SNAPSHOT_TABLE} WHERE kind = ?",
+            (kind,),
+        ).fetchone()
+    if row is None:
+        return None
+    raw_nodes = json.loads(row["nodes"])
     nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
     return CompiledWiki(
         nodes=nodes,
-        edges=data.get(WikiField.EDGES, []),
-        toc=data.get(WikiField.TOC, []),
-        quality_score=data.get(WikiField.QUALITY_SCORE, 0.0),
-        iteration=data.get(WikiField.ITERATION, 0),
-        metadata=data.get(WikiField.METADATA, {}),
+        edges=json.loads(row["edges"]),
+        toc=json.loads(row["toc"]),
+        quality_score=float(row["quality_score"]),
+        iteration=int(row["iteration"]),
+        metadata=json.loads(row["metadata"]),
     )
 
 

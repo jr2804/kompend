@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from knox.core.paths import safe_stem
+from knox.core.text.embedding_text import embed_text
 from knox.core.text.matching import cosine
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
@@ -82,11 +83,12 @@ def verify_topics(
     vectors: list[list[float] | None] = []
     dirty = False
     try:
-        for _stem, text in chunks:
-            key = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        for _stem, text, context in chunks:
+            embed_input = embed_text(text, context)
+            key = hashlib.sha256(embed_input.encode("utf-8")).hexdigest()[:16]
             vec = cache.get(key)
             if vec is None:
-                vec = provider.embed(text)
+                vec = provider.embed(embed_input)
                 cache[key] = vec
                 dirty = True
             vectors.append(vec)
@@ -101,7 +103,7 @@ def verify_topics(
     for topic, tvec in zip(topics, topic_vecs, strict=False):
         best_score = 0.0
         best_source = ""
-        for (stem, _text), cvec in zip(chunks, vectors, strict=False):
+        for (stem, _text, _context), cvec in zip(chunks, vectors, strict=False):
             if cvec is None:
                 continue
             score = cosine(tvec, cvec)
@@ -117,9 +119,9 @@ def verify_topics(
     return results
 
 
-def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str]]:
-    """Load ``(source_stem, text)`` for leaf chunks from the parse cache."""
-    chunks: list[tuple[str, str]] = []
+def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str, str]]:
+    """Load ``(source_stem, text, contextual_context)`` for leaf chunks."""
+    chunks: list[tuple[str, str, str]] = []
     if not chunk_cache_dir.is_dir():
         return chunks
     for cache_file in sorted(chunk_cache_dir.glob("*.json")):
@@ -143,7 +145,8 @@ def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str]]:
                 continue
             text = str(chunk.get("text", "")).strip()
             if text:
-                chunks.append((stem, text))
+                context = str(node.get("contextual_context", ""))
+                chunks.append((stem, text, context))
     return chunks
 
 

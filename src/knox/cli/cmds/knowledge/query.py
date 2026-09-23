@@ -24,7 +24,9 @@ from knox.cli._query_helpers import (  # noqa: F401  # re-exported for backward 
     node_type_index,
     open_vector_store,
     print_raw_results,
+    run_agentic_query_output,
     save_query_memory,
+    should_use_agentic,
     structured_answer,
     synthesize_and_output,
     wiki_link,
@@ -132,6 +134,14 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
             " Use --raw for retrieval-only output."
         )
         raise typer.Exit(1)
+
+    if should_use_agentic(cfg, raw=raw, model=model, tag_groups=tag_groups, attr_filters=attr_groups):
+        try:
+            run_agentic_query_output(query, wiki, vector_store, format, cfg, cw, remember, state_dir)
+        finally:
+            if vector_store is not None:
+                vector_store.close()
+        return
 
     try:
         results, raw, has_enhanced = _execute_search(

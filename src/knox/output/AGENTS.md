@@ -47,3 +47,6 @@ builds the wiki index page and serves wiki page previews.
   body, ordered by first reference (MD066/MD067-clean).
 - Importing this package auto-registers all built-in writers via
   ``BaseOutputWriter`` subclass registration.
+- ``VaultWriter._load_verification`` reads the latest ``verification`` row from
+  ``.knox/knox.db`` (``ORDER BY id DESC LIMIT 1``), not ``.knox/verification.json``;
+  a missing pass yields ``None`` and the quality page is skipped.

@@ -39,7 +39,6 @@ Two modes:
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any, ClassVar, override
@@ -126,8 +125,8 @@ class MarkdownWriter(VaultWriter):
         return self._write_vault(docs, wiki, output_dir)
 
     def _load_ref_store(self) -> ReferenceStore | None:
-        """Load the reference store once if the references file exists."""
-        if self._references_file and self._references_file.exists():
+        """Load the DB-backed reference store when a references path is set."""
+        if self._references_file is not None:
             return ReferenceStore(self._references_file)
         return None
 
@@ -233,7 +232,7 @@ class MarkdownWriter(VaultWriter):
 
         # Asset footnotes: ¶ <id> references in body → [^<id>]: <summary>.
         asset_store: AssetStore | None = None
-        if self._assets_file and self._assets_file.exists():
+        if self._assets_file is not None:
             asset_store = AssetStore(self._assets_file)
         if asset_store:
             asset_footnotes = _format_asset_footnotes(rendered, asset_store)
@@ -313,8 +312,7 @@ class MarkdownWriter(VaultWriter):
 
 def _relativize(bundle_path: str, folder: str) -> str:
     """Rebase a bundle-relative path onto the current page's folder."""
-    rel = os.path.relpath(bundle_path, folder)
-    return rel.replace("\\", "/")
+    return Path(bundle_path).relative_to(folder, walk_up=True).as_posix()
 
 
 def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
