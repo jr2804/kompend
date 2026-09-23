@@ -161,10 +161,22 @@ def _norm(s: str) -> str:
 
 
 def cosine(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors (0.0 when either is zero)."""
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    """Cosine similarity between two equal-length vectors.
+
+    Returns ``0.0`` when either vector has zero norm (e.g. an all-zero
+    embedding).
+
+    Raises:
+        ValueError: when either vector is empty or the lengths differ.
+            Embeddings produced by one model always share a dimension, so a
+            mismatch is a bug — ``zip``'s silent truncation would otherwise
+            return a plausible-looking but wrong score.
+    """
+    if not a or len(a) != len(b):
+        raise ValueError(f"cosine requires two equal-length non-empty vectors (got {len(a)} and {len(b)})")
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)

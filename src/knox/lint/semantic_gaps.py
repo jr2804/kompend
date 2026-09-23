@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
 from knox.core.paths import safe_stem
+from knox.core.text.matching import cosine
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
 
@@ -71,7 +71,7 @@ def verify_topics(
         logger.info("Semantic gap check: no source chunks found in %s", chunk_cache_dir)
         return results
 
-    cache = _load_vector_cache(vector_cache_path)
+    cache = _load_vector_cache(vector_cache_path, embed_model)
     try:
         provider = make_provider(embed_model)
     except Exception:
@@ -96,7 +96,7 @@ def verify_topics(
         return results
     finally:
         if dirty:
-            _save_vector_cache(vector_cache_path, cache)
+            _save_vector_cache(vector_cache_path, cache, embed_model)
 
     for topic, tvec in zip(topics, topic_vecs, strict=False):
         best_score = 0.0
@@ -104,7 +104,7 @@ def verify_topics(
         for (stem, _text), cvec in zip(chunks, vectors, strict=False):
             if cvec is None:
                 continue
-            score = _cosine(tvec, cvec)
+            score = cosine(tvec, cvec)
             if score > best_score:
                 best_score = score
                 best_source = stem
@@ -147,26 +147,30 @@ def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str]]:
     return chunks
 
 
-def _load_vector_cache(cache_path: Path) -> dict[str, list[float]]:
-    if cache_path.exists():
-        try:
-            return json.loads(cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Gap vector cache corrupt — rebuilding: %s (%s)", cache_path, exc)
-    return {}
+def _load_vector_cache(cache_path: Path, embed_model: str) -> dict[str, list[float]]:
+    """Load chunk vectors cached for *embed_model*.
+
+    A cache written for a different embedding model — or a legacy model-less
+    ``{key: vector}`` file — is treated as a full miss: vectors from different
+    models are not comparable.
+    """
+    if not cache_path.exists():
+        return {}
+    try:
+        raw = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Gap vector cache unreadable — rebuilding: %s (%s)", cache_path, exc)
+        return {}
+    if not isinstance(raw, dict) or raw.get("model") != embed_model:
+        return {}
+    vectors = raw.get("vectors")
+    if not isinstance(vectors, dict):
+        return {}
+    return {str(key): [float(x) for x in vec] for key, vec in vectors.items() if isinstance(vec, list)}
 
 
-def _save_vector_cache(cache_path: Path, cache: dict[str, list[float]]) -> None:
+def _save_vector_cache(cache_path: Path, vectors: dict[str, list[float]], embed_model: str) -> None:
+    dim = len(next(iter(vectors.values()))) if vectors else 0
+    payload = {"model": embed_model, "dim": dim, "vectors": vectors}
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(cache), encoding="utf-8")
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b) or not a:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return dot / (na * nb)
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")

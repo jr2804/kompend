@@ -89,6 +89,14 @@ class TestCosine:
     def test_zero_vector_scores_zero(self) -> None:
         assert cosine([0.0, 0.0], [1.0, 1.0]) == 0.0
 
+    def test_length_mismatch_raises(self) -> None:
+        with pytest.raises(ValueError, match="equal-length"):
+            cosine([1.0, 0.0], [1.0, 0.0, 0.0])
+
+    def test_empty_vectors_raise(self) -> None:
+        with pytest.raises(ValueError, match="equal-length"):
+            cosine([], [])
+
 
 class TestSemanticMatcher:
     def test_unavailable_without_embedder(self) -> None:

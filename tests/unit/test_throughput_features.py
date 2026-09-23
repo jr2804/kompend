@@ -619,8 +619,11 @@ class TestCosineSimilarity:
         assert sim > 0.99
 
     def test_zero_vector(self) -> None:
-        assert cosine_similarity([], []) == 0.0
         assert cosine_similarity([1.0], [0.0]) == 0.0
+
+    def test_empty_vectors_raise(self) -> None:
+        with pytest.raises(ValueError, match="equal-length"):
+            cosine_similarity([], [])
 
 
 class TestMergeSimilarConcepts:
