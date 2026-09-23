@@ -269,3 +269,58 @@ flowchart LR
 - POLICIES.md now requires all magic numbers to be config fields
 
 **Related:** Investigation session (2026-03-19, gemma4:e2b on listening-effort corpus)
+
+## Agentic vs Single-Shot (2026-09)
+
+### Decision: Which LLM actions stay single-shot by design
+
+**Date:** Sep 24, 2026
+
+**Context:** The "migrate all LLM-based actions to agentic multi-turn workflows"
+epic (`knox-0iv2`) proposed converting every LLM call into a tool-using agent.
+A read-only code audit (`.agents/plans/knox-0iv2-audit.md`, gitignored) found
+that several actions are single-shot by design, that proposed agentic variants
+were built but never wired (then removed, or reachable only from tests), and
+that two areas are satisfied by a different design. This entry records the
+decisions so they are not re-opened as "missing agentic conversions".
+
+**Decision:** The actions below are deliberately single-shot. A proposal to
+convert one must argue against the stated rationale, not merely assert that a
+tool-using agent is more capable.
+
+| Action | Agent | Why single-shot by design |
+| --- | --- | --- |
+| Reference extraction | `ReferenceExtractionAgent` | Bounded extraction over one document's reference list; the input is already in context, so no tools are needed. |
+| Reference resolution | `ReferenceResolverAgent` | Resolves a fixed batch of extracted references; no on-demand fetching and no cross-item state. |
+| Source categorization | `CategorizeAgent` | One call returns the whole category tree from a fixed source list; iterating with tools adds turns without adding information. |
+| Capture | `CaptureAgent` | One call turns a block of conversation text into structured items; the block *is* the context. |
+| Lint rules | `LintRuleAgent` | Each rule is one focused judgement over a rendered page/prompt; rules are independent and need no shared session. |
+| WiCER probe / evaluate / diagnose | `WicerProbeAgent` / `WicerEvaluateAgent` / `WicerDiagnoseAgent` | The WiCER CEGAR loop *is* the multi-turn orchestrator; each sub-call is a bounded single-turn task by design. |
+| VLM captioning | `VlmAgent` | Vision calls dominate cost and latency; multi-turn captioning adds no cross-item state. |
+| Doctor ping | `DoctorAgent` | Connectivity probe returning a short status string; no tools, no memory. |
+| Query expansion / CRAG grading / HyDE | `QueryExpansionAgent` / `CragGradeAgent` / `HydeAgent` | One-shot transforms inside an already multi-stage retrieval pipeline; each runs independently per query. |
+
+**Satisfied by a different design (not missing):**
+
+- **Extraction.** The `AGENTIC` extraction strategy
+  (`compile.llm.extraction_strategy`) uses the ordinary `ExtractionAgent` with
+  a compaction-managed memory digest (`compilation/flows/agentic.py`), not a
+  distinct tool agent. Cross-chunk context is carried in the digest rather
+  than by retrieving chunks on demand.
+- **Capture.** Single-shot `CaptureAgent` by design (see the table); the
+  planned agentic capture was never built.
+
+**Do not cite as live:** the legacy template `GenerationAgent` and
+`generate_all_pages()` are unreachable dead code (targeted for removal in
+`knox-0iv2.12`). An `Agentic*` class file existing on disk is **not** evidence
+that an agentic path is wired — wiring status is tracked in `knox-0iv2`.
+
+**Consequences:**
+
+- New proposals to make a listed action agentic must reference this decision
+  and the tracker, and show a concrete failure of the single-shot form.
+- Agentic remains the chosen design where work genuinely benefits from
+  on-demand fetching or cross-item synthesis in one session (remediation,
+  verification, write, distill, generation, overview).
+
+**Related:** `knox-0iv2`, `knox-0iv2.7`, `knox-0iv2.8`, `knox-0iv2.9`, `knox-0iv2.11`, `knox-0iv2.13`, `knox-0iv2.14`

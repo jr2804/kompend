@@ -510,16 +510,32 @@ enable = false                    # on/off switch
 # Disable chunking by setting to 0
 # max_pages_before_chunking = 50
 # page_chunk_size = 30
-# page_chunk_overlap = 5
 
-# Docling extraction passes. All default to true — turning one off drops that
-# content type from every parsed PDF, so only disable for a real reason
-# (CPU-only host, scanned-only corpus). Formula/code enrichment loads the
-# CodeFormulaV2 model on first use (one-time download, ~4 min first parse on
-# CPU); table structure is docling's own table model.
+# Docling extraction passes. table_structure and formula_enrichment default
+# to true — turning one off drops that content type from every parsed PDF.
+# Formula enrichment loads the CodeFormulaV2 model on first use (one-time
+# download; ~4 min first parse on CPU).
+#
+# code_enrichment defaults to FALSE: the CodeFormulaV2 VLM re-OCRs every code
+# block (~140 s each on CPU), but born-digital PDFs already carry correct code
+# in their text layer, so enabling it only adds time. Enable only when code
+# renders as images that OCR handles poorly.
 # table_structure = true
+# table_mode = "accurate"       # accurate | fast (fast = no cell matching)
 # formula_enrichment = true
-# code_enrichment = true
+# code_enrichment = false
+
+# OCR pass. "auto" runs it only when the PDF has no usable text layer
+# (scanned/image-only); born-digital PDFs skip it, which is faster and
+# content-identical. "always"/"never" force the decision. A page counts as
+# having a text layer when it carries at least ocr_min_text_chars_per_page
+# extractable characters; one page below the threshold keeps OCR on.
+# ocr = "auto"
+# ocr_min_text_chars_per_page = 50
+
+# CPU threads for Docling model inference. 0 = all usable cores; Docling's
+# own default is 4 regardless of how many cores the host has.
+# num_threads = 0
 
 # ── Dedup settings ────────────────────────────────────────────────────────
 # Content-level duplicate detection for ingested sources. When enabled, each
@@ -636,6 +652,12 @@ history_size = 20
 # to each chunk before embedding. Improves both compilation and query.
 # contextual.enabled = false
 # contextual.model = ""
+
+# Agentic query (opt-in): the query agent searches the wiki itself via
+# search_wiki/read_page tools instead of retrieve-then-synthesize.
+# agentic.enabled = false
+# agentic.model = ""
+# agentic.max_sub_questions = 5
 
 # Synthesis verbosity: controls the length and depth of `knox query` answers.
 #   brief         = a few sentences, essential point only (~300 tokens)

@@ -1,18 +1,25 @@
 # PydanticAI Agents & Skills
 
 Every LLM call in KNOX routes through a **PydanticAI agent** in
-`knox.agents.*`. Each pipeline stage — extraction, generation, query,
-WiCER, capture, lint, search — is a single-turn structured-output call
-that returns a typed Pydantic model. PydanticAI handles JSON extraction,
-validation, and automatic retry on schema mismatch, so pipeline code never
-parses raw LLM output.
+`knox.agents.*`. Agents come in two shapes:
+
+- **Single-shot** — one structured-output call that returns a typed Pydantic
+  model.
+- **Agentic** — a multi-turn loop with tools (`fetch_gaps`, `read_page`, …)
+  that iterates over work in a single session.
+
+PydanticAI handles JSON extraction, validation, and automatic retry on schema
+mismatch, so pipeline code never parses raw LLM output. Which actions are
+agentic and which are deliberately single-shot is a recorded decision — see the
+[decision log](../architecture/decisions.md#decision-which-llm-actions-stay-single-shot-by-design).
 
 This guide covers:
 
 - How agents are structured and wired into the pipeline
+- The agent inventory (single-shot and agentic)
 - Per-role model overrides (`compile.llm.role_models`)
 - Writing and configuring skills (`compile.skills`)
-- Agent architecture for developers
+- Writing a new agent
 
 ---
 
@@ -20,48 +27,119 @@ This guide covers:
 
 ### Base class
 
-All agents inherit from
-[`KnoxAgentBase[ResultT, DepsT]`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/agents/base.py)
-— a KNOX wrapper around `pydantic_ai.Agent` that adds:
+All agents inherit from `KnoxAgentBase[ResultT, DepsT]` — a KNOX wrapper around
+`pydantic_ai.Agent` that adds:
 
 - **Model bridge** — builds a [`KnoxModel`](#knoxmodel) from a
-  `provider/model` string via `build_model()`.
+  `provider/model` string.
+- **Typed result and deps** — the two generic parameters supply the output
+  schema (`ResultT`) and the run context dataclass (`DepsT`). They are resolved
+  at construction and handed to pydantic-ai as the agent's `output_type`; there
+  is no separate `result_type` class attribute to set.
 - **Template-driven prompts** — system and user prompts are Jinja2
   templates loaded by `TemplateLoader`. No prompt text lives in Python.
 - **Skill injection** — user-defined skills are appended to the system
   prompt at render time.
 - **Output validation + retry** — PydanticAI validates the LLM response
-  against `result_type`; on mismatch, it sends actionable feedback and
+  against the output type; on mismatch, it sends actionable feedback and
   retries up to `output_retries` times.
 - **Usage tracking** — token usage is recorded per call for
   observability.
 - **Reasoning effort** — maps `reasoning_effort` config to the
   provider's thinking controls (e.g. `think=False` for Ollama).
+- **Tools and capabilities** — agentic subclasses pass `tools=` and
+  `AgenticHarness.build_capabilities()` to get a multi-turn tool loop.
 
-### Available agents
+### How agents are wired into the pipeline
 
-| Agent | Stage | Result type | Role |
-|-------|-------|-------------|------|
-| `ExtractionAgent` | Compilation T3 | `ExtractionOutput` | `compile.extract` |
-| `ExtractionReduceAgent` | Compilation T3 (reduce) | `ExtractionOutput` | `compile.extract` |
-| `GenerationAgent` | Compilation T4 | `GenerationOutput` | `compile.generate` |
-| `WicerProbeAgent` | Compilation T4 (WiCER probe) | `WicerProbeOutput` | `wicer.probe` |
-| `WicerEvaluateAgent` | Compilation T4 (WiCER judge) | `WicerEvaluateOutput` | `wicer.judge` |
-| `WicerDiagnoseAgent` | Compilation T4 (WiCER refine) | `WicerDiagnoseOutput` | `wicer.refine` |
-| `QueryAgent` | Query / RAG | `str` | `synthesize` |
-| `QueryExpansionAgent` | Search | `QueryExpansionOutput` | `search.expand` |
-| `CragGradeAgent` | Search (CRAG) | `CragGradeOutput` | `search.crag` |
-| `HydeAgent` | Search (HyDE) | `str` | `search.hyde` |
-| `VlmAgent` | Resolution (VLM) | `str` | `vlm` |
-| `CaptureAgent` | Capture | `CaptureOutput` | `capture` |
-| `DistillAgent` | Capture (distill) | `DistillOutput` | `capture.distill` |
-| `CategorizeAgent` | Organize | `CategoryTree` | `organize.categorize` |
-| `LintRuleAgent` | Lint | `dict[str, Any]` | `lint.*` |
-| `RemediationAgent` | Lint (remediate) | `str` | `lint.remediate-concept` |
-| `VerificationAgent` | Trust | `dict[str, Any]` | `verify` |
-| `SummarizerAgent` | Summarize | `str` | `synthesize` |
-| `ContextChunkAgent` | Chunking | `str` | `chunking.contextual` |
-| `DoctorAgent` | Doctor | `str` | `doctor` |
+Agents are constructed at the point of use, not via a global registry. Some are
+built directly by the stage that needs them; the agentic ones are built by a
+`make_agentic_*` factory that also attaches their tools and harness, and that
+factory is called by the CLI/MCP layer. Example (single-shot extraction):
+
+```python
+agent = ExtractionAgent(
+    model_string=self._model or "",
+    timeout=self._timeout,
+    max_tokens=self._budget.extract_output_max,
+    skills=self._config.skills,
+    retries=self._config.llm.output_retries,
+    reasoning_effort=self._config.llm.reasoning_effort,
+)
+result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
+```
+
+A class file existing is **not** evidence that it is wired: several agents are
+implemented but have no production construction site. The inventory below
+marks this explicitly, and wiring status is tracked in the epic `knox-0iv2`.
+
+---
+
+## Agent inventory
+
+> `Output` / `Deps` are the `KnoxAgentBase` generic parameters. `Template role`
+> is the `role:` value declared in the agent's prompt frontmatter. `Status` is
+> from a call-site scan: **wired** = a production construction site exists,
+> **not wired** = class/factory exists but production never constructs it,
+> **dead** = unreachable.
+
+### Agentic agents (multi-turn, tool-using)
+
+| Agent | Stage | Output | Deps | Template role | Status |
+|-------|-------|--------|------|---------------|--------|
+| `AgenticGenerationAgent` | Compilation T4 (page synthesis) | `GenerationOutput` | `ToolGenerationDeps` | `compile.generate` | wired |
+| `AgenticRemediationAgent` | Lint (remediation) | `str` | `RemediationDeps` | `lint.remediate-agentic` | wired |
+| `AgenticVerificationAgent` | Trust (claim verification) | `str` | `VerificationDeps` | `lint.verify-agentic` | wired |
+| `AgenticOverviewAgent` | Output (overview synthesis) | `str` | `OverviewDeps` | `output.synthesize-agentic` | wired |
+| `AgenticWriteAgent` | Capture (`write`) | `str` | `WriteDeps` | `capture.write-agentic` | wired |
+| `AgenticDistillAgent` | Capture (`distill`) | `str` | `DistillAgentDeps` | `capture.distill.agentic` | wired |
+| `AgenticQueryAgent` | Query synthesis | `str` | `QueryAgentDeps` | `search.query.agentic` | wired |
+| `AgenticSummarizerAgent` | Chunking (internal-node summaries) | `str` | `SummarizerDeps` | — | not wired |
+| `AgenticContextChunkAgent` | Chunking (contextual retrieval) | `str` | `ContextChunkDeps` | — | not wired |
+
+### Single-shot agents
+
+| Agent | Stage | Output | Deps | Template role | Status |
+|-------|-------|--------|------|---------------|--------|
+| `ExtractionAgent` | Compilation T3 (extraction) | `ExtractionOutput` | `PipelineAgentDeps` | `compile.extract` | wired |
+| `ExtractionReduceAgent` | Compilation T3 (map-reduce) | `ExtractionOutput` | `PipelineAgentDeps` | `compile.extract.reduce` | wired |
+| `ReferenceExtractionAgent` | Compilation (references) | `ReferenceExtractionOutput` | `PipelineAgentDeps` | `compile.references` | wired |
+| `ReferenceResolverAgent` | References (resolve) | `ReferenceResolutionOutput` | `PipelineAgentDeps` | `compile.references` | wired |
+| `WicerProbeAgent` | WiCER probe | `WicerProbeOutput` | `WicerProbeDeps` | `wicer.probe` | wired |
+| `WicerEvaluateAgent` | WiCER judge | `WicerEvaluateOutput` | `WicerEvaluateDeps` | `wicer.judge` | wired |
+| `WicerDiagnoseAgent` | WiCER refine | `WicerDiagnoseOutput` | `WicerDiagnoseDeps` | `wicer.refine` | wired |
+| `QueryAgent` | Query synthesis (non-agentic path) | `str` | `QueryDeps` | — | wired |
+| `QueryExpansionAgent` | Search (query expansion) | `QueryExpansionOutput` | `PipelineAgentDeps` | `search.expand` | wired |
+| `CragGradeAgent` | Search (CRAG grading) | `CragGradeOutput` | `PipelineAgentDeps` | — | wired |
+| `HydeAgent` | Search (HyDE) | `str` | `PipelineAgentDeps` | — | wired |
+| `VlmAgent` | Resolution (figure captioning) | `str` | `VlmDeps` | — | wired |
+| `CaptureAgent` | Capture | `CaptureOutput` | `PipelineAgentDeps` | `capture` | wired |
+| `DistillAgent` | Capture (distill, single-shot) | `DistillOutput` | `DistillDeps` | `capture.distill` | wired |
+| `CategorizeAgent` | Organize | `CategoryTree` | `CategorizeDeps` | `organize.categorize` | wired |
+| `LintRuleAgent` | Lint rules | `BaseModel \| str` | `PipelineAgentDeps` | `lint.*` | wired |
+| `DoctorAgent` | Doctor diagnostics | `str` | `DoctorDeps` | — | wired |
+| `WriteAgent` | Capture (`write`, single-shot) | `str` | `PipelineAgentDeps` | — | wired |
+
+### Implemented but not wired
+
+These classes exist and are accepted by their consuming component, but no
+production path constructs them. Do not describe them as live pipeline stages.
+
+| Agent | Stage | Output | Deps | Notes |
+|-------|-------|--------|------|-------|
+| `RemediationAgent` | Lint (remediation) | `str` | `PipelineAgentDeps` | Superseded by `AgenticRemediationAgent`; only the agentic factory has callers. |
+| `VerificationAgent` | Trust (verification) | `dict[str, Any]` | `PipelineAgentDeps` | Superseded by `AgenticVerificationAgent`. |
+| `SummarizerAgent` | Chunking (summaries) | `str` | `PipelineAgentDeps` | `NodeSummarizer` accepts it, but `build_pipeline` constructs `NodeSummarizer` without an agent. |
+| `ContextChunkAgent` | Chunking (contextual retrieval) | `str` | `PipelineAgentDeps` | `ContextualEnricher` accepts it, but is constructed only in tests. |
+| `AgenticSummarizerAgent` | Chunking (summaries) | `str` | `SummarizerDeps` | Factory `make_agentic_summarizer_agent()` has no caller. |
+| `AgenticContextChunkAgent` | Chunking (contextual retrieval) | `str` | `ContextChunkDeps` | Factory `make_agentic_context_chunk_agent()` has no caller. |
+
+### Dead (superseded, unreachable)
+
+| Agent | Output | Deps | Notes |
+|-------|--------|------|-------|
+| `GenerationAgent` | `GenerationOutput` | `GenerationDeps` | The legacy template generator; only referenced from the unreachable `generate_all_pages()`. Targeted for removal in `knox-0iv2.12`. |
+| `WikiIndexAgent` | `dict[str, Any]` | `PipelineAgentDeps` | No construction site; superseded by `AgenticOverviewAgent`. |
 
 ### KnoxModel
 
@@ -79,68 +157,28 @@ and adds KNOX-specific concerns:
 - **Debug dumps** — `_save_debug()` writes the full request/response
   pair to the LLM debug log when enabled.
 
-### How agents are wired into the pipeline
-
-Agents are instantiated by the compilation orchestrator at the point of
-use, not via a global registry. For example, `two_phase.py` creates an
-`ExtractionAgent` per chunk batch:
-
-```python
-agent = ExtractionAgent(
-    model_string=self._model or "",
-    timeout=self._timeout,
-    max_tokens=self._budget.extract_output_max,
-    skills=self._config.skills,
-    retries=self._config.llm.output_retries,
-    reasoning_effort=self._config.llm.reasoning_effort,
-)
-result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
-```
-
-All agents receive the same `skills` dict and `retries`/`reasoning_effort`
-from `compile.llm`.
-
 ---
 
 ## Per-role model overrides
 
-Different pipeline stages have different cost/quality trade-offs. You can
-pin a specific model per LLM role using `compile.llm.role_models`:
+`compile.llm.role_models` is a map from a role key to a model string, settable
+in TOML or from the CLI (`--role-model role=model`), intended to let different
+stages use different models:
 
 ```toml
-[compile.llm]
-default_model = "ollama/qwen3"
-
 [compile.llm.role_models]
 "compile.extract" = "ollama/gpt-oss:20b"
 "compile.generate" = "openai/gpt-4o"
-"vlm" = "openai/gpt-4o"
-"wicer.judge" = "anthropic/claude-sonnet-4-20250514"
 ```
 
-Role keys are the config identifiers under `[compile.llm.role_models]`. When a role is not listed, `default_model` is used.
+> **Status: not applied as of this revision.** No code reads `role_models` when
+> constructing an agent, and `build_model()` takes only a model string. Every
+> agent currently uses `compile.llm.default_model` (with `compile.llm.fallback_chain`).
+> Treat per-role overrides as unimplemented until the map is consumed by the
+> agent construction path.
 
-Common roles:
-
-| Role | Stage |
-|------|-------|
-| `compile.extract` | Entity/concept extraction |
-| `compile.generate` | Wiki page generation |
-| `wicer.probe` | WiCER diagnostic probe |
-| `wicer.judge` | WiCER quality evaluation |
-| `wicer.refine` | WiCER content refinement |
-| `vlm` | Image captioning (VLM enricher) |
-| `search.crag` | CRAG relevance grading |
-| `search.expand` | Query expansion |
-| `search.hyde` | HyDE hypothetical answer |
-| `synthesize` | Query answer synthesis |
-| `verify` | Trust verification |
-| `capture` | Source capture |
-| `capture.distill` | Capture distillation |
-| `organize.categorize` | Page categorization |
-| `chunking.contextual` | Contextual chunk enrichment |
-| `doctor` | Doctor diagnostics |
-| `agent` | Conversational ACP agent |
+The role keys that would be used are the `role:` values declared in each
+agent template's frontmatter (shown in the inventory above).
 
 ---
 
@@ -185,8 +223,8 @@ instructions = '''
 |------|----------|
 | Domain terminology, abbreviations, style rules | **Skill** (`compile.skills`) |
 | Change what the LLM is asked to do | **Template** (Jinja2 `.md.j2`) |
-| Change the output schema | **Result type** (Pydantic model) |
-| Change which model is used | **Role model** (`compile.llm.role_models`) |
+| Change the output schema | **Output type** (`KnoxAgentBase` generic parameter) |
+| Change which model is used | **`default_model`** (per-role overrides are not yet applied) |
 
 Skills are additive — they augment the system prompt without replacing
 it. Templates define the core instruction; skills provide additional
@@ -194,27 +232,35 @@ context.
 
 ---
 
-## MCP integration (future)
+## Tools and capabilities
 
-PydanticAI's tool/capabilities system allows attaching MCP servers to
-specific agents, enabling an agent to call external tools (web search,
-databases, APIs) during its LLM round. This is planned for a future
-phase. The current architecture is designed to accommodate this without
-pipeline changes:
+Agentic agents run a multi-turn loop over pydantic-ai tools. Two mechanisms:
 
-- `KnoxAgentBase._build_agent()` constructs the `pydantic_ai.Agent` —
-  MCP tool servers would be registered here.
-- The pipeline calls `agent.run(deps)` — tool calls happen transparently
-  inside PydanticAI's agent loop.
-- No changes to pipeline callers are needed.
+- **Tools** — plain Python functions passed as `tools=` when the agent is
+  built (`AgenticRemediationAgent` → `fetch_gaps`, `save_page`,
+  `mark_unfixable`; `AgenticVerificationAgent` → `get_claim`,
+  `search_sources`, `read_page`, `mark_verified`, …). The tool list lives in
+  the matching `*_tools.py` module and must match the system prompt.
+- **Capabilities** — shared cross-cutting behaviour supplied by
+  `AgenticHarness.build_capabilities()` (sliding-window context compaction,
+  oversized-message clamping, memory). Every `make_agentic_*` factory passes
+  these in addition to `tools=`.
+
+Attaching external **MCP servers** to an agent is still future work:
+`KnoxAgentBase._build_agent()` is where pydantic-ai tool/capability servers
+would be registered, and pipeline callers would need no change.
 
 ---
 
 ## Writing a new agent
 
-1. **Create the agent class** in `src/knox/agents/<name>.py`:
+1. **Create the agent class** in `src/knox/agents/<name>.py`. The result and
+   deps types are the generic parameters — do **not** declare a `result_type`
+   attribute:
 
 ```python
+from typing import ClassVar
+
 from knox.agents.base import KnoxAgentBase
 from knox.agents.deps import PipelineAgentDeps
 from knox.compilation.schema import MyOutput  # or define a Pydantic model
@@ -223,26 +269,27 @@ from knox.compilation.schema import MyOutput  # or define a Pydantic model
 class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
     """One-line description of what this agent does."""
 
-    template_name = "my_prompt.md.j2"
-    system_template_name = "my_system.md.j2"
-    result_type = MyOutput
+    template_prefix: ClassVar[str] = "compilation/"
+    template_name: ClassVar[str] = "my_prompt.md.j2"
+    system_template_name: ClassVar[str] = "my_system.md.j2"
 ```
 
-2. **Create the Jinja2 templates** in
-   `src/knox/templates/<module>/`:
+2. **Create the Jinja2 templates** in `src/knox/templates/<prefix>/`:
 
-   - `<name>_system.md.j2` — system prompt
+   - `<name>_system.md.j2` — system prompt, with a `role:` in its frontmatter
    - `<name>_prompt.md.j2` — user prompt template (receives `deps`
      fields as Jinja2 variables)
 
-3. **Register the agent** — wire it into the compilation pipeline at the
-   call site (see the existing agents in `src/knox/agents/` for the
-   pattern).
+   `template_prefix` must match the template's directory exactly — a mismatch
+   fails at render time (this has bitten agentic agents whose templates moved
+   between directories).
 
-4. **Export** the agent from `src/knox/agents/__init__.py`.
+3. **Wire it** at the point of use (the stage that needs it), or add a
+   `make_agentic_<name>_agent` factory next to the class and call it from the
+   CLI/MCP layer. There is no central registry.
 
-5. **Route it to a model** in `src/knox/core/pipeline/config.py` if it
-   needs a role override (see `compile.llm.role_models`).
+4. **Export** the agent from `src/knox/agents/__init__.py` if callers import it
+   from the package.
 
 See the [LLM Configuration guide](../guides/llm-config.md) for model
 strings, fallback chains, and reasoning-effort controls.

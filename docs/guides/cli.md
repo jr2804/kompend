@@ -566,20 +566,26 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys.
 
 ## Agentic Mode
 
-KNOX uses **agentic multi-turn workflows** for all major LLM-powered operations.
-Instead of single-shot LLM calls, agentic agents run one session per task and
-iterate via tools — fetching data on demand, batching work, and synthesizing
-across sources in a single context.
+KNOX uses **agentic multi-turn workflows** for LLM operations that benefit
+from on-demand fetching or cross-item synthesis in one session. Instead of a
+single-shot call per item, an agentic agent runs one session per task and
+iterates via tools — fetching data on demand, batching work, and synthesizing
+across sources.
 
-Agentic mode activates automatically when `compile.llm.default_model` is set
-and the operation routes through the agentic factory. The agentic variant
-of each operation is the default for the affected CLI commands and MCP tools:
+Agentic mode activates when `compile.llm.default_model` is set and the
+operation routes through the agentic factory. For the operations it covers,
+the agentic variant is the default for the affected CLI commands and MCP
+tools, for example:
 
 - `knox distill` → `AgenticDistillAgent` (one session over all tag groups)
 - `knox write` → `AgenticWriteAgent` (loads sources on demand)
 - `knox lint verify` → `AgenticVerificationAgent` (one session over claims)
-- `knox query` → `AgenticQueryAgent` (decomposes into sub-questions)
-- `knox capture` (batch) → `AgenticCaptureAgent` (one session over inputs)
+
+Not every operation is agentic: a set is **single-shot by design** (reference
+extraction/resolution, capture, categorization, lint rules, WiCER
+sub-calls, VLM captioning, doctor, query expansion/CRAG/HyDE). See the
+[decision record](../architecture/decisions.md#decision-which-llm-actions-stay-single-shot-by-design)
+before proposing to convert one.
 
 The `compile.llm.agentic_output_retries` config key controls the output
 retry budget for agentic agents separately from tool retries (see

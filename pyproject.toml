@@ -88,10 +88,10 @@ docling = [
     # is the only OCR extra in docling-slim that needs no system Tesseract
     # install (feat-ocr-rapidocr, selected above).
     #
-    # Formula/code enrichment loads CodeFormulaV2 through transformers with a
+    # Formula enrichment loads CodeFormulaV2 through transformers with a
     # device_map, which hard-requires accelerate. Without it every PDF parse
-    # raises once pdf.formula_enrichment/pdf.code_enrichment are on (both
-    # default on).
+    # raises while pdf.formula_enrichment is on (it defaults on; code_enrichment
+    # defaults off and needs the same model).
     "accelerate>=1.0.0",
 ]
 

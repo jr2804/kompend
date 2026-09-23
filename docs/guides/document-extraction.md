@@ -149,11 +149,13 @@ that content in their Markdown, but knox previously discarded it (see
 
 ¹ GFM tables only — column detection degrades on multi-column layouts, where
 contiguous text can be mis-detected as one very wide table row.
-² Formula/code recognition needs `accelerate` (bundled with the `docling`
+² Formula recognition needs `accelerate` (bundled with the `docling`
 extra) and downloads the CodeFormulaV2 model on first use (~4 min on CPU).
-Turn it off with `[compile.pdf] formula_enrichment = false` if you have a
-reason; doing so silently drops every equation from every PDF, so it defaults
-to on.
+`formula_enrichment` defaults on because equations have no native text-layer
+representation. `code_enrichment` defaults **off**: the same VLM re-OCRs
+every code block (~140 s each on CPU) even though a born-digital PDF already
+carries correct code as text. See
+[Docling performance](#docling-performance).
 
 ### Where each backend wins
 
@@ -232,6 +234,24 @@ it with `uv add knox[docling]`.
 - Does not produce Tagged PDF or PDF/UA output.
 - Table extraction accuracy is good but not best-in-class for complex
   borderless tables.
+
+## Docling performance
+
+Docling's default pipeline is tuned for accuracy, not throughput, and two of
+its defaults are pathological on born-digital PDFs. KNOX overrides both from
+`[compile.pdf]`:
+
+| Knob | Default | Why |
+|------|---------|-----|
+| `ocr` | `"auto"` | Skips the RapidOCR pass when the PDF already has a text layer. Measured **2.1× faster** with byte-identical output on a born-digital manual. `"always"`/`"never"` force it. |
+| `code_enrichment` | `false` | CodeFormulaV2 re-OCRs every code block (~140 s each on CPU). Born-digital code is already in the text layer, so this is pure cost. Measured **45×** on a 16-page code-heavy range. |
+| `num_threads` | `0` (all cores) | Docling hard-defaults to 4 threads regardless of host. |
+| `table_mode` | `"accurate"` | TableFormer cell-matching; `"fast"` drops cell detail for speed. |
+
+On one 113-page POLQA OEM manual these defaults took the parse from **>25 min
+to ~3.5 min** (206 s) with code, formula and table elements intact.
+`max_pages_before_chunking`/`page_chunk_size` bound memory by parsing large
+PDFs in page-range segments.
 
 ## PandocParser: Legacy Format Support
 

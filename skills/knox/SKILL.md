@@ -340,7 +340,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 4. Re-compile with compile_wiki to integrate the new pages.
 ```
 
-See [Input pipeline](docs/guides/input-pipeline.md) for the full
+See [Input pipeline](../../docs/guides/input-pipeline.md) for the full
 capture/learn/distill/consolidate lifecycle. Note: `capture` refuses
 nonsense input (the agent sets `refused: true` and nothing is written) —
 if a capture call returns zero files, the input had nothing extractable.
@@ -361,29 +361,28 @@ Use the wicer compiler for documents where you need exhaustive extraction:
 compile_wiki(sources_dir="./sources", output="./output", compiler="wicer")
 ```
 
-### Agentic Multi-Turn Workflows (0iv2)
+### Agentic and Single-Shot Workflows
 
-KNOX provides agentic variants of all major LLM-powered operations. Instead
-of a single-shot LLM call per item, agentic workflows decompose work into
-multiple turns with tool use — fetching data on demand, iterating over
-batches, and synthesizing across sources in one session.
+Some LLM operations have an **agentic** multi-turn variant: instead of one
+call per item, a tool-using agent iterates in a single session — fetching data
+on demand, batching work, and synthesizing across sources. Agentic agents are
+opt-in: they activate when `compile.llm.default_model` is configured and the
+CLI/MCP layer selects the agentic factory. All agentic agents share the
+`AgenticHarness` helper (sliding-window compaction, oversized-message clamp,
+memory).
 
-The agentic agents are opt-in: they activate when `compile.llm.default_model`
-is configured and the agentic factory is used by the CLI/MCP layer.
+Not every operation should be agentic. A set of actions is **single-shot by
+design** — reference extraction/resolution, source categorization, capture,
+lint rules, the WiCER probe/evaluate/diagnose calls, VLM captioning, doctor
+ping, and query expansion/CRAG/HyDE. Converting one of them is not a missing
+step; see the [decision record](../../docs/architecture/decisions.md#decision-which-llm-actions-stay-single-shot-by-design)
+for the rationale per action. Extraction is intentionally handled by a
+different design (the `AGENTIC` strategy's memory digest), not a separate tool
+agent.
 
-| Agent | Single-shot mode | Agentic mode | Tools |
-|---|---|---|---|
-| Verification | Per-claim LLM call | One session, iterate claims | `search_sources`, `read_page`, `mark_verified` |
-| Capture | Per-text LLM call | One session, iterate inputs | `get_input`, `save_item` |
-| Distill | Per-group LLM call | One session, iterate groups | `get_group`, `write_page` |
-| Query | Single synthesize call | Decompose into sub-questions | `search_wiki`, `read_page`, `add_finding` |
-| Context chunk | Per-chunk LLM call | One session, iterate chunks | `get_chunk`, `situate_chunk` |
-| Summarizer | Per-node LLM call | One session, iterate nodes | `get_node`, `save_summary` |
-| Extraction | Per-source LLM call | One session, iterate sections | `get_section`, `save_extraction` |
-
-All agentic agents use the `AgenticHarness` helper for shared capabilities
-(sliding window compaction, clamp oversized messages, memory).
-See [agentic migration epic](https://codeberg.org/jr2804/knox/issues?q=is%3Aissue+label%3Aknox-0iv2) for implementation status.
+Wiring status for the agentic variants lives in the tracker
+([knox-0iv2](https://codeberg.org/jr2804/knox/issues?q=is%3Aissue+label%3Aknox-0iv2));
+an `Agentic*` class existing is not evidence that it is wired into a pipeline.
 
 ## Output Format
 
